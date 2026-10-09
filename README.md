@@ -39,7 +39,11 @@ See `docs/plan.md` for full steps.
 blank sheet in the current theme, saved on every keystroke. `SUPER+ALT+=` or
 the `󰏫` bar glyph opens it, `Esc` closes. `SUPER+ALT+\` opens the same
 sheet as a normal window to tile beside something; `Ctrl+P` flips between
-the two. Blocks the agent has seen are
+the two. The note is drawn, not shown as markdown: headings set large,
+checkboxes as boxes (click or `Ctrl+L`), bullets, numbers, and private
+callouts marked "never sent"; typing `# `, `- [ ] ` or `> ` turns the line
+into that kind, Backspace at its start turns it back. The file stays plain
+markdown, changed only where you typed. Blocks the agent has seen are
 veiled; a block with a reply carries a gutter mark and its reply shows in the
 margin to the right when asked. Finishing an `@` or `?` line stages the block
 (hollow mark) and asks "send to agent?" under the cursor with *no*
@@ -60,6 +64,7 @@ block is written in. Needs `~/.config/omarchy-student/config.json` (copy
 ```bash
 cp -r plugin-page ~/.config/omarchy/plugins/student.page   # then add {"id":"student.page"} to plugins[] in ~/.config/omarchy/shell.json
 python3 tests/test_blocks.py                                # block splitter, JS and Python must agree (needs node)
+QT_QPA_PLATFORM=offscreen /usr/lib/qt6/bin/qmltestrunner -input tests/tst_editor.qml   # the drawn editor, driven by keys
 ```
 
 ## The loop (phase 14.2)

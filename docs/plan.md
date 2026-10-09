@@ -152,10 +152,21 @@
             mark flips between overlay and window, Esc does nothing in the
             window, closing the window closes the page. The margin opens
             inside the window (45% width) instead of beside the sheet.
-      - [ ] 14.6 rendering — a block-based editor (one text field per
-            block, plain markdown inside) so headings, checkboxes, private
-            callouts, and block spacing can be drawn without rewriting the
-            note; decided to wait for a few days of use first.
+      - [x] 14.6 rendering — `NoteEditor.qml`: one text field per *line*,
+            not per block, with the markdown that only says what kind of
+            line it is (`# `, `- [ ] `, `1. `, `> [!private] `, indentation)
+            lifted off and drawn instead ("always drawn", chosen over raw
+            markdown under the cursor). `Rows.js` derives the rows from the
+            text and keeps prefix + body == line, so the note changes only
+            where typed. Blank lines are drawn as block space (a little air
+            when a block starts with no blank line), and arrows skip them.
+            Enter carries list and quote markers, Backspace at a line's
+            start drops its kind, then its indent, then joins; Ctrl+L ticks;
+            undo is the editor's own (cross-field). Page logic (staging,
+            send prompt, panel) is unchanged and talks to the editor through
+            the same `text`/`cursorPosition`/`insert`/`remove`. Not yet:
+            selecting across lines (selection is per line).
+            `tests/tst_editor.qml` drives it offscreen with qmltestrunner.
       - [ ] 14.7 focus mode · 14.8 study mode · 14.9 phone capture, external reading.
 - [ ] Parked — deadline entry from the popup (absorbed by 14.4), `.ics` import,
       analytics (`history`), daily counter

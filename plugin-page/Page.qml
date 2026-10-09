@@ -16,11 +16,15 @@ import "Blocks.js" as Blocks
 // is saved (coalesced over a few hundred milliseconds, flushed on Enter and
 // on close) so the file on disk is always what you see. Escape closes.
 //
-// Editing niceties that make markdown capture cheap: Enter continues a list
-// item (checkboxes reset to unticked), Enter on an empty item leaves the
-// list, Tab indents. Alt+Up/Down jump between blocks — the same block
-// splitting the agent uses, so the navigation unit and the reply unit are
-// one thing; Ctrl+Up/Down go to the start and end of the current block.
+// The note is drawn, never shown as markdown (NoteEditor): headings set
+// large, checkboxes as boxes (click or Ctrl+L), private callouts marked as
+// such, and more space between blocks than between the lines of one block.
+// Underneath it stays plain markdown, changed only where you typed. Enter
+// continues a list item (checkboxes reset to unticked), Enter on an empty
+// item leaves the list, Tab nests. Alt+Up/Down jump between blocks — the
+// same block splitting the agent uses, so the navigation unit and the reply
+// unit are one thing; Ctrl+Up/Down go to the start and end of the current
+// block.
 //
 // The page is also the trigger, but never by accident. A block reaches the
 // agent only when it carries a sign for it — a checkbox, an `@`, a `?` —
@@ -120,7 +124,7 @@ Item {
     svc.openToday()
     agent.reload()
     if (svc.ready) root.openPass()
-    Qt.callLater(function () { editor.forceActiveFocus() })
+    Qt.callLater(editor.focusNote)
   }
 
   function openPass() {
@@ -149,17 +153,16 @@ Item {
   function togglePin() {
     root.flush()
     root.shape = root.alongside ? "overlay" : "alongside"
-    Qt.callLater(function () { editor.forceActiveFocus() })
+    Qt.callLater(editor.focusNote)
   }
 
   // Disk → editor. Guarded so the resulting textChanged does not look like
   // typing and schedule a write of what was just read.
   function applyText(t) {
     root.applying = true
-    editor.text = t
+    editor.load(t)
     root.applying = false
     root.tickedCount = root.countTicked(t)
-    editor.cursorPosition = editor.length
     root.scheduleRepaint()
   }
 
@@ -302,8 +305,8 @@ Item {
   function jumpWithinBlock(direction) {
     var b = root.blockBounds(root.currentHash)
     if (!b) return
-    if (direction < 0) editor.cursorPosition = root.positionOfLine(b.start)
-    else editor.cursorPosition = Math.max(0, root.positionOfLine(b.end) - 1)
+    if (direction < 0) editor.setCursor(root.positionOfLine(b.start))
+    else editor.setCursor(Math.max(0, root.positionOfLine(b.end) - 1))
   }
 
   function triggerForBlock(hash) {
@@ -375,11 +378,9 @@ Item {
       var rec = agent.record(b.hash)
       var isStaged = !!root.staged[b.hash]
       if (!rec && !isStaged) continue
-      var startPos = root.positionOfLine(b.start)
-      var endPos = Math.max(startPos, root.positionOfLine(b.end) - 1)
-      var r1 = editor.positionToRectangle(startPos)
-      var r2 = editor.positionToRectangle(endPos)
-      out.push({ hash: b.hash, y: r1.y, h: r2.y + r2.height - r1.y,
+      var r = editor.blockRect(b.start, b.end)
+      if (!r) continue
+      out.push({ hash: b.hash, y: r.y, h: r.h,
                  reply: !!rec && rec.state === "reply", unread: !!rec && rec.state === "reply" && !rec.read,
                  seen: !!rec && rec.state !== "reply", staged: isStaged })
     }
@@ -404,45 +405,48 @@ Item {
       for (var j = 0; j < blocks.length; j++) if (blocks[j].start > line) { target = j; break }
     }
     if (target < 0) return
-    editor.cursorPosition = root.positionOfLine(blocks[target].start)
+    editor.setCursor(root.positionOfLine(blocks[target].start))
   }
 
-  // Enter inside a list item carries the marker to the next line; Enter on
-  // an item with nothing after the marker removes the marker instead. The
-  // completed line decides whether the agent is called.
-  function handleReturn() {
-    var pos = editor.cursorPosition
-    var line = root.lineBounds(pos)
-    var lineIndex = root.lineIndexAt(pos)
-    var trigger = root.triggerFor(line.text)
-    var m = line.text.match(/^(\s*)([-*+]\s(\[[ xX]\]\s)?|(\d+)([.)])\s)(.*)$/)
-    if (!m) {
-      editor.insert(pos, "\n")
-    } else {
-      var content = m[6]
-      if (content === "" && pos >= line.end) {
-        // Leaving the list. If it carried checkboxes, the whole run of
-        // items is one submission.
-        editor.remove(line.start, line.end)
-        if (lineIndex > 0) {
-          var prev = root.hashOfLine(lineIndex - 1)
-          if (prev !== "") {
-            var group = root.listAround(prev)
-            if (root.listHasCheckbox(group)) { root.stage("checkbox", group); root.askAbout("checkbox", group) }
-          }
-        }
-        return
-      }
-      var marker = m[2]
-      if (m[3]) marker = m[2].replace(/\[[xX]\]/, "[ ]")
-      else if (m[4]) marker = (parseInt(m[4], 10) + 1) + m[5] + " "
-      editor.insert(pos, "\n" + m[1] + marker)
-    }
-    if (trigger !== "" && trigger !== "checkbox") {
-      var hash = root.hashOfLine(lineIndex)
-      root.stage(trigger, [hash])
-      root.askAbout(trigger, [hash])
-    }
+  // The editor carries list markers over Enter itself; what the page
+  // decides is whether the agent is asked. A finished `@` or `?` line is
+  // staged and asked about.
+  function lineFinished(lineIndex, lineText) {
+    Qt.callLater(root.flush)
+    var trigger = root.triggerFor(lineText)
+    if (trigger === "" || trigger === "checkbox") return
+    var hash = root.hashOfLine(lineIndex)
+    root.stage(trigger, [hash])
+    root.askAbout(trigger, [hash])
+  }
+
+  // Enter on an empty item left the list. If it carried checkboxes, the
+  // whole run of items is one submission.
+  function listLeft(lineIndex) {
+    Qt.callLater(root.flush)
+    if (lineIndex <= 0) return
+    var prev = root.hashOfLine(lineIndex - 1)
+    if (prev === "") return
+    var group = root.listAround(prev)
+    if (root.listHasCheckbox(group)) { root.stage("checkbox", group); root.askAbout("checkbox", group) }
+  }
+
+  // Keys the page owns, ahead of editing. True when taken.
+  function pageKey(event) {
+    var ctrl = event.modifiers & Qt.ControlModifier
+    var alt = event.modifiers & Qt.AltModifier
+    var k = event.key
+    if (root.askKey(event)) return true
+    if (k === Qt.Key_Escape) { if (!root.alongside) root.dismiss(); return true }
+    if (k === Qt.Key_P && ctrl) { root.togglePin(); return true }
+    if ((k === Qt.Key_Return || k === Qt.Key_Enter) && ctrl) { root.sendCurrent(); return true }
+    if (k === Qt.Key_Up && alt) { root.jumpBlock(-1); return true }
+    if (k === Qt.Key_Down && alt) { root.jumpBlock(1); return true }
+    if (k === Qt.Key_Up && ctrl) { root.jumpWithinBlock(-1); return true }
+    if (k === Qt.Key_Down && ctrl) { root.jumpWithinBlock(1); return true }
+    if (k === Qt.Key_Right && alt) { root.diveIn(); return true }
+    if (k === Qt.Key_T && ctrl) { root.toggleTasks(); return true }
+    return false
   }
 
   function diveIn() {
@@ -461,7 +465,7 @@ Item {
     root.marginFocus = -1
     root.marginOpen = false
     root.tasksOpen = false
-    editor.forceActiveFocus()
+    editor.focusNote()
   }
 
   function moveMarginFocus(d) {
@@ -549,7 +553,7 @@ Item {
       var m = root.taskRegex(t.text).exec(editor.text)
       if (!m) return
       root.backToNote()
-      editor.cursorPosition = m.index + m[0].length
+      editor.setCursor(m.index + m[0].length, true)
       return
     }
     root.contextFor = (root.contextFor && root.contextFor.file === t.file && root.contextFor.line === t.line) ? null : t
@@ -766,7 +770,7 @@ Item {
     implicitHeight: Style.space(900)
     minimumSize: Qt.size(Style.space(360), Style.space(300))
     onVisibleChanged: {
-      if (visible) Qt.callLater(function () { editor.forceActiveFocus() })
+      if (visible) Qt.callLater(editor.focusNote)
       else if (root.opened && root.alongside) root.dismiss()
     }
   }
@@ -802,7 +806,7 @@ Item {
 
       MouseArea {
         anchors.fill: parent
-        onClicked: editor.forceActiveFocus()
+        onClicked: editor.focusNote()
       }
 
       Item {
@@ -897,7 +901,7 @@ Item {
           anchors.bottom: parent.bottom
           clip: true
           contentWidth: width
-          contentHeight: editor.contentHeight + height * 0.4
+          contentHeight: editor.height + height * 0.4
           boundsBehavior: Flickable.StopAtBounds
 
           function ensureVisible(r) {
@@ -924,28 +928,28 @@ Item {
             }
           }
 
-          TextEdit {
+          NoteEditor {
             id: editor
             x: root.gutter
             width: flick.width - root.gutter
-            textFormat: TextEdit.PlainText
-            wrapMode: TextEdit.Wrap
-            selectByMouse: true
-            selectByKeyboard: true
-            persistentSelection: false
-            color: root.foreground
-            selectionColor: Style.selectionFill
-            selectedTextColor: root.foreground
-            font.family: root.fontFamily
-            font.pixelSize: root.textSize
-            cursorVisible: activeFocus
+            height: implicitHeight
             enabled: svc.ready
-            tabStopDistance: 4 * Style.space(8)
+            fontFamily: root.fontFamily
+            textSize: root.textSize
+            foreground: root.foreground
+            background: root.background
+            dim: root.dim
+            faint: root.faint
+            selectionColor: Style.selectionFill
+            tabStop: 4 * Style.space(8)
+            keyFilter: root.pageKey
 
-            onCursorRectangleChanged: flick.ensureVisible(cursorRectangle)
+            onCursorRectChanged: flick.ensureVisible(cursorRect)
             onCursorPositionChanged: root.currentHash = root.hashNearLine(root.lineIndexAt(cursorPosition))
             onWidthChanged: root.scheduleRepaint()
-            onContentHeightChanged: root.scheduleRepaint()
+            onHeightChanged: root.scheduleRepaint()
+            onReturnFinished: function (lineIndex, lineText) { root.lineFinished(lineIndex, lineText) }
+            onListLeft: function (lineIndex) { root.listLeft(lineIndex) }
             onTextChanged: {
               if (root.applying) return
               svc.markPending(text)
@@ -958,60 +962,14 @@ Item {
               root.tickedCount = ticked
               root.scheduleRepaint()
             }
+          }
 
-            Keys.priority: Keys.BeforeItem
-            Keys.onPressed: function (event) {
-              var ctrl = event.modifiers & Qt.ControlModifier
-              var alt = event.modifiers & Qt.AltModifier
-              if (root.askKey(event)) { event.accepted = true; return }
-              if (event.key === Qt.Key_Escape) {
-                if (!root.alongside) root.dismiss()
-                event.accepted = true
-              } else if (event.key === Qt.Key_P && ctrl) {
-                root.togglePin()
-                event.accepted = true
-              } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                if (ctrl) { root.sendCurrent(); event.accepted = true; return }
-                if (event.modifiers & Qt.ShiftModifier) return
-                root.handleReturn()
-                Qt.callLater(root.flush)
-                event.accepted = true
-              } else if (event.key === Qt.Key_Tab) {
-                editor.insert(editor.cursorPosition, "\t")
-                event.accepted = true
-              } else if (event.text === "]") {
-                // "- []" or a bare "[]" at the start of a line is what
-                // fingers type; "- [ ] " is what markdown wants.
-                var lb = root.lineBounds(editor.cursorPosition)
-                var before = editor.text.substring(lb.start, editor.cursorPosition)
-                if (/^\s*[-*+] \[$/.test(before)) {
-                  editor.insert(editor.cursorPosition, " ] ")
-                  event.accepted = true
-                } else if (/^\s*\[$/.test(before)) {
-                  editor.remove(lb.start, editor.cursorPosition)
-                  editor.insert(lb.start, before.replace("[", "- [ ] "))
-                  event.accepted = true
-                }
-              } else if (event.key === Qt.Key_Up && alt) {
-                root.jumpBlock(-1)
-                event.accepted = true
-              } else if (event.key === Qt.Key_Down && alt) {
-                root.jumpBlock(1)
-                event.accepted = true
-              } else if (event.key === Qt.Key_Up && ctrl) {
-                root.jumpWithinBlock(-1)
-                event.accepted = true
-              } else if (event.key === Qt.Key_Down && ctrl) {
-                root.jumpWithinBlock(1)
-                event.accepted = true
-              } else if (event.key === Qt.Key_Right && alt) {
-                root.diveIn()
-                event.accepted = true
-              } else if (event.key === Qt.Key_T && ctrl) {
-                root.toggleTasks()
-                event.accepted = true
-              }
-            }
+          // Below the last line: a click goes to the end of the note.
+          MouseArea {
+            y: editor.height
+            width: flick.width
+            height: Math.max(0, flick.contentHeight - editor.height)
+            onClicked: editor.setCursor(editor.length, true)
           }
 
           // The gentle prompt after Enter on a signed line, and the
@@ -1020,7 +978,7 @@ Item {
           Text {
             visible: !!root.ask || root.noSignHint
             x: root.gutter
-            y: editor.cursorRectangle.y + editor.cursorRectangle.height + Style.space(2)
+            y: editor.cursorRect.y + editor.cursorRect.height + Style.space(2)
             width: editor.width
             textFormat: Text.PlainText
             wrapMode: Text.WordWrap
