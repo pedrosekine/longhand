@@ -167,6 +167,14 @@
             the same `text`/`cursorPosition`/`insert`/`remove`. Not yet:
             selecting across lines (selection is per line).
             `tests/tst_editor.qml` drives it offscreen with qmltestrunner.
+      - [x] 14.6b overlay and window side by side — the shell's `toggle`
+            hides a plugin whose `opened` is true, so SUPER+ALT+= closed the
+            window. `opened` now means the overlay only: with the window
+            open (anywhere), SUPER+ALT+= brings the overlay up, the one sheet
+            moves into it and the window shows "on the overlay"; Esc or the
+            key again returns it. SUPER+ALT+\ while the overlay is up moves
+            the sheet to the window. Only opening from nothing runs the
+            automatic pass.
       - [ ] 14.7 focus mode · 14.8 study mode · 14.9 phone capture, external reading.
 - [ ] Parked — deadline entry from the popup (absorbed by 14.4), `.ics` import,
       analytics (`history`), daily counter

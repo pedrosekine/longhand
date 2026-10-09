@@ -12,6 +12,12 @@ import "Blocks.js" as Blocks
 // next to slides or a PDF; Esc does nothing there). Ctrl+P pins the overlay
 // into a window and back; the pin mark in the header says which you are in.
 //
+// The two live side by side. With the window open somewhere, SUPER+ALT+=
+// still brings the overlay up where you are; the sheet moves into it (one
+// sheet, one editor, nothing to keep in sync) and the window says where it
+// went. Esc or the same key again puts it back in the window. The shell's
+// toggle asks `opened`, so `opened` means the overlay, never the window.
+//
 // No file tree, no chrome. A themed sheet, the date, the text. Every keystroke
 // is saved (coalesced over a few hundred milliseconds, flushed on Enter and
 // on close) so the file on disk is always what you see. Escape closes.
@@ -57,9 +63,11 @@ Item {
   property var shell: null
   property var manifest: null
 
-  property bool opened: false
-  property string shape: "overlay"   // "overlay" | "alongside"
-  readonly property bool alongside: shape === "alongside"
+  property bool overlayOpen: false
+  property bool windowOpen: false
+  readonly property bool opened: overlayOpen          // what the shell's toggle asks
+  readonly property bool showing: overlayOpen || windowOpen
+  readonly property bool alongside: !overlayOpen      // where the sheet is drawn
 
   readonly property color background: Color.menu.background
   readonly property color foreground: Color.menu.text
@@ -114,16 +122,27 @@ Item {
 
   readonly property string problem: svc.configError || svc.error
 
+  // `{"shape":"alongside"}` asks for the window: it takes the sheet back
+  // from the overlay if that is up. Anything else brings the overlay up,
+  // over the window if there is one. Only coming from nothing counts as
+  // opening the page, and runs the automatic pass.
   function open(payloadJson) {
     var payload = ({})
     try { payload = JSON.parse(payloadJson || "{}") } catch (e) { payload = ({}) }
-    root.shape = payload.shape === "alongside" ? "alongside" : "overlay"
-    root.opened = true
-    root.dateLabel = Qt.formatDate(new Date(), "dddd d MMMM")
-    root.openPassPending = true
-    svc.openToday()
-    agent.reload()
-    if (svc.ready) root.openPass()
+    var fresh = !root.showing
+    if (payload.shape === "alongside") {
+      root.windowOpen = true
+      if (root.overlayOpen) root.dismiss()
+    } else {
+      root.overlayOpen = true
+    }
+    if (fresh) {
+      root.dateLabel = Qt.formatDate(new Date(), "dddd d MMMM")
+      root.openPassPending = true
+      svc.openToday()
+      agent.reload()
+      if (svc.ready) root.openPass()
+    }
     Qt.callLater(editor.focusNote)
   }
 
@@ -133,9 +152,12 @@ Item {
     root.requestRun("open", "")
   }
 
+  // What the shell calls to hide the page: the overlay goes, the window
+  // (if open) stays and gets the sheet back.
   function close() {
     root.flush()
-    root.opened = false
+    root.overlayOpen = false
+    if (root.windowOpen) Qt.callLater(editor.focusNote)
   }
 
   function dismiss() {
@@ -149,10 +171,18 @@ Item {
     else root.open("{}")
   }
 
-  // Ctrl+P: the same sheet, the other shape.
+  // Ctrl+P: the same sheet, the other shape. Pinning the overlay opens
+  // the window and closes the overlay; unpinning the window does the
+  // reverse.
   function togglePin() {
     root.flush()
-    root.shape = root.alongside ? "overlay" : "alongside"
+    if (root.overlayOpen) {
+      root.windowOpen = true
+      root.dismiss()
+    } else {
+      root.windowOpen = false
+      root.overlayOpen = true
+    }
     Qt.callLater(editor.focusNote)
   }
 
@@ -749,7 +779,7 @@ Item {
 
   PanelWindow {
     id: panel
-    visible: root.opened && !root.alongside
+    visible: root.overlayOpen
     anchors { top: true; bottom: true; left: true; right: true }
     color: "transparent"
     WlrLayershell.namespace: "student-page"
@@ -763,7 +793,7 @@ Item {
   // the page.
   FloatingWindow {
     id: win
-    visible: root.opened && root.alongside
+    visible: root.windowOpen
     title: "Page — today's note"
     color: root.background
     implicitWidth: Style.space(680)
@@ -771,14 +801,30 @@ Item {
     minimumSize: Qt.size(Style.space(360), Style.space(300))
     onVisibleChanged: {
       if (visible) Qt.callLater(editor.focusNote)
-      else if (root.opened && root.alongside) root.dismiss()
+      else if (root.windowOpen) {
+        // Closed from the compositor.
+        root.flush()
+        root.windowOpen = false
+      }
+    }
+
+    // The sheet is on the overlay for now; it comes back here when that
+    // closes.
+    Text {
+      anchors.centerIn: parent
+      visible: root.overlayOpen
+      textFormat: Text.PlainText
+      text: "on the overlay · Esc brings it back"
+      color: root.faint
+      font.family: root.fontFamily
+      font.pixelSize: Style.font.bodySmall
     }
   }
 
   // One content tree, whichever window is showing.
   Item {
     id: content
-    parent: root.alongside ? win.contentItem : panel.contentItem
+    parent: root.overlayOpen ? panel.contentItem : win.contentItem
     anchors.fill: parent
 
     Rectangle {
