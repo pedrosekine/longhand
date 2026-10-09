@@ -33,7 +33,8 @@ Item {
   // the student sees and types. A note that does not start with the link has
   // an empty header and the body is the whole file.
   property string notePath: ""
-  property string noteDate: ""
+  property string noteDate: ""        // the note's file name: a date in daily.format
+  property bool isToday: false
   property string text: ""
   property string header: ""
   property string body: ""
@@ -102,14 +103,15 @@ Item {
       .replace(/\{\{time\}\}/g, Qt.formatTime(now, "HH:mm"))
   }
 
-  // Point at today's file. Same day: re-read it only when nothing is pending
-  // or in flight, so an edit made elsewhere while the page was closed shows
-  // up, and a save still landing can never be overwritten by its own past.
-  // New day (or first open): load fresh.
-  function openToday() {
+  // Point at a day's file (`stamp` is its name without .md). Same file:
+  // re-read it only when nothing is pending or in flight, so an edit made
+  // elsewhere while the page was closed shows up, and a save still landing
+  // can never be overwritten by its own past. Another file: load fresh. The
+  // page must flush, and wait for a save in flight, before switching.
+  function openDate(stamp) {
     if (!configured) return
-    var stamp = todayStamp()
     var p = pathFor(stamp)
+    root.isToday = stamp === todayStamp()
     if (p === notePath && ready) {
       if (!saving && !pending) noteFile.reload()
       return
@@ -121,6 +123,10 @@ Item {
     root.lastWritten = ""
     if (noteFile.path === p) noteFile.reload()
     else noteFile.path = p
+  }
+
+  function openToday() {
+    if (configured) root.openDate(todayStamp())
   }
 
   // Called by the page with the editor's text (the body). No-ops when nothing
@@ -188,7 +194,7 @@ Item {
       else root.loaded()
     }
     onLoadFailed: function (err) {
-      if (err === FileViewError.FileNotFound) {
+      if (err === FileViewError.FileNotFound && root.isToday) {
         // First write of the day: seed from the template, if any. This is
         // the one create path; Obsidian would do the same on its side.
         var raw = ""

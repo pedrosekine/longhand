@@ -47,7 +47,9 @@ shell's own scale (your Omarchy font size); `Ctrl+=` / `Ctrl+-` / `Ctrl+0`
 zoom the whole page like a browser, remembered across restarts. `Ctrl+F`
 finds in the note as you type: Enter next, Shift+Enter previous,
 `Ctrl+Enter` lands on the match selected and closes the search, Esc goes
-back to where you were. The file stays plain
+back to where you were. `Ctrl+B` shows your daily notes in a sidebar
+(only when asked); Enter opens a day in the same sheet, editable,
+`Alt+Left`/`Alt+Right` move between sidebar and note. The file stays plain
 markdown, changed only where you typed. Blocks the agent has seen are
 veiled; a block with a reply carries a gutter mark and its reply shows in the
 margin to the right when asked. Finishing an `@` or `?` line stages the block
@@ -69,7 +71,7 @@ block is written in. Needs `~/.config/omarchy-student/config.json` (copy
 ```bash
 cp -r plugin-page ~/.config/omarchy/plugins/student.page   # then add {"id":"student.page"} to plugins[] in ~/.config/omarchy/shell.json
 python3 tests/test_blocks.py                                # block splitter, JS and Python must agree (needs node)
-QT_QPA_PLATFORM=offscreen /usr/lib/qt6/bin/qmltestrunner -input tests/tst_editor.qml   # the drawn editor, driven by keys
+QT_QPA_PLATFORM=offscreen /usr/lib/qt6/bin/qmltestrunner -input tests   # editor (driven by keys) and the sidebar's day list
 ```
 
 ## The loop (phase 14.2)

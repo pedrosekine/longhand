@@ -309,3 +309,9 @@ only the window and the panels around it differ.
   Hyprland window because a side dock is legal layer-shell but not the
   Hyprland idiom), homebase (full screen with panels, designed once the
   panels exist).
+- 2026-10-09: a sidebar after all, on the page's own terms. "No file
+  hierarchy" now means none *on screen unless asked*: Ctrl+B shows the daily
+  notes (newest first, by month; markdown only, no other folders), the page
+  still opens blank on today, and fresh opens close it. Any day opens in the
+  same sheet, editable; the agent works on it through `--date`, except on
+  notes named in an older date format, which the runner cannot read.

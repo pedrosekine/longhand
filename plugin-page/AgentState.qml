@@ -2,11 +2,11 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 
-// Today's agent state, read-only: which blocks the runner has seen, which
-// carry a reply, which replies the student has not looked at yet. Shared by
-// the page (paints blocks, fills the margin) and the bar glyph (accent when
-// something is waiting). The runner writes the file atomically; this only
-// ever reads it.
+// A day's agent state (today's unless told otherwise), read-only: which
+// blocks the runner has seen, which carry a reply, which replies the student
+// has not looked at yet. Shared by the page (paints blocks, fills the
+// margin) and the bar glyph (accent when something is waiting). The runner
+// writes the file atomically; this only ever reads it.
 Item {
   id: root
 
@@ -26,7 +26,10 @@ Item {
   Timer { interval: 60000; repeat: true; running: true; onTriggered: root.refreshStamp() }
 
   readonly property string agentDir: configured ? config.vault + "/" + (config.agentDir || "agents/student") : ""
-  readonly property string path: agentDir !== "" && stamp !== "" ? agentDir + "/daily/" + stamp + ".json" : ""
+  // The day whose state is read: today unless the page is showing another.
+  property string date: ""
+  readonly property string day: date !== "" ? date : stamp
+  readonly property string path: agentDir !== "" && day !== "" ? agentDir + "/daily/" + day + ".json" : ""
 
   property var state: ({})
   readonly property var blocks: (state && state.blocks) || ({})

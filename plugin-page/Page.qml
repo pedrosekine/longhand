@@ -2,9 +2,11 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import QtQuick
+import Qt.labs.folderlistmodel
 import qs.Commons
 import qs.Ui
 import "Blocks.js" as Blocks
+import "Days.js" as Days
 
 // The page: today's note as a blank sheet in the shell, with the agent in
 // the margin. Two shapes of the same sheet: the overlay (a layer over
@@ -62,6 +64,14 @@ import "Blocks.js" as Blocks
 // the previous, both wrapping; Ctrl+Enter puts the cursor on the match with
 // it selected and closes the search; Esc closes it and leaves the cursor
 // where it was.
+//
+// Ctrl+B opens the sidebar: the daily notes, newest first, by month. It is
+// never there unless asked — the page still opens blank on today. Enter (or
+// a click) opens a day in the same sheet, editable like today; Alt+Left
+// goes back into the sidebar, Alt+Right or Esc back to the note, Ctrl+B
+// closes it. A day whose file name is not in the vault's own date format
+// (older notes) is edited plainly: the runner cannot read it, so the agent
+// signs do nothing there.
 Item {
   id: root
 
@@ -105,7 +115,25 @@ Item {
     ? Math.max(0, Math.min(root.sp(300), Math.round(content.width * 0.45)))
     : Math.max(0, Math.min(root.sp(300), content.width - (content.width + sheetWidth) / 2 - marginGap - sheetMargin))
 
-  property string dateLabel: ""
+  readonly property string dateLabel: svc.noteDate !== "" && svc.configured
+    ? Days.longLabel(svc.noteDate, svc.dailyFormat()) : ""
+
+  // Which day is in the sheet, and whether the agent can work on it: the
+  // runner reads only names in the vault's own format.
+  readonly property bool agentDay: {
+    if (svc.noteDate === "" || !svc.configured) return false
+    var p = Days.parse(svc.noteDate, svc.dailyFormat())
+    return !!p && p.configured
+  }
+  property string pendingStamp: ""   // a day to open once the save in flight lands
+
+  // The sidebar.
+  property bool sidebarOpen: false
+  property int sidebarFocus: 0
+  property var dayStems: []
+  readonly property var dayRows: svc.configured ? Days.rows(root.dayStems, svc.dailyFormat(), svc.todayStamp()) : []
+  readonly property int sidebarWidth: root.sp(220)
+  readonly property int sideSpace: root.sidebarOpen && root.problem === "" ? root.sidebarWidth + root.marginGap : 0
   property bool applying: false
 
   // Runner plumbing: one process at a time, the last request wins.
@@ -156,7 +184,7 @@ Item {
       root.overlayOpen = true
     }
     if (fresh) {
-      root.dateLabel = Qt.formatDate(new Date(), "dddd d MMMM")
+      root.sidebarOpen = false
       root.openPassPending = true
       svc.openToday()
       agent.reload()
@@ -280,14 +308,15 @@ Item {
   }
 
   function requestRun(trigger, hash) {
+    if (!root.agentDay) return
     root.flush()
-    var cmd = [svc.runner, "run", "--trigger", trigger]
+    var cmd = [svc.runner, "run", "--trigger", trigger, "--date", svc.noteDate]
     if (hash) cmd.push("--hash", hash)
     root.enqueue(cmd, hash)
   }
 
   function stage(trigger, hashes) {
-    if (!hashes || hashes.length === 0) return
+    if (!hashes || hashes.length === 0 || !root.agentDay) return
     var next = ({})
     for (var k in root.staged) next[k] = root.staged[k]
     for (var i = 0; i < hashes.length; i++) next[hashes[i]] = { trigger: trigger, group: hashes }
@@ -321,7 +350,7 @@ Item {
   }
 
   function askAbout(trigger, hashes) {
-    if (!hashes || hashes.length === 0) return
+    if (!hashes || hashes.length === 0 || !root.agentDay) return
     root.ask = { hashes: hashes, trigger: trigger, yes: false }
   }
 
@@ -394,8 +423,9 @@ Item {
   }
 
   function requestChat(hash, message) {
+    if (!root.agentDay) return
     root.flush()
-    root.enqueue([svc.runner, "chat", "--hash", hash, "--message", message], hash)
+    root.enqueue([svc.runner, "chat", "--hash", hash, "--message", message, "--date", svc.noteDate], hash)
   }
 
   function enqueue(cmd, hash) {
@@ -522,6 +552,8 @@ Item {
     if (k === Qt.Key_Right && alt) { root.diveIn(); return true }
     if (k === Qt.Key_T && ctrl) { root.toggleTasks(); return true }
     if (k === Qt.Key_F && ctrl) { root.openSearch(); return true }
+    if (k === Qt.Key_B && ctrl) { root.toggleSidebar(); return true }
+    if (k === Qt.Key_Left && alt && root.sidebarOpen) { root.focusSidebar(); return true }
     return false
   }
 
@@ -555,7 +587,7 @@ Item {
   function acceptProposal(i) {
     var p = root.currentProposals[i]
     if (!p || p.accepted || root.currentHash === "") return
-    acceptProc.command = [svc.runner, "accept", "--hash", root.currentHash, "--index", String(i)]
+    acceptProc.command = [svc.runner, "accept", "--hash", root.currentHash, "--index", String(i), "--date", svc.noteDate]
     acceptProc.running = true
   }
 
@@ -684,6 +716,59 @@ Item {
     else tickFile.path = t.file
   }
 
+  // ------------------------------------------------------------ sidebar
+
+  function toggleSidebar() {
+    root.sidebarOpen = !root.sidebarOpen
+    if (root.sidebarOpen) root.focusSidebar()
+    else editor.focusNote()
+  }
+
+  function focusSidebar() {
+    var rows = root.dayRows
+    var at = -1
+    for (var i = 0; i < rows.length; i++) if (rows[i].kind === "day" && rows[i].stem === svc.noteDate) { at = i; break }
+    if (at < 0) for (var j = 0; j < rows.length; j++) if (rows[j].kind === "day") { at = j; break }
+    root.sidebarFocus = Math.max(0, at)
+    dayList.positionViewAtIndex(root.sidebarFocus, ListView.Contain)
+    sidebarKeys.forceActiveFocus()
+  }
+
+  function moveSidebarFocus(d) {
+    var rows = root.dayRows
+    var i = root.sidebarFocus
+    do { i += d } while (i >= 0 && i < rows.length && rows[i].kind !== "day")
+    if (i >= 0 && i < rows.length) {
+      root.sidebarFocus = i
+      dayList.positionViewAtIndex(i, ListView.Contain)
+    }
+  }
+
+  function collectDays() {
+    var out = []
+    for (var i = 0; i < dayFiles.count; i++) {
+      var name = String(dayFiles.get(i, "fileName"))
+      if (/\.md$/i.test(name)) out.push(name.slice(0, -3))
+    }
+    root.dayStems = out
+  }
+
+  // Put another day in the sheet. Whatever is typed is written first, to
+  // the note it was typed in; a save still in flight is waited for. What
+  // belonged to the old day (staging, the prompt, the margin) goes with it.
+  function openNote(stamp) {
+    if (stamp === "" || stamp === svc.noteDate) return
+    if (root.searchOpen) root.closeSearch(false)
+    root.flush()
+    root.ask = null
+    root.staged = ({})
+    root.marginOpen = false
+    root.tasksOpen = false
+    root.marginFocus = -1
+    if (svc.saving) { root.pendingStamp = stamp; return }
+    svc.openDate(stamp)
+  }
+
   // ------------------------------------------------------------ search
 
   function openSearch() {
@@ -757,12 +842,20 @@ Item {
     id: svc
     onLoaded: { root.applyText(svc.body); root.openPass() }
     onExternalChange: root.applyText(svc.body)
-    onSavedNow: root.launchQueued()
+    onSavedNow: {
+      if (root.pendingStamp !== "") {
+        var s = root.pendingStamp
+        root.pendingStamp = ""
+        svc.openDate(s)
+      }
+      root.launchQueued()
+    }
   }
 
   AgentState {
     id: agent
     config: svc.config
+    date: svc.noteDate
     onStateChanged: root.scheduleRepaint()
   }
 
@@ -862,7 +955,7 @@ Item {
     onTriggered: {
       var rec = root.currentRecord
       if (rec && rec.state === "reply" && !rec.read && root.currentHash !== "") {
-        ackProc.command = [svc.runner, "ack", "--hash", root.currentHash]
+        ackProc.command = [svc.runner, "ack", "--hash", root.currentHash, "--date", svc.noteDate]
         ackProc.running = true
       }
     }
@@ -873,6 +966,18 @@ Item {
     id: saveTimer
     interval: 300
     onTriggered: root.flush()
+  }
+
+  // The daily folder, for the sidebar. Watched, so today's note appears as
+  // soon as it is written.
+  FolderListModel {
+    id: dayFiles
+    folder: svc.configured ? "file://" + svc.config.vault + "/" + svc.config.daily.dir : ""
+    nameFilters: ["*.md"]
+    showDirs: false
+    showDotAndDotDot: false
+    onStatusChanged: if (status === FolderListModel.Ready) root.collectDays()
+    onCountChanged: root.collectDays()
   }
 
   // The zoom step survives restarts. Machine state, not config, and never
@@ -965,9 +1070,9 @@ Item {
 
     BorderSurface {
       id: sheet
-      x: root.alongside ? 0 : Math.round((content.width - width) / 2)
+      x: root.alongside ? root.sideSpace : Math.max(Math.round((content.width - width) / 2), root.sideSpace > 0 ? root.sideSpace + root.sheetMargin : 0)
       y: root.alongside ? 0 : root.sheetMargin
-      width: root.alongside ? content.width - (root.marginOpen ? root.marginWidth + root.marginGap : 0) : root.sheetWidth
+      width: root.alongside ? content.width - root.sideSpace - (root.marginOpen ? root.marginWidth + root.marginGap : 0) : root.sheetWidth
       height: root.alongside ? content.height : content.height - root.sheetMargin * 2
       radius: root.alongside ? 0 : Style.cornerRadius
       color: root.background
@@ -998,9 +1103,27 @@ Item {
             anchors.left: parent.left
             textFormat: Text.PlainText
             text: root.dateLabel
-            color: root.dim
+            color: svc.isToday ? root.dim : root.foreground
             font.family: root.fontFamily
             font.pixelSize: root.fs(Style.font.bodySmall)
+          }
+
+          // On another day: the way back to today.
+          Text {
+            visible: !svc.isToday && svc.noteDate !== ""
+            anchors.left: dateText.right
+            anchors.leftMargin: root.sp(12)
+            anchors.verticalCenter: dateText.verticalCenter
+            textFormat: Text.PlainText
+            text: root.agentDay ? "back to today" : "back to today · agent off for this note"
+            color: root.faint
+            font.family: root.fontFamily
+            font.pixelSize: root.fs(Style.font.bodySmall)
+            MouseArea {
+              anchors.fill: parent
+              cursorShape: Qt.PointingHandCursor
+              onClicked: { root.openNote(svc.todayStamp()); editor.focusNote() }
+            }
           }
 
           Row {
@@ -1244,6 +1367,115 @@ Item {
               opacity: 0.5
               z: 1
             }
+          }
+        }
+      }
+    }
+
+    // The sidebar: the daily notes, only while asked for.
+    BorderSurface {
+      id: sidebar
+      visible: root.sidebarOpen && root.problem === ""
+      x: root.alongside ? 0 : sheet.x - root.marginGap - root.sidebarWidth
+      y: sheet.y
+      height: sheet.height
+      width: root.sidebarWidth
+      radius: root.alongside ? 0 : Style.cornerRadius
+      color: root.background
+      borderSpec: root.alongside ? Border.none() : root.borderSpec
+      padding: root.sp(16)
+
+      MouseArea { anchors.fill: parent; onClicked: {} }
+
+      // In the window the sidebar sits on the same ground as the sheet; a
+      // hairline keeps them apart.
+      Rectangle {
+        visible: root.alongside
+        anchors.right: parent.right
+        anchors.rightMargin: -Math.round(root.marginGap / 2)
+        width: 1
+        height: parent.height
+        color: root.faint
+      }
+
+      Item {
+        id: sidebarKeys
+        anchors.fill: parent
+        Keys.onPressed: function (event) {
+          var ctrl = event.modifiers & Qt.ControlModifier
+          var alt = event.modifiers & Qt.AltModifier
+          var k = event.key
+          if (root.zoomKey(event)) { event.accepted = true; return }
+          if (k === Qt.Key_Escape || (k === Qt.Key_B && ctrl)) {
+            if (k === Qt.Key_B) root.sidebarOpen = false
+            editor.focusNote()
+          } else if (k === Qt.Key_Right && alt) {
+            editor.focusNote()
+          } else if (k === Qt.Key_Up) {
+            root.moveSidebarFocus(-1)
+          } else if (k === Qt.Key_Down) {
+            root.moveSidebarFocus(1)
+          } else if (k === Qt.Key_PageUp) {
+            root.moveSidebarFocus(-10)
+          } else if (k === Qt.Key_PageDown) {
+            root.moveSidebarFocus(10)
+          } else if (k === Qt.Key_Home) {
+            root.sidebarFocus = -1
+            root.moveSidebarFocus(1)
+          } else if (k === Qt.Key_Return || k === Qt.Key_Enter) {
+            var row = root.dayRows[root.sidebarFocus]
+            if (row && row.kind === "day") root.openNote(row.stem)
+            editor.focusNote()
+          } else {
+            return
+          }
+          event.accepted = true
+        }
+      }
+
+      ListView {
+        id: dayList
+        anchors.fill: parent
+        anchors.topMargin: sidebar.contentTopInset
+        anchors.leftMargin: sidebar.contentLeftInset
+        anchors.rightMargin: sidebar.contentRightInset
+        anchors.bottomMargin: sidebar.contentBottomInset
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+        model: root.dayRows
+
+        delegate: Rectangle {
+          required property var modelData
+          required property int index
+          readonly property bool isMonth: modelData.kind === "month"
+          readonly property bool current: !isMonth && modelData.stem === svc.noteDate
+          readonly property bool hot: index === root.sidebarFocus && sidebarKeys.activeFocus
+          width: ListView.view.width
+          height: dayText.implicitHeight + (isMonth ? root.sp(index === 0 ? 4 : 18) : root.sp(8))
+          radius: Style.cornerRadius
+          color: hot ? Style.selectedFill : "transparent"
+
+          Text {
+            id: dayText
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.leftMargin: root.sp(6)
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: root.sp(4)
+            textFormat: Text.PlainText
+            elide: Text.ElideRight
+            text: isMonth ? modelData.label : modelData.label + (modelData.today ? " · today" : "")
+            color: isMonth ? root.dim : (current ? root.foreground : root.dim)
+            font.family: root.fontFamily
+            font.pixelSize: isMonth ? root.fs(Style.font.caption) : root.fs(Style.font.body)
+            font.weight: current ? Font.DemiBold : Font.Normal
+          }
+
+          MouseArea {
+            anchors.fill: parent
+            enabled: !isMonth
+            cursorShape: Qt.PointingHandCursor
+            onClicked: { root.sidebarFocus = index; root.openNote(modelData.stem); editor.focusNote() }
           }
         }
       }

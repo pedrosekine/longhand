@@ -187,6 +187,15 @@
             counted "n / m". Enter / Shift+Enter step with wrap-around;
             Ctrl+Enter selects the match and closes; Esc returns the cursor
             to where the search began.
+      - [x] 14.6e sidebar — Ctrl+B, hidden unless asked (diary.md decisions
+            log, 2026-10-09). Lists the daily folder (FolderListModel,
+            watched) by date, newest first, by month; names in the
+            configured format and the common older ones (`Days.js`).
+            Enter/click opens a day in the same sheet, editable; the save
+            for the old day lands first. `Service.openDate`, `AgentState.date`,
+            and `--date` on run/chat/ack/accept carry the agent to that day;
+            notes named in another format get "agent off". Only today is
+            ever created from the template.
       - [ ] 14.7 focus mode · 14.8 study mode · 14.9 phone capture, external reading.
 - [ ] Parked — deadline entry from the popup (absorbed by 14.4), `.ics` import,
       analytics (`history`), daily counter
