@@ -263,6 +263,32 @@ Item {
       verify(ed.cursorRect.y > ed.rowItem(4).y)
     }
 
+    function test_marks_map_to_bodies() {
+      start("\n- [ ] read ch.7\nread more")
+      var marks = [{ start: 7, end: 11 }, { start: 16, end: 20 }]   // the two "read"s
+      var a = ed.marksIn(1, marks, 1, ed.rows)
+      compare(a.length, 1); compare(a[0].a, 0); compare(a[0].b, 4); compare(a[0].current, false)
+      var b = ed.marksIn(2, marks, 1, ed.rows)
+      compare(b[0].a, 0); compare(b[0].current, true)
+    }
+
+    function test_select_lands_on_match() {
+      start("\n- [ ] read ch.7\nnext", 1)
+      ed.select(12, 14)   // "ch"
+      compare(ed.focusedRow, 1)
+      compare(focused().selectedText, "ch")
+      compare(ed.cursorPosition, 14)
+      type("X")
+      compare(ed.text, "\n- [ ] read X.7\nnext")
+    }
+
+    function test_rect_at() {
+      start("\nalpha\nbeta")
+      var r = ed.rectAt(8)
+      verify(r !== null)
+      compare(r.y, ed.rowItem(2).y + ed.rowItem(2).field.y)
+    }
+
     function test_block_rect() {
       start("\nalpha\nbeta\n\ngamma")
       var r = ed.blockRect(1, 3)

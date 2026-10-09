@@ -56,6 +56,12 @@ import "Blocks.js" as Blocks
 // is the one program that edits notes) and, below, what the agent has
 // raised — suggestions with their evidence, observations from open passes
 // — where Enter waves one off and the runner remembers that.
+//
+// Ctrl+F finds in today's note, as you type, in the words you see (not
+// the markdown under them). Enter goes to the next match, Shift+Enter to
+// the previous, both wrapping; Ctrl+Enter puts the cursor on the match with
+// it selected and closes the search; Esc closes it and leaves the cursor
+// where it was.
 Item {
   id: root
 
@@ -123,6 +129,10 @@ Item {
   property bool showOlder: false
   property int taskFocus: 0
   property string currentHash: ""
+  property bool searchOpen: false
+  property var matches: []       // [{ start, end }] text offsets, in note order
+  property int matchIndex: -1
+  property int searchFrom: 0     // the cursor when the search opened
   readonly property var currentRecord: agent.record(currentHash)
   readonly property var currentStaged: staged[currentHash] || null
   readonly property var currentProposals: (currentRecord && currentRecord.proposals) ? currentRecord.proposals : []
@@ -511,6 +521,7 @@ Item {
     if (k === Qt.Key_Down && ctrl) { root.jumpWithinBlock(1); return true }
     if (k === Qt.Key_Right && alt) { root.diveIn(); return true }
     if (k === Qt.Key_T && ctrl) { root.toggleTasks(); return true }
+    if (k === Qt.Key_F && ctrl) { root.openSearch(); return true }
     return false
   }
 
@@ -671,6 +682,66 @@ Item {
     tickFile.pending = { task: t, untick: false }
     if (tickFile.path === t.file) tickFile.reload()
     else tickFile.path = t.file
+  }
+
+  // ------------------------------------------------------------ search
+
+  function openSearch() {
+    if (!root.searchOpen) root.searchFrom = editor.cursorPosition
+    root.searchOpen = true
+    searchField.forceActiveFocus()
+    searchField.selectAll()
+    root.runSearch()
+  }
+
+  // Every case-insensitive occurrence in the rows' words. The current match
+  // starts as the first one at or after where the search began.
+  function runSearch() {
+    var q = searchField.text.toLowerCase()
+    var out = []
+    if (q !== "") {
+      var rows = editor.rows
+      for (var i = 0; i < rows.length; i++) {
+        var r = rows[i]
+        if (r.blank) continue
+        var body = r.body.toLowerCase()
+        var base = r.start + r.prefixLen
+        for (var at = body.indexOf(q); at >= 0; at = body.indexOf(q, at + q.length))
+          out.push({ start: base + at, end: base + at + q.length })
+      }
+    }
+    var idx = -1
+    for (var k = 0; k < out.length; k++) if (out[k].start >= root.searchFrom) { idx = k; break }
+    if (idx < 0 && out.length > 0) idx = 0
+    root.matches = out
+    root.matchIndex = idx
+    root.revealMatch()
+  }
+
+  function stepMatch(d) {
+    var n = root.matches.length
+    if (n === 0) return
+    root.matchIndex = (root.matchIndex + d + n) % n
+    root.revealMatch()
+  }
+
+  function revealMatch() {
+    var m = root.matches[root.matchIndex]
+    if (!m) return
+    var r = editor.rectAt(m.start)
+    if (!r) return
+    var pad = r.height * 2
+    flick.ensureVisible(Qt.rect(r.x, Math.max(0, r.y - pad), r.width, r.height + pad * 2))
+  }
+
+  // Ctrl+Enter lands on the match, selected; Esc goes back where it was.
+  function closeSearch(go) {
+    var m = root.matches[root.matchIndex]
+    root.searchOpen = false
+    root.matches = []
+    root.matchIndex = -1
+    if (go && m) editor.select(m.start, m.end)
+    else editor.setCursor(root.searchFrom, true)
   }
 
   function sendChat() {
@@ -985,9 +1056,60 @@ Item {
           }
         }
 
+        // The search line: only there while searching.
+        Item {
+          id: searchBar
+          visible: root.searchOpen
+          anchors.top: header.bottom
+          anchors.topMargin: root.searchOpen ? root.sp(16) : 0
+          anchors.left: parent.left
+          anchors.right: parent.right
+          height: root.searchOpen ? searchField.implicitHeight : 0
+
+          TextField {
+            id: searchField
+            anchors.left: parent.left
+            anchors.right: searchCount.left
+            anchors.rightMargin: root.sp(12)
+            placeholderText: "find in today's note"
+            font.family: root.fontFamily
+            font.pixelSize: root.fs(Style.font.body)
+            foreground: root.foreground
+            onTextChanged: if (root.searchOpen) root.runSearch()
+            Keys.onPressed: function (event) {
+              var ctrl = event.modifiers & Qt.ControlModifier
+              var k = event.key
+              if (root.zoomKey(event)) { event.accepted = true; return }
+              if (k === Qt.Key_Return || k === Qt.Key_Enter) {
+                if (ctrl) root.closeSearch(true)
+                else root.stepMatch(event.modifiers & Qt.ShiftModifier ? -1 : 1)
+                event.accepted = true
+              } else if (k === Qt.Key_Escape) {
+                root.closeSearch(false)
+                event.accepted = true
+              } else if (k === Qt.Key_F && ctrl) {
+                searchField.selectAll()
+                event.accepted = true
+              }
+            }
+          }
+
+          Text {
+            id: searchCount
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            textFormat: Text.PlainText
+            text: searchField.text === "" ? "Enter next · Shift+Enter back · Ctrl+Enter go"
+              : (root.matches.length === 0 ? "no match" : (root.matchIndex + 1) + " / " + root.matches.length)
+            color: root.dim
+            font.family: root.fontFamily
+            font.pixelSize: root.fs(Style.font.bodySmall)
+          }
+        }
+
         Text {
           visible: root.problem !== ""
-          anchors.top: header.bottom
+          anchors.top: searchBar.bottom
           anchors.topMargin: root.sp(24)
           anchors.left: parent.left
           anchors.right: parent.right
@@ -1002,7 +1124,7 @@ Item {
         Flickable {
           id: flick
           visible: root.problem === ""
-          anchors.top: header.bottom
+          anchors.top: searchBar.bottom
           anchors.topMargin: root.sp(24)
           anchors.left: parent.left
           anchors.leftMargin: -root.gutter
@@ -1050,6 +1172,9 @@ Item {
             dim: root.dim
             faint: root.faint
             selectionColor: Style.selectionFill
+            accent: root.accent
+            marks: root.matches
+            currentMark: root.matchIndex
             tabStop: 4 * root.sp(8)
             keyFilter: root.pageKey
 
@@ -1060,6 +1185,7 @@ Item {
             onReturnFinished: function (lineIndex, lineText) { root.lineFinished(lineIndex, lineText) }
             onListLeft: function (lineIndex) { root.listLeft(lineIndex) }
             onTextChanged: {
+              if (root.searchOpen) Qt.callLater(root.runSearch)
               if (root.applying) return
               svc.markPending(text)
               saveTimer.restart()

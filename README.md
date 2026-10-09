@@ -44,7 +44,10 @@ checkboxes as boxes (click or `Ctrl+L`), bullets, numbers, and private
 callouts marked "never sent"; typing `# `, `- [ ] ` or `> ` turns the line
 into that kind, Backspace at its start turns it back. Type follows the
 shell's own scale (your Omarchy font size); `Ctrl+=` / `Ctrl+-` / `Ctrl+0`
-zoom the whole page like a browser, remembered across restarts. The file stays plain
+zoom the whole page like a browser, remembered across restarts. `Ctrl+F`
+finds in the note as you type: Enter next, Shift+Enter previous,
+`Ctrl+Enter` lands on the match selected and closes the search, Esc goes
+back to where you were. The file stays plain
 markdown, changed only where you typed. Blocks the agent has seen are
 veiled; a block with a reply carries a gutter mark and its reply shows in the
 margin to the right when asked. Finishing an `@` or `?` line stages the block

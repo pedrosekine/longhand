@@ -36,6 +36,7 @@ Item {
   property color dim: "gray"
   property color faint: "lightgray"
   property color selectionColor: "lightblue"
+  property color accent: "orange"
   property real tabStop: textSize * 2
 
   // Space: within a block nothing, between blocks without a blank line a
@@ -51,6 +52,11 @@ Item {
   property int focusedRow: -1
   readonly property bool hasFocus: focusedRow >= 0
   property rect cursorRect: Qt.rect(0, 0, 0, 0)
+
+  // Search matches to paint, as text offsets ({ start, end }), and which of
+  // them is the current one. Painting only: they never touch the text.
+  property var marks: []
+  property int currentMark: -1
 
   // Enter finished a line (the line as it was before the break), and Enter
   // on an empty item left a list. The page decides what they mean.
@@ -205,6 +211,44 @@ Item {
 
   // Rows just inserted have no place in the column until it lays out, so
   // lay out first; and whenever the column moves, the cursor moved too.
+  // Select [a, b) and put the cursor at b, as if the student had dragged
+  // over it. Both ends in one line (search matches never cross lines).
+  function select(a, b) {
+    var i = Rows.rowAt(ed.rows, a)
+    var r = ed.rows[i]
+    var ca = Rows.columnIn(r, a)
+    var cb = Rows.columnIn(r, b)
+    ed.placeAt(i, cb)
+    var item = ed.rowItem(i)
+    if (item) item.field.select(ca, cb)
+  }
+
+  // Where a text offset is drawn, in editor coordinates.
+  function rectAt(pos) {
+    column.forceLayout()
+    var i = Rows.rowAt(ed.rows, pos)
+    var item = ed.rowItem(i)
+    if (!item) return null
+    var c = item.field.positionToRectangle(Rows.columnIn(ed.rows[i], pos))
+    var p = item.field.mapToItem(ed, c.x, c.y)
+    return Qt.rect(p.x, p.y, c.width, c.height)
+  }
+
+  // The marks that fall in row i, as columns of its body.
+  function marksIn(i, marks, current, rows) {
+    var r = rows[i]
+    if (!r || !marks || marks.length === 0) return []
+    var a0 = r.start + r.prefixLen
+    var a1 = r.start + r.raw.length
+    var out = []
+    for (var k = 0; k < marks.length; k++) {
+      var m = marks[k]
+      if (m.end <= a0 || m.start >= a1) continue
+      out.push({ a: Math.max(m.start, a0) - a0, b: Math.min(m.end, a1) - a0, current: k === current })
+    }
+    return out
+  }
+
   function updateCursorRect() {
     var item = ed.rowItem(ed.focusedRow)
     if (!item) return
@@ -556,6 +600,37 @@ Item {
           text: row.ordinal
           color: ed.dim
           font: field.font
+        }
+
+        // Search marks, under the words: every match faint, the current one
+        // stronger. A match that wraps is drawn as two pieces.
+        Repeater {
+          model: ed.marksIn(row.index, ed.marks, ed.currentMark, ed.rows)
+          Item {
+            id: mark
+            required property var modelData
+            readonly property var pieces: {
+              field.width; field.contentHeight; field.text
+              var r1 = field.positionToRectangle(modelData.a)
+              var r2 = field.positionToRectangle(modelData.b)
+              if (Math.abs(r1.y - r2.y) < 1) return [{ x: r1.x, y: r1.y, w: r2.x - r1.x, h: r1.height }]
+              return [{ x: r1.x, y: r1.y, w: field.width - r1.x, h: r1.height },
+                      { x: 0, y: r2.y, w: r2.x, h: r2.height }]
+            }
+            Repeater {
+              model: mark.pieces
+              Rectangle {
+                required property var modelData
+                x: field.x + modelData.x - 1
+                y: field.y + modelData.y
+                width: modelData.w + 2
+                height: modelData.h
+                radius: Math.max(2, Math.round(ed.textSize * 0.15))
+                color: ed.accent
+                opacity: mark.modelData.current ? 0.45 : 0.18
+              }
+            }
+          }
         }
 
         TextEdit {

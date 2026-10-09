@@ -181,6 +181,12 @@
             (type, spacing, margins, panel; not the window's own size):
             Ctrl+= / Ctrl+- / Ctrl+0 over 67–200%, shown in the header for a
             moment, kept in `~/.local/state/omarchy-student/page.json`.
+      - [x] 14.6d find — Ctrl+F opens a line under the date; matches are
+            case-insensitive, in the rows' words only (never the lifted
+            markdown), painted under the text (current one stronger) and
+            counted "n / m". Enter / Shift+Enter step with wrap-around;
+            Ctrl+Enter selects the match and closes; Esc returns the cursor
+            to where the search began.
       - [ ] 14.7 focus mode · 14.8 study mode · 14.9 phone capture, external reading.
 - [ ] Parked — deadline entry from the popup (absorbed by 14.4), `.ics` import,
       analytics (`history`), daily counter
