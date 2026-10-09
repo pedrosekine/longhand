@@ -79,16 +79,25 @@ Item {
   readonly property color urgent: Color.urgent
   readonly property var borderSpec: Border.surfaceSpec("menu", "border", border, Math.max(1, Style.space(2)))
   readonly property string fontFamily: Style.font.family
-  readonly property int textSize: Style.font.heading
+  // One size for the whole page, like a browser's zoom: text, spacing,
+  // margins, the panel. The base is the shell's own type scale (which
+  // follows the theme's font base-size), so the page sits with the rest of
+  // the desktop; Ctrl+= / Ctrl+- / Ctrl+0 step it and the step is kept in
+  // ~/.local/state/omarchy-student/page.json.
+  readonly property var zoomSteps: [0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2]
+  property real zoom: 1
+  function sp(n) { return Math.max(1, Math.round(Style.spaceReal(n) * root.zoom)) }
+  function fs(n) { return Math.max(1, Math.round(n * root.zoom)) }
+  readonly property int textSize: root.fs(Style.font.title)
 
-  readonly property int sheetWidth: Math.min(Style.space(760), content.width - Style.space(48))
-  readonly property int sheetMargin: Style.space(28)
-  readonly property int sheetPadding: alongside ? Style.space(28) : Style.space(44)
-  readonly property int marginGap: Style.space(18)
-  readonly property int gutter: Style.space(18)
+  readonly property int sheetWidth: Math.min(root.sp(760), content.width - root.sp(48))
+  readonly property int sheetMargin: root.sp(28)
+  readonly property int sheetPadding: alongside ? root.sp(28) : root.sp(44)
+  readonly property int marginGap: root.sp(18)
+  readonly property int gutter: root.sp(18)
   readonly property int marginWidth: alongside
-    ? Math.max(0, Math.min(Style.space(300), Math.round(content.width * 0.45)))
-    : Math.max(0, Math.min(Style.space(300), content.width - (content.width + sheetWidth) / 2 - marginGap - sheetMargin))
+    ? Math.max(0, Math.min(root.sp(300), Math.round(content.width * 0.45)))
+    : Math.max(0, Math.min(root.sp(300), content.width - (content.width + sheetWidth) / 2 - marginGap - sheetMargin))
 
   property string dateLabel: ""
   property bool applying: false
@@ -144,6 +153,31 @@ Item {
       if (svc.ready) root.openPass()
     }
     Qt.callLater(editor.focusNote)
+  }
+
+  function zoomBy(dir) {
+    var steps = root.zoomSteps
+    var i = 0
+    for (var k = 0; k < steps.length; k++) if (Math.abs(steps[k] - root.zoom) < Math.abs(steps[i] - root.zoom)) i = k
+    root.setZoom(steps[Math.max(0, Math.min(steps.length - 1, i + dir))])
+  }
+
+  function setZoom(z) {
+    if (z === root.zoom) { zoomHint.restart(); return }
+    root.zoom = z
+    zoomHint.restart()
+    zoomFile.setText(JSON.stringify({ zoom: z }) + "\n")
+    root.scheduleRepaint()
+  }
+
+  // Ctrl+= (or +), Ctrl+-, Ctrl+0: wherever the keyboard is in the page.
+  function zoomKey(event) {
+    if (!(event.modifiers & Qt.ControlModifier)) return false
+    var k = event.key
+    if (k === Qt.Key_Equal || k === Qt.Key_Plus) { root.zoomBy(1); return true }
+    if (k === Qt.Key_Minus || k === Qt.Key_Underscore) { root.zoomBy(-1); return true }
+    if (k === Qt.Key_0) { root.setZoom(1); return true }
+    return false
   }
 
   function openPass() {
@@ -467,6 +501,7 @@ Item {
     var alt = event.modifiers & Qt.AltModifier
     var k = event.key
     if (root.askKey(event)) return true
+    if (root.zoomKey(event)) return true
     if (k === Qt.Key_Escape) { if (!root.alongside) root.dismiss(); return true }
     if (k === Qt.Key_P && ctrl) { root.togglePin(); return true }
     if ((k === Qt.Key_Return || k === Qt.Key_Enter) && ctrl) { root.sendCurrent(); return true }
@@ -769,6 +804,24 @@ Item {
     onTriggered: root.flush()
   }
 
+  // The zoom step survives restarts. Machine state, not config, and never
+  // in the vault.
+  FileView {
+    id: zoomFile
+    path: (Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state") + "/omarchy-student/page.json"
+    atomicWrites: true
+    printErrors: false
+    onLoaded: {
+      try {
+        var z = Number(JSON.parse(text()).zoom)
+        if (isFinite(z) && z >= 0.5 && z <= 3) root.zoom = z
+      } catch (e) {}
+    }
+  }
+
+  // The zoom level shows in the header for a moment after it changes.
+  Timer { id: zoomHint; interval: 1500 }
+
   Timer {
     id: hintTimer
     interval: 2500
@@ -817,7 +870,7 @@ Item {
       text: "on the overlay · Esc brings it back"
       color: root.faint
       font.family: root.fontFamily
-      font.pixelSize: Style.font.bodySmall
+      font.pixelSize: root.fs(Style.font.bodySmall)
     }
   }
 
@@ -876,13 +929,23 @@ Item {
             text: root.dateLabel
             color: root.dim
             font.family: root.fontFamily
-            font.pixelSize: Style.font.bodySmall
+            font.pixelSize: root.fs(Style.font.bodySmall)
           }
 
           Row {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            spacing: Style.space(10)
+            spacing: root.sp(10)
+
+            Text {
+              visible: zoomHint.running
+              anchors.verticalCenter: parent.verticalCenter
+              textFormat: Text.PlainText
+              text: Math.round(root.zoom * 100) + "%"
+              color: root.dim
+              font.family: root.fontFamily
+              font.pixelSize: root.fs(Style.font.bodySmall)
+            }
 
             // The pin: which shape you are in. Ctrl+P or a click flips it.
             Text {
@@ -891,7 +954,7 @@ Item {
               text: "pin"
               color: root.alongside ? root.foreground : root.faint
               font.family: root.fontFamily
-              font.pixelSize: Style.font.bodySmall
+              font.pixelSize: root.fs(Style.font.bodySmall)
               Behavior on color { ColorAnimation { duration: 240 } }
               MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.togglePin() }
             }
@@ -905,7 +968,7 @@ Item {
               text: "agent"
               color: root.replyWaiting ? root.accent : (root.running ? root.foreground : root.faint)
               font.family: root.fontFamily
-              font.pixelSize: Style.font.bodySmall
+              font.pixelSize: root.fs(Style.font.bodySmall)
               Behavior on color { ColorAnimation { duration: 240 } }
             }
 
@@ -913,7 +976,7 @@ Item {
             // pending and settles once it landed.
             Rectangle {
               anchors.verticalCenter: parent.verticalCenter
-              width: Style.space(6)
+              width: root.sp(6)
               height: width
               radius: width / 2
               color: root.problem !== "" ? root.urgent : (svc.pending || svc.saving ? root.foreground : root.faint)
@@ -925,7 +988,7 @@ Item {
         Text {
           visible: root.problem !== ""
           anchors.top: header.bottom
-          anchors.topMargin: Style.space(24)
+          anchors.topMargin: root.sp(24)
           anchors.left: parent.left
           anchors.right: parent.right
           textFormat: Text.PlainText
@@ -933,14 +996,14 @@ Item {
           text: root.problem
           color: root.urgent
           font.family: root.fontFamily
-          font.pixelSize: Style.font.body
+          font.pixelSize: root.fs(Style.font.body)
         }
 
         Flickable {
           id: flick
           visible: root.problem === ""
           anchors.top: header.bottom
-          anchors.topMargin: Style.space(24)
+          anchors.topMargin: root.sp(24)
           anchors.left: parent.left
           anchors.leftMargin: -root.gutter
           anchors.right: parent.right
@@ -962,9 +1025,9 @@ Item {
             Rectangle {
               required property var modelData
               visible: modelData.reply || modelData.staged
-              x: Style.space(2)
+              x: root.sp(2)
               y: modelData.y
-              width: Style.space(3)
+              width: root.sp(3)
               height: modelData.h
               radius: width
               color: modelData.reply ? (modelData.unread ? root.accent : root.dim) : "transparent"
@@ -987,7 +1050,7 @@ Item {
             dim: root.dim
             faint: root.faint
             selectionColor: Style.selectionFill
-            tabStop: 4 * Style.space(8)
+            tabStop: 4 * root.sp(8)
             keyFilter: root.pageKey
 
             onCursorRectChanged: flick.ensureVisible(cursorRect)
@@ -1024,7 +1087,7 @@ Item {
           Text {
             visible: !!root.ask || root.noSignHint
             x: root.gutter
-            y: editor.cursorRect.y + editor.cursorRect.height + Style.space(2)
+            y: editor.cursorRect.y + editor.cursorRect.height + root.sp(2)
             width: editor.width
             textFormat: Text.PlainText
             wrapMode: Text.WordWrap
@@ -1035,7 +1098,7 @@ Item {
                 : "send to agent?  [no]   yes   · y sends · n, Enter or Esc ignores")
             color: root.faint
             font.family: root.fontFamily
-            font.pixelSize: Style.font.bodySmall
+            font.pixelSize: root.fs(Style.font.bodySmall)
             z: 2
           }
 
@@ -1073,7 +1136,7 @@ Item {
       radius: root.alongside ? 0 : Style.cornerRadius
       color: root.background
       borderSpec: root.alongside ? Border.none() : root.borderSpec
-      padding: Style.space(22)
+      padding: root.sp(22)
 
       MouseArea { anchors.fill: parent; onClicked: {} }
 
@@ -1085,6 +1148,7 @@ Item {
         Keys.onPressed: function (event) {
           var alt = event.modifiers & Qt.AltModifier
           var k = event.key
+          if (root.zoomKey(event)) { event.accepted = true; return }
           if (k === Qt.Key_Escape || (k === Qt.Key_Left && alt)) { root.backToNote(); event.accepted = true; return }
           if (root.tasksOpen) {
             var ctrl = event.modifiers & Qt.ControlModifier
@@ -1107,7 +1171,7 @@ Item {
         id: tasksFlick
         visible: root.tasksOpen
         anchors.fill: parent
-        anchors.topMargin: margin.contentTopInset + Style.space(4)
+        anchors.topMargin: margin.contentTopInset + root.sp(4)
         anchors.leftMargin: margin.contentLeftInset
         anchors.rightMargin: margin.contentRightInset
         anchors.bottomMargin: margin.contentBottomInset
@@ -1132,7 +1196,7 @@ Item {
         Column {
           id: tasksColumn
           width: parent.width
-          spacing: Style.space(4)
+          spacing: root.sp(4)
 
           Text {
             width: parent.width
@@ -1140,7 +1204,7 @@ Item {
             text: "WHAT'S NEXT"
             color: root.dim
             font.family: root.fontFamily
-            font.pixelSize: Style.font.caption
+            font.pixelSize: root.fs(Style.font.caption)
           }
 
           Text {
@@ -1150,7 +1214,7 @@ Item {
             text: "nothing open"
             color: root.faint
             font.family: root.fontFamily
-            font.pixelSize: Style.font.bodySmall
+            font.pixelSize: root.fs(Style.font.bodySmall)
           }
 
           Repeater {
@@ -1160,17 +1224,17 @@ Item {
               required property int index
               readonly property bool hot: root.taskFocus === index && modelData.kind !== "day"
               width: tasksColumn.width
-              height: rowText.implicitHeight + (modelData.kind === "day" ? Style.space(12) : Style.space(8))
+              height: rowText.implicitHeight + (modelData.kind === "day" ? root.sp(12) : root.sp(8))
               radius: Style.cornerRadius
               color: hot ? Style.selectedFill : "transparent"
               Text {
                 id: rowText
                 anchors.left: parent.left
                 anchors.right: parent.right
-                anchors.leftMargin: Style.space(6)
-                anchors.rightMargin: Style.space(6)
+                anchors.leftMargin: root.sp(6)
+                anchors.rightMargin: root.sp(6)
                 anchors.bottom: parent.bottom
-                anchors.bottomMargin: Style.space(4)
+                anchors.bottomMargin: root.sp(4)
                 textFormat: Text.PlainText
                 wrapMode: Text.WordWrap
                 text: modelData.kind === "day" ? modelData.date
@@ -1181,7 +1245,7 @@ Item {
                     : "○ " + modelData.task.text
                 color: modelData.kind === "day" ? root.dim : (modelData.kind === "older" ? root.faint : root.foreground)
                 font.family: root.fontFamily
-                font.pixelSize: modelData.kind === "day" ? Style.font.caption : Style.font.body
+                font.pixelSize: modelData.kind === "day" ? root.fs(Style.font.caption) : root.fs(Style.font.body)
               }
               MouseArea {
                 anchors.fill: parent
@@ -1200,7 +1264,7 @@ Item {
             text: root.contextFor ? root.contextFor.date + "\n\n" + contextFile.snippet : ""
             color: root.dim
             font.family: root.fontFamily
-            font.pixelSize: Style.font.bodySmall
+            font.pixelSize: root.fs(Style.font.bodySmall)
           }
 
           Text {
@@ -1210,7 +1274,7 @@ Item {
             text: "↑↓ move · Enter goes to it · Space ticks · Ctrl+Z unticks · Esc back"
             color: root.faint
             font.family: root.fontFamily
-            font.pixelSize: Style.font.caption
+            font.pixelSize: root.fs(Style.font.caption)
           }
         }
       }
@@ -1219,13 +1283,13 @@ Item {
         id: marginFlick
         visible: !root.tasksOpen
         anchors.top: parent.top
-        anchors.topMargin: margin.contentTopInset + Style.space(4)
+        anchors.topMargin: margin.contentTopInset + root.sp(4)
         anchors.left: parent.left
         anchors.leftMargin: margin.contentLeftInset
         anchors.right: parent.right
         anchors.rightMargin: margin.contentRightInset
         anchors.bottom: chatBox.top
-        anchors.bottomMargin: Style.space(10)
+        anchors.bottomMargin: root.sp(10)
         clip: true
         contentWidth: width
         contentHeight: marginColumn.implicitHeight
@@ -1234,7 +1298,7 @@ Item {
         Column {
           id: marginColumn
           width: parent.width
-          spacing: Style.space(12)
+          spacing: root.sp(12)
 
           Text {
             width: parent.width
@@ -1254,7 +1318,7 @@ Item {
             text: root.currentRecord && root.currentRecord.reply ? root.currentRecord.reply : ""
             color: root.foreground
             font.family: root.fontFamily
-            font.pixelSize: Style.font.title
+            font.pixelSize: root.fs(Style.font.title)
           }
 
           // Proposals: what the agent would like to do, done only when the
@@ -1267,7 +1331,7 @@ Item {
               readonly property bool hot: root.marginFocus === index && marginKeys.activeFocus
               readonly property bool done: !!modelData.accepted
               width: marginColumn.width
-              height: propText.implicitHeight + Style.space(10)
+              height: propText.implicitHeight + root.sp(10)
               radius: Style.cornerRadius
               color: hot ? Style.selectedFill : "transparent"
               border.width: hot ? 1 : 0
@@ -1275,7 +1339,7 @@ Item {
               Text {
                 id: propText
                 anchors.fill: parent
-                anchors.margins: Style.space(5)
+                anchors.margins: root.sp(5)
                 textFormat: Text.PlainText
                 wrapMode: Text.WordWrap
                 text: (done ? "✓ " : "○ ") + (modelData.kind === "deadline"
@@ -1285,7 +1349,7 @@ Item {
                   : JSON.stringify(modelData))
                 color: done ? root.dim : root.foreground
                 font.family: root.fontFamily
-                font.pixelSize: Style.font.bodySmall
+                font.pixelSize: root.fs(Style.font.bodySmall)
               }
               MouseArea {
                 anchors.fill: parent
@@ -1304,7 +1368,7 @@ Item {
               text: modelData.text
               color: modelData.role === "agent" ? root.foreground : root.dim
               font.family: root.fontFamily
-              font.pixelSize: Style.font.title
+              font.pixelSize: root.fs(Style.font.title)
             }
           }
 
@@ -1316,7 +1380,7 @@ Item {
             text: root.currentStaged ? "Staged. Ctrl+Enter sends it, or ask below." : "Nothing from the agent on this block yet. Ask below."
             color: root.faint
             font.family: root.fontFamily
-            font.pixelSize: Style.font.bodySmall
+            font.pixelSize: root.fs(Style.font.bodySmall)
           }
         }
       }
@@ -1339,12 +1403,13 @@ Item {
           visible: root.marginOpen && !root.tasksOpen
           placeholderText: "…"
           font.family: root.fontFamily
-          font.pixelSize: Style.font.body
+          font.pixelSize: root.fs(Style.font.body)
           foreground: root.foreground
           Keys.onReturnPressed: function (event) { event.accepted = true; root.sendChat() }
           Keys.onEnterPressed: function (event) { event.accepted = true; root.sendChat() }
           Keys.onEscapePressed: function (event) { event.accepted = true; root.backToNote() }
           Keys.onPressed: function (event) {
+            if (root.zoomKey(event)) { event.accepted = true; return }
             if (event.key === Qt.Key_Left && (event.modifiers & Qt.AltModifier)) { root.backToNote(); event.accepted = true }
             else if (event.key === Qt.Key_Up && text === "" && root.currentProposals.length > 0) { root.moveMarginFocus(-1); event.accepted = true }
           }

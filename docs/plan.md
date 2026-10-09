@@ -175,6 +175,12 @@
             key again returns it. SUPER+ALT+\ while the overlay is up moves
             the sheet to the window. Only opening from nothing runs the
             automatic pass.
+      - [x] 14.6c size — body type is the shell's `title` token (14 px at
+            the default base-size, was `heading`, 16), so the page sits with
+            the terminal and GTK apps. Browser-style zoom of the whole page
+            (type, spacing, margins, panel; not the window's own size):
+            Ctrl+= / Ctrl+- / Ctrl+0 over 67–200%, shown in the header for a
+            moment, kept in `~/.local/state/omarchy-student/page.json`.
       - [ ] 14.7 focus mode · 14.8 study mode · 14.9 phone capture, external reading.
 - [ ] Parked — deadline entry from the popup (absorbed by 14.4), `.ics` import,
       analytics (`history`), daily counter
