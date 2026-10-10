@@ -13,5 +13,6 @@
     "Spanish"
   ],
   "curriculum": "agents/student/curriculum",
-  "weekStart": "monday"
+  "weekStart": "monday",
+  "variant": "high"
 }

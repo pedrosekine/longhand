@@ -384,6 +384,10 @@ def run_model(cfg: dict, paths: Paths, payload: str, session: str = "", message:
            "--agent", cfg.get("agent", "student"), "--dir", str(paths.cwd)]
     if cfg.get("model"):
         cmd += ["--model", cfg["model"]]
+    # Reasoning effort, as opencode names it per model (low / high / max);
+    # absent means the provider's default.
+    if cfg.get("variant"):
+        cmd += ["--variant", cfg["variant"]]
     if session:
         cmd += ["--session", session]
     cmd.append(message)
@@ -534,7 +538,7 @@ def apply(cfg: dict, paths: Paths, trigger: str, fired: list[dict], visible: lis
     if result["error"]:
         sec.append(f"- error: {result['error']}")
     tk = result["tokens"]
-    sec.append(f"\n<small>${result['cost']:.4f} · {tk['total']} tokens · {cfg.get('model') or 'agent default'}</small>\n")
+    sec.append(f"\n<small>${result['cost']:.4f} · {tk['total']} tokens · {cfg.get('model') or 'agent default'}{' · ' + cfg['variant'] if cfg.get('variant') else ''}</small>\n")
     append_text(paths, paths.transcript, "\n".join(sec))
 
     # Ledger: one line per run, never synced.
