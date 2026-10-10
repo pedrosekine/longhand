@@ -2,7 +2,7 @@ import QtQuick
 import QtTest
 import "../plugin-page/Days.js" as Days
 
-// The sidebar's reading of daily-note file names.
+// The sidebar calendar's reading of daily-note file names and months.
 // Run: QT_QPA_PLATFORM=offscreen /usr/lib/qt6/bin/qmltestrunner -input tests
 TestCase {
   name: "Days"
@@ -18,22 +18,31 @@ TestCase {
     compare(Days.parse("2026.02.30", "YYYY.MM.DD"), null)   // not a day
   }
 
-  function test_rows_newest_first_by_month() {
-    var r = Days.rows(["2026.09.30", "2026.10.07", "2023-03-08", "notes", "2026.10.09"], "YYYY.MM.DD", "2026.10.09")
-    var kinds = r.map(function (x) { return x.kind === "month" ? x.label : x.stem })
-    compare(kinds, ["OCTOBER", "2026.10.09", "2026.10.07", "SEPTEMBER", "2026.09.30", "MARCH 2023", "2023-03-08"])
-    compare(r[1].today, true)
-    compare(r[1].label, "Fri 9")
+  function test_index_prefers_configured_name() {
+    var idx = Days.index(["2026-10-07", "2026.10.07", "2023-03-08", "notes"], "YYYY.MM.DD")
+    compare(idx["2026-10-7"], "2026.10.07")
+    compare(idx["2023-3-8"], "2023-03-08")
+    compare(Days.stemFor(new Date(2023, 2, 8), "YYYY.MM.DD", idx), "2023-03-08")
+    compare(Days.stemFor(new Date(2026, 0, 5), "YYYY.MM.DD", idx), "2026.01.05")
   }
 
-  function test_today_listed_before_its_file_exists() {
-    var r = Days.rows(["2026.10.07"], "YYYY.MM.DD", "2026.10.09")
-    compare(r[1].stem, "2026.10.09")
+  function test_grid_starts_on_locale_weekday() {
+    // October 2026 starts on a Thursday.
+    var mon = Days.grid(2026, 9, 1)
+    compare(mon[0], null); compare(mon[2], null)
+    compare(mon[3].getDate(), 1)
+    var sun = Days.grid(2026, 9, 0)
+    compare(sun[4].getDate(), 1)
+    compare(mon.length, 42)
+    compare(mon[3 + 30].getDate(), 31); compare(mon[3 + 31], null)
   }
 
-  function test_same_day_in_two_formats_listed_once() {
-    var r = Days.rows(["2026.10.07", "2026-10-07"], "YYYY.MM.DD", "")
-    compare(r.length, 2)
-    compare(r[1].stem, "2026.10.07")
+  function test_month_steps_clamp_the_day() {
+    var d = Days.addMonths(new Date(2026, 0, 31), 1)
+    compare(d.getMonth(), 1); compare(d.getDate(), 28)
+    var e = Days.addMonths(new Date(2026, 0, 15), -1)
+    compare(e.getFullYear(), 2025); compare(e.getMonth(), 11)
+    compare(Days.addDays(new Date(2026, 9, 31), 1).getMonth(), 10)
   }
+
 }

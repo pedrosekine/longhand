@@ -196,6 +196,14 @@
             and `--date` on run/chat/ack/accept carry the agent to that day;
             notes named in another format get "agent off". Only today is
             ever created from the template.
+      - [x] 14.6f calendar — the sidebar list became a month grid: a day's
+            number full where a note exists, faded where none does; today
+            dotted, the open day outlined. Arrows move by day/week across
+            month edges, Ctrl+Left/Right and PageUp/Down by month (day
+            clamped), Home to today. A day without a note opens empty with
+            the template's header held ready, and its file is written only
+            once something is typed (`Service.exists`). `weekStart` in the
+            config, else the locale.
       - [ ] 14.7 focus mode · 14.8 study mode · 14.9 phone capture, external reading.
 - [ ] Parked — deadline entry from the popup (absorbed by 14.4), `.ics` import,
       analytics (`history`), daily counter

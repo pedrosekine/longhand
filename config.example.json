@@ -12,5 +12,6 @@
     "Portuguese",
     "Spanish"
   ],
-  "curriculum": "agents/student/curriculum"
+  "curriculum": "agents/student/curriculum",
+  "weekStart": "monday"
 }

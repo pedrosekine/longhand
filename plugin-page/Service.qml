@@ -35,6 +35,7 @@ Item {
   property string notePath: ""
   property string noteDate: ""        // the note's file name: a date in daily.format
   property bool isToday: false
+  property bool exists: false         // false: a day with no file yet, written on the first word
   property string text: ""
   property string header: ""
   property string body: ""
@@ -134,6 +135,9 @@ Item {
   // twice.
   function save(bodyText) {
     if (!ready || error !== "") return
+    // A day opened from the calendar has no file until something is
+    // written in it; looking at it must not create one.
+    if (!root.exists && bodyText.trim() === "") { root.pending = false; return }
     var content = root.joinHeader(bodyText)
     if (content === lastWritten) { root.pending = false; return }
     root.lastWritten = content
@@ -185,6 +189,7 @@ Item {
       // back exactly what we wrote, carries no news.
       if (root.ready && (root.saving || t === root.lastWritten)) return
       var external = root.ready
+      root.exists = true
       root.lastWritten = t
       root.text = t
       root.splitHeader(t)
@@ -194,25 +199,33 @@ Item {
       else root.loaded()
     }
     onLoadFailed: function (err) {
-      if (err === FileViewError.FileNotFound && root.isToday) {
-        // First write of the day: seed from the template, if any. This is
-        // the one create path; Obsidian would do the same on its side.
+      if (err === FileViewError.FileNotFound) {
+        // No note for this day. Today: seed it from the template now, the
+        // one create path, as Obsidian would on its side. Any other day:
+        // hold the template's header ready but write nothing until the
+        // student does.
         var raw = ""
         try { raw = templateFile.text() } catch (e) { raw = "" }
         var seed = raw ? root.renderTemplate(raw, root.noteDate) : ""
-        root.lastWritten = seed
         root.text = seed
         root.splitHeader(seed)
         root.ready = true
         root.pending = false
-        if (seed !== "") noteFile.setText(seed)
+        if (root.isToday) {
+          root.lastWritten = seed
+          root.exists = seed !== ""
+          if (seed !== "") noteFile.setText(seed)
+        } else {
+          root.lastWritten = ""
+          root.exists = false
+        }
         root.loaded()
         return
       }
       root.error = "Cannot read " + root.notePath + ": " + FileViewError.toString(err)
       root.ready = false
     }
-    onSaved: { root.saving = false; root.pending = false; root.savedNow() }
+    onSaved: { root.saving = false; root.pending = false; root.exists = true; root.savedNow() }
     onSaveFailed: function (err) {
       root.saving = false
       root.error = "Cannot write " + root.notePath + ": " + FileViewError.toString(err)

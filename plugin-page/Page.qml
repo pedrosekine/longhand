@@ -65,13 +65,17 @@ import "Days.js" as Days
 // it selected and closes the search; Esc closes it and leaves the cursor
 // where it was.
 //
-// Ctrl+B opens the sidebar: the daily notes, newest first, by month. It is
-// never there unless asked — the page still opens blank on today. Enter (or
-// a click) opens a day in the same sheet, editable like today; Alt+Left
-// goes back into the sidebar, Alt+Right or Esc back to the note, Ctrl+B
-// closes it. A day whose file name is not in the vault's own date format
-// (older notes) is edited plainly: the runner cannot read it, so the agent
-// signs do nothing there.
+// Ctrl+B opens the sidebar: a month calendar of the daily notes. It is
+// never there unless asked — the page still opens blank on today. A day's
+// number is full where a note exists and faded where none does; a dot marks
+// today, an outline the day in the sheet. Arrows move a day (left/right) or
+// a week (up/down), Ctrl+Left/Right or PageUp/PageDown a month, Home goes
+// to today; Enter (or a click) opens the day in the same sheet, editable
+// like today. A day without a note opens empty and gets its file only when
+// something is written. Alt+Left goes back into the sidebar, Alt+Right or
+// Esc back to the note, Ctrl+B closes it. A note whose file name is not in
+// the vault's own date format (older notes) is edited plainly: the runner
+// cannot read it, so the agent signs do nothing there.
 Item {
   id: root
 
@@ -79,6 +83,7 @@ Item {
   property var shell: null
   property var manifest: null
 
+  property string windowTitle: "Page — today's note"
   property bool overlayOpen: false
   property bool windowOpen: false
   readonly property bool opened: overlayOpen          // what the shell's toggle asks
@@ -127,12 +132,24 @@ Item {
   }
   property string pendingStamp: ""   // a day to open once the save in flight lands
 
-  // The sidebar.
+  // The sidebar: a month calendar.
   property bool sidebarOpen: false
-  property int sidebarFocus: 0
   property var dayStems: []
-  readonly property var dayRows: svc.configured ? Days.rows(root.dayStems, svc.dailyFormat(), svc.todayStamp()) : []
-  readonly property int sidebarWidth: root.sp(220)
+  property var calFocus: new Date()   // the day the calendar's cursor is on
+  readonly property var dayIndex: svc.configured ? Days.index(root.dayStems, svc.dailyFormat()) : ({})
+  // First column of the calendar: `weekStart` in config.json ("monday",
+  // "sunday", "saturday"), else the locale's.
+  readonly property int firstDow: {
+    var w = String((svc.config && svc.config.weekStart) || "").toLowerCase()
+    var named = { sunday: 0, monday: 1, saturday: 6 }
+    return w in named ? named[w] : Qt.locale().firstDayOfWeek % 7
+  }
+  readonly property var calCells: Days.grid(root.calFocus.getFullYear(), root.calFocus.getMonth(), root.firstDow)
+  readonly property string openKey: {
+    var p = svc.configured && svc.noteDate !== "" ? Days.parse(svc.noteDate, svc.dailyFormat()) : null
+    return p ? Days.key(p.date) : ""
+  }
+  readonly property int sidebarWidth: root.sp(236)
   readonly property int sideSpace: root.sidebarOpen && root.problem === "" ? root.sidebarWidth + root.marginGap : 0
   property bool applying: false
 
@@ -724,24 +741,24 @@ Item {
     else editor.focusNote()
   }
 
+  // Into the calendar, its cursor on the day in the sheet.
   function focusSidebar() {
-    var rows = root.dayRows
-    var at = -1
-    for (var i = 0; i < rows.length; i++) if (rows[i].kind === "day" && rows[i].stem === svc.noteDate) { at = i; break }
-    if (at < 0) for (var j = 0; j < rows.length; j++) if (rows[j].kind === "day") { at = j; break }
-    root.sidebarFocus = Math.max(0, at)
-    dayList.positionViewAtIndex(root.sidebarFocus, ListView.Contain)
+    var p = svc.configured && svc.noteDate !== "" ? Days.parse(svc.noteDate, svc.dailyFormat()) : null
+    root.calFocus = p ? p.date : new Date()
     sidebarKeys.forceActiveFocus()
   }
 
-  function moveSidebarFocus(d) {
-    var rows = root.dayRows
-    var i = root.sidebarFocus
-    do { i += d } while (i >= 0 && i < rows.length && rows[i].kind !== "day")
-    if (i >= 0 && i < rows.length) {
-      root.sidebarFocus = i
-      dayList.positionViewAtIndex(i, ListView.Contain)
-    }
+  function moveCalendar(days, months) {
+    var d = root.calFocus
+    if (months) d = Days.addMonths(d, months)
+    if (days) d = Days.addDays(d, days)
+    root.calFocus = d
+  }
+
+  function openCalendarDay(d) {
+    root.calFocus = d
+    root.openNote(Days.stemFor(d, svc.dailyFormat(), root.dayIndex))
+    editor.focusNote()
   }
 
   function collectDays() {
@@ -1023,7 +1040,7 @@ Item {
   FloatingWindow {
     id: win
     visible: root.windowOpen
-    title: "Page — today's note"
+    title: root.windowTitle
     color: root.background
     implicitWidth: Style.space(680)
     implicitHeight: Style.space(900)
@@ -1411,21 +1428,24 @@ Item {
             editor.focusNote()
           } else if (k === Qt.Key_Right && alt) {
             editor.focusNote()
+          } else if (k === Qt.Key_Left) {
+            if (ctrl) root.moveCalendar(0, -1)
+            else root.moveCalendar(-1, 0)
+          } else if (k === Qt.Key_Right) {
+            if (ctrl) root.moveCalendar(0, 1)
+            else root.moveCalendar(1, 0)
           } else if (k === Qt.Key_Up) {
-            root.moveSidebarFocus(-1)
+            root.moveCalendar(-7, 0)
           } else if (k === Qt.Key_Down) {
-            root.moveSidebarFocus(1)
+            root.moveCalendar(7, 0)
           } else if (k === Qt.Key_PageUp) {
-            root.moveSidebarFocus(-10)
+            root.moveCalendar(0, -1)
           } else if (k === Qt.Key_PageDown) {
-            root.moveSidebarFocus(10)
+            root.moveCalendar(0, 1)
           } else if (k === Qt.Key_Home) {
-            root.sidebarFocus = -1
-            root.moveSidebarFocus(1)
+            root.calFocus = new Date()
           } else if (k === Qt.Key_Return || k === Qt.Key_Enter) {
-            var row = root.dayRows[root.sidebarFocus]
-            if (row && row.kind === "day") root.openNote(row.stem)
-            editor.focusNote()
+            root.openCalendarDay(root.calFocus)
           } else {
             return
           }
@@ -1433,50 +1453,154 @@ Item {
         }
       }
 
-      ListView {
-        id: dayList
+      Column {
+        id: calendar
         anchors.fill: parent
         anchors.topMargin: sidebar.contentTopInset
         anchors.leftMargin: sidebar.contentLeftInset
         anchors.rightMargin: sidebar.contentRightInset
         anchors.bottomMargin: sidebar.contentBottomInset
-        clip: true
-        boundsBehavior: Flickable.StopAtBounds
-        model: root.dayRows
+        spacing: root.sp(10)
 
-        delegate: Rectangle {
-          required property var modelData
-          required property int index
-          readonly property bool isMonth: modelData.kind === "month"
-          readonly property bool current: !isMonth && modelData.stem === svc.noteDate
-          readonly property bool hot: index === root.sidebarFocus && sidebarKeys.activeFocus
-          width: ListView.view.width
-          height: dayText.implicitHeight + (isMonth ? root.sp(index === 0 ? 4 : 18) : root.sp(8))
-          radius: Style.cornerRadius
-          color: hot ? Style.selectedFill : "transparent"
+        readonly property real cell: Math.floor(width / 7)
+
+        // Month, with a way to step it by mouse.
+        Item {
+          width: parent.width
+          height: monthText.implicitHeight
 
           Text {
-            id: dayText
             anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.leftMargin: root.sp(6)
-            anchors.bottom: parent.bottom
-            anchors.bottomMargin: root.sp(4)
+            anchors.verticalCenter: parent.verticalCenter
             textFormat: Text.PlainText
-            elide: Text.ElideRight
-            text: isMonth ? modelData.label : modelData.label + (modelData.today ? " · today" : "")
-            color: isMonth ? root.dim : (current ? root.foreground : root.dim)
+            text: "‹"
+            color: root.dim
             font.family: root.fontFamily
-            font.pixelSize: isMonth ? root.fs(Style.font.caption) : root.fs(Style.font.body)
-            font.weight: current ? Font.DemiBold : Font.Normal
+            font.pixelSize: root.fs(Style.font.title)
+            MouseArea { anchors.fill: parent; anchors.margins: -root.sp(6); cursorShape: Qt.PointingHandCursor; onClicked: root.moveCalendar(0, -1) }
+          }
+          Text {
+            id: monthText
+            anchors.horizontalCenter: parent.horizontalCenter
+            textFormat: Text.PlainText
+            text: Days.monthLabel(root.calFocus)
+            color: root.foreground
+            font.family: root.fontFamily
+            font.pixelSize: root.fs(Style.font.body)
+            font.weight: Font.DemiBold
+          }
+          Text {
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            textFormat: Text.PlainText
+            text: "›"
+            color: root.dim
+            font.family: root.fontFamily
+            font.pixelSize: root.fs(Style.font.title)
+            MouseArea { anchors.fill: parent; anchors.margins: -root.sp(6); cursorShape: Qt.PointingHandCursor; onClicked: root.moveCalendar(0, 1) }
+          }
+        }
+
+        Grid {
+          columns: 7
+
+          // Weekday initials, from the locale's first day.
+          Repeater {
+            model: 7
+            Text {
+              required property int index
+              width: calendar.cell
+              horizontalAlignment: Text.AlignHCenter
+              textFormat: Text.PlainText
+              text: Qt.locale().dayName((root.firstDow + index) % 7, Locale.NarrowFormat)
+              color: root.faint
+              font.family: root.fontFamily
+              font.pixelSize: root.fs(Style.font.caption)
+            }
           }
 
-          MouseArea {
-            anchors.fill: parent
-            enabled: !isMonth
-            cursorShape: Qt.PointingHandCursor
-            onClicked: { root.sidebarFocus = index; root.openNote(modelData.stem); editor.focusNote() }
+          // The days: full where a note exists, faded where none does.
+          Repeater {
+            model: root.calCells
+            Item {
+              id: dayCell
+              required property var modelData
+              readonly property string k: modelData ? Days.key(modelData) : ""
+              readonly property bool hasNote: k !== "" && !!root.dayIndex[k]
+              readonly property bool isOpen: k !== "" && k === root.openKey
+              readonly property bool isCursor: k !== "" && k === Days.key(root.calFocus)
+              readonly property bool isToday: k !== "" && k === Days.key(new Date())
+              width: calendar.cell
+              height: Math.round(calendar.cell * 0.92)
+
+              Rectangle {
+                anchors.fill: parent
+                anchors.margins: 1
+                radius: Style.cornerRadius
+                visible: dayCell.isCursor && sidebarKeys.activeFocus
+                color: Style.selectedFill
+              }
+              Rectangle {
+                anchors.fill: parent
+                anchors.margins: 1
+                radius: Style.cornerRadius
+                visible: dayCell.isOpen
+                color: "transparent"
+                border.width: 1
+                border.color: root.dim
+              }
+              Text {
+                anchors.centerIn: parent
+                textFormat: Text.PlainText
+                text: modelData ? modelData.getDate() : ""
+                color: dayCell.hasNote ? root.foreground : Util.alpha(root.foreground, 0.28)
+                font.family: root.fontFamily
+                font.pixelSize: root.fs(Style.font.body)
+                font.weight: dayCell.isOpen ? Font.DemiBold : Font.Normal
+              }
+              Rectangle {
+                visible: dayCell.isToday
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.bottom: parent.bottom
+                anchors.bottomMargin: Math.max(2, Math.round(calendar.cell * 0.1))
+                width: Math.max(3, Math.round(calendar.cell * 0.12))
+                height: width
+                radius: width / 2
+                color: root.accent
+              }
+              MouseArea {
+                anchors.fill: parent
+                enabled: !!modelData
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.openCalendarDay(modelData)
+              }
+            }
           }
+        }
+
+        // The day under the cursor, and whether it has a note yet.
+        Text {
+          width: parent.width
+          textFormat: Text.PlainText
+          wrapMode: Text.WordWrap
+          text: svc.configured
+            ? Days.longLabel(Days.format(root.calFocus, svc.dailyFormat()), svc.dailyFormat())
+              + (root.dayIndex[Days.key(root.calFocus)] ? "" : " · no note")
+            : ""
+          color: root.dim
+          font.family: root.fontFamily
+          font.pixelSize: root.fs(Style.font.bodySmall)
+        }
+
+        Text {
+          width: parent.width
+          visible: sidebarKeys.activeFocus
+          textFormat: Text.PlainText
+          wrapMode: Text.WordWrap
+          text: "arrows move · Ctrl+←→ month · Home today · Enter opens"
+          color: root.faint
+          font.family: root.fontFamily
+          font.pixelSize: root.fs(Style.font.caption)
         }
       }
     }

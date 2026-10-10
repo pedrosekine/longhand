@@ -47,9 +47,12 @@ shell's own scale (your Omarchy font size); `Ctrl+=` / `Ctrl+-` / `Ctrl+0`
 zoom the whole page like a browser, remembered across restarts. `Ctrl+F`
 finds in the note as you type: Enter next, Shift+Enter previous,
 `Ctrl+Enter` lands on the match selected and closes the search, Esc goes
-back to where you were. `Ctrl+B` shows your daily notes in a sidebar
-(only when asked); Enter opens a day in the same sheet, editable,
-`Alt+Left`/`Alt+Right` move between sidebar and note. The file stays plain
+back to where you were. `Ctrl+B` shows a month calendar in a sidebar
+(only when asked): days with a note are full, days without are faded;
+arrows move by day and week, `Ctrl+←/→` by month, Enter opens the day in
+the same sheet, editable (a day without a note gets its file on the first
+word). `Alt+Left`/`Alt+Right` move between calendar and note; `weekStart`
+in the config picks the first column. The file stays plain
 markdown, changed only where you typed. Blocks the agent has seen are
 veiled; a block with a reply carries a gutter mark and its reply shows in the
 margin to the right when asked. Finishing an `@` or `?` line stages the block

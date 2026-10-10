@@ -315,3 +315,6 @@ only the window and the panels around it differ.
   still opens blank on today, and fresh opens close it. Any day opens in the
   same sheet, editable; the agent works on it through `--date`, except on
   notes named in an older date format, which the runner cannot read.
+- 2026-10-10: the sidebar is a month calendar instead of a list, faded
+  numbers for days without a note. Opening such a day writes nothing until
+  something is typed in it.
