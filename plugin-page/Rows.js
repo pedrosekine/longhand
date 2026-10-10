@@ -10,6 +10,11 @@
 //
 // Blank lines are not rows you type on; the page draws them as the space
 // between blocks.
+//
+// A checkbox line can also carry a tail: `📅 2026-10-16 17:00 ^d6`, the
+// date of the deadline it stands for and an Obsidian block id naming that
+// deadline (#6). The tail is lifted too and drawn as a date at the line's
+// end; the body is only the words before it.
 .pragma library
 .import "Blocks.js" as Blocks
 
@@ -20,6 +25,10 @@ var TASK_RE = /^([-*+] \[([ xX])\] )(.*)$/
 var BULLET_RE = /^([-*+] )(.*)$/
 var ORDERED_RE = /^((\d+)([.)]) )(.*)$/
 var FENCE_RE = /^[ \t]*(```|~~~)/
+// The tail of a bound checkbox: a due date (and time), then the anchor.
+var TAIL_RE = /^([\s\S]*?)((?:\s+📅\s*(\d{4}-\d{2}-\d{2})(?:\s+(\d{1,2}:\d{2}))?)?(?:\s+\^d(\d+))?\s*)$/
+var DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
 // Indentation as nesting depth: a tab is a level, and so is every started
 // run of four spaces (two-space and four-space lists both nest by one).
@@ -36,7 +45,8 @@ function make(kind, indent, marker, body) {
   return {
     kind: kind, indent: indent, marker: marker, body: body,
     prefixLen: indent.length + marker.length, level: levelOf(indent),
-    checked: false, ordinal: "", headingLevel: 0, callout: ""
+    checked: false, ordinal: "", headingLevel: 0, callout: "",
+    suffix: "", deadline: 0, dueLabel: "", dueAt: 0
   }
 }
 
@@ -61,6 +71,7 @@ function parseLine(raw) {
   if ((x = rest.match(TASK_RE))) {
     var t = make("task", indent, x[1], x[3])
     t.checked = x[2] !== " "
+    liftTail(t)
     return t
   }
   if ((x = rest.match(BULLET_RE))) return make("bullet", indent, x[1], x[2])
@@ -72,6 +83,25 @@ function parseLine(raw) {
   return make(rest === "" ? "blank" : "plain", indent, "", rest)
 }
 
+// Take a bound checkbox's tail off its body. Only a real tail is lifted: a
+// body that merely ends in spaces keeps them (they are being typed).
+function liftTail(t) {
+  var m = t.body.match(TAIL_RE)
+  if (!m || !(m[3] || m[5])) return
+  t.body = m[1]
+  t.suffix = m[2]
+  t.deadline = m[5] ? parseInt(m[5], 10) : 0
+  if (m[3]) {
+    var d = m[3].split("-")
+    var hm = m[4] ? m[4].split(":") : ["23", "59"]
+    var at = new Date(+d[0], +d[1] - 1, +d[2], +hm[0], +hm[1])
+    t.dueAt = at.getTime()
+    t.dueLabel = DAYS[at.getDay()] + " " + at.getDate() + " " + MONTHS[at.getMonth()]
+      + (at.getFullYear() !== new Date().getFullYear() ? " " + at.getFullYear() : "")
+      + (m[4] ? " · " + m[4] : "")
+  }
+}
+
 // The whole note as rows. Each row also carries:
 //   raw        the line as it is on disk
 //   start      offset of the line in the text
@@ -80,6 +110,7 @@ function parseLine(raw) {
 //   priv       inside a `> [!private]` callout
 //   gapAbove   starts a new block right under the previous line (no blank
 //              line between), so the page leaves a little air above it
+//   bodyEnd    offset where the words end (before a bound line's tail)
 function derive(text) {
   var lines = text.split("\n")
   var blocks = Blocks.split(text)
@@ -109,6 +140,7 @@ function derive(text) {
     }
     r.raw = raw
     r.start = pos
+    r.bodyEnd = pos + r.prefixLen + r.body.length
     r.priv = !!priv[i]
     r.blank = r.kind === "blank"
     r.lead = r.blank && !seenText

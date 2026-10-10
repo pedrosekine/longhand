@@ -44,6 +44,7 @@ Item {
   property color faint: "lightgray"
   property color selectionColor: "lightblue"
   property color accent: "orange"
+  property color urgent: "red"
   property real tabStop: textSize * 2
 
   // Space: within a block nothing, between blocks without a blank line a
@@ -71,6 +72,10 @@ Item {
   readonly property bool spanning: selAnchor >= 0 && selCursor >= 0 && selAnchor !== selCursor
   readonly property int selStart: Math.min(selAnchor, selCursor)
   readonly property int selEnd: Math.max(selAnchor, selCursor)
+
+  // True while a cut is being applied: what leaves the text is on the
+  // clipboard, so a bound line going with it is moving, not being deleted.
+  property bool cutting: false
 
   // Enter finished a line (the line as it was before the break), and Enter
   // on an empty item left a list. The page decides what they mean.
@@ -165,7 +170,7 @@ Item {
 
   // ------------------------------------------------------------ rows
 
-  readonly property var roles: ["kind", "body", "level", "checked", "ordinal", "headingLevel", "callout", "priv", "blank", "lead", "gapAbove"]
+  readonly property var roles: ["kind", "body", "level", "checked", "ordinal", "headingLevel", "callout", "priv", "blank", "lead", "gapAbove", "deadline", "dueLabel", "dueAt"]
 
   function roleValues(r) {
     var o = {}
@@ -255,7 +260,7 @@ Item {
     var r = rows[i]
     if (!r || !marks || marks.length === 0) return []
     var a0 = r.start + r.prefixLen
-    var a1 = r.start + r.raw.length
+    var a1 = r.bodyEnd
     var out = []
     for (var k = 0; k < marks.length; k++) {
       var m = marks[k]
@@ -274,7 +279,7 @@ Item {
     if (!r || anchor < 0 || cursor < 0 || anchor === cursor) return out
     var a = Math.min(anchor, cursor), b = Math.max(anchor, cursor)
     var a0 = r.start + r.prefixLen
-    var a1 = r.start + r.raw.length
+    var a1 = r.bodyEnd
     if (b < a0 || a > a1) return out
     if (b === a0 && a < a0 && r.body.length > 0) return out
     var ca = Math.max(a, a0) - a0, cb = Math.min(b, a1) - a0
@@ -393,7 +398,13 @@ Item {
       return true
     }
     if (ctrl && k === Qt.Key_C) { ed.copyText(ed.text.slice(ed.selStart, ed.selEnd)); return true }
-    if (ctrl && k === Qt.Key_X) { ed.copyText(ed.text.slice(ed.selStart, ed.selEnd)); ed.removeSpan(); return true }
+    if (ctrl && k === Qt.Key_X) {
+      ed.copyText(ed.text.slice(ed.selStart, ed.selEnd))
+      ed.cutting = true
+      ed.removeSpan()
+      ed.cutting = false
+      return true
+    }
     if (ctrl && k === Qt.Key_A) { ed.selectSpan(0, ed.text.length); return true }
     if (ctrl && k === Qt.Key_V) {
       ed.removeSpan()
@@ -471,7 +482,7 @@ Item {
     if (!r) return
     ed.clearSelection()
     body = body.replace(/\r/g, "")
-    var line = r.raw.substring(0, r.prefixLen) + body
+    var line = r.raw.substring(0, r.prefixLen) + body + r.suffix
     ed.snapshot(/\n/.test(body))
     var lineEnd = r.start + r.raw.length
     var before = ed.rows.length
@@ -507,6 +518,9 @@ Item {
     var pos = ed.cursorPosition
     var lineText = r.raw
     var lineEnd = r.start + r.raw.length
+    // At the end of a bound line's words, the new line starts after its
+    // date, so the line keeps its deadline.
+    if (r.suffix !== "" && pos >= r.bodyEnd) pos = lineEnd
     var carry = (r.kind === "code" || r.kind === "front") ? "" : Rows.continuation(r)
     if (soft) {
       // A new line in the same block: under a list item, indented to stay
@@ -516,7 +530,7 @@ Item {
       ed.insert(pos, "\n" + under)
       return
     }
-    if (carry !== "" && r.body === "" && pos >= lineEnd && r.kind !== "calloutHead") {
+    if (carry !== "" && r.body === "" && r.suffix === "" && pos >= lineEnd && r.kind !== "calloutHead") {
       // Enter on an empty item leaves the list (or the quote).
       ed.remove(r.start, lineEnd)
       if (r.kind !== "quote") ed.listLeft(i)
@@ -528,12 +542,27 @@ Item {
 
   // Backspace at the start of a line: first the kind goes, then the
   // indentation, then the line joins the one above.
+  // A bound line that stops being a checkbox stops being a deadline: its
+  // date goes with the box (and the page asks about the deadline). Joining
+  // onto a bound line slips the words in before that line's date.
   function backspaceAtStart(i) {
     var r = ed.rows[i]
     ed.snapshot(true)
-    if (r.marker !== "") ed.remove(r.start + r.indent.length, r.start + r.prefixLen)
-    else if (r.indent !== "") ed.remove(r.start, r.start + r.indent.length)
-    else if (i > 0) ed.remove(r.start - 1, r.start)
+    if (r.marker !== "") {
+      if (r.suffix !== "") ed.remove(r.bodyEnd, r.start + r.raw.length)
+      ed.remove(r.start + r.indent.length, r.start + r.prefixLen)
+    } else if (r.indent !== "") {
+      ed.remove(r.start, r.start + r.indent.length)
+    } else if (i > 0) {
+      var p = ed.rows[i - 1]
+      if (p.suffix !== "") {
+        var at = p.bodyEnd
+        ed.replace(p.start, r.start + r.raw.length, p.raw.slice(0, p.raw.length - p.suffix.length) + r.raw + p.suffix)
+        ed.setCursor(at, true)
+      } else {
+        ed.remove(r.start - 1, r.start)
+      }
+    }
     ed.placeCursor(true)
   }
 
@@ -544,7 +573,13 @@ Item {
     var r = ed.rows[i]
     var n = ed.rows[i + 1]
     ed.snapshot(true)
-    ed.remove(r.start + r.raw.length, n.start + n.prefixLen)
+    if (r.suffix !== "") {
+      var at = r.bodyEnd
+      ed.replace(r.start, n.start + n.raw.length, r.raw.slice(0, r.raw.length - r.suffix.length) + n.body + r.suffix)
+      ed.setCursor(at, true)
+    } else {
+      ed.remove(r.start + r.raw.length, n.start + n.prefixLen)
+    }
     ed.placeCursor(true)
   }
 
@@ -719,6 +754,9 @@ Item {
         required property bool blank
         required property bool lead
         required property bool gapAbove
+        required property int deadline
+        required property string dueLabel
+        required property real dueAt
 
         property alias field: field
         property alias box: box
@@ -824,6 +862,32 @@ Item {
           font: field.font
         }
 
+        // A bound line's date, at the line's end: a pill while it names a
+        // deadline, plain once the deadline is gone. Late and still open:
+        // the urgent colour.
+        Rectangle {
+          id: due
+          readonly property bool late: !row.checked && row.dueAt > 0 && row.dueAt < Date.now()
+          visible: row.dueLabel !== ""
+          anchors.right: parent.right
+          y: row.gapTop + Math.round((row.firstLine - height) / 2)
+          width: dueText.implicitWidth + (row.deadline > 0 ? Math.round(ed.textSize * 0.9) : 0)
+          height: dueText.implicitHeight + Math.round(ed.textSize * 0.2)
+          radius: height / 2
+          color: "transparent"
+          border.width: row.deadline > 0 ? 1 : 0
+          border.color: late ? ed.urgent : ed.faint
+          Text {
+            id: dueText
+            anchors.centerIn: parent
+            textFormat: Text.PlainText
+            text: row.dueLabel
+            color: due.late ? ed.urgent : ed.dim
+            font.family: ed.fontFamily
+            font.pixelSize: Math.round(ed.textSize * 0.78)
+          }
+        }
+
         // Under the words: search matches (faint, the current one
         // stronger) and a selection across lines. A piece that wraps is
         // drawn in two.
@@ -861,7 +925,7 @@ Item {
           id: field
           x: row.fieldX
           y: row.gapTop
-          width: Math.max(0, row.width - row.fieldX)
+          width: Math.max(0, row.width - row.fieldX - (due.visible ? due.width + Math.round(ed.textSize * 0.6) : 0))
           textFormat: TextEdit.PlainText
           wrapMode: TextEdit.Wrap
           selectByMouse: true

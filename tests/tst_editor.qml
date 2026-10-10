@@ -381,6 +381,46 @@ Item {
       compare(ed.text, "\n- [x] read\nother")
     }
 
+    function test_bound_tail_is_lifted() {
+      var r = Rows.derive("- [ ] chapter 2 draft #thesis 📅 2026-10-16 17:00 ^d6")
+      compare(r[0].body, "chapter 2 draft #thesis")
+      compare(r[0].deadline, 6)
+      compare(r[0].dueLabel.indexOf("16 Oct · 17:00") >= 0, true)
+      var u = Rows.derive("- [ ] old 📅 2026-10-16")[0]
+      compare(u.body, "old"); compare(u.deadline, 0); verify(u.dueLabel !== "")
+      compare(Rows.derive("- [ ] typing ")[0].body, "typing ")   // trailing space stays
+      compare(Rows.derive("plain 📅 2026-10-16")[0].body, "plain 📅 2026-10-16")
+    }
+
+    function test_typing_keeps_the_tail() {
+      start("\n- [ ] draft 📅 2026-10-16 ^d6", 12)   // end of "draft"
+      compare(focused().text, "draft")
+      type("s")
+      compare(ed.text, "\n- [ ] drafts 📅 2026-10-16 ^d6")
+    }
+
+    function test_enter_at_end_of_bound_line_starts_after_tail() {
+      start("\n- [ ] draft 📅 2026-10-16 ^d6", 12)
+      keyClick(Qt.Key_Return)
+      compare(ed.text, "\n- [ ] draft 📅 2026-10-16 ^d6\n- [ ] ")
+    }
+
+    function test_backspace_on_bound_box_drops_the_tail() {
+      start("\n- [ ] draft 📅 2026-10-16 ^d6", 7)   // start of "draft"
+      keyClick(Qt.Key_Backspace)
+      compare(ed.text, "\ndraft")
+    }
+
+    function test_joins_keep_the_tail_at_the_end() {
+      start("\n- [ ] draft 📅 2026-10-16 ^d6\nmore", 12)
+      keyClick(Qt.Key_Delete)
+      compare(ed.text, "\n- [ ] draftmore 📅 2026-10-16 ^d6")
+      start("\n- [ ] draft 📅 2026-10-16 ^d6\nmore", 31)   // start of "more" (📅 is two UTF-16 units)
+      keyClick(Qt.Key_Backspace)
+      compare(ed.text, "\n- [ ] draftmore 📅 2026-10-16 ^d6")
+      compare(ed.cursorPosition, 12)
+    }
+
     function test_block_rect() {
       start("\nalpha\nbeta\n\ngamma")
       var r = ed.blockRect(1, 3)
