@@ -19,6 +19,13 @@ import "Rows.js" as Rows
 //
 // Keys the page owns (Esc, the send prompt, block jumps, the margin) reach
 // `keyFilter` first; whatever it does not take is editing.
+//
+// Selecting: inside one line the field's own selection does the work. A
+// selection that crosses lines (Shift+arrows past a line's edge, a drag
+// with the mouse, Ctrl+A) is held here as text offsets and painted;
+// typing, Backspace/Delete, cut, copy, paste, Enter and Tab/Shift+Tab act
+// on all of it. Copying it copies the markdown, so pasting brings the kinds
+// back.
 Item {
   id: ed
 
@@ -58,6 +65,13 @@ Item {
   property var marks: []
   property int currentMark: -1
 
+  // A selection across lines, as text offsets (-1: none).
+  property int selAnchor: -1
+  property int selCursor: -1
+  readonly property bool spanning: selAnchor >= 0 && selCursor >= 0 && selAnchor !== selCursor
+  readonly property int selStart: Math.min(selAnchor, selCursor)
+  readonly property int selEnd: Math.max(selAnchor, selCursor)
+
   // Enter finished a line (the line as it was before the break), and Enter
   // on an empty item left a list. The page decides what they mean.
   signal returnFinished(int lineIndex, string lineText)
@@ -76,6 +90,7 @@ Item {
   // Replace everything (a load from disk). The cursor goes to the end and
   // the undo history starts over.
   function load(t) {
+    ed.clearSelection()
     ed.undoStack = []
     ed.redoStack = []
     ed.commit(t, t.length)
@@ -214,6 +229,7 @@ Item {
   // Select [a, b) and put the cursor at b, as if the student had dragged
   // over it. Both ends in one line (search matches never cross lines).
   function select(a, b) {
+    ed.clearSelection()
     var i = Rows.rowAt(ed.rows, a)
     var r = ed.rows[i]
     var ca = Rows.columnIn(r, a)
@@ -244,9 +260,188 @@ Item {
     for (var k = 0; k < marks.length; k++) {
       var m = marks[k]
       if (m.end <= a0 || m.start >= a1) continue
-      out.push({ a: Math.max(m.start, a0) - a0, b: Math.min(m.end, a1) - a0, current: k === current })
+      out.push({ a: Math.max(m.start, a0) - a0, b: Math.min(m.end, a1) - a0, kind: k === current ? "current" : "match" })
     }
     return out
+  }
+
+  // What to paint under row i: search marks, and the part of a selection
+  // across lines that falls in it (an empty line inside one gets a sliver,
+  // so the selection reads as continuous).
+  function paintIn(i, marks, current, anchor, cursor, rows) {
+    var out = ed.marksIn(i, marks, current, rows)
+    var r = rows[i]
+    if (!r || anchor < 0 || cursor < 0 || anchor === cursor) return out
+    var a = Math.min(anchor, cursor), b = Math.max(anchor, cursor)
+    var a0 = r.start + r.prefixLen
+    var a1 = r.start + r.raw.length
+    if (b < a0 || a > a1) return out
+    if (b === a0 && a < a0 && r.body.length > 0) return out
+    var ca = Math.max(a, a0) - a0, cb = Math.min(b, a1) - a0
+    out.push({ a: ca, b: cb, kind: "selection", sliver: cb === ca })
+    return out
+  }
+
+  // ------------------------------------------------------------ selection across lines
+
+  function clearSelection() {
+    ed.selAnchor = -1
+    ed.selCursor = -1
+  }
+
+  function absOf(i, col) {
+    var r = ed.rows[i]
+    return r.start + r.prefixLen + Math.max(0, Math.min(r.body.length, col))
+  }
+
+  // Select from `anchor` to `pos`, the cursor (and keyboard) at `pos`.
+  function selectSpan(anchor, pos) {
+    pos = Math.max(0, Math.min(ed.text.length, pos))
+    ed.setCursor(pos, true)
+    ed.selAnchor = anchor
+    ed.selCursor = ed.cursorPosition
+    var item = ed.rowItem(ed.focusedRow)
+    if (item) item.field.deselect()
+  }
+
+  // Where a selection's moving end goes for a navigation key.
+  function stepPos(pos, k, ctrl) {
+    if (ctrl && k === Qt.Key_Home) return 0
+    if (ctrl && k === Qt.Key_End) return ed.text.length
+    var i = Rows.rowAt(ed.rows, pos)
+    var r = ed.rows[i]
+    var col = Rows.columnIn(r, pos)
+    var n = ed.rows.length
+    if (k === Qt.Key_Left) return col > 0 ? ed.absOf(i, col - 1) : (i > 0 ? ed.absOf(i - 1, ed.rows[i - 1].body.length) : pos)
+    if (k === Qt.Key_Right) return col < r.body.length ? ed.absOf(i, col + 1) : (i + 1 < n ? ed.absOf(i + 1, 0) : pos)
+    if (k === Qt.Key_Home) return ed.absOf(i, 0)
+    if (k === Qt.Key_End) return ed.absOf(i, r.body.length)
+    var dir = k === Qt.Key_Up ? -1 : 1
+    var item = ed.rowItem(i)
+    var f = item.field
+    var c = f.positionToRectangle(col)
+    // A wrapped line first moves within itself.
+    if (dir > 0 && c.y < f.positionToRectangle(f.length).y - 1) return ed.absOf(i, f.positionAt(c.x, c.y + c.height * 1.5))
+    if (dir < 0 && c.y > f.positionToRectangle(0).y + 1) return ed.absOf(i, f.positionAt(c.x, c.y - c.height * 0.5))
+    var j = Rows.nextTextRow(ed.rows, i, dir)
+    if (j < 0) return dir < 0 ? ed.absOf(i, 0) : ed.absOf(i, r.body.length)
+    var t = ed.rowItem(j).field
+    return ed.absOf(j, t.positionAt(f.x + c.x - t.x, dir > 0 ? 1 : t.contentHeight - 1))
+  }
+
+  // The field's own selection as text offsets: where it started, so a
+  // selection that grows past the line keeps its anchor.
+  function nativeAnchor(item) {
+    var f = item.field
+    if (f.selectedText === "") return ed.cursorPosition
+    var col = f.cursorPosition === f.selectionEnd ? f.selectionStart : f.selectionEnd
+    return ed.absOf(item.index, col)
+  }
+
+  function copyText(t) {
+    clip.text = t
+    clip.selectAll()
+    clip.copy()
+    clip.text = ""
+  }
+
+  function removeSpan() {
+    var a = ed.selStart, b = ed.selEnd
+    ed.snapshot(true)
+    ed.clearSelection()
+    ed.replace(a, b, "")
+    ed.placeCursor(true)
+  }
+
+  // Tab / Shift+Tab on a selection: every line in it nests or un-nests,
+  // and the selection stays on those lines.
+  function indentSpan(out) {
+    var i = Rows.rowAt(ed.rows, ed.selStart)
+    var j = Rows.rowAt(ed.rows, ed.selEnd)
+    ed.snapshot(true)
+    ed.clearSelection()
+    for (var k = j; k >= i; k--) {
+      var r = ed.rows[k]
+      if (r.blank) continue
+      if (!out) ed.replace(r.start, r.start, "\t")
+      else if (r.indent.charAt(0) === "\t") ed.replace(r.start, r.start + 1, "")
+      else if (r.indent !== "") ed.replace(r.start, r.start + Math.min(2, r.indent.length), "")
+    }
+    ed.selectSpan(ed.absOf(i, 0), ed.absOf(j, ed.rows[j].body.length))
+  }
+
+  // Keys while a selection crosses lines. True when the key was used.
+  function spanKey(event) {
+    var ctrl = event.modifiers & Qt.ControlModifier
+    var shift = event.modifiers & Qt.ShiftModifier
+    var alt = event.modifiers & Qt.AltModifier
+    var k = event.key
+    var nav = k === Qt.Key_Left || k === Qt.Key_Right || k === Qt.Key_Up || k === Qt.Key_Down
+      || k === Qt.Key_Home || k === Qt.Key_End
+    if (nav && shift && !alt) {
+      var anchor = ed.selAnchor
+      var to = ed.stepPos(ed.selCursor, k, ctrl)
+      if (to === anchor) { ed.clearSelection(); ed.setCursor(to, true) }
+      else ed.selectSpan(anchor, to)
+      return true
+    }
+    if (nav && !alt && !ctrl) {
+      var back = k === Qt.Key_Left || k === Qt.Key_Up || k === Qt.Key_Home
+      var at = back ? ed.selStart : ed.selEnd
+      ed.clearSelection()
+      ed.setCursor(at, true)
+      return true
+    }
+    if (ctrl && k === Qt.Key_C) { ed.copyText(ed.text.slice(ed.selStart, ed.selEnd)); return true }
+    if (ctrl && k === Qt.Key_X) { ed.copyText(ed.text.slice(ed.selStart, ed.selEnd)); ed.removeSpan(); return true }
+    if (ctrl && k === Qt.Key_A) { ed.selectSpan(0, ed.text.length); return true }
+    if (ctrl && k === Qt.Key_V) {
+      ed.removeSpan()
+      var it = ed.rowItem(ed.focusedRow)
+      if (it) it.field.paste()
+      return true
+    }
+    if (k === Qt.Key_Backspace || k === Qt.Key_Delete) { ed.removeSpan(); return true }
+    if ((k === Qt.Key_Return || k === Qt.Key_Enter) && !ctrl && !alt) {
+      ed.removeSpan()
+      var r = ed.rowItem(ed.focusedRow)
+      if (r) ed.returnKey(r, shift)
+      return true
+    }
+    if (k === Qt.Key_Tab && !ctrl && !alt) { ed.indentSpan(false); return true }
+    if (k === Qt.Key_Backtab) { ed.indentSpan(true); return true }
+    if (event.text !== "" && !ctrl && !alt && event.text.charCodeAt(0) >= 32) {
+      var a = ed.selStart, b = ed.selEnd
+      ed.snapshot(true)
+      ed.clearSelection()
+      ed.replace(a, b, event.text)
+      ed.placeCursor(true)
+      return true
+    }
+    // Anything else (undo, Ctrl+L, …) acts on the cursor: the selection
+    // goes first.
+    if (k !== Qt.Key_Shift && k !== Qt.Key_Control && k !== Qt.Key_Alt && k !== Qt.Key_Meta) ed.clearSelection()
+    return false
+  }
+
+  // Where a point in the editor lands: row, column, and whether it is on a
+  // checkbox (which handles its own clicks).
+  function hitTest(x, y) {
+    column.forceLayout()
+    var n = ed.rows.length
+    var i = 0
+    while (i < n - 1 && y >= ed.rowItem(i).y + ed.rowItem(i).height) i++
+    var item = ed.rowItem(i)
+    var r = ed.rows[i]
+    if (!item || !r) return { i: 0, col: 0, box: false }
+    if (y >= item.y + item.height) return { i: i, col: r.body.length, box: false }
+    if (r.blank) return { i: i, col: 0, box: false }
+    var b = item.box
+    var pad = Math.round(ed.textSize * 0.25)
+    var ly = y - item.y
+    var box = r.kind === "task" && x >= b.x - pad && x <= b.x + b.width + pad && ly >= b.y - pad && ly <= b.y + b.height + pad
+    var f = item.field
+    return { i: i, col: f.positionAt(x - f.x, ly - f.y), box: box }
   }
 
   function updateCursorRect() {
@@ -274,6 +469,7 @@ Item {
   function typed(i, body, col) {
     var r = ed.rows[i]
     if (!r) return
+    ed.clearSelection()
     body = body.replace(/\r/g, "")
     var line = r.raw.substring(0, r.prefixLen) + body
     ed.snapshot(/\n/.test(body))
@@ -416,7 +612,29 @@ Item {
     var k = event.key
     var noSel = f.selectedText === ""
 
+    if (ed.spanning && k === Qt.Key_Escape) { ed.clearSelection(); ed.placeCursor(true); event.accepted = true; return }
     if (ed.keyFilter && ed.keyFilter(event)) { event.accepted = true; return }
+    if (ed.spanning) {
+      if (ed.spanKey(event)) { event.accepted = true; return }
+    }
+
+    // Shift+arrows past the edge of a line: the selection carries on into
+    // the next one. Ctrl+A takes the whole note.
+    if (shift && !alt && (k === Qt.Key_Down || k === Qt.Key_Up || k === Qt.Key_Left || k === Qt.Key_Right
+        || ((k === Qt.Key_Home || k === Qt.Key_End) && ctrl))) {
+      var edge = (k === Qt.Key_Down && ed.atLastLine(f)) || (k === Qt.Key_Up && ed.atFirstLine(f))
+        || (k === Qt.Key_Right && f.cursorPosition === f.length && i + 1 < ed.rows.length)
+        || (k === Qt.Key_Left && f.cursorPosition === 0 && i > 0)
+        || ctrl
+      if (edge) {
+        var anchor = ed.nativeAnchor(item)
+        var to = ed.stepPos(ed.cursorPosition, k, ctrl)
+        if (to !== anchor) ed.selectSpan(anchor, to)
+        event.accepted = true
+        return
+      }
+    }
+    if (ctrl && k === Qt.Key_A) { ed.selectSpan(0, ed.text.length); event.accepted = true; return }
 
     if ((k === Qt.Key_Return || k === Qt.Key_Enter) && !ctrl && !alt) {
       ed.returnKey(item, shift)
@@ -475,6 +693,9 @@ Item {
 
   ListModel { id: rowModel }
 
+  // The clipboard, reached through a field nobody sees.
+  TextEdit { id: clip; visible: false; textFormat: TextEdit.PlainText }
+
   Column {
     id: column
     width: ed.width
@@ -500,6 +721,7 @@ Item {
         required property bool gapAbove
 
         property alias field: field
+        property alias box: box
         readonly property bool listy: kind === "task" || kind === "bullet" || kind === "ordered"
         readonly property bool quoted: kind === "quote" || kind === "calloutHead"
         readonly property int gapTop: gapAbove ? ed.smallGap : 0
@@ -602,10 +824,11 @@ Item {
           font: field.font
         }
 
-        // Search marks, under the words: every match faint, the current one
-        // stronger. A match that wraps is drawn as two pieces.
+        // Under the words: search matches (faint, the current one
+        // stronger) and a selection across lines. A piece that wraps is
+        // drawn in two.
         Repeater {
-          model: ed.marksIn(row.index, ed.marks, ed.currentMark, ed.rows)
+          model: ed.paintIn(row.index, ed.marks, ed.currentMark, ed.selAnchor, ed.selCursor, ed.rows)
           Item {
             id: mark
             required property var modelData
@@ -613,6 +836,7 @@ Item {
               field.width; field.contentHeight; field.text
               var r1 = field.positionToRectangle(modelData.a)
               var r2 = field.positionToRectangle(modelData.b)
+              if (modelData.sliver) return [{ x: r1.x, y: r1.y, w: Math.round(ed.textSize * 0.4), h: r1.height }]
               if (Math.abs(r1.y - r2.y) < 1) return [{ x: r1.x, y: r1.y, w: r2.x - r1.x, h: r1.height }]
               return [{ x: r1.x, y: r1.y, w: field.width - r1.x, h: r1.height },
                       { x: 0, y: r2.y, w: r2.x, h: r2.height }]
@@ -625,9 +849,9 @@ Item {
                 y: field.y + modelData.y
                 width: modelData.w + 2
                 height: modelData.h
-                radius: Math.max(2, Math.round(ed.textSize * 0.15))
-                color: ed.accent
-                opacity: mark.modelData.current ? 0.45 : 0.18
+                radius: mark.modelData.kind === "selection" ? 0 : Math.max(2, Math.round(ed.textSize * 0.15))
+                color: mark.modelData.kind === "selection" ? ed.selectionColor : ed.accent
+                opacity: mark.modelData.kind === "selection" ? 1 : (mark.modelData.kind === "current" ? 0.45 : 0.18)
               }
             }
           }
@@ -670,6 +894,47 @@ Item {
           Keys.onPressed: function (event) { ed.key(event, row) }
         }
       }
+    }
+  }
+
+  // The mouse, over every line at once, so a drag can cross from one
+  // line's field into the next. A press on a checkbox goes through to it.
+  MouseArea {
+    id: pointer
+    anchors.fill: column
+    cursorShape: Qt.IBeamCursor
+    preventStealing: true
+    property int downAt: -1
+
+    onPressed: function (mouse) {
+      var h = ed.hitTest(mouse.x, mouse.y)
+      if (h.box) { mouse.accepted = false; return }
+      var pos = ed.absOf(h.i, h.col)
+      if (mouse.modifiers & Qt.ShiftModifier) {
+        var anchor = ed.spanning ? ed.selAnchor : ed.cursorPosition
+        pointer.downAt = anchor
+        if (pos !== anchor) ed.selectSpan(anchor, pos)
+        return
+      }
+      ed.clearSelection()
+      pointer.downAt = pos
+      ed.setCursor(pos, true)
+    }
+    onPositionChanged: function (mouse) {
+      if (!pressed || pointer.downAt < 0) return
+      var h = ed.hitTest(mouse.x, mouse.y)
+      var pos = ed.absOf(h.i, h.col)
+      if (pos !== pointer.downAt) ed.selectSpan(pointer.downAt, pos)
+      else if (ed.spanning) { ed.clearSelection(); ed.setCursor(pos, true) }
+    }
+    onReleased: pointer.downAt = -1
+    onDoubleClicked: function (mouse) {
+      var h = ed.hitTest(mouse.x, mouse.y)
+      if (h.box) return
+      ed.clearSelection()
+      ed.placeAt(h.i, h.col)
+      var item = ed.rowItem(h.i)
+      if (item) item.field.selectWord()
     }
   }
 }

@@ -204,6 +204,14 @@
             the template's header held ready, and its file is written only
             once something is typed (`Service.exists`). `weekStart` in the
             config, else the locale.
+      - [x] 14.6g selecting across lines — a selection that crosses a line
+            (Shift+arrows past the edge, a mouse drag, Ctrl+A) is held by
+            the editor as text offsets and painted under the words; typing,
+            Backspace/Delete, cut/copy/paste (markdown included), Enter and
+            Tab/Shift+Tab act on all of it. One pointer area over the lines
+            does placing, dragging and double-click words; presses on a
+            checkbox pass through. `tests/test_agent.py` now dates its
+            fixtures from today (recency is judged against the clock).
       - [ ] 14.7 focus mode · 14.8 study mode · 14.9 phone capture, external reading.
 - [ ] Parked — deadline entry from the popup (absorbed by 14.4), `.ics` import,
       analytics (`history`), daily counter

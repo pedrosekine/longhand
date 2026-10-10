@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import datetime as dt
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 AGENT = ROOT / "agent" / "student-agent"
@@ -33,10 +34,15 @@ ev("text", {"type": "text", "text": text, "time": {"start": 1, "end": 2}})
 ev("step_finish", {"type": "step-finish", "cost": 0.0002, "tokens": {"input": 100, "output": 20, "reasoning": 5, "total": 125}})
 """
 
+# The test's "today" is the real today: the runner judges recency (the
+# tasks panel, what's next) against the clock, so fixed dates go stale.
+DAY = dt.date.today().strftime("%Y.%m.%d")
+OLD_DAY = (dt.date.today() - dt.timedelta(days=60)).strftime("%Y.%m.%d")
+
 NOTE = """---
 agent: true
 ---
-[[agents/student/daily/2026.09.17|agent]]
+[[agents/student/daily/DAY|agent]]
 
 Read the DORO brief again.
 
@@ -46,7 +52,7 @@ Read the DORO brief again.
 > SECRET-PRIVATE-LINE do not send
 
 @ what did I say about DORO?
-"""
+""".replace("DAY", DAY)
 
 
 class T:
@@ -57,7 +63,7 @@ class T:
         self.daily.mkdir(parents=True)
         (self.vault / "human" / "_Secrets").mkdir(parents=True)
         (self.vault / "human" / "_Secrets" / "keys.md").write_text("SECRET-VAULT-FILE\n")
-        self.note = self.daily / "2026.09.17.md"
+        self.note = self.daily / f"{DAY}.md"
         self.note.write_text(NOTE)
         self.cfg = self.tmp / "config.json"
         self.cfg.write_text(json.dumps({"vault": str(self.vault), "daily": {"dir": "inbox/Daily", "format": "YYYY.MM.DD"},
@@ -111,16 +117,16 @@ def main() -> int:
         priv = next(b for b in blks if b["private"] and b["kind"] == "callout")
 
         # 1. allowlist: context contains the note minus private, never the secrets folder
-        r = t.agent("context", "--trigger", "mention", "--hash", at_block["hash"], "--date", "2026.09.17")
+        r = t.agent("context", "--trigger", "mention", "--hash", at_block["hash"], "--date", DAY)
         check(r.returncode == 0, f"context exits 0 ({r.stderr.strip()})")
         check("SECRET-PRIVATE-LINE" not in r.stdout, "private callout absent from payload")
         check("SECRET-VAULT-FILE" not in r.stdout, "vault secrets folder absent from payload")
-        check("[[agents/student/daily/2026.09.17|agent]]" not in r.stdout, "template link line absent from payload")
+        check(f"[[agents/student/daily/{DAY}|agent]]" not in r.stdout, "template link line absent from payload")
         check("Read the DORO brief again." in r.stdout and "draft the one-pager" in r.stdout, "visible blocks present")
         check(f"block: {at_block['hash']}" in r.stdout, "fired block named")
 
         # 2. a private block cannot be the trigger
-        r = t.agent("context", "--trigger", "question", "--hash", priv["hash"], "--date", "2026.09.17")
+        r = t.agent("context", "--trigger", "question", "--hash", priv["hash"], "--date", DAY)
         check(r.returncode != 0, "private block refused as trigger")
 
         # 3. run: note untouched, artifacts written, knowledge guarded
@@ -131,14 +137,14 @@ def main() -> int:
                     knowledge=[{"file": "subjects/DORO.md", "content": "one-pager due friday"},
                                {"file": "../../../escape.md", "content": "nope"},
                                {"file": "profile.md", "content": "student of IT-U"}])
-        r = t.agent("run", "--trigger", "mention", "--hash", at_block["hash"], "--date", "2026.09.17")
+        r = t.agent("run", "--trigger", "mention", "--hash", at_block["hash"], "--date", DAY)
         check(r.returncode == 0, f"run exits 0 ({r.stderr.strip()})")
         after = (t.note.read_bytes(), t.note.stat().st_mtime_ns)
         check(before == after, "daily note bytes and mtime untouched by a run")
         sent = (t.stub_dir / "last_payload.md").read_text()
         check("SECRET-PRIVATE-LINE" not in sent, "model received no private text")
-        tr = t.vault / "agents" / "student" / "daily" / "2026.09.17.md"
-        st = t.vault / "agents" / "student" / "daily" / "2026.09.17.json"
+        tr = t.vault / "agents" / "student" / "daily" / f"{DAY}.md"
+        st = t.vault / "agents" / "student" / "daily" / f"{DAY}.json"
         check(tr.exists() and "You said the brief was unclear." in tr.read_text(), "transcript written with reply")
         check("add deadline: one-pager — friday · DORO" in tr.read_text(), "proposal rendered as a checkbox")
         s = json.loads(st.read_text())
@@ -158,20 +164,20 @@ def main() -> int:
 
         # 4. open with nothing new → no model call
         (t.stub_dir / "last_payload.md").unlink()
-        r = t.agent("run", "--trigger", "open", "--date", "2026.09.17")
+        r = t.agent("run", "--trigger", "open", "--date", DAY)
         check(r.returncode == 0 and "nothing new" in r.stdout, "open pass skips when nothing changed")
         check(not (t.stub_dir / "last_payload.md").exists(), "no model call on a quiet open")
 
         # 5. private day → refused
         t.note.write_text(NOTE.replace("agent: true", "agent: false"))
-        r = t.agent("context", "--trigger", "open", "--date", "2026.09.17")
+        r = t.agent("context", "--trigger", "open", "--date", DAY)
         check(r.returncode != 0 and "agent: false" in r.stderr, "agent: false day refused")
 
         # 6. dive-in: chat continues the session, ack marks it read
         t.note.write_text(NOTE)
         before = (t.note.read_bytes(), t.note.stat().st_mtime_ns)
         t.set_reply(reply="Because you wrote it was unclear.")
-        r = t.agent("chat", "--hash", at_block["hash"], "--message", "why do you think so?", "--date", "2026.09.17")
+        r = t.agent("chat", "--hash", at_block["hash"], "--message", "why do you think so?", "--date", DAY)
         check(r.returncode == 0, f"chat exits 0 ({r.stderr.strip()})")
         s = json.loads(st.read_text())
         rec = s["blocks"][at_block["hash"]]
@@ -179,11 +185,11 @@ def main() -> int:
         check(rec.get("read") is False, "new agent turn is unread")
         check("**you:** why do you think so?" in tr.read_text(), "chat turn in transcript")
         check(t.note.read_bytes() == before[0], "note still untouched after chat")
-        r = t.agent("ack", "--hash", at_block["hash"], "--date", "2026.09.17")
+        r = t.agent("ack", "--hash", at_block["hash"], "--date", DAY)
         check(r.returncode == 0 and json.loads(st.read_text())["blocks"][at_block["hash"]]["read"] is True, "ack marks read")
 
         # 7. accept: the proposal runs through pomo, is recorded, never twice
-        r = t.agent("accept", "--hash", at_block["hash"], "--index", "0", "--date", "2026.09.17")
+        r = t.agent("accept", "--hash", at_block["hash"], "--index", "0", "--date", DAY)
         check(r.returncode == 0, f"accept exits 0 ({r.stderr.strip()})")
         argv = json.loads((t.stub_dir / "pomo_args.json").read_text())
         check(argv == ["deadline", "add", "one-pager", "--subject", "DORO", "friday"], f"pomo called with {argv}")
@@ -192,9 +198,9 @@ def main() -> int:
         check(bool(acc) and acc["id"] == 7, "proposal recorded as accepted with the new id")
         check("accepted" in tr.read_text() and "#7" in tr.read_text(), "acceptance in transcript")
         (t.stub_dir / "pomo_args.json").unlink()
-        r = t.agent("accept", "--hash", at_block["hash"], "--index", "0", "--date", "2026.09.17")
+        r = t.agent("accept", "--hash", at_block["hash"], "--index", "0", "--date", DAY)
         check(r.returncode == 0 and not (t.stub_dir / "pomo_args.json").exists(), "second accept is a no-op")
-        r = t.agent("accept", "--hash", at_block["hash"], "--index", "5", "--date", "2026.09.17")
+        r = t.agent("accept", "--hash", at_block["hash"], "--index", "5", "--date", DAY)
         check(r.returncode != 0, "missing proposal index refused")
         check(t.note.read_bytes() == before[0], "note untouched after accept")
 
@@ -203,19 +209,19 @@ def main() -> int:
         b2 = blocks.split(t.note.read_text())
         items = [b["hash"] for b in b2 if b["text"] in ("- [ ] alpha", "- [ ] beta")]
         t.set_reply(reply="Two tasks, no dates.")
-        r = t.agent("run", "--trigger", "checkbox", "--hash", ",".join(items), "--date", "2026.09.17")
+        r = t.agent("run", "--trigger", "checkbox", "--hash", ",".join(items), "--date", DAY)
         check(r.returncode == 0, f"grouped run exits 0 ({r.stderr.strip()})")
         sent = (t.stub_dir / "last_payload.md").read_text()
         check("> - [ ] alpha\n> - [ ] beta" in sent and "one submission" in sent, "both items quoted as one submission")
         s = json.loads(st.read_text())
         check(all(s["blocks"][h]["state"] == "reply" and s["blocks"][h]["group"] == items for h in items), "reply on every item, group recorded")
-        r = t.agent("ack", "--hash", items[1], "--date", "2026.09.17")
+        r = t.agent("ack", "--hash", items[1], "--date", DAY)
         s = json.loads(st.read_text())
         check(all(s["blocks"][h]["read"] is True for h in items), "ack on one item reads the whole group")
         t.note.write_text(NOTE)
 
         # 9. tasks: open checkboxes across days, today recent, old collapsed
-        old = t.daily / "2026.08.01.md"
+        old = t.daily / f"{OLD_DAY}.md"
         old.write_text("- [ ] ancient task\n- [x] done task\n")
         r = t.agent("tasks")
         tasks = json.loads(r.stdout)
@@ -234,31 +240,31 @@ def main() -> int:
         check(dm.exists() and "book a slot" in dm.read_text(), "dismissal written to dismissed.md")
         nx = json.loads(t.agent("next").stdout)
         check(not any(x["text"] == "book a slot" for x in nx["raised"]), "dismissed suggestion gone from next")
-        r = t.agent("context", "--trigger", "open", "--date", "2026.09.17")
+        r = t.agent("context", "--trigger", "open", "--date", DAY)
         check("Intentions and outcomes" in r.stdout and "draft the one-pager by friday" in r.stdout, "outcomes in payload")
         check("dismissed (do not raise again" in r.stdout and "book a slot" in r.stdout, "dismissed list in payload")
         t.set_reply(reply="", suggestions=[{"text": "Book a slot!", "evidence": "x"}, {"text": "new idea", "evidence": "y"}])
-        r = t.agent("run", "--trigger", "mention", "--hash", at_block["hash"], "--date", "2026.09.17")
+        r = t.agent("run", "--trigger", "mention", "--hash", at_block["hash"], "--date", DAY)
         s = json.loads(st.read_text())
         texts = [x["text"] for x in s["suggestions"]]
         check(texts.count("book a slot") == 1 and "Book a slot!" not in texts and "new idea" in texts, f"dismissed suggestion not re-added: {texts}")
         t.set_reply(reply="", knowledge=[{"file": "dismissed.md", "content": "wiped"}])
-        r = t.agent("run", "--trigger", "mention", "--hash", at_block["hash"], "--date", "2026.09.17")
+        r = t.agent("run", "--trigger", "mention", "--hash", at_block["hash"], "--date", DAY)
         check("book a slot" in dm.read_text(), "model cannot overwrite dismissed.md")
 
         # 11. the next payload carries what was said earlier today
         t.set_reply(reply="Brief was unclear, you said.")
-        r = t.agent("run", "--trigger", "mention", "--hash", at_block["hash"], "--date", "2026.09.17")
-        r = t.agent("context", "--trigger", "open", "--date", "2026.09.17")
+        r = t.agent("run", "--trigger", "mention", "--hash", at_block["hash"], "--date", DAY)
+        r = t.agent("context", "--trigger", "open", "--date", DAY)
         check("What you already said today" in r.stdout and "Brief was unclear, you said." in r.stdout, "earlier replies in payload")
         check("Already raised today" in r.stdout and "new idea" in r.stdout, "earlier suggestions listed")
-        r = t.agent("context", "--trigger", "mention", "--hash", at_block["hash"], "--date", "2026.09.17")
+        r = t.agent("context", "--trigger", "mention", "--hash", at_block["hash"], "--date", DAY)
         head = r.stdout.split("# Today's note")[0]
         check("Brief was unclear, you said." not in head, "the fired block's own reply is not echoed back")
 
         # 12. stray editor: hash of an edited block no longer matches → refused, no run
         t.note.write_text(NOTE)
-        r = t.agent("run", "--trigger", "question", "--hash", "deadbeef", "--date", "2026.09.17")
+        r = t.agent("run", "--trigger", "question", "--hash", "deadbeef", "--date", DAY)
         check(r.returncode != 0, "unknown block hash refused")
     finally:
         t.cleanup()

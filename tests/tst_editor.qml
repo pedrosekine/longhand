@@ -15,6 +15,7 @@ Item {
     width: 560
     height: implicitHeight
     textSize: 16
+    fontFamily: "monospace"   // so "the same place on the next line" is a column
   }
 
   TestCase {
@@ -267,9 +268,9 @@ Item {
       start("\n- [ ] read ch.7\nread more")
       var marks = [{ start: 7, end: 11 }, { start: 16, end: 20 }]   // the two "read"s
       var a = ed.marksIn(1, marks, 1, ed.rows)
-      compare(a.length, 1); compare(a[0].a, 0); compare(a[0].b, 4); compare(a[0].current, false)
+      compare(a.length, 1); compare(a[0].a, 0); compare(a[0].b, 4); compare(a[0].kind, "match")
       var b = ed.marksIn(2, marks, 1, ed.rows)
-      compare(b[0].a, 0); compare(b[0].current, true)
+      compare(b[0].a, 0); compare(b[0].kind, "current")
     }
 
     function test_select_lands_on_match() {
@@ -287,6 +288,97 @@ Item {
       var r = ed.rectAt(8)
       verify(r !== null)
       compare(r.y, ed.rowItem(2).y + ed.rowItem(2).field.y)
+    }
+
+    function test_shift_down_selects_across_lines() {
+      start("\n- [ ] alpha\n- [ ] beta\ngamma", 9)   // after "al"
+      keyClick(Qt.Key_Down, Qt.ShiftModifier)
+      verify(ed.spanning)
+      compare(ed.selStart, 9)
+      compare(ed.text.slice(ed.selStart, ed.selEnd), "pha\n- [ ] be")
+      keyClick(Qt.Key_Right, Qt.ShiftModifier)
+      compare(ed.text.slice(ed.selStart, ed.selEnd), "pha\n- [ ] bet")
+      type("X")
+      compare(ed.text, "\n- [ ] alXa\ngamma")
+      verify(!ed.spanning)
+    }
+
+    function test_selection_grows_from_a_line_selection() {
+      start("\none two\nthree", 5)   // after "one "
+      keyClick(Qt.Key_End, Qt.ShiftModifier)        // the field's own: "two"
+      compare(focused().selectedText, "two")
+      keyClick(Qt.Key_Down, Qt.ShiftModifier)       // carries on into "three"
+      verify(ed.spanning)
+      compare(ed.selAnchor, 5)
+    }
+
+    function test_backspace_and_escape_on_span() {
+      start("\nabc\ndef\nghi", 2)
+      keyClick(Qt.Key_Down, Qt.ShiftModifier)
+      keyClick(Qt.Key_Escape)
+      verify(!ed.spanning)
+      compare(ed.text, "\nabc\ndef\nghi")
+      ed.setCursor(2, true)
+      keyClick(Qt.Key_Down, Qt.ShiftModifier)
+      keyClick(Qt.Key_Down, Qt.ShiftModifier)
+      keyClick(Qt.Key_Backspace)
+      compare(ed.text, "\nahi")
+      compare(ed.cursorPosition, 2)
+    }
+
+    function test_plain_arrow_collapses_span() {
+      start("\nabc\ndef", 2)
+      keyClick(Qt.Key_Down, Qt.ShiftModifier)
+      keyClick(Qt.Key_Left)
+      verify(!ed.spanning)
+      compare(ed.cursorPosition, 2)
+    }
+
+    function test_tab_nests_every_selected_item() {
+      start("\n- one\n- two\n- three", 3)
+      keyClick(Qt.Key_Down, Qt.ShiftModifier)
+      keyClick(Qt.Key_Down, Qt.ShiftModifier)
+      keyClick(Qt.Key_Tab)
+      compare(ed.text, "\n\t- one\n\t- two\n\t- three")
+      verify(ed.spanning)
+      keyClick(Qt.Key_Backtab, Qt.ShiftModifier)
+      compare(ed.text, "\n- one\n- two\n- three")
+    }
+
+    function test_cut_and_paste_carry_markdown() {
+      start("\n- [ ] alpha\n# head\ntail", 7)
+      keyClick(Qt.Key_Down, Qt.ShiftModifier)
+      keyClick(Qt.Key_End, Qt.ShiftModifier)
+      keyClick(Qt.Key_X, Qt.ControlModifier)
+      compare(ed.text, "\n- [ ] \ntail")
+      keyClick(Qt.Key_End, Qt.ControlModifier)
+      keyClick(Qt.Key_Return)
+      keyClick(Qt.Key_V, Qt.ControlModifier)
+      compare(ed.text, "\n- [ ] \ntail\nalpha\n# head")
+      compare(ed.rows[4].kind, "heading")
+    }
+
+    function test_ctrl_a_selects_everything() {
+      start("\none\ntwo", 2)
+      keyClick(Qt.Key_A, Qt.ControlModifier)
+      compare(ed.selStart, 0); compare(ed.selEnd, ed.text.length)
+    }
+
+    function test_mouse_drag_selects_across_lines() {
+      start("\nalpha\nbeta\ngamma", 1)
+      var a = ed.rowItem(1), c = ed.rowItem(3)
+      mousePress(ed, a.field.x + 2, a.y + a.height / 2)
+      mouseMove(ed, c.field.x + c.field.width - 2, c.y + c.height / 2)
+      mouseRelease(ed, c.field.x + c.field.width - 2, c.y + c.height / 2)
+      verify(ed.spanning)
+      compare(ed.text.slice(ed.selStart, ed.selEnd), "alpha\nbeta\ngamma")
+    }
+
+    function test_click_still_ticks_through_pointer() {
+      start("\n- [ ] read\nother")
+      var r = ed.rowItem(1)
+      mouseClick(ed, r.box.x + r.box.width / 2, r.y + r.box.y + r.box.height / 2)
+      compare(ed.text, "\n- [x] read\nother")
     }
 
     function test_block_rect() {
