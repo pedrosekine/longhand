@@ -84,7 +84,7 @@ import "Days.js" as Days
 // asks "deadline: … ?" (yes is the default); Ctrl+D does it on purpose, or
 // reschedules a bound line, or (date cleared) unbinds it. A bound line
 // shows its date at its end. Ticking it marks the deadline done, editing
-// its words or #tag renames it or moves its project; deleting the line asks
+// its words renames it, a #tag moves its project; deleting the line asks
 // whether the deadline goes too (a cut does not: it is moving). Changes
 // made in the popup or the CLI reach the line when the page opens the note:
 // the store wins.
@@ -166,6 +166,23 @@ Item {
     return p ? Days.key(p.date) : ""
   }
   readonly property int sidebarWidth: root.sp(236)
+
+  // Deadlines by the day they fall on, for the calendar (hidden ones too:
+  // the calendar is history), each day's in due order.
+  readonly property var dueByDay: {
+    var m = {}
+    var items = dl.items
+    for (var i = 0; i < items.length; i++) {
+      var k = Days.key(new Date(items[i].due * 1000))
+      if (!m[k]) m[k] = []
+      m[k].push(items[i])
+    }
+    for (var key in m) m[key].sort(function (a, b) { return a.due - b.due })
+    return m
+  }
+  readonly property var focusDue: root.dueByDay[Days.key(root.calFocus)] || []
+  property int dueFocus: -1          // in the list under the calendar (-1: the grid has the keys)
+  property int pendingGoto: 0        // a deadline whose line to land on once its note is open
   readonly property int sideSpace: root.sidebarOpen && root.problem === "" ? root.sidebarWidth + root.marginGap : 0
   property bool applying: false
 
@@ -856,7 +873,9 @@ Item {
     if (r.deadline > 0) {
       var d = dl.byId[r.deadline]
       var title = Bound.titleOf(r.body)
-      var project = Bound.projectOf(r.body)
+      // A #tag sets the project; a line without one leaves it as it is (an
+      // agent's proposal may have named it without the line saying so).
+      var project = Bound.projectOf(r.body) || (d ? d.project : "")
       if (d && title !== "" && (title !== d.title || project !== d.project))
         dl.set(d.id, ["--title", title, "--project", project])
       return
@@ -981,6 +1000,7 @@ Item {
       root.writeLine(r, want)
     }
     root.bound = Bound.anchors(editor.text)
+    root.landOnGoto()
   }
 
   // An agent proposal was accepted: once the store has the deadline, the
@@ -1012,14 +1032,34 @@ Item {
     else editor.focusNote()
   }
 
+  // To a deadline's line: its note opened if need be, the cursor at the end
+  // of its words. A deadline no line stands for says so.
+  function goToDeadline(d) {
+    var l = d ? Bound.parseLink(d.link) : null
+    if (!l) { root.showHint("“" + (d ? d.title : "") + "” is not written in a note yet"); editor.focusNote(); return }
+    root.pendingGoto = l.id
+    if (l.stem === svc.noteDate && svc.ready) root.landOnGoto()
+    else root.openNote(l.stem)
+    editor.focusNote()
+  }
+
+  function landOnGoto() {
+    if (!root.pendingGoto || !svc.ready) return
+    var r = root.rowByDeadline(root.pendingGoto)
+    root.pendingGoto = 0
+    if (r) editor.setCursor(r.bodyEnd, true)
+  }
+
   // Into the calendar, its cursor on the day in the sheet.
   function focusSidebar() {
     var p = svc.configured && svc.noteDate !== "" ? Days.parse(svc.noteDate, svc.dailyFormat()) : null
     root.calFocus = p ? p.date : new Date()
+    root.dueFocus = -1
     sidebarKeys.forceActiveFocus()
   }
 
   function moveCalendar(days, months) {
+    root.dueFocus = -1
     var d = root.calFocus
     if (months) d = Days.addMonths(d, months)
     if (days) d = Days.addDays(d, days)
@@ -1733,7 +1773,21 @@ Item {
           var alt = event.modifiers & Qt.AltModifier
           var k = event.key
           if (root.zoomKey(event)) { event.accepted = true; return }
-          if (k === Qt.Key_Escape || (k === Qt.Key_B && ctrl)) {
+          // In the day's deadline list (Tab went there): up/down pick,
+          // Enter goes to the line, Tab or Esc back to the days.
+          if (root.dueFocus >= 0 && !ctrl && !alt) {
+            var n = root.focusDue.length
+            if (k === Qt.Key_Up) root.dueFocus = Math.max(0, root.dueFocus - 1)
+            else if (k === Qt.Key_Down) root.dueFocus = Math.min(n - 1, root.dueFocus + 1)
+            else if (k === Qt.Key_Return || k === Qt.Key_Enter) root.goToDeadline(root.focusDue[root.dueFocus])
+            else if (k === Qt.Key_Tab || k === Qt.Key_Backtab || k === Qt.Key_Escape) root.dueFocus = -1
+            else { root.dueFocus = -1; return }
+            event.accepted = true
+            return
+          }
+          if (k === Qt.Key_Tab && root.focusDue.length > 0) {
+            root.dueFocus = 0
+          } else if (k === Qt.Key_Escape || (k === Qt.Key_B && ctrl)) {
             if (k === Qt.Key_B) root.sidebarOpen = false
             editor.focusNote()
           } else if (k === Qt.Key_Right && alt) {
@@ -1878,6 +1932,24 @@ Item {
                 radius: width / 2
                 color: root.accent
               }
+              // Deadlines on this day: a corner mark — accent while one is
+              // open, urgent when one is late, hollow when all are done.
+              Rectangle {
+                readonly property var due: dayCell.k !== "" ? (root.dueByDay[dayCell.k] || []) : []
+                readonly property bool open: due.some(function (d) { return d.status === "open" })
+                readonly property bool late: due.some(function (d) { return d.status === "open" && d.due * 1000 < Date.now() })
+                visible: due.length > 0
+                anchors.top: parent.top
+                anchors.right: parent.right
+                anchors.topMargin: Math.round(calendar.cell * 0.12)
+                anchors.rightMargin: Math.round(calendar.cell * 0.12)
+                width: Math.max(4, Math.round(calendar.cell * 0.16))
+                height: width
+                radius: Math.max(1, Math.round(width * 0.3))
+                color: late ? root.urgent : (open ? root.accent : "transparent")
+                border.width: open ? 0 : 1
+                border.color: root.dim
+              }
               MouseArea {
                 anchors.fill: parent
                 enabled: !!modelData
@@ -1902,12 +1974,49 @@ Item {
           font.pixelSize: root.fs(Style.font.bodySmall)
         }
 
+        // That day's deadlines. Tab goes into the list; Enter or a click
+        // goes to the line that stands for one.
+        Repeater {
+          model: root.focusDue
+          Rectangle {
+            required property var modelData
+            required property int index
+            readonly property bool late: modelData.status === "open" && modelData.due * 1000 < Date.now()
+            width: calendar.width
+            height: dueRow.implicitHeight + root.sp(6)
+            radius: Style.cornerRadius
+            color: root.dueFocus === index && sidebarKeys.activeFocus ? Style.selectedFill : "transparent"
+            Text {
+              id: dueRow
+              anchors.left: parent.left
+              anchors.right: parent.right
+              anchors.leftMargin: root.sp(4)
+              anchors.verticalCenter: parent.verticalCenter
+              textFormat: Text.PlainText
+              wrapMode: Text.WordWrap
+              text: (modelData.status === "open" ? "○ " : "✓ ") + modelData.title
+                + " · " + Qt.formatTime(new Date(modelData.due * 1000), "HH:mm")
+                + (modelData.project ? " · " + modelData.project : "")
+                + (Bound.parseLink(modelData.link) ? "" : " · no line")
+              color: late ? root.urgent : (modelData.status === "open" ? root.foreground : root.dim)
+              font.family: root.fontFamily
+              font.pixelSize: root.fs(Style.font.bodySmall)
+            }
+            MouseArea {
+              anchors.fill: parent
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.goToDeadline(modelData)
+            }
+          }
+        }
+
         Text {
           width: parent.width
           visible: sidebarKeys.activeFocus
           textFormat: Text.PlainText
           wrapMode: Text.WordWrap
-          text: "arrows move · Ctrl+←→ month · Home today · Enter opens"
+          text: root.dueFocus >= 0 ? "↑↓ pick · Enter goes to its line · Tab back to the days"
+            : "arrows move · Ctrl+←→ month · Home today · Enter opens" + (root.focusDue.length > 0 ? " · Tab: this day's deadlines" : "")
           color: root.faint
           font.family: root.fontFamily
           font.pixelSize: root.fs(Style.font.caption)
