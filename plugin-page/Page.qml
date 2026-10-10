@@ -696,12 +696,30 @@ Item {
 
   // Rows for the panel: a day header per date, its open tasks, and older
   // days folded into one row until asked for.
+  // One list by what bites first: deadlines (late ones are the earliest, so
+  // they lead; ones done today stay until tomorrow), then checkboxes with no
+  // date, newest day first, then what the agent raised. A checkbox that
+  // stands for a deadline is listed once, as the deadline.
   function buildTaskRows() {
     var rows = []
     var older = 0
     var lastDate = ""
+    var today = new Date()
+    today.setHours(0, 0, 0, 0)
+    var due = dl.items.filter(function (d) {
+      return d.status === "open" || (d.status === "done" && d.doneAt * 1000 >= today.getTime())
+    })
+    due.sort(function (a, b) {
+      if (a.status !== b.status) return a.status === "open" ? -1 : 1
+      return a.due - b.due
+    })
+    if (due.length > 0) {
+      rows.push({ kind: "day", date: "DEADLINES", recent: true })
+      for (var k = 0; k < due.length; k++) rows.push({ kind: "deadline", deadline: due[k] })
+    }
     for (var i = 0; i < root.tasks.length; i++) {
       var t = root.tasks[i]
+      if (/\s\^d\d+\s*$/.test(t.text)) continue
       if (!t.recent && !root.showOlder) { older++; continue }
       if (t.date !== lastDate) { rows.push({ kind: "day", date: t.date, recent: t.recent }); lastDate = t.date }
       rows.push({ kind: "task", task: t })
@@ -729,6 +747,14 @@ Item {
     if (!row) return
     if (row.kind === "older") { root.showOlder = true; return }
     if (row.kind === "task") root.goToTask(row.task)
+    if (row.kind === "deadline") {
+      var d = row.deadline
+      if (Bound.parseLink(d.link)) { root.backToNote(); root.goToDeadline(d); return }
+      // No line yet: the first Enter says so, the second writes one into
+      // today's note.
+      if (root.contextFor && root.contextFor.deadline === d.id) root.writeIntoToday(d)
+      else root.contextFor = { deadline: d.id }
+    }
     if (row.kind === "raised") {
       dismissProc.command = [svc.runner, "dismiss", "--date", row.item.date, "--kind", row.item.kind, "--index", String(row.item.index)]
       dismissProc.running = true
@@ -738,6 +764,62 @@ Item {
   function tickFocused() {
     var row = root.taskRows[root.taskFocus]
     if (row && row.kind === "task") root.tickTask(row.task)
+    if (row && row.kind === "deadline") {
+      var d = row.deadline
+      if (d.status === "open") {
+        dl.markDone(d.id)
+        root.tickHistory = root.tickHistory.concat([{ deadline: d.id }])
+        root.tickBoundLine(d.id, true)
+      } else {
+        dl.reopen(d.id)
+        root.tickBoundLine(d.id, false)
+      }
+    }
+  }
+
+  // A deadline's line in the sheet, ticked or unticked to match (lines in
+  // other notes catch up when those are opened).
+  function deadlineRowText(d) {
+    var at = new Date(d.due * 1000)
+    var when = Qt.formatDateTime(at, "ddd d MMM") + (at.getHours() === 23 && at.getMinutes() === 59 ? "" : " " + Qt.formatTime(at, "HH:mm"))
+    return (d.status === "open" ? "○ " : "✓ ") + d.title + "   " + when + (d.project ? " · " + d.project : "")
+  }
+
+  function deadlineColor(d) {
+    if (d.status !== "open") return root.dim
+    return d.due * 1000 < Date.now() ? root.urgent : root.foreground
+  }
+
+  function tickBoundLine(id, done) {
+    var r = root.rowByDeadline(id)
+    if (r) root.writeLine(r, r.raw.replace(/^(\s*[-*+] \[)[ xX](\])/, "$1" + (done ? "x" : " ") + "$2"))
+  }
+
+  // A deadline no line stands for gets one, at the end of today's note.
+  property var pendingWrite: null
+  function writeIntoToday(d) {
+    root.pendingWrite = d
+    root.contextFor = null
+    root.backToNote()
+    if (svc.isToday && svc.ready) root.doPendingWrite()
+    else root.openNote(svc.todayStamp())
+  }
+
+  function doPendingWrite() {
+    var d = root.pendingWrite
+    if (!d || !svc.isToday || !svc.ready) return
+    root.pendingWrite = null
+    var tag = /^[\w\/-]+$/.test(d.project) ? " #" + d.project : ""
+    var line = "- [" + (d.status === "open" ? " " : "x") + "] " + d.title + tag + Bound.tail(d.due * 1000, d.id)
+    var t = editor.text
+    root.quiet = true
+    editor.insert(t.length, (t === "" || t.charAt(t.length - 1) === "\n" ? "" : "\n") + line)
+    root.quiet = false
+    root.bound = Bound.anchors(editor.text)
+    Qt.callLater(root.flush)
+    dl.set(d.id, ["--link", Bound.link(svc.noteDate, d.id)])
+    root.pendingGoto = d.id
+    root.landOnGoto()
   }
 
   function goToTask(t) {
@@ -763,6 +845,7 @@ Item {
     if (root.tickHistory.length === 0) return
     var t = root.tickHistory[root.tickHistory.length - 1]
     root.tickHistory = root.tickHistory.slice(0, -1)
+    if (t.deadline) { dl.reopen(t.deadline); root.tickBoundLine(t.deadline, false); return }
     var re = new RegExp("^(\\s*[-*+] )\\[[xX]\\] " + t.text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$", "m")
     if (t.date === svc.noteDate) {
       var m = re.exec(editor.text)
@@ -1001,6 +1084,7 @@ Item {
     }
     root.bound = Bound.anchors(editor.text)
     root.landOnGoto()
+    root.doPendingWrite()
   }
 
   // An agent proposal was accepted: once the store has the deadline, the
@@ -2143,8 +2227,10 @@ Item {
                   : modelData.kind === "raised"
                     ? (modelData.item.kind === "suggestion" ? "◇ " : "· ") + modelData.item.text
                       + (modelData.item.evidence ? "\n   " + modelData.item.evidence : "")
-                    : "○ " + modelData.task.text
-                color: modelData.kind === "day" ? root.dim : (modelData.kind === "older" ? root.faint : root.foreground)
+                  : modelData.kind === "deadline" ? root.deadlineRowText(modelData.deadline)
+                    : "○ " + modelData.task.text.replace(/\s+📅[\s\S]*$/, "")
+                color: modelData.kind === "day" ? root.dim : (modelData.kind === "older" ? root.faint
+                  : modelData.kind === "deadline" ? root.deadlineColor(modelData.deadline) : root.foreground)
                 font.family: root.fontFamily
                 font.pixelSize: modelData.kind === "day" ? root.fs(Style.font.caption) : root.fs(Style.font.body)
               }
@@ -2159,10 +2245,12 @@ Item {
           // The block around a task from another day, unfolded on Enter.
           Text {
             width: parent.width
-            visible: !!root.contextFor && contextFile.snippet !== ""
+            visible: !!root.contextFor && (root.contextFor.deadline !== undefined || contextFile.snippet !== "")
             textFormat: Text.PlainText
             wrapMode: Text.WordWrap
-            text: root.contextFor ? root.contextFor.date + "\n\n" + contextFile.snippet : ""
+            text: !root.contextFor ? ""
+              : root.contextFor.deadline !== undefined ? "Not written in a note yet. Enter again writes it into today's note."
+              : root.contextFor.date + "\n\n" + contextFile.snippet
             color: root.dim
             font.family: root.fontFamily
             font.pixelSize: root.fs(Style.font.bodySmall)
