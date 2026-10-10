@@ -74,8 +74,25 @@ block is written in. Needs `~/.config/omarchy-student/config.json` (copy
 ```bash
 cp -r plugin-page ~/.config/omarchy/plugins/student.page   # then add {"id":"student.page"} to plugins[] in ~/.config/omarchy/shell.json
 python3 tests/test_blocks.py                                # block splitter, JS and Python must agree (needs node)
-QT_QPA_PLATFORM=offscreen /usr/lib/qt6/bin/qmltestrunner -input tests   # editor (driven by keys) and the sidebar's day list
+QT_QPA_PLATFORM=offscreen /usr/lib/qt6/bin/qmltestrunner -input tests   # editor (driven by keys), calendar days, bound lines
+python3 tests/test_pomo.py                                    # the deadline CLI's contract with the page
 ```
+
+## Deadlines in the notes
+
+A checkbox can stand for a deadline. Write it with a date at the end —
+`- [ ] chapter 2 draft #thesis due fri 17:00` (or `by monday`, `until 20
+oct`, `📅 tomorrow`) — and when you leave the line the page asks
+"deadline: … ?" (Enter says yes). Or press `Ctrl+D` on any line: it asks
+"when?", and on a bound line it reschedules (empty unbinds). The line then
+reads `- [ ] chapter 2 draft #thesis 📅 2026-10-16 17:00 ^d6` on disk —
+Obsidian shows the date, `^d6` is a block id the deadline links back to —
+and the page draws the date at the line's end. The deadline module is the
+truth: ticking the line marks it done, editing its words renames it, the
+first `#tag` is its project; changes made in the popup or `pomo` reach the
+line when its note opens. Deleting a bound line asks whether the deadline
+goes too. The calendar marks deadline days, `Ctrl+T` lists deadlines
+first, and in the bar popup `o` opens a deadline's line.
 
 ## The loop (phase 14.2)
 

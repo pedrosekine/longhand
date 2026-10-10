@@ -318,3 +318,14 @@ only the window and the panels around it differ.
 - 2026-10-10: the sidebar is a month calendar instead of a list, faded
   numbers for days without a note. Opening such a day writes nothing until
   something is typed in it.
+- 2026-10-10: deadlines and notes become one thing; focus mode shelved.
+  "Subject" becomes "project" (the tool should outlast university). One
+  store, many ways in: a checkbox line with a date at its end, Ctrl+D, an
+  accepted agent proposal. A bound line ends in `📅 date ^dN` (Obsidian
+  Tasks date, Obsidian block id) — the one place the page rewrites typed
+  words, and only after a yes. The store wins over the line; deleting a
+  bound line asks before deleting the deadline (default no). A #tag sets
+  the project. Calendar marks deadlines apart from note fading; what's next
+  leads with them; the popup stays as the glance and opens lines. Done
+  deadlines leave lists the day after; ungraded ones wait to be graded.
+  Organising notes around projects is parked for its own conversation.

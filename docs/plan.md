@@ -212,7 +212,30 @@
             does placing, dragging and double-click words; presses on a
             checkbox pass through. `tests/test_agent.py` now dates its
             fixtures from today (recency is judged against the clock).
-      - [ ] 14.7 focus mode · 14.8 study mode · 14.9 phone capture, external reading.
+      - [x] 14.6h deadlines and notes, one thing (decided 2026-10-10, see
+            diary.md). Subjects became projects (`--project`, `--subject`
+            kept as an alias; `knowledge/projects/`). A checkbox line can
+            stand for a deadline: `- [ ] words #tag 📅 2026-10-16 17:00 ^d6`
+            (Obsidian Tasks date + block id; the store's link is
+            `[[stem#^d6]]`). Ways in: a cue at the end ("due/by/until/
+            before/📅 <date>", read by `pomo deadline when`) asked about on
+            leaving the line, yes by default; Ctrl+D (bind, reschedule,
+            clear to unbind); accepting an agent proposal; Enter twice on an
+            unwritten deadline in what's next. The store wins: page edits go
+            to it at once (tick → done, words → title, #tag → project), store
+            edits reach the line when its note opens, a removed deadline
+            leaves the date as text; deleting a bound line asks (a cut does
+            not). Calendar corner marks (accent open, urgent late, hollow
+            done) and the day's deadlines under the grid (Tab, Enter goes to
+            the line); what's next leads with deadlines; the popup's `o`
+            opens the line, done ones leave the list the day after and
+            ungraded ones wait in a folded row. Tests: tst_bound.qml,
+            test_pomo.py, and an IPC-driven run of every path on a scratch
+            store.
+      - [ ] 14.6i organising notes around projects — parked: how notes (not
+            just deadlines) gather by project so they can be found.
+      - [ ] 14.7 focus mode (shelved 2026-10-10: the need is not there yet)
+            · 14.8 study mode · 14.9 phone capture, external reading.
 - [ ] Parked — deadline entry from the popup (absorbed by 14.4), `.ics` import,
       analytics (`history`), daily counter
 
