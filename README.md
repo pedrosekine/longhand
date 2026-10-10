@@ -17,11 +17,11 @@ agent reads and answers — reference plan in `docs/diary.md`.
   from terminal (`pomo start up` runs an open-ended count-up focus session;
   skipping it logs the elapsed time as a completed session; `--for 3` ties
   the session to deadline #3 so its log lines read `focus completed · 25:00 · for #3 Essay draft`)
-- `pomo deadline add <title> [--subject <s>] [--link <url-or-path>] <when...>`,
-  `set <id> [--title <t>] [--subject <s>] [--link <l>] [<when...>]`,
-  `list [--all] [--json] [--subject <s>]`, `done|reopen|grade|hide|unhide|rm|next`
+- `pomo deadline add <title> [--project <p>] [--link <url-or-path>] <when...>`,
+  `set <id> [--title <t>] [--project <p>] [--link <l>] [<when...>]`,
+  `list [--all] [--json] [--project <p>]`, `done|reopen|grade|hide|unhide|rm|next|when`
   — manual deadlines with free-text dates ("next friday 17:00", "in 3 days");
-  `--subject` is the course or project it belongs to, `--link` the file or URL
+  `--project` is what it belongs to (a course, a thesis, anything; `--subject` still works), `--link` the file or URL
   for the thing itself; `done` takes one off the clock, `grade` records the
   mark, `hide` keeps the record but drops it from the list
 - Hypr bindings example in `docs/plan.md`
@@ -107,7 +107,7 @@ Files live in `~/.local/state/omarchy-student/`:
 
 | File | What |
 |------|------|
-| `deadlines.tsv` | `id<TAB>due_epoch<TAB>title<TAB>status<TAB>done_at_epoch<TAB>grade<TAB>subject<TAB>link` — status is open / done / hidden; subject and link may be empty (older lines stop after grade and read the same) |
+| `deadlines.tsv` | `id<TAB>due_epoch<TAB>title<TAB>status<TAB>done_at_epoch<TAB>grade<TAB>project<TAB>link` — status is open / done / hidden; project and link may be empty (older lines stop after grade and read the same) |
 | `pomo.log` | one line per event (`focus completed · 25:00`, `deadline #3 graded 7.5 · Essay`) — the history an agent reasons over |
 | `state.json` | current timer, incl. `"for"`: the deadline id the running session is for (0 when none) |
 

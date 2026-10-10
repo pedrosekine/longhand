@@ -285,7 +285,7 @@ Panel {
                   textFormat: Text.PlainText
                   elide: Text.ElideRight
                   text: svc.fmtWhen(row.modelData.due)
-                    + (row.modelData.subject !== "" ? " · " + row.modelData.subject : "")
+                    + (row.modelData.project !== "" ? " · " + row.modelData.project : "")
                     + (row.isDone && row.modelData.doneAt > 0 ? "  ·  handed in " + svc.fmtDay(row.modelData.doneAt) : "")
                   color: row.isDone ? root.faint : root.dim
                   font.family: root.fontFamily

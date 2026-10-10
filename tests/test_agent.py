@@ -132,9 +132,9 @@ def main() -> int:
         # 3. run: note untouched, artifacts written, knowledge guarded
         before = (t.note.read_bytes(), t.note.stat().st_mtime_ns)
         t.set_reply(reply="You said the brief was unclear.",
-                    proposals=[{"kind": "deadline", "title": "one-pager", "when": "friday", "subject": "DORO"}],
+                    proposals=[{"kind": "deadline", "title": "one-pager", "when": "friday", "project": "DORO"}],
                     suggestions=[{"text": "book a slot", "evidence": "one-pager due friday"}],
-                    knowledge=[{"file": "subjects/DORO.md", "content": "one-pager due friday"},
+                    knowledge=[{"file": "projects/DORO.md", "content": "one-pager due friday"},
                                {"file": "../../../escape.md", "content": "nope"},
                                {"file": "profile.md", "content": "student of IT-U"}])
         r = t.agent("run", "--trigger", "mention", "--hash", at_block["hash"], "--date", DAY)
@@ -153,7 +153,7 @@ def main() -> int:
               "every visible block marked seen")
         check(priv["hash"] not in s["blocks"], "private block not in state")
         check(s["blocks"][at_block["hash"]]["session"] == "ses_stub", "session id kept for dive-in")
-        check((t.vault / "agents/student/knowledge/subjects/DORO.md").read_text() == "one-pager due friday\n",
+        check((t.vault / "agents/student/knowledge/projects/DORO.md").read_text() == "one-pager due friday\n",
               "knowledge file written")
         check((t.vault / "agents/student/knowledge/profile.md").exists(), "profile written")
         check(not (t.vault / "escape.md").exists() and not (t.tmp / "escape.md").exists(), "path escape ignored")
@@ -192,7 +192,7 @@ def main() -> int:
         r = t.agent("accept", "--hash", at_block["hash"], "--index", "0", "--date", DAY)
         check(r.returncode == 0, f"accept exits 0 ({r.stderr.strip()})")
         argv = json.loads((t.stub_dir / "pomo_args.json").read_text())
-        check(argv == ["deadline", "add", "one-pager", "--subject", "DORO", "friday"], f"pomo called with {argv}")
+        check(argv == ["deadline", "add", "one-pager", "--project", "DORO", "friday"], f"pomo called with {argv}")
         s = json.loads(st.read_text())
         acc = s["blocks"][at_block["hash"]]["proposals"][0].get("accepted")
         check(bool(acc) and acc["id"] == 7, "proposal recorded as accepted with the new id")

@@ -490,12 +490,12 @@ cmd_expired() {
 
 # --- deadlines (manual entry; TSV, no jq) ---
 # One deadline per line:
-#   id<TAB>due<TAB>title<TAB>status<TAB>done_at<TAB>grade<TAB>subject<TAB>link
+#   id<TAB>due<TAB>title<TAB>status<TAB>done_at<TAB>grade<TAB>project<TAB>link
 # status is open | done | hidden; done_at is an epoch (0 while open); grade is
-# free text ("7.5", "A-", "82/100") and may be empty; subject is the course or
-# project it belongs to ("stats"); link is a file path or URL for the thing
+# free text ("7.5", "A-", "82/100") and may be empty; project is what it
+# belongs to (a course, a thesis, anything: "stats"); link is a file path or URL for the thing
 # itself. The last three may be empty. Lines written before the status column
-# existed have three fields, lines from before subject/link have six; every
+# existed have three fields, lines from before project/link have six; every
 # reader normalizes them to eight. Empty middle fields mean bash `read` can't
 # split on tabs (consecutive IFS whitespace collapses), so lines are split on
 # a unit separator instead -- see split_deadline.
@@ -581,11 +581,11 @@ normalize_deadlines() { # stdin -> stdout, eight tab-separated fields per line
 }
 
 US=$'\x1f'
-split_deadline() { # $1=normalized line -> sets ID TS TITLE STATUS DONE_AT GRADE SUBJECT LINK
+split_deadline() { # $1=normalized line -> sets ID TS TITLE STATUS DONE_AT GRADE PROJECT LINK
   # Tabs are IFS whitespace, so `read` would fold an empty grade into the
-  # subject. Swap them for a unit separator (not whitespace) and every empty
+  # project. Swap them for a unit separator (not whitespace) and every empty
   # field survives.
-  IFS="$US" read -r ID TS TITLE STATUS DONE_AT GRADE SUBJECT LINK <<< "${1//$TAB/$US}"
+  IFS="$US" read -r ID TS TITLE STATUS DONE_AT GRADE PROJECT LINK <<< "${1//$TAB/$US}"
 }
 
 clean_field() { # $1=text -> text with tabs/newlines flattened to spaces (they are the record delimiters)
@@ -610,7 +610,7 @@ sorted_deadlines() {
     | cut -f2-
 }
 
-write_deadline() { # $1=id $2=due $3=title $4=status $5=done_at $6=grade $7=subject $8=link -> rewrite that line in place
+write_deadline() { # $1=id $2=due $3=title $4=status $5=done_at $6=grade $7=project $8=link -> rewrite that line in place
   local tmp
   tmp=$(mktemp "$DEADLINE_FILE.XXXXXX")
   # Free text goes through the environment, not -v: awk expands backslash
@@ -622,7 +622,7 @@ write_deadline() { # $1=id $2=due $3=title $4=status $5=done_at $6=grade $7=subj
   mv "$tmp" "$DEADLINE_FILE"
 }
 
-require_deadline() { # $1=id -> sets ID TS TITLE STATUS DONE_AT GRADE SUBJECT LINK or exits
+require_deadline() { # $1=id -> sets ID TS TITLE STATUS DONE_AT GRADE PROJECT LINK or exits
   case "$1" in
     ''|*[!0-9]*) echo "usage: pomo deadline $2 <id>" >&2; exit 1 ;;
   esac
@@ -636,17 +636,17 @@ require_deadline() { # $1=id -> sets ID TS TITLE STATUS DONE_AT GRADE SUBJECT LI
 }
 
 add_usage() {
-  echo 'usage: pomo deadline add <title> [--subject <s>] [--link <url-or-path>] <when...>' >&2
-  echo '  e.g. pomo deadline add "Essay draft" --subject stats next friday 17:00' >&2
+  echo 'usage: pomo deadline add <title> [--project <s>] [--link <url-or-path>] <when...>' >&2
+  echo '  e.g. pomo deadline add "Essay draft" --project stats next friday 17:00' >&2
   exit 1
 }
 
-cmd_deadline_add() { # <title> [--subject <s>] [--link <l>] <when...>; flags go anywhere after the title
-  local title="${1:-}" when="" subject="" link="" ts id
+cmd_deadline_add() { # <title> [--project <s>] [--link <l>] <when...>; flags go anywhere after the title
+  local title="${1:-}" when="" project="" link="" ts id
   shift 2>/dev/null || true
   while [ $# -gt 0 ]; do
     case "$1" in
-      --subject) [ $# -ge 2 ] || add_usage; subject="$2"; shift ;;
+      --project|--subject) [ $# -ge 2 ] || add_usage; project="$2"; shift ;;
       --link)    [ $# -ge 2 ] || add_usage; link="$2"; shift ;;
       *)         when="${when:+$when }$1" ;;
     esac
@@ -658,37 +658,37 @@ cmd_deadline_add() { # <title> [--subject <s>] [--link <l>] <when...>; flags go 
     exit 1
   fi
   title=$(clean_field "$title")
-  subject=$(clean_field "$subject")
+  project=$(clean_field "$project")
   link=$(clean_field "$link")
   id=$(next_id)
-  printf '%d\t%d\t%s\topen\t0\t\t%s\t%s\n' "$id" "$ts" "$title" "$subject" "$link" >> "$DEADLINE_FILE"
-  report "deadline #$id · $(when_text "$ts") · $title${subject:+ · $subject}"
+  printf '%d\t%d\t%s\topen\t0\t\t%s\t%s\n' "$id" "$ts" "$title" "$project" "$link" >> "$DEADLINE_FILE"
+  report "deadline #$id · $(when_text "$ts") · $title${project:+ · $project}"
 }
 
 set_usage() {
-  echo 'usage: pomo deadline set <id> [--title <t>] [--subject <s>] [--link <l>] [<when...>]' >&2
-  echo '  e.g. pomo deadline set 1 friday 17:00       (--subject "" clears the subject)' >&2
+  echo 'usage: pomo deadline set <id> [--title <t>] [--project <s>] [--link <l>] [<when...>]' >&2
+  echo '  e.g. pomo deadline set 1 friday 17:00       (--project "" clears the project)' >&2
   exit 1
 }
 
-cmd_deadline_set() { # <id> [--title <t>] [--subject <s>] [--link <l>] [<when...>]
+cmd_deadline_set() { # <id> [--title <t>] [--project <s>] [--link <l>] [<when...>]
   # Editing in place instead of rm+add is the point: sessions attach to a
   # deadline id (`pomo start --for`), so a retimed deadline has to keep its
   # identity or it orphans its own history.
-  local id="${1:-}" title="" when="" ts subject link changed="false"
+  local id="${1:-}" title="" when="" ts project link changed="false"
   shift 2>/dev/null || true
   case "$id" in
     ''|*[!0-9]*) set_usage ;;
   esac
   require_deadline "$id" set
-  subject="$SUBJECT"
+  project="$PROJECT"
   link="$LINK"
   while [ $# -gt 0 ]; do
     case "$1" in
-      # An explicitly empty value (--subject "") clears the field; leaving the
+      # An explicitly empty value (--project "") clears the field; leaving the
       # flag off keeps what is there.
       --title)   [ $# -ge 2 ] || set_usage; title="$2"; changed="true"; shift ;;
-      --subject) [ $# -ge 2 ] || set_usage; subject="$2"; changed="true"; shift ;;
+      --project|--subject) [ $# -ge 2 ] || set_usage; project="$2"; changed="true"; shift ;;
       --link)    [ $# -ge 2 ] || set_usage; link="$2"; changed="true"; shift ;;
       # Bare words are the new date, so `set 1 friday 17:00` reads the way you
       # would say it. --when is accepted for symmetry and needs no handling.
@@ -708,10 +708,10 @@ cmd_deadline_set() { # <id> [--title <t>] [--subject <s>] [--link <l>] [<when...
   fi
   [ -n "$title" ] || title="$TITLE"
   title=$(clean_field "$title")
-  subject=$(clean_field "$subject")
+  project=$(clean_field "$project")
   link=$(clean_field "$link")
-  write_deadline "$ID" "$ts" "$title" "$STATUS" "$DONE_AT" "$GRADE" "$subject" "$link"
-  report "deadline #$ID · $(when_text "$ts") · $title${subject:+ · $subject}"
+  write_deadline "$ID" "$ts" "$title" "$STATUS" "$DONE_AT" "$GRADE" "$project" "$link"
+  report "deadline #$ID · $(when_text "$ts") · $title${project:+ · $project}"
 }
 
 cmd_deadline_done() { # <id> -> submitted: drops out of the countdown, stays on the list
@@ -720,7 +720,7 @@ cmd_deadline_done() { # <id> -> submitted: drops out of the countdown, stays on 
     echo "deadline #$ID already done"
     return
   fi
-  write_deadline "$ID" "$TS" "$TITLE" "done" "$(now)" "$GRADE" "$SUBJECT" "$LINK"
+  write_deadline "$ID" "$TS" "$TITLE" "done" "$(now)" "$GRADE" "$PROJECT" "$LINK"
   report "deadline #$ID done · $TITLE"
 }
 
@@ -730,7 +730,7 @@ cmd_deadline_reopen() { # <id> -> back to open (also unhides)
     echo "deadline #$ID already open"
     return
   fi
-  write_deadline "$ID" "$TS" "$TITLE" "open" 0 "$GRADE" "$SUBJECT" "$LINK"
+  write_deadline "$ID" "$TS" "$TITLE" "open" 0 "$GRADE" "$PROJECT" "$LINK"
   report "deadline #$ID reopened · $TITLE"
 }
 
@@ -754,7 +754,7 @@ cmd_deadline_grade() { # <id> [<grade...>] -> record the mark; no grade clears i
     status="done"
     done_at=$(now)
   fi
-  write_deadline "$ID" "$TS" "$TITLE" "$status" "$done_at" "$grade" "$SUBJECT" "$LINK"
+  write_deadline "$ID" "$TS" "$TITLE" "$status" "$done_at" "$grade" "$PROJECT" "$LINK"
   if [ -n "$grade" ]; then
     report "deadline #$ID graded $grade · $TITLE"
   else
@@ -771,7 +771,7 @@ cmd_deadline_hide() { # <id> -> keep the record (agents still see it), drop it f
   # Hiding something never handed in would lose the fact that it was missed,
   # so an open deadline is closed out first.
   [ "$DONE_AT" -gt 0 ] || DONE_AT=$(now)
-  write_deadline "$ID" "$TS" "$TITLE" "hidden" "$DONE_AT" "$GRADE" "$SUBJECT" "$LINK"
+  write_deadline "$ID" "$TS" "$TITLE" "hidden" "$DONE_AT" "$GRADE" "$PROJECT" "$LINK"
   report "deadline #$ID hidden · $TITLE"
 }
 
@@ -781,7 +781,7 @@ cmd_deadline_unhide() { # <id> -> back on the list as done
     echo "deadline #$ID is not hidden"
     return
   fi
-  write_deadline "$ID" "$TS" "$TITLE" "done" "$DONE_AT" "$GRADE" "$SUBJECT" "$LINK"
+  write_deadline "$ID" "$TS" "$TITLE" "done" "$DONE_AT" "$GRADE" "$PROJECT" "$LINK"
   report "deadline #$ID unhidden · $TITLE"
 }
 
@@ -790,25 +790,25 @@ deadline_json() { # stdin (normalized, sorted lines) -> JSON array
     function q(s) { gsub(/\\/, "\\\\", s); gsub(/"/, "\\\"", s); gsub(/\t/, " ", s); return "\"" s "\"" }
     BEGIN { printf "[" }
     {
-      printf "%s{\"id\":%d,\"due\":%d,\"title\":%s,\"status\":\"%s\",\"done_at\":%s,\"grade\":%s,\"subject\":%s,\"link\":%s}", \
+      printf "%s{\"id\":%d,\"due\":%d,\"title\":%s,\"status\":\"%s\",\"done_at\":%s,\"grade\":%s,\"project\":%s,\"link\":%s}", \
         (NR > 1 ? "," : ""), $1, $2, q($3), $4, ($5+0 > 0 ? $5+0 : "null"), ($6 == "" ? "null" : q($6)), q($7), q($8)
     }
     END { printf "]" }'
 }
 
 list_usage() {
-  echo 'usage: pomo deadline list [--all] [--json] [--subject <s>]' >&2
+  echo 'usage: pomo deadline list [--all] [--json] [--project <s>]' >&2
   exit 1
 }
 
-cmd_deadline_list() { # [--all] [--json] [--subject <s>]; hidden deadlines only show with --all
-  local all="false" json="false" subject=""
+cmd_deadline_list() { # [--all] [--json] [--project <s>]; hidden deadlines only show with --all
+  local all="false" json="false" project=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --all)  all="true" ;;
       --json) json="true" ;;
       # Case-insensitive exact match: "Stats" finds "stats", "stat" finds nothing.
-      --subject) [ $# -ge 2 ] || list_usage; subject="$2"; shift ;;
+      --project|--subject) [ $# -ge 2 ] || list_usage; project="$2"; shift ;;
       '') ;;
       *) list_usage ;;
     esac
@@ -824,17 +824,17 @@ cmd_deadline_list() { # [--all] [--json] [--subject <s>]; hidden deadlines only 
   fi
   if [ "$json" = "true" ]; then
     printf '{"deadlines":'
-    # The subject filter goes through the environment (see write_deadline).
-    sorted_deadlines | subj="$subject" awk -F'\t' -v all="$all" '
-      (all == "true" || $4 != "hidden") && (ENVIRON["subj"] == "" || tolower($7) == tolower(ENVIRON["subj"]))' \
+    # The project filter goes through the environment (see write_deadline).
+    sorted_deadlines | proj="$project" awk -F'\t' -v all="$all" '
+      (all == "true" || $4 != "hidden") && (ENVIRON["proj"] == "" || tolower($7) == tolower(ENVIRON["proj"]))' \
       | deadline_json
     echo '}'
     return
   fi
-  local id ts title status done_at grade subj link mark shown=0
-  while IFS="$US" read -r id ts title status done_at grade subj link; do
+  local id ts title status done_at grade proj link mark shown=0
+  while IFS="$US" read -r id ts title status done_at grade proj link; do
     [ "$status" = "hidden" ] && [ "$all" != "true" ] && continue
-    [ -n "$subject" ] && [ "${subj,,}" != "${subject,,}" ] && continue
+    [ -n "$project" ] && [ "${proj,,}" != "${project,,}" ] && continue
     shown=$(( shown + 1 ))
     case "$status" in
       done)   mark="✓" ;;
@@ -842,15 +842,28 @@ cmd_deadline_list() { # [--all] [--json] [--subject <s>]; hidden deadlines only 
       *)      mark=" " ;;
     esac
     printf '%3s %s %-17s %-9s %s%s%s\n' "$id" "$mark" "$(when_text "$ts")" \
-      "$([ "$status" = "open" ] && rel "$ts" || echo "$status")" "$title" "${subj:+ · $subj}" "${grade:+  [$grade]}"
+      "$([ "$status" = "open" ] && rel "$ts" || echo "$status")" "$title" "${proj:+ · $proj}" "${grade:+  [$grade]}"
   done < <(sorted_deadlines | tr '\t' "$US")
   if [ "$shown" -eq 0 ]; then
-    if [ -n "$subject" ]; then
-      echo "nothing for subject \"$subject\" — pomo deadline list --all shows hidden ones"
+    if [ -n "$project" ]; then
+      echo "nothing for project \"$project\" — pomo deadline list --all shows hidden ones"
     else
       echo 'nothing open — pomo deadline list --all shows hidden ones'
     fi
   fi
+}
+
+cmd_deadline_when() { # <when...> -> "epoch<TAB>Fri 16 Oct 17:00", or exit 1
+  # How the page reads a date it found in a note ("due friday 17:00"): the
+  # same forgiving parse as add, so a line and the store never disagree on
+  # what a phrase means.
+  local when="$*" ts
+  [ -n "$when" ] || { echo 'usage: pomo deadline when <when...>' >&2; exit 1; }
+  if ! ts=$(parse_when "$when"); then
+    echo "pomo: can't read a date out of \"$when\"" >&2
+    exit 1
+  fi
+  printf '%s\t%s\n' "$ts" "$(when_text "$ts")"
 }
 
 cmd_deadline_rm() { # <id> -> delete outright (hide keeps the record instead)
@@ -884,7 +897,7 @@ cmd_deadline_next() { # [--json] -> soonest open deadline still ahead, else leas
     printf '%s\n' "$line" | deadline_json | sed 's/^\[//; s/\]$//'
     echo '}'
   else
-    printf '#%s  %s  %s  %s%s\n' "$ID" "$(when_text "$TS")" "$(rel "$TS")" "$TITLE" "${SUBJECT:+ · $SUBJECT}"
+    printf '#%s  %s  %s  %s%s\n' "$ID" "$(when_text "$TS")" "$(rel "$TS")" "$TITLE" "${PROJECT:+ · $PROJECT}"
   fi
 }
 
@@ -902,7 +915,8 @@ cmd_deadline() {
     unhide|show)  cmd_deadline_unhide "${1:-}" ;;
     rm|remove)    cmd_deadline_rm "${1:-}" ;;
     next)         cmd_deadline_next "${1:-}" ;;
-    --json|--all|--subject) cmd_deadline_list "$sub" "$@" ;;
+    when)         cmd_deadline_when "$@" ;;
+    --json|--all|--project|--subject) cmd_deadline_list "$sub" "$@" ;;
     help|-h|--help) deadline_usage 2>&1 ;;
     *) deadline_usage; exit 1 ;;
   esac
@@ -910,16 +924,17 @@ cmd_deadline() {
 
 deadline_usage() {
   cat >&2 <<'USAGE'
-usage: pomo deadline add <title> [--subject <s>] [--link <url-or-path>] <when...>
-                                                # "Essay draft" --subject stats next friday 17:00
-       pomo deadline set <id> [--title <t>] [--subject <s>] [--link <l>] [<when...>]
-                                                # --subject "" clears the subject
-       pomo deadline list [--all] [--json] [--subject <s>]   # --all includes hidden
+usage: pomo deadline add <title> [--project <s>] [--link <url-or-path>] <when...>
+                                                # "Essay draft" --project stats next friday 17:00
+       pomo deadline set <id> [--title <t>] [--project <s>] [--link <l>] [<when...>]
+                                                # --project "" clears the project
+       pomo deadline list [--all] [--json] [--project <s>]   # --all includes hidden
        pomo deadline done|reopen <id>           # submitted / back to open
        pomo deadline grade <id> [<grade>]       # record the mark (marks done); no grade clears it
        pomo deadline hide|unhide <id>           # keep the record, drop it from the list
        pomo deadline rm <id>                    # delete outright
        pomo deadline next [--json]              # the one the bar counts down to
+       pomo deadline when <when...>             # how a date phrase reads: epoch<TAB>text
 USAGE
 }
 

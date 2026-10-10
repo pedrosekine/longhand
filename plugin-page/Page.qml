@@ -1825,7 +1825,7 @@ Item {
                 textFormat: Text.PlainText
                 wrapMode: Text.WordWrap
                 text: (done ? "✓ " : "○ ") + (modelData.kind === "deadline"
-                  ? "deadline: " + modelData.title + " — " + modelData.when + (modelData.subject ? " · " + modelData.subject : "")
+                  ? "deadline: " + modelData.title + " — " + modelData.when + ((modelData.project || modelData.subject) ? " · " + (modelData.project || modelData.subject) : "")
                     + (done && modelData.accepted.id ? "  #" + modelData.accepted.id : "")
                     + (modelData.error ? "  (failed: " + modelData.error + ")" : "")
                   : JSON.stringify(modelData))

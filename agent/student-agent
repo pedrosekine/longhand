@@ -40,7 +40,7 @@ import blocks as blocklib  # noqa: E402
 
 TRIGGERS = ("checkbox", "mention", "question", "tick", "open")
 LINK_LINE = re.compile(r"^\[\[[^\]\n]*\|agent\]\]$")
-KNOWLEDGE_FILE = re.compile(r"^(profile\.md|patterns\.md|subjects/[A-Za-z0-9._ -]{1,64}\.md)$")
+KNOWLEDGE_FILE = re.compile(r"^(profile\.md|patterns\.md|projects/[A-Za-z0-9._ -]{1,64}\.md)$")
 
 CONFIG_PATH = Path(os.environ.get("OMARCHY_STUDENT_CONFIG")
                    or Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "omarchy-student" / "config.json")
@@ -374,6 +374,11 @@ def build_payload(paths: Paths, trigger: str, fired: list[dict], visible: list[d
 
 # ------------------------------------------------------------------- model
 
+def project_of(prop: dict) -> str:
+    """A proposal's project. Models that learned the old word say "subject"."""
+    return str(prop.get("project") or prop.get("subject") or "")
+
+
 def run_model(cfg: dict, paths: Paths, payload: str, session: str = "", message: str = "Context follows on stdin.") -> dict:
     """Run one opencode pass. Returns {text, session, cost, tokens, events, error}.
 
@@ -532,7 +537,7 @@ def apply(cfg: dict, paths: Paths, trigger: str, fired: list[dict], visible: lis
     for p in reply["proposals"]:
         if p.get("kind") == "deadline":
             sec.append(f"- [ ] add deadline: {p.get('title', '')} — {p.get('when', '')}"
-                       + (f" · {p['subject']}" if p.get("subject") else ""))
+                       + (f" · {project_of(p)}" if project_of(p) else ""))
     for s in reply["suggestions"]:
         sec.append(f"- suggestion: {s.get('text', '')} _(evidence: {s.get('evidence', '')})_")
     if result["error"]:
@@ -681,8 +686,8 @@ def cmd_accept(cfg: dict, args) -> int:
     at = dt.datetime.now().isoformat(timespec="seconds")
     if prop.get("kind") == "deadline":
         argv = ["deadline", "add", str(prop.get("title") or "untitled")]
-        if prop.get("subject"):
-            argv += ["--subject", str(prop["subject"])]
+        if project_of(prop):
+            argv += ["--project", project_of(prop)]
         if prop.get("link"):
             argv += ["--link", str(prop["link"])]
         argv += str(prop.get("when") or "").split() or ["today"]

@@ -3,7 +3,7 @@ import Quickshell
 import Quickshell.Io
 
 // Live deadline list. Watches the CLI's deadlines.tsv (one
-// "id<TAB>epoch<TAB>title<TAB>status<TAB>done_at<TAB>grade<TAB>subject<TAB>link"
+// "id<TAB>epoch<TAB>title<TAB>status<TAB>done_at<TAB>grade<TAB>project<TAB>link"
 // per line; older lines stop after grade or after title) and
 // recomputes countdowns locally every second — same no-polling shape as the
 // pomodoro Service. All writes go through the CLI so the file has one owner.
@@ -110,7 +110,7 @@ Item {
         status: status,
         doneAt: isFinite(doneAt) ? doneAt : 0,
         grade: f.length > 5 ? f[5] : "",
-        subject: f.length > 6 ? f[6] : "",
+        project: f.length > 6 ? f[6] : "",
         link: f.length > 7 ? f[7] : ""
       })
     }
