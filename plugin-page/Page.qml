@@ -223,11 +223,16 @@ Item {
   // from the overlay if that is up. Anything else brings the overlay up,
   // over the window if there is one. Only coming from nothing counts as
   // opening the page, and runs the automatic pass.
+  //
+  // `{"goto":"[[2026.10.09#^d6]]"}` (the deadlines popup's `o`) opens on the
+  // line that stands for deadline #6, in the window if that is where the
+  // page already is.
   function open(payloadJson) {
     var payload = ({})
     try { payload = JSON.parse(payloadJson || "{}") } catch (e) { payload = ({}) }
+    var goto = payload.goto ? Bound.parseLink(payload.goto) : null
     var fresh = !root.showing
-    if (payload.shape === "alongside") {
+    if (payload.shape === "alongside" || (goto && root.windowOpen && !root.overlayOpen)) {
       root.windowOpen = true
       if (root.overlayOpen) root.dismiss()
     } else {
@@ -235,10 +240,19 @@ Item {
     }
     if (fresh) {
       root.sidebarOpen = false
-      root.openPassPending = true
-      svc.openToday()
       agent.reload()
-      if (svc.ready) root.openPass()
+      if (goto && svc.configured && goto.stem !== svc.todayStamp()) {
+        svc.openDate(goto.stem)
+      } else {
+        root.openPassPending = true
+        svc.openToday()
+        if (svc.ready) root.openPass()
+      }
+    }
+    if (goto) {
+      root.pendingGoto = goto.id
+      if (svc.ready && svc.noteDate === goto.stem) root.landOnGoto()
+      else if (!fresh) root.openNote(goto.stem)
     }
     Qt.callLater(editor.focusNote)
   }

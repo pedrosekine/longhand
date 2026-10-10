@@ -19,8 +19,14 @@ import qs.Ui
 //   2 hide                  Enter = keep the record, drop it from the list
 //   3 remove                Enter = delete outright
 // Up/Down pick a row, Left/Right a column, `d` `g` `x` are shortcuts for
-// done, grade, remove. Mouse hover drives the same cursor so exactly one
-// cell is highlighted at a time.
+// done, grade, remove; `o` (or a click on the title) opens the page at the
+// note line that stands for the deadline, when one does. Mouse hover drives
+// the same cursor so exactly one cell is highlighted at a time.
+//
+// The list is what is still in play: open deadlines, and done ones until
+// the day after they were done. Done ones with no grade yet wait in a
+// folded "waiting for a grade" row (`w` or a click unfolds it) until they
+// are graded or hidden.
 Panel {
   id: root
   moduleName: "student.deadline"
@@ -40,8 +46,12 @@ Panel {
   // clipping against the panel's height cap. Show the front of the queue and
   // count the rest. Done rows sort last, so they are the first to drop off.
   readonly property int maxRows: 8
-  readonly property var shown: svc.items.slice(0, maxRows)
-  readonly property int hiddenCount: Math.max(0, svc.items.length - maxRows)
+  readonly property real todayStart: { svc.nowSec; var d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime() / 1000 }
+  readonly property var listed: svc.items.filter(function (it) { return it.status === "open" || it.doneAt >= root.todayStart })
+  readonly property var waiting: svc.items.filter(function (it) { return it.status === "done" && it.doneAt < root.todayStart && it.grade === "" })
+  property bool showWaiting: false
+  readonly property var shown: listed.slice(0, maxRows).concat(showWaiting ? waiting : [])
+  readonly property int hiddenCount: Math.max(0, listed.length - maxRows)
 
   readonly property int cols: 4
 
@@ -101,6 +111,13 @@ Panel {
   function gradeSelected() {
     var item = root.selectedItem()
     if (item) root.startGrade(item)
+  }
+
+  // To the note line that stands for a deadline: the page opens on it.
+  function openLine(item) {
+    if (!item || !/^\[\[[^\]#|]+#\^d\d+\]\]$/.test(item.link)) return
+    Quickshell.execDetached(["omarchy-shell", "shell", "summon", "student.page", JSON.stringify({ goto: item.link })])
+    root.close()
   }
 
   function removeSelected() {
@@ -194,6 +211,8 @@ Panel {
       onTextKey: function (t) {
         if (t === "d" || t === "D") root.toggleSelected()
         else if (t === "g" || t === "G") root.gradeSelected()
+        else if (t === "o" || t === "O") root.openLine(root.selectedItem())
+        else if (t === "w" || t === "W") root.showWaiting = !root.showWaiting
       }
 
       Column {
@@ -208,7 +227,7 @@ Panel {
         }
 
         Text {
-          visible: svc.items.length === 0
+          visible: root.listed.length === 0 && root.waiting.length === 0
           width: parent.width
           textFormat: Text.PlainText
           wrapMode: Text.WordWrap
@@ -265,6 +284,18 @@ Panel {
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.body
                   font.strikeout: row.isDone
+                  font.underline: titleMouse.containsMouse && titleMouse.enabled
+
+                  // A deadline a note line stands for: its title opens it.
+                  MouseArea {
+                    id: titleMouse
+                    anchors.fill: parent
+                    enabled: /#\^d\d+\]\]$/.test(row.modelData.link)
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onContainsMouseChanged: if (containsMouse) root.hoverCursor(row.index, 0)
+                    onClicked: root.openLine(row.modelData)
+                  }
                 }
 
                 Text {
@@ -358,6 +389,18 @@ Panel {
           }
         }
 
+        // Done, not graded yet: folded until asked for.
+        Text {
+          visible: root.waiting.length > 0
+          width: parent.width
+          textFormat: Text.PlainText
+          text: (root.showWaiting ? "▾ " : "▸ ") + "waiting for a grade · " + root.waiting.length
+          color: root.dim
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.showWaiting = !root.showWaiting }
+        }
+
         Text {
           visible: root.hiddenCount > 0
           width: parent.width
@@ -369,13 +412,13 @@ Panel {
         }
 
         Text {
-          visible: svc.items.length > 0
+          visible: root.shown.length > 0
           width: parent.width
           textFormat: Text.PlainText
           wrapMode: Text.WordWrap
           text: root.gradingId > 0
             ? "Enter saves the grade · Esc cancels"
-            : "↑↓ ←→ move · Enter act · d done · g grade · x remove"
+            : "↑↓ ←→ move · Enter act · d done · g grade · o open its line · x remove" + (root.waiting.length > 0 ? " · w waiting" : "")
           color: root.faint
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption
