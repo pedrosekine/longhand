@@ -55,7 +55,9 @@ back to where you were. `Ctrl+B` shows a month calendar in a sidebar
 arrows move by day and week, `Ctrl+←/→` by month, Enter opens the day in
 the same sheet, editable (a day without a note gets its file on the first
 word). `Alt+Left`/`Alt+Right` move between calendar and note; `weekStart`
-in the config picks the first column. The file stays plain
+in the config picks the first column. Under it, your projects (one file each
+in the agent's `knowledge/projects/`) with their next session: Enter starts
+a class in today's note (`# Course #tag`), Ctrl+Enter puts just the tag. The file stays plain
 markdown, changed only where you typed. Blocks the agent has seen are
 veiled; a block with a reply carries a gutter mark and its reply shows in the
 margin to the right when asked. Finishing an `@` or `?` line stages the block

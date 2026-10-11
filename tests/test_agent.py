@@ -283,6 +283,23 @@ def main() -> int:
         check(st["totals"]["features"].get("find") == 1 and st["totals"]["features"].get("day:past") == 1, "stats reads features")
         check(st["totals"]["agent_runs"] >= 1, "stats reads the cost ledger")
         check(t.note.read_bytes() == before, "stats writes nothing")
+
+        # 14. projects: the tags that exist, soonest session first
+        pd = t.vault / "agents/student/knowledge/projects"
+        pd.mkdir(parents=True, exist_ok=True)
+        import datetime as _dt
+        soon = _dt.date.today() + _dt.timedelta(days=2)
+        later = _dt.date.today() + _dt.timedelta(days=9)
+        past = _dt.date.today() - _dt.timedelta(days=3)
+        (pd / "intsem.md").write_text(f"# Interdisciplinary Seminar\n\n- Tag: `#intsem` — notes under the H1\n"
+                                      f"  - {later:%a %d %b}: 10:45–12:15 (Gold)\n")
+        (pd / "dtm.md").write_text(f"# Design Theory & Methods\n\n- Tag: `#dtm`\n  - {past:%a %d %b}: 09:00–10:00 (Old)\n"
+                                   f"  - {soon:%a %d %b}: 13:15–15:45, 16:00–17:00 (Seminar Room 1)\n")
+        (pd / "thesis.md").write_text("# Thesis\n\nNo sessions, no Tag line.\n")
+        pr = json.loads(t.agent("projects").stdout)
+        check([p["tag"] for p in pr] == ["dtm", "intsem", "DORO", "thesis"], f"projects soonest first, file name as fallback tag ({[p['tag'] for p in pr]})")
+        check(pr[0]["next"]["at"].endswith("13:15") and pr[0]["next"]["room"] == "Seminar Room 1", f"next session read ({pr[0]['next']})")
+        check(pr[1]["name"] == "Interdisciplinary Seminar" and pr[3]["next"] is None, "name from the H1; no sessions, no next")
     finally:
         t.cleanup()
 

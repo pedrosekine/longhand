@@ -251,6 +251,14 @@
       magenta. Secondary text uses the theme's grey only if it reads at 4.5:1
       (faint things at 3:1); otherwise the foreground faded no further — most
       stock themes' `muted` is a 1.5–3:1 comment grey.
+- [x] 14.6l projects in the sidebar (2026-10-11, the one agreed exception to
+      the freeze: it keeps tomorrow's tag convention from sprawling).
+      `student-agent projects` reads knowledge/projects/*.md — tag from a
+      `Tag: #x` line (else the file name), name from the H1, next session
+      from `- Mon 12 Oct: 10:45–… (Room)` lines — and the calendar lists them
+      soonest first. Enter starts a class (`# Course #tag` at the end of
+      today's note, cursor under it); Ctrl+Enter puts the tag at the cursor.
+      The five courses' files were written from the IT:U timetable feed.
 - [ ] **Freeze, 2026-10-11 → 2026-10-25: fixes only, use it.** At the end,
       `student-agent stats --since 2026-10-11` and decide with it:
       - habit — days written in, days the page was opened, minutes;

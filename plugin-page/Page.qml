@@ -79,6 +79,12 @@ import "Tasks.js" as Tasks
 // the vault's own date format (older notes) is edited plainly: the runner
 // cannot read it, so the agent signs do nothing there.
 //
+// Under the calendar, the projects that exist (the agent's
+// knowledge/projects/, via `student-agent projects`), soonest session
+// first: the tags to use, so no new ones get invented. Enter starts a
+// class — `# Course #tag` on a new line at the end of today's note, the
+// cursor under it; Ctrl+Enter puts just the tag at the cursor.
+//
 // Deadlines live in the store (`pomo deadline`); a checkbox line can stand
 // for one (Bound.js). Write a checkbox that ends in a date — "due fri
 // 17:00", "by monday", "📅 tomorrow" — and on leaving the line the page
@@ -188,6 +194,8 @@ Item {
   }
   readonly property var focusDue: root.dueByDay[Days.key(root.calFocus)] || []
   property int dueFocus: -1          // in the list under the calendar (-1: the grid has the keys)
+  property int projFocus: -1         // in the projects list (-1: not there)
+  property var projects: []          // [{ tag, name, next: { at, room } }]
   property int pendingGoto: 0        // a deadline whose line to land on once its note is open
   readonly property int sideSpace: root.sidebarOpen && root.problem === "" ? root.sidebarWidth + root.marginGap : 0
   property bool applying: false
@@ -1157,6 +1165,7 @@ Item {
     root.bound = Bound.anchors(editor.text)
     root.landOnGoto()
     root.doPendingWrite()
+    root.writeClass()
   }
 
   // An agent proposal was accepted: once the store has the deadline, the
@@ -1213,6 +1222,8 @@ Item {
     var p = svc.configured && svc.noteDate !== "" ? Days.parse(svc.noteDate, svc.dailyFormat()) : null
     root.calFocus = p ? p.date : new Date()
     root.dueFocus = -1
+    root.projFocus = -1
+    root.refreshProjects()
     sidebarKeys.forceActiveFocus()
   }
 
@@ -1222,6 +1233,58 @@ Item {
     if (months) d = Days.addMonths(d, months)
     if (days) d = Days.addDays(d, days)
     root.calFocus = d
+  }
+
+  function refreshProjects() {
+    projectsProc.command = [svc.runner, "projects"]
+    projectsProc.running = true
+  }
+
+  // "today 10:45 · Gold", "Wed 10:45 · Bronze", "19 Oct · Design Lab".
+  function sessionLabel(n) {
+    if (!n) return ""
+    var at = new Date(n.at)
+    var today = new Date()
+    today.setHours(0, 0, 0, 0)
+    var days = Math.round((new Date(at.getFullYear(), at.getMonth(), at.getDate()) - today) / 86400000)
+    var when = days === 0 ? "today " + Qt.formatTime(at, "HH:mm")
+      : days === 1 ? "tomorrow " + Qt.formatTime(at, "HH:mm")
+      : days < 7 ? Qt.formatDateTime(at, "ddd HH:mm") : Qt.formatDate(at, "d MMM")
+    return when + (n.room ? " · " + n.room : "")
+  }
+
+  // A class begins: its heading on a new line at the end of today's note,
+  // the cursor on the empty line under it. The student asked for it, and
+  // the words are the course's name.
+  property var pendingClass: null
+  function startClass(p) {
+    root.used("class", p.tag)
+    root.pendingClass = p
+    root.projFocus = -1
+    if (svc.isToday && svc.ready) root.writeClass()
+    else root.openNote(svc.todayStamp())
+    editor.focusNote()
+  }
+
+  function writeClass() {
+    var p = root.pendingClass
+    if (!p || !svc.isToday || !svc.ready) return
+    root.pendingClass = null
+    var t = editor.text
+    var lead = t.replace(/\s+$/, "") === "" ? (t.charAt(t.length - 1) === "\n" || t === "" ? "" : "\n")
+      : (/\n\n$/.test(t) ? "" : (/\n$/.test(t) ? "\n" : "\n\n"))
+    editor.insert(t.length, lead + "# " + p.name + " #" + p.tag + "\n")
+    editor.setCursor(editor.length, true)
+  }
+
+  // Ctrl+Enter: just the tag, where the cursor is.
+  function insertTag(p) {
+    root.used("tag", p.tag)
+    root.projFocus = -1
+    editor.focusNote()
+    var pos = editor.cursorPosition
+    var before = pos > 0 ? editor.text.charAt(pos - 1) : "\n"
+    editor.insert(pos, (/\s/.test(before) ? "" : " ") + "#" + p.tag + " ")
   }
 
   function openCalendarDay(d) {
@@ -1478,6 +1541,16 @@ Item {
   }
 
   Process { id: usageProc; onExited: root.flushUsage() }
+
+  Process {
+    id: projectsProc
+    stdout: StdioCollector {
+      onStreamFinished: {
+        try { root.projects = JSON.parse(text) || [] } catch (e) { root.projects = [] }
+        root.projFocus = Math.min(root.projFocus, root.projects.length - 1)
+      }
+    }
+  }
   Timer { interval: 300000; running: root.usageBuf.length > 0; repeat: true; onTriggered: root.flushUsage() }
 
   // The zoom step survives restarts. Machine state, not config, and never
@@ -1949,20 +2022,39 @@ Item {
           var alt = event.modifiers & Qt.AltModifier
           var k = event.key
           if (root.zoomKey(event)) { event.accepted = true; return }
-          // In the day's deadline list (Tab went there): up/down pick,
-          // Enter goes to the line, Tab or Esc back to the days.
+          // Tab walks the sidebar: the days, the day's deadlines (when it
+          // has some), the projects, and back to the days.
+          // In the day's deadline list: up/down pick, Enter goes to the line.
           if (root.dueFocus >= 0 && !ctrl && !alt) {
             var n = root.focusDue.length
             if (k === Qt.Key_Up) root.dueFocus = Math.max(0, root.dueFocus - 1)
             else if (k === Qt.Key_Down) root.dueFocus = Math.min(n - 1, root.dueFocus + 1)
             else if (k === Qt.Key_Return || k === Qt.Key_Enter) root.goToDeadline(root.focusDue[root.dueFocus])
-            else if (k === Qt.Key_Tab || k === Qt.Key_Backtab || k === Qt.Key_Escape) root.dueFocus = -1
+            else if (k === Qt.Key_Tab) { root.dueFocus = -1; if (root.projects.length > 0) root.projFocus = 0 }
+            else if (k === Qt.Key_Backtab || k === Qt.Key_Escape) root.dueFocus = -1
             else { root.dueFocus = -1; return }
             event.accepted = true
             return
           }
-          if (k === Qt.Key_Tab && root.focusDue.length > 0) {
-            root.dueFocus = 0
+          // In the projects: Enter starts a class, Ctrl+Enter puts the tag.
+          if (root.projFocus >= 0 && !alt) {
+            var np = root.projects.length
+            if (k === Qt.Key_Up && !ctrl) root.projFocus = Math.max(0, root.projFocus - 1)
+            else if (k === Qt.Key_Down && !ctrl) root.projFocus = Math.min(np - 1, root.projFocus + 1)
+            else if (k === Qt.Key_Return || k === Qt.Key_Enter) {
+              var pr = root.projects[root.projFocus]
+              if (pr && ctrl) root.insertTag(pr)
+              else if (pr) root.startClass(pr)
+            }
+            else if (k === Qt.Key_Tab || k === Qt.Key_Backtab || k === Qt.Key_Escape) root.projFocus = -1
+            else if (!ctrl) { root.projFocus = -1; return }
+            else return
+            event.accepted = true
+            return
+          }
+          if (k === Qt.Key_Tab && (root.focusDue.length > 0 || root.projects.length > 0)) {
+            if (root.focusDue.length > 0) root.dueFocus = 0
+            else root.projFocus = 0
           } else if (k === Qt.Key_Escape || (k === Qt.Key_B && ctrl)) {
             if (k === Qt.Key_B) root.sidebarOpen = false
             editor.focusNote()
@@ -2186,13 +2278,70 @@ Item {
           }
         }
 
+        // The projects that exist: the tags to write, soonest session first.
+        Text {
+          visible: root.projects.length > 0
+          topPadding: root.sp(8)
+          textFormat: Text.PlainText
+          text: "PROJECTS"
+          color: root.dim
+          font.family: root.fontFamily
+          font.pixelSize: root.fs(Style.font.caption)
+        }
+        Repeater {
+          model: root.projects
+          Rectangle {
+            required property var modelData
+            required property int index
+            width: calendar.width
+            height: projCol.implicitHeight + root.sp(6)
+            radius: Style.cornerRadius
+            color: root.projFocus === index && sidebarKeys.activeFocus ? Style.selectedFill : "transparent"
+            Column {
+              id: projCol
+              anchors.left: parent.left
+              anchors.right: parent.right
+              anchors.leftMargin: root.sp(4)
+              anchors.verticalCenter: parent.verticalCenter
+              Text {
+                width: parent.width
+                textFormat: Text.PlainText
+                elide: Text.ElideRight
+                text: "#" + modelData.tag + "  " + modelData.name
+                color: root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: root.fs(Style.font.bodySmall)
+              }
+              Text {
+                visible: !!modelData.next
+                width: parent.width
+                textFormat: Text.PlainText
+                elide: Text.ElideRight
+                text: root.sessionLabel(modelData.next)
+                color: root.dim
+                font.family: root.fontFamily
+                font.pixelSize: root.fs(Style.font.caption)
+              }
+            }
+            MouseArea {
+              anchors.fill: parent
+              cursorShape: Qt.PointingHandCursor
+              onClicked: function (mouse) {
+                if (mouse.modifiers & Qt.ControlModifier) root.insertTag(modelData)
+                else root.startClass(modelData)
+              }
+            }
+          }
+        }
+
         Text {
           width: parent.width
           visible: sidebarKeys.activeFocus
           textFormat: Text.PlainText
           wrapMode: Text.WordWrap
-          text: root.dueFocus >= 0 ? "↑↓ pick · Enter goes to its line · Tab back to the days"
-            : "arrows move · Ctrl+←→ month · Home today · Enter opens" + (root.focusDue.length > 0 ? " · Tab: this day's deadlines" : "")
+          text: root.projFocus >= 0 ? "↑↓ pick · Enter starts a class in today's note · Ctrl+Enter puts the tag · Tab back"
+            : root.dueFocus >= 0 ? "↑↓ pick · Enter goes to its line · Tab on to the projects"
+            : "arrows move · Ctrl+←→ month · Home today · Enter opens" + (root.focusDue.length > 0 || root.projects.length > 0 ? " · Tab: " + (root.focusDue.length > 0 ? "this day's deadlines" : "the projects") : "")
           color: root.faint
           font.family: root.fontFamily
           font.pixelSize: root.fs(Style.font.caption)

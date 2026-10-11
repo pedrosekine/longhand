@@ -12,6 +12,7 @@
     student-agent context --trigger <kind> [--hash <block>]   # payload only, no model
     student-agent state [--date YYYY.MM.DD]                    # today's state JSON
     student-agent stats [--days 14 | --since YYYY-MM-DD] [--json]   # how the tool is used
+    student-agent projects                                     # the tags that exist, with their next session
     student-agent install                                      # opencode agent def + dirs
 
 One pass, then exit. Nothing is resident. The model gets no tools: everything
@@ -1023,6 +1024,49 @@ def cmd_stats(cfg: dict, args) -> int:
     return 0
 
 
+# ------------------------------------------------------------------ projects
+
+SESSION_RE = re.compile(r"^\s*- (?:\w{3}) (\d{1,2}) (\w{3}): (\d{1,2}):(\d{2})\S*.*?(?:\(([^)]*)\))?\s*$", re.M)
+MONTH_NUM = {m: i + 1 for i, m in enumerate(["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"])}
+
+
+def project_list(cfg: dict, now: dt.datetime) -> list[dict]:
+    """The projects the student keeps notes on, from knowledge/projects/:
+    the tag (a `Tag: #x` line, else the file name), the name (its H1), and
+    the next session listed there (`- Mon 12 Oct: 10:45–12:15 (Gold)`).
+    These are the tags that exist; the page offers them instead of new
+    ones being invented."""
+    folder = Paths(cfg, now.date()).knowledge / "projects"
+    out = []
+    for f in sorted(folder.glob("*.md")) if folder.is_dir() else []:
+        try:
+            text = f.read_text()
+        except OSError:
+            continue
+        name = next((l[2:].strip() for l in text.splitlines() if l.startswith("# ")), f.stem)
+        m = re.search(r"Tag:\s*`?#([\w/-]+)", text)
+        nxt = None
+        for s in SESSION_RE.finditer(text):
+            mon = MONTH_NUM.get(s.group(2))
+            if not mon:
+                continue
+            day = dt.date(now.year, mon, int(s.group(1)))
+            if day < now.date() - dt.timedelta(days=180):   # the file has no year: Dec → Jan
+                day = day.replace(year=now.year + 1)
+            at = dt.datetime.combine(day, dt.time(int(s.group(3)), int(s.group(4))))
+            if day >= now.date() and (nxt is None or at < nxt["at"]):
+                nxt = {"at": at, "room": (s.group(5) or "").strip()}
+        out.append({"tag": m.group(1) if m else f.stem, "name": name, "file": f.name,
+                    "next": {"at": nxt["at"].isoformat(timespec="minutes"), "room": nxt["room"]} if nxt else None})
+    out.sort(key=lambda p: (p["next"] is None, p["next"]["at"] if p["next"] else "", p["name"].lower()))
+    return out
+
+
+def cmd_projects(cfg: dict, args) -> int:
+    print(json.dumps(project_list(cfg, dt.datetime.now()), ensure_ascii=False))
+    return 0
+
+
 def cmd_install(cfg: dict, args) -> int:
     here = Path(__file__).resolve().parent
     src = here / "opencode" / "student.md"
@@ -1067,6 +1111,7 @@ def main(argv: list[str]) -> int:
     sub.add_parser("curriculum")
     sub.add_parser("state").add_argument("--date", default="")
     sub.add_parser("install")
+    sub.add_parser("projects")
     p = sub.add_parser("stats")
     p.add_argument("--days", default="14")
     p.add_argument("--since", default="", help="YYYY-MM-DD; overrides --days")
@@ -1076,7 +1121,8 @@ def main(argv: list[str]) -> int:
         cfg = load_config()
         return {"run": cmd_run, "chat": cmd_chat, "ack": cmd_ack, "accept": cmd_accept, "tasks": cmd_tasks,
                 "next": cmd_next, "dismiss": cmd_dismiss, "curriculum": cmd_curriculum,
-                "context": cmd_context, "state": cmd_state, "install": cmd_install, "stats": cmd_stats}[args.cmd](cfg, args)
+                "context": cmd_context, "state": cmd_state, "install": cmd_install, "stats": cmd_stats,
+                "projects": cmd_projects}[args.cmd](cfg, args)
     except Fail as e:
         print(f"student-agent: {e}", file=sys.stderr)
         return 2

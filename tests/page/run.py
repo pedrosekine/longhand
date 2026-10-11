@@ -64,6 +64,7 @@ class Page:
         (bindir / "pomo").symlink_to(ROOT / "cli" / "pomo")
         # Only `accept` does anything, the way student-agent does it.
         self.runner.write_text(f"""#!/bin/bash
+[ "$1" = projects ] && exec "{ROOT}/agent/student-agent" "$@"
 [ "$1" = accept ] || exit 0
 while [ $# -gt 0 ]; do case "$1" in --hash) H=$2; shift;; --index) I=$2; shift;; --date) D=$2; shift;; esac; shift; done
 out=$(pomo deadline add one-pager --project DORO friday) || exit 1
@@ -280,13 +281,35 @@ def main() -> int:
         p.call("acceptAt", 0)
         check(p.wait(lambda: "- [ ] one-pager 📅 " in p.note() and "^d" in p.note(), 8), "an accepted proposal binds its line, cue replaced")
 
-        # 11. the theme: roles come from the Omarchy palette, headings apart
+        # 11. projects in the sidebar: the tags that exist, a class started
+        pd = p.vault / "agents" / "student" / "knowledge" / "projects"
+        pd.mkdir(parents=True, exist_ok=True)
+        soon = dt.date.today() + dt.timedelta(days=1)
+        (pd / "intsem.md").write_text(f"# Interdisciplinary Seminar\n\n- Tag: `#intsem`\n  - {soon:%a %d %b}: 10:45–12:15 (Gold)\n")
+        (pd / "dtm.md").write_text("# Design Theory & Methods\n\n- Tag: `#dtm`\n")
+        (p.daily / f"{TODAY}.md").write_text(header(TODAY) + "Morning notes.\n")
+        p.open_fresh()
+        p.call("openDay", YDAY)
+        p.wait(lambda: p.call("header") != "" and not p.call("header").startswith(dt.date.today().strftime("%A")))
+        p.call("sidebar")
+        check(p.wait(lambda: json.loads(p.call("projects")) == ["intsem|tomorrow 10:45 · Gold", "dtm|"]),
+              f"the sidebar lists the projects, soonest first ({p.call('projects')})")
+        p.call("startClass", 0)
+        check(p.wait(lambda: p.note().endswith("Morning notes.\n\n# Interdisciplinary Seminar #intsem\n")),
+              "starting a class from another day writes its heading at the end of today's note")
+        check(p.call("header").startswith(dt.date.today().strftime("%A")) and int(p.call("cursorLine")) == len(p.lines()) - 1,
+              "…opens today with the cursor under it")
+        p.call("insert", "first point")
+        p.call("insertTag", 1)
+        check(p.wait(lambda: "first point #dtm " in p.call("text")), "Ctrl+Enter puts just the tag at the cursor")
+
+        # 12. the theme: roles come from the Omarchy palette, headings apart
         pal = p.call("palette")
         heads = pal.split(" h=")[1].split(" ")[0].split(",")
         check("keys=0" not in pal and len(set(heads)) == 4, f"the page draws in the theme's palette ({pal[:60]}…)")
         check(pal.split(" eh=")[1].split(" ")[0] == ",".join(heads), "…and headings get their own colours")
 
-        # 12. the usage log: written on close, event names only
+        # 13. the usage log: written on close, event names only
         p.call("closeAll")
         usage = p.state / "omarchy-student" / "usage.tsv"
         check(p.wait(lambda: "\tclose\t" in usage.read_text()), "closing the page writes its usage log")
