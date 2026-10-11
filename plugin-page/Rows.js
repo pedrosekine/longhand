@@ -188,3 +188,21 @@ function continuation(row) {
   if (row.kind === "quote" || row.kind === "calloutHead") return "> "
   return ""
 }
+
+// Ctrl+Left / Ctrl+Right inside a line's words: where the next word starts
+// (dir +1, past the end of this one) or where this or the previous word
+// starts (dir -1). A word is anything that is not space or punctuation, so
+// "ação", "Übung" and "año" are one word each.
+var SEP_RE = /[\s.,;:!?()\[\]{}"'`<>\/\\|@#*_~=+–—-]/
+
+function wordStep(text, col, dir) {
+  var i = col
+  if (dir > 0) {
+    while (i < text.length && !SEP_RE.test(text.charAt(i))) i++
+    while (i < text.length && SEP_RE.test(text.charAt(i))) i++
+  } else {
+    while (i > 0 && SEP_RE.test(text.charAt(i - 1))) i--
+    while (i > 0 && !SEP_RE.test(text.charAt(i - 1))) i--
+  }
+  return i
+}

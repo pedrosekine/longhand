@@ -421,6 +421,52 @@ Item {
       compare(ed.cursorPosition, 12)
     }
 
+    function test_word_steps() {
+      compare(Rows.wordStep("one two  three", 0, 1), 4)
+      compare(Rows.wordStep("one two  three", 5, 1), 9)
+      compare(Rows.wordStep("one two  three", 9, -1), 4)
+      compare(Rows.wordStep("one two", 7, -1), 4)
+      compare(Rows.wordStep("ação e año", 0, 1), 5)        // accents stay inside a word
+      compare(Rows.wordStep("end.", 0, 1), 4)
+    }
+
+    function test_ctrl_shift_right_selects_a_word() {
+      start("\nalpha beta gamma\nnext line", 1)
+      keyClick(Qt.Key_Right, Qt.ControlModifier | Qt.ShiftModifier)
+      verify(!ed.spanning)
+      compare(focused().selectedText.trim(), "alpha")
+      keyClick(Qt.Key_Right, Qt.ControlModifier | Qt.ShiftModifier)
+      compare(focused().selectedText.trim(), "alpha beta")
+    }
+
+    function test_ctrl_shift_left_selects_a_word_back() {
+      start("\nalpha beta gamma", 17)   // end of the line
+      keyClick(Qt.Key_Left, Qt.ControlModifier | Qt.ShiftModifier)
+      compare(focused().selectedText, "gamma")
+    }
+
+    function test_ctrl_shift_right_carries_on_by_word_across_lines() {
+      start("\nalpha\nnext line", 6)   // end of "alpha"
+      keyClick(Qt.Key_Right, Qt.ControlModifier | Qt.ShiftModifier)   // the line break
+      verify(ed.spanning)
+      keyClick(Qt.Key_Right, Qt.ControlModifier | Qt.ShiftModifier)   // "next "
+      compare(ed.text.slice(ed.selStart, ed.selEnd), "\nnext ")
+    }
+
+    function test_ctrl_right_at_line_end_goes_on() {
+      start("\nalpha\nnext", 6)
+      keyClick(Qt.Key_Right, Qt.ControlModifier)
+      compare(ed.focusedRow, 2)
+      compare(focused().cursorPosition, 0)
+    }
+
+    function test_ctrl_shift_end_still_reaches_the_note_end() {
+      start("\nalpha\nnext", 2)
+      keyClick(Qt.Key_End, Qt.ControlModifier | Qt.ShiftModifier)
+      verify(ed.spanning)
+      compare(ed.selEnd, ed.text.length)
+    }
+
     function test_block_rect() {
       start("\nalpha\nbeta\n\ngamma")
       var r = ed.blockRect(1, 3)

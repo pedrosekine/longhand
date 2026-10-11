@@ -330,8 +330,11 @@ Item {
     var r = ed.rows[i]
     var col = Rows.columnIn(r, pos)
     var n = ed.rows.length
-    if (k === Qt.Key_Left) return col > 0 ? ed.absOf(i, col - 1) : (i > 0 ? ed.absOf(i - 1, ed.rows[i - 1].body.length) : pos)
-    if (k === Qt.Key_Right) return col < r.body.length ? ed.absOf(i, col + 1) : (i + 1 < n ? ed.absOf(i + 1, 0) : pos)
+    // With Ctrl, a word at a time; at a line's edge, into the next line.
+    if (k === Qt.Key_Left) return col > 0 ? ed.absOf(i, ctrl ? Rows.wordStep(r.body, col, -1) : col - 1)
+      : (i > 0 ? ed.absOf(i - 1, ed.rows[i - 1].body.length) : pos)
+    if (k === Qt.Key_Right) return col < r.body.length ? ed.absOf(i, ctrl ? Rows.wordStep(r.body, col, 1) : col + 1)
+      : (i + 1 < n ? ed.absOf(i + 1, 0) : pos)
     if (k === Qt.Key_Home) return ed.absOf(i, 0)
     if (k === Qt.Key_End) return ed.absOf(i, r.body.length)
     var dir = k === Qt.Key_Up ? -1 : 1
@@ -667,13 +670,15 @@ Item {
     }
 
     // Shift+arrows past the edge of a line: the selection carries on into
-    // the next one. Ctrl+A takes the whole note.
+    // the next one (by word with Ctrl). Inside a line the field selects on
+    // its own, Ctrl+Shift+arrows by word. Ctrl+Shift+Home/End reach the
+    // note's ends; Ctrl+A takes the whole note.
     if (shift && !alt && (k === Qt.Key_Down || k === Qt.Key_Up || k === Qt.Key_Left || k === Qt.Key_Right
         || ((k === Qt.Key_Home || k === Qt.Key_End) && ctrl))) {
       var edge = (k === Qt.Key_Down && ed.atLastLine(f)) || (k === Qt.Key_Up && ed.atFirstLine(f))
         || (k === Qt.Key_Right && f.cursorPosition === f.length && i + 1 < ed.rows.length)
         || (k === Qt.Key_Left && f.cursorPosition === 0 && i > 0)
-        || ctrl
+        || ((k === Qt.Key_Home || k === Qt.Key_End) && ctrl)
       if (edge) {
         var anchor = ed.nativeAnchor(item)
         var to = ed.stepPos(ed.cursorPosition, k, ctrl)
@@ -694,10 +699,10 @@ Item {
       ed.moveVertical(item, -1)
     } else if (k === Qt.Key_Down && !ctrl && !alt && !shift && ed.atLastLine(f)) {
       ed.moveVertical(item, 1)
-    } else if (k === Qt.Key_Left && !ctrl && !alt && !shift && noSel && f.cursorPosition === 0) {
+    } else if (k === Qt.Key_Left && !alt && !shift && noSel && f.cursorPosition === 0) {
       var p = Rows.nextTextRow(ed.rows, i, -1)
       if (p >= 0) ed.placeAt(p, ed.rows[p].body.length)
-    } else if (k === Qt.Key_Right && !ctrl && !alt && !shift && noSel && f.cursorPosition === f.length) {
+    } else if (k === Qt.Key_Right && !alt && !shift && noSel && f.cursorPosition === f.length) {
       var n = Rows.nextTextRow(ed.rows, i, 1)
       if (n >= 0) ed.placeAt(n, 0)
     } else if (k === Qt.Key_Tab && !ctrl && !alt) {
@@ -945,7 +950,7 @@ Item {
           selectByKeyboard: true
           persistentSelection: false
           color: row.checked || row.kind === "front" ? ed.dim
-            : row.kind === "heading" ? ed.headingColors[Math.min(row.headingLevel, ed.headingColors.length) - 1]
+            : row.kind === "heading" ? ed.headingColors[Math.max(0, Math.min(row.headingLevel, ed.headingColors.length) - 1)]
             : row.kind === "code" ? ed.codeColor : ed.foreground
           selectionColor: ed.selectionColor
           selectedTextColor: ed.foreground
