@@ -687,6 +687,7 @@ Item {
   function pageKey(event) {
     var ctrl = event.modifiers & Qt.ControlModifier
     var alt = event.modifiers & Qt.AltModifier
+    var shift = event.modifiers & Qt.ShiftModifier
     var k = event.key
     if (root.askKey(event)) return true
     if (root.zoomKey(event)) return true
@@ -695,8 +696,9 @@ Item {
     if ((k === Qt.Key_Return || k === Qt.Key_Enter) && ctrl) { root.sendCurrent(); return true }
     if (k === Qt.Key_Up && alt) { root.jumpBlock(-1); return true }
     if (k === Qt.Key_Down && alt) { root.jumpBlock(1); return true }
-    if (k === Qt.Key_Up && ctrl) { root.jumpWithinBlock(-1); return true }
-    if (k === Qt.Key_Down && ctrl) { root.jumpWithinBlock(1); return true }
+    // With Shift these select instead (the editor's selectToBlockEdge).
+    if (k === Qt.Key_Up && ctrl && !shift) { root.jumpWithinBlock(-1); return true }
+    if (k === Qt.Key_Down && ctrl && !shift) { root.jumpWithinBlock(1); return true }
     if (k === Qt.Key_Right && alt) { root.diveIn(); return true }
     if (k === Qt.Key_T && ctrl) { root.toggleTasks(); return true }
     if (k === Qt.Key_F && ctrl) { root.openSearch(); return true }

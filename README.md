@@ -62,7 +62,8 @@ margin to the right when asked. Finishing an `@` or `?` line stages the block
 (hollow mark) and asks "send to agent?" under the cursor with *no*
 preselected; an arrow then Enter sends. A checkbox list is staged as one
 submission when you leave it. `Ctrl+Enter` sends a staged block later. `Alt+Up/Down`
-move between blocks, `Ctrl+Up/Down` jump to a block's start or end,
+move between blocks, `Ctrl+Up/Down` jump to a block's start or end
+(`Ctrl+Shift+Up/Down` select to it, a block more each press),
 `Alt+Right` goes into the margin — proposals first (Enter accepts one and runs
 it through `pomo`), then the chat — `Alt+Left` or `Esc` comes back. `Ctrl+T`
 opens the what's-next panel: every open checkbox across your daily notes and

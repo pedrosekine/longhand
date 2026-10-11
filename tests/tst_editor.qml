@@ -467,6 +467,37 @@ Item {
       compare(ed.selEnd, ed.text.length)
     }
 
+    function test_ctrl_shift_up_selects_to_block_start() {
+      // One paragraph of three lines, then a blank, then another block.
+      start("\nfirst line\nsecond line\nthird line\n\nnext block", 20)   // "second l|ine"
+      keyClick(Qt.Key_Up, Qt.ControlModifier | Qt.ShiftModifier)
+      verify(ed.spanning)
+      compare(ed.text.slice(ed.selStart, ed.selEnd), "first line\nsecond l")
+    }
+
+    function test_ctrl_shift_down_selects_to_block_end() {
+      start("\nfirst line\nsecond line\nthird line\n\nnext block", 18)   // after "first l" + "ine\ns"
+      keyClick(Qt.Key_Down, Qt.ControlModifier | Qt.ShiftModifier)
+      compare(ed.text.slice(ed.selStart, ed.selEnd), ed.text.slice(18, ed.text.indexOf("\n\nnext")))
+    }
+
+    function test_ctrl_shift_again_takes_the_next_block() {
+      start("\nfirst block\n\nsecond block\nstill second\n\nthird", 2)
+      keyClick(Qt.Key_Down, Qt.ControlModifier | Qt.ShiftModifier)   // to the end of "first block"
+      compare(ed.selEnd, ed.text.indexOf("\n\nsecond"))
+      keyClick(Qt.Key_Down, Qt.ControlModifier | Qt.ShiftModifier)   // on through the second block
+      compare(ed.selStart, 2)
+      compare(ed.selEnd, ed.text.indexOf("\n\nthird"))
+      keyClick(Qt.Key_Up, Qt.ControlModifier | Qt.ShiftModifier)     // back to the second block's start
+      compare(ed.selEnd, ed.text.indexOf("second block"))
+    }
+
+    function test_ctrl_shift_up_on_a_list_item_stops_at_its_text() {
+      start("\n- [ ] read ch.7 carefully", 17)   // "read ch.7 |carefully"
+      keyClick(Qt.Key_Up, Qt.ControlModifier | Qt.ShiftModifier)
+      compare(ed.text.slice(ed.selStart, ed.selEnd), "read ch.7 ")   // the box is not part of the words
+    }
+
     function test_block_rect() {
       start("\nalpha\nbeta\n\ngamma")
       var r = ed.blockRect(1, 3)

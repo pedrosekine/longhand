@@ -1,5 +1,6 @@
 import QtQuick
 import "Rows.js" as Rows
+import "Blocks.js" as Blocks
 
 // The sheet's editor: the note drawn, not shown as markdown.
 //
@@ -391,6 +392,28 @@ Item {
     ed.selectSpan(ed.absOf(i, 0), ed.absOf(j, ed.rows[j].body.length))
   }
 
+  // Ctrl+Shift+Up / Down: select from the cursor to the start / end of its
+  // block — the same block the agent answers. Again at the edge, the
+  // selection takes the block before / after too. A selection already
+  // there keeps its anchor.
+  function selectToBlockEdge(dir, item) {
+    var blocks = Blocks.split(ed.text)
+    var cur = ed.spanning ? ed.selCursor : ed.cursorPosition
+    var anchor = ed.spanning ? ed.selAnchor : (item ? ed.nativeAnchor(item) : ed.cursorPosition)
+    var to = -1
+    for (var b = 0; b < blocks.length; b++) {
+      var first = ed.rows[blocks[b].start]
+      var last = ed.rows[blocks[b].end - 1]
+      if (!first || !last) continue
+      var startAt = first.start + first.prefixLen
+      var endAt = last.bodyEnd
+      if (dir < 0 && startAt < cur) to = startAt                    // the nearest start before
+      if (dir > 0 && endAt > cur && to < 0) to = endAt              // the nearest end after
+    }
+    if (to < 0 || to === anchor) return
+    ed.selectSpan(anchor, to)
+  }
+
   // Keys while a selection crosses lines. True when the key was used.
   function spanKey(event) {
     var ctrl = event.modifiers & Qt.ControlModifier
@@ -665,6 +688,11 @@ Item {
 
     if (ed.spanning && k === Qt.Key_Escape) { ed.clearSelection(); ed.placeCursor(true); event.accepted = true; return }
     if (ed.keyFilter && ed.keyFilter(event)) { event.accepted = true; return }
+    if (ctrl && shift && !alt && (k === Qt.Key_Up || k === Qt.Key_Down)) {
+      ed.selectToBlockEdge(k === Qt.Key_Up ? -1 : 1, item)
+      event.accepted = true
+      return
+    }
     if (ed.spanning) {
       if (ed.spanKey(event)) { event.accepted = true; return }
     }
