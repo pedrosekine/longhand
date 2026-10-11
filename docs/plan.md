@@ -263,6 +263,12 @@
 - [ ] After the freeze, in this order unless the numbers say otherwise:
       - [ ] 14.6i projects for notes — class notes findable by course
             without knowing the date (deadlines already carry projects).
+            Convention in use from 2026-10-12 (the first class of
+            "Interdisciplinary Seminar"): one `# Course #tag` H1 per class,
+            notes organised under it with H2/H3…; course deadlines carry
+            the same tag. Rule for the feature: a tagged heading claims
+            everything under it until the next heading of the same or a
+            higher level (outline semantics) — an H2 never ends an H1.
       - [ ] multi-language cue words and prompts (DE, PT, ES), at no cost in
             speed.
       - [ ] 14.7 focus mode — where the pomodoro comes back in.
