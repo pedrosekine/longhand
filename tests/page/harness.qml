@@ -1,6 +1,7 @@
 import Quickshell
 import Quickshell.Io
 import QtQuick
+import qs.Commons
 import "page"
 
 // The page under test: a stand-in for omarchy-shell (toggle / summon / hide
@@ -48,6 +49,8 @@ ShellRoot {
     function activate(): void { page.activateTask() }
     function tickRow(): void { page.tickFocused() }
     function acceptAt(i: int): void { page.acceptProposal(i) }
+    // What omarchy-shell's own applyTheme does when a theme is set.
+    function applyTheme(colorsB64: string, shellB64: string): string { Color.loadColors(Qt.atob(colorsB64)); Color.loadShell(Qt.atob(shellB64)); return "ok" }
     function palette(): string { var p = page.palette; return "keys=" + Object.keys(p.keys).length + " accent=" + p.accent + " dim=" + p.dim + " faint=" + p.faint + " h=" + p.headings.join(",") + " eh=" + page.editorItem.headingColors + " bullet=" + page.editorItem.bulletColor }
     function search(q: string): void { page.openSearch(); page.searchInput.text = q }
     function selectSpan(a: int, b: int): void { page.editorItem.selectSpan(a, b) }

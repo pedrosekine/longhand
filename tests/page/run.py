@@ -14,6 +14,7 @@ import datetime as dt
 import json
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -37,7 +38,7 @@ def check(cond, what):
 
 
 class Page:
-    def __init__(self):
+    def __init__(self, fake_home=False):
         self.tmp = pathlib.Path(tempfile.mkdtemp(prefix="page-test-"))
         self.shell = self.tmp / "shell"
         self.shell.mkdir()
@@ -73,6 +74,17 @@ python3 -c "import json; s=json.load(open('$F')); s['blocks']['$H']['proposals']
         self.runner.chmod(0o755)
         self.env = dict(os.environ, XDG_CONFIG_HOME=str(cfg), XDG_STATE_HOME=str(self.state),
                         PATH=f"{bindir}:{os.environ['PATH']}")
+        if fake_home:
+            # A home of its own, holding a copy of the current theme, so a
+            # theme switch can be replayed without touching the real one.
+            self.home = self.tmp / "home"
+            self.theme = self.home / ".local" / "state" / "omarchy" / "current" / "theme"
+            self.theme.mkdir(parents=True)
+            real = pathlib.Path.home() / ".local" / "state" / "omarchy" / "current" / "theme"
+            for name in ("colors.toml", "shell.toml"):
+                if (real / name).exists():
+                    shutil.copy(real / name, self.theme / name)
+            self.env["HOME"] = str(self.home)
         subprocess.run(["hyprctl", "eval", 'hl.window_rule({ match = { title = "^Page scratch$" }, no_initial_focus = true })'],
                        capture_output=True)
         self.proc = subprocess.Popen(["quickshell", "-p", str(self.shell)], env=self.env,
@@ -135,7 +147,43 @@ def header(stem):
     return f"[[agents/student/daily/{stem}|agent]]\n\n"
 
 
+def theme_switch() -> None:
+    """Replay `omarchy theme set` the way it runs: the new theme is staged,
+    the old folder removed, the new one moved in, then the colours pushed
+    to the shell over IPC. The page must repaint at once."""
+    import base64
+    themes = pathlib.Path("/usr/share/omarchy/themes")
+    target = next(t for t in ("tokyo-night", "gruvbox", "nord") if (themes / t / "colors.toml").exists())
+    want = re.search(r'^accent\s*=\s*"(#[0-9A-Fa-f]{6})"', (themes / target / "colors.toml").read_text(), re.M).group(1).lower()
+    p = Page(fake_home=True)
+    try:
+        (p.daily / f"{TODAY}.md").write_text(header(TODAY) + "# heading\n")
+        p.open_fresh()
+        before = p.call("palette")
+        nxt = p.theme.parent / "next-theme"
+        nxt.mkdir()
+        for name in ("colors.toml", "shell.toml"):
+            if (themes / target / name).exists():
+                shutil.copy(themes / target / name, nxt / name)
+        shutil.rmtree(p.theme)
+        nxt.rename(p.theme)
+        moved = time.time()
+        file_only = p.wait(lambda: f"accent={want}" in p.call("palette"), 1.5)
+        b64 = lambda n: base64.b64encode((p.theme / n).read_bytes()).decode() if (p.theme / n).exists() else ""
+        sent = time.time()
+        p.call("applyTheme", b64("colors.toml"), b64("shell.toml"))
+        repainted = p.wait(lambda: f"accent={want}" in p.call("palette"), 3)
+        took = time.time() - sent
+        print(f"     (file watch alone caught it: {file_only}; after the shell's push: {took:.2f}s)")
+        check(f"accent={want}" not in before and repainted and took < 1.0, f"a theme switch repaints the page at once ({target})")
+        heads = p.call("palette").split(" h=")[1].split(" ")[0].split(",")
+        check(len(set(heads)) == 4, f"…with its own heading colours ({','.join(heads)})")
+    finally:
+        p.close()
+
+
 def main() -> int:
+    theme_switch()
     p = Page()
     try:
         # 1. a checkbox with a date at its end is asked about, and bound
