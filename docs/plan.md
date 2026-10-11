@@ -268,23 +268,57 @@
         projects); #tags used unprompted;
       - languages — blocks per language (the case for multi-language cues);
       - focus — pomodoro sessions (0 since 2026-09-17).
-- [ ] After the freeze, in this order unless the numbers say otherwise:
-      - [ ] 14.6i projects for notes — class notes findable by course
-            without knowing the date (deadlines already carry projects).
-            Convention in use from 2026-10-12 (the first class of
-            "Interdisciplinary Seminar"): one `# Course #tag` H1 per class,
-            notes organised under it with H2/H3…; course deadlines carry
-            the same tag. Rule for the feature: a tagged heading claims
-            everything under it until the next heading of the same or a
-            higher level (outline semantics) — an H2 never ends an H1.
-      - [ ] multi-language cue words and prompts (DE, PT, ES), at no cost in
-            speed.
-      - [ ] 14.7 focus mode — where the pomodoro comes back in.
-      - [ ] structure: split Page.qml into tested modules (bound lines,
-            runner queue, what's next); install by symlink; one store parser.
-      - [ ] 14.8 study mode · 14.9 phone capture, external reading.
-- [ ] Parked — deadline entry from the popup (absorbed by 14.4), `.ics` import,
-      analytics (`history`), daily counter
+- [ ] After the freeze: take from the parking lot below, with the stats in
+      hand.
+
+## Parking lot
+
+Everything waiting, in one place. Nothing here is built during the freeze;
+on 2026-10-25 the stats decide what comes off the lot and in what order.
+New ideas land here first (date, where they came from, what they need).
+
+**Proposed order** (unless the numbers say otherwise):
+
+1. **Projects for notes** (14.6i) — class notes findable by course without
+   knowing the date. Convention in use since 2026-10-12: one `# Course #tag`
+   H1 per class, notes under it with H2/H3…, course deadlines carry the same
+   tag. Rule: a tagged heading claims everything under it until the next
+   heading of the same or a higher level — an H2 never ends an H1. First
+   version: from the sidebar's projects, every section of that tag across
+   days, newest first, opened in place.
+2. **Timetable sync** (2026-10-11) — the project list follows the real
+   timetable instead of the copy written on 2026-10-11. Pull, not push:
+   when the page or sidebar opens and the last copy is older than an
+   interval (an hour?), the runner re-fetches the university's `.ics` feed
+   (with "unchanged" checks, so it costs nothing when nothing moved), keeps
+   it in the state folder, and matches courses by timetable code
+   (`M_IC_IntSem_W26`). The course list moves out of the agent's knowledge
+   into a file the model cannot rewrite, so an agent edit can never drop a
+   schedule; today's session lines stay as a fallback. **Needs:** the feed
+   address from the IT:U portal (the link Google was given; local config
+   only, never the repo).
+3. **Multi-language** — cue words ("bis Freitag", "até sexta", "para el
+   viernes") and the page's prompts in DE / PT / ES, at no cost in speed.
+   The stats' language counts say whether it is needed.
+4. **Focus mode** (14.7) — where the pomodoro comes back in (resurface it
+   then, per 2026-10-11).
+5. **Structure** — split `Page.qml` into tested modules (bound lines,
+   runner queue, what's next); install by symlink so the repo is the
+   install; one deadline-store parser for both plugins.
+
+**Not ordered yet:**
+
+- **Tag suggestions while typing** (idea, 2026-10-11) — typing `#` offers the
+  tags that exist (the projects list), so a new tag is a choice, not a typo.
+  The sidebar list is the first step; this would be the stronger guard.
+- **To decide, not build:** Enter twice on a deadline in what's next writes
+  its whole line into today's note — the words are the deadline's title,
+  which may have come from an agent proposal. Keep, or offer only to bind an
+  existing line? (principle 2, 2026-10-11)
+- 14.8 study mode · 14.9 phone capture, external reading.
+- From the old parked list: analytics (`history`), daily counter. (Deadline
+  entry from the popup was absorbed by 14.4; `.ics` import became the
+  timetable sync above.)
 
 ## v0.1 Keyboard contract
 ```bash
