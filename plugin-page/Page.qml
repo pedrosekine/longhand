@@ -1240,9 +1240,11 @@ Item {
     projectsProc.running = true
   }
 
-  // "today 10:45 · Gold", "Wed 10:45 · Bronze", "19 Oct · Design Lab".
+  // "now · until 12:15 · Gold", "today 13:15 · Gold", "Wed 10:45 ·
+  // Bronze", "19 Oct · Design Lab".
   function sessionLabel(n) {
     if (!n) return ""
+    if (n.now) return "now · until " + Qt.formatTime(new Date(n.end), "HH:mm") + (n.room ? " · " + n.room : "")
     var at = new Date(n.at)
     var today = new Date()
     today.setHours(0, 0, 0, 0)
@@ -1541,6 +1543,9 @@ Item {
   }
 
   Process { id: usageProc; onExited: root.flushUsage() }
+
+  // The sessions move on while the sidebar stays open.
+  Timer { interval: 300000; repeat: true; running: root.sidebarOpen && root.showing; onTriggered: root.refreshProjects() }
 
   Process {
     id: projectsProc

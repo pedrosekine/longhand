@@ -1026,7 +1026,23 @@ def cmd_stats(cfg: dict, args) -> int:
 
 # ------------------------------------------------------------------ projects
 
-SESSION_RE = re.compile(r"^\s*- (?:\w{3}) (\d{1,2}) (\w{3}): (\d{1,2}):(\d{2})\S*.*?(?:\(([^)]*)\))?\s*$", re.M)
+SESSION_RE = re.compile(r"^\s*- (?:\w{3}) (\d{1,2}) (\w{3}): (.*)$", re.M)
+SLOT_RE = re.compile(r"(\d{1,2}):(\d{2})\s*[–-]\s*(\d{1,2}):(\d{2})")
+ROOM_RE = re.compile(r"\(([^)]*)\)\s*$")
+
+
+def nearest_year(month: int, day: int, now: dt.datetime) -> dt.date | None:
+    """A session line carries no year: take the year that puts it closest
+    to now (in January, "12 Oct" is last October, not next)."""
+    best = None
+    for y in (now.year - 1, now.year, now.year + 1):
+        try:
+            d = dt.date(y, month, day)
+        except ValueError:
+            continue
+        if best is None or abs((d - now.date()).days) < abs((best - now.date()).days):
+            best = d
+    return best
 MONTH_NUM = {m: i + 1 for i, m in enumerate(["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"])}
 
 
@@ -1048,22 +1064,27 @@ def project_list(cfg: dict, now: dt.datetime) -> list[dict]:
         nxt = None
         for s in SESSION_RE.finditer(text):
             mon = MONTH_NUM.get(s.group(2))
-            if not mon:
+            day = nearest_year(mon, int(s.group(1)), now) if mon else None
+            if day is None:
                 continue
-            day = dt.date(now.year, mon, int(s.group(1)))
-            if day < now.date() - dt.timedelta(days=180):   # the file has no year: Dec → Jan
-                day = day.replace(year=now.year + 1)
-            at = dt.datetime.combine(day, dt.time(int(s.group(3)), int(s.group(4))))
-            if day >= now.date() and (nxt is None or at < nxt["at"]):
-                nxt = {"at": at, "room": (s.group(5) or "").strip()}
+            room = ROOM_RE.search(s.group(3))
+            # The next slot is the first that has not ended yet; one under
+            # way is the next too, and says so.
+            for a_h, a_m, b_h, b_m in SLOT_RE.findall(s.group(3)):
+                start = dt.datetime.combine(day, dt.time(int(a_h), int(a_m)))
+                end = dt.datetime.combine(day, dt.time(int(b_h), int(b_m)))
+                if end > now and (nxt is None or start < nxt["at"]):
+                    nxt = {"at": start, "end": end, "room": room.group(1).strip() if room else ""}
         out.append({"tag": m.group(1) if m else f.stem, "name": name, "file": f.name,
-                    "next": {"at": nxt["at"].isoformat(timespec="minutes"), "room": nxt["room"]} if nxt else None})
+                    "next": {"at": nxt["at"].isoformat(timespec="minutes"), "end": nxt["end"].isoformat(timespec="minutes"),
+                             "now": nxt["at"] <= now, "room": nxt["room"]} if nxt else None})
     out.sort(key=lambda p: (p["next"] is None, p["next"]["at"] if p["next"] else "", p["name"].lower()))
     return out
 
 
 def cmd_projects(cfg: dict, args) -> int:
-    print(json.dumps(project_list(cfg, dt.datetime.now()), ensure_ascii=False))
+    now = dt.datetime.fromisoformat(args.now) if args.now else dt.datetime.now()
+    print(json.dumps(project_list(cfg, now), ensure_ascii=False))
     return 0
 
 
@@ -1111,7 +1132,7 @@ def main(argv: list[str]) -> int:
     sub.add_parser("curriculum")
     sub.add_parser("state").add_argument("--date", default="")
     sub.add_parser("install")
-    sub.add_parser("projects")
+    sub.add_parser("projects").add_argument("--now", default="", help="YYYY-MM-DDTHH:MM (tests)")
     p = sub.add_parser("stats")
     p.add_argument("--days", default="14")
     p.add_argument("--since", default="", help="YYYY-MM-DD; overrides --days")

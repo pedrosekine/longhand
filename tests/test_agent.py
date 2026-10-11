@@ -300,6 +300,20 @@ def main() -> int:
         check([p["tag"] for p in pr] == ["dtm", "intsem", "DORO", "thesis"], f"projects soonest first, file name as fallback tag ({[p['tag'] for p in pr]})")
         check(pr[0]["next"]["at"].endswith("13:15") and pr[0]["next"]["room"] == "Seminar Room 1", f"next session read ({pr[0]['next']})")
         check(pr[1]["name"] == "Interdisciplinary Seminar" and pr[3]["next"] is None, "name from the H1; no sessions, no next")
+        # Fixed dates from here on, so the clock cannot move the answers.
+        (pd / "intsem.md").write_text("# Interdisciplinary Seminar\n\n- Tag: `#intsem`\n"
+                                      "  - Mon 12 Oct: 10:45–12:15, 13:15–15:45 (Gold)\n"
+                                      "  - Tue 15 Dec: 10:45–12:15 (Infineon Seminar room 1)\n")
+        def nxt(now):
+            pr = json.loads(t.agent("projects", "--now", now).stdout)
+            return next(p["next"] for p in pr if p["tag"] == "intsem")
+        check(nxt("2026-10-12T09:00")["at"] == "2026-10-12T10:45", "before class: today's first slot")
+        n = nxt("2026-10-12T11:00")
+        check(n["at"] == "2026-10-12T10:45" and n["now"] is True, "during the first slot: it, and under way")
+        check(nxt("2026-10-12T12:30")["at"] == "2026-10-12T13:15", "between slots: the afternoon one")
+        check(nxt("2026-10-12T18:00")["at"] == "2026-12-15T10:45", "after class: the next session, not today's")
+        check(nxt("2027-01-11T09:00") is None, "in January, October is last October: nothing next")
+        check(nxt("2026-12-01T09:00")["at"] == "2026-12-15T10:45", "December reads as this December")
     finally:
         t.cleanup()
 
