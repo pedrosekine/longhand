@@ -232,10 +232,34 @@
             ungraded ones wait in a folded row. Tests: tst_bound.qml,
             test_pomo.py, and an IPC-driven run of every path on a scratch
             store.
-      - [ ] 14.6i organising notes around projects — parked: how notes (not
-            just deadlines) gather by project so they can be found.
-      - [ ] 14.7 focus mode (shelved 2026-10-10: the need is not there yet)
-            · 14.8 study mode · 14.9 phone capture, external reading.
+      - [x] 14.6j stabilise (2026-10-11, after an assessment) — an unreadable
+            store no longer strips anchors; prompts take arrows+Enter, never
+            a letter; deleting a bound line hides the deadline; ticks from
+            what's next find their line by its words (Tasks.js); line
+            tracking resets per note and a rename lands on close; the open
+            note is watched for outside edits (Obsidian); `pomo` locks the
+            store (eight racing adds gave duplicate ids before); the runner
+            queue is FIFO; "today" follows the clock. tests/page/run.py drives
+            the page live over IPC (21 checks). `student-agent stats` and the
+            page's local usage log, for the freeze.
+- [ ] **Freeze, 2026-10-11 → 2026-10-25: fixes only, use it.** At the end,
+      `student-agent stats --since 2026-10-11` and decide with it:
+      - habit — days written in, days the page was opened, minutes;
+      - intention → outcome — checkboxes ticked / written (0/17 before);
+      - deadlines — bound from a note vs elsewhere, closed by their time;
+      - finding — calendar and past days opened, find used (the case for
+        projects); #tags used unprompted;
+      - languages — blocks per language (the case for multi-language cues);
+      - focus — pomodoro sessions (0 since 2026-09-17).
+- [ ] After the freeze, in this order unless the numbers say otherwise:
+      - [ ] 14.6i projects for notes — class notes findable by course
+            without knowing the date (deadlines already carry projects).
+      - [ ] multi-language cue words and prompts (DE, PT, ES), at no cost in
+            speed.
+      - [ ] 14.7 focus mode — where the pomodoro comes back in.
+      - [ ] structure: split Page.qml into tested modules (bound lines,
+            runner queue, what's next); install by symlink; one store parser.
+      - [ ] 14.8 study mode · 14.9 phone capture, external reading.
 - [ ] Parked — deadline entry from the popup (absorbed by 14.4), `.ics` import,
       analytics (`history`), daily counter
 

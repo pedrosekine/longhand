@@ -905,6 +905,18 @@ cmd_deadline() {
   local sub="${1:-list}"
   shift 2>/dev/null || true
   case "$sub" in
+    add|set|edit|done|submit|undone|reopen|grade|hide|unhide|show|rm|remove)
+      # One writer at a time: the page, the popup and the agent can all call
+      # in at once, and every change rewrites (or appends to) the file and
+      # bumps the id counter. The lock lives beside the file.
+      mkdir -p "$STATE_DIR"
+      exec 9>"$DEADLINE_FILE.lock"
+      if ! flock -w 10 9; then
+        echo "pomo: the deadline store is busy, try again" >&2
+        exit 1
+      fi ;;
+  esac
+  case "$sub" in
     add)          cmd_deadline_add "$@" ;;
     set|edit)     cmd_deadline_set "$@" ;;
     list|ls)      cmd_deadline_list "$@" ;;

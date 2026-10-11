@@ -11,6 +11,7 @@
     student-agent curriculum                                   # convert PDFs in the curriculum folder to .md
     student-agent context --trigger <kind> [--hash <block>]   # payload only, no model
     student-agent state [--date YYYY.MM.DD]                    # today's state JSON
+    student-agent stats [--days 14 | --since YYYY-MM-DD] [--json]   # how the tool is used
     student-agent install                                      # opencode agent def + dirs
 
 One pass, then exit. Nothing is resident. The model gets no tools: everything
@@ -847,6 +848,181 @@ def cmd_state(cfg: dict, args) -> int:
     return 0
 
 
+# ------------------------------------------------------------------- stats
+
+TAG_RE = re.compile(r"(?:^|\s)#([\w/-]+)")
+BOUND_RE = re.compile(r"^\s*[-*+] \[[ xX]\] .*\s\^d\d+\s*$", re.M)
+BOX_RE = re.compile(r"^\s*[-*+] \[([ xX])\] ", re.M)
+LANG_CODE = {"English": "en", "German": "de", "Portuguese": "pt", "Spanish": "es", "Dutch": "nl",
+             "French": "fr", "Italian": "it"}
+LOG_RE = re.compile(r"^(\d{4}-\d{2}-\d{2}) \d{2}:\d{2}:\d{2} (.*)$")
+
+
+def sure_language(text: str, candidates: list[str]) -> str:
+    """A block's language when the stopwords say so clearly, else ""."""
+    words = re.findall(r"[\w']+", text.lower())
+    counts = {lang: sum(1 for w in words if w in STOPWORDS.get(lang, ())) for lang in candidates}
+    best = max(counts, key=counts.get) if counts else ""
+    return best if best and counts[best] >= 2 else ""
+
+
+def cmd_stats(cfg: dict, args) -> int:
+    """How the tool is being used, day by day, read from what is already on
+    disk: the notes, the deadline store and pomo's log, the agent's cost
+    ledger, and the page's usage log. Read-only, local, never in a payload.
+    The point is to judge the tool after a stretch of real use — whether
+    the habit forms and intentions close — not to score the student."""
+    today = dt.date.today()
+    start = (dt.datetime.strptime(args.since, "%Y-%m-%d").date() if args.since
+             else today - dt.timedelta(days=int(args.days) - 1))
+    span = [start + dt.timedelta(days=i) for i in range((today - start).days + 1)]
+    day = {d: {"words": 0, "written": 0, "ticked": 0, "bound": 0, "tags": [], "langs": {},
+               "opens": 0, "minutes": 0.0, "features": {}, "runs": 0, "cost": 0.0, "triggers": {},
+               "focus": 0, "added": 0, "done": 0} for d in span}
+    langs = languages(cfg)
+
+    # Notes: what was written, intended (checkboxes) and closed (ticked).
+    for d in span:
+        note = Path(cfg["vault"]) / cfg["daily"]["dir"] / f"{day_stamp(cfg, d)}.md"
+        try:
+            text = note.read_text()
+        except OSError:
+            continue
+        body = re.sub(r"^\[\[[^\]\n]*\|agent\]\]\n?", "", text)
+        r = day[d]
+        r["words"] = len(re.findall(r"\w+", re.sub(r"📅 \S+( \d{1,2}:\d{2})?|\^d\d+", "", body)))
+        boxes = BOX_RE.findall(body)
+        r["written"] = len(boxes)
+        r["ticked"] = sum(1 for b in boxes if b != " ")
+        r["bound"] = len(BOUND_RE.findall(body))
+        r["tags"] = sorted(set(TAG_RE.findall(body)))
+        for b in blocklib.split(body):
+            if b["kind"] in ("frontmatter",) or b["private"]:
+                continue
+            lang = sure_language(b["text"], langs)
+            if lang:
+                r["langs"][lang] = r["langs"].get(lang, 0) + 1
+
+    # The page: opens, time open, what was reached for.
+    usage = STATE_HOME / "usage.tsv"
+    if usage.exists():
+        for line in usage.read_text().splitlines():
+            f = line.split("\t")
+            if len(f) < 2 or not f[0].isdigit():
+                continue
+            d = dt.date.fromtimestamp(int(f[0]))
+            if d not in day:
+                continue
+            ev, detail = f[1], f[2] if len(f) > 2 else ""
+            if ev == "open":
+                day[d]["opens"] += 1
+            elif ev == "close" and detail.isdigit():
+                day[d]["minutes"] += int(detail) / 60
+            else:
+                key = ev if ev not in ("prompt", "day") else (f"{ev}:{detail}" if ev == "prompt"
+                                                              else ("day:past" if detail not in ("", "0") else "day:today"))
+                day[d]["features"][key] = day[d]["features"].get(key, 0) + 1
+
+    # The agent: runs, triggers, cost.
+    ledger = STATE_HOME / "cost.tsv"
+    if ledger.exists():
+        for line in ledger.read_text().splitlines()[1:]:
+            f = line.split("\t")
+            try:
+                d = dt.date.fromisoformat(f[0][:10])
+            except (ValueError, IndexError):
+                continue
+            if d in day:
+                day[d]["runs"] += 1
+                day[d]["cost"] += float(f[4] or 0)
+                day[d]["triggers"][f[2]] = day[d]["triggers"].get(f[2], 0) + 1
+
+    # pomo: focus sessions, deadlines made and closed.
+    seen = set()
+    log = STATE_HOME / "pomo.log"
+    if log.exists():
+        for line in log.read_text().splitlines():
+            m = LOG_RE.match(line)
+            if not m:
+                continue
+            d = dt.date.fromisoformat(m.group(1))
+            msg = m.group(2)
+            first = re.match(r"deadline #(\d+) · ", msg)
+            if first and first.group(1) not in seen:
+                seen.add(first.group(1))
+                if d in day:
+                    day[d]["added"] += 1
+            if d not in day:
+                continue
+            if "focus completed" in msg:
+                day[d]["focus"] += 1
+            if re.match(r"deadline #\d+ done", msg):
+                day[d]["done"] += 1
+
+    # Deadlines in the window: met on time or late, made from a note or not.
+    store = STATE_HOME / "deadlines.tsv"
+    on_time = late = from_note = closed = 0
+    if store.exists():
+        for line in store.read_text().splitlines():
+            f = line.split("\t")
+            if len(f) < 5 or not f[1].isdigit():
+                continue
+            due, status = int(f[1]), f[3]
+            done_at = int(f[4]) if f[4].isdigit() else 0
+            if status != "open" and done_at and dt.date.fromtimestamp(done_at) >= start:
+                closed += 1
+                on_time += done_at <= due
+                late += done_at > due
+                from_note += len(f) > 7 and "#^d" in f[7]
+
+    rows = [{"date": d.isoformat(), **day[d]} for d in span]
+    totals = {
+        "days": len(span),
+        "days_written": sum(1 for r in rows if r["words"] > 0),
+        "days_opened": sum(1 for r in rows if r["opens"] > 0),
+        "words": sum(r["words"] for r in rows),
+        "checkboxes_written": sum(r["written"] for r in rows),
+        "checkboxes_ticked": sum(r["ticked"] for r in rows),
+        "bound_lines": sum(r["bound"] for r in rows),
+        "tags": sorted({t for r in rows for t in r["tags"]}),
+        "languages": {l: sum(r["langs"].get(l, 0) for r in rows) for l in langs},
+        "page_opens": sum(r["opens"] for r in rows),
+        "page_minutes": round(sum(r["minutes"] for r in rows)),
+        "features": {},
+        "agent_runs": sum(r["runs"] for r in rows),
+        "agent_cost": round(sum(r["cost"] for r in rows), 4),
+        "focus_sessions": sum(r["focus"] for r in rows),
+        "deadlines_added": sum(r["added"] for r in rows),
+        "deadlines_closed": closed, "closed_on_time": on_time, "closed_late": late, "closed_from_a_note": from_note,
+    }
+    for r in rows:
+        for k, v in r["features"].items():
+            totals["features"][k] = totals["features"].get(k, 0) + v
+
+    if args.json:
+        print(json.dumps({"days": rows, "totals": totals}, indent=2, ensure_ascii=False))
+        return 0
+    print(f"{'day':<11} {'words':>5} {'☐→✓':>7} {'bound':>5} {'opens':>5} {'min':>4} {'agent':>5} {'focus':>5}  tags · languages · page")
+    for r in rows:
+        feats = " ".join(f"{k}×{v}" for k, v in sorted(r["features"].items()))
+        lang = " ".join(f"{LANG_CODE.get(k, k[:2].lower())}{v}" for k, v in r["langs"].items())
+        print(f"{r['date']:<11} {r['words']:>5} {str(r['written']) + '→' + str(r['ticked']):>7} {r['bound']:>5} "
+              f"{r['opens']:>5} {round(r['minutes']):>4} {r['runs']:>5} {r['focus']:>5}  "
+              f"{' '.join('#' + t for t in r['tags'])} · {lang} · {feats}".rstrip(" ·"))
+    t = totals
+    rate = f"{t['checkboxes_ticked']}/{t['checkboxes_written']}" if t["checkboxes_written"] else "—"
+    print(f"\n{t['days_written']}/{t['days']} days written in, {t['days_opened']} with the page opened "
+          f"({t['page_opens']} opens, {t['page_minutes']} min). {t['words']} words.")
+    print(f"Checkboxes closed: {rate}. Bound lines: {t['bound_lines']}. Deadlines: {t['deadlines_added']} added, "
+          f"{t['deadlines_closed']} closed ({t['closed_on_time']} by their time, {t['closed_late']} marked done after it, "
+          f"{t['closed_from_a_note']} from a note line).")
+    print(f"Agent: {t['agent_runs']} runs, ${t['agent_cost']:.4f}. Focus sessions: {t['focus_sessions']}.")
+    print(f"Tags: {' '.join('#' + x for x in t['tags']) or '—'}. Languages (blocks): "
+          + (", ".join(f"{k} {v}" for k, v in t["languages"].items() if v) or "—") + ".")
+    print("Page: " + (", ".join(f"{k} {v}" for k, v in sorted(t["features"].items())) or "—") + ".")
+    return 0
+
+
 def cmd_install(cfg: dict, args) -> int:
     here = Path(__file__).resolve().parent
     src = here / "opencode" / "student.md"
@@ -891,12 +1067,16 @@ def main(argv: list[str]) -> int:
     sub.add_parser("curriculum")
     sub.add_parser("state").add_argument("--date", default="")
     sub.add_parser("install")
+    p = sub.add_parser("stats")
+    p.add_argument("--days", default="14")
+    p.add_argument("--since", default="", help="YYYY-MM-DD; overrides --days")
+    p.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
     try:
         cfg = load_config()
         return {"run": cmd_run, "chat": cmd_chat, "ack": cmd_ack, "accept": cmd_accept, "tasks": cmd_tasks,
                 "next": cmd_next, "dismiss": cmd_dismiss, "curriculum": cmd_curriculum,
-                "context": cmd_context, "state": cmd_state, "install": cmd_install}[args.cmd](cfg, args)
+                "context": cmd_context, "state": cmd_state, "install": cmd_install, "stats": cmd_stats}[args.cmd](cfg, args)
     except Fail as e:
         print(f"student-agent: {e}", file=sys.stderr)
         return 2

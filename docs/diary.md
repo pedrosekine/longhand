@@ -20,10 +20,13 @@ in code, and the vault path is never recorded in this public repo.
 ## Principles
 
 1. **Agentic-first.** Plain files plus one command. No daemon, no API, no auth.
-2. **The note is the student's, the store is the system's.** The daily note is
-   written by the student, only ever by the student. Structured facts (due
-   dates, status, subject) live in the store the CLI already owns. When they
-   disagree, the store wins and the agent may flag it.
+2. **The canvas is the student's, the store is the system's.** Every
+   thought and every word in a note is written by the student, only ever by
+   the student; the agent talks in its own place (the margin, the chat),
+   never in the canvas. Structured facts (due dates, status, project) live
+   in the store the CLI owns, and when they disagree the store wins — so the
+   page may change the *facts* on a line that stands for a deadline (its
+   tick, its date, its anchor), never its words. (Amended 2026-10-11.)
 3. **Consent is an allowlist, enforced locally.** The model sees exactly what
    local code assembled: today's note minus private blocks, the agent's own
    knowledge files, the curriculum folder, the timer report. Nothing else on
@@ -65,8 +68,10 @@ All paths relative to the vault unless stated. Names of folders are config.
 Obsidian); both check for existence. The template is one line: a link to the
 day's transcript, `[[agents/student/daily/YYYY.MM.DD|agent]]`, unresolved until
 the first reply creates it. No code path except create-if-missing ever writes
-this folder. The page is the one program that edits the note, and only because
-the student typed or ticked in it.
+this folder. The page is the one program that edits the note: the student's
+typing and ticking, and — under principle 2 — a bound line's tick, date and
+anchor brought in line with the store. The only line the page writes whole
+is a deadline's, when the student asks for it from what's next.
 
 **The transcript.** For the student. One section per block: the quoted block,
 the reply, proposals as checkboxes, and the dive-in dialogue if there was one.
@@ -113,9 +118,10 @@ things must both be true for a block to reach the model: it carries a
 - The signs: a checkbox line (`- [ ] …`), a line starting with `@`, a line
   ending with `?`, a tick. Finishing an `@` or `?` line with Enter
   **stages** the block — hollow accent mark in the gutter — and shows a
-  washed prompt under the cursor, "send to agent? [no] yes". `y` sends;
-  `n`, Enter again, or Esc ignores it and the page behaves as usual; an
-  arrow then Enter sends.
+  washed prompt under the cursor, "send to agent? [no] yes". An arrow then
+  Enter sends; Enter again or Esc ignores it and the page behaves as usual.
+  No letter answers a prompt (since 2026-10-11): a typed "y" is writing —
+  in Spanish it is a word.
 - **A checkbox list is one submission.** Enter on an item just gives the
   next bullet. Leaving the list (Enter on an empty bullet) stages the whole
   run of adjacent items as a group with one prompt; the reply attaches to
@@ -329,3 +335,14 @@ only the window and the panels around it differ.
   leads with them; the popup stays as the glance and opens lines. Done
   deadlines leave lists the day after; ungraded ones wait to be graded.
   Organising notes around projects is parked for its own conversation.
+- 2026-10-11: assessment and a freeze. Principle 2 amended to the student's
+  own line: the content of the canvas is only ever the student's; the page
+  may bring a deadline line's facts in line with the store, and the agent
+  speaks in its own interface. Prompts no longer take `y`/`n` (Spanish "y"
+  is a word); deleting a bound line hides the deadline instead of removing
+  it. Features are frozen for two weeks of real use, measured by
+  `student-agent stats` (local only). Decided for after the freeze:
+  projects first — class notes must be findable by course without knowing
+  the date; multi-language cue words and prompts, provided they cost no
+  speed; the pomodoro stays a separate module and resurfaces with focus
+  mode; abstracting for other students waits until this is a daily tool.

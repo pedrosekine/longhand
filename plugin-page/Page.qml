@@ -8,6 +8,7 @@ import qs.Ui
 import "Blocks.js" as Blocks
 import "Bound.js" as Bound
 import "Days.js" as Days
+import "Tasks.js" as Tasks
 
 // The page: today's note as a blank sheet in the shell, with the agent in
 // the margin. Two shapes of the same sheet: the overlay (a layer over
@@ -85,8 +86,9 @@ import "Days.js" as Days
 // reschedules a bound line, or (date cleared) unbinds it. A bound line
 // shows its date at its end. Ticking it marks the deadline done, editing
 // its words renames it, a #tag moves its project; deleting the line asks
-// whether the deadline goes too (a cut does not: it is moving). Changes
-// made in the popup or the CLI reach the line when the page opens the note:
+// whether the deadline goes too — hidden, kept in history (a cut does not
+// ask: it is moving). Changes made in the popup or the CLI reach the line
+// when the page opens the note:
 // the store wins.
 Item {
   id: root
@@ -187,7 +189,7 @@ Item {
   property bool applying: false
 
   // Runner plumbing: one process at a time, the last request wins.
-  property var queued: null
+  property var queued: []      // runner commands waiting, oldest first
   property bool running: false
   property string runningHash: ""
   property bool openPassPending: false
@@ -257,6 +259,38 @@ Item {
     Qt.callLater(editor.focusNote)
   }
 
+  // ------------------------------------------------------------ usage
+
+  // What the page is used for, for judging it after a stretch of real use
+  // (`student-agent stats`): event names and numbers only, never a word of
+  // the notes. Appended to the state folder — not the vault, never in a
+  // payload — a few lines at a time.
+  readonly property string usagePath: (Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state") + "/omarchy-student/usage.tsv"
+  property var usageBuf: []
+  property double openedAt: 0
+
+  function used(event, detail) {
+    root.usageBuf = root.usageBuf.concat([Math.floor(Date.now() / 1000) + "\t" + event + "\t" + (detail === undefined ? "" : detail)])
+  }
+
+  function flushUsage() {
+    if (root.usageBuf.length === 0 || usageProc.running) return
+    usageProc.command = ["sh", "-c", 'printf "%s\n" "$1" >> "$2"', "sh", root.usageBuf.join("\n"), root.usagePath]
+    root.usageBuf = []
+    usageProc.running = true
+  }
+
+  onShowingChanged: {
+    if (root.showing) {
+      root.openedAt = Date.now()
+      root.used("open", root.overlayOpen ? "overlay" : "window")
+    } else if (root.openedAt > 0) {
+      root.used("close", Math.round((Date.now() - root.openedAt) / 1000))
+      root.openedAt = 0
+      root.flushUsage()
+    }
+  }
+
   function zoomBy(dir) {
     var steps = root.zoomSteps
     var i = 0
@@ -267,6 +301,7 @@ Item {
   function setZoom(z) {
     if (z === root.zoom) { zoomHint.restart(); return }
     root.zoom = z
+    root.used("zoom", z)
     zoomHint.restart()
     zoomFile.setText(JSON.stringify({ zoom: z }) + "\n")
     root.scheduleRepaint()
@@ -291,6 +326,7 @@ Item {
   // What the shell calls to hide the page: the overlay goes, the window
   // (if open) stays and gets the sheet back.
   function close() {
+    root.leftLine(root.lastLine)
     root.flush()
     root.overlayOpen = false
     if (root.windowOpen) Qt.callLater(editor.focusNote)
@@ -311,6 +347,7 @@ Item {
   // the window and closes the overlay; unpinning the window does the
   // reverse.
   function togglePin() {
+    root.used("pin", root.overlayOpen ? "to-window" : "to-overlay")
     root.flush()
     if (root.overlayOpen) {
       root.windowOpen = true
@@ -324,10 +361,14 @@ Item {
 
   // Disk → editor. Guarded so the resulting textChanged does not look like
   // typing and schedule a write of what was just read.
-  function applyText(t) {
+  function applyText(t, keepCursor) {
+    var at = editor.cursorPosition
     root.applying = true
     editor.load(t)
     root.applying = false
+    // Line indices belong to the text they were taken from.
+    root.lastLine = -1
+    if (keepCursor) editor.setCursor(Math.min(at, editor.length))
     root.tickedCount = root.countTicked(t)
     root.scheduleRepaint()
   }
@@ -410,6 +451,7 @@ Item {
   }
 
   function send(trigger, hashes) {
+    root.used("send", trigger)
     root.ask = null
     root.unstage(hashes)
     root.requestRun(trigger, hashes.join(","))
@@ -452,9 +494,10 @@ Item {
       root.ask = Object.assign({}, root.ask, { yes: !root.ask.yes })
       return true
     }
+    // No letters answer a prompt: a "y" may be the first letter of the
+    // next word (in Spanish it is a word), and a prompt must never act on
+    // what was meant as writing.
     if (k === Qt.Key_Escape) { root.declineAsk(); return true }
-    if (event.text === "y" || event.text === "Y") { root.acceptAsk(); return true }
-    if (event.text === "n" || event.text === "N") { root.declineAsk(); return true }
     if (k === Qt.Key_Return || k === Qt.Key_Enter) {
       if (root.ask.yes) { root.acceptAsk(); return true }
       root.declineAsk()
@@ -471,14 +514,16 @@ Item {
     var a = root.ask
     root.ask = null
     if (!a) return
+    root.used("prompt", a.kind + ":yes")
     if (a.kind === "send") root.send(a.trigger, a.hashes)
     else if (a.kind === "deadline") root.bindCue(a.raw, a.cue, a.ms)
-    else if (a.kind === "delete") dl.remove(a.id)
+    else if (a.kind === "delete") dl.hide(a.id)
   }
 
   function declineAsk() {
     var a = root.ask
     root.ask = null
+    if (a) root.used("prompt", a.kind + ":no")
     if (a && a.kind === "deadline") {
       var d = Object.assign({}, root.declined)
       d[a.raw] = true
@@ -487,11 +532,10 @@ Item {
   }
 
   function askText(a) {
-    var choice = a.yes ? "[yes]   no" : "yes   [no]"
+    var choice = (a.yes ? "[yes]   no" : "yes   [no]") + "   · ←→ choose · Enter"
     if (a.kind === "deadline") return "deadline: " + a.cue.title + " · " + a.label + "?   " + choice
-    if (a.kind === "delete") return "this line had a deadline: " + a.title + ". delete it as well?   " + choice
-    return a.yes ? "send to agent?  no   [yes]   · Enter or y sends"
-                 : "send to agent?  [no]   yes   · y sends · n, Enter or Esc ignores"
+    if (a.kind === "delete") return "this line had a deadline: " + a.title + ". remove it too (kept in history)?   " + choice
+    return "send to agent?   " + choice
   }
 
   function blockBounds(hash) {
@@ -524,15 +568,19 @@ Item {
     root.enqueue([svc.runner, "chat", "--hash", hash, "--message", message, "--date", svc.noteDate], hash)
   }
 
+  // In order, each once: a confirmed send must never be dropped because
+  // something else was asked for while the runner was busy.
   function enqueue(cmd, hash) {
-    root.queued = { cmd: cmd, hash: hash }
+    var key = JSON.stringify(cmd)
+    for (var i = 0; i < root.queued.length; i++) if (JSON.stringify(root.queued[i].cmd) === key) return
+    root.queued = root.queued.concat([{ cmd: cmd, hash: hash }])
     if (!svc.saving) root.launchQueued()
   }
 
   function launchQueued() {
-    if (!root.queued || root.running || svc.saving) return
-    var q = root.queued
-    root.queued = null
+    if (root.queued.length === 0 || root.running || svc.saving) return
+    var q = root.queued[0]
+    root.queued = root.queued.slice(1)
     root.running = true
     root.runningHash = q.hash
     runner.command = q.cmd
@@ -655,6 +703,7 @@ Item {
   }
 
   function diveIn() {
+    root.used("margin")
     if (root.marginWidth <= 0 || root.currentHash === "") return
     root.marginOpen = true
     if (root.currentProposals.length > 0) {
@@ -693,6 +742,7 @@ Item {
 
   function toggleTasks() {
     root.tasksOpen = !root.tasksOpen
+    if (root.tasksOpen) root.used("whats-next")
     if (root.tasksOpen) {
       root.marginOpen = true
       root.taskFocus = 0
@@ -937,6 +987,7 @@ Item {
     if (!r || r.kind !== "task" || r.deadline > 0) return
     root.writeLine(r, r.raw.substring(0, r.prefixLen) + head.replace(/\s+$/, "") + Bound.tail(ms, id))
     dl.set(id, ["--link", Bound.link(svc.noteDate, id)])
+    root.used("bound")
   }
 
   function bindCue(raw, c, ms) {
@@ -998,6 +1049,7 @@ Item {
   // Ctrl+D: make the line under the cursor a deadline, reschedule it, or
   // (date cleared) unbind it.
   function deadlineKey() {
+    root.used("ctrl-d")
     var i = root.lineIndexAt(editor.cursorPosition)
     var r = editor.rows[i]
     if (!r) return
@@ -1126,6 +1178,7 @@ Item {
 
   function toggleSidebar() {
     root.sidebarOpen = !root.sidebarOpen
+    if (root.sidebarOpen) root.used("calendar")
     if (root.sidebarOpen) root.focusSidebar()
     else editor.focusNote()
   }
@@ -1133,6 +1186,7 @@ Item {
   // To a deadline's line: its note opened if need be, the cursor at the end
   // of its words. A deadline no line stands for says so.
   function goToDeadline(d) {
+    root.used("goto-deadline")
     var l = d ? Bound.parseLink(d.link) : null
     if (!l) { root.showHint("“" + (d ? d.title : "") + "” is not written in a note yet"); editor.focusNote(); return }
     root.pendingGoto = l.id
@@ -1185,7 +1239,12 @@ Item {
   function openNote(stamp) {
     if (stamp === "" || stamp === svc.noteDate) return
     if (root.searchOpen) root.closeSearch(false)
+    root.leftLine(root.lastLine)
     root.flush()
+    var p = svc.configured ? Days.parse(stamp, svc.dailyFormat()) : null
+    var today = new Date()
+    today.setHours(0, 0, 0, 0)
+    root.used("day", p ? Math.round((today - p.date) / 86400000) : "")
     root.ask = null
     root.staged = ({})
     root.marginOpen = false
@@ -1198,7 +1257,7 @@ Item {
   // ------------------------------------------------------------ search
 
   function openSearch() {
-    if (!root.searchOpen) root.searchFrom = editor.cursorPosition
+    if (!root.searchOpen) { root.searchFrom = editor.cursorPosition; root.used("find") }
     root.searchOpen = true
     searchField.forceActiveFocus()
     searchField.selectAll()
@@ -1267,7 +1326,7 @@ Item {
   Service {
     id: svc
     onLoaded: { root.applyText(svc.body); root.reconcilePending = true; root.reconcile(); root.openPass() }
-    onExternalChange: { root.applyText(svc.body); root.reconcilePending = true; root.reconcile() }
+    onExternalChange: { root.applyText(svc.body, true); root.reconcilePending = true; root.reconcile() }
     onSavedNow: {
       if (root.pendingStamp !== "") {
         var s = root.pendingStamp
@@ -1344,12 +1403,11 @@ Item {
       tickFile.pending = null
       var t = p.task
       var lines = text().split("\n")
-      if (t.line < lines.length) {
-        var re = p.untick ? new RegExp("^(\\s*[-*+] )\\[[xX]\\] ") : new RegExp("^(\\s*[-*+] )\\[ \\] ")
-        if (re.test(lines[t.line])) {
-          lines[t.line] = lines[t.line].replace(re, p.untick ? "$1[ ] " : "$1[x] ")
-          setText(lines.join("\n"))
-        }
+      // The note may have changed since the list was read (Tasks.js).
+      var at = Tasks.find(lines, t.line, t.text, p.untick)
+      if (at >= 0) {
+        lines[at] = Tasks.flip(lines[at], !p.untick)
+        setText(lines.join("\n"))
       }
     }
     onSaved: root.refreshTasks()
@@ -1410,6 +1468,9 @@ Item {
     onStatusChanged: if (status === FolderListModel.Ready) root.collectDays()
     onCountChanged: root.collectDays()
   }
+
+  Process { id: usageProc; onExited: root.flushUsage() }
+  Timer { interval: 300000; running: root.usageBuf.length > 0; repeat: true; onTriggered: root.flushUsage() }
 
   // The zoom step survives restarts. Machine state, not config, and never
   // in the vault.

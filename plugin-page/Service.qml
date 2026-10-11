@@ -34,7 +34,11 @@ Item {
   // an empty header and the body is the whole file.
   property string notePath: ""
   property string noteDate: ""        // the note's file name: a date in daily.format
-  property bool isToday: false
+  // Whether the note in the page is today's — checked against the clock,
+  // so a page left open past midnight knows its note became yesterday's.
+  property string today: ""
+  readonly property bool isToday: noteDate !== "" && noteDate === today
+  Timer { interval: 30000; running: true; repeat: true; onTriggered: root.today = root.configured ? root.todayStamp() : "" }
   property bool exists: false         // false: a day with no file yet, written on the first word
   property string text: ""
   property string header: ""
@@ -112,7 +116,7 @@ Item {
   function openDate(stamp) {
     if (!configured) return
     var p = pathFor(stamp)
-    root.isToday = stamp === todayStamp()
+    root.today = todayStamp()
     if (p === notePath && ready) {
       if (!saving && !pending) noteFile.reload()
       return
@@ -183,6 +187,12 @@ Item {
     id: noteFile
     atomicWrites: true
     printErrors: false
+    // Obsidian (or anything) may write the note while the page has it
+    // open: re-read it then, so the next keystroke does not write over what
+    // was written there. Our own writes read back as `lastWritten` and are
+    // ignored below.
+    watchChanges: true
+    onFileChanged: if (!root.saving) reload()
     onLoaded: {
       var t = text()
       // A load that lands while our own write is in flight, or that reads
@@ -211,7 +221,7 @@ Item {
         root.splitHeader(seed)
         root.ready = true
         root.pending = false
-        if (root.isToday) {
+        if (root.noteDate === root.todayStamp()) {
           root.lastWritten = seed
           root.exists = seed !== ""
           if (seed !== "") noteFile.setText(seed)

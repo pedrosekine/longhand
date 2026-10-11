@@ -12,6 +12,9 @@ Item {
 
   property var items: []          // every deadline, hidden ones included
   property var byId: ({})
+  // True only once the file has been read. A store that could not be read
+  // is unknown, not empty: nothing may be concluded from it (a note's
+  // bound lines must not lose their anchors because the file was missing).
   property bool loaded: false
 
   readonly property string filePath: (Quickshell.env("XDG_STATE_HOME")
@@ -43,11 +46,12 @@ Item {
   }
 
   FileView {
+    id: file
     path: root.filePath
     watchChanges: true
     printErrors: false
     onLoaded: root.parse(text())
-    onLoadFailed: root.parse("")
+    onLoadFailed: { root.items = []; root.byId = ({}); root.loaded = false }
     onFileChanged: reload()
   }
 
@@ -81,6 +85,9 @@ Item {
     var j = root.job
     root.job = null
     if (root.exitCode !== 0) console.warn("student.page pomo " + j.args.join(" ") + ": " + err.text.trim())
+    // A first deadline creates the file, which a watch on a missing file
+    // does not see: read it again after every change.
+    else if (j.args[0] !== "when") file.reload()
     if (j.done) j.done(root.exitCode, out.text)
     root.next()
   }
@@ -116,4 +123,5 @@ Item {
   function markDone(id) { root.run(["done", String(id)]) }
   function reopen(id) { root.run(["reopen", String(id)]) }
   function remove(id) { root.run(["rm", String(id)]) }
+  function hide(id) { root.run(["hide", String(id)]) }
 }

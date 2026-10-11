@@ -266,6 +266,23 @@ def main() -> int:
         t.note.write_text(NOTE)
         r = t.agent("run", "--trigger", "question", "--hash", "deadbeef", "--date", DAY)
         check(r.returncode != 0, "unknown block hash refused")
+
+        # 13. stats: read-only signals from the notes, the ledger and the page's usage log
+        (t.state_home / "omarchy-student").mkdir(parents=True, exist_ok=True)
+        import time as _t
+        now = int(_t.time())
+        (t.state_home / "omarchy-student" / "usage.tsv").write_text(
+            f"{now}\topen\twindow\n{now}\tfind\t\n{now}\tday\t3\n{now}\tclose\t120\n")
+        before = t.note.read_bytes()
+        r = t.agent("stats", "--days", "2", "--json")
+        st = json.loads(r.stdout)
+        today_row = st["days"][-1]
+        check(r.returncode == 0 and today_row["written"] == 1 and today_row["ticked"] == 0, f"stats counts checkboxes ({today_row['written']})")
+        check(today_row["words"] > 0 and "SECRET" not in json.dumps(st), "stats counts words, carries no text")
+        check(st["totals"]["page_opens"] == 1 and st["totals"]["page_minutes"] == 2, "stats reads the page's opens and minutes")
+        check(st["totals"]["features"].get("find") == 1 and st["totals"]["features"].get("day:past") == 1, "stats reads features")
+        check(st["totals"]["agent_runs"] >= 1, "stats reads the cost ledger")
+        check(t.note.read_bytes() == before, "stats writes nothing")
     finally:
         t.cleanup()
 

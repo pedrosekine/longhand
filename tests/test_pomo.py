@@ -46,6 +46,13 @@ def main() -> int:
     check(r.returncode == 0 and r.stdout.strip().endswith("23:59"), "a bare day lands at its end")
     r = pomo("when", "phone")
     check(r.returncode != 0, "a non-date is refused")
+    # Writers racing: eight adds at once must give eight rows, eight ids.
+    procs = [subprocess.Popen([str(POMO), "deadline", "add", f"race {i}", "friday"], env=env,
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) for i in range(8)]
+    for p in procs:
+        p.wait()
+    ids = [x["id"] for x in json.loads(pomo("list", "--json").stdout)["deadlines"] if x["title"].startswith("race")]
+    check(len(ids) == 8 and len(set(ids)) == 8, f"concurrent adds keep every row and id ({sorted(ids)})")
     print("PASS" if failures == 0 else f"{failures} FAILED")
     return 1 if failures else 0
 
