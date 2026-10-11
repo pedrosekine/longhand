@@ -45,6 +45,19 @@ Item {
   property color selectionColor: "lightblue"
   property color accent: "orange"
   property color urgent: "red"
+
+  // What each kind of line is drawn in. The page fills these from the
+  // Omarchy theme (ThemeColors.qml); the defaults only keep the editor usable
+  // on its own (tests).
+  property var headingColors: [foreground, foreground, foreground, foreground]   // h1, h2, h3, h4–h6
+  property color markColor: Qt.rgba(1, 0.85, 0.2, 0.35)        // a search match
+  property color currentMarkColor: Qt.rgba(1, 0.6, 0.1, 0.55)  // the current one
+  property color boxColor: dim                                  // an open checkbox
+  property color checkColor: dim                                // a ticked one
+  property color bulletColor: dim                               // dots and numbers
+  property color quoteColor: faint                              // a quote's bar
+  property color privateColor: dim                              // a private callout's bar and label
+  property color codeColor: dim                                 // fenced code
   property real tabStop: textSize * 2
 
   // Space: within a block nothing, between blocks without a blank line a
@@ -791,7 +804,7 @@ Item {
           width: Math.max(2, Math.round(ed.textSize * 0.12))
           height: row.height
           radius: width / 2
-          color: row.priv ? ed.dim : ed.faint
+          color: row.priv ? ed.privateColor : ed.quoteColor
         }
 
         Text {
@@ -801,7 +814,7 @@ Item {
           y: row.gapTop + (row.firstLine - height) / 2
           textFormat: Text.PlainText
           text: row.callout === "private" ? "private · never sent" : row.callout
-          color: ed.dim
+          color: row.priv ? ed.privateColor : ed.dim
           font.family: ed.fontFamily
           font.pixelSize: Math.round(ed.textSize * 0.72)
           font.letterSpacing: 0.4
@@ -816,9 +829,9 @@ Item {
           width: size
           height: size
           radius: Math.max(2, Math.round(size * 0.22))
-          color: row.checked ? ed.dim : "transparent"
+          color: row.checked ? ed.checkColor : "transparent"
           border.width: row.checked ? 0 : Math.max(1, Math.round(ed.textSize * 0.08))
-          border.color: ed.dim
+          border.color: ed.boxColor
 
           Text {
             anchors.centerIn: parent
@@ -847,7 +860,7 @@ Item {
           width: size
           height: size
           radius: size / 2
-          color: ed.dim
+          color: ed.bulletColor
         }
 
         Text {
@@ -858,7 +871,7 @@ Item {
           horizontalAlignment: Text.AlignRight
           textFormat: Text.PlainText
           text: row.ordinal
-          color: ed.dim
+          color: ed.bulletColor
           font: field.font
         }
 
@@ -914,8 +927,8 @@ Item {
                 width: modelData.w + 2
                 height: modelData.h
                 radius: mark.modelData.kind === "selection" ? 0 : Math.max(2, Math.round(ed.textSize * 0.15))
-                color: mark.modelData.kind === "selection" ? ed.selectionColor : ed.accent
-                opacity: mark.modelData.kind === "selection" ? 1 : (mark.modelData.kind === "current" ? 0.45 : 0.18)
+                color: mark.modelData.kind === "selection" ? ed.selectionColor : (mark.modelData.kind === "current" ? ed.currentMarkColor : ed.markColor)
+                opacity: 1
               }
             }
           }
@@ -931,7 +944,9 @@ Item {
           selectByMouse: true
           selectByKeyboard: true
           persistentSelection: false
-          color: row.checked || row.kind === "front" ? ed.dim : ed.foreground
+          color: row.checked || row.kind === "front" ? ed.dim
+            : row.kind === "heading" ? ed.headingColors[Math.min(row.headingLevel, ed.headingColors.length) - 1]
+            : row.kind === "code" ? ed.codeColor : ed.foreground
           selectionColor: ed.selectionColor
           selectedTextColor: ed.foreground
           font.family: row.kind === "code" || row.kind === "front" ? "monospace" : ed.fontFamily

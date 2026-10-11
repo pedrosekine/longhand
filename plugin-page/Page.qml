@@ -102,6 +102,8 @@ Item {
   // Handles for a test harness driving the page over IPC.
   readonly property alias editorItem: editor
   readonly property alias whenInput: whenField
+  readonly property alias searchInput: searchField
+  readonly property alias palette: pal
   property bool overlayOpen: false
   property bool windowOpen: false
   readonly property bool opened: overlayOpen          // what the shell's toggle asks
@@ -112,10 +114,12 @@ Item {
   readonly property color foreground: Color.menu.text
   readonly property color border: Color.menu.border
   readonly property color scrim: Color.menu.scrim
-  readonly property color accent: Color.accent
-  readonly property color dim: Util.alpha(foreground, 0.45)
-  readonly property color faint: Util.alpha(foreground, 0.22)
-  readonly property color urgent: Color.urgent
+  // The Omarchy theme's palette, by role (ThemeColors.qml): secondary and faint
+  // text in the theme's own tuned greys, headings and marks in its colours.
+  readonly property color accent: pal.accent
+  readonly property color dim: pal.dim
+  readonly property color faint: pal.faint
+  readonly property color urgent: pal.red
   readonly property var borderSpec: Border.surfaceSpec("menu", "border", border, Math.max(1, Style.space(2)))
   readonly property string fontFamily: Style.font.family
   // One size for the whole page, like a browser's zoom: text, spacing,
@@ -1337,6 +1341,8 @@ Item {
     }
   }
 
+  ThemeColors { id: pal }
+
   Deadlines {
     id: dl
     onItemsChanged: { root.reconcile(); root.checkAccept() }
@@ -1786,9 +1792,18 @@ Item {
             background: root.background
             dim: root.dim
             faint: root.faint
-            selectionColor: Style.selectionFill
+            selectionColor: pal.selection
             accent: root.accent
             urgent: root.urgent
+            headingColors: pal.headings
+            markColor: Util.alpha(pal.yellow, 0.3)
+            currentMarkColor: Util.alpha(pal.orange, 0.55)
+            boxColor: pal.dim
+            checkColor: pal.green
+            bulletColor: pal.accent
+            quoteColor: pal.faint
+            privateColor: pal.magenta
+            codeColor: pal.dim
             marks: root.matches
             currentMark: root.matchIndex
             tabStop: 4 * root.sp(8)
@@ -2076,7 +2091,7 @@ Item {
                 anchors.centerIn: parent
                 textFormat: Text.PlainText
                 text: modelData ? modelData.getDate() : ""
-                color: dayCell.hasNote ? root.foreground : Util.alpha(root.foreground, 0.28)
+                color: dayCell.hasNote ? root.foreground : root.faint
                 font.family: root.fontFamily
                 font.pixelSize: root.fs(Style.font.body)
                 font.weight: dayCell.isOpen ? Font.DemiBold : Font.Normal

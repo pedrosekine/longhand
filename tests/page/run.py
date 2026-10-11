@@ -232,7 +232,13 @@ def main() -> int:
         p.call("acceptAt", 0)
         check(p.wait(lambda: "- [ ] one-pager 📅 " in p.note() and "^d" in p.note(), 8), "an accepted proposal binds its line, cue replaced")
 
-        # 11. the usage log: written on close, event names only
+        # 11. the theme: roles come from the Omarchy palette, headings apart
+        pal = p.call("palette")
+        heads = pal.split(" h=")[1].split(" ")[0].split(",")
+        check("keys=0" not in pal and len(set(heads)) == 4, f"the page draws in the theme's palette ({pal[:60]}…)")
+        check(pal.split(" eh=")[1].split(" ")[0] == ",".join(heads), "…and headings get their own colours")
+
+        # 12. the usage log: written on close, event names only
         p.call("closeAll")
         usage = p.state / "omarchy-student" / "usage.tsv"
         check(p.wait(lambda: "\tclose\t" in usage.read_text()), "closing the page writes its usage log")

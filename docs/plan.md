@@ -242,6 +242,15 @@
             queue is FIFO; "today" follows the clock. tests/page/run.py drives
             the page live over IPC (21 checks). `student-agent stats` and the
             page's local usage log, for the freeze.
+- [x] 14.6k theme (2026-10-11, the last change before the freeze) — the page
+      draws in the Omarchy theme's palette by role (ThemeColors.qml, read from
+      the theme's colors.toml and re-read on a theme switch): headings h1–h4 in
+      the first four distinct of accent/blue/magenta/cyan/green (≥3:1), search
+      matches yellow and the current one orange, the theme's own selection, a
+      ticked box green, bullets and numbers in the accent, a private callout in
+      magenta. Secondary text uses the theme's grey only if it reads at 4.5:1
+      (faint things at 3:1); otherwise the foreground faded no further — most
+      stock themes' `muted` is a 1.5–3:1 comment grey.
 - [ ] **Freeze, 2026-10-11 → 2026-10-25: fixes only, use it.** At the end,
       `student-agent stats --since 2026-10-11` and decide with it:
       - habit — days written in, days the page was opened, minutes;

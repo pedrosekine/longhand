@@ -42,7 +42,10 @@ sheet as a normal window to tile beside something; `Ctrl+P` flips between
 the two. The note is drawn, not shown as markdown: headings set large,
 checkboxes as boxes (click or `Ctrl+L`), bullets, numbers, and private
 callouts marked "never sent"; typing `# `, `- [ ] ` or `> ` turns the line
-into that kind, Backspace at its start turns it back. Type follows the
+into that kind, Backspace at its start turns it back. Colours follow the
+Omarchy theme: headings each in their own, highlights, selection and
+checkboxes from the theme's palette, greys only where they stay readable.
+Type follows the
 shell's own scale (your Omarchy font size); `Ctrl+=` / `Ctrl+-` / `Ctrl+0`
 zoom the whole page like a browser, remembered across restarts. `Ctrl+F`
 finds in the note as you type: Enter next, Shift+Enter previous,

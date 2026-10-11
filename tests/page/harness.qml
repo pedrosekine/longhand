@@ -48,5 +48,8 @@ ShellRoot {
     function activate(): void { page.activateTask() }
     function tickRow(): void { page.tickFocused() }
     function acceptAt(i: int): void { page.acceptProposal(i) }
+    function palette(): string { var p = page.palette; return "keys=" + Object.keys(p.keys).length + " accent=" + p.accent + " dim=" + p.dim + " faint=" + p.faint + " h=" + p.headings.join(",") + " eh=" + page.editorItem.headingColors + " bullet=" + page.editorItem.bulletColor }
+    function search(q: string): void { page.openSearch(); page.searchInput.text = q }
+    function selectSpan(a: int, b: int): void { page.editorItem.selectSpan(a, b) }
   }
 }
