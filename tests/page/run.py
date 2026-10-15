@@ -201,6 +201,12 @@ def main() -> int:
         # 2. ticking the line marks it done; 3. its words rename it
         p.call("tick", p.line_of("chapter 2 draft"))
         check(p.wait(lambda: p.deadline(1)["status"] == "done"), "ticking the line marks the deadline done")
+        # Staging went on 2026-10-15: a tick leaves no mark saying the block
+        # "could be sent", and the tick is still a sign Ctrl+Enter can send.
+        check(json.loads(p.call("marks")) == [], f"a tick marks nothing in the gutter ({p.call('marks')})")
+        p.call("cursor", p.offset_of_line(p.line_of("chapter 2 draft")) + 8)
+        check(p.wait(lambda: p.call("trigger") == "tick"), f"a ticked box is still a sign for Ctrl+Enter ({p.call('trigger')})")
+        check(p.call("ask") == "null", "…and nothing was asked on the way")
         i = p.line_of("chapter 2 draft")
         p.call("cursor", p.offset_of_line(i) + len("- [x] chapter 2 draft #thesis"))
         p.call("insert", " v2")

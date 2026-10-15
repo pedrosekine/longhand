@@ -123,13 +123,14 @@ things must both be true for a block to reach the model: it carries a
   No letter answers a prompt (since 2026-10-11): a typed "y" is writing —
   in Spanish it is a word.
 - **A checkbox list is one submission.** Enter on an item just gives the
-  next bullet. Leaving the list (Enter on an empty bullet) stages the whole
-  run of adjacent items as a group with one prompt; the reply attaches to
-  every item, so ticking one later does not lose it for the others. A tick
-  stages the list the same way. Typing `- []` becomes `- [ ] `.
-- `Ctrl+Enter` sends the staged block or list under the cursor at any later
-  moment. On a block without a sign it sends nothing and a washed line under
-  the cursor says why.
+  next bullet. Leaving the list (Enter on an empty bullet) asks about the
+  whole run of adjacent items as a group with one prompt; the reply attaches
+  to every item, so ticking one later does not lose it for the others.
+  Typing `- []` becomes `- [ ] `.
+- `Ctrl+Enter` sends the block or list under the cursor at any later moment,
+  asked about or not. On a block without a sign it sends nothing and a washed
+  line under the cursor says why. A ticked box is a sign of its own, so a
+  tick can be sent this way too.
 - Opening the page runs one automatic pass (skipped when nothing is new), so
   answers are waiting when the student comes back. Its observations have no
   block; they are kept in the state file for the suggestions panel.
@@ -201,16 +202,17 @@ and the ledger; limits are decided from usage, not guessed.
 - The template's link line never enters the editor: the page holds it apart,
   shows a faded "agent" mark in the header, and writes the line back
   unchanged on every save. That mark becomes the reply-waiting marker.
-- Blocks painted from the state file: **faded** means seen, a **filled
-  mark** means a reply (accent until read), a **hollow mark** means staged.
-  That is all that is on screen while writing. The margin — reply,
+- Blocks painted from the state file: a **filled mark** means a reply
+  (accent until read, dim after). That is all that is on screen while
+  writing — see the 2026-10-15 entry in the decisions log for why nothing
+  marks a block as sendable, and 2026-10-12 for why nothing is faded. The margin — reply,
   proposals, chat — exists only while asked for: `Alt+Right` opens it for
   the block under the cursor, `Alt+Left` or `Esc` closes it. `Ctrl+T` opens
   the tasks panel in the same place.
   `Alt+Up/Down` move between blocks, `Ctrl+Up/Down` go to the start and
   end of the current block, `Alt+Right` goes into the chat about the
   current block ready to type, `Alt+Left` or `Esc` comes back, `Ctrl+Enter`
-  sends a staged block.
+  sends the block under the cursor.
 - A block is a paragraph (consecutive lines, blank line ends it), a
   top-level list item with its indented children, a heading, or a callout.
   Two lines with no blank between them are one block.
@@ -346,3 +348,22 @@ only the window and the panels around it differ.
   the date; multi-language cue words and prompts, provided they cost no
   speed; the pomodoro stays a separate module and resurfaces with focus
   mode; abstracting for other students waits until this is a daily tool.
+- 2026-10-15: the freeze lifts ten days early, and the stats decide. A week
+  of classes made the habit (4/5 days, 20 opens, 371 min, 1324 words) and
+  the deadlines (29, 18 bound from a note line), but the agent was offered
+  nine blocks in the whole week: the send prompt was answered yes once
+  against no 41 times, 31 of those deliberate. Multi-language and focus mode
+  are refuted by the counts they were waiting for (61 English blocks to 3
+  Portuguese; 0 pomodoro sessions in a month); projects for notes is
+  confirmed (the calendar opened 31 times, past days 11) and is built first.
+  Three things no count showed, in the student's words: a checkbox has no
+  depth, so it needs a parent or enough context to survive a few days (not
+  solved — the shape comes first); the agent knows nothing when asked, so it
+  feels useless and must get smarter *within* the allowlist, not with a
+  shell or a `read` tool; and **staging is not a useful state** — once the
+  student has decided not to send a block, a mark saying it still "could be
+  sent" is noise, `Ctrl+Enter` already sends on demand, and the hollow mark
+  read as the running indicator. So staging is gone: nothing is held between
+  the prompt and the send, every block is sendable from where the cursor is,
+  and the only mark on the student's words is a reply. A ticked box became a
+  sign of its own so the tick trigger survives without it.

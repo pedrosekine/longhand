@@ -345,7 +345,15 @@ lifting the freeze; the numbers above cannot see any of them):
   shown that it still "could be sent" is noise; `Ctrl+Enter` already sends
   a block on demand, so staging adds nothing a key does not. The hollow
   staged mark also reads as the loading indicator, which is a nice thing in
-  itself. A fix, taken 2026-10-15 (see below).
+  itself. **Done 2026-10-15** (a fix): staging is gone — no `staged` state,
+  no hollow gutter mark, nothing held between the prompt and the send. A
+  block is sent from where the cursor is with `Ctrl+Enter` whenever the
+  student wants it, asked about or not, and the only mark on the student's
+  words is a reply (accent until read, dim after). A ticked box is now a
+  sign of its own (`triggerFor`), so the tick trigger survives staging's
+  removal. Left: whether the send prompt itself should stay, given it was
+  answered yes once against no 41 times — the student's call, not the
+  numbers'.
 
 **To discuss, evening of 2026-10-12** (from a day of real use; each one is
 a fix or a feature to decide first):

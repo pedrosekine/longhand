@@ -37,6 +37,8 @@ ShellRoot {
     function header(): string { return page.dateLabel }
     // Prompts and keys
     function ask(): string { return JSON.stringify(page.ask) }
+    function marks(): string { return JSON.stringify(page.paint.map(function (m) { return m.reply ? (m.unread ? "reply:unread" : "reply") : "other" })) }
+    function trigger(): string { return page.triggerForBlock(page.currentHash) }
     function hint(): string { return page.hint }
     function yes(): void { page.acceptAsk() }
     function no(): void { page.declineAsk() }

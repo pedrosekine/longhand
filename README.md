@@ -67,10 +67,11 @@ heading of the same or a higher level, so an `## H2` never ends a `# Course`.
 The file stays plain
 markdown, changed only where you typed. What you wrote is always drawn at
 full strength; a block with a reply carries a gutter mark and its reply shows
-in the margin to the right when asked. Finishing an `@` or `?` line stages the block
-(hollow mark) and asks "send to agent?" under the cursor with *no*
-preselected; an arrow then Enter sends. A checkbox list is staged as one
-submission when you leave it. `Ctrl+Enter` sends a staged block later. `Alt+Up/Down`
+in the margin to the right when asked — that is the only mark on your words.
+Finishing an `@` or `?` line asks "send to agent?" under the cursor with *no*
+preselected; an arrow then Enter sends. A checkbox list is one submission,
+asked about when you leave it. `Ctrl+Enter` sends the block or list under the
+cursor whenever you want it, asked about or not. `Alt+Up/Down`
 move between blocks, `Ctrl+Up/Down` jump to a block's start or end
 (`Ctrl+Shift+Up/Down` select to it, a block more each press),
 `Alt+Right` goes into the margin — proposals first (Enter accepts one and runs

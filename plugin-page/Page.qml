@@ -39,14 +39,15 @@ import "Tasks.js" as Tasks
 //
 // The page is also the trigger, but never by accident. A block reaches the
 // agent only when it carries a sign for it — a checkbox, an `@`, a `?` —
-// and the student says so. Finishing an `@` or `?` line with Enter *stages*
-// the block (hollow gutter mark) and shows a washed prompt under the cursor
-// that defaults to no: Enter again or Esc ignores it, an arrow then Enter
-// sends. A checkbox list is the special case: Enter just gives the next
-// bullet; the whole run of items is staged as one submission when you
-// leave the list (Enter on an empty bullet). Ctrl+Enter sends the staged
-// block or list under the cursor at any later moment. A block without a
-// sign never goes. Opening the page runs one automatic pass so answers are
+// and the student says so. Finishing an `@` or `?` line with Enter shows a
+// washed prompt under the cursor that defaults to no: Enter again or Esc
+// ignores it, an arrow then Enter sends. A checkbox list is the special
+// case: Enter just gives the next bullet; the whole run of items is one
+// submission when you leave the list (Enter on an empty bullet).
+// Ctrl+Enter sends the block or list under the cursor at any later moment,
+// whether it was ever asked about or not — nothing is held in between, and
+// no mark says a block "could be sent", because every block could
+// (2026-10-15). A block without a sign never goes. Opening the page runs one automatic pass so answers are
 // waiting when you come back.
 //
 // The agent's answers are painted, never inserted, and only in the
@@ -234,7 +235,6 @@ Item {
 
   // What is painted and what the margin shows.
   property var paint: []
-  property var staged: ({})      // hash -> { trigger, group: [hashes] }, waiting for Ctrl+Enter
   property var ask: null         // { hashes, trigger, yes } — the prompt after Enter
   property bool marginOpen: false
   property int marginFocus: -1   // -1 note; 0..n-1 proposal rows; n = chat field
@@ -257,7 +257,6 @@ Item {
   property int matchIndex: -1
   property int searchFrom: 0     // the cursor when the search opened
   readonly property var currentRecord: agent.record(currentHash)
-  readonly property var currentStaged: staged[currentHash] || null
   readonly property var currentProposals: (currentRecord && currentRecord.proposals) ? currentRecord.proposals : []
   readonly property var taskRows: root.buildTaskRows()
   readonly property bool replyWaiting: root.hasUnreadInNote()
@@ -438,6 +437,7 @@ Item {
     var t = lineText.trim()
     if (/^@/.test(t)) return "mention"
     if (/^[-*+] \[ \] \S/.test(t)) return "checkbox"
+    if (/^[-*+] \[[xX]\] \S/.test(t)) return "tick"
     if (/\?$/.test(t)) return "question"
     return ""
   }
@@ -469,21 +469,6 @@ Item {
     root.enqueue(cmd, hash)
   }
 
-  function stage(trigger, hashes) {
-    if (!hashes || hashes.length === 0 || !root.agentDay) return
-    var next = ({})
-    for (var k in root.staged) next[k] = root.staged[k]
-    for (var i = 0; i < hashes.length; i++) next[hashes[i]] = { trigger: trigger, group: hashes }
-    root.staged = next
-    root.scheduleRepaint()
-  }
-
-  function unstage(hashes) {
-    var next = ({})
-    for (var k in root.staged) if (hashes.indexOf(k) < 0) next[k] = root.staged[k]
-    root.staged = next
-  }
-
   // Ctrl+Enter: send the block under the cursor, if it carries a sign for
   // the agent. A block without one stays where it is; the margin says why.
   property bool noSignHint: false
@@ -492,17 +477,15 @@ Item {
   function sendCurrent() {
     var hash = root.currentHash
     if (hash === "") return
-    var st = root.staged[hash]
-    if (st) { root.send(st.trigger, st.group); return }
     var trigger = root.triggerForBlock(hash)
     if (!trigger) { root.noSignHint = true; hintTimer.restart(); return }
-    root.send(trigger, trigger === "checkbox" ? root.listAround(hash) : [hash])
+    // A list of boxes is one submission however it is sent.
+    root.send(trigger, trigger === "checkbox" || trigger === "tick" ? root.listAround(hash) : [hash])
   }
 
   function send(trigger, hashes) {
     root.used("send", trigger)
     root.ask = null
-    root.unstage(hashes)
     root.requestRun(trigger, hashes.join(","))
   }
 
@@ -667,13 +650,11 @@ Item {
     for (var i = 0; i < blocks.length; i++) {
       var b = blocks[i]
       var rec = agent.record(b.hash)
-      var isStaged = !!root.staged[b.hash]
-      if (!rec && !isStaged) continue
+      if (!rec) continue
       var r = editor.blockRect(b.start, b.end)
       if (!r) continue
       out.push({ hash: b.hash, y: r.y, h: r.h,
-                 reply: !!rec && rec.state === "reply", unread: !!rec && rec.state === "reply" && !rec.read,
-                 staged: isStaged })
+                 reply: rec.state === "reply", unread: rec.state === "reply" && !rec.read })
     }
     root.paint = out
     root.currentHash = root.hashNearLine(root.lineIndexAt(editor.cursorPosition))
@@ -701,14 +682,14 @@ Item {
 
   // The editor carries list markers over Enter itself; what the page
   // decides is whether the agent is asked. A finished `@` or `?` line is
-  // staged and asked about.
+  // asked about. Nothing is remembered either way: a block is sent from
+  // where the cursor is, with Ctrl+Enter, whenever the student wants it
+  // (staging went on 2026-10-15 — see docs/diary.md).
   function lineFinished(lineIndex, lineText) {
     Qt.callLater(root.flush)
     var trigger = root.triggerFor(lineText)
-    if (trigger === "" || trigger === "checkbox") return
-    var hash = root.hashOfLine(lineIndex)
-    root.stage(trigger, [hash])
-    root.askAbout(trigger, [hash])
+    if (trigger === "" || trigger === "checkbox" || trigger === "tick") return
+    root.askAbout(trigger, [root.hashOfLine(lineIndex)])
   }
 
   // Enter on an empty item left the list. If it carried checkboxes, the
@@ -724,7 +705,7 @@ Item {
       var prev = root.hashOfLine(lineIndex - 1)
       if (prev === "") return
       var group = root.listAround(prev)
-      if (root.listHasCheckbox(group)) { root.stage("checkbox", group); root.askAbout("checkbox", group) }
+      if (root.listHasCheckbox(group)) root.askAbout("checkbox", group)
     })
   }
 
@@ -1507,7 +1488,6 @@ Item {
     today.setHours(0, 0, 0, 0)
     root.used("day", p ? Math.round((today - p.date) / 86400000) : "")
     root.ask = null
-    root.staged = ({})
     root.marginOpen = false
     root.tasksOpen = false
     root.projectOpen = false
@@ -2051,21 +2031,20 @@ Item {
             else if (contentY + height <= r.y + r.height) contentY = r.y + r.height - height
           }
 
-          // Gutter marks: filled for a block with a reply (accent until
-          // read), hollow for a block staged and waiting for Ctrl+Enter.
+          // Gutter marks: a block with a reply, accent until it has been
+          // read and dim after. Nothing else is marked — a block that could
+          // be sent is every block, and saying so was noise (2026-10-15).
           Repeater {
             model: root.paint
             Rectangle {
               required property var modelData
-              visible: modelData.reply || modelData.staged
+              visible: modelData.reply
               x: root.sp(2)
               y: modelData.y
               width: root.sp(3)
               height: modelData.h
               radius: width
-              color: modelData.reply ? (modelData.unread ? root.accent : root.dim) : "transparent"
-              border.width: modelData.reply ? 0 : 1
-              border.color: root.accent
+              color: modelData.unread ? root.accent : root.dim
               Behavior on color { ColorAnimation { duration: 240 } }
             }
           }
@@ -2120,12 +2099,7 @@ Item {
               saveTimer.restart()
               if (root.quiet) return
               root.boundEdited(was, root.bound)
-              var ticked = root.countTicked(text)
-              if (ticked > root.tickedCount) {
-                var th = root.hashOfLine(root.lineIndexAt(editor.cursorPosition))
-                if (th !== "") root.stage("tick", root.listAround(th))
-              }
-              root.tickedCount = ticked
+              root.tickedCount = root.countTicked(text)
               root.scheduleRepaint()
             }
           }
@@ -2947,7 +2921,7 @@ Item {
             visible: !root.currentRecord || !root.currentRecord.reply
             textFormat: Text.PlainText
             wrapMode: Text.WordWrap
-            text: root.currentStaged ? "Staged. Ctrl+Enter sends it, or ask below." : "Nothing from the agent on this block yet. Ask below."
+            text: "Nothing from the agent on this block yet. Ctrl+Enter sends it, or ask below."
             color: root.faint
             font.family: root.fontFamily
             font.pixelSize: root.fs(Style.font.bodySmall)
