@@ -273,6 +273,27 @@ def main() -> int:
         check(not any(x["text"] == "book a slot" for x in nx["raised"]), "dismissed suggestion gone from next")
         r = t.agent("context", "--trigger", "open", "--date", DAY)
         check("Intentions and outcomes" in r.stdout and "draft the one-pager by friday" in r.stdout, "outcomes in payload")
+
+        # …and the intentions section honours the same allowlist as the rest
+        # of the payload: it read whole notes until 2026-10-15.
+        recent = dt.date.today() - dt.timedelta(days=2)
+        (t.daily / f"{recent.strftime('%Y.%m.%d')}.md").write_text(
+            "- [ ] a visible intention\n\n> [!private]\n> - [ ] SECRET-BOX do not send\n")
+        quiet = dt.date.today() - dt.timedelta(days=3)
+        (t.daily / f"{quiet.strftime('%Y.%m.%d')}.md").write_text(
+            "---\nagent: false\n---\n\n- [ ] HIDDEN-DAY-BOX\n")
+        r = t.agent("context", "--trigger", "open", "--date", DAY)
+        check("a visible intention" in r.stdout, "a box from an earlier day is an intention")
+        check("HIDDEN-DAY-BOX" not in r.stdout, "but not one from a day marked agent: false")
+        nx = json.loads(t.agent("next").stdout)
+        # A box inside a callout is a quoted line, so neither the payload nor
+        # the dashboard reads it as a box at all. Pinned here because that is
+        # what makes the private case safe today: teach the grammar to read
+        # quoted boxes and this check fails, which is the point — the payload
+        # filter above would then be the only thing standing in the way.
+        check("SECRET-BOX" not in r.stdout
+              and not any("SECRET-BOX" in x["text"] for x in nx["tasks"]),
+              "a box inside a callout is a quote, not a task, on either side")
         check("dismissed (do not raise again" in r.stdout and "book a slot" in r.stdout, "dismissed list in payload")
         t.set_reply(reply="", suggestions=[{"text": "Book a slot!", "evidence": "x"}, {"text": "new idea", "evidence": "y"}])
         r = t.agent("run", "--trigger", "mention", "--hash", at_block["hash"], "--date", DAY)

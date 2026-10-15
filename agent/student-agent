@@ -39,6 +39,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import blocks as blocklib  # noqa: E402
+import task as tasklib  # noqa: E402
 
 TRIGGERS = ("checkbox", "mention", "question", "tick", "open")
 LINK_LINE = re.compile(r"^\[\[[^\]\n]*\|agent\]\]$")
@@ -219,12 +220,16 @@ def language_line(cfg: dict, sample: str = "") -> str:
     return line
 
 
-CHECKBOX_ANY = re.compile(r"^\s*[-*+] \[([ xX])\] (.*\S)")
-
-
-def outcomes(cfg: dict, days: int = 14) -> list[dict]:
+def outcomes(cfg: dict, days: int = 14, visible_only: bool = False) -> list[dict]:
     """Intention → outcome, computed here, never guessed: every checkbox in
-    the last `days` daily notes with whether it was ticked."""
+    the last `days` daily notes — which of the three kinds of box it is,
+    where the note puts it (its heading path, its project, the box it is
+    nested under) and whether it was closed. The grammar is `task.py`, the
+    twin of the page's own.
+
+    `visible_only` is for the payload, and fixes a hole the regex this
+    replaced had: a day marked `agent: false` is left out whole, and a box
+    inside a private callout is left out with it."""
     fmt = moment_to_strftime(cfg["daily"].get("format", "YYYY-MM-DD"))
     daily = Path(cfg["vault"]) / cfg["daily"]["dir"]
     today = dt.date.today()
@@ -238,19 +243,37 @@ def outcomes(cfg: dict, days: int = 14) -> list[dict]:
         if age < 0 or age >= days:
             continue
         try:
-            lines = f.read_text().split("\n")
+            text = f.read_text()
         except OSError:
             continue
-        for i, line in enumerate(lines):
-            m = CHECKBOX_ANY.match(line)
-            if m:
-                out.append({"date": f.stem, "file": str(f), "line": i, "text": m.group(2),
-                            "done": m.group(1) != " ", "age": age})
+        hidden: set[int] = set()
+        if visible_only:
+            blks = blocklib.split(text)
+            if note_is_private(blks):
+                continue
+            for b in blks:
+                if b["private"]:
+                    hidden.update(range(b["start"], b["end"]))
+        for box in tasklib.scan(text):
+            if box["line"] in hidden:
+                continue
+            box.update({"date": f.stem, "file": str(f), "age": age})
+            out.append(box)
     return out
 
 
+def open_tasks(cfg: dict, recent_days: int) -> list[dict]:
+    """Every box still open across every daily note, newest day first — the
+    list the dashboard works from. A cancelled box is closed, not open:
+    dropping something is an answer, and the point of having the state."""
+    rows = [r for r in outcomes(cfg, days=3650) if not r["done"] and not r["cancelled"]]
+    for r in rows:
+        r["recent"] = r["age"] < recent_days
+    return rows
+
+
 def outcomes_section(cfg: dict) -> list[str]:
-    rows = outcomes(cfg)
+    rows = outcomes(cfg, visible_only=True)
     if not rows:
         return ["(no checkboxes in the last 14 days)"]
     parts = []
@@ -792,7 +815,6 @@ def cmd_accept(cfg: dict, args) -> int:
     raise Fail(f"unknown proposal kind {prop.get('kind')!r}")
 
 
-CHECKBOX = re.compile(r"^(\s*[-*+] )\[ \] (.*\S)")
 HEADING = re.compile(r"^(#{1,6})\s+(\S.*?)\s*$")
 
 
@@ -842,10 +864,10 @@ def tagged_sections(cfg: dict, tag: str, days: int) -> list[dict]:
             inside = [{"line": j, "level": lvl, "text": t} for j, lvl, t in heads if i < j < end]
             opens, done, words = 0, 0, 0
             for line in body:
-                box = CHECKBOX_ANY.match(line)
+                box = tasklib.parse(line)
                 if box:
-                    done += box.group(1) in "xX"
-                    opens += box.group(1) == " "
+                    done += box["done"]
+                    opens += box["state"] == " "
                 if not HEADING.match(line):
                     words += len(line.split())
             # What the section is about, for a list too narrow for the note:
@@ -931,30 +953,10 @@ def cmd_sections(cfg: dict, args) -> int:
 
 
 def cmd_tasks(cfg: dict, args) -> int:
-    """Every unticked checkbox across the daily notes, newest day first.
-    Read-only; ticking is the page's job because the page is the one writer."""
-    fmt = moment_to_strftime(cfg["daily"].get("format", "YYYY-MM-DD"))
-    daily = Path(cfg["vault"]) / cfg["daily"]["dir"]
-    today = dt.date.today()
-    out = []
-    for f in sorted(daily.glob("*.md"), reverse=True):
-        try:
-            d = dt.datetime.strptime(f.stem, fmt).date()
-        except ValueError:
-            continue
-        age = (today - d).days
-        if age < 0:
-            continue
-        try:
-            lines = f.read_text().split("\n")
-        except OSError:
-            continue
-        for i, line in enumerate(lines):
-            m = CHECKBOX.match(line)
-            if m:
-                out.append({"date": f.stem, "file": str(f), "line": i, "text": m.group(2),
-                            "age": age, "recent": age < int(args.days)})
-    print(json.dumps(out, ensure_ascii=False))
+    """Every open checkbox across the daily notes, newest day first, with
+    what the note says about each one. Read-only; ticking is the page's job
+    because the page is the one writer."""
+    print(json.dumps(open_tasks(cfg, int(args.days)), ensure_ascii=False))
     return 0
 
 
@@ -971,9 +973,7 @@ def state_days(cfg: dict, days: int) -> list[tuple[str, Paths, dict]]:
 def cmd_next(cfg: dict, args) -> int:
     """What's next: open tasks plus what the agent has raised and the
     student has not yet dealt with, across the last days."""
-    tasks = [r for r in outcomes(cfg, days=3650) if not r["done"]]
-    for r in tasks:
-        r["recent"] = r["age"] < int(args.days)
+    tasks = open_tasks(cfg, int(args.days))
     raised = []
     days = state_days(cfg, int(args.days))
     dismissed = read_dismissed(days[0][1]) if days else []
@@ -1070,8 +1070,6 @@ def cmd_state(cfg: dict, args) -> int:
 # ------------------------------------------------------------------- stats
 
 TAG_RE = re.compile(r"(?:^|\s)#([\w/-]+)")
-BOUND_RE = re.compile(r"^\s*[-*+] \[[ xX]\] .*\s\^d\d+\s*$", re.M)
-BOX_RE = re.compile(r"^\s*[-*+] \[([ xX])\] ", re.M)
 LANG_CODE = {"English": "en", "German": "de", "Portuguese": "pt", "Spanish": "es", "Dutch": "nl",
              "French": "fr", "Italian": "it"}
 LOG_RE = re.compile(r"^(\d{4}-\d{2}-\d{2}) \d{2}:\d{2}:\d{2} (.*)$")
@@ -1096,6 +1094,7 @@ def cmd_stats(cfg: dict, args) -> int:
              else today - dt.timedelta(days=int(args.days) - 1))
     span = [start + dt.timedelta(days=i) for i in range((today - start).days + 1)]
     day = {d: {"words": 0, "written": 0, "ticked": 0, "bound": 0, "tags": [], "langs": {},
+               "commitments": 0, "commitments_closed": 0, "note_boxes": 0,
                "opens": 0, "minutes": 0.0, "features": {}, "runs": 0, "cost": 0.0, "triggers": {},
                "focus": 0, "added": 0, "done": 0} for d in span}
     langs = languages(cfg)
@@ -1110,10 +1109,17 @@ def cmd_stats(cfg: dict, args) -> int:
         body = re.sub(r"^\[\[[^\]\n]*\|agent\]\]\n?", "", text)
         r = day[d]
         r["words"] = len(re.findall(r"\w+", re.sub(r"📅 \S+( \d{1,2}:\d{2})?|\^d\d+", "", body)))
-        boxes = BOX_RE.findall(body)
+        boxes = tasklib.scan(body)
         r["written"] = len(boxes)
-        r["ticked"] = sum(1 for b in boxes if b != " ")
-        r["bound"] = len(BOUND_RE.findall(body))
+        r["ticked"] = sum(1 for b in boxes if b["done"])
+        r["bound"] = sum(1 for b in boxes if b["anchor"])
+        # A note box is thinking and is not meant to close, so counting it
+        # as an unclosed intention is what made the first number (2 of 22)
+        # partly an artefact. A commitment is a box given a date or a
+        # priority — the rule that tells a task from a note box.
+        r["note_boxes"] = sum(1 for b in boxes if b["kind"] == "note")
+        r["commitments"] = sum(1 for b in boxes if b["kind"] != "note")
+        r["commitments_closed"] = sum(1 for b in boxes if b["kind"] != "note" and b["done"])
         r["tags"] = sorted(set(TAG_RE.findall(body)))
         for b in blocklib.split(body):
             if b["kind"] in ("frontmatter",) or b["private"]:
@@ -1202,6 +1208,9 @@ def cmd_stats(cfg: dict, args) -> int:
         "words": sum(r["words"] for r in rows),
         "checkboxes_written": sum(r["written"] for r in rows),
         "checkboxes_ticked": sum(r["ticked"] for r in rows),
+        "commitments_written": sum(r["commitments"] for r in rows),
+        "commitments_closed": sum(r["commitments_closed"] for r in rows),
+        "note_boxes": sum(r["note_boxes"] for r in rows),
         "bound_lines": sum(r["bound"] for r in rows),
         "tags": sorted({t for r in rows for t in r["tags"]}),
         "languages": {l: sum(r["langs"].get(l, 0) for r in rows) for l in langs},
@@ -1232,7 +1241,10 @@ def cmd_stats(cfg: dict, args) -> int:
     rate = f"{t['checkboxes_ticked']}/{t['checkboxes_written']}" if t["checkboxes_written"] else "—"
     print(f"\n{t['days_written']}/{t['days']} days written in, {t['days_opened']} with the page opened "
           f"({t['page_opens']} opens, {t['page_minutes']} min). {t['words']} words.")
-    print(f"Checkboxes closed: {rate}. Bound lines: {t['bound_lines']}. Deadlines: {t['deadlines_added']} added, "
+    com = f"{t['commitments_closed']}/{t['commitments_written']}" if t["commitments_written"] else "—"
+    print(f"Checkboxes closed: {rate} — commitments (a date or a priority) {com}, "
+          f"note boxes {t['note_boxes']} (thinking, not meant to close).")
+    print(f"Bound lines: {t['bound_lines']}. Deadlines: {t['deadlines_added']} added, "
           f"{t['deadlines_closed']} closed ({t['closed_on_time']} by their time, {t['closed_late']} marked done after it, "
           f"{t['closed_from_a_note']} from a note line).")
     print(f"Agent: {t['agent_runs']} runs, ${t['agent_cost']:.4f}. Focus sessions: {t['focus_sessions']}.")

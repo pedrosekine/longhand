@@ -1,0 +1,167 @@
+// Task.js — one grammar for a checkbox line.
+//
+// Every surface reads checkbox lines, and until 2026-10-15 each read them
+// its own way: four regexes in `student-agent`, two more in Bound.js, and
+// none of them agreed about a line inside a fence. One grammar, twinned in
+// `agent/task.py` and cross-checked line for line by `tests/test_task.py`.
+//
+// On disk a rich one reads
+//
+//   - [ ] draft the intro #dtm ⏫ ⏳ 2026-10-18 📅 2026-10-20 17:00 ^d12
+//
+// and is one of three kinds (decided 2026-10-15, see docs/diary.md):
+//
+//   note box   thinking, part of the notes. No date, no priority. It is not
+//              meant to be closed, so it is not counted as if it were.
+//   task       given a do-date (⏳) or a priority. Carried forward; mine to
+//              schedule.
+//   deadline   given a due date (📅) or bound to the store (`^dN`). Imposed
+//              from outside and judged by its date.
+//
+// The vocabulary is Obsidian Tasks', so a note still reads in Obsidian on
+// the other machine and as plain text anywhere: 📅 due, ⏳ scheduled (our
+// do-date, called `when` here because that is the verb in the dashboard),
+// 🛫 start, ➕ created, ✅ done, ❌ cancelled, 🔁 recurrence, and 🔺⏫🔼🔽⏬
+// for priority. Three of those five are offered (⏫ / none / 🔽); all five
+// are read, so one arriving from Obsidian is understood and kept. An effort
+// estimate has no emoji anything else reads, so it is a Dataview inline
+// field: `[est:: 1h]`. `^dN` is an Obsidian block id naming deadline N.
+//
+// Markers are matched by alternation rather than a character class: half of
+// them are surrogate pairs in JS, and a class would split them.
+.pragma library
+
+var BOX_RE = /^(\s*)([-*+]) \[([ xX\/\-])\](?: (.*))?$/
+var ANCHOR_RE = /\s\^d(\d+)\s*$/
+var TAG_RE = /(^|\s)#([\w\/-]+)/g
+var FIELD_RE = /\[([a-z]+)::\s*([^\]]*)\]/g
+var DATE_RE = /^(\d{4}-\d{2}-\d{2})(?:\s+(\d{1,2}:\d{2}))?/
+var FENCE_RE = /^\s*(```|~~~)/
+var HEADING_RE = /^(#{1,6})\s+(\S.*?)\s*$/
+
+// marker → the field it fills. Order is the order they are written in.
+var MARKS = [["📅", "due"], ["⏳", "when"], ["🛫", "start"], ["➕", "created"],
+             ["✅", "doneAt"], ["❌", "cancelledAt"], ["🔁", "recur"]]
+// Obsidian Tasks' five levels on one scale, so sorting is a number and the
+// two we do not offer still mean what they meant.
+var PRIOS = [["🔺", 3], ["⏫", 2], ["🔼", 1], ["🔽", -1], ["⏬", -2]]
+
+var MARK_RE = new RegExp("(" + MARKS.map(function (m) { return m[0] }).join("|") + "|"
+                         + PRIOS.map(function (p) { return p[0] }).join("|") + ")", "g")
+
+function _state(ch) {
+  return ch === "x" || ch === "X" ? "x" : ch
+}
+
+// A date phrase as the store wants it: "YYYY-MM-DD" or "YYYY-MM-DD HH:MM".
+function _date(s) {
+  var m = s.match(DATE_RE)
+  if (!m) return ""
+  return m[1] + (m[2] ? " " + (m[2].length === 4 ? "0" + m[2] : m[2]) : "")
+}
+
+// One checkbox line, or null. Nothing here knows about the note around it;
+// `scan` is what adds the heading path and the parent.
+function parse(line) {
+  var m = line.match(BOX_RE)
+  if (!m) return null
+  var body = (m[4] === undefined ? "" : m[4]).replace(/\s+$/, "")
+  var t = {
+    lead: m[1] + m[2] + " ", indent: m[1].length, marker: m[2], state: _state(m[3]),
+    done: m[3] === "x" || m[3] === "X", started: m[3] === "/", cancelled: m[3] === "-",
+    text: body, title: "", tags: [], project: "", due: "", when: "", start: "",
+    created: "", doneAt: "", cancelledAt: "", recur: "", priority: 0, est: "",
+    anchor: 0, kind: "note"
+  }
+
+  var rest = body
+  var a = rest.match(ANCHOR_RE)
+  if (a) { t.anchor = parseInt(a[1], 10); rest = rest.slice(0, a.index) }
+
+  // Each marker owns the words after it, up to the next marker.
+  var found = [], mm
+  MARK_RE.lastIndex = 0
+  while ((mm = MARK_RE.exec(rest))) found.push({ at: mm.index, mark: mm[1] })
+  for (var i = 0; i < found.length; i++) {
+    var from = found[i].at + found[i].mark.length
+    var to = i + 1 < found.length ? found[i + 1].at : rest.length
+    var seg = rest.slice(from, to).trim()
+    var mark = found[i].mark
+    for (var j = 0; j < PRIOS.length; j++) if (PRIOS[j][0] === mark) t.priority = PRIOS[j][1]
+    for (var k = 0; k < MARKS.length; k++) {
+      if (MARKS[k][0] !== mark) continue
+      t[MARKS[k][1]] = MARKS[k][1] === "recur" ? seg : _date(seg)
+    }
+  }
+  var words = found.length > 0 ? rest.slice(0, found[0].at) : rest
+
+  var tag
+  TAG_RE.lastIndex = 0
+  while ((tag = TAG_RE.exec(words))) t.tags.push(tag[2])
+  if (t.tags.length > 0) t.project = t.tags[0]
+
+  var fld
+  FIELD_RE.lastIndex = 0
+  while ((fld = FIELD_RE.exec(words))) if (fld[1] === "est") t.est = fld[2].trim()
+
+  t.title = words.replace(FIELD_RE, " ").replace(TAG_RE, "$1").replace(/\s+/g, " ").trim()
+  t.kind = t.anchor > 0 || t.due !== "" ? "deadline"
+    : t.when !== "" || t.priority !== 0 ? "task" : "note"
+  return t
+}
+
+// Every checkbox in a note, with what the note says about it: the headings
+// above it (its project, and the words that make a bare title mean
+// something three days later) and the box it is nested under. Lines inside
+// a fence or the frontmatter are text, not tasks — the old regexes counted
+// them, which is how a fenced example became a task.
+function scan(text) {
+  var lines = text.split("\n")
+  var out = []
+  var heads = []   // { level, title, tag }
+  var boxes = []   // { indent, line }
+  var fence = ""
+  var front = lines.length > 0 && lines[0].replace(/\s+$/, "") === "---" ? 1 : 0
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i]
+    if (front === 1) { if (line.replace(/\s+$/, "") === "---") front = 2; continue }
+    var f = line.match(FENCE_RE)
+    if (f) { fence = fence === "" ? f[1] : (f[1] === fence ? "" : fence); continue }
+    if (fence !== "") continue
+
+    var h = line.match(HEADING_RE)
+    if (h) {
+      var level = h[1].length
+      while (heads.length > 0 && heads[heads.length - 1].level >= level) heads.pop()
+      var tags = [], tg
+      TAG_RE.lastIndex = 0
+      while ((tg = TAG_RE.exec(h[2]))) tags.push(tg[2])
+      heads.push({ level: level, title: h[2].replace(TAG_RE, "$1").replace(/\s+/g, " ").trim(),
+                   tag: tags.length > 0 ? tags[0] : "" })
+      boxes = []
+      continue
+    }
+
+    var t = parse(line)
+    if (!t) continue
+    while (boxes.length > 0 && boxes[boxes.length - 1].indent >= t.indent) boxes.pop()
+    t.line = i
+    t.depth = boxes.length
+    t.parent = boxes.length > 0 ? boxes[boxes.length - 1].line : -1
+    t.path = heads.map(function (x) { return x.title })
+    t.claimed = ""
+    for (var p = heads.length - 1; p >= 0; p--) if (heads[p].tag !== "") { t.claimed = heads[p].tag; break }
+    if (t.project === "") t.project = t.claimed
+    boxes.push({ indent: t.indent, line: i })
+    out.push(t)
+  }
+  return out
+}
+
+// Where a task sits, for a row too narrow for the note: "Design Theory ›
+// Essay 2". Empty when the box is under no heading at all, which is itself
+// worth seeing — it is a box with nothing to give it meaning.
+function where(t) {
+  var parts = (t.path || []).slice()
+  return parts.join(" › ")
+}

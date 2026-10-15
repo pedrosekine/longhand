@@ -483,6 +483,18 @@ a fix or a feature to decide first):
      where it came from: "Design Theory › Essay 2 › draft intro" instead of
      "draft intro". That answers "random text I will not understand later"
      by display, rather than by asking the student to write better boxes.
+     **Done 2026-10-15:** one grammar for a checkbox line —
+     `plugin-page/Task.js` with its Python twin `agent/task.py`,
+     cross-checked over 32 lines and 9 notes by `tests/test_task.py`. It
+     replaced four regexes in the agent, reads the whole Obsidian Tasks
+     vocabulary (📅 due, ⏳ the do-date, 🛫 ➕ ✅ ❌, 🔁 recurrence, the five
+     priority glyphs, `[est:: ]`, `^dN`), tells the three kinds apart, and
+     carries each box's heading path, project, parent and depth. Two things
+     the old regexes got wrong came out with it: a checkbox inside a fence
+     or the frontmatter counted as a task, and the payload's intentions
+     section read days marked `agent: false`. `stats` now counts
+     commitments (a box with a date or a priority) apart from note boxes,
+     so the number the tool is judged by survives the new rule.
    - *Lifespans.* One rule tells the kinds apart: **a box becomes a task the
      moment it is given a date or a priority, and stays a note box
      otherwise.** A **note box** is thinking, disposable, and carries 7 days
