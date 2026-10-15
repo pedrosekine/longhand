@@ -42,6 +42,10 @@ ShellRoot {
     function sign(): string { return page.currentTrigger }
     function askNow(): void { page.sendCurrent() }
     function noSign(): bool { return page.noSignHint }
+    // Privacy: the note the agent may not see.
+    function togglePrivate(): void { page.togglePrivate() }
+    function isPrivate(): bool { return page.noteService.notePrivate }
+    function agentOn(): bool { return page.agentOn }
     function hint(): string { return page.hint }
     function yes(): void { page.acceptAsk() }
     function no(): void { page.declineAsk() }

@@ -109,6 +109,12 @@ pure function shared by the page and the runner.
 
 **Private.** A `> [!private]` callout hides a block. Frontmatter `agent: false`
 hides the day. Both are removed by local code before the payload is built.
+Since 2026-10-15 the day's mark has a control: the word **private** in the
+header writes that line (`Ctrl+Shift+P`), and while it is there the page
+offers the agent nothing at all — no pass on opening, no ask, no mark — so
+the guarantee is one the student can see rather than one they are told.
+Frontmatter is page-owned like the link line: it never enters the editor and
+is written back untouched apart from the `agent:` line.
 
 ## The loop
 
@@ -409,3 +415,17 @@ only the window and the panels around it differ.
   inverts — a click or Enter on a project *opens* it, and writing one into
   the note moves to Shift+Enter (start a class) and Ctrl+Enter (its tag),
   with `@` to come. The list is for finding; the note is for writing.
+- 2026-10-15: journaling needs a guarantee you can see. Asked how to be
+  certain a note is unseen, the honest answer was that `agent: false` worked
+  in the runner but the page could neither set it nor show it, so the only
+  way to be sure was to hand-edit frontmatter and trust. Now the header
+  carries **private** beside the date: always in sight, one click or
+  `Ctrl+Shift+P`, and while it is on the word reads "private · the agent
+  sees nothing here" and **ask** and the agent mark are gone — not greyed,
+  gone, because there is nothing to offer. Every run is gated on `agentOn`
+  (the day is the agent's *and* the note is not private), which stops the
+  automatic open pass too; `student-agent` refuses such a note as well, so
+  the page simply never asks. The mark is one line of frontmatter because
+  that is what the runner reads; any other property the student or Obsidian
+  put there survives, and an emptied block is removed rather than left as
+  two bare rules.

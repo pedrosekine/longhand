@@ -42,7 +42,12 @@ Item {
   property bool exists: false         // false: a day with no file yet, written on the first word
   property string text: ""
   property string header: ""
+  property string frontmatter: ""     // the note's own `---` block, page-owned like the link line
   property string body: ""
+  // A day the student marked private: the runner refuses it whole, so the
+  // page must not even offer the agent. One line of frontmatter is the
+  // mark, because that is what `student-agent` reads (note_is_private).
+  readonly property bool notePrivate: /(^|\n)agent:[ \t]*false[ \t]*(\n|$)/.test(frontmatter)
   property bool ready: false
   property bool pending: false
   property bool saving: false
@@ -86,17 +91,37 @@ Item {
   // for a one-line template; anything else passes through untouched.
   // Split disk text into the page-owned header line and the student's body.
   function splitHeader(t) {
-    var m = t.match(/^(\[\[[^\]\n]*\|agent\]\])\n?/)
-    if (!m) { root.header = ""; root.body = t; return }
+    // Frontmatter first (Obsidian properties, and the agent: false mark),
+    // then the agent link line. Neither ever enters the editor; both are
+    // written back unchanged unless the page itself changes them.
+    var fm = t.match(/^---\n[\s\S]*?\n---\n?/)
+    root.frontmatter = fm ? fm[0] : ""
+    var rest = fm ? t.substring(fm[0].length) : t
+    var m = rest.match(/^(\[\[[^\]\n]*\|agent\]\])\n?/)
+    if (!m) { root.header = ""; root.body = rest; return }
     root.header = m[1]
-    root.body = t.substring(m[0].length)
+    root.body = rest.substring(m[0].length)
+  }
+
+  // Mark the open note private, or take the mark off; the caller saves.
+  // Only the `agent:` line is ours: any other property the student (or
+  // Obsidian) put there survives, and an otherwise empty block goes rather
+  // than being left behind as two bare rules.
+  function setPrivate(on) {
+    var fm = root.frontmatter
+    var body = fm.replace(/^---\n/, "").replace(/\n---\n?$/, "")
+    var lines = fm === "" ? [] : body.split("\n").filter(function (l) { return !/^agent:[ \t]*(true|false)[ \t]*$/.test(l) })
+    if (on) lines.push("agent: false")
+    var kept = lines.filter(function (l) { return l.trim() !== "" })
+    root.frontmatter = kept.length === 0 ? "" : "---\n" + kept.join("\n") + "\n---\n"
   }
 
   // The blank line after the link is what keeps the link its own block for
   // the runner; put it back if the student deleted it.
   function joinHeader(bodyText) {
-    if (root.header === "") return bodyText
-    return root.header + "\n" + (bodyText.charAt(0) === "\n" ? bodyText : "\n" + bodyText)
+    var rest = root.header === "" ? bodyText
+      : root.header + "\n" + (bodyText.charAt(0) === "\n" ? bodyText : "\n" + bodyText)
+    return root.frontmatter + rest
   }
 
   function renderTemplate(raw, stamp) {

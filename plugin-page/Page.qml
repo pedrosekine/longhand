@@ -112,6 +112,7 @@ Item {
 
   // Handles for a test harness driving the page over IPC.
   readonly property alias editorItem: editor
+  readonly property alias noteService: svc
   readonly property alias whenInput: whenField
   readonly property alias searchInput: searchField
   readonly property alias palette: pal
@@ -180,6 +181,23 @@ Item {
     if (svc.noteDate === "" || !svc.configured) return false
     var p = Days.parse(svc.noteDate, svc.dailyFormat())
     return !!p && p.configured
+  }
+  // What every run and every offer is gated on. A note the student marked
+  // private is simply not a day the agent has: no pass on opening it, no
+  // send, nothing to click. `student-agent` refuses such a note too — this
+  // is the page not even asking.
+  readonly property bool agentOn: root.agentDay && !svc.notePrivate
+
+  // Ctrl+Shift+P, and the header's own word. Writes `agent: false` into the
+  // note's frontmatter, which is what the runner reads; taking it off puts
+  // the day back as it was.
+  function togglePrivate() {
+    if (!svc.ready) return
+    var on = !svc.notePrivate
+    svc.setPrivate(on)
+    root.flush()
+    root.used("private", on ? "on" : "off")
+    root.showHint(on ? "private — the agent sees nothing in this note" : "the agent can be asked about this note again")
   }
   property string pendingStamp: ""   // a day to open once the save in flight lands
 
@@ -463,7 +481,7 @@ Item {
   }
 
   function requestRun(trigger, hash) {
-    if (!root.agentDay) return
+    if (!root.agentOn) return
     root.flush()
     var cmd = [svc.runner, "run", "--trigger", trigger, "--date", svc.noteDate]
     if (hash) cmd.push("--hash", hash)
@@ -591,7 +609,7 @@ Item {
   }
 
   function requestChat(hash, message) {
-    if (!root.agentDay) return
+    if (!root.agentOn) return
     root.flush()
     root.enqueue([svc.runner, "chat", "--hash", hash, "--message", message, "--date", svc.noteDate], hash)
   }
@@ -713,7 +731,9 @@ Item {
     if (root.askKey(event)) return true
     if (root.zoomKey(event)) return true
     if (k === Qt.Key_Escape) { if (!root.alongside) root.dismiss(); return true }
-    if (k === Qt.Key_P && ctrl) { root.togglePin(); return true }
+    // Ctrl+Shift+P before Ctrl+P: the pin does not take the shifted pair.
+    if (k === Qt.Key_P && ctrl && shift) { root.togglePrivate(); return true }
+    if (k === Qt.Key_P && ctrl && !shift) { root.togglePin(); return true }
     if ((k === Qt.Key_Return || k === Qt.Key_Enter) && ctrl) { root.sendCurrent(); return true }
     if (k === Qt.Key_Up && alt) { root.jumpBlock(-1); return true }
     if (k === Qt.Key_Down && alt) { root.jumpBlock(1); return true }
@@ -1936,6 +1956,29 @@ Item {
               MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.togglePin() }
             }
 
+            // Private: the one place that says whether the agent can see
+            // this note, and the one control that changes it. Always in
+            // sight, because a guarantee you cannot see is not one
+            // (2026-10-15). When it is on, "ask" and the agent mark are not
+            // dimmed but gone — there is nothing to offer.
+            Text {
+              visible: root.agentDay
+              anchors.verticalCenter: parent.verticalCenter
+              textFormat: Text.PlainText
+              text: svc.notePrivate ? "private · the agent sees nothing here" : "private"
+              color: svc.notePrivate ? root.foreground : (privateArea.containsMouse ? root.accent : root.faint)
+              font.family: root.fontFamily
+              font.pixelSize: root.fs(Style.font.bodySmall)
+              Behavior on color { ColorAnimation { duration: 240 } }
+              MouseArea {
+                id: privateArea
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: { root.togglePrivate(); editor.focusNote() }
+              }
+            }
+
             // Ask: the agent's visible way in, and the reason the "send to
             // agent?" prompt could go (2026-10-15). It sends the block the
             // cursor is in — the same path as Ctrl+Enter — and sits in the
@@ -1943,7 +1986,7 @@ Item {
             // own words. Dim when this block carries a sign for the agent,
             // faint when it does not; a click then says why in one line.
             Text {
-              visible: svc.header !== "" && root.agentDay
+              visible: svc.header !== "" && root.agentOn
               anchors.verticalCenter: parent.verticalCenter
               textFormat: Text.PlainText
               text: "ask"
@@ -1964,7 +2007,7 @@ Item {
             // The agent mark: faint at rest, brighter while a run is in
             // flight, accent while a reply in this note is still unread.
             Text {
-              visible: svc.header !== ""
+              visible: svc.header !== "" && root.agentOn
               anchors.verticalCenter: parent.verticalCenter
               textFormat: Text.PlainText
               text: "agent"

@@ -70,6 +70,13 @@ The file stays plain
 markdown, changed only where you typed. What you wrote is always drawn at
 full strength; a block with a reply carries a gutter mark and its reply shows
 in the margin to the right when asked — that is the only mark on your words.
+**private** in the header (or `Ctrl+Shift+P`) marks the open note unseen: it
+writes `agent: false` into the note, the word then reads "private · the agent
+sees nothing here", and **ask** and the agent mark disappear — no pass runs
+when you open it, nothing can be sent, and the runner refuses the note too.
+Turning it off puts the day back. For part of a note rather than a whole day,
+a `> [!private]` callout hides that block.
+
 Nothing ever interrupts your writing to offer the agent. You reach for it:
 `Ctrl+Enter`, or **ask** in the header, sends the block your cursor is in —
 a run of list items counts as one submission. The word reads dim when that

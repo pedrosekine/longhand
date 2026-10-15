@@ -471,6 +471,29 @@ def main() -> int:
         check(json.loads(p.call("panel"))["margin"] is False,
               "a page opened from nothing shows the note alone, not the last panel")
 
+        # 11c. private: the note the agent may not see. The mark is one line
+        # of frontmatter, because that is what the runner reads; the page
+        # never offers the agent while it is there.
+        (p.daily / f"{TODAY}.md").write_text(header(TODAY) + "Dear diary.\n")
+        p.open_fresh()
+        check(p.call("isPrivate") == "false" and p.call("agentOn") == "true", "a note starts open to the agent")
+        p.call("togglePrivate")
+        check(p.wait(lambda: p.call("isPrivate") == "true"), "the header's word marks the note private")
+        check(p.wait(lambda: p.note().startswith("---\nagent: false\n---\n")),
+              f"…by writing the line the runner reads ({p.note()[:40]!r})")
+        check("Dear diary." in p.note() and "|agent]]" in p.note(), "…leaving the note and its link line alone")
+        check(p.call("agentOn") == "false", "…and the page stops offering the agent at all")
+        before = len(list((p.state / "omarchy-student" / "payloads").glob("*"))) if (p.state / "omarchy-student" / "payloads").is_dir() else 0
+        p.call("cursorEnd")
+        p.call("type", " Is this ok?")
+        p.call("askNow")
+        time.sleep(1)
+        after = len(list((p.state / "omarchy-student" / "payloads").glob("*"))) if (p.state / "omarchy-student" / "payloads").is_dir() else 0
+        check(after == before, f"asking on a private note runs nothing ({before} → {after})")
+        p.call("togglePrivate")
+        check(p.wait(lambda: p.call("isPrivate") == "false"), "turning it off puts the day back")
+        check(p.wait(lambda: not p.note().startswith("---")), f"…with no frontmatter left behind ({p.note()[:20]!r})")
+
         # 12. the theme: roles come from the Omarchy palette, headings apart
         pal = p.call("palette")
         heads = pal.split(" h=")[1].split(" ")[0].split(",")
