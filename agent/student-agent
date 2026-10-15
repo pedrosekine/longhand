@@ -670,6 +670,23 @@ def run_pomo(argv: list[str]) -> tuple[int, str]:
     return r.returncode, (r.stdout + r.stderr).strip()
 
 
+def twin_deadline(title: str, when: list[str]) -> dict | None:
+    """An open deadline in the store with the same words (or mostly) due
+    the same day: the one a proposal would duplicate."""
+    try:
+        code, out = run_pomo(["deadline", "when", *when])
+        day = dt.datetime.fromtimestamp(int(out.split("\t")[0])).date() if code == 0 else None
+        code, out = run_pomo(["deadline", "list", "--json"])
+        items = json.loads(out)["deadlines"] if code == 0 and day else []
+    except (ValueError, KeyError, TypeError):
+        return None
+    for d in items:
+        if d.get("status") == "open" and dt.datetime.fromtimestamp(d["due"]).date() == day \
+                and (norm(d["title"]) == norm(title) or similar(d["title"], title)):
+            return d
+    return None
+
+
 def cmd_accept(cfg: dict, args) -> int:
     """The student ticked a proposal: local code runs it, the model never does."""
     date = dt.datetime.strptime(args.date, moment_to_strftime(cfg["daily"].get("format", "YYYY-MM-DD"))).date() \
@@ -687,19 +704,35 @@ def cmd_accept(cfg: dict, args) -> int:
         return 0
     at = dt.datetime.now().isoformat(timespec="seconds")
     if prop.get("kind") == "deadline":
-        argv = ["deadline", "add", str(prop.get("title") or "untitled")]
-        if project_of(prop):
-            argv += ["--project", project_of(prop)]
-        if prop.get("link"):
-            argv += ["--link", str(prop["link"])]
-        argv += str(prop.get("when") or "").split() or ["today"]
-        code, out = run_pomo(argv)
+        when = str(prop.get("when") or "").split() or ["today"]
+        twin = twin_deadline(str(prop.get("title") or ""), when)
+        if twin:
+            # Already there (the page bound the line itself a moment ago):
+            # this is the same deadline, not a second one.
+            code, out = 0, f"pomo: deadline #{twin['id']} · already there · {twin['title']}"
+            if project_of(prop) and not twin.get("project"):
+                run_pomo(["deadline", "set", str(twin["id"]), "--project", project_of(prop)])
+        else:
+            argv = ["deadline", "add", str(prop.get("title") or "untitled")]
+            if project_of(prop):
+                argv += ["--project", project_of(prop)]
+            if prop.get("link"):
+                argv += ["--link", str(prop["link"])]
+            code, out = run_pomo(argv + when)
         if code != 0:
             prop["error"] = out
             write_atomic(paths, paths.state, json.dumps(state, indent=2, ensure_ascii=False) + "\n")
             raise Fail(out or "pomo failed")
         m = re.search(r"#(\d+)", out)
-        prop["accepted"] = {"at": at, "id": int(m.group(1)) if m else 0, "result": out}
+        accepted = {"at": at, "id": int(m.group(1)) if m else 0, "result": out}
+        # A list submission keeps a copy of the proposals on every item:
+        # accepted on one is accepted on all, or the next item offers it again.
+        for h in group_of(state, args.hash):
+            other = (state["blocks"][h].get("proposals") or [])
+            if args.index < len(other) and all(other[args.index].get(k) == prop.get(k) for k in ("kind", "title", "when")):
+                other[args.index]["accepted"] = accepted
+                other[args.index].pop("error", None)
+        prop["accepted"] = accepted
         prop.pop("error", None)
         write_atomic(paths, paths.state, json.dumps(state, indent=2, ensure_ascii=False) + "\n")
         append_text(paths, paths.transcript,

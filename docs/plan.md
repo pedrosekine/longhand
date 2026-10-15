@@ -218,9 +218,11 @@
             stand for a deadline: `- [ ] words #tag 📅 2026-10-16 17:00 ^d6`
             (Obsidian Tasks date + block id; the store's link is
             `[[stem#^d6]]`). Ways in: a cue at the end ("due/by/until/
-            before/📅 <date>", read by `pomo deadline when`) asked about on
-            leaving the line, yes by default; Ctrl+D (bind, reschedule,
-            clear to unbind); accepting an agent proposal; Enter twice on an
+            before/📅 <date>") recognised as typed and bound on leaving
+            the line (since 2026-10-13, see below); Ctrl+D (bind, reschedule,
+            clear to unbind); accepting an agent proposal (it binds the line
+            it names, anywhere in the submission — no such line, no
+            binding); Enter twice on an
             unwritten deadline in what's next. The store wins: page edits go
             to it at once (tick → done, words → title, #tag → project), store
             edits reach the line when its note opens, a removed deadline
@@ -277,6 +279,61 @@ Everything waiting, in one place. Nothing here is built during the freeze;
 on 2026-10-25 the stats decide what comes off the lot and in what order.
 New ideas land here first (date, where they came from, what they need).
 
+**To discuss, evening of 2026-10-12** (from a day of real use; each one is
+a fix or a feature to decide first):
+
+- **The veil hurts reading.** Done 2026-10-12 (a fix): the veil is gone;
+  the student's words are always at full strength, and the gutter marks
+  that were already there carry the agent's state (hollow staged, filled
+  reply, accent until read). Left for after the freeze: whether "seen,
+  nothing to say" needs any mark at all (a hairline while the cursor is in
+  the block?).
+- **The measure.** Done 2026-10-13 (a fix): a line holds at most 72
+  characters of the page's own type, in the window and on the overlay
+  alike (`measureChars`, counted with the font's average character width),
+  so zoom keeps it: zoomed in, the column widens with the letters; zoomed
+  out, the space beside it grows; a window narrower than the measure wraps.
+  In the window the column is centred beside the sidebar, and an open
+  margin moves it left only as far as it must. Left: a proportional face
+  for prose (the page draws in the system monospace).
+- **Vertical rhythm.** Done 2026-10-12 (a freeze exception the student
+  asked for): the space above each row comes from what it is and what came
+  before (Rows.js `SPACE`, in body ems) — headings 1.75 / 1.4 / 1.1 / 0.9
+  above and 0.35 below, list items 0.25, lines of text 0.25, a change of
+  kind 0.5, the lines of one quote / fence / frontmatter 0. Blank lines are
+  one paragraph's space (0.75) however many, and count towards a heading's.
+  Left: lines that wrap inside one row keep the font's own line height
+  (~1.3) — Qt's TextEdit has no line-height setting.
+- **Numbered lists don't nest.** Fixed 2026-10-12: Tab / Shift+Tab move an
+  item into the kind of its new level (after "1." a bullet moved out is
+  "2."; under bullets a number moved in is a bullet), a first child that is
+  numbered starts at 1, and the list's numbers count on within each level
+  (Rows.relist). A marker typed into an empty item replaces it ("2. " then
+  "- " is a bullet).
+- **Trackpad scrolling felt slow.** Fixed 2026-10-13: Qt's Flickable moves
+  1:1 with the fingers and stops dead on lift, where the rest of the
+  desktop scrolls further and glides (and Omarchy scales all touchpad
+  scrolling by 0.4). TouchScroll.qml takes the two-finger scroll on the
+  note, the margin and what's next: `gain` 2.0 while moving (1.6 at first; "a bit faster"), the
+  Flickable's own glide after a quick lift; a mouse wheel is untouched.
+  Tune `gain` (and the glide's deceleration) from use.
+- **The "deadline?" prompt lost to list writing, and to the agent.** Fixed
+  2026-10-13 (the student counted two broken parts at odds as one fix):
+  the prompt is gone. Dates.js reads a checkbox's date in the page as it is
+  typed — the same phrases `pomo deadline when` reads, the same way
+  (tst_dates.qml), handing the store an exact `YYYY-MM-DD HH:MM` — so the
+  date lights up with its pill pending, and leaving the line binds it, as
+  Todoist does. Backspace right as it lights up, Ctrl+D, or Ctrl+Z after
+  the binding keep it words (the last removes the deadline it made). Only a
+  line typed in is recognised: an old note's "by friday" stays words until
+  Ctrl+D. A list is staged for the agent only when the deadline queue is
+  idle, so the agent sees its dates as deadlines and proposes none — the
+  root of the 2026-10-12 tangles and duplicates. Found on the way: the page
+  read the cursor's line a moment before the editor's text caught up, so a
+  keystroke at a line's end looked like leaving the line (the prompt storms
+  in usage.tsv); the line is now read once the edit is whole. Still open:
+  "on" as a cue word ("conference on the 8th of Feb").
+
 **Proposed order** (unless the numbers say otherwise):
 
 1. **Projects for notes** (14.6i) — class notes findable by course without
@@ -308,9 +365,49 @@ New ideas land here first (date, where they came from, what they need).
 
 **Not ordered yet:**
 
+- **A face for prose** (2026-10-13) — the page draws in the system
+  monospace (JetBrains Mono); a proportional face reads better as prose
+  and makes the 72-character measure physically narrower. A page-only
+  font setting, or a sensible default with the monospace kept for code.
 - **Tag suggestions while typing** (idea, 2026-10-11) — typing `#` offers the
   tags that exist (the projects list), so a new tag is a choice, not a typo.
   The sidebar list is the first step; this would be the stronger guard.
+- **The agent's tools: observability and onboarding** (2026-10-14, from
+  asking whether the loop needs a harness of its own) — it already runs
+  inside one: `opencode run --pure --format json --agent student`, with
+  every tool and permission denied in `agent/opencode/student.md`. Pi
+  (pi.dev, MIT) was weighed as a replacement and rejected — everything it
+  adds over opencode (TUI, extensions, skills, session trees) lives in the
+  layer this agent switches off, so it would be a new dependency for no new
+  behaviour. The question worth keeping is the opposite one: use *more* of
+  the harness, so whoever is onboarding can ask what the software does and
+  so the loop can be understood under the hood. `docs/diary.md` already
+  left the door open ("adding tools later is one line in the agent
+  definition"); three tiers, to decide separately:
+  1. *Observability* — a second agent definition (`student-dev`) with
+     tools, pointed at the repo and `~/.local/state/omarchy-student`, never
+     at the daily folder; behind something like `student-agent explain
+     --date D`, answering "what did it see, what did it say, what did it
+     cost, why was it silent" from the payload log, the event stream and
+     `cost.tsv`. It reads logs, not notes, so it costs nothing in consent.
+     Free of the trade below.
+  2. *Self-knowledge* — "what can you do?", "how do I add a deadline?"
+     needs a payload section (the CLIs' own `--help`, or a written
+     capability list), not a shell. Static, auditable, cheap.
+  3. *Internet, and tools for the student agent itself* — the one that
+     needs a decision, because it cuts against principle 3. With a `read`
+     tool the private-block strip is decorative: `guard_write` guards
+     writes only, nothing guards reads, and the acceptance test inspects
+     the payload. The payload log also stops being the complete record
+     *before* inference — what the model actually read would only appear
+     afterwards in `.events.jsonl`, a trace instead of an audit. And
+     `websearch` turns a diary line into a query at a third party, which is
+     a consent question for a tool meant for other students, not a config
+     flag. The shape that survives: the model *asks* for a lookup in its
+     structured reply, local code fetches it and puts the result in the
+     next pass's payload — the same inversion already used for proposals,
+     where local code runs the command and the model never does. Costs a
+     round-trip; keeps the audit trail and the student's say.
 - **To decide, not build:** Enter twice on a deadline in what's next writes
   its whole line into today's note — the words are the deadline's title,
   which may have come from an agent proposal. Keep, or offer only to bind an

@@ -18,6 +18,8 @@ Item {
     fontFamily: "monospace"   // so "the same place on the next line" is a column
   }
 
+  SignalSpy { id: kept; target: ed; signalName: "cueDismissed" }
+
   TestCase {
     name: "NoteEditor"
     when: windowShown
@@ -44,7 +46,21 @@ Item {
       compare(r[5].kind, "calloutHead"); compare(r[5].callout, "private"); compare(r[5].body, "secret"); compare(r[5].priv, true)
       compare(r[6].kind, "quote"); compare(r[6].priv, true); compare(r[6].body, "more")
       compare(r[7].kind, "plain")
-      compare(r[2].gapAbove, true)
+      compare(r[1].space, 0)      // the first text, under the leading blank
+      compare(r[2].space, 0.35)   // under a heading
+      compare(r[4].space, 0.25)   // the next item of a list
+      compare(r[6].space, 0)      // a callout's next line
+      compare(r[7].space, 0.5)    // a paragraph after it
+    }
+
+    function test_vertical_rhythm() {
+      var r = Rows.derive("para one\npara two\n\n\n## Section\n- a\n\n# Top\ntext")
+      compare(r[1].space, 0.25)                    // the next line of text
+      compare(r[2].space, 0.75); compare(r[3].space, 0)   // blank lines: one paragraph's space
+      compare(r[4].space, 1.4 - 0.75)              // a heading: its own space, the blank counted
+      compare(r[5].space, 0.35)                    // under it
+      compare(r[7].space, 1.75 - 0.75)             // H1 after a list and a blank
+      compare(r[8].space, 0.35)
     }
 
     function test_fence_keeps_markdown() {
@@ -192,6 +208,87 @@ Item {
       compare(focused().text, "two")
       keyClick(Qt.Key_Backtab, Qt.ShiftModifier)
       compare(ed.text, "\n- one\n- two")
+    }
+
+    function test_numbered_lists_nest() {
+      // Tab under a number: a list of its own, starting at 1; the rest count on.
+      start("\n1. one\n2. two\n3. three", 9)
+      keyClick(Qt.Key_Tab)
+      compare(ed.text, "\n1. one\n\t1. two\n2. three")
+      compare(focused().text, "two")
+      // Back out: it counts on from the item above.
+      keyClick(Qt.Key_Backtab, Qt.ShiftModifier)
+      compare(ed.text, "\n1. one\n2. two\n3. three")
+    }
+
+    function test_nesting_takes_the_level_kind() {
+      // A bullet moved out under "1." continues the count; one moved in
+      // under bullets becomes a bullet.
+      start("\n1. what problem\n\t- agentic AI\n\t- steer")
+      keyClick(Qt.Key_Backtab, Qt.ShiftModifier)
+      compare(ed.text, "\n1. what problem\n\t- agentic AI\n2. steer")
+      keyClick(Qt.Key_Tab)
+      compare(ed.text, "\n1. what problem\n\t- agentic AI\n\t- steer")
+      start("\n- [ ] task\n1. num", 13)
+      keyClick(Qt.Key_Tab)
+      compare(ed.text, "\n- [ ] task\n\t1. num")   // a checkbox lends no kind
+    }
+
+    function test_marker_typed_in_empty_item_replaces_it() {
+      start("\n1. one\n\t1. ", 11)
+      type("- ")
+      compare(ed.text, "\n1. one\n\t- ")
+      compare(ed.rows[2].kind, "bullet")
+      type("sub")
+      compare(ed.text, "\n1. one\n\t- sub")
+      start("\n- ", 3)
+      type("1. ")
+      compare(ed.text, "\n1. ")
+      start("\n1. ", 4)
+      type("x - y")
+      compare(ed.text, "\n1. x - y")   // only when the item has nothing else
+    }
+
+    function test_a_date_lights_up_as_it_is_typed() {
+      start("\n- [ ] essay")
+      type(" by fr")
+      verify(!ed.rowItem(1).pending, "not a date yet")
+      type("i")
+      verify(ed.rowItem(1).pending, "the date is lit up, its pill pending")
+      compare(ed.rows[1].cueAt, "essay ".length)
+      verify(ed.rows[1].cueLabel.indexOf("Fri") === 0, ed.rows[1].cueLabel)
+      start("\n- [ ] call mum")
+      type(" by phone")
+      verify(!ed.rowItem(1).pending, "by phone is no date")
+      start("\n- [ ] old line by friday")
+      verify(!ed.rowItem(1).pending, "only the line being written lights up")
+    }
+
+    function test_backspace_right_away_keeps_the_date_as_words() {
+      kept.clear()
+      start("\n- [ ] essay by fr")
+      type("i")
+      keyClick(Qt.Key_Backspace)
+      compare(ed.text, "\n- [ ] essay by fri", "nothing deleted")
+      compare(kept.count, 1)
+      compare(kept.signalArguments[0][0], "- [ ] essay by fri")
+      // Later, Backspace is Backspace.
+      kept.clear()
+      start("\n- [ ] essay by fr")
+      type("id")
+      keyClick(Qt.Key_Backspace)
+      compare(ed.text, "\n- [ ] essay by fri")
+      compare(kept.count, 0)
+    }
+
+    function test_space_at_the_end_of_a_bound_lines_words() {
+      var t = "\n- [ ] Initial paper 📅 2026-11-30 ^d9"
+      start(t, 1 + "- [ ] Initial paper".length)
+      type(" ")
+      compare(focused().text, "Initial paper ", "the space stays with the words")
+      type("v2")
+      compare(ed.text, "\n- [ ] Initial paper v2 📅 2026-11-30 ^d9")
+      compare(ed.rows[1].deadline, 9)
     }
 
     function test_undo_and_redo() {

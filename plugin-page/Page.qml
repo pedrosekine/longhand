@@ -7,6 +7,7 @@ import qs.Commons
 import qs.Ui
 import "Blocks.js" as Blocks
 import "Bound.js" as Bound
+import "Dates.js" as Dates
 import "Days.js" as Days
 import "Tasks.js" as Tasks
 
@@ -48,9 +49,10 @@ import "Tasks.js" as Tasks
 // sign never goes. Opening the page runs one automatic pass so answers are
 // waiting when you come back.
 //
-// The agent's answers are painted, never inserted: a block the agent has
-// seen is veiled a little; a block with a reply carries a filled mark in
-// the gutter, accent until you have looked at it. Nothing else is on
+// The agent's answers are painted, never inserted, and only in the
+// gutter — the student's words are always drawn at full strength (a veil
+// over seen blocks was tried and made the note hard to read): a block with
+// a reply carries a filled mark, accent until you have looked at it. Nothing else is on
 // screen until asked: Alt+Right opens the margin for the block under the
 // cursor — the reply, its proposals (Enter accepts one; local code runs the
 // CLI, the model never does), and the chat about that block; Alt+Left or
@@ -87,9 +89,14 @@ import "Tasks.js" as Tasks
 //
 // Deadlines live in the store (`pomo deadline`); a checkbox line can stand
 // for one (Bound.js). Write a checkbox that ends in a date — "due fri
-// 17:00", "by monday", "📅 tomorrow" — and on leaving the line the page
-// asks "deadline: … ?" (yes is the default); Ctrl+D does it on purpose, or
-// reschedules a bound line, or (date cleared) unbinds it. A bound line
+// 17:00", "by monday", "📅 tomorrow" — and the date lights up as it is
+// typed, its pill shown in the accent (Dates.js reads it, at once, in the
+// page); leaving the line makes it the deadline, no question asked, as
+// Todoist does. Backspace right as it lights up, Ctrl+D on the line, or
+// Ctrl+Z after it is bound keep the date as words. Ctrl+D on a line not
+// being written binds it on purpose, reschedules a bound line, or (date
+// cleared) unbinds it. A list leaves for the agent only once its dates are
+// bound, so the agent sees them as deadlines. A bound line
 // shows its date at its end. Ticking it marks the deadline done, editing
 // its words renames it, a #tag moves its project; deleting the line asks
 // whether the deadline goes too — hidden, kept in history (a cut does not
@@ -139,7 +146,25 @@ Item {
   function fs(n) { return Math.max(1, Math.round(n * root.zoom)) }
   readonly property int textSize: root.fs(Style.font.title)
 
-  readonly property int sheetWidth: Math.min(root.sp(760), content.width - root.sp(48))
+  // The measure: a line of text holds at most `measureChars` characters,
+  // the reading length typography settles on (45–75). It is counted in the
+  // page's own type, so it follows the zoom and the font: zoomed in, the
+  // column widens with the letters and still holds 72; zoomed out, the
+  // space beside it grows, never the lines. A window narrower than the
+  // measure just wraps. The same in the window and on the overlay.
+  readonly property int measureChars: 72
+  FontMetrics { id: bodyMetrics; font.family: root.fontFamily; font.pixelSize: root.textSize }
+  readonly property real chWidth: bodyMetrics.averageCharacterWidth
+  readonly property int measure: Math.round(root.chWidth * root.measureChars)
+  readonly property int sheetFor: root.measure + 2 * root.sheetPadding
+  readonly property int sheetWidth: Math.min(root.sheetFor, content.width - root.sp(48))
+  // In the window the sheet is centred in the room beside the sidebar; an
+  // open margin moves it left only as far as it has to, so opening one
+  // where there is room does not shift the text.
+  readonly property int sheetRoom: content.width - root.sideSpace - (root.marginOpen ? root.marginWidth + root.marginGap : 0)
+  readonly property int windowSheetWidth: Math.max(0, Math.min(root.sheetFor, root.sheetRoom))
+  readonly property int windowSheetX: root.sideSpace + Math.max(0, Math.min(
+    Math.round((content.width - root.sideSpace - root.windowSheetWidth) / 2), root.sheetRoom - root.windowSheetWidth))
   readonly property int sheetMargin: root.sp(28)
   readonly property int sheetPadding: alongside ? root.sp(28) : root.sp(44)
   readonly property int marginGap: root.sp(18)
@@ -515,37 +540,31 @@ Item {
       root.declineAsk()
       return false   // a plain Enter: let it fall through and behave as usual
     }
-    root.declineAsk()   // anything else: the prompt just goes away
+    root.declineAsk(true)   // anything else: the prompt just goes away
     return false
   }
 
-  // Three things are ever asked under the cursor: send this block to the
-  // agent, make this line a deadline, and delete the deadline of a line
-  // that went.
+  // Two things are ever asked under the cursor: send this block to the
+  // agent, and delete the deadline of a line that went. (A date at the end
+  // of a checkbox is not asked about: it lights up and binds.)
   function acceptAsk() {
     var a = root.ask
     root.ask = null
     if (!a) return
     root.used("prompt", a.kind + ":yes")
     if (a.kind === "send") root.send(a.trigger, a.hashes)
-    else if (a.kind === "deadline") root.bindCue(a.raw, a.cue, a.ms)
     else if (a.kind === "delete") dl.hide(a.id)
   }
 
-  function declineAsk() {
+  // `brushed`: typed past, not answered.
+  function declineAsk(brushed) {
     var a = root.ask
     root.ask = null
-    if (a) root.used("prompt", a.kind + ":no")
-    if (a && a.kind === "deadline") {
-      var d = Object.assign({}, root.declined)
-      d[a.raw] = true
-      root.declined = d
-    }
+    if (a) root.used("prompt", a.kind + (brushed ? ":dismissed" : ":no"))
   }
 
   function askText(a) {
     var choice = (a.yes ? "[yes]   no" : "yes   [no]") + "   · ←→ choose · Enter"
-    if (a.kind === "deadline") return "deadline: " + a.cue.title + " · " + a.label + "?   " + choice
     if (a.kind === "delete") return "this line had a deadline: " + a.title + ". remove it too (kept in history)?   " + choice
     return "send to agent?   " + choice
   }
@@ -642,7 +661,7 @@ Item {
       if (!r) continue
       out.push({ hash: b.hash, y: r.y, h: r.h,
                  reply: !!rec && rec.state === "reply", unread: !!rec && rec.state === "reply" && !rec.read,
-                 seen: !!rec && rec.state !== "reply", staged: isStaged })
+                 staged: isStaged })
     }
     root.paint = out
     root.currentHash = root.hashNearLine(root.lineIndexAt(editor.cursorPosition))
@@ -685,10 +704,22 @@ Item {
   function listLeft(lineIndex) {
     Qt.callLater(root.flush)
     if (lineIndex <= 0) return
-    var prev = root.hashOfLine(lineIndex - 1)
-    if (prev === "") return
-    var group = root.listAround(prev)
-    if (root.listHasCheckbox(group)) { root.stage("checkbox", group); root.askAbout("checkbox", group) }
+    // Its dated items were bound as each was left; the last may still be
+    // being written. Stage and ask once it is, so the list goes to the
+    // agent with its deadlines already in it — never "by 30 oct" for the
+    // agent to propose as well.
+    root.whenWritten(function () {
+      var prev = root.hashOfLine(lineIndex - 1)
+      if (prev === "") return
+      var group = root.listAround(prev)
+      if (root.listHasCheckbox(group)) { root.stage("checkbox", group); root.askAbout("checkbox", group) }
+    })
+  }
+
+  property var afterWrites: []
+  function whenWritten(fn) {
+    if (!dl.busy) fn()
+    else root.afterWrites = root.afterWrites.concat([fn])
   }
 
   // Keys the page owns, ahead of editing. True when taken.
@@ -746,7 +777,7 @@ Item {
 
   function acceptProposal(i) {
     var p = root.currentProposals[i]
-    if (!p || p.accepted || root.currentHash === "") return
+    if (!p || p.accepted || root.currentHash === "" || acceptProc.running) return
     root.pendingAccept = { hash: root.currentHash, index: i }
     acceptProc.command = [svc.runner, "accept", "--hash", root.currentHash, "--index", String(i), "--date", svc.noteDate]
     acceptProc.running = true
@@ -965,7 +996,8 @@ Item {
 
   property var bound: ({})          // id -> { line, checked }: bound lines as last seen
   property bool quiet: false        // the page is writing (binding, catching up): not the student
-  property var declined: ({})       // raw lines whose "deadline?" got a no, not asked again
+  property var declined: ({})       // raw lines whose date stays words (Backspace, Ctrl+D, Ctrl+Z)
+  property var autoBound: null      // { id, raw, made }: the line the page just bound as it was left
   property int lastLine: -1
   property bool reconcilePending: false
   property var pendingAccept: null  // { hash, index }: an agent proposal accepted, its line to bind
@@ -995,28 +1027,83 @@ Item {
   }
 
   // Give a line its deadline: the words it keeps (`head`), then the tail.
-  // The store learns where the line is.
-  function writeBinding(raw, head, ms, id) {
+  // The store learns where the line is. `auto`: bound because it was left
+  // with a date at its end — an undo step of its own, so Ctrl+Z takes it
+  // back (boundEdited); `made`: the deadline was added for it.
+  function writeBinding(raw, head, ms, id, auto, made) {
     var r = root.rowByRaw(raw)
     if (!r || r.kind !== "task" || r.deadline > 0) return
+    if (auto) {
+      editor.snapshot(true)
+      root.autoBound = { id: id, raw: raw, made: !!made }
+    }
     root.writeLine(r, r.raw.substring(0, r.prefixLen) + head.replace(/\s+$/, "") + Bound.tail(ms, id))
+    if (editor.typedRaw === raw) editor.typedRaw = ""
     dl.set(id, ["--link", Bound.link(svc.noteDate, id)])
     root.used("bound")
   }
 
-  function bindCue(raw, c, ms) {
+  // A checkbox's date (`w`, as Dates.read gives it) becomes its deadline.
+  // The store is handed the exact day and time, never the words.
+  function bindCue(raw, c, w, auto) {
+    if (root.bindTwin(raw, c.head, c.project, w.iso, w.ms, auto)) return
     var stem = svc.noteDate
-    dl.add(c.title, c.project, c.phrase, function (id) {
-      if (id > 0 && svc.noteDate === stem) root.writeBinding(raw, c.head, ms, id)
+    dl.add(c.title, c.project, w.iso, function (id) {
+      if (id > 0 && svc.noteDate === stem) root.writeBinding(raw, c.head, w.ms, id, auto, true)
     })
   }
 
+  function decline(raw) {
+    var d = Object.assign({}, root.declined)
+    d[raw] = true
+    root.declined = d
+  }
+
+  function undecline(raw) {
+    if (!root.declined[raw]) return
+    var d = Object.assign({}, root.declined)
+    delete d[raw]
+    root.declined = d
+  }
+
+  // An open deadline with these words (or mostly) on that day that no line
+  // holds yet — the agent's proposal for this same line, accepted a moment
+  // before — becomes the line's, rather than a second one being added. It
+  // takes the line's date and, if it has none, the line's #tag.
+  function bindTwin(raw, head, project, phrase, ms, auto) {
+    var key = Bound.titleKey(head), tw = Bound.wordsOf(head)
+    var day = new Date(ms).toDateString()
+    for (var i = 0; i < dl.items.length; i++) {
+      var d = dl.items[i]
+      if (d.status !== "open" || d.link !== "" || new Date(d.due * 1000).toDateString() !== day) continue
+      if (Bound.titleKey(d.title) !== key && Bound.overlap(tw, Bound.wordsOf(d.title)) < 0.5) continue
+      var args = dl.words(phrase)
+      if (project !== "" && d.project === "") args = ["--project", project].concat(args)
+      dl.set(d.id, args)
+      root.writeBinding(raw, head, ms, d.id, auto, false)
+      return true
+    }
+    return false
+  }
+
   // What changed among bound lines with the last edit: a box ticked or
-  // unticked goes to the store at once; a line gone (not cut) asks.
+  // unticked goes to the store at once; a line gone (not cut) asks — unless
+  // it is the page's own binding taken back with Ctrl+Z: the words are back,
+  // the deadline it made for them goes, and the line stays words.
   function boundEdited(was, now) {
     for (var id in was) {
       if (!(id in now)) {
         var d = dl.byId[id]
+        var ab = root.autoBound
+        // (The text, not editor.rows: they catch up after this signal.)
+        if (ab && ab.id === parseInt(id, 10) && editor.text.split("\n").indexOf(ab.raw) >= 0) {
+          root.autoBound = null
+          if (ab.made) dl.remove(ab.id)
+          else dl.set(ab.id, ["--link", ""])
+          root.decline(ab.raw)
+          root.used("bound", "undone")
+          continue
+        }
         if (d && !editor.cutting) root.ask = { kind: "delete", id: d.id, title: d.title, yes: false }
         continue
       }
@@ -1028,11 +1115,18 @@ Item {
   }
 
   // The cursor left line `i`: a bound line's words and #tag go to the
-  // store; an unbound checkbox ending in a date is asked about.
+  // store; a checkbox just written with a date at its end becomes a
+  // deadline, without asking — its date was lit up while it was typed, and
+  // Backspace, Ctrl+D or Ctrl+Z keep it words. Only a line typed in: moving
+  // through an old note never turns its "by friday" into this Friday.
   function leftLine(i) {
+    var typed = editor.typedRaw
     var r = editor.rows[i]
     if (!r || r.kind !== "task" || !svc.ready || root.quiet) return
     if (r.deadline > 0) {
+      // Spaces left at the end of its words would sit unseen before the
+      // date, where the cursor wanders into them: a left line has none.
+      if (/\s$/.test(r.body)) root.writeLine(r, r.raw.substring(0, r.prefixLen) + r.body.replace(/\s+$/, "") + r.suffix)
       var d = dl.byId[r.deadline]
       var title = Bound.titleOf(r.body)
       // A #tag sets the project; a line without one leaves it as it is (an
@@ -1042,14 +1136,10 @@ Item {
         dl.set(d.id, ["--title", title, "--project", project])
       return
     }
+    if (r.raw !== typed || r.cueAt < 0 || root.declined[r.raw]) return
     var c = Bound.cue(r.body)
-    if (!c || root.declined[r.raw]) return
-    var raw = r.raw
-    var stem = svc.noteDate
-    dl.when(c.phrase, function (w) {
-      if (!w || root.ask || svc.noteDate !== stem || !root.rowByRaw(raw)) return
-      root.ask = { kind: "deadline", raw: raw, cue: c, ms: w.ms, label: w.label, yes: true }
-    })
+    var w = c ? Dates.read(c.phrase) : null
+    if (w) root.bindCue(r.raw, c, w, true)
   }
 
   function trackLine() {
@@ -1058,6 +1148,8 @@ Item {
     var prev = root.lastLine
     root.lastLine = line
     if (prev >= 0) root.leftLine(prev)
+    var r = editor.rows[prev]
+    if (!r || r.raw !== editor.typedRaw || r.deadline > 0 || r.cueAt < 0 || root.declined[r.raw]) editor.typedRaw = ""
   }
 
   // Ctrl+D: make the line under the cursor a deadline, reschedule it, or
@@ -1079,11 +1171,13 @@ Item {
     }
     var c = Bound.cue(r.body)
     if (c) {
-      var raw = r.raw
-      dl.when(c.phrase, function (w) {
-        if (w) root.bindCue(raw, c, w.ms)
-        else root.showHint("that date did not read: " + c.phrase)
-      })
+      var w = Dates.read(c.phrase)
+      if (!w) { root.showHint("that date did not read: " + c.phrase); return }
+      // Lit up while being written: Ctrl+D keeps it words. Otherwise (an
+      // old line, or one kept as words): it becomes the deadline now.
+      if (r.raw === editor.typedRaw && !root.declined[r.raw]) { root.decline(r.raw); root.used("cue", "kept"); return }
+      root.undecline(r.raw)
+      root.bindCue(r.raw, c, w, false)
       return
     }
     root.openWhen(r.raw, 0, "")
@@ -1133,6 +1227,7 @@ Item {
     var project = Bound.projectOf(row.body)
     dl.when(text, function (w) {
       if (!w) { root.showHint("that date did not read: " + text); return }
+      if (root.bindTwin(a.raw, head, project, text, w.ms)) return
       var stem = svc.noteDate
       dl.add(title, project, text, function (id) {
         if (id > 0 && svc.noteDate === stem) root.writeBinding(a.raw, head, w.ms, id)
@@ -1169,7 +1264,11 @@ Item {
   }
 
   // An agent proposal was accepted: once the store has the deadline, the
-  // block's first unbound checkbox becomes its line.
+  // unbound checkbox it is about becomes its line — by its words or its
+  // date (Bound.matchLine), looked for across the whole submission (a list
+  // is one, each item its own block). A lone checkbox answered with a lone
+  // proposal is its line whatever the words; otherwise no match, no line —
+  // the deadline waits in the store rather than taking another line's place.
   function checkAccept() {
     var pa = root.pendingAccept
     if (!pa) return
@@ -1178,15 +1277,22 @@ Item {
     var id = p && p.accepted ? p.accepted.id : 0
     if (!id || !dl.byId[id]) return
     root.pendingAccept = null
-    var b = root.blockBounds(pa.hash)
-    if (!b) return
-    for (var i = b.start; i < b.end; i++) {
-      var r = editor.rows[i]
-      if (!r || r.kind !== "task" || r.deadline > 0) continue
-      var c = Bound.cue(r.body)
-      root.writeBinding(r.raw, c ? c.head : r.body, dl.byId[id].due * 1000, id)
-      return
+    var hashes = rec.group && rec.group.indexOf(pa.hash) >= 0 ? rec.group : [pa.hash]
+    var free = []
+    for (var k = 0; k < hashes.length; k++) {
+      var b = root.blockBounds(hashes[k])
+      if (!b) continue
+      for (var i = b.start; i < b.end; i++) {
+        var r = editor.rows[i]
+        if (r && r.kind === "task" && r.deadline <= 0) free.push(r)
+      }
     }
+    var heads = free.map(function (r) { var c = Bound.cue(r.body); return c ? c.head : r.body })
+    var at = Bound.matchLine(p.title || "", dl.byId[id].due * 1000, free.map(function (r) { return r.body }))
+    var dated = rec.proposals.filter(function (q) { return q.kind === "deadline" })
+    if (at < 0 && free.length === 1 && dated.length === 1) at = 0
+    if (at < 0) return
+    root.writeBinding(free[at].raw, heads[at], dl.byId[id].due * 1000, id)
   }
 
   // ------------------------------------------------------------ sidebar
@@ -1413,6 +1519,11 @@ Item {
   Deadlines {
     id: dl
     onItemsChanged: { root.reconcile(); root.checkAccept() }
+    onIdle: {
+      var waiting = root.afterWrites
+      root.afterWrites = []
+      for (var i = 0; i < waiting.length; i++) waiting[i]()
+    }
   }
 
   AgentState {
@@ -1640,17 +1751,18 @@ Item {
       color: root.scrim
     }
 
+    // A click outside the sheet: on the overlay it dismisses; in the window,
+    // beside the column, it goes back to writing.
     MouseArea {
       anchors.fill: parent
-      enabled: !root.alongside
-      onClicked: root.dismiss()
+      onClicked: root.alongside ? editor.focusNote() : root.dismiss()
     }
 
     BorderSurface {
       id: sheet
-      x: root.alongside ? root.sideSpace : Math.max(Math.round((content.width - width) / 2), root.sideSpace > 0 ? root.sideSpace + root.sheetMargin : 0)
+      x: root.alongside ? root.windowSheetX : Math.max(Math.round((content.width - width) / 2), root.sideSpace > 0 ? root.sideSpace + root.sheetMargin : 0)
       y: root.alongside ? 0 : root.sheetMargin
-      width: root.alongside ? content.width - root.sideSpace - (root.marginOpen ? root.marginWidth + root.marginGap : 0) : root.sheetWidth
+      width: root.alongside ? root.windowSheetWidth : root.sheetWidth
       height: root.alongside ? content.height : content.height - root.sheetMargin * 2
       radius: root.alongside ? 0 : Style.cornerRadius
       color: root.background
@@ -1836,6 +1948,8 @@ Item {
           contentHeight: editor.height + height * 0.4
           boundsBehavior: Flickable.StopAtBounds
 
+          TouchScroll { flickable: flick }
+
           function ensureVisible(r) {
             if (contentY >= r.y) contentY = r.y
             else if (contentY + height <= r.y + r.height) contentY = r.y + r.height - height
@@ -1890,11 +2004,17 @@ Item {
             keyFilter: root.pageKey
 
             onCursorRectChanged: flick.ensureVisible(cursorRect)
-            onCursorPositionChanged: { root.currentHash = root.hashNearLine(root.lineIndexAt(cursorPosition)); root.trackLine() }
+            // Which line the cursor is on is read once the edit is whole: the
+            // editor moves the cursor a moment before its text catches up, and
+            // read then, a keystroke at a line's end looked like leaving it.
+            onCursorPositionChanged: { root.currentHash = root.hashNearLine(root.lineIndexAt(cursorPosition)); Qt.callLater(root.trackLine) }
             onWidthChanged: root.scheduleRepaint()
             onHeightChanged: root.scheduleRepaint()
             onReturnFinished: function (lineIndex, lineText) { root.lineFinished(lineIndex, lineText) }
             onListLeft: function (lineIndex) { root.listLeft(lineIndex) }
+            declined: root.declined
+            onCueDismissed: function (raw) { root.decline(raw); root.used("cue", "kept") }
+            onTypedRawChanged: if (typedRaw !== "") root.autoBound = null
             onTextChanged: {
               if (root.searchOpen) Qt.callLater(root.runSearch)
               var was = root.bound
@@ -1972,23 +2092,6 @@ Item {
             }
           }
 
-          // The veil: blocks the agent has seen, and has nothing to say
-          // about, recede a little. Drawn over the text in the sheet's own
-          // colour so the theme decides how it looks.
-          Repeater {
-            model: root.paint
-            Rectangle {
-              required property var modelData
-              visible: modelData.seen
-              x: root.gutter
-              y: modelData.y
-              width: editor.width
-              height: modelData.h
-              color: root.background
-              opacity: 0.5
-              z: 1
-            }
-          }
         }
       }
     }
@@ -2411,6 +2514,8 @@ Item {
         contentHeight: tasksColumn.implicitHeight
         boundsBehavior: Flickable.StopAtBounds
 
+        TouchScroll { flickable: tasksFlick }
+
         // Keep the focused row in view.
         function revealFocused() {
           var kids = tasksColumn.children
@@ -2529,6 +2634,8 @@ Item {
         contentWidth: width
         contentHeight: marginColumn.implicitHeight
         boundsBehavior: Flickable.StopAtBounds
+
+        TouchScroll { flickable: marginFlick }
 
         Column {
           id: marginColumn

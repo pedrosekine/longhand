@@ -58,9 +58,9 @@ word). `Alt+Left`/`Alt+Right` move between calendar and note; `weekStart`
 in the config picks the first column. Under it, your projects (one file each
 in the agent's `knowledge/projects/`) with their next session: Enter starts
 a class in today's note (`# Course #tag`), Ctrl+Enter puts just the tag. The file stays plain
-markdown, changed only where you typed. Blocks the agent has seen are
-veiled; a block with a reply carries a gutter mark and its reply shows in the
-margin to the right when asked. Finishing an `@` or `?` line stages the block
+markdown, changed only where you typed. What you wrote is always drawn at
+full strength; a block with a reply carries a gutter mark and its reply shows
+in the margin to the right when asked. Finishing an `@` or `?` line stages the block
 (hollow mark) and asks "send to agent?" under the cursor with *no*
 preselected; an arrow then Enter sends. A checkbox list is staged as one
 submission when you leave it. `Ctrl+Enter` sends a staged block later. `Alt+Up/Down`
@@ -89,9 +89,14 @@ python3 tests/page/run.py                                     # the page itself,
 
 A checkbox can stand for a deadline. Write it with a date at the end —
 `- [ ] chapter 2 draft #thesis due fri 17:00` (or `by monday`, `until 20
-oct`, `📅 tomorrow`) — and when you leave the line the page asks
-"deadline: … ?" (Enter says yes; prompts take arrows and Enter, never a letter). Or press `Ctrl+D` on any line: it asks
-"when?", and on a bound line it reschedules (empty unbinds). The line then
+oct`, `the 8th of Feb`, `📅 tomorrow`) — and the date lights up as you type
+it, with the pill it will become; when you leave the line it is the
+deadline, nothing asked (as in Todoist). To keep the date as words: Backspace
+right as it lights up, `Ctrl+D` on the line, or `Ctrl+Z` after it is bound.
+Only lines you type in are recognised, so moving through an old note binds
+nothing; `Ctrl+D` binds such a line on purpose, asks "when?" on a line with
+no date, and on a bound line reschedules (empty unbinds). A checkbox list
+goes to the agent only once its dates are bound. The line then
 reads `- [ ] chapter 2 draft #thesis 📅 2026-10-16 17:00 ^d6` on disk —
 Obsidian shows the date, `^d6` is a block id the deadline links back to —
 and the page draws the date at the line's end. The deadline module is the

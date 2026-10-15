@@ -218,6 +218,18 @@ def main() -> int:
         r = t.agent("ack", "--hash", items[1], "--date", DAY)
         s = json.loads(st.read_text())
         check(all(s["blocks"][h]["read"] is True for h in items), "ack on one item reads the whole group")
+        # One reply's proposals sit on every item: accepted on one, accepted on all.
+        t.set_reply(reply="Dated.", proposals=[{"kind": "deadline", "title": "alpha", "when": "friday"},
+                                               {"kind": "deadline", "title": "beta", "when": "friday"}])
+        t.agent("run", "--trigger", "checkbox", "--hash", ",".join(items), "--date", DAY)
+        r = t.agent("accept", "--hash", items[1], "--index", "0", "--date", DAY)
+        s = json.loads(st.read_text())
+        check(r.returncode == 0 and all(s["blocks"][h]["proposals"][0].get("accepted", {}).get("id") == 7 for h in items)
+              and not any(s["blocks"][h]["proposals"][1].get("accepted") for h in items),
+              "accepting on one item marks that proposal accepted on every item, and only that one")
+        (t.stub_dir / "pomo_args.json").unlink()
+        r = t.agent("accept", "--hash", items[0], "--index", "0", "--date", DAY)
+        check(r.returncode == 0 and not (t.stub_dir / "pomo_args.json").exists(), "…so the other item does not add it again")
         t.note.write_text(NOTE)
 
         # 9. tasks: open checkboxes across days, today recent, old collapsed

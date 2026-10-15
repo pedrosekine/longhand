@@ -41,6 +41,66 @@ function cue(body) {
   return { head: m[1], phrase: m[2], title: titleOf(m[1]), project: projectOf(body) }
 }
 
+// The words a title is compared by: no #tags, case, punctuation or spacing.
+function titleKey(words) {
+  return titleOf(words).toLowerCase().replace(/[.,;:!?()\[\]"'“”‘’*_`]/g, " ").replace(/\s+/g, " ").trim()
+}
+
+var MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
+var STOP = { a: 1, an: 1, the: 1, of: 1, and: 1, or: 1, by: 1, on: 1, to: 1, for: 1, in: 1, at: 1, due: 1, until: 1, before: 1, with: 1 }
+
+// The days a line names, as "month-day": "30 oct", "the 19th of Feb",
+// "Oct 30", "2026-10-30".
+function daysIn(words) {
+  var out = [], m
+  var iso = /(\d{4})-(\d{2})-(\d{2})/g
+  while ((m = iso.exec(words))) out.push(parseInt(m[2], 10) + "-" + parseInt(m[3], 10))
+  var dm = /\b(\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+)?([a-z]{3})[a-z]*/gi
+  while ((m = dm.exec(words))) if (MONTHS.indexOf(m[2].toLowerCase()) >= 0) out.push((MONTHS.indexOf(m[2].toLowerCase()) + 1) + "-" + parseInt(m[1], 10))
+  var md = /\b([a-z]{3})[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?\b/gi
+  while ((m = md.exec(words))) if (MONTHS.indexOf(m[1].toLowerCase()) >= 0) out.push((MONTHS.indexOf(m[1].toLowerCase()) + 1) + "-" + parseInt(m[2], 10))
+  return out
+}
+
+// The words that say what a line is about: no filler, no dates.
+function wordsOf(words) {
+  return titleKey(words).split(" ").filter(function (w) {
+    return w !== "" && !STOP[w] && MONTHS.indexOf(w.substring(0, 3)) < 0 && !/^\d+(st|nd|rd|th)?$/.test(w)
+  })
+}
+
+// How much of the shorter set of words the other one has, 0..1.
+function overlap(a, b) {
+  if (a.length === 0 || b.length === 0) return 0
+  var n = 0
+  for (var i = 0; i < a.length; i++) if (b.indexOf(a[i]) >= 0) n++
+  return n / Math.min(a.length, b.length)
+}
+
+// Of `bodies` (unbound checkboxes' words), the one an agent's proposal is
+// about. The agent rewords titles ("Registered topic, supervisor and peer
+// group" for "A registered topic and supervisor, and a peer group"), so:
+// the same words if a line has them; else the lines naming the deadline's
+// day, the one sharing most words; else the one sharing most words, if at
+// least half. -1 when none is, or two are equally likely.
+function matchLine(title, dueMs, bodies) {
+  var t = titleKey(title)
+  if (t === "") return -1
+  var heads = bodies.map(function (b) { var c = cue(b); return c ? c.head : b })
+  for (var i = 0; i < heads.length; i++) if (titleKey(heads[i]) === t) return i
+  var d = new Date(dueMs)
+  var day = (d.getMonth() + 1) + "-" + d.getDate()
+  var tw = wordsOf(title)
+  var scored = bodies.map(function (b, i) {
+    return { i: i, dated: dueMs > 0 && daysIn(b).indexOf(day) >= 0, words: overlap(tw, wordsOf(heads[i])) }
+  })
+  var pool = scored.filter(function (s) { return s.dated })
+  if (pool.length === 0) pool = scored.filter(function (s) { return s.words >= 0.5 })
+  if (pool.length === 0) return -1
+  pool.sort(function (a, b) { return b.words - a.words })
+  return pool.length > 1 && pool[0].words === pool[1].words ? -1 : pool[0].i
+}
+
 function two(n) { return (n < 10 ? "0" : "") + n }
 
 // The tail written after the words: ` 📅 2026-10-16 17:00 ^d6`. The time is

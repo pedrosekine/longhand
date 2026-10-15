@@ -22,6 +22,12 @@ ShellRoot {
     // The note
     function text(): string { return page.editorItem.text }
     function insert(s: string): void { var e = page.editorItem; e.insert(e.cursorPosition, s) }
+    // As fingers do it: into the focused line's field, so the editor sees
+    // typing (typed()), and Enter as the key does it.
+    function type(s: string): void { var e = page.editorItem; var f = e.rowItem(e.focusedRow).field; f.insert(f.cursorPosition, s) }
+    function enter(): void { var e = page.editorItem; e.returnKey(e.rowItem(e.focusedRow), false) }
+    function undo(): void { page.editorItem.undo() }
+    function pending(line: int): bool { var it = page.editorItem.rowItem(line); return !!it && it.pending }
     function cursor(pos: int): void { page.editorItem.setCursor(pos, true) }
     function cursorEnd(): void { page.editorItem.setCursor(page.editorItem.length, true) }
     function cursorLine(): int { return page.lineIndexAt(page.editorItem.cursorPosition) }
@@ -57,5 +63,8 @@ ShellRoot {
     function projects(): string { return JSON.stringify(page.projects.map(function (p) { return p.tag + "|" + page.sessionLabel(p.next) })) }
     function startClass(i: int): void { page.startClass(page.projects[i]) }
     function insertTag(i: int): void { page.insertTag(page.projects[i]) }
+    // The measure
+    function zoom(z: real): void { page.setZoom(z) }
+    function layout(): string { return JSON.stringify({ chars: page.editorItem.width / page.chWidth, x: page.windowSheetX, w: page.windowSheetWidth }) }
   }
 }

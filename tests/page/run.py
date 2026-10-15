@@ -62,15 +62,9 @@ class Page:
         bindir = self.tmp / "bin"
         bindir.mkdir()
         (bindir / "pomo").symlink_to(ROOT / "cli" / "pomo")
-        # Only `accept` does anything, the way student-agent does it.
+        # Only the local commands run (no model): accept, projects.
         self.runner.write_text(f"""#!/bin/bash
-[ "$1" = projects ] && exec "{ROOT}/agent/student-agent" "$@"
-[ "$1" = accept ] || exit 0
-while [ $# -gt 0 ]; do case "$1" in --hash) H=$2; shift;; --index) I=$2; shift;; --date) D=$2; shift;; esac; shift; done
-out=$(pomo deadline add one-pager --project DORO friday) || exit 1
-id=$(echo "$out" | grep -o '#[0-9]*' | tr -d '#')
-F="{self.vault}/agents/student/daily/$D.json"
-python3 -c "import json; s=json.load(open('$F')); s['blocks']['$H']['proposals'][int('$I')]['accepted']={{'id': $id}}; json.dump(s, open('$F','w'))"
+case "$1" in accept|projects) exec "{ROOT}/agent/student-agent" "$@" ;; esac
 """)
         self.runner.chmod(0o755)
         self.env = dict(os.environ, XDG_CONFIG_HOME=str(cfg), XDG_STATE_HOME=str(self.state),
@@ -88,6 +82,10 @@ python3 -c "import json; s=json.load(open('$F')); s['blocks']['$H']['proposals']
             self.env["HOME"] = str(self.home)
         subprocess.run(["hyprctl", "eval", 'hl.window_rule({ match = { title = "^Page scratch$" }, no_initial_focus = true })'],
                        capture_output=True)
+        # A known size, whatever else is open on the workspace (tiled into a
+        # full one, the window can be a few pixels wide).
+        subprocess.run(["hyprctl", "eval", 'hl.window_rule({ match = { title = "^Page scratch$" }, float = true, size = { 701, 850 } })'],
+                       capture_output=True)
         self.proc = subprocess.Popen(["quickshell", "-p", str(self.shell)], env=self.env,
                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         self.wait(lambda: self.call("state").startswith("{"), 10)
@@ -104,7 +102,7 @@ python3 -c "import json; s=json.load(open('$F')); s['blocks']['$H']['proposals']
             try:
                 if cond():
                     return True
-            except (ValueError, KeyError, IndexError, json.JSONDecodeError):
+            except (ValueError, KeyError, IndexError, TypeError, json.JSONDecodeError):   # TypeError: not asked yet (null)
                 pass
             time.sleep(0.15)
         return False
@@ -187,15 +185,16 @@ def main() -> int:
     theme_switch()
     p = Page()
     try:
-        # 1. a checkbox with a date at its end is asked about, and bound
+        # 1. a checkbox written with a date at its end lights up, and binds
+        # when it is left — no question asked
         (p.daily / f"{TODAY}.md").write_text(header(TODAY) + "Plan for the week.\n")
         p.open_fresh()
         p.call("cursorEnd")
-        p.call("insert", "- [ ] chapter 2 draft #thesis due fri 17:00")
+        p.call("type", "- [ ] chapter 2 draft #thesis due fri 17:00")
+        check(p.call("pending", p.line_of("chapter 2")) == "true", "the date lights up as it is typed")
+        check(p.call("ask") == "null", "nothing is asked")
         p.call("cursor", 1)
-        check(p.wait(lambda: json.loads(p.call("ask"))["kind"] == "deadline"), "leaving a dated checkbox asks")
-        p.call("yes")
-        check(p.wait(lambda: "#thesis 📅 " in p.note() and p.note().rstrip().endswith("17:00 ^d1")), "the line is bound: 📅 date ^d1")
+        check(p.wait(lambda: "#thesis 📅 " in p.note() and p.note().rstrip().endswith("17:00 ^d1")), "left, the line is bound: 📅 date ^d1")
         d = p.deadline(1)
         check(d and d["project"] == "thesis" and d["link"] == f"[[{TODAY}#^d1]]", f"store has it, with project and link ({d})")
 
@@ -207,6 +206,11 @@ def main() -> int:
         p.call("insert", " v2")
         p.call("cursor", 1)
         check(p.wait(lambda: p.deadline(1)["title"] == "chapter 2 draft v2"), "editing the words renames it")
+        i = p.line_of("chapter 2 draft")
+        p.call("cursor", p.offset_of_line(i) + len("- [x] chapter 2 draft #thesis v2"))
+        p.call("type", "   ")
+        p.call("cursor", 1)
+        check(p.wait(lambda: "#thesis v2 📅 " in p.note()), "spaces left at the end of a bound line's words go when it is left")
 
         # 4. Ctrl+D binds a plain line
         p.call("cursor", p.offset_of_line(p.line_of("Plan for the week")))
@@ -281,6 +285,106 @@ def main() -> int:
         p.call("acceptAt", 0)
         check(p.wait(lambda: "- [ ] one-pager 📅 " in p.note() and "^d" in p.note(), 8), "an accepted proposal binds its line, cue replaced")
 
+        # 10b. a list is one submission: a proposal binds the line it is about,
+        # wherever the cursor is, and is accepted once for the whole list
+        lst = ["- [ ] Roles Planned by 30 oct", "- [ ] Initial paper by 30 nov", "- [ ] A0 poster"]
+        hs = [blocks.split(l)[0]["hash"] for l in lst]
+        props = [{"kind": "deadline", "title": "Roles planned", "when": "30 Oct", "project": "intsem"},
+                 {"kind": "deadline", "title": "Initial paper", "when": "30 Nov", "project": "intsem"},
+                 {"kind": "deadline", "title": "Conference", "when": "03 Feb", "project": "intsem"}]
+        (p.vault / "agents" / "student" / "daily" / f"{TODAY}.json").write_text(json.dumps({"blocks": {
+            h: {"state": "reply", "reply": "Dates.", "read": True, "group": hs, "proposals": props} for h in hs}}))
+        (p.daily / f"{TODAY}.md").write_text(header(TODAY) + "\n".join(lst) + "\n")
+        p.open_fresh()
+        before = len(p.store.read_text().splitlines())
+        p.call("cursor", p.offset_of_line(p.line_of("Roles Planned")) + 8)
+        time.sleep(0.4)
+        p.call("acceptAt", 1)
+        check(p.wait(lambda: "- [ ] Initial paper 📅 " in p.note() and "^d" in p.note(), 8),
+              "accepted from the first item, a proposal binds the item it names")
+        check("- [ ] Roles Planned by 30 oct\n" in p.note() and "- [ ] A0 poster\n" in p.note(), "…and leaves the others as written")
+        p.call("cursor", p.offset_of_line(p.line_of("A0 poster")) + 8)
+        time.sleep(0.4)
+        p.call("acceptAt", 1)
+        p.call("acceptAt", 2)
+        time.sleep(1.5)
+        check(len(p.store.read_text().splitlines()) == before + 2, "another item offers it no more; a proposal naming no line adds once")
+        check("- [ ] A0 poster\n" in p.note() and "Conference" not in p.note(), "…and that one takes no line")
+
+        # 10c. ways to keep a date as words, and old lines left alone
+        (p.daily / f"{TODAY}.md").write_text(header(TODAY) + "- [ ] essay\n- [ ] old line by friday\nnext item\n")
+        p.open_fresh()
+        count = len(p.store.read_text().splitlines())
+        p.call("cursor", p.offset_of_line(p.line_of("old line")) + 8)
+        p.call("cursor", p.offset_of_line(p.line_of("next item")) + 2)
+        time.sleep(1)
+        check("old line by friday\n" in p.note() and len(p.store.read_text().splitlines()) == count,
+              "moving through an old dated line does not bind it")
+        p.call("cursor", p.offset_of_line(p.line_of("essay")) + len("- [ ] essay"))
+        p.call("type", " by the 19th of Feb")
+        p.call("ctrlD")
+        check(p.call("pending", p.line_of("essay")) == "false", "Ctrl+D on a lit-up date keeps it as words")
+        p.call("cursor", p.offset_of_line(p.line_of("next item")) + 2)
+        time.sleep(1)
+        check("essay by the 19th of Feb\n" in p.note() and len(p.store.read_text().splitlines()) == count, "…and leaving does not bind it")
+        p.call("cursor", p.offset_of_line(p.line_of("essay")) + 8)
+        p.call("ctrlD")
+        check(p.wait(lambda: "- [ ] essay 📅 " in p.note() and "^d" in p.note()), "Ctrl+D again makes it the deadline")
+        # Ctrl+Z right after a binding: the words come back, the deadline goes
+        (p.daily / f"{TODAY}.md").write_text(header(TODAY) + "- [ ] read ch.7\nnext item\n")
+        p.open_fresh()
+        count = len(p.store.read_text().splitlines())
+        p.call("cursor", p.offset_of_line(p.line_of("read ch.7")) + len("- [ ] read ch.7"))
+        p.call("type", " by tomorrow")
+        p.call("cursor", p.offset_of_line(p.line_of("next item")) + 2)
+        check(p.wait(lambda: "read ch.7 📅 " in p.note() and len(p.store.read_text().splitlines()) == count + 1), "bound as it was left")
+        p.call("undo")
+        check(p.wait(lambda: "- [ ] read ch.7 by tomorrow\n" in p.note() and len(p.store.read_text().splitlines()) == count),
+              "Ctrl+Z: the words are back and the deadline it made is gone")
+        p.call("cursor", p.offset_of_line(p.line_of("read ch.7")) + 8)
+        p.call("cursor", p.offset_of_line(p.line_of("next item")) + 2)
+        time.sleep(1)
+        check("read ch.7 by tomorrow\n" in p.note(), "…and it is not bound again")
+
+        # 10e. a list written with dates: every item is bound as it is left,
+        # and the list goes to the agent only after that
+        (p.daily / f"{TODAY}.md").write_text(header(TODAY) + "Dates\n")
+        p.open_fresh()
+        p.call("cursorEnd")
+        p.call("enter")
+        for item in ("Roles planned by 30 oct", "Initial paper by 30 nov", "final paper by 15 jan"):
+            p.call("type", ("- [ ] " if item.startswith("Roles") else "") + item)
+            p.call("enter")
+        p.call("enter")   # the empty item: leaving the list
+        check(p.wait(lambda: json.loads(p.call("ask"))["kind"] == "send"), "leaving the list asks to send it")
+        text = p.call("text")
+        check(text.count(" ^d") == 3 and "by 30 oct" not in text and "by 15 jan" not in text,
+              f"…by then every dated item is bound ({text.count(' ^d')} of 3)")
+        p.call("no")
+
+        # 10d. one line, one deadline: the page's own binding and the agent's
+        # proposal for the same line do not make two, in either order
+        p.pomo("add", "Canvas course and thesis suggestions", "today")   # accepted, not yet bound
+        (p.daily / f"{TODAY}.md").write_text(header(TODAY) + "- [ ] Take a look into the Canvas course and thesis suggestions\nnext\n")
+        p.open_fresh()
+        count = len(p.store.read_text().splitlines())
+        p.call("cursor", p.offset_of_line(p.line_of("Canvas")) + len("- [ ] Take a look into the Canvas course and thesis suggestions"))
+        p.call("type", " by today")
+        p.call("cursor", p.offset_of_line(p.line_of("next")) + 2)
+        check(p.wait(lambda: "suggestions 📅 " in p.note() and "^d" in p.note()) and len(p.store.read_text().splitlines()) == count,
+              "written and left, it binds the deadline already there, adds none")
+        line = next(l for l in p.lines() if "Canvas" in l)
+        h = blocks.split(line)[0]["hash"]
+        (p.vault / "agents" / "student" / "daily" / f"{TODAY}.json").write_text(json.dumps({"blocks": {h: {
+            "state": "reply", "reply": "Today?", "read": True,
+            "proposals": [{"kind": "deadline", "title": "Take a look into the Canvas course and thesis suggestions",
+                           "when": f"today ({dt.date.today():%Y-%m-%d})", "project": "respro"}]}}}))
+        p.call("cursor", p.offset_of_line(p.line_of("Canvas")) + 8)
+        time.sleep(0.4)
+        p.call("acceptAt", 0)
+        time.sleep(1.5)
+        check(len(p.store.read_text().splitlines()) == count, "accepting the agent's proposal for it afterwards adds none either")
+
         # 11. projects in the sidebar: the tags that exist, a class started
         pd = p.vault / "agents" / "student" / "knowledge" / "projects"
         pd.mkdir(parents=True, exist_ok=True)
@@ -308,6 +412,20 @@ def main() -> int:
         heads = pal.split(" h=")[1].split(" ")[0].split(",")
         check("keys=0" not in pal and len(set(heads)) == 4, f"the page draws in the theme's palette ({pal[:60]}…)")
         check(pal.split(" eh=")[1].split(" ")[0] == ",".join(heads), "…and headings get their own colours")
+
+        # 12b. the measure: 72 characters at any zoom, centred; a window too
+        # narrow for them wraps instead (the window is 701 wide)
+        p.open_fresh()
+        for z in (0.75, 1):
+            p.call("zoom", z)
+            time.sleep(0.4)
+            lay = json.loads(p.call("layout"))
+            check(71.5 <= lay["chars"] <= 72.5 and lay["x"] > 0, f"at zoom {z} a line holds 72 characters, centred ({lay})")
+        p.call("zoom", 1.25)
+        time.sleep(0.4)
+        lay = json.loads(p.call("layout"))
+        check(40 < lay["chars"] < 72 and lay["x"] == 0, f"zoomed past the window, the column fills it and wraps ({lay})")
+        p.call("zoom", 1)
 
         # 13. the usage log: written on close, event names only
         p.call("closeAll")

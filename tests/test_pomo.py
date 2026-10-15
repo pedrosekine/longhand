@@ -2,6 +2,7 @@
 
 Run: python3 tests/test_pomo.py
 """
+import datetime as dt
 import json
 import os
 import pathlib
@@ -46,6 +47,23 @@ def main() -> int:
     check(r.returncode == 0 and r.stdout.strip().endswith("23:59"), "a bare day lands at its end")
     r = pomo("when", "phone")
     check(r.returncode != 0, "a non-date is refused")
+    # A day and month already past this year are next year's; with a year, as written.
+    today = dt.date.today()
+    past = today - dt.timedelta(days=1)
+    for phrase, want in ((past.strftime("%d %b"), past.replace(year=past.year + 1) if past.year == today.year else past),
+                         (today.strftime("%d %b"), today),
+                         (past.strftime("%d %b %Y"), past)):
+        r = pomo("when", *phrase.split())
+        got = dt.datetime.fromtimestamp(int(r.stdout.split("\t")[0])).date() if r.returncode == 0 else None
+        check(got == want, f"when {phrase!r} is {want} ({got})")
+    # Dates as written: ordinals, "of", and a month ending in h/d/w is not "3h"/"3d".
+    for phrase in ("19th of Feb", "the 8th of Feb", "1st march", "1 march"):
+        r = pomo("when", *phrase.split())
+        check(r.returncode == 0 and r.stdout.strip().endswith("23:59"), f"when {phrase!r} reads as a day ({r.stdout.strip() or r.stderr.strip()})")
+    r = pomo("when", "22nd")
+    check(r.returncode != 0, "a bare ordinal is refused, not read as 22:00")
+    r = pomo("when", "3d")
+    check(r.returncode == 0 and not r.stdout.strip().endswith("23:59"), "3d is still three days from now")
     # Writers racing: eight adds at once must give eight rows, eight ids.
     procs = [subprocess.Popen([str(POMO), "deadline", "add", f"race {i}", "friday"], env=env,
                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) for i in range(8)]

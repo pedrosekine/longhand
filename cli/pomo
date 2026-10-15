@@ -509,12 +509,23 @@ parse_when() { # $1=free date text -> epoch
   # Forgiving input: strip the filler words people actually type ("in 3 hours",
   # "by friday", "due monday") and expand "3d"/"2w" shorthand, then let GNU
   # date do the real work.
-  norm=$(printf '%s' "$when" | sed -E 's/^[[:space:]]*(in|by|on|at|due|until|till)[[:space:]]+//I; s/[[:space:]]+$//')
-  case "$norm" in
-    [0-9]*[hH]) norm="${norm%[hH]} hours" ;;
-    [0-9]*[dD]) norm="${norm%[dD]} days" ;;
-    [0-9]*[wW]) norm="${norm%[wW]} weeks" ;;
-  esac
+  # An aside in parentheses goes: GNU date reads "(…)" as a comment, so
+  # "today (2026-10-12)" would be *now*, not the end of today.
+  norm=$(printf '%s' "$when" | sed -E 's/\([^)]*\)//g; s/^[[:space:]]*(in|by|on|at|due|until|till)[[:space:]]+//I; s/[[:space:]]+$//')
+  # Dates as written in English ("the 8th of Feb", "19th Feb"): GNU date
+  # reads neither the ordinal nor the "of". Only with a month named — a bare
+  # "22nd" would come out as 22:00 today.
+  if printf '%s' "$norm" | grep -qiE '\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b'; then
+    norm=$(printf '%s' "$norm" | sed -E 's/^the[[:space:]]+//I; s/\b([0-9]{1,2})(st|nd|rd|th)\b/\1/gI; s/[[:space:]]+of[[:space:]]+/ /gI')
+  fi
+  # Only digits then the letter: a glob's `*` would also take "1 march".
+  if [[ "$norm" =~ ^([0-9]+)([hHdDwW])$ ]]; then
+    case "${BASH_REMATCH[2],,}" in
+      h) norm="${BASH_REMATCH[1]} hours" ;;
+      d) norm="${BASH_REMATCH[1]} days" ;;
+      w) norm="${BASH_REMATCH[1]} weeks" ;;
+    esac
+  fi
   # GNU date reads today/tomorrow/yesterday as now +/- 24h, so the clock time
   # rides along and the end-of-day snap below never sees them ("tomorrow" landed
   # at whatever o'clock you typed it). Pin them to their date first. Periods
@@ -524,6 +535,14 @@ parse_when() { # $1=free date text -> epoch
     today|tomorrow|yesterday) norm="$(date -d "${norm,,}" +%F) 00:00" ;;
   esac
   ts=$(date -d "$norm" +%s 2>/dev/null) || return 1
+  # A date with no year ("15 jan", "1/15") is this year to GNU date, even when
+  # that day is already over. Nobody names a month to set a deadline in the
+  # past, so it is next year's ("15 jan" written in October is January next).
+  if ! printf '%s' "$norm" | grep -qE '[0-9]{4}' \
+    && printf '%s' "$norm" | grep -qiE '\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b|[0-9]/[0-9]' \
+    && [[ "$(date -d "@$ts" +%F)" < "$(date +%F)" ]]; then
+    ts=$(date -d "$(date -d "@$ts" '+%F %T') next year" +%s)
+  fi
   # A bare day ("friday", "tomorrow", "2026-09-12") parses to 00:00, which as a
   # deadline means the *start* of the day nobody intends. Land on its end
   # instead. Anything carrying a real time ("friday 17:00", "3 hours") is

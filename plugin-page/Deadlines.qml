@@ -59,6 +59,10 @@ Item {
 
   property var queue: []
   property var job: null
+  // A command running or waiting; `idle` when the last one is done (its
+  // `done` already run), so what it wrote is in the note too.
+  readonly property bool busy: root.job !== null || root.queue.length > 0
+  signal idle()
   property int exitCode: 0
   property bool exited: false
   property bool streamed: false
@@ -90,6 +94,7 @@ Item {
     else if (j.args[0] !== "when") file.reload()
     if (j.done) j.done(root.exitCode, out.text)
     root.next()
+    if (!root.busy) root.idle()
   }
 
   Process {

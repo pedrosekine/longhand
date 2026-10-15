@@ -37,6 +37,17 @@ Item {
   // function (event) -> bool; true when the page consumed the key.
   property var keyFilter: null
 
+  // The line being written: its text after the last keystroke in it. A
+  // checkbox there that ends in a date has it lit up and its pill shown,
+  // pending, as typed (Rows.readCue); the page binds it when the line is
+  // left and clears this. `declined`: lines (raw) whose date stays words.
+  property string typedRaw: ""
+  property var declined: ({})
+  // The row whose date lit up with the last keystroke: a Backspace right
+  // then keeps the date as words (as Todoist does), instead of deleting.
+  property int freshCue: -1
+  signal cueDismissed(string raw)
+
   property string fontFamily: "sans-serif"
   property int textSize: 16
   property color foreground: "black"
@@ -53,6 +64,7 @@ Item {
   property var headingColors: [foreground, foreground, foreground, foreground]   // h1, h2, h3, h4–h6
   property color markColor: Qt.rgba(1, 0.85, 0.2, 0.35)        // a search match
   property color currentMarkColor: Qt.rgba(1, 0.6, 0.1, 0.55)  // the current one
+  property color cueColor: Qt.rgba(accent.r, accent.g, accent.b, 0.2)   // a date being recognised
   property color boxColor: dim                                  // an open checkbox
   property color checkColor: dim                                // a ticked one
   property color bulletColor: dim                               // dots and numbers
@@ -63,8 +75,6 @@ Item {
 
   // Space: within a block nothing, between blocks without a blank line a
   // little, across a blank line clearly more.
-  readonly property int blockGap: Math.round(textSize * 0.85)
-  readonly property int smallGap: Math.round(textSize * 0.3)
   readonly property int markerWidth: Math.round(textSize * 1.5)
   readonly property int quoteWidth: Math.round(textSize * 0.9)
 
@@ -110,6 +120,8 @@ Item {
   // the undo history starts over.
   function load(t) {
     ed.clearSelection()
+    ed.typedRaw = ""
+    ed.freshCue = -1
     ed.undoStack = []
     ed.redoStack = []
     ed.commit(t, t.length)
@@ -184,7 +196,7 @@ Item {
 
   // ------------------------------------------------------------ rows
 
-  readonly property var roles: ["kind", "body", "level", "checked", "ordinal", "headingLevel", "callout", "priv", "blank", "lead", "gapAbove", "deadline", "dueLabel", "dueAt"]
+  readonly property var roles: ["kind", "body", "level", "checked", "ordinal", "headingLevel", "callout", "priv", "blank", "lead", "space", "deadline", "dueLabel", "dueAt", "raw", "cueAt", "cueLabel"]
 
   function roleValues(r) {
     var o = {}
@@ -389,7 +401,19 @@ Item {
       else if (r.indent.charAt(0) === "\t") ed.replace(r.start, r.start + 1, "")
       else if (r.indent !== "") ed.replace(r.start, r.start + Math.min(2, r.indent.length), "")
     }
+    var moved = []
+    for (var m = i; m <= j; m++) if (!ed.rows[m].blank) moved.push(m)
+    ed.relist(moved)
     ed.selectSpan(ed.absOf(i, 0), ed.absOf(j, ed.rows[j].body.length))
+  }
+
+  // Lines moved to another level: their list's markers follow (Rows.relist).
+  function relist(lines) {
+    var ch = Rows.relist(ed.rows, lines)
+    for (var k = ch.length - 1; k >= 0; k--) {
+      var r = ed.rows[ch[k].line]
+      ed.replace(r.start + r.indent.length, r.start + r.prefixLen, ch[k].marker)
+    }
   }
 
   // Ctrl+Shift+Up / Down: select from the cursor to the start / end of its
@@ -503,7 +527,7 @@ Item {
     ed.cursorRect = Qt.rect(p.x, p.y, c.width, c.height)
   }
 
-  // A run of lines in editor coordinates — what the page veils and marks.
+  // A run of lines in editor coordinates — what the page marks.
   function blockRect(startLine, endLine) {
     column.forceLayout()
     var a = ed.rowItem(startLine)
@@ -521,14 +545,19 @@ Item {
     if (!r) return
     ed.clearSelection()
     body = body.replace(/\r/g, "")
-    var line = r.raw.substring(0, r.prefixLen) + body + r.suffix
+    // A list marker typed into an empty item takes the item's place: "2. "
+    // then "- " is a bullet, not "2. - ".
+    var swap = (r.kind === "bullet" || r.kind === "ordered" || r.kind === "task") && /^([-*+]|\d+[.)]) $/.test(body)
+    var line = (swap ? r.indent : r.raw.substring(0, r.prefixLen)) + body + r.suffix
     ed.snapshot(/\n/.test(body))
     var lineEnd = r.start + r.raw.length
     var before = ed.rows.length
-    ed.commit(ed.text.slice(0, r.start) + line + ed.text.slice(lineEnd), r.start + r.prefixLen + col)
+    ed.commit(ed.text.slice(0, r.start) + line + ed.text.slice(lineEnd), r.start + (swap ? r.indent.length : r.prefixLen) + col)
     // The line changed kind (markdown typed or broken) or a paste brought
     // new lines: the field's text moved, so put the cursor back.
     var now = ed.rows[i]
+    ed.typedRaw = now ? now.raw : ""
+    ed.freshCue = r.cueAt < 0 && now && now.cueAt >= 0 ? i : -1
     if (ed.rows.length !== before || !now || now.body !== body) ed.placeCursor(true)
     else ed.updateCursorRect()
   }
@@ -625,6 +654,7 @@ Item {
   function indent(i, out) {
     var r = ed.rows[i]
     var listy = r.kind === "task" || r.kind === "bullet" || r.kind === "ordered"
+    var was = ed.text
     ed.snapshot(true)
     if (out) {
       if (r.indent.charAt(0) === "\t") ed.remove(r.start, r.start + 1)
@@ -634,6 +664,7 @@ Item {
     } else {
       ed.insert(ed.cursorPosition, "\t")
     }
+    if (listy && ed.text !== was) ed.relist([i])
     ed.placeCursor(true)
   }
 
@@ -680,6 +711,8 @@ Item {
   function key(event, item) {
     var f = item.field
     var i = item.index
+    var fresh = ed.freshCue
+    ed.freshCue = -1
     var ctrl = event.modifiers & Qt.ControlModifier
     var shift = event.modifiers & Qt.ShiftModifier
     var alt = event.modifiers & Qt.AltModifier
@@ -719,6 +752,8 @@ Item {
 
     if ((k === Qt.Key_Return || k === Qt.Key_Enter) && !ctrl && !alt) {
       ed.returnKey(item, shift)
+    } else if (k === Qt.Key_Backspace && noSel && fresh === i && f.cursorPosition === f.length) {
+      ed.cueDismissed(ed.rows[i].raw)
     } else if (k === Qt.Key_Backspace && noSel && f.cursorPosition === 0) {
       ed.backspaceAtStart(i)
     } else if (k === Qt.Key_Delete && noSel && f.cursorPosition === f.length && !ctrl) {
@@ -799,23 +834,29 @@ Item {
         required property bool priv
         required property bool blank
         required property bool lead
-        required property bool gapAbove
+        required property real space
         required property int deadline
         required property string dueLabel
         required property real dueAt
+        required property string raw
+        required property int cueAt
+        required property string cueLabel
 
         property alias field: field
         property alias box: box
         readonly property bool listy: kind === "task" || kind === "bullet" || kind === "ordered"
         readonly property bool quoted: kind === "quote" || kind === "calloutHead"
-        readonly property int gapTop: gapAbove ? ed.smallGap : 0
+        // A date being written at the end of this checkbox: lit up, its
+        // pill pending (accent) until the line is left and it is bound.
+        readonly property bool pending: kind === "task" && cueAt >= 0 && ed.typedRaw !== "" && raw === ed.typedRaw && !ed.declined[raw]
+        readonly property int gapTop: blank ? 0 : Math.round(space * ed.textSize)
         readonly property real indentX: level * ed.markerWidth
         readonly property real labelWidth: kind === "calloutHead" ? label.implicitWidth + Math.round(ed.textSize * 0.4) : 0
         readonly property real fieldX: indentX + (listy ? ed.markerWidth : (quoted ? ed.quoteWidth : 0)) + labelWidth
         readonly property real firstLine: fm.height
 
         width: column.width
-        height: blank && !field.activeFocus ? (lead ? 0 : ed.blockGap) : gapTop + field.height
+        height: blank && !field.activeFocus ? Math.round(space * ed.textSize) : gapTop + field.height
 
         onBodyChanged: if (field.text !== body) field.text = body
         Component.onCompleted: field.text = body
@@ -910,25 +951,25 @@ Item {
 
         // A bound line's date, at the line's end: a pill while it names a
         // deadline, plain once the deadline is gone. Late and still open:
-        // the urgent colour.
+        // the urgent colour. A date being written: the pill to be, accent.
         Rectangle {
           id: due
           readonly property bool late: !row.checked && row.dueAt > 0 && row.dueAt < Date.now()
-          visible: row.dueLabel !== ""
+          visible: row.dueLabel !== "" || row.pending
           anchors.right: parent.right
           y: row.gapTop + Math.round((row.firstLine - height) / 2)
-          width: dueText.implicitWidth + (row.deadline > 0 ? Math.round(ed.textSize * 0.9) : 0)
+          width: dueText.implicitWidth + (row.deadline > 0 || row.pending ? Math.round(ed.textSize * 0.9) : 0)
           height: dueText.implicitHeight + Math.round(ed.textSize * 0.2)
           radius: height / 2
           color: "transparent"
-          border.width: row.deadline > 0 ? 1 : 0
-          border.color: late ? ed.urgent : ed.faint
+          border.width: row.deadline > 0 || row.pending ? 1 : 0
+          border.color: row.pending ? ed.accent : late ? ed.urgent : ed.faint
           Text {
             id: dueText
             anchors.centerIn: parent
             textFormat: Text.PlainText
-            text: row.dueLabel
-            color: due.late ? ed.urgent : ed.dim
+            text: row.pending ? row.cueLabel : row.dueLabel
+            color: row.pending ? ed.accent : due.late ? ed.urgent : ed.dim
             font.family: ed.fontFamily
             font.pixelSize: Math.round(ed.textSize * 0.78)
           }
@@ -939,6 +980,7 @@ Item {
         // drawn in two.
         Repeater {
           model: ed.paintIn(row.index, ed.marks, ed.currentMark, ed.selAnchor, ed.selCursor, ed.rows)
+            .concat(row.pending ? [{ a: row.cueAt, b: row.body.length, kind: "cue" }] : [])
           Item {
             id: mark
             required property var modelData
@@ -960,7 +1002,8 @@ Item {
                 width: modelData.w + 2
                 height: modelData.h
                 radius: mark.modelData.kind === "selection" ? 0 : Math.max(2, Math.round(ed.textSize * 0.15))
-                color: mark.modelData.kind === "selection" ? ed.selectionColor : (mark.modelData.kind === "current" ? ed.currentMarkColor : ed.markColor)
+                color: mark.modelData.kind === "selection" ? ed.selectionColor : mark.modelData.kind === "current" ? ed.currentMarkColor
+                  : mark.modelData.kind === "cue" ? ed.cueColor : ed.markColor
                 opacity: 1
               }
             }

@@ -15,8 +15,15 @@
 // date of the deadline it stands for and an Obsidian block id naming that
 // deadline (#6). The tail is lifted too and drawn as a date at the line's
 // end; the body is only the words before it.
+//
+// An unbound checkbox whose words end in a date ("… by 30 oct") carries it
+// as read (Dates.js): where in the body the date words start (`cueAt`, -1
+// when none) and how the date reads (`cueLabel`) — what the page lights up
+// while the line is being written, and binds when it is left.
 .pragma library
 .import "Blocks.js" as Blocks
+.import "Bound.js" as Bound
+.import "Dates.js" as Dates
 
 var HEADING_RE = /^(#{1,6} )(.*)$/
 var CALLOUT_RE = /^(>[ \t]?\[!([^\]]+)\][+-]?[ \t]?)(.*)$/
@@ -46,7 +53,7 @@ function make(kind, indent, marker, body) {
     kind: kind, indent: indent, marker: marker, body: body,
     prefixLen: indent.length + marker.length, level: levelOf(indent),
     checked: false, ordinal: "", headingLevel: 0, callout: "",
-    suffix: "", deadline: 0, dueLabel: "", dueAt: 0
+    suffix: "", deadline: 0, dueLabel: "", dueAt: 0, cueAt: -1, cueLabel: ""
   }
 }
 
@@ -72,6 +79,7 @@ function parseLine(raw) {
     var t = make("task", indent, x[1], x[3])
     t.checked = x[2] !== " "
     liftTail(t)
+    if (t.deadline <= 0) readCue(t)
     return t
   }
   if ((x = rest.match(BULLET_RE))) return make("bullet", indent, x[1], x[2])
@@ -90,16 +98,39 @@ function liftTail(t) {
   if (!m || !(m[3] || m[5])) return
   t.body = m[1]
   t.suffix = m[2]
+  // The tail owns one space before it; more are the words' own — a space
+  // just typed at their end, which the tail would otherwise swallow.
+  var lead = t.suffix.match(/^\s*/)[0]
+  if (lead.length > 1) {
+    t.body += lead.substring(0, lead.length - 1)
+    t.suffix = t.suffix.substring(lead.length - 1)
+  }
   t.deadline = m[5] ? parseInt(m[5], 10) : 0
   if (m[3]) {
     var d = m[3].split("-")
     var hm = m[4] ? m[4].split(":") : ["23", "59"]
     var at = new Date(+d[0], +d[1] - 1, +d[2], +hm[0], +hm[1])
     t.dueAt = at.getTime()
-    t.dueLabel = DAYS[at.getDay()] + " " + at.getDate() + " " + MONTHS[at.getMonth()]
-      + (at.getFullYear() !== new Date().getFullYear() ? " " + at.getFullYear() : "")
-      + (m[4] ? " · " + m[4] : "")
+    t.dueLabel = dayLabel(at, !!m[4])
   }
+}
+
+// "Fri 30 Oct", "Mon 8 Feb 2027", "Fri 16 Oct · 17:00".
+function dayLabel(at, timed) {
+  return DAYS[at.getDay()] + " " + at.getDate() + " " + MONTHS[at.getMonth()]
+    + (at.getFullYear() !== new Date().getFullYear() ? " " + at.getFullYear() : "")
+    + (timed ? " · " + (at.getHours() < 10 ? "0" : "") + at.getHours() + ":" + (at.getMinutes() < 10 ? "0" : "") + at.getMinutes() : "")
+}
+
+// A date at the end of an unbound checkbox's words, as read.
+function readCue(t) {
+  var c = Bound.cue(t.body)
+  var w = c ? Dates.read(c.phrase) : null
+  if (!w) return
+  var rest = t.body.substring(c.head.length)
+  t.cueAt = c.head.length + (rest.length - rest.replace(/^\s+/, "").length)
+  var at = new Date(w.ms)
+  t.cueLabel = dayLabel(at, !(at.getHours() === 23 && at.getMinutes() === 59))
 }
 
 // The whole note as rows. Each row also carries:
@@ -108,15 +139,13 @@ function liftTail(t) {
 //   blank      a whitespace-only line outside fences: drawn as space
 //   lead       a blank line before any text: drawn as nothing at all
 //   priv       inside a `> [!private]` callout
-//   gapAbove   starts a new block right under the previous line (no blank
-//              line between), so the page leaves a little air above it
+//   space      the air above the row, in body ems (spaceAbove)
 //   bodyEnd    offset where the words end (before a bound line's tail)
 function derive(text) {
   var lines = text.split("\n")
   var blocks = Blocks.split(text)
-  var front = [], priv = [], blockStart = []
+  var front = [], priv = []
   for (var b = 0; b < blocks.length; b++) {
-    blockStart[blocks[b].start] = true
     for (var l = blocks[b].start; l < blocks[b].end; l++) {
       if (blocks[b].kind === "frontmatter") front[l] = true
       if (blocks[b].private && blocks[b].kind === "callout") priv[l] = true
@@ -127,6 +156,8 @@ function derive(text) {
   var pos = 0
   var fence = false
   var seenText = false
+  var lastText = null   // the last row with text
+  var blankGap = 0      // space already given by blank lines since it
   for (var i = 0; i < lines.length; i++) {
     var raw = lines[i]
     var r
@@ -144,10 +175,85 @@ function derive(text) {
     r.priv = !!priv[i]
     r.blank = r.kind === "blank"
     r.lead = r.blank && !seenText
-    r.gapAbove = !!blockStart[i] && i > 0 && !out[i - 1].blank && !out[i - 1].lead
-    if (!r.blank) seenText = true
+    if (r.blank) {
+      r.space = r.lead || blankGap > 0 ? 0 : SPACE.paragraph
+      blankGap += r.space
+    } else {
+      r.space = lastText ? spaceAbove(lastText, r, blankGap) : 0
+      lastText = r
+      blankGap = 0
+      seenText = true
+    }
     out.push(r)
     pos += raw.length + 1
+  }
+  return out
+}
+
+// The page's vertical rhythm, in body ems. More above a heading than below
+// it, so a heading sits with what it heads; list items close; the lines of
+// one quote, callout, fence or frontmatter with none between them. Blank
+// lines in the markdown are one paragraph's space however many there are,
+// and count towards a heading's.
+var SPACE = { paragraph: 0.75, line: 0.25, item: 0.25, change: 0.5, belowHeading: 0.35,
+              heading: [0, 1.75, 1.4, 1.1, 0.9, 0.9, 0.9] }
+
+function listy(r) { return r.kind === "task" || r.kind === "bullet" || r.kind === "ordered" }
+
+// The space above row `r`, whose previous row with text is `p`, with
+// `blank` ems of blank lines between them already.
+function spaceAbove(p, r, blank) {
+  if (r.kind === "heading") return Math.max(0, SPACE.heading[r.headingLevel] - blank)
+  if (blank > 0) return 0
+  if (p.kind === "heading") return SPACE.belowHeading
+  if (r.kind === "quote" && (p.kind === "quote" || p.kind === "calloutHead")) return 0
+  if (r.kind === p.kind && (r.kind === "code" || r.kind === "front")) return 0
+  if (listy(r) && listy(p)) return SPACE.item
+  if (r.kind === "plain" && p.kind === "plain") return SPACE.line
+  return SPACE.change
+}
+
+// A list's markers after lines in it moved to another level (Tab,
+// Shift+Tab). A moved item takes the kind of the item before it at its new
+// level — a number counts on from that one's, a bullet stays a bullet — or,
+// first at its level, keeps its kind, a number starting at 1. Numbers in
+// the list then count on within each level, from where each run starts.
+// Checkboxes are never turned into anything. Returns [{ line, marker }]
+// for the lines whose marker should change.
+function inList(r) { return listy(r) || (r.kind === "plain" && r.level > 0) }
+
+function relist(rows, moved) {
+  if (moved.length === 0) return []
+  var lo = Math.min.apply(null, moved), hi = Math.max.apply(null, moved)
+  while (lo > 0 && inList(rows[lo - 1])) lo--
+  while (hi < rows.length - 1 && inList(rows[hi + 1])) hi++
+  var isMoved = {}
+  for (var m = 0; m < moved.length; m++) isMoved[moved[m]] = true
+  var last = []   // per level, the item before at that level, under the same parent
+  var out = []
+  for (var i = lo; i <= hi; i++) {
+    var r = rows[i]
+    if (!listy(r)) continue
+    var L = r.level
+    last.length = L + 1
+    var prev = last[L]
+    var kind = r.kind
+    if (isMoved[i] && prev && kind !== "task" && prev.kind !== "task" && prev.kind !== kind) kind = prev.kind
+    var want
+    if (kind === "ordered") {
+      var own = r.kind === "ordered" ? r.marker.match(/^(\d+)([.)])(\s*)$/) : null
+      var delim = own ? own[2] : (prev && prev.delim) || "."
+      var n = prev && prev.kind === "ordered" ? prev.num + 1 : (own && !isMoved[i] ? parseInt(own[1], 10) : 1)
+      want = n + delim + (own ? own[3] : " ")
+      last[L] = { kind: "ordered", num: n, delim: delim }
+    } else if (kind === "bullet") {
+      want = r.kind === "bullet" ? r.marker : (prev && prev.marker ? prev.marker : "- ")
+      last[L] = { kind: "bullet", marker: want }
+    } else {
+      want = r.marker
+      last[L] = { kind: "task" }
+    }
+    if (want !== r.marker) out.push({ line: i, marker: want })
   }
   return out
 }
