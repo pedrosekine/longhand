@@ -65,21 +65,60 @@ Item {
   readonly property color green: pick("green", accent)
   readonly property color magenta: pick("magenta", accent)
 
-  // Heading levels, each its own colour: the first four distinct ones of
-  // accent, blue, magenta, cyan, green (a theme's accent is often its blue).
-  readonly property var headings: {
-    var seen = {}
-    var out = []
-    var names = ["accent", "blue", "magenta", "cyan", "green", "yellow"]
-    for (var i = 0; i < names.length && out.length < 4; i++) {
-      var c = String(names[i] === "accent" ? root.accent : root.pick(names[i], "")).toLowerCase()
-      if (c === "" || seen[c] || c === String(root.foreground).toLowerCase()) continue
-      if (root.contrast(Qt.color(c), root.background) < 3.0) continue   // large text still needs 3:1
-      seen[c] = true
-      out.push(c)
+  // How far a colour is from grey: what tells a theme's chromatic accent
+  // (tokyo-night's blue, matte-black's orange) from one that is a warm or
+  // cool grey (pentano's #C9C3BC, vantablack's #8D8D8D).
+  function chroma(c) { return Math.max(c.r, c.g, c.b) - Math.min(c.r, c.g, c.b) }
+
+  // A colour taken away from the background — toward white on a dark ground,
+  // black on a light one — until it reads at `target`. Moving to the extreme
+  // rather than to the foreground keeps the hue: a theme's foreground is
+  // itself often tinted (ethereal's peach), and mixing into it turns a blue
+  // to mauve on the way.
+  function toward(c, target) {
+    if (root.contrast(c, root.background) >= target) return c
+    var end = root.luminance(root.background) > 0.5 ? Qt.rgba(0, 0, 0, 1) : Qt.rgba(1, 1, 1, 1)
+    var lo = 0, hi = 1
+    for (var k = 0; k < 16; k++) {
+      var mid = (lo + hi) / 2
+      if (root.contrast(root.mix(c, end, mid), root.background) >= target) hi = mid
+      else lo = mid
     }
-    while (out.length < 4) out.push(String(root.foreground))
-    return out
+    return root.mix(c, end, hi)
+  }
+
+  // Heading levels: one colour, walking home to the text.
+  //
+  // Hue has no order — blue is not "more" than magenta — so giving each
+  // level its own hue (the rule until 2026-10-15: the first four distinct of
+  // accent/blue/magenta/cyan/green) drew four marks, not four ranks, and put
+  // the accent on H1. An accent is a UI tint, mid-contrast by design: it made
+  // H1 the *quietest* heading on the page in most of Omarchy's themes, and
+  // under this one (accent #C9C3BC, chroma 0.05, 7.8:1) a title was a big
+  // grey line dimmer than the paragraph below it.
+  //
+  // So rank is carried by the channels that have an order — size, weight,
+  // the air above (Rows.js), and how far the colour has travelled back to
+  // the prose. H1 is the theme's one chromatic voice at full strength; H2
+  // and H3 are that same colour two fifths and three quarters of the way to
+  // the text; H4–H6 are the text. A theme with no chroma to lend (vantablack,
+  // white, solitude) ramps the only ladder it has instead — the text down
+  // toward its quiet grey.
+  readonly property var headings: {
+    root.keys
+    var prose = root.foreground
+    var names = ["accent", "blue", "cyan", "green", "magenta", "yellow", "orange"]
+    for (var i = 0; i < names.length; i++) {
+      var v = names[i] === "accent" ? String(root.accent) : root.keys[names[i]]
+      if (!v) continue
+      var c = Qt.color(v)
+      if (root.chroma(c) < 0.15 || root.contrast(c, root.background) < 3.0) continue
+      var h1 = root.toward(c, 4.5)   // never fainter than secondary text is let be
+      return [String(h1), String(root.mix(h1, prose, 0.40)),
+              String(root.mix(h1, prose, 0.72)), String(prose)]
+    }
+    return [String(prose), String(root.mix(prose, root.dim, 0.40)),
+            String(root.mix(prose, root.dim, 0.72)), String(root.dim)]
   }
 
   function parse(raw) {

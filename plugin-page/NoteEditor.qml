@@ -1220,10 +1220,14 @@ Item {
           selectedTextColor: ed.foreground
           font.family: row.kind === "code" || row.kind === "front" ? ed.codeFamily : ed.fontFamily
           font.pixelSize: row.kind === "heading"
-            ? Math.round(ed.textSize * (row.headingLevel === 1 ? 1.5 : row.headingLevel === 2 ? 1.3 : row.headingLevel === 3 ? 1.15 : 1))
+            ? Math.round(ed.textSize * (row.headingLevel === 1 ? 1.6 : row.headingLevel === 2 ? 1.3 : row.headingLevel === 3 ? 1.15 : 1))
             : (row.kind === "code" || row.kind === "front" ? Math.round(ed.textSize * 0.85) : ed.textSize)
           font.styleName: row.kind === "heading" || row.kind === "code" || row.kind === "front" ? "" : ed.fontStyle
-          font.weight: row.kind === "heading" ? Font.DemiBold : Font.Normal
+          // Rank, in the three channels that have an order: size, weight and
+          // the colour's distance from the prose (ThemeColors `headings`).
+          // Only the title is Bold — below it the page is one weight, so H2
+          // reads as a section and not as a second title.
+          font.weight: row.kind === "heading" ? (row.headingLevel === 1 ? Font.Bold : Font.DemiBold) : Font.Normal
           cursorVisible: activeFocus
           tabStopDistance: ed.tabStop
 

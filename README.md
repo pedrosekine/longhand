@@ -43,9 +43,11 @@ the two. The note is drawn, not shown as markdown: headings set large,
 checkboxes as boxes (click or `Ctrl+L`), bullets, numbers, and private
 callouts marked "never sent"; typing `# `, `- [ ] ` or `> ` turns the line
 into that kind, Backspace at its start turns it back. Colours follow the
-Omarchy theme: headings each in their own, highlights, selection and
-checkboxes from the theme's palette, greys only where they stay readable,
-body text at the contrast the theme chose.
+Omarchy theme: the heading levels are one colour walking home to the
+text — H1 in the theme's own chroma, H2 and H3 that colour part of the way
+back, H4 the prose itself — with highlights, selection and checkboxes from
+the theme's palette, greys only where they stay readable, and body text at
+the contrast the theme chose.
 `Ctrl+B` and `Ctrl+I` wrap the selection — or the word the cursor is in — in
 `**` and `*`, `` Ctrl+` `` in backticks, `Ctrl+Shift+S` in `~~`; the same keys
 take them off again. Emphasis is **drawn**: the markers go to nothing and

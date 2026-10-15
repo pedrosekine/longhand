@@ -194,9 +194,11 @@ function derive(text) {
 // it, so a heading sits with what it heads; list items close; the lines of
 // one quote, callout, fence or frontmatter with none between them. Blank
 // lines in the markdown are one paragraph's space however many there are,
-// and count towards a heading's.
+// and count towards a heading's. A title gets a clearing of its own (2.0
+// since 2026-10-15): air above is the quietest way to say "this starts
+// something", and it was doing none of that work before.
 var SPACE = { paragraph: 0.75, line: 0.25, item: 0.25, change: 0.5, belowHeading: 0.35,
-              heading: [0, 1.75, 1.4, 1.1, 0.9, 0.9, 0.9] }
+              heading: [0, 2.0, 1.4, 1.1, 0.9, 0.9, 0.9] }
 
 function listy(r) { return r.kind === "task" || r.kind === "bullet" || r.kind === "ordered" }
 

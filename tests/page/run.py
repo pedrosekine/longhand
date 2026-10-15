@@ -177,6 +177,20 @@ def header(stem):
     return f"[[agents/student/daily/{stem}|agent]]\n\n"
 
 
+def contrast(a: str, b: str) -> float:
+    """WCAG contrast between two "#rrggbb" colours, as ThemeColors.qml
+    measures it."""
+    def lum(c):
+        def ch(x):
+            x /= 255.0
+            return x / 12.92 if x <= 0.03928 else ((x + 0.055) / 1.055) ** 2.4
+        h = c.lstrip("#")[-6:]
+        r, g, bl = (int(h[i:i + 2], 16) for i in (0, 2, 4))
+        return 0.2126 * ch(r) + 0.7152 * ch(g) + 0.0722 * ch(bl)
+    la, lb = lum(a), lum(b)
+    return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+
+
 def theme_switch() -> None:
     """Replay `omarchy theme set` the way it runs: the new theme is staged,
     the old folder removed, the new one moved in, then the colours pushed
@@ -207,7 +221,8 @@ def theme_switch() -> None:
         print(f"     (file watch alone caught it: {file_only}; after the shell's push: {took:.2f}s)")
         check(f"accent={want}" not in before and repainted and took < 1.0, f"a theme switch repaints the page at once ({target})")
         heads = p.call("palette").split(" h=")[1].split(" ")[0].split(",")
-        check(len(set(heads)) == 4, f"…with its own heading colours ({','.join(heads)})")
+        check(len(set(heads)) == 4 and heads[0] == want,
+              f"…and the new theme's accent leads the heading ramp ({','.join(heads)})")
     finally:
         p.close()
 
@@ -645,11 +660,23 @@ def main() -> int:
         check(json.loads(p.call("marks")).count("sending") == 1,
               f"…only the line it was asked from ({p.call('marks')})")
 
-        # 12. the theme: roles come from the Omarchy palette, headings apart
+        # 12. the theme: roles come from the Omarchy palette, and the heading
+        # levels are one colour walking home to the text (2026-10-15) — four
+        # distinct steps, H1 chromatic and never fainter than 4.5:1, H4 the
+        # prose itself.
         pal = p.call("palette")
         heads = pal.split(" h=")[1].split(" ")[0].split(",")
+        fg = pal.split(" fg=")[1].split(" ")[0]
+        bg = pal.split(" bg=")[1].split(" ")[0]
         check("keys=0" not in pal and len(set(heads)) == 4, f"the page draws in the theme's palette ({pal[:60]}…)")
-        check(pal.split(" eh=")[1].split(" ")[0] == ",".join(heads), "…and headings get their own colours")
+        check(pal.split(" eh=")[1].split(" ")[0] == ",".join(heads), "…and the editor draws headings with them")
+        check(heads[3] == fg, f"a deep heading is simply the text ({heads[3]} vs {fg})")
+        rgb = [int(heads[0].lstrip("#")[-6:][i:i + 2], 16) for i in (0, 2, 4)]
+        check(max(rgb) - min(rgb) >= 38, f"H1 carries the theme's colour, not a grey ({heads[0]})")
+        check(contrast(heads[0], bg) >= 4.4, f"…and reads at 4.5:1 ({contrast(heads[0], bg):.1f}:1)")
+        steps = [contrast(h, bg) for h in heads]
+        check(steps == sorted(steps) or steps == sorted(steps, reverse=True),
+              f"the four steps move one way only ({[round(s, 1) for s in steps]})")
 
         # 12b. the measure: 72 characters at any zoom, centred; a window too
         # narrow for them wraps instead (the window is 701 wide)

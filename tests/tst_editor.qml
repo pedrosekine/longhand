@@ -59,7 +59,7 @@ Item {
       compare(r[2].space, 0.75); compare(r[3].space, 0)   // blank lines: one paragraph's space
       compare(r[4].space, 1.4 - 0.75)              // a heading: its own space, the blank counted
       compare(r[5].space, 0.35)                    // under it
-      compare(r[7].space, 1.75 - 0.75)             // H1 after a list and a blank
+      compare(r[7].space, 2.0 - 0.75)              // H1 after a list and a blank
       compare(r[8].space, 0.35)
     }
 

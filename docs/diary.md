@@ -736,3 +736,29 @@ only the window and the panels around it differ.
   Every line edit is surgical: `Task.js` rebuilds only the metadata tail and
   keeps the words byte for byte, so a marker it does not understand keeps
   its place rather than being quietly dropped by a re-render.
+- 2026-10-15, the evening's second thing: the heading hierarchy was upside
+  down, and the fix was to stop spending hue on rank. Until now each level
+  took its own colour — the first four distinct of accent/blue/magenta/
+  cyan/green — which drew four marks rather than four ranks: hue has no
+  order, so nothing tells the eye that blue outranks magenta. Worse, the
+  list began at the accent, and an accent is a UI tint chosen to sit under
+  buttons and borders, mid-contrast by design. Measured across Omarchy's
+  21 stock themes it made H1 the *quietest* heading on the page in most of
+  them (rose-pine 3.1:1, barely above the floor), and under this one — a
+  deliberately monochrome accent, #C9C3BC, chroma 0.05 — a title was a big
+  grey line **dimmer than the paragraph under it**. That is what "H1 feels
+  hidden" was: not a size problem, a colour problem, and a measurable one.
+  Now the levels are one colour walking home to the text: H1 is the theme's
+  one chromatic voice (its accent when the accent is a colour, else the
+  first of blue/cyan/green/magenta/yellow/orange that is, lifted to 4.5:1
+  if the theme set it fainter), H2 and H3 are that colour 40% and 72% of
+  the way back to the prose, and H4–H6 are simply the prose. Rank is
+  carried by the channels that have an order — size (1.6/1.3/1.15/1), the
+  one Bold on the title, the clearing above it (2.0 ems, was 1.75) and the
+  distance the colour has left to travel. Lifting moves a colour toward
+  white or black rather than toward the foreground, because a foreground is
+  often tinted (ethereal's peach) and mixing into it turns a blue to mauve
+  on the way. A palette with no chroma to lend at all — vantablack, white,
+  solitude — ramps the only ladder it has, the text down toward its grey.
+  Checked on every stock theme before writing it: the four steps move one
+  way only in all of them.
