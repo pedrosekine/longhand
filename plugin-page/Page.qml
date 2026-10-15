@@ -123,16 +123,11 @@ Item {
   readonly property bool alongside: !overlayOpen      // where the sheet is drawn
 
   readonly property color background: Color.menu.background
-  // Text sits just off the theme's maximum contrast. Themes put near-white
-  // on near-black — 11.7:1 on the stock one — and on a dark ground that
-  // blooms, which reads as boldness in a sturdy face. A fifth of the way
-  // back to the background lands near 8:1, well above the 4.5:1 the page
-  // holds itself to, and a page of it is calmer. Never below 7:1, so a
-  // theme that is already gentle is left at full strength.
-  readonly property color foreground: {
-    var soft = pal.mix(Color.menu.text, Color.menu.background, 0.2)
-    return pal.contrast(soft, Color.menu.background) >= 7 ? soft : Color.menu.text
-  }
+  // Text at the contrast the theme chose. It was softened a fifth of the way
+  // back toward the background on 2026-10-15, to fight a heaviness that
+  // turned out to be the font *cut*, not the contrast (see `fontStyle`);
+  // against a genuine Regular the softening only cost legibility.
+  readonly property color foreground: Color.menu.text
   readonly property color border: Color.menu.border
   readonly property color scrim: Color.menu.scrim
   // The Omarchy theme's palette, by role (ThemeColors.qml): secondary and faint
@@ -155,6 +150,14 @@ Item {
       if (root.proseChoices[i] !== "" && have.indexOf(root.proseChoices[i]) >= 0) return root.proseChoices[i]
     return Style.font.family
   }
+  // The cut of the prose face. The iA Writer families ship with every style
+  // declaring the same weight, so asking for a normal weight hands back the
+  // Bold file: the page came out uniformly heavy, and `**bold**` had nowhere
+  // heavier to go. Naming the style picks the real Regular. A family without
+  // one is unaffected — Qt falls back to weight as before (tested against
+  // DejaVu, JetBrains Mono and a family that does not exist).
+  readonly property string fontStyle: "Regular"
+
   readonly property string codeFamily: {
     var have = Qt.fontFamilies()
     if (svc.pageCodeFont !== "" && have.indexOf(svc.pageCodeFont) >= 0) return svc.pageCodeFont
@@ -286,6 +289,14 @@ Item {
   property var queued: []      // runner commands waiting, oldest first
   property bool running: false
   property string runningHash: ""
+  // The blocks the student has asked about that have not come back yet.
+  // Marked from the moment of the ask, not from when the process starts:
+  // a send waits for dates to bind (`whenWritten`) and for the note to be
+  // written, and "did that go?" is exactly what the mark answers.
+  property var sending: []
+  // Something is away: queued, waiting for the note to be written, or in
+  // the runner. What the header's "agent" says, and what the gutter marks.
+  readonly property bool working: root.running || root.sending.length > 0
   property bool openPassPending: false
   property int tickedCount: 0
 
@@ -541,11 +552,12 @@ Item {
     // A dated item may still be binding. The agent has to see its dates as
     // deadlines, never as words to propose a second time (2026-10-13), so
     // the send waits for the queue — as the prompt used to before it went.
+    root.markSending([root.currentHash])
     root.whenWritten(function () {
       var h = root.hashNearLine(root.lineIndexAt(editor.cursorPosition))
-      if (h === "") return
+      if (h === "") { root.doneSending(); return }
       var trigger = root.triggerForBlock(h)
-      if (trigger === "") { root.noSignHint = true; hintTimer.restart(); return }
+      if (trigger === "") { root.doneSending(); root.noSignHint = true; hintTimer.restart(); return }
       // A list of boxes is one submission however it is sent.
       root.send(trigger, trigger === "checkbox" || trigger === "tick" ? root.listAround(h) : [h])
     })
@@ -554,6 +566,7 @@ Item {
   function send(trigger, hashes) {
     root.used("send", trigger)
     root.ask = null
+    root.markSending(hashes)
     root.requestRun(trigger, hashes.join(","))
   }
 
@@ -650,8 +663,34 @@ Item {
     return ""
   }
 
+  function markSending(hashes) {
+    var next = root.sending.slice()
+    for (var i = 0; i < hashes.length; i++) {
+      var h = String(hashes[i])
+      if (h !== "" && next.indexOf(h) < 0) next.push(h)
+    }
+    root.sending = next
+    root.scheduleRepaint()
+  }
+
+  function runnerFailed() {
+    var lines = runner.said.split("\n")
+    var first = ""
+    for (var i = 0; i < lines.length && first === ""; i++)
+      if (lines[i].trim() !== "") first = lines[i].trim().replace(/^error:\s*/, "")
+    runner.said = ""
+    root.showHint("the agent could not run" + (first === "" ? "" : " — " + first.substring(0, 120)))
+  }
+
+  function doneSending() {
+    if (root.sending.length === 0) return
+    root.sending = []
+    root.scheduleRepaint()
+  }
+
   function requestChat(hash, message) {
     if (!root.agentOn) return
+    root.markSending([hash])
     root.flush()
     root.enqueue([svc.runner, "chat", "--hash", hash, "--message", message, "--date", svc.noteDate], hash)
   }
@@ -712,11 +751,13 @@ Item {
     for (var i = 0; i < blocks.length; i++) {
       var b = blocks[i]
       var rec = agent.record(b.hash)
-      if (!rec) continue
+      var flying = root.sending.indexOf(b.hash) >= 0
+      if (!rec && !flying) continue
       var r = editor.blockRect(b.start, b.end)
       if (!r) continue
-      out.push({ hash: b.hash, y: r.y, h: r.h,
-                 reply: rec.state === "reply", unread: rec.state === "reply" && !rec.read })
+      out.push({ hash: b.hash, y: r.y, h: r.h, sending: flying,
+                 reply: !!rec && rec.state === "reply",
+                 unread: !!rec && rec.state === "reply" && !rec.read })
     }
     root.paint = out
     root.currentHash = root.hashNearLine(root.lineIndexAt(editor.cursorPosition))
@@ -1739,17 +1780,27 @@ Item {
 
   Process {
     id: runner
+    property string said: ""
     stderr: StdioCollector {
-      onStreamFinished: if (text.trim() !== "") console.warn("student.page runner: " + text.trim())
+      onStreamFinished: {
+        runner.said = text.trim()
+        if (runner.said !== "") console.warn("student.page runner: " + runner.said)
+      }
     }
     stdout: StdioCollector {
       onStreamFinished: if (text.trim() !== "") console.log("student.page runner: " + text.trim())
     }
+    // A run that fails says so. It used to fail in silence: opencode moved
+    // its flags under the runner on 2026-10-15 and every pass of that day
+    // died unseen, the page looking exactly as it does when the agent has
+    // nothing to say. Silence is now only ever an answer, never a fault.
     onExited: function (code, status) {
       root.running = false
       root.runningHash = ""
+      if (code !== 0) Qt.callLater(root.runnerFailed)
       agent.reload()
       root.launchQueued()
+      if (!root.running) root.doneSending()
     }
   }
 
@@ -1955,6 +2006,7 @@ Item {
       text: "on the overlay · Esc brings it back"
       color: root.faint
       font.family: root.fontFamily
+      font.styleName: root.fontStyle
       font.pixelSize: root.fs(Style.font.bodySmall)
     }
   }
@@ -2015,6 +2067,7 @@ Item {
             text: root.dateLabel
             color: svc.isToday ? root.dim : root.foreground
             font.family: root.fontFamily
+            font.styleName: root.fontStyle
             font.pixelSize: root.fs(Style.font.bodySmall)
           }
 
@@ -2028,6 +2081,7 @@ Item {
             text: root.agentDay ? "back to today" : "back to today · agent off for this note"
             color: root.faint
             font.family: root.fontFamily
+            font.styleName: root.fontStyle
             font.pixelSize: root.fs(Style.font.bodySmall)
             MouseArea {
               anchors.fill: parent
@@ -2048,6 +2102,7 @@ Item {
               text: Math.round(root.zoom * 100) + "%"
               color: root.dim
               font.family: root.fontFamily
+              font.styleName: root.fontStyle
               font.pixelSize: root.fs(Style.font.bodySmall)
             }
 
@@ -2058,6 +2113,7 @@ Item {
               text: "pin"
               color: root.alongside ? root.foreground : root.faint
               font.family: root.fontFamily
+              font.styleName: root.fontStyle
               font.pixelSize: root.fs(Style.font.bodySmall)
               Behavior on color { ColorAnimation { duration: 240 } }
               MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.togglePin() }
@@ -2075,6 +2131,7 @@ Item {
               text: svc.notePrivate ? "private · the agent sees nothing here" : "private"
               color: svc.notePrivate ? root.foreground : (privateArea.containsMouse ? root.accent : root.faint)
               font.family: root.fontFamily
+              font.styleName: root.fontStyle
               font.pixelSize: root.fs(Style.font.bodySmall)
               Behavior on color { ColorAnimation { duration: 240 } }
               MouseArea {
@@ -2100,6 +2157,7 @@ Item {
               color: askArea.containsMouse ? root.accent
                 : (root.currentTrigger !== "" ? root.dim : root.faint)
               font.family: root.fontFamily
+              font.styleName: root.fontStyle
               font.pixelSize: root.fs(Style.font.bodySmall)
               Behavior on color { ColorAnimation { duration: 240 } }
               MouseArea {
@@ -2111,15 +2169,17 @@ Item {
               }
             }
 
-            // The agent mark: faint at rest, brighter while a run is in
-            // flight, accent while a reply in this note is still unread.
+            // The agent mark: faint at rest, brighter from the moment
+            // something is asked until it comes back, accent while a reply
+            // in this note is still unread.
             Text {
               visible: svc.header !== "" && root.agentOn
               anchors.verticalCenter: parent.verticalCenter
               textFormat: Text.PlainText
               text: "agent"
-              color: root.replyWaiting ? root.accent : (root.running ? root.foreground : root.faint)
+              color: root.replyWaiting ? root.accent : (root.working ? root.foreground : root.faint)
               font.family: root.fontFamily
+              font.styleName: root.fontStyle
               font.pixelSize: root.fs(Style.font.bodySmall)
               Behavior on color { ColorAnimation { duration: 240 } }
             }
@@ -2154,6 +2214,7 @@ Item {
             anchors.rightMargin: root.sp(12)
             placeholderText: "find in today's note"
             font.family: root.fontFamily
+            font.styleName: root.fontStyle
             font.pixelSize: root.fs(Style.font.body)
             foreground: root.foreground
             onTextChanged: if (root.searchOpen) root.runSearch()
@@ -2184,6 +2245,7 @@ Item {
               : (root.matches.length === 0 ? "no match" : (root.matchIndex + 1) + " / " + root.matches.length)
             color: root.dim
             font.family: root.fontFamily
+            font.styleName: root.fontStyle
             font.pixelSize: root.fs(Style.font.bodySmall)
           }
         }
@@ -2199,6 +2261,7 @@ Item {
           text: root.problem
           color: root.urgent
           font.family: root.fontFamily
+          font.styleName: root.fontStyle
           font.pixelSize: root.fs(Style.font.body)
         }
 
@@ -2223,21 +2286,53 @@ Item {
             else if (contentY + height <= r.y + r.height) contentY = r.y + r.height - height
           }
 
-          // Gutter marks: a block with a reply, accent until it has been
-          // read and dim after. Nothing else is marked — a block that could
-          // be sent is every block, and saying so was noise (2026-10-15).
+          // Gutter marks: a block in flight, a light travelling down it
+          // for as long as the agent has it; a block with a reply, accent
+          // until it has been read and dim after. Nothing else is marked —
+          // a block that could be sent is every block, and saying so was
+          // noise (2026-10-15).
           Repeater {
             model: root.paint
-            Rectangle {
+            Item {
               required property var modelData
-              visible: modelData.reply
+              visible: modelData.reply || modelData.sending
               x: root.sp(2)
               y: modelData.y
               width: root.sp(3)
               height: modelData.h
-              radius: width
-              color: modelData.unread ? root.accent : root.dim
-              Behavior on color { ColorAnimation { duration: 240 } }
+              clip: true
+
+              Rectangle {
+                anchors.fill: parent
+                radius: width
+                color: parent.modelData.sending ? root.dim
+                  : parent.modelData.unread ? root.accent : root.dim
+                opacity: parent.modelData.sending ? 0.3 : 1
+                Behavior on color { ColorAnimation { duration: 240 } }
+                Behavior on opacity { NumberAnimation { duration: 240 } }
+              }
+
+              // The light. It only runs while the block is away, so a mark
+              // that moves means "still thinking" and a mark that rests
+              // means "answered" — the two are never the same thing.
+              Rectangle {
+                id: spark
+                width: parent.width
+                height: Math.max(root.sp(20), parent.height * 0.5)
+                radius: width
+                visible: parent.modelData.sending
+                gradient: Gradient {
+                  GradientStop { position: 0.0; color: Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0) }
+                  GradientStop { position: 0.5; color: root.accent }
+                  GradientStop { position: 1.0; color: Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0) }
+                }
+                SequentialAnimation on y {
+                  running: spark.visible
+                  loops: Animation.Infinite
+                  NumberAnimation { from: -spark.height; to: spark.parent.height
+                                    duration: 1500; easing.type: Easing.InOutSine }
+                }
+              }
             }
           }
 
@@ -2248,6 +2343,7 @@ Item {
             height: implicitHeight
             enabled: svc.ready
             fontFamily: root.fontFamily
+            fontStyle: root.fontStyle
             codeFamily: root.codeFamily
             textSize: root.textSize
             foreground: root.foreground
@@ -2326,6 +2422,7 @@ Item {
               : (root.ask ? root.askText(root.ask) : "")
             color: root.faint
             font.family: root.fontFamily
+            font.styleName: root.fontStyle
             font.pixelSize: root.fs(Style.font.bodySmall)
             z: 2
           }
@@ -2369,6 +2466,7 @@ Item {
                     text: "#" + modelData.tag + "  " + modelData.name
                     color: root.foreground
                     font.family: root.fontFamily
+                    font.styleName: root.fontStyle
                     font.pixelSize: root.fs(Style.font.bodySmall)
                   }
                   MouseArea {
@@ -2388,6 +2486,7 @@ Item {
                   : "Enter its tag · Esc leaves it"
                 color: root.faint
                 font.family: root.fontFamily
+                font.styleName: root.fontStyle
                 font.pixelSize: root.fs(Style.font.caption)
               }
             }
@@ -2406,6 +2505,7 @@ Item {
               text: "when?"
               color: root.dim
               font.family: root.fontFamily
+              font.styleName: root.fontStyle
               font.pixelSize: root.fs(Style.font.bodySmall)
             }
             TextField {
@@ -2413,6 +2513,7 @@ Item {
               width: root.sp(220)
               placeholderText: root.whenFor && root.whenFor.id > 0 ? "empty: no deadline" : "fri 17:00 · in 3 days · 20 oct"
               font.family: root.fontFamily
+              font.styleName: root.fontStyle
               font.pixelSize: root.fs(Style.font.body)
               foreground: root.foreground
               Keys.onPressed: function (event) {
@@ -2550,6 +2651,7 @@ Item {
             text: "‹"
             color: root.dim
             font.family: root.fontFamily
+            font.styleName: root.fontStyle
             font.pixelSize: root.fs(Style.font.title)
             MouseArea { anchors.fill: parent; anchors.margins: -root.sp(6); cursorShape: Qt.PointingHandCursor; onClicked: root.moveCalendar(0, -1) }
           }
@@ -2570,6 +2672,7 @@ Item {
             text: "›"
             color: root.dim
             font.family: root.fontFamily
+            font.styleName: root.fontStyle
             font.pixelSize: root.fs(Style.font.title)
             MouseArea { anchors.fill: parent; anchors.margins: -root.sp(6); cursorShape: Qt.PointingHandCursor; onClicked: root.moveCalendar(0, 1) }
           }
@@ -2589,6 +2692,7 @@ Item {
               text: Qt.locale().dayName((root.firstDow + index) % 7, Locale.NarrowFormat)
               color: root.faint
               font.family: root.fontFamily
+              font.styleName: root.fontStyle
               font.pixelSize: root.fs(Style.font.caption)
             }
           }
@@ -2681,6 +2785,7 @@ Item {
             : ""
           color: root.dim
           font.family: root.fontFamily
+          font.styleName: root.fontStyle
           font.pixelSize: root.fs(Style.font.bodySmall)
         }
 
@@ -2710,6 +2815,7 @@ Item {
                 + (Bound.parseLink(modelData.link) ? "" : " · no line")
               color: late ? root.urgent : (modelData.status === "open" ? root.foreground : root.dim)
               font.family: root.fontFamily
+              font.styleName: root.fontStyle
               font.pixelSize: root.fs(Style.font.bodySmall)
             }
             MouseArea {
@@ -2728,6 +2834,7 @@ Item {
           text: "PROJECTS"
           color: root.dim
           font.family: root.fontFamily
+          font.styleName: root.fontStyle
           font.pixelSize: root.fs(Style.font.caption)
         }
         Repeater {
@@ -2752,6 +2859,7 @@ Item {
                 text: "#" + modelData.tag + "  " + modelData.name
                 color: root.foreground
                 font.family: root.fontFamily
+                font.styleName: root.fontStyle
                 font.pixelSize: root.fs(Style.font.bodySmall)
               }
               Text {
@@ -2762,6 +2870,7 @@ Item {
                 text: root.sessionLabel(modelData.next)
                 color: root.dim
                 font.family: root.fontFamily
+                font.styleName: root.fontStyle
                 font.pixelSize: root.fs(Style.font.caption)
               }
             }
@@ -2787,6 +2896,7 @@ Item {
             : "arrows move · Ctrl+←→ month · Home today · Enter opens" + (root.focusDue.length > 0 || root.projects.length > 0 ? " · Tab: " + (root.focusDue.length > 0 ? "this day's deadlines" : "the projects") : "")
           color: root.faint
           font.family: root.fontFamily
+          font.styleName: root.fontStyle
           font.pixelSize: root.fs(Style.font.caption)
         }
       }
@@ -2833,6 +2943,7 @@ Item {
             text: "← #" + root.projectTag
             color: root.dim
             font.family: root.fontFamily
+            font.styleName: root.fontStyle
             font.pixelSize: root.fs(Style.font.caption)
             MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.leaveProject() }
           }
@@ -2844,6 +2955,7 @@ Item {
             text: root.projectName
             color: root.foreground
             font.family: root.fontFamily
+            font.styleName: root.fontStyle
             font.pixelSize: root.fs(Style.font.bodySmall)
           }
 
@@ -2856,6 +2968,7 @@ Item {
             text: sectionsProc.running ? "…" : "nothing under #" + root.projectTag + " yet — a “# Course #" + root.projectTag + "” heading starts one"
             color: root.faint
             font.family: root.fontFamily
+            font.styleName: root.fontStyle
             font.pixelSize: root.fs(Style.font.caption)
           }
 
@@ -2885,6 +2998,7 @@ Item {
                     + (modelData.done > 0 ? "   ✓ " + modelData.done : "")
                   color: modelData.date === svc.noteDate ? root.accent : root.dim
                   font.family: root.fontFamily
+                  font.styleName: root.fontStyle
                   font.pixelSize: root.fs(Style.font.caption)
                 }
                 Text {
@@ -2897,6 +3011,7 @@ Item {
                   text: root.sectionUnder(modelData)
                   color: root.foreground
                   font.family: root.fontFamily
+                  font.styleName: root.fontStyle
                   font.pixelSize: root.fs(Style.font.caption)
                 }
               }
@@ -2917,6 +3032,7 @@ Item {
             text: "↑↓ pick · Enter opens it in the sheet · ← back to the projects"
             color: root.faint
             font.family: root.fontFamily
+            font.styleName: root.fontStyle
             font.pixelSize: root.fs(Style.font.caption)
           }
         }
@@ -3006,6 +3122,7 @@ Item {
             text: "WHAT'S NEXT"
             color: root.dim
             font.family: root.fontFamily
+            font.styleName: root.fontStyle
             font.pixelSize: root.fs(Style.font.caption)
           }
 
@@ -3016,6 +3133,7 @@ Item {
             text: "nothing open"
             color: root.faint
             font.family: root.fontFamily
+            font.styleName: root.fontStyle
             font.pixelSize: root.fs(Style.font.bodySmall)
           }
 
@@ -3049,6 +3167,7 @@ Item {
                 color: modelData.kind === "day" ? root.dim : (modelData.kind === "older" ? root.faint
                   : modelData.kind === "deadline" ? root.deadlineColor(modelData.deadline) : root.foreground)
                 font.family: root.fontFamily
+                font.styleName: root.fontStyle
                 font.pixelSize: modelData.kind === "day" ? root.fs(Style.font.caption) : root.fs(Style.font.body)
               }
               MouseArea {
@@ -3070,6 +3189,7 @@ Item {
               : root.contextFor.date + "\n\n" + contextFile.snippet
             color: root.dim
             font.family: root.fontFamily
+            font.styleName: root.fontStyle
             font.pixelSize: root.fs(Style.font.bodySmall)
           }
 
@@ -3080,6 +3200,7 @@ Item {
             text: "↑↓ move · Enter goes to it · Space ticks · Ctrl+Z unticks · Esc back"
             color: root.faint
             font.family: root.fontFamily
+            font.styleName: root.fontStyle
             font.pixelSize: root.fs(Style.font.caption)
           }
         }
@@ -3115,6 +3236,7 @@ Item {
             text: "…"
             color: root.dim
             font.family: root.fontFamily
+            font.styleName: root.fontStyle
             font.pixelSize: root.textSize
           }
 
@@ -3126,6 +3248,7 @@ Item {
             text: root.currentRecord && root.currentRecord.reply ? root.currentRecord.reply : ""
             color: root.foreground
             font.family: root.fontFamily
+            font.styleName: root.fontStyle
             font.pixelSize: root.fs(Style.font.title)
           }
 
@@ -3157,6 +3280,7 @@ Item {
                   : JSON.stringify(modelData))
                 color: done ? root.dim : root.foreground
                 font.family: root.fontFamily
+                font.styleName: root.fontStyle
                 font.pixelSize: root.fs(Style.font.bodySmall)
               }
               MouseArea {
@@ -3176,6 +3300,7 @@ Item {
               text: modelData.text
               color: modelData.role === "agent" ? root.foreground : root.dim
               font.family: root.fontFamily
+              font.styleName: root.fontStyle
               font.pixelSize: root.fs(Style.font.title)
             }
           }
@@ -3188,6 +3313,7 @@ Item {
             text: "Nothing from the agent on this block yet. Ctrl+Enter sends it, or ask below."
             color: root.faint
             font.family: root.fontFamily
+            font.styleName: root.fontStyle
             font.pixelSize: root.fs(Style.font.bodySmall)
           }
         }
@@ -3211,6 +3337,7 @@ Item {
           visible: root.marginOpen && !root.tasksOpen
           placeholderText: "…"
           font.family: root.fontFamily
+          font.styleName: root.fontStyle
           font.pixelSize: root.fs(Style.font.body)
           foreground: root.foreground
           Keys.onReturnPressed: function (event) { event.accepted = true; root.sendChat() }

@@ -167,6 +167,13 @@
             the same `text`/`cursorPosition`/`insert`/`remove`. Not yet:
             selecting across lines (selection is per line).
             `tests/tst_editor.qml` drives it offscreen with qmltestrunner.
+            Inline emphasis is drawn too (`Emph.js`, 2026-10-15): a row with
+            `**bold**`, `*italic*`, `` `code` `` or `~~struck~~` in it becomes
+            rich text whose plain text is still the body character for
+            character, markers in a one-pixel transparent span, so every
+            offset above holds; a row without emphasis stays plain text.
+            `tests/tst_emph.qml` proves the drawn text strips back to the
+            body.
       - [x] 14.6b overlay and window side by side — the shell's `toggle`
             hides a plugin whose `opened` is true, so SUPER+ALT+= closed the
             window. `opened` now means the overlay only: with the window
@@ -356,9 +363,32 @@ lifting the freeze; the numbers above cannot see any of them):
   ground). It sends the block the cursor is in, dim when that block carries
   a sign, faint when it does not, and says why when asked anyway. With it
   there, the send prompt went: nothing interrupts writing to offer the
-  agent any more. Left: whether the word "ask" is the right word once it
-  has been lived with, and whether a run in flight should show there too
-  (the agent mark already brightens).
+  agent any more. **The second half, 2026-10-15 evening:** a pass in flight
+  is now visible where the work is — the block's gutter mark carries a
+  light travelling down it from the moment the student asks until the
+  answer is back, and the header's **agent** brightens for the same span.
+  Marked at the *ask*, not at the launch: a send waits for dates to bind
+  and for the note to be written, and "did that go?" is precisely what the
+  mark answers. A mark that moves is still thinking; a mark that rests is
+  answered; the two are never the same shape. Left: whether the word "ask"
+  is the right word once it has been lived with.
+- **The agent had not been working at all** (found 2026-10-15, while
+  answering "is the connection with opencode actually up?"). It was not:
+  opencode 2.0.29 dropped `--pure`, `--dir` and `--variant`, printed its
+  usage to *stdout* and exited **0**, so every pass of the day died and the
+  page looked exactly as it does when the agent has nothing to say. Three
+  fixes, in the order they matter: the invocation (`--standalone`, the
+  working directory passed as the process's own, the variant riding on the
+  model as `provider/model#variant`); a run that produces no text, no
+  session and no error is now *recorded* as a failure and the page says so
+  in a line under the cursor; and the invocation is a tested contract, not
+  an implementation detail — `tests/test_agent.py` asserts the flags, the
+  empty working directory, and that no flag opencode no longer knows is
+  passed. The ledger also had to change: opencode stopped reporting cost in
+  the event stream, so each pass reads its price back from its session
+  (`opencode session export`), best effort — a pass that happened is never
+  failed for want of its price. Verified live: a real `chat` pass came back
+  with a reply, $0.0021, 7357 tokens.
 - **Staging is not a useful state, and its mark is confused with the
   running one.** Once the student has decided *not* to send a block, being
   shown that it still "could be sent" is noise; `Ctrl+Enter` already sends
@@ -493,17 +523,29 @@ a fix or a feature to decide first):
   face and is identical for a monospace — at zoom 1 the column went from
   661px to 631px for the same 72 characters. Left: nothing, unless the
   weight reads heavy on a light theme after a day's use.
-- **Emphasis, drawn** (2026-10-15) — `Ctrl+B` / `Ctrl+I` / `` Ctrl+` `` /
-  `Ctrl+Shift+S` now write the markers, and the file keeps them as written;
-  what is missing is drawing them styled, the way the markdown that says
-  what *kind* of line it is is already lifted off and drawn. The reason it
-  is parked rather than done: every row is one plain-text field whose
-  offsets the cursor, the selection, the search painting and the bound-line
-  rewriting all rest on (`prefix + body == line`). Styled spans need rich
-  text per row with a mapping back to plain offsets, which is the riskiest
-  change in the editor — its own session, with its own tests. Decide then
-  whether the markers stay visible while the cursor is in the span (as
-  Obsidian does) or vanish entirely (as the line markdown does).
+- ~~**Emphasis, drawn** (2026-10-15)~~ — **done the same day.** The fear was
+  that styled spans needed a mapping between drawn offsets and the body's,
+  the riskiest change in the editor. They do not: a row with emphasis becomes
+  rich text whose *plain* text is the body character for character, with the
+  markers in a span one pixel tall and transparent. Qt keeps one document
+  position per character either way, so the cursor, the selection, the search
+  painting and the bound-line rewriting never learn that anything changed —
+  `prefix + body == line` holds exactly as before, and a row without emphasis
+  is still plain text and takes no new code path at all. The question the
+  entry left open answered itself: the markers are hidden only while they are
+  doing a job, so breaking a pair (deleting one `*`) brings them back at full
+  size, which is how you see them to edit them. No cursor-dependent reflow,
+  no jiggle on entering a line. `white-space:pre-wrap` is load-bearing —
+  without it the renderer eats runs of spaces and the trailing space of a
+  line being written, and every offset after them is off by one; the test
+  that proves the drawn text strips back to the body covers it.
+  What this also found: the page was heavy because the iA Writer families
+  declare the same weight for every style, so Qt handed back the **Bold**
+  file for a normal weight — `**bold**` had nowhere heavier to go. Naming
+  the cut (`font.styleName: "Regular"`) fixes both, and the contrast
+  softening of the morning (a fifth back from the theme's maximum) went
+  with it: it was treating a symptom, and with the real Regular in place it
+  only cost legibility.
 - **Tag suggestions while typing** (idea, 2026-10-11) — typing `#` offers the
   tags that exist (the projects list), so a new tag is a choice, not a typo.
   The sidebar list is the first step; this would be the stronger guard.

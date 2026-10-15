@@ -393,25 +393,56 @@ def project_of(prop: dict) -> str:
     return str(prop.get("project") or prop.get("subject") or "")
 
 
+def session_cost(cfg: dict, paths: Paths, session: str) -> tuple[float, dict]:
+    """What the pass cost, asked of opencode after the fact.
+
+    opencode stopped reporting cost in the run's event stream, so the ledger
+    is read from the session it just wrote. Best effort: a pass that happened
+    is never failed for want of its price."""
+    tokens = {"input": 0, "output": 0, "reasoning": 0, "total": 0}
+    if not session:
+        return 0.0, tokens
+    try:
+        proc = subprocess.run([cfg.get("opencode", "opencode"), "session", "export", session],
+                              capture_output=True, text=True, timeout=30, cwd=str(paths.cwd))
+        info = (json.loads(proc.stdout) or {}).get("info") or {}
+    except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError, AttributeError):
+        return 0.0, tokens
+    got = info.get("tokens") or {}
+    for k in ("input", "output", "reasoning"):
+        tokens[k] = int(got.get(k) or 0)
+    tokens["total"] = tokens["input"] + tokens["output"] + tokens["reasoning"]
+    return float(info.get("cost") or 0.0), tokens
+
+
 def run_model(cfg: dict, paths: Paths, payload: str, session: str = "", message: str = "Context follows on stdin.") -> dict:
     """Run one opencode pass. Returns {text, session, cost, tokens, events, error}.
 
     With `session`, continues an existing opencode session (dive-in), so the
-    model keeps what it already said about that block."""
+    model keeps what it already said about that block.
+
+    `--standalone` gives the pass a server of its own that dies with it,
+    which is what "one pass, then exit, nothing resident" means here: no
+    shared background service holding state between runs. The working
+    directory is the agent's own empty one, so nothing of a project —
+    AGENTS.md, a repo, a stray file — is ever in scope."""
     paths.cwd.mkdir(parents=True, exist_ok=True)
-    cmd = [cfg.get("opencode", "opencode"), "run", "--pure", "--format", "json",
-           "--agent", cfg.get("agent", "student"), "--dir", str(paths.cwd)]
+    cmd = [cfg.get("opencode", "opencode"), "run", "--standalone", "--format", "json",
+           "--agent", cfg.get("agent", "student")]
+    # Reasoning effort is named per model and now rides on the model itself,
+    # `provider/model#variant`; without a model named here the agent's own
+    # (agent/opencode/student.md) decides, variant and all.
     if cfg.get("model"):
-        cmd += ["--model", cfg["model"]]
-    # Reasoning effort, as opencode names it per model (low / high / max);
-    # absent means the provider's default.
-    if cfg.get("variant"):
-        cmd += ["--variant", cfg["variant"]]
+        model = cfg["model"]
+        if cfg.get("variant") and "#" not in model:
+            model += "#" + cfg["variant"]
+        cmd += ["--model", model]
     if session:
         cmd += ["--session", session]
     cmd.append(message)
     try:
-        proc = subprocess.run(cmd, input=payload, capture_output=True, text=True, timeout=600)
+        proc = subprocess.run(cmd, input=payload, capture_output=True, text=True, timeout=600,
+                              cwd=str(paths.cwd))
     except FileNotFoundError:
         raise Fail(f"opencode not found ({cmd[0]})")
     except subprocess.TimeoutExpired:
@@ -441,6 +472,13 @@ def run_model(cfg: dict, paths: Paths, payload: str, session: str = "", message:
     out["text"] = "\n".join(texts)
     if proc.returncode != 0 and not out["error"]:
         out["error"] = (proc.stderr or "").strip()[-2000:] or f"opencode exited {proc.returncode}"
+    # A run that produced nothing at all did not run: opencode prints its
+    # usage to stdout and exits 0 when it does not know a flag, which once
+    # went unnoticed for a day.
+    if not out["error"] and not out["text"] and not out["session"]:
+        out["error"] = ((proc.stderr or "") + (proc.stdout or "")).strip()[-2000:] or "opencode said nothing"
+    if out["session"] and not out["cost"]:
+        out["cost"], out["tokens"] = session_cost(cfg, paths, out["session"])
     return out
 
 

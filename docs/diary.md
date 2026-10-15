@@ -517,3 +517,58 @@ only the window and the panels around it differ.
   parked, because every row is a plain-text field whose offsets the rest of
   the editor rests on. `Ctrl+B` was the sidebar; the sidebar moved to
   `Ctrl+Shift+B`, because on a writing surface Ctrl+B is bold.
+- 2026-10-15, later: the boldness had one cause and it was neither of the two
+  above. The `ttf-ia-writer` faces declare the same weight for *every* style,
+  so a request for a normal weight resolves to the **Bold** file: the whole
+  page was set in bold without anyone choosing it, and `**bold**` had nowhere
+  heavier to go — which is why the emphasis keys written that morning looked
+  like they did nothing. Asking for the cut by name (`font.styleName:
+  "Regular"`) picks the real one; a family that has no style of that name is
+  unaffected, tested against DejaVu, JetBrains Mono and a family that does
+  not exist. With that in place the contrast softening of the morning was
+  undone: it had been treating a symptom, and against a genuine Regular it
+  only cost legibility. Text is back at the contrast the theme chose. The
+  lesson worth keeping is the shape of the mistake: a plausible explanation
+  (contrast, bloom) was measured and acted on without ever checking the
+  simpler one — which font file was actually being drawn.
+- 2026-10-15, later: emphasis is drawn. The parking-lot entry said this
+  needed a mapping between drawn offsets and the body's, and that the mapping
+  was the riskiest change in the editor. It needed no mapping at all. A row
+  with emphasis becomes rich text whose *plain* text is the body character
+  for character, the markers rendered in a span one pixel tall and
+  transparent; Qt keeps one document position per character either way, so
+  the cursor, selection, search painting and bound-line rewriting never learn
+  anything changed, and a row without emphasis stays plain text on the old
+  path. The open question — whether markers show while the cursor is in the
+  span, as Obsidian does — answered itself: they are hidden only while they
+  are doing a job, so breaking a pair brings them back at full size, which is
+  how you see them to edit them. No focus-dependent reflow, no jiggle.
+  `white-space:pre-wrap` is load-bearing: without it the renderer eats runs
+  of spaces and the trailing space of a line being written, and every offset
+  after them is off by one. The test that matters asserts the drawn text
+  strips back to the body exactly, for a dozen bodies.
+- 2026-10-15, later: the agent had not been working at all. opencode 2.0.29
+  dropped `--pure`, `--dir` and `--variant`; it printed its usage to stdout
+  and exited **0**, so every pass of the day failed and the page looked
+  exactly as it does when the agent has nothing to say. Three things follow,
+  and the third is the one worth keeping. The invocation moved on
+  (`--standalone` for a server that dies with the pass, the working directory
+  passed as the process's own, the variant riding on the model as
+  `provider/model#variant`), and cost is read back from the session because
+  the event stream no longer carries it. A run that produces no text, no
+  session and no error is now recorded as a failure. And the page says so: a
+  failed pass puts a line under the cursor. Silence from the agent is only
+  ever an answer now, never a fault — a tool that fails invisibly teaches the
+  student it is useless, which is exactly what the week's 31 declines were
+  starting to say. The invocation itself is a tested contract now, not an
+  implementation detail: the stub records how it was called, and the tests
+  assert the flags, the empty working directory, and the absence of every
+  flag opencode no longer knows.
+- 2026-10-15, later: a pass in flight is visible. The block's gutter mark
+  carries a light travelling down it, from the moment the student asks until
+  the answer is back; the header's "agent" brightens for the same span. It is
+  marked at the ask rather than at the launch, because a send waits for dates
+  to bind and the note to be written, and "did that go?" is exactly the
+  question in that gap. A mark that moves means still thinking, a mark that
+  rests means answered — the state the student asked about is now a motion,
+  not another colour to tell apart.

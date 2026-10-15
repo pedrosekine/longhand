@@ -1,6 +1,7 @@
 import QtQuick
 import "Rows.js" as Rows
 import "Blocks.js" as Blocks
+import "Emph.js" as Emph
 
 // The sheet's editor: the note drawn, not shown as markdown.
 //
@@ -49,6 +50,7 @@ Item {
   signal cueDismissed(string raw)
 
   property string fontFamily: "sans-serif"
+  property string fontStyle: ""        // the cut of the prose face (Page.qml)
   property string codeFamily: "monospace"
   property int textSize: 16
   property color foreground: "black"
@@ -144,9 +146,8 @@ Item {
   // Emphasis: wrap the selection — or the word the cursor is in — in a
   // marker, and take it off again when it is already there. The markers are
   // written into the note as they are (`**`, `*`, `` ` ``, `~~`), because
-  // the file stays plain markdown and Obsidian reads the same ones. They
-  // are not drawn as styled text yet; that is its own piece of work, since
-  // every row here is plain text whose offsets the whole editor relies on.
+  // the file stays plain markdown and Obsidian reads the same ones; the row
+  // draws them to nothing and the words emphasised (Emph.js).
   function emphasise(marker) {
     var t = ed.text
     var n = marker.length
@@ -273,12 +274,20 @@ Item {
       // Typing `>` into an empty line leaves the body empty, as it was:
       // the role does not change, but the field still shows the `>`.
       var item = rep.itemAt(i)
-      if (item && item.field.text !== next[i].body) item.field.text = next[i].body
+      if (item) item.show()
     }
     ed.syncing = false
   }
 
   function rowItem(i) { return i >= 0 ? rep.itemAt(i) : null }
+
+  // Inline code is drawn in the code face, so a change of face is a redraw.
+  onCodeFamilyChanged: {
+    for (var i = 0; i < ed.rows.length; i++) {
+      var it = ed.rowItem(i)
+      if (it) it.show()
+    }
+  }
 
   // The field follows `cursorPosition`.
   function placeCursor(focus) {
@@ -423,6 +432,27 @@ Item {
     clip.text = ""
   }
 
+  // Paste through the hidden plain field, never into the row's own. A row
+  // with emphasis in it is rich text, and a rich field reads what is handed
+  // to it as html: a pasted `<` would be markup and a run of spaces would
+  // collapse. What arrives is the clipboard's plain text, the same on every
+  // line, and `insert` puts it through the note the way typing does.
+  function pasteText() {
+    clip.text = ""
+    clip.paste()
+    var t = clip.text
+    clip.text = ""
+    return t
+  }
+
+  function pasteAt(pos) {
+    var t = ed.pasteText().replace(/\r/g, "")
+    if (t === "") return
+    ed.snapshot(true)
+    ed.insert(pos, t)
+    ed.placeCursor(true)
+  }
+
   function removeSpan() {
     var a = ed.selStart, b = ed.selEnd
     ed.snapshot(true)
@@ -514,9 +544,9 @@ Item {
     }
     if (ctrl && k === Qt.Key_A) { ed.selectSpan(0, ed.text.length); return true }
     if (ctrl && k === Qt.Key_V) {
+      var at = ed.selStart
       ed.removeSpan()
-      var it = ed.rowItem(ed.focusedRow)
-      if (it) it.field.paste()
+      ed.pasteAt(at)
       return true
     }
     if (k === Qt.Key_Backspace || k === Qt.Key_Delete) { ed.removeSpan(); return true }
@@ -793,6 +823,14 @@ Item {
       }
     }
     if (ctrl && k === Qt.Key_A) { ed.selectSpan(0, ed.text.length); event.accepted = true; return }
+    // Paste is the note's, not the field's: see `pasteText`.
+    if (ctrl && !shift && !alt && k === Qt.Key_V) {
+      var from = noSel ? ed.cursorPosition : ed.absOf(i, Math.min(f.selectionStart, f.selectionEnd))
+      if (!noSel) ed.replace(from, ed.absOf(i, Math.max(f.selectionStart, f.selectionEnd)), "")
+      ed.pasteAt(from)
+      event.accepted = true
+      return
+    }
 
     if ((k === Qt.Key_Return || k === Qt.Key_Enter) && !ctrl && !alt) {
       ed.returnKey(item, shift)
@@ -902,8 +940,33 @@ Item {
         width: column.width
         height: blank && !field.activeFocus ? Math.round(space * ed.textSize) : gapTop + field.height
 
-        onBodyChanged: if (field.text !== body) field.text = body
-        Component.onCompleted: field.text = body
+        // What the field holds, read and written as the body: with emphasis
+        // in it the field is rich text (Emph.js), and then its `text` is
+        // html — `plain` is the body, character for character, and the only
+        // thing the editor ever looks at.
+        readonly property bool rich: kind !== "code" && kind !== "front" && Emph.has(body)
+        property bool rendering: false
+
+        function plain() {
+          return field.textFormat === TextEdit.RichText
+            ? field.getText(0, field.length).replace(/[\u2028\u2029]/g, "\n")
+            : field.text
+        }
+
+        function show() {
+          var want = row.rich ? Emph.html(row.body, ed.codeFamily) : row.body
+          if (field.shown === want && row.plain() === row.body) return
+          var col = field.cursorPosition
+          row.rendering = true
+          field.textFormat = row.rich ? TextEdit.RichText : TextEdit.PlainText
+          field.shown = want
+          field.text = want
+          row.rendering = false
+          if (field.cursorPosition !== col) field.cursorPosition = Math.max(0, Math.min(col, field.length))
+        }
+
+        onBodyChanged: row.show()
+        Component.onCompleted: row.show()
 
         FontMetrics { id: fm; font: field.font }
 
@@ -934,6 +997,7 @@ Item {
           text: row.callout === "private" ? "private · never sent" : row.callout
           color: row.priv ? ed.privateColor : ed.dim
           font.family: ed.fontFamily
+          font.styleName: ed.fontStyle
           font.pixelSize: Math.round(ed.textSize * 0.72)
           font.letterSpacing: 0.4
         }
@@ -1015,6 +1079,7 @@ Item {
             text: row.pending ? row.cueLabel : row.dueLabel
             color: row.pending ? ed.accent : due.late ? ed.urgent : ed.dim
             font.family: ed.fontFamily
+            font.styleName: ed.fontStyle
             font.pixelSize: Math.round(ed.textSize * 0.78)
           }
         }
@@ -1059,6 +1124,9 @@ Item {
           x: row.fieldX
           y: row.gapTop
           width: Math.max(0, row.width - row.fieldX - (due.visible ? due.width + Math.round(ed.textSize * 0.6) : 0))
+          // Set by `row.show()`, never bound: the row decides whether this
+          // line is drawn plain or rich, and `shown` is what it last gave.
+          property string shown: ""
           textFormat: TextEdit.PlainText
           wrapMode: TextEdit.Wrap
           selectByMouse: true
@@ -1073,11 +1141,16 @@ Item {
           font.pixelSize: row.kind === "heading"
             ? Math.round(ed.textSize * (row.headingLevel === 1 ? 1.5 : row.headingLevel === 2 ? 1.3 : row.headingLevel === 3 ? 1.15 : 1))
             : (row.kind === "code" || row.kind === "front" ? Math.round(ed.textSize * 0.85) : ed.textSize)
+          font.styleName: row.kind === "heading" || row.kind === "code" || row.kind === "front" ? "" : ed.fontStyle
           font.weight: row.kind === "heading" ? Font.DemiBold : Font.Normal
           cursorVisible: activeFocus
           tabStopDistance: ed.tabStop
 
-          onTextChanged: if (!ed.syncing && text !== row.body) ed.typed(row.index, text, cursorPosition)
+          onTextChanged: {
+            if (ed.syncing || row.rendering) return
+            var p = row.plain()
+            if (p !== row.body) ed.typed(row.index, p, cursorPosition)
+          }
           onCursorPositionChanged: if (activeFocus && !ed.syncing) ed.fieldCursor(row.index, cursorPosition)
           onCursorRectangleChanged: if (activeFocus) ed.updateCursorRect()
           onActiveFocusChanged: {

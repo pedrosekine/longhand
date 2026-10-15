@@ -44,22 +44,28 @@ checkboxes as boxes (click or `Ctrl+L`), bullets, numbers, and private
 callouts marked "never sent"; typing `# `, `- [ ] ` or `> ` turns the line
 into that kind, Backspace at its start turns it back. Colours follow the
 Omarchy theme: headings each in their own, highlights, selection and
-checkboxes from the theme's palette, greys only where they stay readable.
-Text sits a fifth of the way back from the theme's maximum contrast (around
-8:1, never under 7:1), because near-white on near-black blooms on a dark
-screen and reads as heavier than it is.
+checkboxes from the theme's palette, greys only where they stay readable,
+body text at the contrast the theme chose.
 `Ctrl+B` and `Ctrl+I` wrap the selection — or the word the cursor is in — in
 `**` and `*`, `` Ctrl+` `` in backticks, `Ctrl+Shift+S` in `~~`; the same keys
-take them off again. The markers are written into the file as they are,
-because it stays plain markdown and Obsidian reads the same ones; they are
-not yet *drawn* as styled text.
+take them off again. Emphasis is **drawn**: the markers go to nothing and
+the words carry the weight, nested ones too (`***both***`). They are still
+in the file exactly as written, so Obsidian reads the same markdown — and
+break one of a pair and it stops being emphasis, so the markers come back
+at full size, which is how you see them to edit them. A `*` with spaces
+around it is arithmetic and an underscore inside a word is part of the
+word; neither is markup.
 
 The page is set in **iA Writer Quattro S**, a proportional face made for
 writing: prose reads as prose rather than as code, and 72 characters take
 less width than they do in a monospace. Fenced code and frontmatter keep a
 monospace, where columns mean something. `font` and `codeFont` in the config
 name other faces; without them the page takes the first it finds of iA
-Writer Quattro S, iA Writer Duo S, then the shell's own. Size follows the
+Writer Quattro S, iA Writer Duo S, then the shell's own. The page asks for
+the face's `Regular` cut by name: the iA Writer families declare the same
+weight for every style, so asking by weight hands back the Bold file — the
+whole page came out heavy and `**bold**` had nowhere heavier to go. A
+family without a style of that name is unaffected. Size follows the
 shell's scale (your Omarchy font size); `Ctrl+=` / `Ctrl+-` / `Ctrl+0`
 zoom the whole page like a browser, remembered across restarts. `Ctrl+F`
 finds in the note as you type: Enter next, Shift+Enter previous,
@@ -102,7 +108,11 @@ Nothing ever interrupts your writing to offer the agent. You reach for it:
 a run of list items counts as one submission. The word reads dim when that
 block carries a sign for the agent (a checkbox, an `@` line, a line ending
 in `?`, a ticked box) and faint when it does not; asking anyway says why in
-one line. `Alt+Up/Down`
+one line. From the moment you ask until the answer is back, the block's
+gutter mark carries a light travelling down it and the header's **agent**
+brightens — a mark that moves means still thinking, a mark that rests means
+answered. A pass that fails says so in a line under the cursor; it never
+looks like an agent with nothing to say. `Alt+Up/Down`
 move between blocks, `Ctrl+Up/Down` jump to a block's start or end
 (`Ctrl+Shift+Up/Down` select to it, a block more each press),
 `Alt+Right` goes into the margin — proposals first (Enter accepts one and runs
@@ -119,7 +129,7 @@ block is written in. Needs `~/.config/omarchy-student/config.json` (copy
 ```bash
 cp -r plugin-page ~/.config/omarchy/plugins/student.page   # then add {"id":"student.page"} to plugins[] in ~/.config/omarchy/shell.json
 python3 tests/test_blocks.py                                # block splitter, JS and Python must agree (needs node)
-QT_QPA_PLATFORM=offscreen /usr/lib/qt6/bin/qmltestrunner -input tests   # editor (driven by keys), calendar days, bound lines
+QT_QPA_PLATFORM=offscreen /usr/lib/qt6/bin/qmltestrunner -input tests   # editor (driven by keys), emphasis, calendar days, bound lines
 python3 tests/test_pomo.py                                    # the deadline CLI's contract with the page
 python3 tests/page/run.py                                     # the page itself, live: a window that never takes focus, a throwaway vault
 ```
@@ -161,6 +171,11 @@ an `@` line, a line ending in `?`, tick a box, or open the page. It builds
 the context from an allowlist, logs it, runs a tool-less opencode agent, and
 writes the reply to `agents/student/daily/<date>.md` in your vault. It never
 writes under your daily-notes folder.
+
+opencode is run `--standalone`, from the agent's own empty directory, so a
+pass has a server of its own that dies with it and nothing of any project is
+ever in scope. The ledger (`~/.local/state/omarchy-student/cost.tsv`) reads
+each pass's price back from its session.
 
 ```bash
 ln -s "$PWD/agent/student-agent" ~/.local/bin/student-agent

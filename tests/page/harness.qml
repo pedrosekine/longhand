@@ -29,7 +29,11 @@ ShellRoot {
     function type(s: string): void {
       var e = page.editorItem
       var it = e.rowItem(e.focusedRow) || e.rowItem(page.lineIndexAt(e.cursorPosition))
-      it.field.insert(it.field.cursorPosition, s)
+      // A row with emphasis in it is rich text, and a rich field reads what
+      // is handed to `insert` as html — which keys never are. Go through the
+      // note there, the way the key path ends up doing.
+      if (it.rich) e.insert(e.cursorPosition, s)
+      else it.field.insert(it.field.cursorPosition, s)
     }
     function enter(): void {
       var e = page.editorItem
@@ -41,12 +45,13 @@ ShellRoot {
     function cursorEnd(): void { page.editorItem.setCursor(page.editorItem.length, true) }
     function cursorLine(): int { return page.lineIndexAt(page.editorItem.cursorPosition) }
     function tick(line: int): void { page.editorItem.toggleCheckbox(line) }
+    function erase(a: int, b: int): void { page.editorItem.remove(a, b) }
     function removeLine(line: int): void { var e = page.editorItem; var r = e.rows[line]; e.remove(r.start, r.start + r.raw.length + 1) }
     function openDay(stem: string): void { page.openNote(stem) }
     function header(): string { return page.dateLabel }
     // Prompts and keys
     function ask(): string { return JSON.stringify(page.ask) }
-    function marks(): string { return JSON.stringify(page.paint.map(function (m) { return m.reply ? (m.unread ? "reply:unread" : "reply") : "other" })) }
+    function marks(): string { return JSON.stringify(page.paint.map(function (m) { return m.sending ? "sending" : m.reply ? (m.unread ? "reply:unread" : "reply") : "other" })) }
     function trigger(): string { return page.triggerForBlock(page.currentHash) }
     function sign(): string { return page.currentTrigger }
     function askNow(): void { page.sendCurrent() }
@@ -57,6 +62,13 @@ ShellRoot {
     function agentOn(): bool { return page.agentOn }
     // `@` calling a project
     function mention(): string { return JSON.stringify(page.mention ? page.mention.items.map(function (p) { return p.tag }) : null) }
+    // How a line is drawn: whether its emphasis is drawn rather than shown,
+    // and the plain text the field holds under it — which must be the line.
+    function drawn(line: int): string {
+      var it = page.editorItem.rowItem(line)
+      return it ? JSON.stringify({ rich: it.rich, plain: it.plain(), len: it.field.length }) : "null"
+    }
+
     function focusedRow(): string { var e = page.editorItem; return e.focusedRow + "/" + e.rows.length + " item=" + (!!e.rowItem(e.focusedRow)) }
     function mentionPick(i: int, shift: bool): void { page.mentionFocus = i; page.acceptMention(shift) }
     function hint(): string { return page.hint }

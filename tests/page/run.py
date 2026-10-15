@@ -62,9 +62,14 @@ class Page:
         bindir = self.tmp / "bin"
         bindir.mkdir()
         (bindir / "pomo").symlink_to(ROOT / "cli" / "pomo")
-        # Only the local commands run (no model): accept, projects.
+        # Only the local commands run (no model): accept, projects, sections.
+        # A model pass is a stub that takes its time, so the page's "this is
+        # away" mark can be seen while it is away.
         self.runner.write_text(f"""#!/bin/bash
-case "$1" in accept|projects|sections) exec "{ROOT}/agent/student-agent" "$@" ;; esac
+case "$1" in
+  accept|projects|sections) exec "{ROOT}/agent/student-agent" "$@" ;;
+  run|chat) sleep 2; exit 0 ;;
+esac
 """)
         self.runner.chmod(0o755)
         self.env = dict(os.environ, XDG_CONFIG_HOME=str(cfg), XDG_STATE_HOME=str(self.state),
@@ -529,6 +534,37 @@ def main() -> int:
         check(json.loads(p.call("panel"))["project"] is False and p.call("keyPage", KEY_B, CTRL | SHIFT) == "true",
               "Ctrl+Shift+B is taken too")
         check(p.wait(lambda: "**chapter**" in p.call("text")), "…and does not touch the words")
+
+        # 11f. emphasis, drawn: the markers go to nothing and the words
+        # carry the weight, while the field underneath still holds the line
+        # character for character — every offset in the editor counts on it.
+        (p.daily / f"{TODAY}.md").write_text(header(TODAY) + "read **chapter** seven\nplain 2 * 3 line\n")
+        p.open_fresh()
+        rich = json.loads(p.call("drawn", p.line_of("read **chapter**")))
+        check(rich["rich"] is True, "a line with emphasis is drawn, not shown")
+        check(rich["plain"] == "read **chapter** seven" and rich["len"] == 22,
+              f"…over the line as it is on disk ({rich!r})")
+        flat = json.loads(p.call("drawn", p.line_of("plain 2 *")))
+        check(flat["rich"] is False, "arithmetic is not emphasis")
+        # Break the pair and the markers come back: that is how you edit them.
+        star = p.offset_of_line(p.line_of("read **chapter**")) + 15
+        p.call("erase", star, star + 1)           # one star of the closing pair
+        check(p.wait(lambda: "read **chapter* seven" in p.call("text")),
+              f"a marker can be deleted ({p.call('text')!r})")
+        check(p.wait(lambda: json.loads(p.call("drawn", p.line_of("read **chapter*")))["rich"] is False),
+              "…and a broken pair shows itself again")
+
+        # 11g. the agent, away: asking marks the block from the moment of the
+        # ask and the mark goes when the answer is back. The page used to
+        # look identical whether a pass was in flight or had died.
+        (p.daily / f"{TODAY}.md").write_text(header(TODAY) + "@ what did I say about reviews?\n")
+        p.open_fresh()
+        p.call("cursor", p.offset_of_line(p.line_of("@ what")) + 2)
+        check(p.wait(lambda: p.call("sign") != ""),
+              f"the block carries a sign for the agent ({p.call('sign')!r})")
+        p.call("askNow")
+        check(p.wait(lambda: "sending" in p.call("marks"), 4), f"asking marks the block ({p.call('marks')})")
+        check(p.wait(lambda: "sending" not in p.call("marks"), 8), "…and the mark goes when it is back")
 
         # 12. the theme: roles come from the Omarchy palette, headings apart
         pal = p.call("palette")

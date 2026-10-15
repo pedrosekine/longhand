@@ -22,16 +22,25 @@ AGENT = ROOT / "agent" / "student-agent"
 
 STUB = """#!/usr/bin/env python3
 import json, sys
-payload = sys.stdin.read()
 import os
 os.makedirs(os.environ["STUB_DIR"], exist_ok=True)
+open(os.path.join(os.environ["STUB_DIR"], "argv.json"), "w").write(
+    json.dumps({"argv": sys.argv[1:], "cwd": os.getcwd()}))
+if sys.argv[1:2] == ["session"]:
+    print(json.dumps({"info": {"cost": 0.5, "tokens": {"input": 7, "output": 3, "reasoning": 1}}}))
+    sys.exit(0)
+if os.environ.get("STUB_DEAF"):
+    print("DESCRIPTION\\n  Run OpenCode with a message\\nERRORS\\n  Unrecognized flag")
+    sys.exit(0)
+payload = sys.stdin.read()
 open(os.path.join(os.environ["STUB_DIR"], "last_payload.md"), "w").write(payload)
 reply = json.loads(open(os.path.join(os.environ["STUB_DIR"], "reply.json")).read())
 text = "```json\\n" + json.dumps(reply) + "\\n```"
 ev = lambda t, part: print(json.dumps({"type": t, "sessionID": "ses_stub", "part": part}))
 ev("step_start", {"type": "step-start"})
 ev("text", {"type": "text", "text": text, "time": {"start": 1, "end": 2}})
-ev("step_finish", {"type": "step-finish", "cost": 0.0002, "tokens": {"input": 100, "output": 20, "reasoning": 5, "total": 125}})
+if not os.environ.get("STUB_FREE"):
+    ev("step_finish", {"type": "step-finish", "cost": 0.0002, "tokens": {"input": 100, "output": 20, "reasoning": 5, "total": 125}})
 """
 
 # The test's "today" is the real today: the runner judges recency (the
@@ -398,6 +407,43 @@ def main() -> int:
         check("#intsem" in ctx and "earlier daily notes" in ctx, "the payload names what it is carrying")
         openctx = t.agent("context", "--trigger", "open").stdout
         check("reviews explained" not in openctx, "the automatic open pass is not widened")
+        # 17. how opencode is called. The flags moved under it once and every
+        # run failed for a day while the page said nothing — the invocation
+        # is part of the contract now, not an implementation detail.
+        print("-- the call to opencode")
+        t.note.write_text(NOTE)
+        (t.stub_dir / "argv.json").unlink(missing_ok=True)
+        r = t.agent("run", "--trigger", "mention", "--hash", at_block["hash"], "--date", DAY)
+        called = json.loads((t.stub_dir / "argv.json").read_text())
+        argv = called["argv"]
+        check(argv[0] == "run", "opencode is asked to run")
+        check("--standalone" in argv, "a server of its own, nothing resident")
+        check(argv[argv.index("--format") + 1] == "json", "machine-readable events")
+        check(argv[argv.index("--agent") + 1] == "student", "the student agent, with its denied tools")
+        check(not ({"--pure", "--dir", "--variant"} & set(argv)), "no flag opencode no longer knows")
+        check(pathlib.Path(called["cwd"]).resolve() == (t.state_home / "omarchy-student" / "agent-cwd").resolve(),
+              "run from the agent's own empty directory, never a project")
+
+        # A run that says nothing at all did not run. opencode prints its
+        # usage and exits 0 when it does not know a flag.
+        print("-- a silent failure is a failure")
+        env_was = t.env.get("STUB_DEAF")
+        t.env["STUB_DEAF"] = "1"
+        r = t.agent("run", "--trigger", "mention", "--hash", at_block["hash"], "--date", DAY)
+        if env_was is None:
+            t.env.pop("STUB_DEAF")
+        check(r.returncode != 0, "the runner exits non-zero")
+        last = json.loads((t.vault / "agents" / "student" / "daily" / f"{DAY}.json").read_text())["runs"][-1]
+        check("Unrecognized flag" in last["error"], "what opencode said is kept")
+
+        # The ledger when the events carry no price: asked of the session.
+        print("-- the price, asked of the session")
+        t.env["STUB_FREE"] = "1"
+        r = t.agent("run", "--trigger", "mention", "--hash", at_block["hash"], "--date", DAY)
+        t.env.pop("STUB_FREE")
+        last = json.loads((t.vault / "agents" / "student" / "daily" / f"{DAY}.json").read_text())["runs"][-1]
+        check(abs(last["cost"] - 0.5) < 1e-9, "cost read back from the session")
+        check(last["tokens"]["total"] == 11, "and its tokens")
     finally:
         t.cleanup()
 

@@ -147,6 +147,61 @@ Item {
       compare(ed.text, "\nread ***chapter*** seven")
     }
 
+    // Emphasis is drawn, not shown: the row becomes rich text whose plain
+    // text is still the line's body, so every offset the editor counts on
+    // stays where it was.
+    function test_an_emphasised_row_is_drawn_rich() {
+      start("\nread **chapter** seven", 1)
+      var item = ed.rowItem(1)
+      compare(item.rich, true)
+      compare(item.field.textFormat, TextEdit.RichText)
+      compare(item.plain(), "read **chapter** seven")
+      compare(item.field.length, 22)
+    }
+
+    function test_a_row_without_emphasis_stays_plain() {
+      start("\nread chapter seven", 1)
+      var item = ed.rowItem(1)
+      compare(item.rich, false)
+      compare(item.field.textFormat, TextEdit.PlainText)
+    }
+
+    // The markers are hidden only while they are doing a job. Take one away
+    // and the pair comes back at full size, which is how you see it.
+    function test_breaking_a_pair_shows_it_again() {
+      start("\nread **chapter** seven")
+      compare(ed.rowItem(1).rich, true)
+      ed.remove(ed.text.length - 7, ed.text.length - 6)   // one star of the closer
+      compare(ed.text, "\nread **chapter* seven")
+      compare(ed.rowItem(1).rich, false)
+    }
+
+    function test_typing_into_a_drawn_row_writes_through() {
+      start("\nread **chapter** seven")
+      type(" twice")
+      compare(ed.text, "\nread **chapter** seven twice")
+      compare(ed.rowItem(1).plain(), "read **chapter** seven twice")
+    }
+
+    // Ctrl+B on a word and the row turns rich under the cursor, which must
+    // stay where the student left it.
+    function test_the_cursor_holds_while_the_row_turns_rich() {
+      start("\nread chapter seven", 9)
+      ed.emphasise("**")
+      compare(ed.text, "\nread **chapter** seven")
+      compare(ed.rowItem(1).rich, true)
+      ed.clearSelection()                        // wrapping left the words selected
+      ed.setCursor(ed.text.length, true)
+      type("!")
+      compare(ed.text, "\nread **chapter** seven!")
+    }
+
+    function test_a_code_line_keeps_its_markdown() {
+      start("\n```\na **b** c\n```")
+      compare(ed.rows[2].kind, "code")
+      compare(ed.rowItem(2).rich, false)
+    }
+
     function test_typing_writes_through() {
       start("\nhello")
       type(" world")
@@ -422,6 +477,26 @@ Item {
       compare(ed.text, "\none\n# two")
       compare(ed.rows[2].kind, "heading")
       compare(ed.focusedRow, 2)
+    }
+
+    // Paste goes through the note's own plain clipboard, so a drawn row —
+    // which is rich text, and would read what it is handed as html — takes
+    // the same characters a plain one would.
+    function test_paste_into_a_drawn_row() {
+      start("\nread **chapter** seven", 1)
+      compare(ed.rowItem(1).rich, true)
+      ed.copyText("  a < b  ")
+      ed.setCursor(ed.text.length, true)
+      keyClick(Qt.Key_V, Qt.ControlModifier)
+      compare(ed.text, "\nread **chapter** seven  a < b  ")
+    }
+
+    // Offsets across a drawn row are the body's, so a selection that crosses
+    // it carries the markdown, not what is drawn.
+    function test_a_selection_across_a_drawn_row_is_the_markdown() {
+      start("\nread **chapter** seven\nnext line")
+      ed.selectSpan(1, ed.text.length)
+      compare(ed.text.slice(ed.selStart, ed.selEnd), "read **chapter** seven\nnext line")
     }
 
     function test_cursor_rect_follows_new_line() {
