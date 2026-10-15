@@ -515,6 +515,24 @@ a fix or a feature to decide first):
      **when** (give it a do-date), **not now** (postpone by hand), **drop**
      (`- [-]` with a cancelled date). Ticking it is a lie, ignoring it is
      the 2/22, and those are currently the only two options.
+     **Done 2026-10-15:** the dashboard, full width, `Ctrl+T` (it replaces
+     the margin's narrow what's-next). Rows group by what they ask of you —
+     DUE, DOING (a do-date), TO SCHEDULE (a priority and no day) — and then
+     by project, each row carrying its heading path, its dates and when it
+     was written. The verbs: **Enter** opens the line in the note,
+     **Ctrl+Enter** closes it out, **t** asks when in words (read by the
+     note's own `Dates.js`, written as `⏳ YYYY-MM-DD`), **p** walks the
+     three priorities, **Del** drops (`- [-] … ❌ <day>`), **Ctrl+Z** takes
+     a tick or a drop back. Every edit is surgical — `Task.js` keeps the
+     words byte for byte and rebuilds only the metadata tail — and lands in
+     the day the line was written, whether that is today's note in the
+     editor or another day's on disk. Enter in the deadline popup opened
+     *nothing* and meant *done*; it now opens the line there too (`d` still
+     closes out), so one key means one thing across the page, the popup and
+     the dashboard. Left for the lifespans below: **not now** (`s`), which
+     needs the silence clock; and `g` (grade) in the dashboard, which only
+     the popup has. Tests: `tests/test_task.py` for the line editing,
+     `tests/page/run.py` for the dashboard driven live.
    Also settled: **two dates, due and do.** The due date is a fact you
    receive; the do-date is the decision students avoid, which makes it the
    agent's job — workload across the next fortnight by project, proposed

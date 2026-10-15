@@ -92,7 +92,7 @@ class Page:
         chatstub.write_text(CHAT_STUB)
         self.runner.write_text(f"""#!/bin/bash
 case "$1" in
-  accept|projects|sections) exec "{ROOT}/agent/student-agent" "$@" ;;
+  accept|projects|sections|next|tasks) exec "{ROOT}/agent/student-agent" "$@" ;;
   run) sleep 2; exit 0 ;;
   chat) sleep 2; exec python3 "{chatstub}" "{self.vault}/agents/student/daily" "$@" ;;
 esac
@@ -664,6 +664,88 @@ def main() -> int:
         lay = json.loads(p.call("layout"))
         check(40 < lay["chars"] < 72 and lay["x"] == 0, f"zoomed past the window, the column fills it and wraps ({lay})")
         p.call("zoom", 1)
+
+        # 12. the dashboard (2026-10-15): every open box in one place, each
+        # row saying where it came from, and the three verbs an old box never
+        # had. Ticking here ticks the line in the day it was written.
+        KEY_RETURN, KEY_DELETE, KEY_Z, KEY_ESC = 0x01000004, 0x01000007, 0x5a, 0x01000000
+        (p.daily / f"{YDAY}.md").write_text(header(YDAY)
+            + "# Design Theory #dtm\n\n## Essay 2\n\n- [ ] draft the intro\n- [ ] ask about the rubric\n")
+        (p.daily / f"{TODAY}.md").write_text(header(TODAY)
+            + "# Interdisciplinary Seminar #intsem\n\n- [ ] slides ⏳ 2030-01-02\n"
+              "- [ ] read the paper ⏫\n- [ ] loose thought\n")
+        p.open_fresh()
+        p.call("dash")
+        check(p.call("dashOpen") == "true", "Ctrl+T opens the dashboard")
+
+        def heads():
+            return [r["text"] for r in json.loads(p.call("dashRows")) if r["kind"] == "head"]
+
+        def row(title):
+            # The list is rebuilt whenever a line changes, so a row's index
+            # is only good once it has stopped moving.
+            def at():
+                rows = json.loads(p.call("dashRows"))
+                return next((n for n, r in enumerate(rows) if r.get("text") == title), -1), rows
+            i, rows = at()
+            for _ in range(20):
+                time.sleep(0.3)
+                j, rows = at()
+                if i == j and j >= 0:
+                    break
+                i = j
+            p.call("dashFocus", i)
+            return rows[i] if i >= 0 else {}
+
+        check(p.wait(lambda: heads()[-4:] == ["DOING", "TO SCHEDULE", "#intsem", "#dtm"]),
+              f"grouped by what it asks of you, then by project ({heads()})")
+        intro = row("draft the intro")
+        check("Design Theory › Essay 2" in intro["where"],
+              f"a row says where it came from ({intro['where']!r})")
+        check("written yesterday" in intro["where"], "…and when it was written")
+        check(row("slides")["when"] == "2030-01-02" and row("read the paper")["prio"] == 2,
+              "a do-date and a priority are read off the line")
+
+        row("draft the intro")
+        check(p.call("dashKey", KEY_RETURN, CTRL) == "true", "Ctrl+Enter is the act that settles a row")
+        check(p.wait(lambda: "- [x] draft the intro" in (p.daily / f"{YDAY}.md").read_text()),
+              "…and it ticks the line in the day it was written")
+
+        row("ask about the rubric")
+        check(p.call("dashType", "t") == "true", "t asks when")
+        p.call("dashWhen", "tomorrow")
+        tomorrow = (dt.date.today() + dt.timedelta(days=1)).isoformat()
+        check(p.wait(lambda: f"⏳ {tomorrow}" in (p.daily / f"{YDAY}.md").read_text()),
+              f"…read by the note's own parser, written as a day with no hour ({(p.daily / f'{YDAY}.md').read_text()!r})")
+        check(p.wait(lambda: any(r.get("text") == "ask about the rubric" and r["when"] == tomorrow
+                                 for r in json.loads(p.call("dashRows")))),
+              f"…and the row moves to DOING ({[r for r in json.loads(p.call('dashRows')) if r.get('text') == 'ask about the rubric']})")
+
+        row("loose thought")
+        check(p.call("dashType", "p") == "true", "p is taken")
+        check(p.wait(lambda: "- [ ] loose thought ⏫" in p.call("text")),
+              f"p gives it a priority, written as Obsidian reads it ({p.call('text')[-40:]!r})")
+        row("loose thought")
+        p.call("dashType", "p")
+        check(p.wait(lambda: "- [ ] loose thought 🔽" in p.call("text")), "…and walks the three levels")
+        row("loose thought")
+        p.call("dashType", "p")
+        check(p.wait(lambda: "- [ ] loose thought\n" in p.call("text")), "…back round to none")
+
+        row("loose thought")
+        check(p.call("dashKey", KEY_DELETE, 0) == "true", "Delete drops it")
+        gone = f"- [-] loose thought ❌ {dt.date.today().isoformat()}"
+        check(p.wait(lambda: gone in p.call("text")), f"…cancelled, with the day it was dropped ({p.call('text')[-45:]!r})")
+        check(p.wait(lambda: not any(r.get("text") == "loose thought" for r in json.loads(p.call("dashRows")))),
+              "…and it leaves the dashboard, because dropping is an answer")
+        check(p.call("dashKey", KEY_Z, CTRL) == "true", "Ctrl+Z takes a drop back")
+        check(p.wait(lambda: "- [ ] loose thought\n" in p.call("text")), "…with no mark left on the line")
+
+        row("read the paper")
+        p.call("dashKey", KEY_RETURN, 0)
+        check(p.wait(lambda: p.call("dashOpen") == "false"), "Enter leaves the dashboard for the line")
+        check(int(p.call("cursorLine")) == p.line_of("read the paper"),
+              f"…with the cursor on it (cursor {p.call('cursorLine')}, line {p.line_of('read the paper')}, text {p.call('text')!r})")
 
         # 13. the usage log: written on close, event names only
         p.call("closeAll")

@@ -18,12 +18,19 @@ JS_SHIM = """
 const fs = require('fs');
 let src = fs.readFileSync(process.argv[1], 'utf8').replace('.pragma library', '');
 const m = {};
-new Function('module', src + '\\nmodule.parse = parse;\\nmodule.scan = scan;\\nmodule.where = where;')(m);
+new Function('module', src + '\\nmodule.parse = parse;\\nmodule.scan = scan;\\nmodule.where = where;'
+  + '\\nmodule.setField = setField;\\nmodule.setPriority = setPriority;\\nmodule.setState = setState;'
+  + '\\nmodule.nextPriority = nextPriority;\\nmodule.sameWords = sameWords;')(m);
 const input = JSON.parse(fs.readFileSync(0, 'utf8'));
 process.stdout.write(JSON.stringify({
   lines: input.lines.map(m.parse),
   notes: input.notes.map(m.scan),
   wheres: input.notes.map(n => m.scan(n).map(m.where)),
+  edits: input.edits.map(e => e[1] === 'field' ? m.setField(e[0], e[2], e[3])
+    : e[1] === 'prio' ? m.setPriority(e[0], e[2])
+    : e[1] === 'state' ? m.setState(e[0], e[2])
+    : e[1] === 'same' ? m.sameWords(e[0], e[2])
+    : m.nextPriority(e[0])),
 }));
 """
 
@@ -80,6 +87,48 @@ NOTES = [
 ]
 
 
+# Changing a line: the words must come back byte for byte, the fields in a
+# canonical order, the anchor last. The page is the only writer of notes, so
+# these are the only edits a note ever gets that the student did not type.
+DATED = "- [ ] draft the intro #dtm 📅 2026-10-20 17:00 ^d12"
+EDITS = [
+    # [line, op, arg, arg] → expected
+    ([DATED, "field", "⏳", "2026-10-18"],
+     "- [ ] draft the intro #dtm ⏳ 2026-10-18 📅 2026-10-20 17:00 ^d12"),
+    ([DATED, "field", "📅", "2026-10-22"],
+     "- [ ] draft the intro #dtm 📅 2026-10-22 ^d12"),
+    ([DATED, "field", "📅", ""],
+     "- [ ] draft the intro #dtm ^d12"),
+    ([DATED, "prio", 2, None],
+     "- [ ] draft the intro #dtm ⏫ 📅 2026-10-20 17:00 ^d12"),
+    ([DATED, "state", "x", None],
+     "- [x] draft the intro #dtm 📅 2026-10-20 17:00 ^d12"),
+    (["- [ ] plain", "prio", 2, None], "- [ ] plain ⏫"),
+    (["- [ ] plain ⏫", "prio", -1, None], "- [ ] plain 🔽"),
+    (["- [ ] plain ⏫", "prio", 0, None], "- [ ] plain"),
+    (["- [ ] plain 🔺 ⏳ 2026-10-18", "prio", -2, None], "- [ ] plain ⏬ ⏳ 2026-10-18"),
+    (["  - [ ] nested", "field", "⏳", "2026-10-18"], "  - [ ] nested ⏳ 2026-10-18"),
+    (["- [ ]", "field", "⏳", "2026-10-18"], "- [ ] ⏳ 2026-10-18"),
+    (["- [ ] two   spaces   kept #tag", "prio", 2, None], "- [ ] two   spaces   kept #tag ⏫"),
+    (["- [ ] 🔁 every week 📅 2026-10-20", "field", "✅", "2026-10-19"],
+     "- [ ] 🔁 every week 📅 2026-10-20 ✅ 2026-10-19"),
+    (["- [ ] odd 🧿 something we do not know 📅 2026-10-20", "field", "⏳", "2026-10-18"],
+     "- [ ] odd 🧿 something we do not know ⏳ 2026-10-18 📅 2026-10-20"),
+    (["not a checkbox", "field", "⏳", "2026-10-18"], "not a checkbox"),
+    # Finding the line again after the facts on it have changed: a drop adds
+    # ❌ to it, and Ctrl+Z has to find it anyway.
+    (["- [-] loose thought ❌ 2026-10-15", "same", "loose thought", None], True),
+    (["- [ ] loose thought ⏫", "same", "loose thought", None], True),
+    (["- [ ] loose thought again", "same", "loose thought", None], False),
+    (["- [ ] read ch.7 #hfpi ⏳ 2026-10-18", "same", "read ch.7 #hfpi", None], True),
+    (["# a heading", "same", "a heading", None], False),
+    ([0, "cycle", None, None], 2),
+    ([2, "cycle", None, None], -1),
+    ([-1, "cycle", None, None], 0),
+    ([1, "cycle", None, None], -1),
+]
+
+
 def js(payload: dict) -> dict:
     out = subprocess.run(["node", "-e", JS_SHIM, str(ROOT / "plugin-page" / "Task.js")],
                          input=json.dumps(payload).encode(), capture_output=True, check=True)
@@ -100,7 +149,11 @@ def main() -> int:
     global failures
     fixtures = sorted((ROOT / "tests" / "fixtures").glob("*.md"))
     notes = NOTES + [f.read_text() for f in fixtures]
-    other = js({"lines": LINES, "notes": notes})
+    other = js({"lines": LINES, "notes": notes, "edits": [e[0] for e in EDITS]})
+
+    for (spec, want), got in zip(EDITS, other["edits"]):
+        check(got == want, f"{spec[1]} {spec[2]!r} → {got!r}"
+              + ("" if got == want else f" (wanted {want!r})"))
 
     for line, got in zip(LINES, other["lines"]):
         mine = task.parse(line)

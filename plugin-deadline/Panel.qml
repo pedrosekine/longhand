@@ -14,14 +14,21 @@ import qs.Ui
 // `pomo deadline ...` call and the file watcher paints the result.
 //
 // Keyboard model: a grid. Rows are deadlines, columns are
-//   0 the deadline itself   Enter = done / reopen
+//   0 the deadline itself   Enter = open its line in the note (done when
+//                           there is no line to open)
 //   1 grade                 Enter = inline grade editor
 //   2 hide                  Enter = keep the record, drop it from the list
 //   3 remove                Enter = delete outright
 // Up/Down pick a row, Left/Right a column, `d` `g` `x` are shortcuts for
 // done, grade, remove; `o` (or a click on the title) opens the page at the
-// note line that stands for the deadline, when one does. Mouse hover drives
-// the same cursor so exactly one cell is highlighted at a time.
+// note line as well. Mouse hover drives the same cursor so exactly one cell
+// is highlighted at a time.
+//
+// Enter used to mean *done* here while it meant *go to it* in the page,
+// which is one key doing two opposite things depending on which surface you
+// opened (2026-10-15). It now opens the line everywhere; closing a deadline
+// out is `d`, as it already was. The popup is the glance and the page's
+// dashboard (Ctrl+T) is where the same list is worked through.
 //
 // The list is what is still in play: open deadlines, and done ones until
 // the day after they were done. Done ones with no grade yet wait in a
@@ -97,7 +104,13 @@ Panel {
   function activateCursor() {
     var item = root.selectedItem()
     if (!item) return
-    if (root.cursorCol === 0) svc.toggleDone(item)
+    // Enter opens the note, if there is a line to open — the page's rule,
+    // kept here so the key means one thing. A deadline no line stands for
+    // has nothing to open, so it closes out instead.
+    if (root.cursorCol === 0) {
+      if (/^\[\[[^\]#|]+#\^d\d+\]\]$/.test(item.link)) root.openLine(item)
+      else svc.toggleDone(item)
+    }
     else if (root.cursorCol === 1) root.startGrade(item)
     else if (root.cursorCol === 2) svc.hide(item.id)
     else svc.remove(item.id)

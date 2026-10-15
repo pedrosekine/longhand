@@ -10,6 +10,7 @@ import "Bound.js" as Bound
 import "Dates.js" as Dates
 import "Days.js" as Days
 import "Tasks.js" as Tasks
+import "Task.js" as Task
 
 // The page: today's note as a blank sheet in the shell, with the agent in
 // the margin. Two shapes of the same sheet: the overlay (a layer over
@@ -309,7 +310,7 @@ Item {
   property var ask: null         // { hashes, trigger, yes } — the prompt after Enter
   property bool marginOpen: false
   property int marginFocus: -1   // -1 note; 0..n-1 proposal rows; n = chat field
-  property bool tasksOpen: false
+  property bool dashOpen: false
   property bool projectOpen: false   // the margin is showing one project's notes
   property var sections: []          // [{ date, line, heading, title, sub, preview, open, done }]
   property string projectTag: ""
@@ -321,6 +322,8 @@ Item {
   property var tickHistory: []   // ticks made from the panel, newest last, for Ctrl+Z
   property var contextFor: null  // task whose surrounding block is shown in the panel
   property bool showOlder: false
+  property var dashWhenFor: null     // the task the dashboard is asking "when?" about
+  property string dashWhenText: ""
   property int taskFocus: 0
   property string currentHash: ""
   property string currentTrigger: ""   // the sign on the block under the cursor, for the header's "ask"
@@ -375,7 +378,7 @@ Item {
       // The margin is on-demand only, so a page opened from nothing shows
       // the note alone — not the panel the last session left open.
       root.marginOpen = false
-      root.tasksOpen = false
+      root.dashOpen = false
       root.projectOpen = false
       root.marginFocus = -1
       root.projectOpen = false
@@ -933,7 +936,7 @@ Item {
     if (k === Qt.Key_Up && ctrl && !shift) { root.jumpWithinBlock(-1); return true }
     if (k === Qt.Key_Down && ctrl && !shift) { root.jumpWithinBlock(1); return true }
     if (k === Qt.Key_Right && alt) { root.diveIn(); return true }
-    if (k === Qt.Key_T && ctrl) { root.toggleTasks(); return true }
+    if (k === Qt.Key_T && ctrl) { root.toggleDash(); return true }
     if (k === Qt.Key_F && ctrl) { root.openSearch(); return true }
     if (k === Qt.Key_B && ctrl && shift) { root.toggleSidebar(); return true }
     // Emphasis, where every editor puts it. The sidebar moved to the
@@ -966,7 +969,7 @@ Item {
   function backToNote() {
     root.marginFocus = -1
     root.marginOpen = false
-    root.tasksOpen = false
+    root.dashOpen = false
     editor.focusNote()
   }
 
@@ -988,16 +991,25 @@ Item {
 
   // ------------------------------------------------------------ tasks panel
 
-  function toggleTasks() {
-    root.tasksOpen = !root.tasksOpen
-    if (root.tasksOpen) root.used("whats-next")
-    if (root.tasksOpen) {
-      root.marginOpen = true
+  // Ctrl+T: the dashboard. Every open box and every deadline in one place,
+  // full width, worked with keys — the pinned twin of the bar's deadline
+  // popup (SUPER+ALT+D), which stays the glance. It takes the sheet's place
+  // rather than sitting beside it: a list is not prose and does not want the
+  // 72-character measure. Decided 2026-10-15, and it replaces the narrow
+  // what's-next panel the margin used to hold, because two surfaces for one
+  // list is part of what made the list easy to ignore.
+  function toggleDash() {
+    root.dashOpen = !root.dashOpen
+    root.dashWhenFor = null
+    root.dashWhenText = ""
+    if (root.dashOpen) {
+      root.used("dashboard")
       root.taskFocus = 0
+      root.contextFor = null
       root.refreshTasks()
-      marginKeys.forceActiveFocus()
+      dashKeys.forceActiveFocus()
     } else {
-      root.backToNote()
+      editor.focusNote()
     }
   }
 
@@ -1101,16 +1113,25 @@ Item {
     return Qt.formatDate(p.date, "ddd d MMM") + (s.age === 0 ? " · today" : s.age === 1 ? " · yesterday" : "")
   }
 
-  // Rows for the panel: a day header per date, its open tasks, and older
-  // days folded into one row until asked for.
-  // One list by what bites first: deadlines (late ones are the earliest, so
-  // they lead; ones done today stay until tomorrow), then checkboxes with no
-  // date, newest day first, then what the agent raised. A checkbox that
-  // stands for a deadline is listed once, as the deadline.
+  // The dashboard's rows, in the order they ask something of you:
+  //
+  //   DUE            deadlines — late ones are the earliest, so they lead;
+  //                  ones closed today stay until tomorrow
+  //   DOING          boxes with a day on them (⏳ a do-date, or 📅 still
+  //                  unbound), by that day
+  //   TO SCHEDULE    boxes with a priority but no day yet — the pile the
+  //                  do-date is for
+  //   #project       note boxes, under the project that claims them, newest
+  //                  first; older ones folded into one row
+  //   FROM THE AGENT
+  //
+  // Note boxes group by project rather than by the day they were written,
+  // because the day a thought was written is not how it is looked for
+  // (2026-10-15, and the 31 trips to the calendar before it). A box bound to
+  // the store is listed once, as its deadline.
   function buildTaskRows() {
     var rows = []
     var older = 0
-    var lastDate = ""
     var today = new Date()
     today.setHours(0, 0, 0, 0)
     var due = dl.items.filter(function (d) {
@@ -1121,28 +1142,93 @@ Item {
       return a.due - b.due
     })
     if (due.length > 0) {
-      rows.push({ kind: "day", date: "DEADLINES", recent: true })
+      rows.push({ kind: "head", text: "DUE" })
       for (var k = 0; k < due.length; k++) rows.push({ kind: "deadline", deadline: due[k] })
     }
+
+    var doing = [], later = [], notes = []
     for (var i = 0; i < root.tasks.length; i++) {
       var t = root.tasks[i]
-      if (/\s\^d\d+\s*$/.test(t.text)) continue
-      if (!t.recent && !root.showOlder) { older++; continue }
-      if (t.date !== lastDate) { rows.push({ kind: "day", date: t.date, recent: t.recent }); lastDate = t.date }
-      rows.push({ kind: "task", task: t })
+      if (t.anchor > 0) continue
+      if (t.when !== "" || t.due !== "") doing.push(t)
+      else if (t.kind === "task") later.push(t)
+      else if (!t.recent && !root.showOlder) older++
+      else notes.push(t)
+    }
+    doing.sort(function (a, b) { return (a.when || a.due).localeCompare(b.when || b.due) })
+    later.sort(function (a, b) { return b.priority - a.priority || a.age - b.age })
+    if (doing.length > 0) {
+      rows.push({ kind: "head", text: "DOING" })
+      for (var d1 = 0; d1 < doing.length; d1++) rows.push({ kind: "task", task: doing[d1] })
+    }
+    if (later.length > 0) {
+      rows.push({ kind: "head", text: "TO SCHEDULE" })
+      for (var l = 0; l < later.length; l++) rows.push({ kind: "task", task: later[l] })
+    }
+
+    var groups = [], seen = ({})
+    for (var n = 0; n < notes.length; n++) {
+      var key = notes[n].project || ""
+      if (seen[key] === undefined) { seen[key] = groups.length; groups.push({ key: key, items: [] }) }
+      groups[seen[key]].items.push(notes[n])
+    }
+    for (var g = 0; g < groups.length; g++) {
+      rows.push({ kind: "head", text: groups[g].key === "" ? "NO PROJECT" : "#" + groups[g].key })
+      for (var m = 0; m < groups[g].items.length; m++) rows.push({ kind: "task", task: groups[g].items[m] })
     }
     if (older > 0) rows.push({ kind: "older", count: older })
     if (root.raised.length > 0) {
-      rows.push({ kind: "day", date: "FROM THE AGENT", recent: true })
+      rows.push({ kind: "head", text: "FROM THE AGENT" })
       for (var j = 0; j < root.raised.length; j++) rows.push({ kind: "raised", item: root.raised[j] })
     }
     return rows
   }
 
+  // What a row says. The title is the words alone: the dates and the
+  // priority a line carries are drawn as marks, so the metadata is on disk
+  // and quiet on screen.
+  function taskTitle(t) { return t.title !== undefined && t.title !== "" ? t.title : t.text }
+
+  function taskMark(t) {
+    if (t.priority === undefined || t.priority === 0) return "○ "
+    return t.priority >= 1 ? "▲ " : "▽ "
+  }
+
+  // Where it came from and when it wants doing — the line that makes "draft
+  // the intro" mean something three days later.
+  function taskWhere(t) {
+    var bits = []
+    var path = Task.where(t)
+    if (path !== "") bits.push(path)
+    else if (t.project) bits.push("#" + t.project)
+    if (t.when) bits.push("do " + root.sayDate(t.when))
+    if (t.due) bits.push("due " + root.sayDate(t.due))
+    if (t.est) bits.push(t.est)
+    bits.push(root.sayAge(t.age))
+    return bits.join("   ·   ")
+  }
+
+  function sayDate(iso) {
+    if (!iso) return ""
+    var parts = iso.split(" ")
+    var ymd = parts[0].split("-")
+    var d = new Date(parseInt(ymd[0], 10), parseInt(ymd[1], 10) - 1, parseInt(ymd[2], 10))
+    var today = new Date()
+    today.setHours(0, 0, 0, 0)
+    var days = Math.round((d.getTime() - today.getTime()) / 86400000)
+    var say = days === 0 ? "today" : days === 1 ? "tomorrow" : days === -1 ? "yesterday"
+      : days < 0 ? Math.abs(days) + " days late" : Qt.formatDate(d, "ddd d MMM")
+    return say + (parts[1] && parts[1] !== "23:59" ? " " + parts[1] : "")
+  }
+
+  function sayAge(age) {
+    return age === 0 ? "written today" : age === 1 ? "written yesterday" : "written " + age + " days ago"
+  }
+
   function moveTaskFocus(d) {
     var rows = root.taskRows
     var i = root.taskFocus
-    do { i += d } while (i >= 0 && i < rows.length && rows[i].kind === "day")
+    do { i += d } while (i >= 0 && i < rows.length && rows[i].kind === "head")
     if (i >= 0 && i < rows.length) root.taskFocus = i
   }
 
@@ -1166,6 +1252,111 @@ Item {
       dismissProc.command = [svc.runner, "dismiss", "--date", row.item.date, "--kind", row.item.kind, "--index", String(row.item.index)]
       dismissProc.running = true
     }
+  }
+
+  function focusedTask() {
+    var row = root.taskRows[root.taskFocus]
+    return row && row.kind === "task" ? row.task : null
+  }
+
+  // Delete: dropping something is an answer, and the only honest one for a
+  // box that is never going to happen. The line keeps its words and becomes
+  // `- [-] … ❌ <today>`, so the note still says what was decided.
+  function dropFocused() {
+    var t = root.focusedTask()
+    if (!t) return
+    root.tickHistory = root.tickHistory.concat([{ drop: t }])
+    root.editTask(t, "drop", "")
+    root.used("drop")
+  }
+
+  // `p`: none → high → low → none. One key for the whole scale, because
+  // three levels are offered where five are read.
+  function cyclePriorityFocused() {
+    var t = root.focusedTask()
+    if (!t) return
+    root.editTask(t, "prio", Task.nextPriority(t.priority || 0))
+    root.used("priority")
+  }
+
+  // `t`: the one place in the dashboard that takes words instead of keys,
+  // because a date is quicker said than picked — and it is read by the
+  // note's own parser, so "friday" means here what it means there.
+  function startDashWhen() {
+    if (!root.focusedTask()) return
+    root.dashWhenFor = root.focusedTask()
+    root.dashWhenText = ""
+  }
+
+  function commitDashWhen() {
+    var t = root.dashWhenFor
+    var phrase = root.dashWhenText.trim()
+    root.dashWhenFor = null
+    root.dashWhenText = ""
+    if (!t || phrase === "") return
+    var read = Dates.read(phrase, new Date())
+    if (!read) { root.hint = "no date in \"" + phrase + "\""; return }
+    // A do-date is a day, not a moment: the time a deadline carries is the
+    // hour something is owed, and a day you mean to work on it has none.
+    root.editTask(t, "when", read.iso.split(" ")[0])
+    root.used("when")
+  }
+
+  // The one edit path. Today's note is live in the editor; any other day is
+  // rewritten on disk, one line at a time, found by its words because the
+  // note may have moved on since the list was read (Tasks.js).
+  function editTask(t, how, arg) {
+    if (t.date === svc.noteDate) {
+      var rows = editor.rows
+      for (var i = 0; i < rows.length; i++) {
+        if (!Task.sameWords(rows[i].raw, t.text)) continue
+        root.writeLine(rows[i], root.applyEdit(rows[i].raw, how, arg))
+        Qt.callLater(root.refreshTasks)
+        return
+      }
+      return
+    }
+    editFile.pending = { task: t, how: how, arg: arg }
+    if (editFile.path === t.file) editFile.reload()
+    else editFile.path = t.file
+  }
+
+  // The facts the page may change on a line, and nothing else on it
+  // (principle 2: never the words).
+  function applyEdit(line, how, arg) {
+    if (how === "drop") return Task.setField(Task.setState(line, "-"), "❌", Qt.formatDate(new Date(), "yyyy-MM-dd"))
+    if (how === "undrop") return Task.setField(Task.setState(line, " "), "❌", "")
+    if (how === "prio") return Task.setPriority(line, arg)
+    if (how === "when") return Task.setField(line, "⏳", arg)
+    return line
+  }
+
+  // Every key the dashboard takes, in one function so it can be driven
+  // without a keyboard (tests/page/run.py).
+  function dashKey(e) {
+    var ctrl = e.modifiers & Qt.ControlModifier
+    var k = e.key
+    if (root.dashWhenFor) {
+      if (k === Qt.Key_Escape) { root.dashWhenFor = null; root.dashWhenText = ""; return true }
+      if (k === Qt.Key_Return || k === Qt.Key_Enter) { root.commitDashWhen(); return true }
+      return false
+    }
+    if (k === Qt.Key_Escape) { root.toggleDash(); return true }
+    if (k === Qt.Key_T && ctrl) { root.toggleDash(); return true }
+    if (k === Qt.Key_Up) { root.moveTaskFocus(-1); return true }
+    if (k === Qt.Key_Down) { root.moveTaskFocus(1); return true }
+    if (k === Qt.Key_Home) { root.taskFocus = 0; root.moveTaskFocus(0); return true }
+    if (k === Qt.Key_End) { root.taskFocus = root.taskRows.length; root.moveTaskFocus(-1); return true }
+    // Enter goes to it, everywhere in the page; Ctrl+Enter is the act that
+    // settles it. Decided 2026-10-15, and it ends Enter meaning "done" in
+    // the deadline popup and "go to it" here.
+    if ((k === Qt.Key_Return || k === Qt.Key_Enter) && ctrl) { root.tickFocused(); return true }
+    if (k === Qt.Key_Return || k === Qt.Key_Enter) { root.activateTask(); return true }
+    if (k === Qt.Key_Delete || k === Qt.Key_Backspace) { root.dropFocused(); return true }
+    if (k === Qt.Key_Z && ctrl) { root.untickLast(); return true }
+    if (!ctrl && e.text === "p") { root.cyclePriorityFocused(); return true }
+    if (!ctrl && e.text === "t") { root.startDashWhen(); return true }
+    return false
   }
 
   function tickFocused() {
@@ -1253,6 +1444,7 @@ Item {
     var t = root.tickHistory[root.tickHistory.length - 1]
     root.tickHistory = root.tickHistory.slice(0, -1)
     if (t.deadline) { dl.reopen(t.deadline); root.tickBoundLine(t.deadline, false); return }
+    if (t.drop) { root.editTask(t.drop, "undrop", ""); return }
     var re = new RegExp("^(\\s*[-*+] )\\[[xX]\\] " + t.text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$", "m")
     if (t.date === svc.noteDate) {
       var m = re.exec(editor.text)
@@ -1723,7 +1915,7 @@ Item {
     root.used("day", p ? Math.round((today - p.date) / 86400000) : "")
     root.ask = null
     root.marginOpen = false
-    root.tasksOpen = false
+    root.dashOpen = false
     root.marginFocus = -1
     if (svc.saving) { root.pendingStamp = stamp; return }
     svc.openDate(stamp)
@@ -1929,6 +2121,29 @@ Item {
     onLoadFailed: tickFile.pending = null
   }
 
+  // The same, for the facts the dashboard changes: a do-date, a priority, a
+  // drop. One line, atomic, and never a line the student did not point at.
+  FileView {
+    id: editFile
+    property var pending: null
+    atomicWrites: true
+    printErrors: false
+    onLoaded: {
+      var p = editFile.pending
+      if (!p) return
+      editFile.pending = null
+      var lines = text().split("\n")
+      var at = Task.findWords(lines, p.task.line, p.task.text)
+      if (at >= 0) {
+        var next = root.applyEdit(lines[at], p.how, p.arg)
+        if (next !== lines[at]) { lines[at] = next; setText(lines.join("\n")) }
+      }
+      Qt.callLater(root.refreshTasks)
+    }
+    onSaved: root.refreshTasks()
+    onLoadFailed: editFile.pending = null
+  }
+
   // Another day's note, read to show the block around a task in the panel.
   FileView {
     id: contextFile
@@ -2095,8 +2310,238 @@ Item {
       onClicked: root.alongside ? editor.focusNote() : root.dismiss()
     }
 
+    // The dashboard. It takes the sheet's place rather than sitting beside
+    // it: a list is not prose and does not want the 72-character measure, so
+    // it gets the width the window has.
+    BorderSurface {
+      id: dash
+      visible: root.dashOpen
+      x: root.alongside ? 0 : root.sideSpace + root.sheetMargin
+      y: root.alongside ? 0 : root.sheetMargin
+      width: (root.alongside ? content.width : content.width - root.sheetMargin * 2) - root.sideSpace
+      height: root.alongside ? content.height : content.height - root.sheetMargin * 2
+      radius: root.alongside ? 0 : Style.cornerRadius
+      color: root.background
+      borderSpec: root.alongside ? Border.none() : root.borderSpec
+      padding: root.sheetPadding
+
+      MouseArea { anchors.fill: parent; onClicked: dashKeys.forceActiveFocus() }
+
+      Item {
+        id: dashKeys
+        anchors.fill: parent
+        Keys.onPressed: function (event) {
+          if (root.zoomKey(event)) { event.accepted = true; return }
+          if (root.dashKey(event)) event.accepted = true
+        }
+
+        Text {
+          id: dashTitle
+          anchors.top: parent.top
+          anchors.left: parent.left
+          anchors.right: parent.right
+          textFormat: Text.PlainText
+          text: "DASHBOARD"
+          color: root.dim
+          font.family: root.fontFamily
+          font.styleName: root.fontStyle
+          font.pixelSize: root.fs(Style.font.caption)
+        }
+
+        Flickable {
+          id: dashFlick
+          anchors.top: dashTitle.bottom
+          anchors.topMargin: root.sp(12)
+          anchors.left: parent.left
+          anchors.right: parent.right
+          anchors.bottom: dashFoot.top
+          anchors.bottomMargin: root.sp(10)
+          clip: true
+          contentWidth: width
+          contentHeight: dashColumn.implicitHeight
+          boundsBehavior: Flickable.StopAtBounds
+
+          TouchScroll { flickable: dashFlick }
+
+          // Keep the focused row in view.
+          function revealFocused() {
+            var kids = dashColumn.children
+            for (var i = 0; i < kids.length; i++) {
+              var k = kids[i]
+              if (k.index === undefined || k.index !== root.taskFocus) continue
+              if (contentY > k.y) contentY = k.y
+              else if (contentY + height < k.y + k.height) contentY = k.y + k.height - height
+              return
+            }
+          }
+          Connections { target: root; function onTaskFocusChanged() { Qt.callLater(dashFlick.revealFocused) } }
+
+          Column {
+            id: dashColumn
+            width: parent.width
+            spacing: root.sp(2)
+
+            Text {
+              width: parent.width
+              visible: root.taskRows.length === 0
+              textFormat: Text.PlainText
+              text: "nothing open"
+              color: root.faint
+              font.family: root.fontFamily
+              font.styleName: root.fontStyle
+              font.pixelSize: root.fs(Style.font.bodySmall)
+            }
+
+            Repeater {
+              model: root.taskRows
+              Rectangle {
+                required property var modelData
+                required property int index
+                readonly property bool isHead: modelData.kind === "head"
+                readonly property bool hot: root.taskFocus === index && !isHead
+                width: dashColumn.width
+                height: rowCol.implicitHeight + (isHead ? root.sp(20) : root.sp(10))
+                radius: Style.cornerRadius
+                color: hot ? Style.selectedFill : "transparent"
+
+                Column {
+                  id: rowCol
+                  anchors.left: parent.left
+                  anchors.right: parent.right
+                  anchors.leftMargin: root.sp(8)
+                  anchors.rightMargin: root.sp(8)
+                  anchors.bottom: parent.bottom
+                  anchors.bottomMargin: root.sp(5)
+                  spacing: root.sp(1)
+
+                  Text {
+                    width: parent.width
+                    textFormat: Text.PlainText
+                    wrapMode: Text.WordWrap
+                    text: modelData.kind === "head" ? modelData.text
+                      : modelData.kind === "older" ? "+" + modelData.count + " written longer ago · Enter to show"
+                      : modelData.kind === "raised"
+                        ? (modelData.item.kind === "suggestion" ? "◇ " : "· ") + modelData.item.text
+                      : modelData.kind === "deadline" ? root.deadlineRowText(modelData.deadline)
+                        : root.taskMark(modelData.task) + root.taskTitle(modelData.task)
+                    color: modelData.kind === "head" ? root.dim
+                      : modelData.kind === "older" ? root.faint
+                      : modelData.kind === "deadline" ? root.deadlineColor(modelData.deadline)
+                      : root.foreground
+                    font.family: root.fontFamily
+                    font.styleName: root.fontStyle
+                    font.pixelSize: modelData.kind === "head" ? root.fs(Style.font.caption) : root.fs(Style.font.body)
+                  }
+
+                  // Where it came from, which is what makes a bare title
+                  // mean something again three days later.
+                  Text {
+                    width: parent.width
+                    visible: text !== ""
+                    textFormat: Text.PlainText
+                    elide: Text.ElideRight
+                    text: modelData.kind === "task" ? root.taskWhere(modelData.task)
+                      : modelData.kind === "raised" ? (modelData.item.evidence || "")
+                      : ""
+                    color: root.faint
+                    font.family: root.fontFamily
+                    font.styleName: root.fontStyle
+                    font.pixelSize: root.fs(Style.font.caption)
+                  }
+                }
+
+                MouseArea {
+                  anchors.fill: parent
+                  enabled: !parent.isHead
+                  onClicked: { root.taskFocus = index; root.activateTask() }
+                }
+              }
+            }
+
+            // The block around a task from another day, unfolded on Enter.
+            Text {
+              width: parent.width
+              visible: !!root.contextFor && (root.contextFor.deadline !== undefined || contextFile.snippet !== "")
+              textFormat: Text.PlainText
+              wrapMode: Text.WordWrap
+              text: !root.contextFor ? ""
+                : root.contextFor.deadline !== undefined ? "Not written in a note yet. Enter again writes it into today's note."
+                : root.contextFor.date + "\n\n" + contextFile.snippet
+              color: root.dim
+              font.family: root.fontFamily
+              font.styleName: root.fontStyle
+              font.pixelSize: root.fs(Style.font.bodySmall)
+            }
+          }
+        }
+
+        Item {
+          id: dashFoot
+          anchors.left: parent.left
+          anchors.right: parent.right
+          anchors.bottom: parent.bottom
+          height: Math.max(dashWhenRow.implicitHeight, dashHint.implicitHeight)
+
+          Text {
+            id: dashHint
+            anchors.left: parent.left
+            anchors.right: parent.right
+            visible: !root.dashWhenFor
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
+            text: "↑↓ move · Enter opens the line · Ctrl+Enter done · t when · p priority · Del drop · Ctrl+Z undo · Esc back"
+            color: root.faint
+            font.family: root.fontFamily
+            font.styleName: root.fontStyle
+            font.pixelSize: root.fs(Style.font.caption)
+          }
+
+          Row {
+            id: dashWhenRow
+            anchors.left: parent.left
+            anchors.right: parent.right
+            visible: !!root.dashWhenFor
+            spacing: root.sp(8)
+
+            Text {
+              anchors.verticalCenter: parent.verticalCenter
+              textFormat: Text.PlainText
+              text: root.dashWhenFor ? "when · " + root.taskTitle(root.dashWhenFor) : ""
+              color: root.dim
+              font.family: root.fontFamily
+              font.styleName: root.fontStyle
+              font.pixelSize: root.fs(Style.font.bodySmall)
+            }
+
+            TextField {
+              id: dashWhenField
+              width: root.sp(220)
+              placeholderText: "friday, tomorrow, 20 oct…"
+              font.family: root.fontFamily
+              font.styleName: root.fontStyle
+              font.pixelSize: root.fs(Style.font.body)
+              foreground: root.foreground
+              onTextChanged: root.dashWhenText = text
+              Keys.onReturnPressed: function (event) { event.accepted = true; root.commitDashWhen() }
+              Keys.onEnterPressed: function (event) { event.accepted = true; root.commitDashWhen() }
+              Keys.onEscapePressed: function (event) { event.accepted = true; root.dashWhenFor = null; root.dashWhenText = "" }
+            }
+          }
+
+          Connections {
+            target: root
+            function onDashWhenForChanged() {
+              if (root.dashWhenFor) { dashWhenField.text = ""; dashWhenField.forceActiveFocus() }
+              else if (root.dashOpen) dashKeys.forceActiveFocus()
+            }
+          }
+        }
+      }
+    }
+
     BorderSurface {
       id: sheet
+      visible: !root.dashOpen
       x: root.alongside ? root.windowSheetX : Math.max(Math.round((content.width - width) / 2), root.sideSpace > 0 ? root.sideSpace + root.sheetMargin : 0)
       y: root.alongside ? 0 : root.sheetMargin
       width: root.alongside ? root.windowSheetWidth : root.sheetWidth
@@ -3134,149 +3579,14 @@ Item {
           var k = event.key
           if (root.zoomKey(event)) { event.accepted = true; return }
           if (k === Qt.Key_Escape || (k === Qt.Key_Left && alt)) { root.backToNote(); event.accepted = true; return }
-          if (root.tasksOpen) {
-            var ctrl = event.modifiers & Qt.ControlModifier
-            if (k === Qt.Key_Up) { root.moveTaskFocus(-1); event.accepted = true }
-            else if (k === Qt.Key_Down) { root.moveTaskFocus(1); event.accepted = true }
-            else if (k === Qt.Key_Return || k === Qt.Key_Enter) { root.activateTask(); event.accepted = true }
-            else if (k === Qt.Key_Space || event.text === "x") { root.tickFocused(); event.accepted = true }
-            else if (k === Qt.Key_Z && ctrl) { root.untickLast(); event.accepted = true }
-            else if (k === Qt.Key_T && ctrl) { root.toggleTasks(); event.accepted = true }
-            return
-          }
           if (k === Qt.Key_Up) { root.moveMarginFocus(-1); event.accepted = true }
           else if (k === Qt.Key_Down) { root.moveMarginFocus(1); event.accepted = true }
           else if (k === Qt.Key_Return || k === Qt.Key_Enter || k === Qt.Key_Space) { root.acceptProposal(root.marginFocus); event.accepted = true }
         }
       }
 
-      // The tasks panel.
-      Flickable {
-        id: tasksFlick
-        visible: root.tasksOpen
-        anchors.fill: parent
-        anchors.topMargin: margin.contentTopInset + root.sp(4)
-        anchors.leftMargin: margin.contentLeftInset
-        anchors.rightMargin: margin.contentRightInset
-        anchors.bottomMargin: margin.contentBottomInset
-        clip: true
-        contentWidth: width
-        contentHeight: tasksColumn.implicitHeight
-        boundsBehavior: Flickable.StopAtBounds
-
-        TouchScroll { flickable: tasksFlick }
-
-        // Keep the focused row in view.
-        function revealFocused() {
-          var kids = tasksColumn.children
-          for (var i = 0; i < kids.length; i++) {
-            var k = kids[i]
-            if (k.index === undefined || k.index !== root.taskFocus) continue
-            if (contentY > k.y) contentY = k.y
-            else if (contentY + height < k.y + k.height) contentY = k.y + k.height - height
-            return
-          }
-        }
-        Connections { target: root; function onTaskFocusChanged() { Qt.callLater(tasksFlick.revealFocused) } }
-
-        Column {
-          id: tasksColumn
-          width: parent.width
-          spacing: root.sp(4)
-
-          Text {
-            width: parent.width
-            textFormat: Text.PlainText
-            text: "WHAT'S NEXT"
-            color: root.dim
-            font.family: root.fontFamily
-            font.styleName: root.fontStyle
-            font.pixelSize: root.fs(Style.font.caption)
-          }
-
-          Text {
-            width: parent.width
-            visible: root.taskRows.length === 0
-            textFormat: Text.PlainText
-            text: "nothing open"
-            color: root.faint
-            font.family: root.fontFamily
-            font.styleName: root.fontStyle
-            font.pixelSize: root.fs(Style.font.bodySmall)
-          }
-
-          Repeater {
-            model: root.taskRows
-            Rectangle {
-              required property var modelData
-              required property int index
-              readonly property bool hot: root.taskFocus === index && modelData.kind !== "day"
-              width: tasksColumn.width
-              height: rowText.implicitHeight + (modelData.kind === "day" ? root.sp(12) : root.sp(8))
-              radius: Style.cornerRadius
-              color: hot ? Style.selectedFill : "transparent"
-              Text {
-                id: rowText
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.leftMargin: root.sp(6)
-                anchors.rightMargin: root.sp(6)
-                anchors.bottom: parent.bottom
-                anchors.bottomMargin: root.sp(4)
-                textFormat: Text.PlainText
-                wrapMode: Text.WordWrap
-                text: modelData.kind === "day" ? modelData.date
-                  : modelData.kind === "older" ? "+" + modelData.count + " older · Enter to show"
-                  : modelData.kind === "raised"
-                    ? (modelData.item.kind === "suggestion" ? "◇ " : "· ") + modelData.item.text
-                      + (modelData.item.evidence ? "\n   " + modelData.item.evidence : "")
-                  : modelData.kind === "deadline" ? root.deadlineRowText(modelData.deadline)
-                    : "○ " + modelData.task.text.replace(/\s+📅[\s\S]*$/, "")
-                color: modelData.kind === "day" ? root.dim : (modelData.kind === "older" ? root.faint
-                  : modelData.kind === "deadline" ? root.deadlineColor(modelData.deadline) : root.foreground)
-                font.family: root.fontFamily
-                font.styleName: root.fontStyle
-                font.pixelSize: modelData.kind === "day" ? root.fs(Style.font.caption) : root.fs(Style.font.body)
-              }
-              MouseArea {
-                anchors.fill: parent
-                enabled: modelData.kind !== "day"
-                onClicked: { root.taskFocus = index; root.activateTask() }
-              }
-            }
-          }
-
-          // The block around a task from another day, unfolded on Enter.
-          Text {
-            width: parent.width
-            visible: !!root.contextFor && (root.contextFor.deadline !== undefined || contextFile.snippet !== "")
-            textFormat: Text.PlainText
-            wrapMode: Text.WordWrap
-            text: !root.contextFor ? ""
-              : root.contextFor.deadline !== undefined ? "Not written in a note yet. Enter again writes it into today's note."
-              : root.contextFor.date + "\n\n" + contextFile.snippet
-            color: root.dim
-            font.family: root.fontFamily
-            font.styleName: root.fontStyle
-            font.pixelSize: root.fs(Style.font.bodySmall)
-          }
-
-          Text {
-            width: parent.width
-            textFormat: Text.PlainText
-            wrapMode: Text.WordWrap
-            text: "↑↓ move · Enter goes to it · Space ticks · Ctrl+Z unticks · Esc back"
-            color: root.faint
-            font.family: root.fontFamily
-            font.styleName: root.fontStyle
-            font.pixelSize: root.fs(Style.font.caption)
-          }
-        }
-      }
-
       Flickable {
         id: marginFlick
-        visible: !root.tasksOpen
         anchors.top: parent.top
         anchors.topMargin: margin.contentTopInset + root.sp(4)
         anchors.left: parent.left
@@ -3414,7 +3724,6 @@ Item {
 
       Item {
         id: chatBox
-        visible: !root.tasksOpen
         anchors.left: parent.left
         anchors.leftMargin: margin.contentLeftInset
         anchors.right: parent.right
@@ -3427,7 +3736,7 @@ Item {
           id: chatField
           anchors.left: parent.left
           anchors.right: parent.right
-          visible: root.marginOpen && !root.tasksOpen
+          visible: root.marginOpen
           placeholderText: "…"
           font.family: root.fontFamily
           font.styleName: root.fontStyle

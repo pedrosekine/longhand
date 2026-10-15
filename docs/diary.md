@@ -704,3 +704,35 @@ only the window and the panels around it differ.
   colour. And the division of labour between the two ways in: in the note,
   language; in the dashboard, keys — with rescheduling the single place that
   takes typed words, through the note's own parser.
+- 2026-10-15: the dashboard, and one meaning for Enter. The grammar having
+  landed, the list got a place to live. It is full width and takes the
+  sheet's place rather than sitting in the margin, because a list is not
+  prose and does not want the 72-character measure — and because two
+  surfaces for one list is part of what made the list easy to ignore, the
+  narrow what's-next panel is gone rather than kept beside it. `Ctrl+T` is
+  the way in; the bar's deadline popup (`SUPER+ALT+D`) stays the glance,
+  which makes them the same pair as the overlay and the window. That
+  pairing forced the architecture, pleasantly: marking something done in
+  the dashboard ticks the line in the day it was written, so the dashboard
+  had to be a shape of the page — the page is the only writer of notes, and
+  `student-agent tasks` is read-only for exactly that reason. Rows group by
+  what they ask of you (DUE, DOING, TO SCHEDULE) and then by project, never
+  by the day the thought was written, which is not how it is looked for.
+  Each row carries its heading path, so "draft the intro" reads as "Design
+  Theory › Essay 2 · written yesterday" — the answer to "random text I will
+  not understand later" being display, not a demand that the student write
+  better boxes. The verbs settle the collision the week had been living
+  with: **Enter opens the line, everywhere**, and the heavy action is
+  elsewhere — `Ctrl+Enter` in the page, `d` in the popup, which gives no
+  modifiers to work with. Enter used to mean *done* in the popup and *go to
+  it* in the panel, one key doing two opposite things depending on which
+  surface you had opened. `x` was worse: it ticked in one and deleted in the
+  other, so it is retired and Delete does the destroying. Dropping is now a
+  state and not a deletion (`- [-] … ❌ <day>`), because a box that is never
+  going to happen deserves an answer that is not a lie, and `Ctrl+Z` takes
+  it back. The one place the dashboard takes words instead of keys is `t`,
+  the do-date, parsed by the note's own `Dates.js` so "friday" means there
+  what it means here — in the note, language; in the dashboard, keys.
+  Every line edit is surgical: `Task.js` rebuilds only the metadata tail and
+  keeps the words byte for byte, so a marker it does not understand keeps
+  its place rather than being quietly dropped by a re-render.

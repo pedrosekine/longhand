@@ -114,6 +114,25 @@ ShellRoot {
     function chatFocused(): bool { return page.marginFocus === page.currentProposals.length }
     function sendChat(text: string): void { page.pendingChat = { hash: page.currentHash, text: text }; page.requestChat(page.currentHash, text) }
     function insertTag(i: int): void { page.insertTag(page.projects[i]) }
+    // The dashboard
+    function dash(): void { page.toggleDash() }
+    function dashOpen(): bool { return page.dashOpen }
+    function dashFocus(i: int): void { page.taskFocus = i }
+    function dashAt(): int { return page.taskFocus }
+    function dashKey(key: int, mods: int): bool { return page.dashKey({ key: key, text: "", modifiers: mods }) }
+    function dashType(ch: string): bool { return page.dashKey({ key: 0, text: ch, modifiers: 0 }) }
+    function dashWhen(phrase: string): void { page.dashWhenText = phrase; page.commitDashWhen() }
+    function dashRows(): string {
+      return JSON.stringify(page.taskRows.map(function (r) {
+        return r.kind === "head" ? { kind: "head", text: r.text }
+          : r.kind === "older" ? { kind: "older", count: r.count }
+          : r.kind === "raised" ? { kind: "raised", text: r.item.text }
+          : r.kind === "deadline" ? { kind: "deadline", text: r.deadline.title, due: r.deadline.due }
+          : { kind: "task", text: page.taskTitle(r.task), where: page.taskWhere(r.task),
+              date: r.task.date, prio: r.task.priority, when: r.task.when }
+      }))
+    }
+
     // The measure
     function zoom(z: real): void { page.setZoom(z) }
     function layout(): string { return JSON.stringify({ chars: page.editorItem.width / page.chWidth, x: page.windowSheetX, w: page.windowSheetWidth }) }

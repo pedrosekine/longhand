@@ -165,3 +165,126 @@ function where(t) {
   var parts = (t.path || []).slice()
   return parts.join(" › ")
 }
+
+// --- changing a line, surgically ------------------------------------------
+//
+// The page is the only writer of a note, and it may change a line's facts —
+// a tick, a date, a priority — never its words (principle 2, docs/diary.md).
+// So an edit here keeps the words exactly as they are and rebuilds only the
+// metadata tail, in a canonical order, out of the pieces that were already
+// there. A marker this grammar does not know keeps its place and its value
+// rather than being dropped, which is what re-rendering a line from what was
+// understood would do.
+
+// Where the fields are written when one has to be added. Obsidian Tasks
+// reads them in any order; this is the order it writes.
+var ORDER = ["prio", "🔁", "➕", "🛫", "⏳", "📅", "❌", "✅"]
+
+// A line pulled apart: the box, the words, the fields in the order they
+// appear, and the anchor that must stay last.
+function pieces(line) {
+  var m = line.match(BOX_RE)
+  if (!m) return null
+  var head = m[1] + m[2] + " [" + m[3] + "] "
+  var body = (m[4] === undefined ? "" : m[4]).replace(/\s+$/, "")
+  var tailAnchor = ""
+  var a = body.match(ANCHOR_RE)
+  if (a) { tailAnchor = " ^d" + a[1]; body = body.slice(0, a.index) }
+
+  var found = [], mm
+  MARK_RE.lastIndex = 0
+  while ((mm = MARK_RE.exec(body))) found.push({ at: mm.index, mark: mm[1] })
+  var fields = []
+  for (var i = 0; i < found.length; i++) {
+    var to = i + 1 < found.length ? found[i + 1].at : body.length
+    fields.push({ mark: found[i].mark, value: body.slice(found[i].at + found[i].mark.length, to).trim() })
+  }
+  var words = (found.length > 0 ? body.slice(0, found[0].at) : body).replace(/\s+$/, "")
+  return { head: head, state: m[3], words: words, fields: fields, anchor: tailAnchor }
+}
+
+function render(p) {
+  var body = p.words
+  for (var i = 0; i < p.fields.length; i++)
+    body += " " + p.fields[i].mark + (p.fields[i].value !== "" ? " " + p.fields[i].value : "")
+  body += p.anchor
+  // The box already ends in a space, so a line of nothing but fields must
+  // not start with a second one.
+  return p.head + (p.words === "" ? body.replace(/^\s+/, "") : body)
+}
+
+function _isPrio(mark) {
+  for (var i = 0; i < PRIOS.length; i++) if (PRIOS[i][0] === mark) return true
+  return false
+}
+
+// Where a mark belongs among the fields already present.
+function _slot(fields, mark) {
+  var want = ORDER.indexOf(_isPrio(mark) ? "prio" : mark)
+  if (want < 0) return fields.length
+  for (var i = 0; i < fields.length; i++) {
+    var here = ORDER.indexOf(_isPrio(fields[i].mark) ? "prio" : fields[i].mark)
+    if (here > want) return i
+  }
+  return fields.length
+}
+
+// `[ ]` → `[x]`, `[-]`, `[/]`. The line is otherwise untouched, which is why
+// this is a replace and not a render.
+function setState(line, state) {
+  return line.replace(/^(\s*[-*+] \[)[ xX\/\-](\])/, "$1" + state + "$2")
+}
+
+// One field set, replaced or (with an empty value) taken out.
+function setField(line, mark, value) {
+  var p = pieces(line)
+  if (!p) return line
+  var at = -1
+  for (var i = 0; i < p.fields.length; i++) if (p.fields[i].mark === mark) at = i
+  if (value === "") {
+    if (at >= 0) p.fields.splice(at, 1)
+  } else if (at >= 0) {
+    p.fields[at].value = value
+  } else {
+    p.fields.splice(_slot(p.fields, mark), 0, { mark: mark, value: value })
+  }
+  return render(p)
+}
+
+// Priority is one of the five glyphs or none, so setting it takes the old
+// one out wherever it sat. 0 leaves the line with no priority at all.
+function setPriority(line, level) {
+  var p = pieces(line)
+  if (!p) return line
+  var kept = []
+  for (var i = 0; i < p.fields.length; i++) if (!_isPrio(p.fields[i].mark)) kept.push(p.fields[i])
+  p.fields = kept
+  if (level !== 0) {
+    var glyph = ""
+    for (var j = 0; j < PRIOS.length; j++) if (PRIOS[j][1] === level) glyph = PRIOS[j][0]
+    if (glyph !== "") p.fields.splice(_slot(p.fields, glyph), 0, { mark: glyph, value: "" })
+  }
+  return render(p)
+}
+
+// Three levels are offered where five are read: none → high → low → none.
+// One key walks the scale, and a level that is only read (🔺 🔼 ⏬, from
+// Obsidian) walks on from the offered one nearest it.
+function nextPriority(level) {
+  return level >= 1 ? -1 : level <= -1 ? 0 : 2
+}
+
+// The line whose words are these, whatever facts it now carries. The
+// dashboard's list is read before the edit it asks for, so a line that has
+// since gained a ❌ or a ⏳ must still be found — matching the whole line
+// would miss on the way back from a drop.
+function sameWords(line, text) {
+  var a = pieces(line), b = pieces("- [ ] " + text)
+  return !!a && !!b && a.words === b.words
+}
+
+function findWords(lines, hint, text) {
+  if (hint >= 0 && hint < lines.length && sameWords(lines[hint], text)) return hint
+  for (var i = 0; i < lines.length; i++) if (sameWords(lines[i], text)) return i
+  return -1
+}
