@@ -39,15 +39,12 @@ import "Tasks.js" as Tasks
 //
 // The page is also the trigger, but never by accident. A block reaches the
 // agent only when it carries a sign for it — a checkbox, an `@`, a `?` —
-// and the student says so. Finishing an `@` or `?` line with Enter shows a
-// washed prompt under the cursor that defaults to no: Enter again or Esc
-// ignores it, an arrow then Enter sends. A checkbox list is the special
-// case: Enter just gives the next bullet; the whole run of items is one
-// submission when you leave the list (Enter on an empty bullet).
-// Ctrl+Enter sends the block or list under the cursor at any later moment,
-// whether it was ever asked about or not — nothing is held in between, and
-// no mark says a block "could be sent", because every block could
-// (2026-10-15). A block without a sign never goes. Opening the page runs one automatic pass so answers are
+// and the student says so — by pressing Ctrl+Enter or the header's "ask",
+// which both send the block the cursor is in (a run of list items counts as
+// one submission). Writing is never interrupted to offer it: the prompt
+// that used to ask went on 2026-10-15, answered no 41 times against yes
+// once, and nothing is held in between or marked as sendable, because every
+// block is. A block without a sign never goes. Opening the page runs one automatic pass so answers are
 // waiting when you come back.
 //
 // The agent's answers are painted, never inserted, and only in the
@@ -252,6 +249,7 @@ Item {
   property bool showOlder: false
   property int taskFocus: 0
   property string currentHash: ""
+  property string currentTrigger: ""   // the sign on the block under the cursor, for the header's "ask"
   property bool searchOpen: false
   property var matches: []       // [{ start, end }] text offsets, in note order
   property int matchIndex: -1
@@ -475,23 +473,25 @@ Item {
   property string hint: ""   // a passing word under the cursor (a date that did not read, …)
   function showHint(t) { root.hint = t; hintTimer.restart() }
   function sendCurrent() {
-    var hash = root.currentHash
-    if (hash === "") return
-    var trigger = root.triggerForBlock(hash)
-    if (!trigger) { root.noSignHint = true; hintTimer.restart(); return }
-    // A list of boxes is one submission however it is sent.
-    root.send(trigger, trigger === "checkbox" || trigger === "tick" ? root.listAround(hash) : [hash])
+    if (root.currentHash === "") return
+    if (root.currentTrigger === "") { root.noSignHint = true; hintTimer.restart(); return }
+    // A dated item may still be binding. The agent has to see its dates as
+    // deadlines, never as words to propose a second time (2026-10-13), so
+    // the send waits for the queue — as the prompt used to before it went.
+    root.whenWritten(function () {
+      var h = root.hashNearLine(root.lineIndexAt(editor.cursorPosition))
+      if (h === "") return
+      var trigger = root.triggerForBlock(h)
+      if (trigger === "") { root.noSignHint = true; hintTimer.restart(); return }
+      // A list of boxes is one submission however it is sent.
+      root.send(trigger, trigger === "checkbox" || trigger === "tick" ? root.listAround(h) : [h])
+    })
   }
 
   function send(trigger, hashes) {
     root.used("send", trigger)
     root.ask = null
     root.requestRun(trigger, hashes.join(","))
-  }
-
-  function askAbout(trigger, hashes) {
-    if (!hashes || hashes.length === 0 || !root.agentDay) return
-    root.ask = { kind: "send", hashes: hashes, trigger: trigger, yes: false }
   }
 
   // The run of adjacent list items around a block: no blank line between
@@ -539,16 +539,16 @@ Item {
     return false
   }
 
-  // Two things are ever asked under the cursor: send this block to the
-  // agent, and delete the deadline of a line that went. (A date at the end
-  // of a checkbox is not asked about: it lights up and binds.)
+  // One thing is ever asked under the cursor now: delete the deadline of a
+  // line that went. (A date at the end of a checkbox is not asked about
+  // either: it lights up and binds. Sending is never asked about — the
+  // header's "ask" and Ctrl+Enter are the ways in.)
   function acceptAsk() {
     var a = root.ask
     root.ask = null
     if (!a) return
     root.used("prompt", a.kind + ":yes")
-    if (a.kind === "send") root.send(a.trigger, a.hashes)
-    else if (a.kind === "delete") dl.hide(a.id)
+    if (a.kind === "delete") dl.hide(a.id)
   }
 
   // `brushed`: typed past, not answered.
@@ -560,8 +560,7 @@ Item {
 
   function askText(a) {
     var choice = (a.yes ? "[yes]   no" : "yes   [no]") + "   · ←→ choose · Enter"
-    if (a.kind === "delete") return "this line had a deadline: " + a.title + ". remove it too (kept in history)?   " + choice
-    return "send to agent?   " + choice
+    return "this line had a deadline: " + a.title + ". remove it too (kept in history)?   " + choice
   }
 
   function blockBounds(hash) {
@@ -680,33 +679,20 @@ Item {
     editor.setCursor(root.positionOfLine(blocks[target].start))
   }
 
-  // The editor carries list markers over Enter itself; what the page
-  // decides is whether the agent is asked. A finished `@` or `?` line is
-  // asked about. Nothing is remembered either way: a block is sent from
-  // where the cursor is, with Ctrl+Enter, whenever the student wants it
-  // (staging went on 2026-10-15 — see docs/diary.md).
+  // The editor carries list markers over Enter itself. The page used to
+  // ask "send to agent?" here; it asks nothing now (2026-10-15 — the
+  // prompt was answered no 41 times against yes once, and the agent has
+  // the header's "ask" and Ctrl+Enter instead). Writing a line is never
+  // interrupted by the agent again.
   function lineFinished(lineIndex, lineText) {
     Qt.callLater(root.flush)
-    var trigger = root.triggerFor(lineText)
-    if (trigger === "" || trigger === "checkbox" || trigger === "tick") return
-    root.askAbout(trigger, [root.hashOfLine(lineIndex)])
   }
 
-  // Enter on an empty item left the list. If it carried checkboxes, the
-  // whole run of items is one submission.
+  // Enter on an empty item left the list. Its dated items bind as each is
+  // left; nothing is asked. A list is still one submission when it is sent
+  // — `listAround` works that out from the cursor.
   function listLeft(lineIndex) {
     Qt.callLater(root.flush)
-    if (lineIndex <= 0) return
-    // Its dated items were bound as each was left; the last may still be
-    // being written. Stage and ask once it is, so the list goes to the
-    // agent with its deadlines already in it — never "by 30 oct" for the
-    // agent to propose as well.
-    root.whenWritten(function () {
-      var prev = root.hashOfLine(lineIndex - 1)
-      if (prev === "") return
-      var group = root.listAround(prev)
-      if (root.listHasCheckbox(group)) root.askAbout("checkbox", group)
-    })
   }
 
   property var afterWrites: []
@@ -1709,7 +1695,12 @@ Item {
       }
     }
   }
-  onCurrentHashChanged: ackTimer.restart()
+  // One handler for the cursor's block changing: what the header may offer
+  // to send, and the timer that marks a reply read once it has been looked at.
+  onCurrentHashChanged: {
+    root.currentTrigger = root.triggerForBlock(root.currentHash)
+    ackTimer.restart()
+  }
 
   Timer {
     id: saveTimer
@@ -1917,6 +1908,31 @@ Item {
               font.pixelSize: root.fs(Style.font.bodySmall)
               Behavior on color { ColorAnimation { duration: 240 } }
               MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.togglePin() }
+            }
+
+            // Ask: the agent's visible way in, and the reason the "send to
+            // agent?" prompt could go (2026-10-15). It sends the block the
+            // cursor is in — the same path as Ctrl+Enter — and sits in the
+            // header, outside the canvas, so nothing marks the student's
+            // own words. Dim when this block carries a sign for the agent,
+            // faint when it does not; a click then says why in one line.
+            Text {
+              visible: svc.header !== "" && root.agentDay
+              anchors.verticalCenter: parent.verticalCenter
+              textFormat: Text.PlainText
+              text: "ask"
+              color: askArea.containsMouse ? root.accent
+                : (root.currentTrigger !== "" ? root.dim : root.faint)
+              font.family: root.fontFamily
+              font.pixelSize: root.fs(Style.font.bodySmall)
+              Behavior on color { ColorAnimation { duration: 240 } }
+              MouseArea {
+                id: askArea
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: { root.sendCurrent(); editor.focusNote() }
+              }
             }
 
             // The agent mark: faint at rest, brighter while a run is in

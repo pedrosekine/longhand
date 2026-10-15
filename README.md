@@ -68,10 +68,12 @@ The file stays plain
 markdown, changed only where you typed. What you wrote is always drawn at
 full strength; a block with a reply carries a gutter mark and its reply shows
 in the margin to the right when asked — that is the only mark on your words.
-Finishing an `@` or `?` line asks "send to agent?" under the cursor with *no*
-preselected; an arrow then Enter sends. A checkbox list is one submission,
-asked about when you leave it. `Ctrl+Enter` sends the block or list under the
-cursor whenever you want it, asked about or not. `Alt+Up/Down`
+Nothing ever interrupts your writing to offer the agent. You reach for it:
+`Ctrl+Enter`, or **ask** in the header, sends the block your cursor is in —
+a run of list items counts as one submission. The word reads dim when that
+block carries a sign for the agent (a checkbox, an `@` line, a line ending
+in `?`, a ticked box) and faint when it does not; asking anyway says why in
+one line. `Alt+Up/Down`
 move between blocks, `Ctrl+Up/Down` jump to a block's start or end
 (`Ctrl+Shift+Up/Down` select to it, a block more each press),
 `Alt+Right` goes into the margin — proposals first (Enter accepts one and runs

@@ -362,11 +362,21 @@ def main() -> int:
             p.call("type", ("- [ ] " if item.startswith("Roles") else "") + item)
             p.call("enter")
         p.call("enter")   # the empty item: leaving the list
-        check(p.wait(lambda: json.loads(p.call("ask"))["kind"] == "send"), "leaving the list asks to send it")
+        # The send prompt went on 2026-10-15: leaving a list interrupts
+        # nothing, and the dates bind all the same.
+        check(p.call("ask") == "null", "leaving the list asks nothing")
+        check(p.wait(lambda: p.call("text").count(" ^d") == 3), "…and every dated item is bound")
         text = p.call("text")
-        check(text.count(" ^d") == 3 and "by 30 oct" not in text and "by 15 jan" not in text,
-              f"…by then every dated item is bound ({text.count(' ^d')} of 3)")
-        p.call("no")
+        check("by 30 oct" not in text and "by 15 jan" not in text,
+              f"…with its cue words gone ({text.count(' ^d')} of 3)")
+        # The header's "ask" is the visible way in, on the same path as
+        # Ctrl+Enter: it reads the sign on the block under the cursor.
+        p.call("cursor", p.offset_of_line(p.line_of("Initial paper")) + 10)
+        check(p.wait(lambda: p.call("sign") == "checkbox"), f"a box is a sign the header can see ({p.call('sign')})")
+        p.call("cursor", 1)
+        check(p.wait(lambda: p.call("sign") == ""), "a line with no sign offers nothing")
+        p.call("askNow")
+        check(p.wait(lambda: p.call("noSign") == "true"), "…and asking anyway says why instead of sending")
 
         # 10d. one line, one deadline: the page's own binding and the agent's
         # proposal for the same line do not make two, in either order

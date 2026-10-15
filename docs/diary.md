@@ -116,12 +116,13 @@ hides the day. Both are removed by local code before the payload is built.
 things must both be true for a block to reach the model: it carries a
 **sign** for the agent, and the student **says so**.
 - The signs: a checkbox line (`- [ ] …`), a line starting with `@`, a line
-  ending with `?`, a tick. Finishing an `@` or `?` line with Enter
-  **stages** the block — hollow accent mark in the gutter — and shows a
-  washed prompt under the cursor, "send to agent? [no] yes". An arrow then
-  Enter sends; Enter again or Esc ignores it and the page behaves as usual.
-  No letter answers a prompt (since 2026-10-11): a typed "y" is writing —
-  in Spanish it is a word.
+  ending with `?`, a ticked box. The student says so with `Ctrl+Enter` or
+  the header's **ask**, both of which send the block the cursor is in.
+  Nothing is offered while writing: the washed "send to agent?" prompt that
+  used to appear on finishing an `@` or `?` line went on 2026-10-15, and
+  staging with it. (Prompts that remain — deleting the deadline of a line
+  that went — take arrows and Enter, never a letter: since 2026-10-11, a
+  typed "y" is writing, and in Spanish it is a word.)
 - **A checkbox list is one submission.** Enter on an item just gives the
   next bullet. Leaving the list (Enter on an empty bullet) asks about the
   whole run of adjacent items as a group with one prompt; the reply attaches
@@ -380,3 +381,19 @@ only the window and the panels around it differ.
   and the automatic open pass not widened at all, because nobody asked it
   to look. Local code gathers it and the payload log still holds everything
   before inference, so principle 3 stands — no `read` tool, no shell.
+- 2026-10-15: the agent gets a visible way in, and the prompt goes. Asked
+  whether the send prompt should stay, the student put the real question
+  instead: "how to trigger the agent in a visual way aside from keyboard
+  shortcuts? This is a core feature that should not be only under a
+  specific trigger." So the header — outside the canvas, where the date,
+  the pin and the agent mark already live — gained **ask**: it sends the
+  block the cursor is in, dim when that block carries a sign and faint when
+  it does not, and a click with no sign says why instead of doing nothing.
+  Principle 2 is why it is in the header and not in the gutter: a control
+  beside the words would put a mark back on them, which is what staging
+  taught us to avoid. With a visible way in, the prompt is pure
+  interruption (31 deliberate no's in one week), so it is gone: writing a
+  line, leaving a list and ticking a box no longer ask anything. One path
+  now carries every send — `sendCurrent` — and it still waits for the
+  deadline queue to settle, so a list reaches the agent with its dates
+  already bound and no duplicate proposals (the 2026-10-13 fix).

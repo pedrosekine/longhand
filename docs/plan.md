@@ -347,14 +347,17 @@ lifting the freeze; the numbers above cannot see any of them):
   (curriculum, projects, the timetable, its own history), not a shell and
   not a `read` tool. Tier 1 and 2 of that item are the cheap half.
 - **The agent needs a way in that is not a keyboard shortcut** (2026-10-15,
-  on being asked whether the send prompt should go). The prompt was answered
-  no 41 times, but it is also the only *visible* way to reach the agent, so
-  it cannot go until something visible replaces it: "this is a core feature
-  that should not be only under a specific trigger." To decide: where that
-  control lives without putting a mark back on the student's words — the
-  header beside the date and the agent mark (outside the canvas), the gutter
-  by the block under the cursor only, or the margin's own edge. Until then
-  the prompt stays as it is.
+  the student's answer when asked whether the send prompt should go): "this
+  is a core feature that should not be only under a specific trigger."
+  **Done the same day:** the header holds **ask** — outside the canvas,
+  beside the date, the pin and the agent mark, so no mark goes back on the
+  student's words (the gutter was the alternative and lost on exactly that
+  ground). It sends the block the cursor is in, dim when that block carries
+  a sign, faint when it does not, and says why when asked anyway. With it
+  there, the send prompt went: nothing interrupts writing to offer the
+  agent any more. Left: whether the word "ask" is the right word once it
+  has been lived with, and whether a run in flight should show there too
+  (the agent mark already brightens).
 - **Staging is not a useful state, and its mark is confused with the
   running one.** Once the student has decided *not* to send a block, being
   shown that it still "could be sent" is noise; `Ctrl+Enter` already sends
