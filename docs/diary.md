@@ -499,3 +499,21 @@ only the window and the panels around it differ.
   zoom, because `advanceWidth` is a method call and QML saw no dependency on
   the font — a binding that reads `font.pixelSize` first fixed it, and the
   live measure tests caught it.
+- 2026-10-15: two answers to "it feels too bold". The first was that
+  emphasis would not fix it — the weight of a regular paragraph is the
+  face's and the contrast's, and adding bold only gives the eye something
+  heavier to compare against. The real cause was measured: the stock theme
+  puts #F0EEE9 on #322D2A, 11.7:1, and light text on a dark ground blooms.
+  Text now sits a fifth of the way back toward the background, near 8:1 —
+  above the 4.5:1 the page holds itself to, and never allowed below 7:1, so
+  a theme that is already gentle keeps full strength. Native rasterising was
+  tried first and changed nothing, so it was dropped rather than left in.
+  The second answer was that the gap was real: there was no way to write
+  bold or italic at all. `Ctrl+B` / `Ctrl+I` / `` Ctrl+` `` / `Ctrl+Shift+S`
+  wrap the selection or the word under the cursor and take the markers off
+  again; a one-character marker is never read as half of a two-character
+  one, so asking for italic on a bold word adds a pair instead of eating
+  one. The markers go into the file as written: drawing them styled is
+  parked, because every row is a plain-text field whose offsets the rest of
+  the editor rests on. `Ctrl+B` was the sidebar; the sidebar moved to
+  `Ctrl+Shift+B`, because on a writing surface Ctrl+B is bold.

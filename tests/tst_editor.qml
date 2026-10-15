@@ -87,6 +87,66 @@ Item {
       compare(ed.rowItem(ed.focusedRow).field.text, "short")
     }
 
+    // Emphasis writes the markers the file keeps; nothing is drawn styled.
+    function test_bold_wraps_the_selection() {
+      start("\nread chapter seven")
+      ed.selectSpan(6, 13)                       // "chapter"
+      ed.emphasise("**")
+      compare(ed.text, "\nread **chapter** seven")
+      compare(ed.selStart, 8); compare(ed.selEnd, 15)
+    }
+
+    function test_bold_takes_the_word_under_the_cursor() {
+      start("\nread chapter seven", 9)          // inside "chapter"
+      ed.emphasise("**")
+      compare(ed.text, "\nread **chapter** seven")
+    }
+
+    function test_bold_again_takes_it_off() {
+      start("\nread **chapter** seven", 11)     // inside the bold word
+      ed.emphasise("**")
+      compare(ed.text, "\nread chapter seven")
+    }
+
+    function test_markers_around_a_selection_come_off() {
+      start("\nread **chapter** seven")
+      ed.selectSpan(8, 15)                       // just the word, markers outside
+      ed.emphasise("**")
+      compare(ed.text, "\nread chapter seven")
+    }
+
+    function test_italic_on_a_bold_word_adds_a_pair() {
+      start("\nread **chapter** seven", 11)
+      ed.emphasise("*")
+      compare(ed.text, "\nread ***chapter*** seven")
+    }
+
+    function test_emphasis_on_nothing_stands_inside_the_pair() {
+      start("\n")
+      ed.emphasise("**")
+      compare(ed.text, "\n****")
+      compare(ed.cursorPosition, 3)
+    }
+
+    function test_code_and_strike_use_their_own_markers() {
+      start("\npomo status today", 8)          // inside "status"
+      ed.emphasise("`")
+      compare(ed.text, "\npomo `status` today")
+      ed.selectSpan(17, 17)                    // the cursor inside "today", nothing selected
+      ed.emphasise("~~")
+      compare(ed.text, "\npomo `status` ~~today~~")
+    }
+
+    // Wrapping leaves the words selected, so a second marker nests around
+    // the first — the same keystrokes a writer would use for bold italic.
+    function test_a_second_marker_nests_around_the_selection() {
+      start("\nread chapter seven", 9)
+      ed.emphasise("*")
+      compare(ed.text, "\nread *chapter* seven")
+      ed.emphasise("**")
+      compare(ed.text, "\nread ***chapter*** seven")
+    }
+
     function test_typing_writes_through() {
       start("\nhello")
       type(" world")

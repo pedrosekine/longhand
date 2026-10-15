@@ -45,6 +45,15 @@ callouts marked "never sent"; typing `# `, `- [ ] ` or `> ` turns the line
 into that kind, Backspace at its start turns it back. Colours follow the
 Omarchy theme: headings each in their own, highlights, selection and
 checkboxes from the theme's palette, greys only where they stay readable.
+Text sits a fifth of the way back from the theme's maximum contrast (around
+8:1, never under 7:1), because near-white on near-black blooms on a dark
+screen and reads as heavier than it is.
+`Ctrl+B` and `Ctrl+I` wrap the selection — or the word the cursor is in — in
+`**` and `*`, `` Ctrl+` `` in backticks, `Ctrl+Shift+S` in `~~`; the same keys
+take them off again. The markers are written into the file as they are,
+because it stays plain markdown and Obsidian reads the same ones; they are
+not yet *drawn* as styled text.
+
 The page is set in **iA Writer Quattro S**, a proportional face made for
 writing: prose reads as prose rather than as code, and 72 characters take
 less width than they do in a monospace. Fenced code and frontmatter keep a
@@ -55,7 +64,7 @@ shell's scale (your Omarchy font size); `Ctrl+=` / `Ctrl+-` / `Ctrl+0`
 zoom the whole page like a browser, remembered across restarts. `Ctrl+F`
 finds in the note as you type: Enter next, Shift+Enter previous,
 `Ctrl+Enter` lands on the match selected and closes the search, Esc goes
-back to where you were. `Ctrl+B` shows a month calendar in a sidebar
+back to where you were. `Ctrl+Shift+B` shows a month calendar in a sidebar
 (only when asked): days with a note are full, days without are faded;
 arrows move by day and week, `Ctrl+←/→` by month, Enter opens the day in
 the same sheet, editable (a day without a note gets its file on the first

@@ -123,7 +123,16 @@ Item {
   readonly property bool alongside: !overlayOpen      // where the sheet is drawn
 
   readonly property color background: Color.menu.background
-  readonly property color foreground: Color.menu.text
+  // Text sits just off the theme's maximum contrast. Themes put near-white
+  // on near-black — 11.7:1 on the stock one — and on a dark ground that
+  // blooms, which reads as boldness in a sturdy face. A fifth of the way
+  // back to the background lands near 8:1, well above the 4.5:1 the page
+  // holds itself to, and a page of it is calmer. Never below 7:1, so a
+  // theme that is already gentle is left at full strength.
+  readonly property color foreground: {
+    var soft = pal.mix(Color.menu.text, Color.menu.background, 0.2)
+    return pal.contrast(soft, Color.menu.background) >= 7 ? soft : Color.menu.text
+  }
   readonly property color border: Color.menu.border
   readonly property color scrim: Color.menu.scrim
   // The Omarchy theme's palette, by role (ThemeColors.qml): secondary and faint
@@ -835,7 +844,13 @@ Item {
     if (k === Qt.Key_Right && alt) { root.diveIn(); return true }
     if (k === Qt.Key_T && ctrl) { root.toggleTasks(); return true }
     if (k === Qt.Key_F && ctrl) { root.openSearch(); return true }
-    if (k === Qt.Key_B && ctrl) { root.toggleSidebar(); return true }
+    if (k === Qt.Key_B && ctrl && shift) { root.toggleSidebar(); return true }
+    // Emphasis, where every editor puts it. The sidebar moved to the
+    // shifted pair on 2026-10-15 so that Ctrl+B could be bold.
+    if (k === Qt.Key_B && ctrl) { editor.emphasise("**"); return true }
+    if (k === Qt.Key_I && ctrl) { editor.emphasise("*"); return true }
+    if (k === Qt.Key_QuoteLeft && ctrl) { editor.emphasise("`"); return true }
+    if (k === Qt.Key_S && ctrl && shift) { editor.emphasise("~~"); return true }
     if (k === Qt.Key_D && ctrl) { root.deadlineKey(); return true }
     if (k === Qt.Key_Left && alt && root.sidebarOpen) { root.focusSidebar(); return true }
     return false
@@ -2455,7 +2470,7 @@ Item {
             else if (k === Qt.Key_Return || k === Qt.Key_Enter) root.openSection(root.sections[root.sectionFocus])
             else if (k === Qt.Key_Left || k === Qt.Key_Escape || k === Qt.Key_Backtab) root.leaveProject()
             else if (k === Qt.Key_Right && alt) editor.focusNote()
-            else if (k === Qt.Key_B && ctrl) { root.sidebarOpen = false; root.projectOpen = false; editor.focusNote() }
+            else if (k === Qt.Key_B && ctrl && (event.modifiers & Qt.ShiftModifier)) { root.sidebarOpen = false; root.projectOpen = false; editor.focusNote() }
             else return
             event.accepted = true
             return
@@ -2481,7 +2496,7 @@ Item {
           if (k === Qt.Key_Tab && (root.focusDue.length > 0 || root.projects.length > 0)) {
             if (root.focusDue.length > 0) root.dueFocus = 0
             else root.projFocus = 0
-          } else if (k === Qt.Key_Escape || (k === Qt.Key_B && ctrl)) {
+          } else if (k === Qt.Key_Escape || (k === Qt.Key_B && ctrl && (event.modifiers & Qt.ShiftModifier))) {
             if (k === Qt.Key_B) root.sidebarOpen = false
             editor.focusNote()
           } else if (k === Qt.Key_Right && alt) {

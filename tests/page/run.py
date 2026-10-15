@@ -517,6 +517,19 @@ def main() -> int:
         p.call("type", "mail me at pedro@it")
         check(p.call("mention") == "null", "an address is not a call")
 
+        # 11e. emphasis: Ctrl+B writes the markers the file keeps, and the
+        # sidebar moved to the shifted pair to make room for it.
+        CTRL, SHIFT, KEY_B = 0x04000000, 0x02000000, 0x42
+        (p.daily / f"{TODAY}.md").write_text(header(TODAY) + "read chapter seven\n")
+        p.open_fresh()
+        p.call("cursor", p.offset_of_line(p.line_of("read chapter")) + 9)
+        check(p.call("keyPage", KEY_B, CTRL) == "true", "Ctrl+B is taken by the note")
+        check(p.wait(lambda: "read **chapter** seven" in p.call("text")),
+              f"…and bolds the word under the cursor ({p.call('text')!r})")
+        check(json.loads(p.call("panel"))["project"] is False and p.call("keyPage", KEY_B, CTRL | SHIFT) == "true",
+              "Ctrl+Shift+B is taken too")
+        check(p.wait(lambda: "**chapter**" in p.call("text")), "…and does not touch the words")
+
         # 12. the theme: roles come from the Omarchy palette, headings apart
         pal = p.call("palette")
         heads = pal.split(" h=")[1].split(" ")[0].split(",")

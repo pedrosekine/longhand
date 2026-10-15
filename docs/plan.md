@@ -187,7 +187,8 @@
             counted "n / m". Enter / Shift+Enter step with wrap-around;
             Ctrl+Enter selects the match and closes; Esc returns the cursor
             to where the search began.
-      - [x] 14.6e sidebar — Ctrl+B, hidden unless asked (diary.md decisions
+      - [x] 14.6e sidebar — Ctrl+B (Ctrl+Shift+B since 2026-10-15, when
+            Ctrl+B became bold), hidden unless asked (diary.md decisions
             log, 2026-10-09). Lists the daily folder (FolderListModel,
             watched) by date, newest first, by month; names in the
             configured format and the common older ones (`Days.js`).
@@ -492,6 +493,17 @@ a fix or a feature to decide first):
   face and is identical for a monospace — at zoom 1 the column went from
   661px to 631px for the same 72 characters. Left: nothing, unless the
   weight reads heavy on a light theme after a day's use.
+- **Emphasis, drawn** (2026-10-15) — `Ctrl+B` / `Ctrl+I` / `` Ctrl+` `` /
+  `Ctrl+Shift+S` now write the markers, and the file keeps them as written;
+  what is missing is drawing them styled, the way the markdown that says
+  what *kind* of line it is is already lifted off and drawn. The reason it
+  is parked rather than done: every row is one plain-text field whose
+  offsets the cursor, the selection, the search painting and the bound-line
+  rewriting all rest on (`prefix + body == line`). Styled spans need rich
+  text per row with a mapping back to plain offsets, which is the riskiest
+  change in the editor — its own session, with its own tests. Decide then
+  whether the markers stay visible while the cursor is in the span (as
+  Obsidian does) or vanish entirely (as the line markdown does).
 - **Tag suggestions while typing** (idea, 2026-10-11) — typing `#` offers the
   tags that exist (the projects list), so a new tag is a choice, not a typo.
   The sidebar list is the first step; this would be the stronger guard.

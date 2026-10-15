@@ -141,6 +141,44 @@ Item {
   function insert(pos, s) { ed.replace(pos, pos, s) }
   function remove(a, b) { ed.replace(a, b, "") }
 
+  // Emphasis: wrap the selection — or the word the cursor is in — in a
+  // marker, and take it off again when it is already there. The markers are
+  // written into the note as they are (`**`, `*`, `` ` ``, `~~`), because
+  // the file stays plain markdown and Obsidian reads the same ones. They
+  // are not drawn as styled text yet; that is its own piece of work, since
+  // every row here is plain text whose offsets the whole editor relies on.
+  function emphasise(marker) {
+    var t = ed.text
+    var n = marker.length
+    var a, b
+    if (ed.spanning) { a = ed.selStart; b = ed.selEnd }
+    else {
+      // The word under the cursor; `\s` stops at the line's edges too.
+      a = b = ed.cursorPosition
+      while (a > 0 && !/\s/.test(t.charAt(a - 1))) a--
+      while (b < t.length && !/\s/.test(t.charAt(b))) b++
+    }
+    // A one-character marker must not be half of a two-character one: the
+    // `*` either side of `**bold**` belongs to the bold, so asking for
+    // italic there adds a pair rather than eating one.
+    var lone = function (i) { return n > 1 || (t.charAt(i - 1) !== marker && t.charAt(i + n) !== marker) }
+    if (t.substring(a - n, a) === marker && t.substring(b, b + n) === marker && lone(a - n) && lone(b)) {
+      ed.remove(b, b + n)              // the far end first: the near offsets hold
+      ed.remove(a - n, a)
+      ed.selectSpan(a - n, b - n)
+    } else if (b - a >= 2 * n && t.substring(a, a + n) === marker && t.substring(b - n, b) === marker
+               && lone(a) && lone(b - n)) {
+      ed.remove(b - n, b)
+      ed.remove(a, a + n)
+      ed.selectSpan(a, b - 2 * n)
+    } else {
+      ed.insert(b, marker)
+      ed.insert(a, marker)
+      if (a === b) ed.setCursor(a + n, true)   // nothing to wrap: write the pair, stand inside it
+      else ed.selectSpan(a + n, b + n)
+    }
+  }
+
   // Move the cursor. With `focus`, the note takes the keyboard too;
   // otherwise the field only follows when the note already has it.
   function setCursor(pos, focus) {

@@ -63,6 +63,8 @@ ShellRoot {
     function yes(): void { page.acceptAsk() }
     function no(): void { page.declineAsk() }
     function typeAtPrompt(ch: string): bool { return page.askKey({ key: ch.toUpperCase().charCodeAt(0), text: ch, modifiers: 0 }) }
+    // A key as the note's own filter sees it (Qt.Key_*, Qt modifiers).
+    function keyPage(key: int, mods: int): bool { return page.pageKey({ key: key, text: "", modifiers: mods }) }
     function enterAtPrompt(): bool { return page.askKey({ key: Qt.Key_Return, text: "\r", modifiers: 0 }) }
     function rightAtPrompt(): bool { return page.askKey({ key: Qt.Key_Right, text: "", modifiers: 0 }) }
     function ctrlD(): void { page.deadlineKey() }
