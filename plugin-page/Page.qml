@@ -133,7 +133,24 @@ Item {
   readonly property color faint: pal.faint
   readonly property color urgent: pal.red
   readonly property var borderSpec: Border.surfaceSpec("menu", "border", border, Math.max(1, Style.space(2)))
-  readonly property string fontFamily: Style.font.family
+  // The face the note is written in. The page drew in the shell's monospace
+  // until 2026-10-15; prose reads better in a proportional face, and the
+  // measure gets physically narrower for the same 72 characters. `font` in
+  // the config names one; otherwise the first of these the machine has.
+  // Fenced code and frontmatter keep a monospace, where columns mean
+  // something — the editor already draws those rows apart.
+  readonly property var proseChoices: [svc.pageFont, "iA Writer Quattro S", "iA Writer Duo S", Style.font.family]
+  readonly property string fontFamily: {
+    var have = Qt.fontFamilies()
+    for (var i = 0; i < root.proseChoices.length; i++)
+      if (root.proseChoices[i] !== "" && have.indexOf(root.proseChoices[i]) >= 0) return root.proseChoices[i]
+    return Style.font.family
+  }
+  readonly property string codeFamily: {
+    var have = Qt.fontFamilies()
+    if (svc.pageCodeFont !== "" && have.indexOf(svc.pageCodeFont) >= 0) return svc.pageCodeFont
+    return Style.font.family
+  }
   // One size for the whole page, like a browser's zoom: text, spacing,
   // margins, the panel. The base is the shell's own type scale (which
   // follows the theme's font base-size), so the page sits with the rest of
@@ -153,7 +170,19 @@ Item {
   // measure just wraps. The same in the window and on the overlay.
   readonly property int measureChars: 72
   FontMetrics { id: bodyMetrics; font.family: root.fontFamily; font.pixelSize: root.textSize }
-  readonly property real chWidth: bodyMetrics.averageCharacterWidth
+  // One character of this face, measured on a lowercase alphabet — the unit
+  // typography has always set measure in (72 characters is 2.8 alphabets,
+  // inside the 45–75 the eye likes). For a monospace this is exactly the
+  // advance, so the column is unchanged; for a proportional face it is the
+  // honest average, where Qt's own averageCharacterWidth over-counts by
+  // weighing capitals the same as letters nobody types as often.
+  readonly property real chWidth: {
+    // Reading the metrics' own font first is what makes this a binding:
+    // advanceWidth is a method call, so without it QML sees no dependency
+    // and the measure would stop following the zoom and the face.
+    var px = bodyMetrics.font.pixelSize, fam = bodyMetrics.font.family
+    return px > 0 && fam !== "" ? bodyMetrics.advanceWidth("abcdefghijklmnopqrstuvwxyz") / 26 : 1
+  }
   readonly property int measure: Math.round(root.chWidth * root.measureChars)
   readonly property int sheetFor: root.measure + 2 * root.sheetPadding
   readonly property int sheetWidth: Math.min(root.sheetFor, content.width - root.sp(48))
@@ -2204,6 +2233,7 @@ Item {
             height: implicitHeight
             enabled: svc.ready
             fontFamily: root.fontFamily
+            codeFamily: root.codeFamily
             textSize: root.textSize
             foreground: root.foreground
             background: root.background

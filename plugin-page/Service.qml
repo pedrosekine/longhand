@@ -21,6 +21,10 @@ Item {
     || Quickshell.env("HOME") + "/.config") + "/omarchy-student/config.json"
 
   property var config: ({})
+  // The page's own type. `font` is the face the note is written in, `codeFont`
+  // the one fenced code and frontmatter keep; empty means the page decides.
+  readonly property string pageFont: (config && config.font) || ""
+  readonly property string pageCodeFont: (config && config.codeFont) || ""
   readonly property bool configured: !!(config && config.vault && config.daily && config.daily.dir)
   property string configError: ""
 

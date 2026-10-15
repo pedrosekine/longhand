@@ -49,6 +49,7 @@ Item {
   signal cueDismissed(string raw)
 
   property string fontFamily: "sans-serif"
+  property string codeFamily: "monospace"
   property int textSize: 16
   property color foreground: "black"
   property color background: "white"
@@ -1030,7 +1031,7 @@ Item {
             : row.kind === "code" ? ed.codeColor : ed.foreground
           selectionColor: ed.selectionColor
           selectedTextColor: ed.foreground
-          font.family: row.kind === "code" || row.kind === "front" ? "monospace" : ed.fontFamily
+          font.family: row.kind === "code" || row.kind === "front" ? ed.codeFamily : ed.fontFamily
           font.pixelSize: row.kind === "heading"
             ? Math.round(ed.textSize * (row.headingLevel === 1 ? 1.5 : row.headingLevel === 2 ? 1.3 : row.headingLevel === 3 ? 1.15 : 1))
             : (row.kind === "code" || row.kind === "front" ? Math.round(ed.textSize * 0.85) : ed.textSize)

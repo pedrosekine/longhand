@@ -45,8 +45,13 @@ callouts marked "never sent"; typing `# `, `- [ ] ` or `> ` turns the line
 into that kind, Backspace at its start turns it back. Colours follow the
 Omarchy theme: headings each in their own, highlights, selection and
 checkboxes from the theme's palette, greys only where they stay readable.
-Type follows the
-shell's own scale (your Omarchy font size); `Ctrl+=` / `Ctrl+-` / `Ctrl+0`
+The page is set in **iA Writer Quattro S**, a proportional face made for
+writing: prose reads as prose rather than as code, and 72 characters take
+less width than they do in a monospace. Fenced code and frontmatter keep a
+monospace, where columns mean something. `font` and `codeFont` in the config
+name other faces; without them the page takes the first it finds of iA
+Writer Quattro S, iA Writer Duo S, then the shell's own. Size follows the
+shell's scale (your Omarchy font size); `Ctrl+=` / `Ctrl+-` / `Ctrl+0`
 zoom the whole page like a browser, remembered across restarts. `Ctrl+F`
 finds in the note as you type: Enter next, Shift+Enter previous,
 `Ctrl+Enter` lands on the match selected and closes the search, Esc goes

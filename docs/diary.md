@@ -483,3 +483,19 @@ only the window and the panels around it differ.
   `@` is a way of writing, not a new thing to parse. An address is never a
   call, because `@` only counts at a word's start. The agent keeps three
   signs (checkbox, `?`, tick) and the margin chat for anything free-form.
+- 2026-10-15: the page is set in a face for prose. It had drawn in the
+  shell's monospace since the beginning, which is right for a terminal and
+  wrong for a page of class notes; the three candidates were rendered with a
+  real note in them and compared rather than argued about, and iA Writer
+  Quattro S won on the obvious grounds — headings stop wrapping, lines carry
+  more words, prose stops looking like code. Fenced code and frontmatter
+  keep a monospace, where columns mean something, and the chrome follows the
+  note so the page reads as one surface. The face is a config key with a
+  fallback chain, not a hard-coded name, because the tool is meant for other
+  students' machines too. Two things came out of it: the measure is counted
+  on a lowercase alphabet now (the unit typography has always used; 72
+  characters is 2.8 alphabets), which is identical for a monospace and
+  honest for a proportional face; and the first attempt silently broke the
+  zoom, because `advanceWidth` is a method call and QML saw no dependency on
+  the font — a binding that reads `font.pixelSize` first fixed it, and the
+  live measure tests caught it.

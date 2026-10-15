@@ -14,5 +14,7 @@
   ],
   "curriculum": "agents/student/curriculum",
   "weekStart": "monday",
+  "font": "iA Writer Quattro S",
+  "codeFont": "",
   "variant": "high"
 }

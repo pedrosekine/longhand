@@ -480,10 +480,18 @@ a fix or a feature to decide first):
   which is typed by hand today and reads as a callout rather than a
   guarantee.
 
-- **A face for prose** (2026-10-13) — the page draws in the system
-  monospace (JetBrains Mono); a proportional face reads better as prose
-  and makes the 72-character measure physically narrower. A page-only
-  font setting, or a sensible default with the monospace kept for code.
+- ~~**A face for prose** (2026-10-13)~~ — **done 2026-10-15.** The page is
+  set in iA Writer Quattro S (from `ttf-ia-writer`, already on the machine),
+  chosen against Duo S and the monospace by rendering a real class note in
+  each: Quattro stops headings wrapping and carries noticeably more words a
+  line. Code and frontmatter keep the monospace. `font` / `codeFont` in the
+  config name others; the default is the first face present of Quattro S,
+  Duo S, the shell's own. The measure is now counted on a lowercase
+  alphabet (72 characters is 2.8 alphabets) rather than Qt's
+  `averageCharacterWidth`, which over-counts capitals on a proportional
+  face and is identical for a monospace — at zoom 1 the column went from
+  661px to 631px for the same 72 characters. Left: nothing, unless the
+  weight reads heavy on a light theme after a day's use.
 - **Tag suggestions while typing** (idea, 2026-10-11) — typing `#` offers the
   tags that exist (the projects list), so a new tag is a choice, not a typo.
   The sidebar list is the first step; this would be the stronger guard.
