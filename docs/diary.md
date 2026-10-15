@@ -305,6 +305,10 @@ only the window and the panels around it differ.
 
 - **Companion** — the page as above.
 - **Focus** — full screen, timer as the frame, the agent quietly facilitates.
+- **Dashboard** — full screen, every open box and deadline in one place,
+  worked with keys (decided 2026-10-15; the pinned twin of the bar's
+  deadline popup, and a shape of the page because the page is the one
+  writer). See the decisions log and item 2 of the plan's order.
 - **Study** — the drill pattern from the exam system (an outside assessor
   scores, the student never rates themself), as a mode of the same page.
 
@@ -648,3 +652,55 @@ only the window and the panels around it differ.
   the thing caught it. `record()` and `recount()` read `state` directly now.
   Next to the `advanceWidth` lesson: that was a dependency never captured,
   this is a captured dependency not yet up to date.
+- 2026-10-15: tasks get lifespans, and the dashboard gets the screen. The
+  weakest number in the tool is checkboxes closed — 2 of 22 in the week of
+  classes, 0 of 17 before it — and the student's own reading was that a
+  checkbox has no depth: it becomes a task with a deadline the moment it
+  exists, so it has to be either a subtask of something that gives it
+  meaning or self-contained enough to still mean something in a few days.
+  Three things came out of the evening. **First, three kinds of box, not
+  one.** A *note box* is part of thinking, lives inside class notes, and is
+  not supposed to be closed at all; a *task* is self-contained and carried
+  forward; a *deadline* is imposed from outside and has consequences.
+  Todoist conflates the last two and cannot express the first, while
+  markdown gives it away for free — and counting note boxes as unclosed is
+  what makes 2/22 partly a measurement artefact. The rule that tells them
+  apart adds no syntax: **a box becomes a task when it is given a date or a
+  priority, and stays a note box otherwise**, which is already how deadlines
+  are born. The safety net is age, never interrogation: nothing interrupts
+  writing to ask a checkbox to justify itself. **Second, lifespans**, taken
+  from the `entropy` model in Basecamp's Fizzy, whose source says it
+  plainly: a card carries `last_active_at`, any activity resets the clock,
+  and after the silence runs out an hourly sweep moves it to "not now" —
+  attributed to a system user, recoverable, not deleted — with a bubble
+  counting down through the last quarter of its life (30 days by default,
+  and changing the setting touches every card so nobody is evicted by a
+  knob). Here: 7 days of silence for a note box, 30 for a task, and no
+  decay at all for a deadline, which is judged by its date — though a
+  deadline a fortnight past its date with nothing done to it is auto-hidden,
+  the state the store already has. One adjustment makes the idea better here
+  than there: **the decay belongs to the view, not the file.** Fizzy can
+  move a card because cards live in a database; a note box lives in a note
+  from a day that already happened, which is history and is not rewritten.
+  So a box that goes quiet simply stops being carried into the dashboard,
+  stays where it was written, and stays findable through its project — which
+  makes archival reversible for nothing. The rule kept verbatim is the
+  warning: nothing may vanish that has not first appeared as about to.
+  **Third, two dates — due and do.** The due date is a fact you receive; the
+  do-date is the decision students avoid, so it is the first job worth
+  giving the agent: workload across the fortnight by project, do-dates
+  proposed for the empty days, and an effort estimate offered rather than
+  asked for, because nobody fills those in. It needs no new access — the
+  store and the task list are already in the payload — and it is the
+  argument for fetching the timetable, without which "the 24th is free" is
+  a guess. The dashboard itself is full screen, the pinned twin of
+  `SUPER+ALT+D` as `SUPER+ALT+\` is of `SUPER+ALT+=`, and marking something
+  done there ticks the line in the daily note, which forces it to be a shape
+  of the page: the page is the one writer, and `student-agent tasks` is
+  read-only for that reason. Vocabulary stays Obsidian Tasks' (📅 ⏳ 🛫 🔁,
+  the priority arrows, ✅, `- [/]` and `- [-]`) so the file still reads on
+  the Mac and in any editor — richness on disk, quiet on screen, since the
+  page draws its own rows and can show a date as a pill and a priority as a
+  colour. And the division of labour between the two ways in: in the note,
+  language; in the dashboard, keys — with rescheduling the single place that
+  takes typed words, through the note's own parser.

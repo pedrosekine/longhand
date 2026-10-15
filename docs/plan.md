@@ -335,10 +335,10 @@ lifting the freeze; the numbers above cannot see any of them):
   subtask of something that gives it its meaning, or self-contained enough
   to still mean something in a few days. Otherwise it is random text that
   will not be understood later — which is the 2/22 in different words.
-  *Not solved, not even proposed yet.* The shapes in sight: a checkbox
-  nested under its project heading already has context the page could keep
-  (the tagged H1 rule of item 1); a bare one could be asked to earn its
-  place. Decide the shape before building anything.
+  **Shaped 2026-10-15**, after an evening on it: three kinds of box told
+  apart by one rule, lifespans for each, and a dashboard to meet them in.
+  The design is item 2 of the order below; the reasoning is in the diary's
+  decisions log. Nothing built yet.
 - **The agent knows nothing, so it feels useless.** Asked a question, it
   has no access to anything and answers from nothing. It needs to get
   smarter and smarter. *First step done 2026-10-15:* a block sent from
@@ -471,7 +471,68 @@ a fix or a feature to decide first):
    heading of the same or a higher level — an H2 never ends an H1. First
    version: from the sidebar's projects, every section of that tag across
    days, newest first, opened in place.
-2. **Timetable sync** (2026-10-11) — the project list follows the real
+2. **Tasks that live, and a dashboard to work them** (designed 2026-10-15;
+   Basecamp's Fizzy read for its archival rule). Three layers, in the order
+   they are worth:
+   - *Depth, with no new syntax.* Markdown already carries both hierarchies
+     and the page already edits them: indentation under a box is a subtask
+     (`Rows.relist`), and the heading chain is project › section (the tagged
+     H1 rule of item 1). The store records neither. Binding should keep the
+     **heading path** and the **parent box's id**, so a bare box — no
+     project, no parent — becomes detectable, and every view can show a task
+     where it came from: "Design Theory › Essay 2 › draft intro" instead of
+     "draft intro". That answers "random text I will not understand later"
+     by display, rather than by asking the student to write better boxes.
+   - *Lifespans.* One rule tells the kinds apart: **a box becomes a task the
+     moment it is given a date or a priority, and stays a note box
+     otherwise.** A **note box** is thinking, disposable, and carries 7 days
+     of silence; a **task** 30; a **deadline** never decays by silence,
+     because it is judged by its date — but one whose date passed with
+     nothing done to it for a fortnight is auto-**hidden**, the state the
+     store already has. Silence is reset by any touch: edited, ticked,
+     rescheduled, named again in a later note, or kept on purpose. Two rules
+     keep it humane. The decay is **in the view, never in the file** — an
+     old note is history, so the line is not rewritten and stays findable
+     through its project, which also makes archival reversible for free. And
+     **nothing goes without first appearing as about to go**: a dim
+     countdown on the row through the last quarter of its life (Fizzy warns
+     at 75% of its 30 days, and turning the knob down touches every card so
+     a settings change never evicts anyone). The panel's `recent = age < 7`
+     with older days folded is already a crude one-period version of this.
+   - *The second encounter.* Three verbs an old box does not have today:
+     **when** (give it a do-date), **not now** (postpone by hand), **drop**
+     (`- [-]` with a cancelled date). Ticking it is a lie, ignoring it is
+     the 2/22, and those are currently the only two options.
+   Also settled: **two dates, due and do.** The due date is a fact you
+   receive; the do-date is the decision students avoid, which makes it the
+   agent's job — workload across the next fortnight by project, proposed
+   do-dates on the empty days, and a proposed **effort estimate**, offered
+   and accepted rather than asked for, because nobody fills those in. All of
+   it is arithmetic over the deadline store and the task list, both already
+   in the payload; the timetable (item 3) is what turns "the 24th is free"
+   from a guess into a fact.
+   The line keeps the Obsidian Tasks vocabulary it already half-speaks (📅
+   due; then ⏳ / 🛫 for the do-date, 🔁 recurrence, 🔺⏫🔼🔽⏬ priority, ✅ a
+   done date, `- [/]` and `- [-]` as states), so a note still reads in
+   Obsidian on the Mac and as plain text anywhere. Richness on disk, quiet
+   on screen: the page draws its own rows, so metadata appears as marks and
+   pills rather than emoji soup.
+   **The dashboard** is full-screen, and the pinned twin of `SUPER+ALT+D`
+   the way `SUPER+ALT+\` is of `SUPER+ALT+=`: the popup is the glance, the
+   dashboard is where the work gets done. Marking something done there ticks
+   the line in the daily note — which means the dashboard has to be a
+   **shape of the page**, because the page is the one writer (`student-agent
+   tasks` is read-only for exactly that reason). The gathering already
+   exists: `student-agent next` returns every unticked box in every note
+   ever, and `buildTaskRows()` already assembles deadlines, boxes by day and
+   what the agent raised into one list. What it needs is context on each
+   row, grouping by project and by week, the three verbs, the entropy
+   countdown, and **one verb alphabet** shared with the popup (Enter go,
+   Space tick, `t` when, `p` priority, `s` not now, `g` grade, `x` drop —
+   today Enter means done in the popup and go-to in the panel). In the note,
+   language; in the dashboard, keys — with rescheduling the one place that
+   takes typed words, parsed by the note's own `Dates.js`.
+3. **Timetable sync** (2026-10-11) — the project list follows the real
    timetable instead of the copy written on 2026-10-11. Pull, not push:
    when the page or sidebar opens and the last copy is older than an
    interval (an hour?), the runner re-fetches the university's `.ics` feed
@@ -482,15 +543,15 @@ a fix or a feature to decide first):
    schedule; today's session lines stay as a fallback. **Needs:** the feed
    address from the IT:U portal (the link Google was given; local config
    only, never the repo).
-3. **Multi-language** — cue words ("bis Freitag", "até sexta", "para el
+4. **Multi-language** — cue words ("bis Freitag", "até sexta", "para el
    viernes") and the page's prompts in DE / PT / ES, at no cost in speed.
    *Refuted 2026-10-15 by the counts it was waiting for* (61 English blocks
    to 3 Portuguese). Stays here; revisit if the ratio moves.
-4. **Focus mode** (14.7) — where the pomodoro comes back in (resurface it
+5. **Focus mode** (14.7) — where the pomodoro comes back in (resurface it
    then, per 2026-10-11). *Refuted 2026-10-15*: 0 sessions in a month. The
    question to settle first is whether the pomodoro belongs in this tool at
    all, not how to dress it.
-5. **Structure** — split `Page.qml` into tested modules (bound lines,
+6. **Structure** — split `Page.qml` into tested modules (bound lines,
    runner queue, what's next); install by symlink so the repo is the
    install; one deadline-store parser for both plugins.
 
