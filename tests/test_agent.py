@@ -326,6 +326,43 @@ def main() -> int:
         check(nxt("2026-10-12T18:00")["at"] == "2026-12-15T10:45", "after class: the next session, not today's")
         check(nxt("2027-01-11T09:00") is None, "in January, October is last October: nothing next")
         check(nxt("2026-12-01T09:00")["at"] == "2026-12-15T10:45", "December reads as this December")
+
+        # 15. sections: a project's notes across days, found by its tag
+        # A tagged H1 claims its H2s and H3s; only another H1 ends it.
+        (t.daily / f"{DAY}.md").write_text(
+            "[[agents/student/daily/x|agent]]\n\n"
+            "# Interdisciplinary Seminar #intsem\n"
+            "Gabriel on digital sovereignty\n"
+            "## Learning goals\n"
+            "- [ ] send the email\n"
+            "- [x] read the abstract\n"
+            "### Deeper still #intsem\n"
+            "the same section, not a second one\n"
+            "# Research Proficiency #respro\n"
+            "## Supervisors\n"
+            "- Frank Neffke\n")
+        (t.daily / f"{OLD_DAY}.md").write_text(
+            "# Interdisciplinary Seminar #intsem\n"
+            "the first week\n"
+            "## Untagged heading\n"
+            "still intsem's\n")
+        se = json.loads(t.agent("sections", "--tag", "intsem").stdout)
+        check(len(se) == 2, f"one section per day, the nested tagged heading absorbed ({len(se)})")
+        check([r["date"] for r in se] == [DAY, OLD_DAY], f"newest day first ({[r['date'] for r in se]})")
+        check(se[0]["title"] == "Interdisciplinary Seminar" and se[0]["level"] == 1, f"title without the tag ({se[0]['title']!r})")
+        check(se[0]["line"] == 2, f"the heading's own line, to open the note on ({se[0]['line']})")
+        check(se[0]["open"] == 1 and se[0]["done"] == 1, f"its checkboxes counted ({se[0]['open']}/{se[0]['done']})")
+        check([x["text"] for x in se[0]["sub"]] == ["Learning goals", "Deeper still #intsem"],
+              f"the headings under it, as its index ({[x['text'] for x in se[0]['sub']]})")
+        check("Frank Neffke" not in json.dumps(se), "another H1 ends the section")
+        check(se[0]["preview"] == ["Gabriel on digital sovereignty", "- [ ] send the email"],
+              f"preview skips the link line and the headings ({se[0]['preview']})")
+        check(se[1]["sub"][0]["text"] == "Untagged heading", "an untagged H2 does not end an H1")
+        check([r["date"] for r in json.loads(t.agent("sections", "--tag", "respro").stdout)] == [DAY],
+              "the other tag gets its own section")
+        check(json.loads(t.agent("sections", "--tag", "nothing").stdout) == [], "a tag nobody wrote: nothing")
+        check(len(json.loads(t.agent("sections", "--tag", "intsem", "--days", "7").stdout)) == 1,
+              "--days leaves the old day out")
     finally:
         t.cleanup()
 

@@ -261,7 +261,25 @@
       soonest first. Enter starts a class (`# Course #tag` at the end of
       today's note, cursor under it); Ctrl+Enter puts the tag at the cursor.
       The five courses' files were written from the IT:U timetable feed.
-- [ ] **Freeze, 2026-10-11 → 2026-10-25: fixes only, use it.** At the end,
+      - [x] 14.6i projects for notes (2026-10-15, the first thing off the
+            parking lot once the freeze lifted). `student-agent sections
+            --tag <tag>` gathers every section of a project's tag across the
+            daily notes, newest day first: a tagged heading claims
+            everything under it until the next heading of the same or a
+            higher level, so an H2 never ends an H1, and a tagged heading
+            inside a section of the same tag is part of it rather than a
+            second copy. Each section carries its title (the heading
+            without the tag), the headings under it as its index, its
+            checkbox counts and a preview. In the sidebar's projects, `→`
+            (or Shift+click) opens the project in the margin; Enter opens a
+            section in the sheet with the cursor on its heading, found by
+            its words rather than its line number, in whatever day it was
+            written. Found on the way: a page opened from nothing kept the
+            panel the last session left open, squeezing the sheet — the
+            margin is on-demand only, so a fresh open now shows the note
+            alone. Tests: `tests/test_agent.py` (the claiming rule),
+            `tests/page/run.py` (the list, the jump, the fresh open).
+- [x] **Freeze, 2026-10-11 → 2026-10-25: fixes only, use it.** At the end,
       `student-agent stats --since 2026-10-11` and decide with it:
       - habit — days written in, days the page was opened, minutes;
       - intention → outcome — checkboxes ticked / written (0/17 before);
@@ -386,8 +404,10 @@ a fix or a feature to decide first):
 
 **Proposed order** (unless the numbers say otherwise):
 
-1. **Projects for notes** (14.6i) — *taken 2026-10-15, the first thing off
-   the lot.* Class notes findable by course without
+1. ~~**Projects for notes** (14.6i)~~ — **done 2026-10-15**, the first thing
+   off the lot; see the step above. Left for later: the sections as one
+   readable run instead of a list to jump from, and a project's deadlines
+   beside its notes. Class notes findable by course without
    knowing the date. Convention in use since 2026-10-12: one `# Course #tag`
    H1 per class, notes under it with H2/H3…, course deadlines carry the same
    tag. Rule: a tagged heading claims everything under it until the next

@@ -57,7 +57,14 @@ the same sheet, editable (a day without a note gets its file on the first
 word). `Alt+Left`/`Alt+Right` move between calendar and note; `weekStart`
 in the config picks the first column. Under it, your projects (one file each
 in the agent's `knowledge/projects/`) with their next session: Enter starts
-a class in today's note (`# Course #tag`), Ctrl+Enter puts just the tag. The file stays plain
+a class in today's note (`# Course #tag`), Ctrl+Enter puts just the tag, and
+`→` (or Shift+click) opens **that project's notes** — every section you wrote
+under its tag, newest first, with the headings under each one as its index, so
+a class note is found by its course instead of by the date it happened on.
+Enter opens a section in the sheet with the cursor on its heading, editable
+like any other day. A tagged heading claims everything under it until the next
+heading of the same or a higher level, so an `## H2` never ends a `# Course`.
+The file stays plain
 markdown, changed only where you typed. What you wrote is always drawn at
 full strength; a block with a reply carries a gutter mark and its reply shows
 in the margin to the right when asked. Finishing an `@` or `?` line stages the block
@@ -128,6 +135,7 @@ ln -s "$PWD/agent/student-agent" ~/.local/bin/student-agent
 student-agent install                       # opencode agent definition + folders
 student-agent context --trigger open        # show exactly what the model would see
 student-agent run --trigger open            # one pass over today's note
+student-agent sections --tag intsem         # one project's notes across every day (JSON)
 python3 tests/test_agent.py                 # offline, stub opencode
 ```
 

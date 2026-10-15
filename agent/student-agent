@@ -743,6 +743,79 @@ def cmd_accept(cfg: dict, args) -> int:
 
 
 CHECKBOX = re.compile(r"^(\s*[-*+] )\[ \] (.*\S)")
+HEADING = re.compile(r"^(#{1,6})\s+(\S.*?)\s*$")
+
+
+def tagged_sections(cfg: dict, tag: str, days: int) -> list[dict]:
+    """Every section of one project's tag across the daily notes, newest day
+    first — class notes found by their course instead of by the date they
+    happened on.
+
+    The convention in use since 2026-10-12 is one `# Course #tag` heading per
+    class with the notes under it, so the rule is: a tagged heading claims
+    everything under it until the next heading of the same or a higher level.
+    An H2 never ends an H1. A tagged heading inside a section of the same tag
+    is part of it, not a second copy of it."""
+    fmt = moment_to_strftime(cfg["daily"].get("format", "YYYY-MM-DD"))
+    daily = Path(cfg["vault"]) / cfg["daily"]["dir"]
+    today = dt.date.today()
+    want = tag.lstrip("#").lower()
+    out = []
+    for f in daily.glob("*.md"):
+        try:
+            d = dt.datetime.strptime(f.stem, fmt).date()
+        except ValueError:
+            continue
+        age = (today - d).days
+        if age < 0 or (days and age >= days):
+            continue
+        try:
+            lines = f.read_text().split("\n")
+        except OSError:
+            continue
+        heads = []
+        for i, line in enumerate(lines):
+            m = HEADING.match(line)
+            if m:
+                heads.append((i, len(m.group(1)), m.group(2)))
+        claimed = -1
+        for n, (i, level, text) in enumerate(heads):
+            if i <= claimed or want not in [t.lower() for t in TAG_RE.findall(text)]:
+                continue
+            end = len(lines)
+            for j, lvl, _ in heads[n + 1:]:
+                if lvl <= level:
+                    end = j
+                    break
+            claimed = end - 1
+            body = lines[i + 1:end]
+            inside = [{"line": j, "level": lvl, "text": t} for j, lvl, t in heads if i < j < end]
+            opens, done, words = 0, 0, 0
+            for line in body:
+                box = CHECKBOX_ANY.match(line)
+                if box:
+                    done += box.group(1) in "xX"
+                    opens += box.group(1) == " "
+                if not HEADING.match(line):
+                    words += len(line.split())
+            # What the section is about, for a list too narrow for the note:
+            # its own words with the tag taken out, then the first lines that
+            # are neither blank, a heading, nor the agent's link line.
+            title = re.sub(r"\s{2,}", " ", TAG_RE.sub(" ", text)).strip() or want
+            preview = [l.strip() for l in body
+                       if l.strip() and not HEADING.match(l) and not LINK_LINE.match(l.strip())][:2]
+            out.append({"date": f.stem, "file": str(f), "line": i, "level": level, "tag": want,
+                        "title": title, "heading": text, "age": age, "words": words,
+                        "open": opens, "done": done, "sub": inside, "preview": preview})
+    out.sort(key=lambda r: (r["age"], r["line"]))
+    return out
+
+
+def cmd_sections(cfg: dict, args) -> int:
+    print(json.dumps(tagged_sections(cfg, args.tag, int(args.days)), ensure_ascii=False))
+    return 0
+
+
 
 
 def cmd_tasks(cfg: dict, args) -> int:
@@ -1156,6 +1229,9 @@ def main(argv: list[str]) -> int:
     p.add_argument("--date", default="")
     p = sub.add_parser("tasks")
     p.add_argument("--days", default="7")
+    p = sub.add_parser("sections")
+    p.add_argument("--tag", required=True)
+    p.add_argument("--days", default="0", help="0: every day there is")
     p = sub.add_parser("next")
     p.add_argument("--days", default="7")
     p = sub.add_parser("dismiss")
@@ -1173,7 +1249,7 @@ def main(argv: list[str]) -> int:
     args = ap.parse_args(argv)
     try:
         cfg = load_config()
-        return {"run": cmd_run, "chat": cmd_chat, "ack": cmd_ack, "accept": cmd_accept, "tasks": cmd_tasks,
+        return {"run": cmd_run, "chat": cmd_chat, "ack": cmd_ack, "accept": cmd_accept, "tasks": cmd_tasks, "sections": cmd_sections,
                 "next": cmd_next, "dismiss": cmd_dismiss, "curriculum": cmd_curriculum,
                 "context": cmd_context, "state": cmd_state, "install": cmd_install, "stats": cmd_stats,
                 "projects": cmd_projects}[args.cmd](cfg, args)

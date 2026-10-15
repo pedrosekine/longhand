@@ -64,7 +64,7 @@ class Page:
         (bindir / "pomo").symlink_to(ROOT / "cli" / "pomo")
         # Only the local commands run (no model): accept, projects.
         self.runner.write_text(f"""#!/bin/bash
-case "$1" in accept|projects) exec "{ROOT}/agent/student-agent" "$@" ;; esac
+case "$1" in accept|projects|sections) exec "{ROOT}/agent/student-agent" "$@" ;; esac
 """)
         self.runner.chmod(0o755)
         self.env = dict(os.environ, XDG_CONFIG_HOME=str(cfg), XDG_STATE_HOME=str(self.state),
@@ -406,6 +406,44 @@ def main() -> int:
         p.call("insert", "first point")
         p.call("insertTag", 1)
         check(p.wait(lambda: "first point #dtm " in p.call("text")), "Ctrl+Enter puts just the tag at the cursor")
+
+        # 11b. a project's notes: every section of its tag, newest first,
+        # opened in place. The claiming rule is the runner's; what matters
+        # here is that the list is right and Enter lands on the heading.
+        p.call("closeAll")
+        (p.daily / f"{YDAY}.md").write_text(
+            header(YDAY)
+            + "# Interdisciplinary Seminar #intsem\nGabriel on sovereignty\n"
+            + "## Learning goals\n- [ ] send the email\n"
+            + "# Design Theory & Methods #dtm\n## Methods\nnot intsem's\n")
+        (p.daily / f"{TODAY}.md").write_text(
+            header(TODAY) + "Morning notes.\n\n# Interdisciplinary Seminar #intsem\n## Today's seminar\nthe second week\n")
+        p.open_fresh()
+        p.call("sidebar")
+        p.wait(lambda: len(json.loads(p.call("projects"))) == 2)
+        p.call("openProject", 0)
+        check(p.wait(lambda: len(json.loads(p.call("sections"))) == 2),
+              f"the project's sections, both days ({p.call('sections')})")
+        se = json.loads(p.call("sections"))
+        check(se[0].startswith(TODAY) and se[1].startswith(YDAY), f"newest first ({se})")
+        check(se[0].split("|")[1] == "Interdisciplinary Seminar", f"the heading without its tag ({se[0]})")
+        check(se[0].split("|")[2] == "Today's seminar" and "Learning goals" in se[1],
+              f"what is under it, as its index ({se})")
+        check("Methods" not in p.call("sections"), "another H1's section is not in the list")
+        check(json.loads(p.call("panel"))["project"] is True, "the margin is the project, not the agent")
+        p.call("openSection", 1)
+        check(p.wait(lambda: p.call("header") != "" and not p.call("header").startswith(dt.date.today().strftime("%A"))),
+              "Enter on an older section opens its day")
+        check(p.wait(lambda: p.lines()[int(p.call("cursorLine"))] == "# Interdisciplinary Seminar #intsem"),
+              f"…with the cursor on that section's heading ({p.lines()[int(p.call('cursorLine'))]!r})")
+        check(json.loads(p.call("panel"))["project"] is False, "…and the panel is out of the way")
+        p.call("sidebar")
+        p.call("openProject", 1)
+        check(p.wait(lambda: json.loads(p.call("sections")) == [f"{YDAY}|Design Theory & Methods|Methods"]),
+              f"the other project has its own one ({p.call('sections')})")
+        p.open_fresh()
+        check(json.loads(p.call("panel"))["margin"] is False,
+              "a page opened from nothing shows the note alone, not the last panel")
 
         # 12. the theme: roles come from the Omarchy palette, headings apart
         pal = p.call("palette")

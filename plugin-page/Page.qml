@@ -239,6 +239,12 @@ Item {
   property bool marginOpen: false
   property int marginFocus: -1   // -1 note; 0..n-1 proposal rows; n = chat field
   property bool tasksOpen: false
+  property bool projectOpen: false   // the margin is showing one project's notes
+  property var sections: []          // [{ date, line, heading, title, sub, preview, open, done }]
+  property string projectTag: ""
+  property string projectName: ""
+  property int sectionFocus: 0
+  property var pendingSection: null  // a heading to land on once its note is open
   property var tasks: []
   property var raised: []
   property var tickHistory: []   // ticks made from the panel, newest last, for Ctrl+Z
@@ -279,6 +285,12 @@ Item {
     }
     if (fresh) {
       root.sidebarOpen = false
+      // The margin is on-demand only, so a page opened from nothing shows
+      // the note alone — not the panel the last session left open.
+      root.marginOpen = false
+      root.tasksOpen = false
+      root.projectOpen = false
+      root.marginFocus = -1
       agent.reload()
       if (goto && svc.configured && goto.stem !== svc.todayStamp()) {
         svc.openDate(goto.stem)
@@ -750,6 +762,7 @@ Item {
   function diveIn() {
     root.used("margin")
     if (root.marginWidth <= 0 || root.currentHash === "") return
+    root.projectOpen = false
     root.marginOpen = true
     if (root.currentProposals.length > 0) {
       root.marginFocus = 0
@@ -764,6 +777,7 @@ Item {
     root.marginFocus = -1
     root.marginOpen = false
     root.tasksOpen = false
+    root.projectOpen = false
     editor.focusNote()
   }
 
@@ -789,6 +803,7 @@ Item {
     root.tasksOpen = !root.tasksOpen
     if (root.tasksOpen) root.used("whats-next")
     if (root.tasksOpen) {
+      root.projectOpen = false
       root.marginOpen = true
       root.taskFocus = 0
       root.refreshTasks()
@@ -801,6 +816,74 @@ Item {
   function refreshTasks() {
     tasksProc.command = [svc.runner, "next", "--days", "7"]
     tasksProc.running = true
+  }
+
+  // ------------------------------------------------- a project's notes
+
+  // Class notes found by their course instead of by the date they happened
+  // on (the week of 2026-10-12 opened the calendar 31 times looking for
+  // them): every section of the project's tag, newest first, opened in
+  // place. The claiming rule lives in `student-agent sections`.
+  function openProject(pr) {
+    if (!pr || root.marginWidth <= 0) return
+    root.used("project-notes")
+    root.projectTag = pr.tag
+    root.projectName = pr.name || pr.tag
+    root.sections = []
+    root.sectionFocus = 0
+    root.tasksOpen = false
+    root.projectOpen = true
+    root.marginOpen = true
+    root.marginFocus = -1
+    sectionsProc.command = [svc.runner, "sections", "--tag", pr.tag]
+    sectionsProc.running = true
+    marginKeys.forceActiveFocus()
+  }
+
+  function moveSectionFocus(d) {
+    if (root.sections.length === 0) return
+    root.sectionFocus = Math.max(0, Math.min(root.sections.length - 1, root.sectionFocus + d))
+  }
+
+  // Enter: the note itself, the cursor on the section's own heading. The
+  // panel closes, because finding it was the point — the reading happens in
+  // the sheet, where the words can also be changed.
+  function openSection(s) {
+    if (!s) return
+    root.projectOpen = false
+    root.marginOpen = false
+    root.pendingSection = s
+    if (s.date === svc.noteDate && svc.ready) root.landOnSection()
+    else root.openNote(s.date)
+    editor.focusNote()
+  }
+
+  // By its words, not its line number: the note may have been written in
+  // since the list was gathered (the same reason Tasks.js looks by words).
+  function landOnSection() {
+    if (!root.pendingSection || !svc.ready) return
+    var want = root.pendingSection.heading
+    root.pendingSection = null
+    var re = new RegExp("^#{1,6} +" + want.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + " *$", "m")
+    var m = re.exec(editor.text)
+    if (m) editor.setCursor(m.index + m[0].length, true)
+  }
+
+  // A section's second line in the list: what is under it, or its first
+  // words when it has no headings of its own.
+  function sectionUnder(s) {
+    if (s.sub && s.sub.length > 0) {
+      var names = []
+      for (var i = 0; i < s.sub.length && i < 4; i++) names.push(s.sub[i].text.replace(/\s*#[\w\/-]+/g, ""))
+      return names.join(" · ") + (s.sub.length > 4 ? " · +" + (s.sub.length - 4) : "")
+    }
+    return (s.preview || []).join(" · ")
+  }
+
+  function sectionWhen(s) {
+    var p = svc.configured ? Days.parse(s.date, svc.dailyFormat()) : null
+    if (!p) return s.date
+    return Qt.formatDate(p.date, "ddd d MMM") + (s.age === 0 ? " · today" : s.age === 1 ? " · yesterday" : "")
   }
 
   // Rows for the panel: a day header per date, its open tasks, and older
@@ -1259,6 +1342,7 @@ Item {
     }
     root.bound = Bound.anchors(editor.text)
     root.landOnGoto()
+    root.landOnSection()
     root.doPendingWrite()
     root.writeClass()
   }
@@ -1426,6 +1510,7 @@ Item {
     root.staged = ({})
     root.marginOpen = false
     root.tasksOpen = false
+    root.projectOpen = false
     root.marginFocus = -1
     if (svc.saving) { root.pendingStamp = stamp; return }
     svc.openDate(stamp)
@@ -1567,6 +1652,17 @@ Item {
         root.taskFocus = Math.min(root.taskFocus, Math.max(0, root.taskRows.length - 1))
       }
     }
+  }
+
+  Process {
+    id: sectionsProc
+    stdout: StdioCollector {
+      onStreamFinished: {
+        try { root.sections = JSON.parse(text) || [] } catch (e) { root.sections = [] }
+        root.sectionFocus = Math.min(root.sectionFocus, Math.max(0, root.sections.length - 1))
+      }
+    }
+    stderr: StdioCollector { onStreamFinished: if (text.trim() !== "") console.warn("student.page sections: " + text.trim()) }
   }
 
   Process {
@@ -2144,7 +2240,8 @@ Item {
             event.accepted = true
             return
           }
-          // In the projects: Enter starts a class, Ctrl+Enter puts the tag.
+          // In the projects: Enter starts a class, Ctrl+Enter puts the tag,
+          // Right goes into the project's own notes.
           if (root.projFocus >= 0 && !alt) {
             var np = root.projects.length
             if (k === Qt.Key_Up && !ctrl) root.projFocus = Math.max(0, root.projFocus - 1)
@@ -2154,6 +2251,7 @@ Item {
               if (pr && ctrl) root.insertTag(pr)
               else if (pr) root.startClass(pr)
             }
+            else if (k === Qt.Key_Right && !ctrl) root.openProject(root.projects[root.projFocus])
             else if (k === Qt.Key_Tab || k === Qt.Key_Backtab || k === Qt.Key_Escape) root.projFocus = -1
             else if (!ctrl) { root.projFocus = -1; return }
             else return
@@ -2436,6 +2534,7 @@ Item {
               cursorShape: Qt.PointingHandCursor
               onClicked: function (mouse) {
                 if (mouse.modifiers & Qt.ControlModifier) root.insertTag(modelData)
+                else if (mouse.modifiers & Qt.ShiftModifier) root.openProject(modelData)
                 else root.startClass(modelData)
               }
             }
@@ -2447,7 +2546,7 @@ Item {
           visible: sidebarKeys.activeFocus
           textFormat: Text.PlainText
           wrapMode: Text.WordWrap
-          text: root.projFocus >= 0 ? "↑↓ pick · Enter starts a class in today's note · Ctrl+Enter puts the tag · Tab back"
+          text: root.projFocus >= 0 ? "↑↓ pick · → its notes · Enter starts a class in today's note · Ctrl+Enter puts the tag · Tab back"
             : root.dueFocus >= 0 ? "↑↓ pick · Enter goes to its line · Tab on to the projects"
             : "arrows move · Ctrl+←→ month · Home today · Enter opens" + (root.focusDue.length > 0 || root.projects.length > 0 ? " · Tab: " + (root.focusDue.length > 0 ? "this day's deadlines" : "the projects") : "")
           color: root.faint
@@ -2484,6 +2583,13 @@ Item {
           var k = event.key
           if (root.zoomKey(event)) { event.accepted = true; return }
           if (k === Qt.Key_Escape || (k === Qt.Key_Left && alt)) { root.backToNote(); event.accepted = true; return }
+          if (root.projectOpen) {
+            if (k === Qt.Key_Up) { root.moveSectionFocus(-1); event.accepted = true }
+            else if (k === Qt.Key_Down) { root.moveSectionFocus(1); event.accepted = true }
+            else if (k === Qt.Key_Return || k === Qt.Key_Enter) { root.openSection(root.sections[root.sectionFocus]); event.accepted = true }
+            else if (k === Qt.Key_T && (event.modifiers & Qt.ControlModifier)) { root.toggleTasks(); event.accepted = true }
+            return
+          }
           if (root.tasksOpen) {
             var ctrl = event.modifiers & Qt.ControlModifier
             if (k === Qt.Key_Up) { root.moveTaskFocus(-1); event.accepted = true }
@@ -2619,9 +2725,131 @@ Item {
         }
       }
 
+      // A project's notes: every section of its tag, newest first.
+      Flickable {
+        id: projectFlick
+        visible: root.projectOpen
+        anchors.fill: parent
+        anchors.topMargin: margin.contentTopInset + root.sp(4)
+        anchors.leftMargin: margin.contentLeftInset
+        anchors.rightMargin: margin.contentRightInset
+        anchors.bottomMargin: margin.contentBottomInset
+        clip: true
+        contentWidth: width
+        contentHeight: projectColumn.implicitHeight
+        boundsBehavior: Flickable.StopAtBounds
+
+        TouchScroll { flickable: projectFlick }
+
+        function revealFocused() {
+          var kids = projectColumn.children
+          for (var i = 0; i < kids.length; i++) {
+            var k = kids[i]
+            if (k.index === undefined || k.index !== root.sectionFocus) continue
+            if (contentY > k.y) contentY = k.y
+            else if (contentY + height < k.y + k.height) contentY = k.y + k.height - height
+            return
+          }
+        }
+        Connections { target: root; function onSectionFocusChanged() { Qt.callLater(projectFlick.revealFocused) } }
+
+        Column {
+          id: projectColumn
+          width: parent.width
+          spacing: root.sp(4)
+
+          Text {
+            width: parent.width
+            textFormat: Text.PlainText
+            elide: Text.ElideRight
+            text: "#" + root.projectTag + "  " + root.projectName.toUpperCase()
+            color: root.dim
+            font.family: root.fontFamily
+            font.pixelSize: root.fs(Style.font.caption)
+          }
+
+          Text {
+            width: parent.width
+            visible: root.sections.length === 0
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
+            text: sectionsProc.running ? "…" : "no notes under #" + root.projectTag + " yet — a `# Course #" + root.projectTag + "` heading starts one"
+            color: root.faint
+            font.family: root.fontFamily
+            font.pixelSize: root.fs(Style.font.bodySmall)
+          }
+
+          Repeater {
+            model: root.sections
+            Rectangle {
+              required property var modelData
+              required property int index
+              readonly property bool hot: root.sectionFocus === index
+              width: projectColumn.width
+              height: secCol.implicitHeight + root.sp(10)
+              radius: Style.cornerRadius
+              color: hot ? Style.selectedFill : "transparent"
+              Column {
+                id: secCol
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.leftMargin: root.sp(6)
+                anchors.rightMargin: root.sp(6)
+                anchors.verticalCenter: parent.verticalCenter
+                Text {
+                  width: parent.width
+                  textFormat: Text.PlainText
+                  elide: Text.ElideRight
+                  text: root.sectionWhen(modelData)
+                    + (modelData.open > 0 ? "   ○ " + modelData.open : "")
+                    + (modelData.done > 0 ? "   ✓ " + modelData.done : "")
+                  color: root.dim
+                  font.family: root.fontFamily
+                  font.pixelSize: root.fs(Style.font.caption)
+                }
+                Text {
+                  width: parent.width
+                  textFormat: Text.PlainText
+                  elide: Text.ElideRight
+                  text: modelData.title
+                  color: root.foreground
+                  font.family: root.fontFamily
+                  font.pixelSize: root.fs(Style.font.body)
+                }
+                Text {
+                  width: parent.width
+                  visible: text !== ""
+                  textFormat: Text.PlainText
+                  elide: Text.ElideRight
+                  text: root.sectionUnder(modelData)
+                  color: root.faint
+                  font.family: root.fontFamily
+                  font.pixelSize: root.fs(Style.font.caption)
+                }
+              }
+              MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: { root.sectionFocus = index; root.openSection(modelData) }
+              }
+            }
+          }
+
+          Text {
+            width: parent.width
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
+            text: "↑↓ move · Enter opens it in the sheet · Esc back"
+            color: root.faint
+            font.family: root.fontFamily
+            font.pixelSize: root.fs(Style.font.caption)
+          }
+        }
+      }
+
       Flickable {
         id: marginFlick
-        visible: !root.tasksOpen
+        visible: !root.tasksOpen && !root.projectOpen
         anchors.top: parent.top
         anchors.topMargin: margin.contentTopInset + root.sp(4)
         anchors.left: parent.left
@@ -2729,7 +2957,7 @@ Item {
 
       Item {
         id: chatBox
-        visible: !root.tasksOpen
+        visible: !root.tasksOpen && !root.projectOpen
         anchors.left: parent.left
         anchors.leftMargin: margin.contentLeftInset
         anchors.right: parent.right
@@ -2742,7 +2970,7 @@ Item {
           id: chatField
           anchors.left: parent.left
           anchors.right: parent.right
-          visible: root.marginOpen && !root.tasksOpen
+          visible: root.marginOpen && !root.tasksOpen && !root.projectOpen
           placeholderText: "…"
           font.family: root.fontFamily
           font.pixelSize: root.fs(Style.font.body)

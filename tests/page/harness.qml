@@ -62,6 +62,10 @@ ShellRoot {
     function selectSpan(a: int, b: int): void { page.editorItem.selectSpan(a, b) }
     function projects(): string { return JSON.stringify(page.projects.map(function (p) { return p.tag + "|" + page.sessionLabel(p.next) })) }
     function startClass(i: int): void { page.startClass(page.projects[i]) }
+    function openProject(i: int): void { page.openProject(page.projects[i]) }
+    function sections(): string { return JSON.stringify(page.sections.map(function (s) { return s.date + "|" + s.title + "|" + page.sectionUnder(s) })) }
+    function openSection(i: int): void { page.sectionFocus = i; page.openSection(page.sections[i]) }
+    function panel(): string { return JSON.stringify({ project: page.projectOpen, tasks: page.tasksOpen, margin: page.marginOpen, focus: page.sectionFocus }) }
     function insertTag(i: int): void { page.insertTag(page.projects[i]) }
     // The measure
     function zoom(z: real): void { page.setZoom(z) }
