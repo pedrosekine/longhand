@@ -270,14 +270,64 @@
         projects); #tags used unprompted;
       - languages — blocks per language (the case for multi-language cues);
       - focus — pomodoro sessions (0 since 2026-09-17).
-- [ ] After the freeze: take from the parking lot below, with the stats in
-      hand.
+- [x] **Freeze lifted 2026-10-15**, ten days early: a week of classes had
+      given it enough to say. `student-agent stats --since 2026-10-11`:
+      - habit — 4 of 5 days written in, 4 with the page opened (20 opens,
+        371 min), 1324 words. **The habit took; that was the question.**
+      - intention → outcome — 2 of 22 checkboxes closed (0/17 before).
+        Still the weakest number in the tool.
+      - deadlines — 29 added, 18 bound from a note line, 2 closed. None
+        closed "by their time" because nothing is due before 2026-10-30:
+        **that axis cannot be judged until November.**
+      - finding — calendar 31, past days 11, three tags used unprompted
+        (#intsem #respro #hfpi). **The case for projects, confirmed.**
+      - languages — 61 English blocks against 3 Portuguese. **Multi-language
+        is refuted for now**; it stays on the lot, further down.
+      - focus — 0 pomodoro sessions in a month. **Focus mode is refuted**
+        on the same terms; the pomodoro is vestigial, not yet removed.
+      - the agent — 15 runs all week, $0.0303, and the send prompt answered
+        **yes once against no 41 times**. 10 of those were the 10-13 prompt
+        storm; the other **31 were separate, deliberate declines**. A week
+        of real writing showed the agent nine blocks. The premise — writing
+        alone with a partner — is the one thing use did not pick up. What
+        the student says about it is the three notes below.
+- [x] After the freeze: take from the parking lot below, with the stats in
+      hand. Chosen 2026-10-15: projects for notes (1), the one item the
+      numbers confirm.
 
 ## Parking lot
 
-Everything waiting, in one place. Nothing here is built during the freeze;
-on 2026-10-25 the stats decide what comes off the lot and in what order.
-New ideas land here first (date, where they came from, what they need).
+Everything waiting, in one place. The freeze decided the order on
+2026-10-15 with the stats above; new ideas still land here first (date,
+where they came from, what they need) rather than in code.
+
+**From the week of classes, 2026-10-15** (the student's own three, on
+lifting the freeze; the numbers above cannot see any of them):
+
+- **Checkboxes have no depth.** As soon as a checkbox exists it tends to
+  become a task with a deadline, so it has to be one of two things: a
+  subtask of something that gives it its meaning, or self-contained enough
+  to still mean something in a few days. Otherwise it is random text that
+  will not be understood later — which is the 2/22 in different words.
+  *Not solved, not even proposed yet.* The shapes in sight: a checkbox
+  nested under its project heading already has context the page could keep
+  (the tagged H1 rule of item 1); a bare one could be asked to earn its
+  place. Decide the shape before building anything.
+- **The agent knows nothing, so it feels useless.** Asked a question, it
+  has no access to anything and answers from nothing. It needs to get
+  smarter and smarter. This is the live end of "the agent's tools" below,
+  and the stats' 31 declines are its symptom: the student stopped offering
+  because there was nothing to gain. Note the allowlist is the *design* —
+  the payload is deliberately narrow and logged before inference — so
+  "smarter" has to mean a wider allowlist and better local context
+  (curriculum, projects, the timetable, its own history), not a shell and
+  not a `read` tool. Tier 1 and 2 of that item are the cheap half.
+- **Staging is not a useful state, and its mark is confused with the
+  running one.** Once the student has decided *not* to send a block, being
+  shown that it still "could be sent" is noise; `Ctrl+Enter` already sends
+  a block on demand, so staging adds nothing a key does not. The hollow
+  staged mark also reads as the loading indicator, which is a nice thing in
+  itself. A fix, taken 2026-10-15 (see below).
 
 **To discuss, evening of 2026-10-12** (from a day of real use; each one is
 a fix or a feature to decide first):
@@ -336,7 +386,8 @@ a fix or a feature to decide first):
 
 **Proposed order** (unless the numbers say otherwise):
 
-1. **Projects for notes** (14.6i) — class notes findable by course without
+1. **Projects for notes** (14.6i) — *taken 2026-10-15, the first thing off
+   the lot.* Class notes findable by course without
    knowing the date. Convention in use since 2026-10-12: one `# Course #tag`
    H1 per class, notes under it with H2/H3…, course deadlines carry the same
    tag. Rule: a tagged heading claims everything under it until the next
@@ -356,9 +407,12 @@ a fix or a feature to decide first):
    only, never the repo).
 3. **Multi-language** — cue words ("bis Freitag", "até sexta", "para el
    viernes") and the page's prompts in DE / PT / ES, at no cost in speed.
-   The stats' language counts say whether it is needed.
+   *Refuted 2026-10-15 by the counts it was waiting for* (61 English blocks
+   to 3 Portuguese). Stays here; revisit if the ratio moves.
 4. **Focus mode** (14.7) — where the pomodoro comes back in (resurface it
-   then, per 2026-10-11).
+   then, per 2026-10-11). *Refuted 2026-10-15*: 0 sessions in a month. The
+   question to settle first is whether the pomodoro belongs in this tool at
+   all, not how to dress it.
 5. **Structure** — split `Page.qml` into tested modules (bound lines,
    runner queue, what's next); install by symlink so the repo is the
    install; one deadline-store parser for both plugins.
