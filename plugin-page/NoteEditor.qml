@@ -281,6 +281,21 @@ Item {
 
   function rowItem(i) { return i >= 0 ? rep.itemAt(i) : null }
 
+  // Where row i draws its markers to nothing, and the column the cursor may
+  // rest at there. A row with no emphasis has no runs and every column is
+  // its own, exactly as before.
+  function hiddenIn(i) {
+    var r = ed.rows[i]
+    if (!r || r.kind === "code" || r.kind === "front") return []
+    return Emph.hidden(r.body)
+  }
+
+  function restCol(i, col, dir) {
+    var r = ed.rows[i]
+    if (!r) return col
+    return Emph.validCol(ed.hiddenIn(i), col, r.body.length, dir)
+  }
+
   // Inline code is drawn in the code face, so a change of face is a redraw.
   onCodeFamilyChanged: {
     for (var i = 0; i < ed.rows.length; i++) {
@@ -294,7 +309,7 @@ Item {
     if (ed.rows.length === 0) return
     var i = Rows.rowAt(ed.rows, ed.cursorPosition)
     var r = ed.rows[i]
-    var col = Rows.columnIn(r, ed.cursorPosition)
+    var col = ed.restCol(i, Rows.columnIn(r, ed.cursorPosition), 0)
     ed.cursorPosition = r.start + r.prefixLen + col
     var item = ed.rowItem(i)
     if (!item) return
@@ -305,7 +320,7 @@ Item {
 
   function placeAt(i, col) {
     var r = ed.rows[i]
-    ed.setCursor(r.start + r.prefixLen + Math.max(0, Math.min(r.body.length, col)), true)
+    ed.setCursor(r.start + r.prefixLen + ed.restCol(i, Math.max(0, Math.min(r.body.length, col)), 0), true)
   }
 
   // Rows just inserted have no place in the column until it lays out, so
@@ -397,9 +412,9 @@ Item {
     var col = Rows.columnIn(r, pos)
     var n = ed.rows.length
     // With Ctrl, a word at a time; at a line's edge, into the next line.
-    if (k === Qt.Key_Left) return col > 0 ? ed.absOf(i, ctrl ? Rows.wordStep(r.body, col, -1) : col - 1)
+    if (k === Qt.Key_Left) return col > 0 ? ed.absOf(i, ed.restCol(i, ctrl ? Rows.wordStep(r.body, col, -1) : col - 1, -1))
       : (i > 0 ? ed.absOf(i - 1, ed.rows[i - 1].body.length) : pos)
-    if (k === Qt.Key_Right) return col < r.body.length ? ed.absOf(i, ctrl ? Rows.wordStep(r.body, col, 1) : col + 1)
+    if (k === Qt.Key_Right) return col < r.body.length ? ed.absOf(i, ed.restCol(i, ctrl ? Rows.wordStep(r.body, col, 1) : col + 1, 1))
       : (i + 1 < n ? ed.absOf(i + 1, 0) : pos)
     if (k === Qt.Key_Home) return ed.absOf(i, 0)
     if (k === Qt.Key_End) return ed.absOf(i, r.body.length)
@@ -408,12 +423,12 @@ Item {
     var f = item.field
     var c = f.positionToRectangle(col)
     // A wrapped line first moves within itself.
-    if (dir > 0 && c.y < f.positionToRectangle(f.length).y - 1) return ed.absOf(i, f.positionAt(c.x, c.y + c.height * 1.5))
-    if (dir < 0 && c.y > f.positionToRectangle(0).y + 1) return ed.absOf(i, f.positionAt(c.x, c.y - c.height * 0.5))
+    if (dir > 0 && c.y < f.positionToRectangle(f.length).y - 1) return ed.absOf(i, ed.restCol(i, f.positionAt(c.x, c.y + c.height * 1.5), 0))
+    if (dir < 0 && c.y > f.positionToRectangle(0).y + 1) return ed.absOf(i, ed.restCol(i, f.positionAt(c.x, c.y - c.height * 0.5), 0))
     var j = Rows.nextTextRow(ed.rows, i, dir)
     if (j < 0) return dir < 0 ? ed.absOf(i, 0) : ed.absOf(i, r.body.length)
     var t = ed.rowItem(j).field
-    return ed.absOf(j, t.positionAt(f.x + c.x - t.x, dir > 0 ? 1 : t.contentHeight - 1))
+    return ed.absOf(j, ed.restCol(j, t.positionAt(f.x + c.x - t.x, dir > 0 ? 1 : t.contentHeight - 1), 0))
   }
 
   // The field's own selection as text offsets: where it started, so a
@@ -589,7 +604,7 @@ Item {
     var ly = y - item.y
     var box = r.kind === "task" && x >= b.x - pad && x <= b.x + b.width + pad && ly >= b.y - pad && ly <= b.y + b.height + pad
     var f = item.field
-    return { i: i, col: f.positionAt(x - f.x, ly - f.y), box: box }
+    return { i: i, col: ed.restCol(i, f.positionAt(x - f.x, ly - f.y), 0), box: box }
   }
 
   function updateCursorRect() {
@@ -782,6 +797,70 @@ Item {
     ed.placeAt(j, col)
   }
 
+  // A pair of markers drawn to nothing is one thing to the cursor: it never
+  // stands inside one, Left and Right cross a whole run in one press, and
+  // Backspace and Delete take the letter beyond it rather than the marker
+  // itself. A deletion that would leave a pair holding nothing takes the
+  // pair with it, because markers with no job are drawn — which is the one
+  // way a `**` the student never typed could appear.
+  //
+  // Before this, a character that is not drawn was still a character: the
+  // Backspace that should have taken a letter took a marker, and the
+  // markdown came back (2026-10-15, the evening emphasis landed).
+  // True when the key was used.
+  function emphKey(event, item) {
+    var i = item.index
+    var runs = ed.hiddenIn(i)
+    if (runs.length === 0) return false
+    var ctrl = event.modifiers & Qt.ControlModifier
+    var shift = event.modifiers & Qt.ShiftModifier
+    var alt = event.modifiers & Qt.AltModifier
+    if (alt) return false
+    var f = item.field
+    var r = ed.rows[i]
+    var len = r.body.length
+    var col = f.cursorPosition
+    var sel = f.selectedText !== ""
+    var k = event.key
+
+    if ((k === Qt.Key_Left || k === Qt.Key_Right) && !(sel && !shift)) {
+      var dir = k === Qt.Key_Right ? 1 : -1
+      var to = ctrl ? Rows.wordStep(r.body, col, dir) : col + dir
+      if (to < 0 || to > len) return false          // the next line's business
+      to = ed.restCol(i, to, dir)
+      if (!shift) { f.cursorPosition = to; return true }
+      var anchor = sel ? (col === f.selectionEnd ? f.selectionStart : f.selectionEnd) : col
+      if (to === anchor) f.deselect()
+      else f.select(anchor, to)
+      return true
+    }
+
+    if (k === Qt.Key_Backspace || k === Qt.Key_Delete) {
+      var a, b, x
+      if (sel) {
+        a = Math.min(f.selectionStart, f.selectionEnd)
+        b = Math.max(f.selectionStart, f.selectionEnd)
+      } else if (k === Qt.Key_Backspace) {
+        b = col
+        for (x = 0; x < runs.length; x++) if (b > runs[x].a && b <= runs[x].b) b = runs[x].a
+        if (b <= 0) return false                    // the line's own start, as before
+        a = ctrl ? Rows.wordStep(r.body, b, -1) : b - 1
+      } else {
+        a = col
+        for (x = 0; x < runs.length; x++) if (a >= runs[x].a && a < runs[x].b) a = runs[x].b
+        if (a >= len) return false                  // the line's own end, as before
+        b = ctrl ? Rows.wordStep(r.body, a, 1) : a + 1
+      }
+      var span = Emph.collapse(r.body, a, b)
+      var base = r.start + r.prefixLen
+      ed.snapshot(true)
+      ed.replace(base + span.a, base + span.b, "")
+      ed.placeCursor(true)
+      return true
+    }
+    return false
+  }
+
   function key(event, item) {
     var f = item.field
     var i = item.index
@@ -831,6 +910,8 @@ Item {
       event.accepted = true
       return
     }
+
+    if (ed.emphKey(event, item)) { event.accepted = true; return }
 
     if ((k === Qt.Key_Return || k === Qt.Key_Enter) && !ctrl && !alt) {
       ed.returnKey(item, shift)

@@ -166,8 +166,9 @@ Item {
       compare(item.field.textFormat, TextEdit.PlainText)
     }
 
-    // The markers are hidden only while they are doing a job. Take one away
-    // and the pair comes back at full size, which is how you see it.
+    // What is drawn: a pair holding nothing is markers with no job, and
+    // markers with no job are shown. The keys never leave one — see the
+    // deletion tests below — but a note written elsewhere can.
     function test_breaking_a_pair_shows_it_again() {
       start("\nread **chapter** seven")
       compare(ed.rowItem(1).rich, true)
@@ -194,6 +195,131 @@ Item {
       ed.setCursor(ed.text.length, true)
       type("!")
       compare(ed.text, "\nread **chapter** seven!")
+    }
+
+    // ---------------------------------------------------------- the cursor
+    //
+    // A pair of markers drawn to nothing is one thing to the cursor: it
+    // never stands inside one, crosses a whole run in one press, and
+    // Backspace takes the letter beyond it rather than the marker.
+
+    function test_backspace_takes_the_letter_not_the_marker_data() {
+      return [
+        { body: "a **bold**", after: "a **bol**" },
+        { body: "a *it*", after: "a *i*" },
+        { body: "a ~~gone~~", after: "a ~~gon~~" },
+        { body: "a ***both***", after: "a ***bot***" }
+      ]
+    }
+
+    function test_backspace_takes_the_letter_not_the_marker(row) {
+      start("\n" + row.body)
+      keyClick(Qt.Key_Backspace)
+      compare(ed.text, "\n" + row.after)
+      compare(ed.rowItem(1).rich, true, "and it is still drawn")
+    }
+
+    // Emptying an emphasis takes the emphasis with it, so the student is
+    // never left looking at a `**` they did not type. It cascades through
+    // bold italic.
+    function test_emptying_an_emphasis_takes_the_pair_data() {
+      return [
+        { body: "a **b** c", after: "a  c" },
+        { body: "a *i* c", after: "a  c" },
+        { body: "a `x` c", after: "a  c" },
+        { body: "a ~~z~~ c", after: "a  c" },
+        { body: "a ***b*** c", after: "a  c" }
+      ]
+    }
+
+    function test_emptying_an_emphasis_takes_the_pair(row) {
+      start("\n" + row.body, 1 + row.body.indexOf(" c"))
+      keyClick(Qt.Key_Backspace)
+      compare(ed.text, "\n" + row.after)
+    }
+
+    // Deleting forward from inside the words takes what is past the
+    // markers, never one of them.
+    function test_delete_forward_steps_over_the_markers() {
+      start("\na **bold** c", 1 + 8)        // after the "d", inside the bold
+      keyClick(Qt.Key_Delete)
+      compare(ed.text, "\na **bold**c")
+    }
+
+    function test_the_cursor_crosses_a_run_in_one_press() {
+      start("\na **b** c", 1 + 1)           // after the "a"
+      var seen = []
+      for (var i = 0; i < 4; i++) { keyClick(Qt.Key_Right); seen.push(ed.cursorPosition) }
+      compare(JSON.stringify(seen), "[5,6,9,10]")   // 3,4 and 7,8 are markers
+      for (var j = 0; j < 4; j++) keyClick(Qt.Key_Left)
+      compare(ed.cursorPosition, 2)
+    }
+
+    // Shift+Right out of the words selects the word, not half a marker, so
+    // the key takes the emphasis off what it drew.
+    function test_selecting_the_drawn_word_then_the_key_unwraps_it() {
+      start("\na **bold** c", 1 + 4)        // before the "b"
+      for (var i = 0; i < 4; i++) keyClick(Qt.Key_Right, Qt.ShiftModifier)
+      compare(focused().selectedText, "bold")
+      ed.emphasise("**")
+      compare(ed.text, "\na bold c")
+    }
+
+    // …and deleting that selection takes the markers with it.
+    function test_deleting_the_drawn_word_takes_the_markers() {
+      start("\na **bold** c", 1 + 4)
+      for (var i = 0; i < 4; i++) keyClick(Qt.Key_Right, Qt.ShiftModifier)
+      keyClick(Qt.Key_Backspace)
+      compare(ed.text, "\na  c")
+    }
+
+    // Ctrl+Backspace takes the word, and with it the emphasis that held
+    // only that word — never the markers on their own. A space left against
+    // a marker goes too: `**two **` is not emphasis to markdown, so the
+    // pair would come back for a space nobody can see.
+    function test_ctrl_backspace_takes_the_word_and_its_emphasis() {
+      start("\na **bold** c", 1 + 10)      // the end of the bold word
+      keyClick(Qt.Key_Backspace, Qt.ControlModifier)
+      compare(ed.text, "\na  c")
+    }
+
+    function test_ctrl_backspace_leaves_a_longer_emphasis_standing() {
+      start("\na **two words** c", 1 + 15)
+      keyClick(Qt.Key_Backspace, Qt.ControlModifier)
+      compare(ed.text, "\na **two** c")
+      compare(ed.rowItem(1).rich, true)
+    }
+
+    function test_deleting_the_last_word_of_an_emphasis_by_selection() {
+      start("\na **two words** c", 1 + 8)     // before "words"
+      for (var i = 0; i < 5; i++) keyClick(Qt.Key_Right, Qt.ShiftModifier)
+      compare(focused().selectedText, "words")
+      keyClick(Qt.Key_Backspace)
+      compare(ed.text, "\na **two** c")
+    }
+
+    // The one pair you do see: the key pressed with nothing to wrap writes
+    // an empty one and stands inside it, which is the only signal that the
+    // next letters will be bold. The first letter takes it away.
+    function test_the_empty_pair_is_visible_until_it_holds_something() {
+      start("\nwrite here ")
+      ed.emphasise("**")
+      compare(ed.text, "\nwrite here ****")
+      compare(ed.rowItem(1).rich, false, "nothing to draw yet")
+      compare(ed.cursorPosition, 14)
+      type("x")
+      compare(ed.text, "\nwrite here **x**")
+      compare(ed.rowItem(1).rich, true)
+    }
+
+    // A line that begins with emphasis can still be written before, and
+    // Backspace there still drops the line's kind rather than a marker.
+    function test_a_line_that_begins_with_emphasis() {
+      start("\n- **bold** item", 1 + 0)     // the body's own start
+      compare(ed.rows[1].kind, "bullet")
+      keyClick(Qt.Key_Backspace)
+      compare(ed.text, "\n**bold** item")
+      compare(ed.rows[1].kind, "plain")
     }
 
     function test_a_code_line_keeps_its_markdown() {

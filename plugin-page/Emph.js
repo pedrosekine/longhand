@@ -62,7 +62,10 @@ function closerOf(s, m, i) {
 // The body as a list of nodes: { text } for words, { marker, kind, children }
 // for an emphasis. Code holds its content as written — markdown inside a
 // code span is content, not markup.
-function parse(s) {
+// `base` is where `s` sits in the row's body, so every node knows its own
+// place there: `at`/`end` span the markers too, `inner` is what they hold.
+function parse(s, base) {
+  base = base || 0
   var out = []
   var lit = ""
   var i = 0
@@ -77,7 +80,9 @@ function parse(s) {
     if (lit !== "") { out.push({ text: lit }); lit = "" }
     var inner = s.substring(i + marker.length, close)
     out.push({ marker: marker, kind: KIND[marker],
-               children: marker === "`" ? [{ text: inner }] : parse(inner) })
+               at: base + i, end: base + close + marker.length,
+               inner: [base + i + marker.length, base + close],
+               children: marker === "`" ? [{ text: inner }] : parse(inner, base + i + marker.length) })
     i = close + marker.length
   }
   if (lit !== "") out.push({ text: lit })
@@ -123,4 +128,113 @@ function render(nodes, codeFamily) {
 // them would be off by one.
 function html(s, codeFamily) {
   return "<span style=\"white-space:pre-wrap\">" + render(parse(s), codeFamily || "monospace") + "</span>"
+}
+
+
+// ----------------------------------------------------------- the cursor
+
+// Where the markers are drawn to nothing, as [a, b) in the body, each the
+// opening or the closing side. Runs that touch and face the same way merge,
+// so `***word***` has one at each end rather than two.
+function runsIn(nodes, out) {
+  for (var i = 0; i < nodes.length; i++) {
+    var n = nodes[i]
+    if (!n.marker) continue
+    out.push({ a: n.at, b: n.inner[0], open: true })
+    out.push({ a: n.inner[1], b: n.end, open: false })
+    runsIn(n.children, out)
+  }
+  return out
+}
+
+function hidden(s) {
+  if (!/[*_`~]/.test(s)) return []
+  var raw = runsIn(parse(s, 0), [])
+  raw.sort(function (x, y) { return x.a - y.a })
+  var out = []
+  for (var i = 0; i < raw.length; i++) {
+    var last = out.length > 0 ? out[out.length - 1] : null
+    if (last && last.open === raw[i].open && last.b === raw[i].a) last.b = raw[i].b
+    else out.push({ a: raw[i].a, b: raw[i].b, open: raw[i].open })
+  }
+  return out
+}
+
+// A marker run is one thing to the cursor: it rests at the run's inner
+// edge — against the words — and never inside it. The line's own two ends
+// are always a place to stand, so a line that begins or ends in emphasis
+// can still be written before and after.
+function forbidden(runs, col, len) {
+  if (col <= 0 || col >= len) return false
+  for (var i = 0; i < runs.length; i++) {
+    var r = runs[i]
+    if (r.open ? (col >= r.a && col < r.b) : (col > r.a && col <= r.b)) return true
+  }
+  return false
+}
+
+// The column to rest at. With `dir` (+1 / -1) the cursor is travelling and
+// carries on that way, so a run costs one keypress rather than its length;
+// without it (a click, a jump) it lands on the run's inner edge.
+function validCol(runs, col, len, dir) {
+  col = Math.max(0, Math.min(len, col))
+  if (!forbidden(runs, col, len)) return col
+  if (!dir) {
+    for (var i = 0; i < runs.length; i++) {
+      var r = runs[i]
+      if (r.open && col >= r.a && col < r.b) return r.b
+      if (!r.open && col > r.a && col <= r.b) return r.a
+    }
+    return col
+  }
+  var step = dir > 0 ? 1 : -1
+  while (col > 0 && col < len && forbidden(runs, col, len)) col += step
+  return Math.max(0, Math.min(len, col))
+}
+
+function nodeWithContent(nodes, a, b) {
+  for (var i = 0; i < nodes.length; i++) {
+    var n = nodes[i]
+    if (!n.marker) continue
+    if (n.inner[0] === a && n.inner[1] === b) return n
+    var deeper = nodeWithContent(n.children, a, b)
+    if (deeper) return deeper
+  }
+  return null
+}
+
+// The innermost emphasis holding [a, b), or null.
+function nodeHolding(nodes, a, b) {
+  for (var i = 0; i < nodes.length; i++) {
+    var n = nodes[i]
+    if (!n.marker) continue
+    if (a >= n.inner[0] && b <= n.inner[1]) return nodeHolding(n.children, a, b) || n
+  }
+  return null
+}
+
+// What a deletion of [a, b) should really take.
+//
+// Two rules, and both exist so that no keystroke can put a `**` on the
+// screen that the student did not type. Inside an emphasis, a deletion that
+// would leave a space against a marker takes the space with it: markdown
+// does not read `**two **` as emphasis at all, so the markers would come
+// back for a space nobody can see. And deleting the last of what an
+// emphasis holds takes the emphasis itself — a pair holding nothing is
+// markers with no job, and markers with no job are drawn. The second rule
+// cascades: emptying the italic inside `***word***` empties the bold too.
+function collapse(s, a, b) {
+  var nodes = parse(s, 0)
+  var owner = nodeHolding(nodes, a, b)
+  if (owner) {
+    while (b === owner.inner[1] && a > owner.inner[0] && /\s/.test(s.charAt(a - 1))) a--
+    while (a === owner.inner[0] && b < owner.inner[1] && /\s/.test(s.charAt(b))) b++
+  }
+  for (var guard = 0; guard < 8; guard++) {
+    var n = nodeWithContent(nodes, a, b)
+    if (!n) break
+    a = n.at
+    b = n.end
+  }
+  return { a: a, b: b }
 }

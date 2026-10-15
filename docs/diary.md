@@ -594,3 +594,26 @@ only the window and the panels around it differ.
   than noise. The optimistic mark is also pruned against the note now, so a
   line whose date bound between the ask and the send does not leave a mark
   behind on a hash that no longer exists.
+- 2026-10-15, last of the day: the markers are now one thing to the cursor,
+  which is what the student asked for and is better than what I argued for
+  this evening. The rest position is the run's *inner* edge, against the
+  words — so Left and Right cross a whole pair in one press, a click inside
+  one lands beside it, and a selection's ends are already columns the cursor
+  may hold, which is why Shift+Right out of a drawn word selects the word
+  and the key unwraps exactly it. Backspace and Delete (and their Ctrl
+  forms) step over a run and take the letter or word beyond it. Two rules
+  keep a `**` nobody typed off the screen: emptying an emphasis takes the
+  pair with it, cascading through `***word***`; and a deletion that would
+  leave a space against a marker takes the space, because markdown does not
+  read `**two **` as emphasis at all and the pair would come back for a
+  space nobody can see. The line's own two ends stay valid columns whatever
+  sits there, so a line that begins or ends in emphasis can still be written
+  before and after and Backspace at a line's start still drops the kind.
+  All of it is arithmetic over the drawn row — `Emph.hidden`, `validCol`,
+  `collapse` — so the one-document-position-per-character guarantee that the
+  whole editor rests on never moved. Two places still show markers, both on
+  purpose: the key pressed with nothing to wrap writes `****` and stands
+  inside it, the only way to say "the next letters are bold", and the first
+  letter takes it away; and a selection dragged through one side of a pair
+  and deleted leaves the other, which is an explicit act with an honest
+  result.

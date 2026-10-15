@@ -44,6 +44,7 @@ ShellRoot {
     function cursor(pos: int): void { page.editorItem.setCursor(pos, true) }
     function cursorEnd(): void { page.editorItem.setCursor(page.editorItem.length, true) }
     function cursorLine(): int { return page.lineIndexAt(page.editorItem.cursorPosition) }
+    function cursorAt(): int { return page.editorItem.cursorPosition }
     function tick(line: int): void { page.editorItem.toggleCheckbox(line) }
     function erase(a: int, b: int): void { page.editorItem.remove(a, b) }
     function removeLine(line: int): void { var e = page.editorItem; var r = e.rows[line]; e.remove(r.start, r.start + r.raw.length + 1) }

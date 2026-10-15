@@ -52,10 +52,13 @@ take them off again. Emphasis is **drawn**: the markers go to nothing and
 the words carry the weight, nested ones too (`***both***`). They are still
 in the file exactly as written, so Obsidian reads the same markdown. A `*`
 with spaces around it is arithmetic and an underscore inside a word is part
-of the word; neither is markup. Known rough edge: a hidden marker is still
-a character, so Backspace at the edge of an emphasised word deletes one and
-the pair reappears — the parking lot in `docs/plan.md` has the measured
-behaviour and what it should be.
+of the word; neither is markup. A pair is one thing to the cursor: it never
+stands inside one, arrows cross a whole pair in one press, and Backspace
+takes the letter past it rather than the marker. Delete what an emphasis
+holds and the pair goes with it, so you are never left looking at a `**` you
+did not type. The one pair you do see is the empty one the key writes when
+there is nothing to wrap — it stands waiting for the first letter, which
+takes it away.
 
 The page is set in **iA Writer Quattro S**, a proportional face made for
 writing: prose reads as prose rather than as code, and 72 characters take

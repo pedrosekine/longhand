@@ -547,6 +547,16 @@ def main() -> int:
         flat = json.loads(p.call("drawn", p.line_of("plain 2 *")))
         check(flat["rich"] is False, "arithmetic is not emphasis")
         # Break the pair and the markers come back: that is how you edit them.
+        # A marker is one thing to the cursor: it never stands inside one.
+        at = p.offset_of_line(p.line_of("read **chapter**"))
+        for asked, rests, why in ((at + 6, at + 7, "between the opening stars"),
+                                  (at + 5, at + 7, "before them"),
+                                  (at + 15, at + 14, "between the closing stars"),
+                                  (at + 16, at + 14, "after them")):
+            p.call("cursor", asked)
+            got = int(p.call("cursorAt"))
+            check(got == rests, f"a cursor put {why} rests against the words ({got} vs {rests})")
+
         star = p.offset_of_line(p.line_of("read **chapter**")) + 15
         p.call("erase", star, star + 1)           # one star of the closing pair
         check(p.wait(lambda: "read **chapter* seven" in p.call("text")),
