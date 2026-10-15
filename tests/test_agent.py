@@ -97,6 +97,16 @@ class T:
         shutil.rmtree(self.tmp)
 
 
+def _hash_of(t, line: str) -> str:
+    """The hash the page would send for the block holding this line."""
+    sys.path.insert(0, str(ROOT / "agent"))
+    import blocks as blocklib
+    for b in blocklib.split(t.note.read_text()):
+        if line in b["text"]:
+            return b["hash"]
+    raise AssertionError("no block holds " + line)
+
+
 def main() -> int:
     t = T()
     fails = []
@@ -363,6 +373,31 @@ def main() -> int:
         check(json.loads(t.agent("sections", "--tag", "nothing").stdout) == [], "a tag nobody wrote: nothing")
         check(len(json.loads(t.agent("sections", "--tag", "intsem", "--days", "7").stdout)) == 1,
               "--days leaves the old day out")
+
+        # 16. a sent block carries its project's earlier notes — and only
+        # those. What is kept out of today's note is kept out of these.
+        PRIV = (t.daily / f"{OLD_DAY}.md")
+        PRIV.write_text(
+            "# Interdisciplinary Seminar #intsem\n"
+            "the first week, reviews explained\n"
+            "> [!private]\n> SECRET-OLD-DAY not for the agent\n"
+            "# Research Proficiency #respro\n"
+            "OTHER-COURSE-WORDS\n")
+        shut = t.daily / f"{(dt.date.today() - dt.timedelta(days=30)):%Y.%m.%d}.md"
+        shut.write_text("---\nagent: false\n---\n# Interdisciplinary Seminar #intsem\nSHUT-DAY-WORDS\n")
+        t.note.write_text("[[agents/student/daily/x|agent]]\n\n"
+                          "# Interdisciplinary Seminar #intsem\n"
+                          "## Today\n"
+                          "@ what did I say about reviews?\n")
+        ctx = t.agent("context", "--trigger", "mention",
+                      "--hash", _hash_of(t, "@ what did I say about reviews?")).stdout
+        check("reviews explained" in ctx, "a sent block carries its project's earlier notes")
+        check("SECRET-OLD-DAY" not in ctx, "a private callout in an earlier note stays private")
+        check("OTHER-COURSE-WORDS" not in ctx, "another course's section of that day is not sent")
+        check("SHUT-DAY-WORDS" not in ctx, "a day marked agent: false is left out whole")
+        check("#intsem" in ctx and "earlier daily notes" in ctx, "the payload names what it is carrying")
+        openctx = t.agent("context", "--trigger", "open").stdout
+        check("reviews explained" not in openctx, "the automatic open pass is not widened")
     finally:
         t.cleanup()
 

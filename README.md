@@ -137,6 +137,7 @@ student-agent install                       # opencode agent definition + folder
 student-agent context --trigger open        # show exactly what the model would see
 student-agent run --trigger open            # one pass over today's note
 student-agent sections --tag intsem         # one project's notes across every day (JSON)
+student-agent context --trigger mention --hash <h>   # incl. that project's earlier notes
 python3 tests/test_agent.py                 # offline, stub opencode
 ```
 

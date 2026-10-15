@@ -343,6 +343,18 @@ def build_payload(paths: Paths, trigger: str, fired: list[dict], visible: list[d
     parts += ["", "# Today's note (private parts removed)", ""]
     parts.append("\n\n".join(b["text"] for b in visible) or "(empty)")
 
+    # A block the student deliberately sent, written under a project's
+    # heading, brings that project's earlier notes with it — nothing else of
+    # those days. The automatic open pass never widens this way: it sees
+    # today, as it always has.
+    tag = next((t for t in (project_of_block(visible, b) for b in fired) if t), "") if (fired and cfg) else ""
+    if tag:
+        earlier_project = project_context(cfg, paths, tag)
+        if earlier_project:
+            parts += ["", f"# What you wrote before under #{tag} — this project's sections of"
+                          " your earlier daily notes, and nothing else of those days", ""]
+            parts += earlier_project
+
     knowledge = read_tree(paths.knowledge)
     parts += ["", "# Your knowledge files", ""]
     if knowledge:
@@ -806,8 +818,70 @@ def tagged_sections(cfg: dict, tag: str, days: int) -> list[dict]:
                        if l.strip() and not HEADING.match(l) and not LINK_LINE.match(l.strip())][:2]
             out.append({"date": f.stem, "file": str(f), "line": i, "level": level, "tag": want,
                         "title": title, "heading": text, "age": age, "words": words,
-                        "open": opens, "done": done, "sub": inside, "preview": preview})
+                        "open": opens, "done": done, "sub": inside, "preview": preview,
+                        "text": "\n".join(body)})
     out.sort(key=lambda r: (r["age"], r["line"]))
+    return out
+
+
+def project_of_block(visible: list[dict], block: dict) -> str:
+    """The project tag a block is written under: the nearest heading above it
+    that carries one, or the nearest tagged heading it hangs from (an H2
+    under a tagged H1 belongs to that H1 — the page's claiming rule). Read
+    from the *visible* blocks only, so a tag inside a private callout is not
+    a way in."""
+    stack: list[tuple[int, str]] = []
+    for b in visible:
+        if b["start"] > block["start"]:
+            break
+        if b["kind"] != "heading":
+            continue
+        m = HEADING.match(b["text"].split("\n")[0])
+        if not m:
+            continue
+        level = len(m.group(1))
+        while stack and stack[-1][0] >= level:
+            stack.pop()
+        own = TAG_RE.findall(m.group(2))
+        stack.append((level, own[0].lower() if own else (stack[-1][1] if stack else "")))
+    return stack[-1][1] if stack else ""
+
+
+def project_context(cfg: dict, paths: Paths, tag: str, full: int = 3) -> list[str]:
+    """What the student wrote before under one project's tag.
+
+    This is the only part of another day that ever reaches the model, and
+    only the part written under this project's heading — the rest of those
+    days is not on the allowlist. Everything that is kept out of today's
+    note is kept out here too, by the same code: a day marked
+    `agent: false` is skipped whole, private callouts and the agent link
+    line are dropped block by block. The most recent few come in full; older
+    ones are named, not quoted, so the model can ask for one instead of
+    being handed the term."""
+    kept = []
+    for sec in tagged_sections(cfg, tag, 0):
+        if sec["date"] == paths.stamp:
+            continue                       # today's note is in the payload already
+        try:
+            whole = blocklib.split(Path(sec["file"]).read_text())
+        except OSError:
+            continue
+        if note_is_private(whole):
+            continue                       # the student marked that day agent: false
+        body = "\n\n".join(b["text"] for b in visible_blocks(blocklib.split(sec["text"])))
+        if body.strip():
+            kept.append((sec, body))
+    if not kept:
+        return []
+    out = []
+    for sec, body in kept[:full]:
+        out += [f"## {sec['date']} · {sec['title']}", "", body.rstrip(), ""]
+    if len(kept) > full:
+        out += ["## Earlier still — named only; ask about one and it can be quoted", ""]
+        for sec, _ in kept[full:]:
+            idx = " · ".join(x["text"] for x in sec["sub"][:6])
+            out.append(f"- {sec['date']} · {sec['title']}" + (f" · {idx}" if idx else ""))
+        out.append("")
     return out
 
 

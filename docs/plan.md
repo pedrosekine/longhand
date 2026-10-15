@@ -333,13 +333,28 @@ lifting the freeze; the numbers above cannot see any of them):
   place. Decide the shape before building anything.
 - **The agent knows nothing, so it feels useless.** Asked a question, it
   has no access to anything and answers from nothing. It needs to get
-  smarter and smarter. This is the live end of "the agent's tools" below,
+  smarter and smarter. *First step done 2026-10-15:* a block sent from
+  under a `# Course #tag` heading carries that project's sections of the
+  earlier daily notes (recent ones in full, older named only) — that
+  project only, private parts and `agent: false` days out, the open pass
+  untouched. Still open, in the order they are worth: the timetable (item
+  2) so it knows when the next session is; what the CLIs can do, for "how
+  do I add a deadline?"; tier 1 observability. This is the live end of "the agent's tools" below,
   and the stats' 31 declines are its symptom: the student stopped offering
   because there was nothing to gain. Note the allowlist is the *design* —
   the payload is deliberately narrow and logged before inference — so
   "smarter" has to mean a wider allowlist and better local context
   (curriculum, projects, the timetable, its own history), not a shell and
   not a `read` tool. Tier 1 and 2 of that item are the cheap half.
+- **The agent needs a way in that is not a keyboard shortcut** (2026-10-15,
+  on being asked whether the send prompt should go). The prompt was answered
+  no 41 times, but it is also the only *visible* way to reach the agent, so
+  it cannot go until something visible replaces it: "this is a core feature
+  that should not be only under a specific trigger." To decide: where that
+  control lives without putting a mark back on the student's words — the
+  header beside the date and the agent mark (outside the canvas), the gutter
+  by the block under the cursor only, or the margin's own edge. Until then
+  the prompt stays as it is.
 - **Staging is not a useful state, and its mark is confused with the
   running one.** Once the student has decided *not* to send a block, being
   shown that it still "could be sent" is noise; `Ctrl+Enter` already sends

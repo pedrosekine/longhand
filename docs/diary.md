@@ -367,3 +367,16 @@ only the window and the panels around it differ.
   the prompt and the send, every block is sendable from where the cursor is,
   and the only mark on the student's words is a reply. A ticked box became a
   sign of its own so the tick trigger survives without it.
+- 2026-10-15: the agent may see one project's past, and nothing more. The
+  student's note was that an agent which knows nothing when asked feels
+  useless; the mechanical cause was that the payload held today's note and
+  no other day. So a block the student *deliberately* sends, written under a
+  `# Course #tag` heading, now carries that project's own sections of the
+  earlier daily notes — the most recent few in full, older ones named only,
+  so the model can ask rather than be handed the term. The narrowing is the
+  point and is tested: that project's sections only, never the rest of those
+  days; private callouts and the link line dropped block by block by the
+  same code that strips today's; a day marked `agent: false` skipped whole;
+  and the automatic open pass not widened at all, because nobody asked it
+  to look. Local code gathers it and the payload log still holds everything
+  before inference, so principle 3 stands — no `read` tool, no shell.
