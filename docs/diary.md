@@ -762,3 +762,29 @@ only the window and the panels around it differ.
   solitude — ramps the only ladder it has, the text down toward its grey.
   Checked on every stock theme before writing it: the four steps move one
   way only in all of them.
+- 2026-10-15: the dashboard gets drawn, not just built. The first version
+  was right and unappealing — "just a vertical list with data" — which is
+  what happens when a view is assembled out of strings instead of out of
+  the idiom the rest of the page already has. So it borrows that idiom
+  rather than inventing one: a date is a **pill**, outlined for the day
+  something is owed and filled for the day you mean to work on it, urgent
+  when it is late, exactly as the note draws a bound line's date; a box is
+  the note's own checkbox and takes a click; a priority is a mark beside
+  the box rather than a word among the words — the same rule as the line
+  itself, where the metadata is on disk and quiet on screen. Bands carry
+  the course's **own name** with its tag beside it, taken from the
+  curriculum when the sidebar knows it and otherwise from the heading the
+  notes themselves use, and they are coloured from the theme's headings —
+  one colour for the three bands that say what a row asks of you, another
+  for the courses, which is the h1/h2 distinction the note already makes.
+  The dated sections are banded by month, because a list that runs on needs
+  somewhere for the eye to rest. Under each row, faint: the section it was
+  written in and how long ago — with the course dropped when the band above
+  already says it, since a subtitle that repeats its own heading is noise.
+  Rows take their space from what they are, as `Rows.js` gives the note its
+  vertical rhythm, and the column is 1.45 measures and centred: a row is a
+  title, a place and a date rather than prose, so it wants more than 72
+  characters, but it does not want the whole wall. Found by looking: a
+  screenshot of the thing is worth more than a passing test here — the
+  tests were green while the bands still read `#intsem` and every row
+  repeated its own course.

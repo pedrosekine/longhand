@@ -124,7 +124,8 @@ ShellRoot {
     function dashWhen(phrase: string): void { page.dashWhenText = phrase; page.commitDashWhen() }
     function dashRows(): string {
       return JSON.stringify(page.taskRows.map(function (r) {
-        return r.kind === "head" ? { kind: "head", text: r.text }
+        return r.kind === "head" ? { kind: "head", text: r.text, tag: r.tag || "" }
+          : r.kind === "month" ? { kind: "month", text: r.text }
           : r.kind === "older" ? { kind: "older", count: r.count }
           : r.kind === "raised" ? { kind: "raised", text: r.item.text }
           : r.kind === "deadline" ? { kind: "deadline", text: r.deadline.title, due: r.deadline.due }

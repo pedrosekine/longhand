@@ -1005,6 +1005,7 @@ Item {
     if (root.dashOpen) {
       root.used("dashboard")
       root.taskFocus = 0
+      root.moveTaskFocus(0)
       root.contextFor = null
       root.refreshTasks()
       dashKeys.forceActiveFocus()
@@ -1142,8 +1143,13 @@ Item {
       return a.due - b.due
     })
     if (due.length > 0) {
-      rows.push({ kind: "head", text: "DUE" })
-      for (var k = 0; k < due.length; k++) rows.push({ kind: "deadline", deadline: due[k] })
+      rows.push({ kind: "head", text: "DUE", tag: "" })
+      var month = ""
+      for (var k = 0; k < due.length; k++) {
+        var lbl = root.monthLabel(due[k].due * 1000)
+        if (lbl !== month) { rows.push({ kind: "month", text: lbl }); month = lbl }
+        rows.push({ kind: "deadline", deadline: due[k] })
+      }
     }
 
     var doing = [], later = [], notes = []
@@ -1158,11 +1164,16 @@ Item {
     doing.sort(function (a, b) { return (a.when || a.due).localeCompare(b.when || b.due) })
     later.sort(function (a, b) { return b.priority - a.priority || a.age - b.age })
     if (doing.length > 0) {
-      rows.push({ kind: "head", text: "DOING" })
-      for (var d1 = 0; d1 < doing.length; d1++) rows.push({ kind: "task", task: doing[d1] })
+      rows.push({ kind: "head", text: "DOING", tag: "" })
+      var dm = ""
+      for (var d1 = 0; d1 < doing.length; d1++) {
+        var dl1 = root.monthLabel(root.taskMs(doing[d1]))
+        if (dl1 !== dm) { rows.push({ kind: "month", text: dl1 }); dm = dl1 }
+        rows.push({ kind: "task", task: doing[d1] })
+      }
     }
     if (later.length > 0) {
-      rows.push({ kind: "head", text: "TO SCHEDULE" })
+      rows.push({ kind: "head", text: "TO SCHEDULE", tag: "" })
       for (var l = 0; l < later.length; l++) rows.push({ kind: "task", task: later[l] })
     }
 
@@ -1173,12 +1184,27 @@ Item {
       groups[seen[key]].items.push(notes[n])
     }
     for (var g = 0; g < groups.length; g++) {
-      rows.push({ kind: "head", text: groups[g].key === "" ? "NO PROJECT" : "#" + groups[g].key })
-      for (var m = 0; m < groups[g].items.length; m++) rows.push({ kind: "task", task: groups[g].items[m] })
+      // The course's own name, not its tag: a band that reads
+      // "Interdisciplinary Seminar" says more than #intsem. The sidebar
+      // knows the names from the curriculum; for a tag it does not know,
+      // the heading the notes themselves use is the next best name.
+      var key = groups[g].key
+      var named = key === "" ? "No project" : root.courseName(key)
+      if (key !== "" && named === key) {
+        for (var h = 0; h < groups[g].items.length; h++) {
+          var path0 = (groups[g].items[h].path || [])[0]
+          if (path0) { named = path0; break }
+        }
+      }
+      rows.push({ kind: "head", text: named, tag: key === "" ? "" : "#" + key })
+      // Under a band, a row does not repeat it: the section it was written
+      // in is what the row still has to say.
+      for (var m = 0; m < groups[g].items.length; m++)
+        rows.push({ kind: "task", task: groups[g].items[m], under: named })
     }
     if (older > 0) rows.push({ kind: "older", count: older })
     if (root.raised.length > 0) {
-      rows.push({ kind: "head", text: "FROM THE AGENT" })
+      rows.push({ kind: "head", text: "FROM THE AGENT", tag: "" })
       for (var j = 0; j < root.raised.length; j++) rows.push({ kind: "raised", item: root.raised[j] })
     }
     return rows
@@ -1189,23 +1215,84 @@ Item {
   // and quiet on screen.
   function taskTitle(t) { return t.title !== undefined && t.title !== "" ? t.title : t.text }
 
+  // Priority is a mark beside the box, not a word in the row: ▲ for the
+  // high one, ▽ for the low, nothing for the rest.
   function taskMark(t) {
-    if (t.priority === undefined || t.priority === 0) return "○ "
-    return t.priority >= 1 ? "▲ " : "▽ "
+    if (!t || t.priority === undefined || t.priority === 0) return ""
+    return t.priority >= 1 ? "▲" : "▽"
   }
 
-  // Where it came from and when it wants doing — the line that makes "draft
-  // the intro" mean something three days later.
-  function taskWhere(t) {
+  // A course's own name, from its tag. The sidebar reads the curriculum for
+  // them; a tag the list does not know stays a tag. (Not `projectName` —
+  // that is the open project's own name, a property of the sidebar.)
+  function courseName(tag) {
+    for (var i = 0; i < root.projects.length; i++)
+      if (root.projects[i].tag === tag) return root.projects[i].name || tag
+    return tag
+  }
+
+  // A course for a row that has no heading path to fall back on.
+  function courseLabel(tag) {
+    if (!tag) return ""
+    var name = root.courseName(tag)
+    return name === tag ? "#" + tag : name
+  }
+
+  // Where it came from, under the words: the course in full, then the
+  // section it was written in, then how long ago. The line that makes
+  // "draft the intro" mean something again three days later. The dates are
+  // not in here — they are pills, as they are in the note.
+  function taskWhere(t, under) {
+    var path = (t.path || []).slice()
+    var full = t.project ? root.courseName(t.project) : ""
+    // The first heading is the course itself by the convention in use, so
+    // its full name belongs there when the list knows it.
+    if (full !== "" && full !== t.project) {
+      if (path.length > 0) path[0] = full
+      else path = [full]
+    } else if (path.length === 0 && t.project) {
+      path = ["#" + t.project]
+    }
+    // Under a band that already names the course, the course is noise.
+    if (under !== undefined && under !== "" && path.length > 0 && path[0] === under) path.shift()
     var bits = []
-    var path = Task.where(t)
-    if (path !== "") bits.push(path)
-    else if (t.project) bits.push("#" + t.project)
-    if (t.when) bits.push("do " + root.sayDate(t.when))
-    if (t.due) bits.push("due " + root.sayDate(t.due))
-    if (t.est) bits.push(t.est)
+    if (path.length > 0) bits.push(path.join(" › "))
     bits.push(root.sayAge(t.age))
     return bits.join("   ·   ")
+  }
+
+  // The month a row falls in, for the band above it.
+  function monthLabel(ms) {
+    var d = new Date(ms)
+    return Qt.formatDate(d, d.getFullYear() === new Date().getFullYear() ? "MMMM" : "MMMM yyyy")
+  }
+
+  function taskMs(t) {
+    var iso = t.when || t.due
+    if (!iso) return 0
+    var p = iso.split(" ")[0].split("-")
+    return new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10)).getTime()
+  }
+
+  // The dates a row carries, drawn the way the note draws them: a bordered
+  // date at the line's end. The day it is owed is bare, as in the note; the
+  // day I mean to work on it says so and is filled rather than outlined.
+  function pillsFor(row) {
+    var out = []
+    if (row.kind === "deadline") {
+      var d = row.deadline
+      var at = new Date(d.due * 1000)
+      var timed = !(at.getHours() === 23 && at.getMinutes() === 59)
+      out.push({ text: root.sayDate(Qt.formatDateTime(at, timed ? "yyyy-MM-dd HH:mm" : "yyyy-MM-dd")),
+                 tone: d.status !== "open" ? "done" : (d.due * 1000 < Date.now() ? "late" : "due") })
+      return out
+    }
+    if (row.kind !== "task") return out
+    var t = row.task
+    if (t.when) out.push({ text: "do " + root.sayDate(t.when), tone: "do" })
+    if (t.due) out.push({ text: root.sayDate(t.due), tone: "due" })
+    if (t.est) out.push({ text: t.est, tone: "est" })
+    return out
   }
 
   function sayDate(iso) {
@@ -1225,11 +1312,26 @@ Item {
     return age === 0 ? "written today" : age === 1 ? "written yesterday" : "written " + age + " days ago"
   }
 
+  // Heads and month bands are passed over: they are not rows you act on.
+  // A move of 0 is how the cursor lands on a real row to begin with.
   function moveTaskFocus(d) {
     var rows = root.taskRows
-    var i = root.taskFocus
-    do { i += d } while (i >= 0 && i < rows.length && rows[i].kind === "head")
+    var step = d === 0 ? 1 : d
+    var i = root.taskFocus + d
+    while (i >= 0 && i < rows.length && (rows[i].kind === "head" || rows[i].kind === "month")) i += step
     if (i >= 0 && i < rows.length) root.taskFocus = i
+  }
+
+  // What the list adds up to, for the line beside its name.
+  readonly property string dashCount: {
+    var open = 0, due = 0
+    var rows = root.taskRows
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i].kind === "task") open++
+      else if (rows[i].kind === "deadline" && rows[i].deadline.status === "open") { due++; open++ }
+    }
+    if (open === 0) return ""
+    return open + " open" + (due > 0 ? "   ·   " + due + " with a date to meet" : "")
   }
 
   // Enter: go to the task. Today's note: the cursor lands on its line and
@@ -2341,7 +2443,7 @@ Item {
           anchors.left: parent.left
           anchors.right: parent.right
           textFormat: Text.PlainText
-          text: "DASHBOARD"
+          text: "DASHBOARD" + (root.dashCount === "" ? "" : "   ·   " + root.dashCount)
           color: root.dim
           font.family: root.fontFamily
           font.styleName: root.fontStyle
@@ -2378,8 +2480,12 @@ Item {
 
           Column {
             id: dashColumn
-            width: parent.width
-            spacing: root.sp(2)
+            // Wider than the note's measure, because a row is a title, a
+            // place and a date rather than prose — but still a column, not
+            // the whole wall.
+            width: Math.min(parent.width, Math.round(root.measure * 1.45))
+            x: Math.round((parent.width - width) / 2)
+            spacing: 0
 
             Text {
               width: parent.width
@@ -2395,65 +2501,233 @@ Item {
             Repeater {
               model: root.taskRows
               Rectangle {
+                id: dashRow
                 required property var modelData
                 required property int index
-                readonly property bool isHead: modelData.kind === "head"
+                readonly property string kind: modelData.kind
+                readonly property bool isHead: kind === "head" || kind === "month"
+                readonly property var task: kind === "task" ? modelData.task : null
+                readonly property var deadline: kind === "deadline" ? modelData.deadline : null
+                readonly property bool boxed: kind === "task" || kind === "deadline"
+                readonly property bool done: deadline ? deadline.status !== "open" : (!!task && task.done)
+                readonly property bool late: !!deadline && deadline.status === "open" && deadline.due * 1000 < Date.now()
                 readonly property bool hot: root.taskFocus === index && !isHead
                 width: dashColumn.width
-                height: rowCol.implicitHeight + (isHead ? root.sp(20) : root.sp(10))
-                radius: Style.cornerRadius
-                color: hot ? Style.selectedFill : "transparent"
+                // The space above a row comes from what it is and what came
+                // before it, the way the note's own rhythm works (Rows.js).
+                height: inner.implicitHeight + root.sp(16)
+                  + (kind === "head" ? root.sp(30) : kind === "month" ? root.sp(16) : 0)
+                color: "transparent"
 
-                Column {
-                  id: rowCol
+                Rectangle {
+                  anchors.fill: inner
+                  anchors.topMargin: -root.sp(7)
+                  anchors.bottomMargin: -root.sp(6)
+                  anchors.leftMargin: -root.sp(8)
+                  anchors.rightMargin: -root.sp(8)
+                  radius: Style.cornerRadius
+                  color: dashRow.hot ? Style.selectedFill : "transparent"
+                }
+
+                Item {
+                  id: inner
                   anchors.left: parent.left
                   anchors.right: parent.right
-                  anchors.leftMargin: root.sp(8)
-                  anchors.rightMargin: root.sp(8)
                   anchors.bottom: parent.bottom
+                  anchors.leftMargin: root.sp(10)
+                  anchors.rightMargin: root.sp(10)
                   anchors.bottomMargin: root.sp(5)
-                  spacing: root.sp(1)
+                  implicitHeight: texts.implicitHeight
+                  readonly property int lineH: Math.round(root.fs(Style.font.body) * 1.35)
 
+                  // A band: the course in full, or what the next rows are
+                  // asking of you. Drawn like a heading in the note, in the
+                  // theme's own heading colour.
                   Text {
-                    width: parent.width
+                    id: bandText
+                    visible: dashRow.kind === "head"
+                    anchors.left: parent.left
+                    y: 0
                     textFormat: Text.PlainText
-                    wrapMode: Text.WordWrap
-                    text: modelData.kind === "head" ? modelData.text
-                      : modelData.kind === "older" ? "+" + modelData.count + " written longer ago · Enter to show"
-                      : modelData.kind === "raised"
-                        ? (modelData.item.kind === "suggestion" ? "◇ " : "· ") + modelData.item.text
-                      : modelData.kind === "deadline" ? root.deadlineRowText(modelData.deadline)
-                        : root.taskMark(modelData.task) + root.taskTitle(modelData.task)
-                    color: modelData.kind === "head" ? root.dim
-                      : modelData.kind === "older" ? root.faint
-                      : modelData.kind === "deadline" ? root.deadlineColor(modelData.deadline)
-                      : root.foreground
+                    text: dashRow.kind === "head" ? modelData.text : ""
+                    color: {
+                      if (pal.headings.length === 0) return root.accent
+                      // A course is a heading of its own kind: the three
+                      // bands that say what a row asks of you take the
+                      // first colour, the courses the second.
+                      var course = dashRow.kind === "head" && modelData.tag !== undefined && modelData.tag !== ""
+                      return pal.headings[course && pal.headings.length > 1 ? 1 : 0]
+                    }
                     font.family: root.fontFamily
                     font.styleName: root.fontStyle
-                    font.pixelSize: modelData.kind === "head" ? root.fs(Style.font.caption) : root.fs(Style.font.body)
+                    font.pixelSize: root.fs(Style.font.body)
                   }
 
-                  // Where it came from, which is what makes a bare title
-                  // mean something again three days later.
                   Text {
-                    width: parent.width
-                    visible: text !== ""
+                    visible: dashRow.kind === "head" && modelData.tag !== undefined && modelData.tag !== ""
+                    anchors.left: bandText.right
+                    anchors.leftMargin: root.sp(8)
+                    anchors.bottom: bandText.bottom
                     textFormat: Text.PlainText
-                    elide: Text.ElideRight
-                    text: modelData.kind === "task" ? root.taskWhere(modelData.task)
-                      : modelData.kind === "raised" ? (modelData.item.evidence || "")
-                      : ""
+                    text: dashRow.kind === "head" ? (modelData.tag || "") : ""
                     color: root.faint
                     font.family: root.fontFamily
                     font.styleName: root.fontStyle
                     font.pixelSize: root.fs(Style.font.caption)
                   }
+
+                  // The month the rows under it fall in — the separation the
+                  // eye needs in a list that runs on.
+                  Text {
+                    visible: dashRow.kind === "month"
+                    anchors.left: parent.left
+                    y: 0
+                    textFormat: Text.PlainText
+                    text: dashRow.kind === "month" ? modelData.text.toUpperCase() : ""
+                    color: root.faint
+                    font.family: root.fontFamily
+                    font.styleName: root.fontStyle
+                    font.pixelSize: root.fs(Style.font.caption)
+                    font.letterSpacing: 0.8
+                  }
+
+                  // The box, exactly as the note draws one: open is an
+                  // outline, closed is filled with a tick.
+                  Rectangle {
+                    id: box
+                    readonly property int size: Math.round(root.textSize * 0.72)
+                    visible: dashRow.boxed
+                    x: 0
+                    y: Math.round((inner.lineH - size) / 2)
+                    width: size
+                    height: size
+                    radius: Math.max(2, Math.round(size * 0.22))
+                    color: dashRow.done ? pal.green : "transparent"
+                    border.width: dashRow.done ? 0 : Math.max(1, Math.round(root.textSize * 0.08))
+                    border.color: dashRow.late ? root.urgent : root.dim
+
+                    Text {
+                      anchors.centerIn: parent
+                      visible: dashRow.done
+                      textFormat: Text.PlainText
+                      text: "✓"
+                      color: root.background
+                      font.family: root.fontFamily
+                      font.pixelSize: Math.round(box.size * 0.85)
+                      font.bold: true
+                    }
+
+                    MouseArea {
+                      anchors.fill: parent
+                      anchors.margins: -root.sp(6)
+                      cursorShape: Qt.PointingHandCursor
+                      onClicked: { root.taskFocus = dashRow.index; root.tickFocused() }
+                    }
+                  }
+
+                  // The priority, beside the box rather than in the words.
+                  Text {
+                    id: prioMark
+                    visible: text !== ""
+                    anchors.left: box.right
+                    anchors.leftMargin: root.sp(5)
+                    y: Math.round((inner.lineH - implicitHeight) / 2)
+                    textFormat: Text.PlainText
+                    text: root.taskMark(dashRow.task)
+                    color: dashRow.task && dashRow.task.priority >= 1 ? root.accent : root.faint
+                    font.family: root.fontFamily
+                    font.pixelSize: root.fs(Style.font.caption)
+                  }
+
+                  Row {
+                    id: pills
+                    anchors.right: parent.right
+                    y: Math.round((inner.lineH - height) / 2)
+                    spacing: root.sp(6)
+                    Repeater {
+                      model: root.pillsFor(dashRow.modelData)
+                      Rectangle {
+                        required property var modelData
+                        readonly property bool filled: modelData.tone === "do"
+                        readonly property color tint: modelData.tone === "late" ? root.urgent
+                          : modelData.tone === "done" ? root.faint : root.dim
+                        width: pillText.implicitWidth + Math.round(root.textSize * 0.9)
+                        height: pillText.implicitHeight + Math.round(root.textSize * 0.25)
+                        radius: height / 2
+                        color: filled ? Style.selectedFill : "transparent"
+                        border.width: filled ? 0 : 1
+                        border.color: modelData.tone === "late" ? root.urgent : root.faint
+                        Text {
+                          id: pillText
+                          anchors.centerIn: parent
+                          textFormat: Text.PlainText
+                          text: modelData.text
+                          color: parent.tint
+                          font.family: root.fontFamily
+                          font.styleName: root.fontStyle
+                          font.pixelSize: Math.round(root.textSize * 0.78)
+                        }
+                      }
+                    }
+                  }
+
+                  Column {
+                    id: texts
+                    anchors.left: parent.left
+                    anchors.right: pills.left
+                    anchors.rightMargin: root.sp(12)
+                    anchors.leftMargin: dashRow.boxed
+                      ? box.size + root.sp(10) + (prioMark.visible ? prioMark.implicitWidth + root.sp(5) : 0)
+                      : 0
+                    anchors.top: parent.top
+                    spacing: root.sp(3)
+
+                    Text {
+                      id: titleText
+                      width: parent.width
+                      textFormat: Text.PlainText
+                      elide: Text.ElideRight
+                      maximumLineCount: 2
+                      wrapMode: Text.WordWrap
+                      text: dashRow.kind === "older" ? "+" + modelData.count + " written longer ago · Enter to show"
+                        : dashRow.kind === "raised"
+                          ? (modelData.item.kind === "suggestion" ? "◇ " : "· ") + modelData.item.text
+                        : dashRow.kind === "deadline" ? modelData.deadline.title
+                        : dashRow.kind === "task" ? root.taskTitle(modelData.task)
+                        : " "
+                      color: dashRow.isHead ? "transparent"
+                        : dashRow.kind === "older" ? root.faint
+                        : dashRow.done ? root.dim
+                        : dashRow.late ? root.urgent : root.foreground
+                      font.family: root.fontFamily
+                      font.styleName: root.fontStyle
+                      font.pixelSize: root.fs(Style.font.body)
+                      font.strikeout: dashRow.done
+                    }
+
+                    Text {
+                      visible: text !== ""
+                      width: parent.width
+                      textFormat: Text.PlainText
+                      elide: Text.ElideRight
+                      text: dashRow.kind === "task" ? root.taskWhere(modelData.task, modelData.under)
+                        : dashRow.kind === "deadline" ? root.courseLabel(modelData.deadline.project)
+                        : dashRow.kind === "raised" ? (modelData.item.evidence || "")
+                        : ""
+                      color: root.faint
+                      font.family: root.fontFamily
+                      font.styleName: root.fontStyle
+                      font.pixelSize: root.fs(Style.font.caption)
+                    }
+                  }
                 }
 
                 MouseArea {
                   anchors.fill: parent
-                  enabled: !parent.isHead
+                  enabled: !dashRow.isHead
+                  acceptedButtons: Qt.LeftButton
                   onClicked: { root.taskFocus = index; root.activateTask() }
+                  z: -1
                 }
               }
             }

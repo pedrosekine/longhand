@@ -536,6 +536,21 @@ a fix or a feature to decide first):
      needs the silence clock; and `g` (grade) in the dashboard, which only
      the popup has. Tests: `tests/test_task.py` for the line editing,
      `tests/page/run.py` for the dashboard driven live.
+     **Drawn 2026-10-15**, after the first version read as a wall of data:
+     the dashboard borrows the note's own idiom rather than inventing one.
+     A date is a pill as it is in the note (outlined for the day it is
+     owed, filled for the day you mean to work on it, urgent when it is
+     late); a box is the note's checkbox, clickable; priority is a mark
+     beside the box, not a word in the row. Bands carry the course's own
+     name with its tag beside it — the curriculum's name, else the heading
+     the notes themselves use — in the theme's heading colours, one for the
+     three bands that say what a row asks of you and another for the
+     courses. The dated sections are banded by month. Under the words, in
+     faint, the section it was written in and how long ago, with the course
+     dropped when the band above already says it. A row's space comes from
+     what it is, as `Rows.js` does for the note, and the column is 1.45
+     measures wide and centred, because a list is wider than prose but not
+     as wide as the wall.
    Also settled: **two dates, due and do.** The due date is a fact you
    receive; the do-date is the decision students avoid, which makes it the
    agent's job — workload across the next fortnight by project, proposed

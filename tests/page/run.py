@@ -724,12 +724,20 @@ def main() -> int:
             p.call("dashFocus", i)
             return rows[i] if i >= 0 else {}
 
-        check(p.wait(lambda: heads()[-4:] == ["DOING", "TO SCHEDULE", "#intsem", "#dtm"]),
+        check(p.wait(lambda: heads()[-4:] == ["DOING", "TO SCHEDULE",
+                                              "Interdisciplinary Seminar", "Design Theory & Methods"]),
               f"grouped by what it asks of you, then by project ({heads()})")
+        rows = json.loads(p.call("dashRows"))
+        band = next(r for r in rows if r["kind"] == "head" and r["text"] == "Interdisciplinary Seminar")
+        check(band["tag"] == "#intsem", f"a band carries the course's own name, its tag beside it ({band})")
+        check(any(r["kind"] == "month" for r in rows),
+              f"the dated rows are banded by month ({[r['text'] for r in rows if r['kind'] == 'month']})")
         intro = row("draft the intro")
-        check("Design Theory › Essay 2" in intro["where"],
-              f"a row says where it came from ({intro['where']!r})")
+        check("Design Theory & Methods › Essay 2" in intro["where"],
+              f"a row says where it came from, the course in full ({intro['where']!r})")
         check("written yesterday" in intro["where"], "…and when it was written")
+        check("16 Oct" not in intro["where"] and "do " not in intro["where"],
+              "…but not its dates, which are pills as they are in the note")
         check(row("slides")["when"] == "2030-01-02" and row("read the paper")["prio"] == 2,
               "a do-date and a priority are read off the line")
 
