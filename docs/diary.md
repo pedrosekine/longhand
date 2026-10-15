@@ -617,3 +617,34 @@ only the window and the panels around it differ.
   letter takes it away; and a selection dragged through one side of a pair
   and deleted leaves the other, which is an explicit act with an honest
   result.
+- 2026-10-15: a block the agent has answered is not asked again. The
+  question was the student's — "does it make sense to Ctrl+Enter it again?"
+  — and the code answers it: a block's identity is the hash of its text, so
+  a block that still carries its answer is text that has not changed, and
+  `apply()` overwrites the record, so the second pass would send the
+  identical payload and destroy the first answer with the second. Not two
+  opinions to compare; one opinion, paid for twice, minus one. So the header
+  word becomes "reply" and the key opens the conversation on that block with
+  the cursor in the box, continuing the session the first pass opened — only
+  the new message travels. No forced-rerun key: change the words and it is a
+  new block that runs as usual, and if the answer was poor what you want is
+  the follow-up.
+- 2026-10-15: the chat shows what you sent, at once, and says it is
+  thinking. The turns were read from the day's state file, which the runner
+  writes only when the pass finishes — so the box emptied and nothing
+  appeared for ten seconds, which reads as a message that did not send. The
+  page now holds the turn it just sent, draws it immediately, and lets go of
+  it when the runner's own copy lands. "thinking" breathes under it and
+  starts counting seconds after four of them: a slow pass and a hung one
+  look different now, which is the whole point of an indicator.
+  Underneath that was a real bug, and a lesson worth keeping: **a binding is
+  not refreshed until after the handlers of the property it depends on have
+  run.** `AgentState.record()` read the `blocks` binding, and everything
+  reached from `onStateChanged` — the chat settling, `checkAccept`, the
+  unread count — was therefore looking at the state before the one that had
+  just arrived. It surfaced as the sent message drawn twice, and only
+  sometimes, because any other read of `blocks` in between would refresh it;
+  the live check passed while the behaviour was broken, and only looking at
+  the thing caught it. `record()` and `recount()` read `state` directly now.
+  Next to the `advanceWidth` lesson: that was a dependency never captured,
+  this is a captured dependency not yet up to date.

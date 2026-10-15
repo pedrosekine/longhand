@@ -32,17 +32,25 @@ Item {
   readonly property string path: agentDir !== "" && day !== "" ? agentDir + "/daily/" + day + ".json" : ""
 
   property var state: ({})
-  readonly property var blocks: (state && state.blocks) || ({})
+  readonly property var blocks: root.blocksOf(root.state)
   property int unread: 0
+
+  // Read from `state` itself, never from the `blocks` binding: a binding is
+  // not refreshed until after the handlers of the property it depends on
+  // have run, so anything reached from `onStateChanged` — the page settling
+  // a chat turn, an accepted proposal, this count — would be looking at the
+  // state before the one that just arrived (found 2026-10-15, a sent chat
+  // message drawn twice).
+  function blocksOf(st) { return (st && st.blocks) || ({}) }
 
   function recount() {
     var n = 0
-    var b = root.blocks
+    var b = root.blocksOf(root.state)
     for (var h in b) if (b[h].state === "reply" && !b[h].read) n++
     root.unread = n
   }
 
-  function record(hash) { return root.blocks[hash] || null }
+  function record(hash) { return root.blocksOf(root.state)[hash] || null }
 
   function reload() { file.reload() }
 

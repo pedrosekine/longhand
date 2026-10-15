@@ -106,6 +106,13 @@ ShellRoot {
     // The projects list as the keyboard drives it: focus a row, then Enter.
     function projectEnter(i: int, ctrl: bool, shift: bool): void { page.projFocus = i; page.projectsKey(Qt.Key_Return, ctrl, shift) }
     function panel(): string { return JSON.stringify({ project: page.projectOpen, tasks: page.tasksOpen, margin: page.marginOpen, focus: page.sectionFocus }) }
+    // The conversation as the margin draws it, and whether the box has the
+    // keyboard — which is where Ctrl+Enter on an answered block must land.
+    function chat(): string { return JSON.stringify(page.chatTurns.map(function (t) { return t.role + ": " + t.text })) }
+    function answering(): bool { return page.answering }
+    function heldTurn(): string { return JSON.stringify(page.pendingChat) }
+    function chatFocused(): bool { return page.marginFocus === page.currentProposals.length }
+    function sendChat(text: string): void { page.pendingChat = { hash: page.currentHash, text: text }; page.requestChat(page.currentHash, text) }
     function insertTag(i: int): void { page.insertTag(page.projects[i]) }
     // The measure
     function zoom(z: real): void { page.setZoom(z) }

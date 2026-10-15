@@ -294,6 +294,10 @@ Item {
   // a send waits for dates to bind (`whenWritten`) and for the note to be
   // written, and "did that go?" is exactly what the mark answers.
   property var sending: []
+  // The turn the student has just sent, held here until the runner writes
+  // it into the day's state. The chat shows it at once: a message that
+  // vanishes for the length of a pass reads as a message that did not send.
+  property var pendingChat: null   // { hash, text }
   // Something is away: queued, waiting for the note to be written, or in
   // the runner. What the header's "agent" says, and what the gutter marks.
   readonly property bool working: root.running || root.sending.length > 0
@@ -327,6 +331,20 @@ Item {
   property int matchIndex: -1
   property int searchFrom: 0     // the cursor when the search opened
   readonly property var currentRecord: agent.record(currentHash)
+  // The conversation as the margin shows it: what the runner has written,
+  // plus the turn that has not landed yet.
+  readonly property var chatTurns: {
+    var rec = root.currentRecord
+    var turns = rec && rec.chat ? rec.chat.slice() : []
+    if (root.pendingChat && root.pendingChat.hash === root.currentHash)
+      turns.push({ role: "student", text: root.pendingChat.text })
+    return turns
+  }
+  // This block is away: asked and not back. `runningHash` can name a whole
+  // list submission.
+  readonly property bool answering: root.currentHash !== ""
+    && (root.runningHash.split(",").indexOf(root.currentHash) >= 0
+        || root.sending.indexOf(root.currentHash) >= 0)
   readonly property var currentProposals: (currentRecord && currentRecord.proposals) ? currentRecord.proposals : []
   readonly property var taskRows: root.buildTaskRows()
   readonly property bool replyWaiting: root.hasUnreadInNote()
@@ -546,8 +564,26 @@ Item {
   property bool noSignHint: false
   property string hint: ""   // a passing word under the cursor (a date that did not read, …)
   function showHint(t) { root.hint = t; hintTimer.restart() }
+  // A block the agent has already answered is not asked again. The hash is
+  // of the block's text, so a block that still carries its answer is text
+  // that has not changed since: the second pass would send the identical
+  // question, pay for it again, and — because a run overwrites the record —
+  // throw the first answer away. Change the words and it is a different
+  // block with no answer, which runs as usual; leave them and what you
+  // want is the conversation, which continues the session the first pass
+  // opened rather than starting a new one.
+  function answered(rec) {
+    return !!rec && (!!rec.reply || (!!rec.chat && rec.chat.length > 0))
+  }
+
   function sendCurrent() {
     if (root.currentHash === "") return
+    if (root.answered(root.currentRecord)) {
+      if (root.marginWidth <= 0) { root.showHint("already answered — the window is too narrow to show it"); return }
+      root.used("reopen")
+      root.diveIn(true)
+      return
+    }
     if (root.currentTrigger === "") { root.noSignHint = true; hintTimer.restart(); return }
     // A dated item may still be binding. The agent has to see its dates as
     // deadlines, never as words to propose a second time (2026-10-13), so
@@ -692,6 +728,7 @@ Item {
     for (var i = 0; i < lines.length && first === ""; i++)
       if (lines[i].trim() !== "") first = lines[i].trim().replace(/^error:\s*/, "")
     runner.said = ""
+    root.pendingChat = null      // it never reached the agent; do not pretend it did
     root.showHint("the agent could not run" + (first === "" ? "" : " — " + first.substring(0, 120)))
   }
 
@@ -910,11 +947,14 @@ Item {
     return false
   }
 
-  function diveIn() {
+  // `toChat`: land in the box with the cursor in it, whatever else is
+  // there — the way in when the answer already exists and the next thing
+  // to do is reply to it.
+  function diveIn(toChat) {
     root.used("margin")
     if (root.marginWidth <= 0 || root.currentHash === "") return
     root.marginOpen = true
-    if (root.currentProposals.length > 0) {
+    if (root.currentProposals.length > 0 && toChat !== true) {
       root.marginFocus = 0
       marginKeys.forceActiveFocus()
     } else {
@@ -1753,7 +1793,19 @@ Item {
     var msg = chatField.text.trim()
     if (msg === "" || root.currentHash === "") return
     chatField.text = ""
+    root.pendingChat = { hash: root.currentHash, text: msg }
     root.requestChat(root.currentHash, msg)
+  }
+
+  // The runner has written the turn the page was holding: let go of it, so
+  // the message is never drawn twice.
+  function settleChat() {
+    var p = root.pendingChat
+    if (!p) return
+    var rec = agent.record(p.hash)
+    var turns = (rec && rec.chat) || []
+    for (var i = turns.length - 1; i >= 0; i--)
+      if (turns[i].role === "student" && turns[i].text === p.text) { root.pendingChat = null; return }
   }
 
   // ------------------------------------------------------------ services
@@ -1788,7 +1840,7 @@ Item {
     id: agent
     config: svc.config
     date: svc.noteDate
-    onStateChanged: { root.scheduleRepaint(); root.checkAccept() }
+    onStateChanged: { root.scheduleRepaint(); root.checkAccept(); root.settleChat() }
   }
 
   Process {
@@ -2166,9 +2218,12 @@ Item {
               visible: svc.header !== "" && root.agentOn
               anchors.verticalCenter: parent.verticalCenter
               textFormat: Text.PlainText
-              text: "ask"
+              // Once the block has an answer the word is not "ask" any
+              // more: the key opens the conversation on it instead of
+              // paying to be told the same thing twice.
+              text: root.answered(root.currentRecord) ? "reply" : "ask"
               color: askArea.containsMouse ? root.accent
-                : (root.currentTrigger !== "" ? root.dim : root.faint)
+                : (root.currentTrigger !== "" || root.answered(root.currentRecord) ? root.dim : root.faint)
               font.family: root.fontFamily
               font.styleName: root.fontStyle
               font.pixelSize: root.fs(Style.font.bodySmall)
@@ -3244,17 +3299,6 @@ Item {
 
           Text {
             width: parent.width
-            visible: root.running && root.runningHash === root.currentHash && root.currentHash !== ""
-            textFormat: Text.PlainText
-            text: "…"
-            color: root.dim
-            font.family: root.fontFamily
-            font.styleName: root.fontStyle
-            font.pixelSize: root.textSize
-          }
-
-          Text {
-            width: parent.width
             visible: !!(root.currentRecord && root.currentRecord.reply)
             textFormat: Text.MarkdownText
             wrapMode: Text.WordWrap
@@ -3304,7 +3348,7 @@ Item {
           }
 
           Repeater {
-            model: root.currentRecord && root.currentRecord.chat ? root.currentRecord.chat : []
+            model: root.chatTurns
             Text {
               required property var modelData
               width: marginColumn.width
@@ -3318,9 +3362,45 @@ Item {
             }
           }
 
+          // Thinking: where the answer will appear, for as long as the
+          // block is away. It breathes rather than spins, and after a few
+          // seconds it says how long it has been — which is the difference
+          // between a slow pass and a hung one. The word is the agent's
+          // own state, not a spinner: nothing else in the page moves.
+          Text {
+            id: thinking
+            property double since: 0
+            width: parent.width
+            visible: root.answering
+            textFormat: Text.PlainText
+            text: "thinking" + (thinking.elapsed >= 4 ? " · " + thinking.elapsed + "s" : "")
+            property int elapsed: 0
+            color: root.dim
+            font.family: root.fontFamily
+            font.styleName: root.fontStyle
+            font.italic: true
+            font.pixelSize: root.fs(Style.font.title)
+            onVisibleChanged: {
+              thinking.since = visible ? Date.now() : 0
+              thinking.elapsed = 0
+            }
+            Timer {
+              interval: 1000
+              repeat: true
+              running: thinking.visible
+              onTriggered: thinking.elapsed = Math.floor((Date.now() - thinking.since) / 1000)
+            }
+            SequentialAnimation on opacity {
+              running: thinking.visible
+              loops: Animation.Infinite
+              NumberAnimation { to: 0.35; duration: 900; easing.type: Easing.InOutSine }
+              NumberAnimation { to: 1.0; duration: 900; easing.type: Easing.InOutSine }
+            }
+          }
+
           Text {
             width: parent.width
-            visible: !root.currentRecord || !root.currentRecord.reply
+            visible: !root.answered(root.currentRecord) && !root.answering
             textFormat: Text.PlainText
             wrapMode: Text.WordWrap
             text: "Nothing from the agent on this block yet. Ctrl+Enter sends it, or ask below."

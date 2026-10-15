@@ -112,7 +112,14 @@ Nothing ever interrupts your writing to offer the agent. You reach for it:
 a run of list items counts as one submission. The word reads dim when that
 block carries a sign for the agent (a checkbox, an `@` line, a line ending
 in `?`, a ticked box) and faint when it does not; asking anyway says why in
-one line. From the moment you ask until the answer is back, the block's
+one line. A block that already has an answer is never asked twice: the word
+reads **reply**, and `Ctrl+Enter` opens the conversation on it with the
+cursor in the box. (A block's identity is its text, so changing the words
+makes it a new block that runs as usual — what cannot happen is paying to
+ask the identical question again and overwriting the first answer with the
+second.) What you send appears in the conversation at once, with *thinking*
+under it until the answer arrives, counting the seconds once it has been a
+few. From the moment you ask until the answer is back, the block's
 gutter mark carries a light travelling down it and the header's **agent**
 brightens — a mark that moves means still thinking, a mark that rests means
 answered. A pass that fails says so in a line under the cursor; it never

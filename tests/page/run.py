@@ -25,6 +25,27 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "agent"))
 import blocks  # noqa: E402
 
+# What the runner writes when the student talks to a block: both turns, the
+# way `student-agent chat` records them. Enough for the page to settle the
+# message it was holding and draw the answer.
+CHAT_STUB = """import json, pathlib, sys
+
+daily, args = pathlib.Path(sys.argv[1]), sys.argv[2:]
+h = args[args.index("--hash") + 1]
+msg = args[args.index("--message") + 1]
+stem = args[args.index("--date") + 1]
+path = daily / (stem + ".json")
+state = json.loads(path.read_text()) if path.exists() else {"date": stem, "blocks": {}}
+rec = state["blocks"].setdefault(h, {"state": "seen"})
+rec.setdefault("chat", []).append({"role": "student", "text": msg})
+rec["chat"].append({"role": "agent", "text": "stub answer to: " + msg})
+rec["state"] = "reply"
+rec["read"] = False
+rec.setdefault("reply", "")
+path.parent.mkdir(parents=True, exist_ok=True)
+path.write_text(json.dumps(state))
+"""
+
 TODAY = dt.date.today().strftime("%Y.%m.%d")
 YDAY = (dt.date.today() - dt.timedelta(days=1)).strftime("%Y.%m.%d")
 failures = 0
@@ -64,11 +85,16 @@ class Page:
         (bindir / "pomo").symlink_to(ROOT / "cli" / "pomo")
         # Only the local commands run (no model): accept, projects, sections.
         # A model pass is a stub that takes its time, so the page's "this is
-        # away" mark can be seen while it is away.
+        # away" mark can be seen while it is away; `chat` also writes the
+        # day's state the way the runner would, so the whole turn can be
+        # followed — sent, thinking, answered.
+        chatstub = self.tmp / "chatstub.py"
+        chatstub.write_text(CHAT_STUB)
         self.runner.write_text(f"""#!/bin/bash
 case "$1" in
   accept|projects|sections) exec "{ROOT}/agent/student-agent" "$@" ;;
-  run|chat) sleep 2; exit 0 ;;
+  run) sleep 2; exit 0 ;;
+  chat) sleep 2; exec python3 "{chatstub}" "{self.vault}/agents/student/daily" "$@" ;;
 esac
 """)
         self.runner.chmod(0o755)
@@ -575,6 +601,36 @@ def main() -> int:
         p.call("askNow")
         check(p.wait(lambda: "sending" in p.call("marks"), 4), f"asking marks the block ({p.call('marks')})")
         check(p.wait(lambda: "sending" not in p.call("marks"), 8), "…and the mark goes when it is back")
+
+        # 11h. the conversation. A block the agent has answered is not asked
+        # again: Ctrl+Enter opens the chat on it, cursor in the box. The
+        # hash is of the block's text, so an unchanged block would send the
+        # identical question and — a run overwrites the record — throw the
+        # first answer away (2026-10-15).
+        (p.daily / f"{TODAY}.md").write_text(header(TODAY) + "@ what should I read first?\n")
+        p.open_fresh()
+        p.call("cursor", p.offset_of_line(p.line_of("@ what")) + 2)
+        p.wait(lambda: p.call("sign") != "")
+        p.call("sendChat", "is there a shorter way?")
+        check(json.loads(p.call("chat")) == ["student: is there a shorter way?"],
+              f"the message is in the chat at once ({p.call('chat')})")
+        check(p.call("answering") == "true", "…with the agent thinking under it")
+        check(p.wait(lambda: "agent: stub answer to: is there a shorter way?" in p.call("chat"), 8),
+              f"…and the answer lands there ({p.call('chat')})")
+        check(json.loads(p.call("chat")).count("student: is there a shorter way?") == 1
+              and p.call("heldTurn") == "null",
+              f"…the held turn let go of, never drawn twice ({p.call('chat')})")
+        check(p.wait(lambda: p.call("answering") == "false"), "…and the thinking stops")
+
+        before = len(list((p.state / "omarchy-student" / "payloads").glob("*"))) \
+            if (p.state / "omarchy-student" / "payloads").is_dir() else 0
+        p.call("askNow")
+        time.sleep(1)
+        after = len(list((p.state / "omarchy-student" / "payloads").glob("*"))) \
+            if (p.state / "omarchy-student" / "payloads").is_dir() else 0
+        check(after == before, f"asking an answered block runs nothing again ({before} → {after})")
+        check(json.loads(p.call("panel"))["margin"] is True, "…it opens the conversation instead")
+        check(p.call("chatFocused") == "true", "…with the cursor in the box")
 
         # A run of list items is one submission, but the mark is on the line
         # the student asked from — the whole list lighting up read as the

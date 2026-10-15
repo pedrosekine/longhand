@@ -581,6 +581,37 @@ a fix or a feature to decide first):
   `Emph.js` and the one-position-per-character guarantee stay as they are.
   Test every marker and the nested combinations (`**`, `*`, `` ` ``, `~~`,
   `***both***`, `**bold *and* italic**`), since they already differ.
+- ~~**Asking an answered block again**~~ (bug, 2026-10-15, the student's) —
+  **fixed the same day.** `Ctrl+Enter` on a block that already carried an
+  answer ran the whole pass again. Two things made that clearly wrong rather
+  than merely wasteful: a block's identity is the fnv1a of its *text*
+  (`Blocks.js`), so a block that still carries its answer is text that has
+  not changed — the second pass sends the identical payload; and `apply()`
+  does `rec.update({... "reply": ...})`, so the second answer *overwrites*
+  the first. It was not two opinions to compare, it was paying ~7k tokens to
+  destroy one. Now the word in the header reads "reply" and the key opens
+  the conversation on that block, cursor in the box — which continues the
+  opencode session the first pass opened, so only the new message travels.
+  No escape hatch for a forced re-run, deliberately: edit the words and it
+  is a new block that runs as usual, and if the answer was poor the thing
+  you want is the follow-up, not the same question.
+- ~~**A sent chat message vanished until the answer came**~~ (2026-10-15) —
+  the turns were read from the day's state file, which the runner writes
+  only when the pass is done, so the box emptied and nothing appeared for
+  the length of a run. The page now holds the turn it just sent and draws it
+  at once, with *thinking* under it (breathing, and counting seconds after
+  four of them — the difference between a slow pass and a hung one), and
+  lets go of the held turn when the runner's own copy arrives.
+  That uncovered a real one underneath: **a binding is not refreshed until
+  after the handlers of the property it depends on have run**, so anything
+  reached from `AgentState.onStateChanged` that read the `blocks` binding —
+  the chat settling, `checkAccept`, the unread count — was looking at the
+  state *before* the one that had just arrived. It showed as the sent
+  message drawn twice, and only sometimes, because any other read of
+  `blocks` in between would refresh it. `record()` and `recount()` now read
+  `state` directly. Worth remembering next to the `advanceWidth` lesson:
+  that one was a dependency that was never captured, this one is a captured
+  dependency that is not yet up to date.
 - **Tag suggestions while typing** (idea, 2026-10-11) — typing `#` offers the
   tags that exist (the projects list), so a new tag is a choice, not a typo.
   The sidebar list is the first step; this would be the stronger guard.
