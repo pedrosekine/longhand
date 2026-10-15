@@ -107,14 +107,57 @@ by a hash of its text. No ids are written into the note. Editing a block makes
 it new and unprocessed, which is the honest behaviour. Block splitting is a
 pure function shared by the page and the runner.
 
-**Private.** A `> [!private]` callout hides a block. Frontmatter `agent: false`
-hides the day. Both are removed by local code before the payload is built.
-Since 2026-10-15 the day's mark has a control: the word **private** in the
-header writes that line (`Ctrl+Shift+P`), and while it is there the page
-offers the agent nothing at all — no pass on opening, no ask, no mark — so
-the guarantee is one the student can see rather than one they are told.
-Frontmatter is page-owned like the link line: it never enters the editor and
-is written back untouched apart from the `agent:` line.
+**Private.** Two scopes, described in full under "Privacy" below.
+
+## Privacy
+
+Two mechanisms, two scopes. Neither is a setting: both are marks in the note
+itself, so the note carries its own answer and nothing has to be looked up.
+
+| | scope | the mark | who writes it | who enforces it |
+|---|---|---|---|---|
+| **A private day** | the whole note | `agent: false` in the note's frontmatter | the page (`Service.setPrivate`, header word **private** / `Ctrl+Shift+P`) | the page refuses to run at all (`agentOn`); the runner refuses the note (`note_is_private` → `Fail`) |
+| **A private block** | one block | a `> [!private]` callout | the student, by typing it | `blocks.py` marks the block `private`; `visible_blocks()` drops it before the payload exists |
+
+Both are enforced by local code *before* inference, and every payload is
+written to `~/.local/state/omarchy-student/payloads/` first, so "it was not
+sent" is checkable after the fact rather than promised. A private block is
+also absent from the day's state file and is refused outright as a trigger.
+Frontmatter is page-owned like the agent link line: it never enters the
+editor and is written back untouched apart from the `agent:` line, so
+Obsidian properties survive and an emptied block is removed rather than left
+as two bare rules.
+
+Tested, by name: `private callout absent from payload`, `model received no
+private text`, `private block not in state`, `private block refused as
+trigger`, `a private callout in an earlier note stays private` (the project
+history of another day), `a day marked agent: false is left out whole`
+(ditto), and live: `asking on a private note runs nothing`.
+
+**What this does not cover.** Worth knowing before trusting it further, and
+none of it is decided yet:
+
+1. **The deadline store is not private.** A dated checkbox written in a
+   private note still binds: the page's `leftLine` has no privacy gate, so
+   the title, project and date land in `deadlines.tsv` — and every payload
+   carries the store whole (`pomo report --json`). Verified 2026-10-15: in a
+   note marked private, `- [ ] therapy appointment by friday 17:00` became
+   deadline #1, whose title the model would see on any later pass. The words
+   around it stayed private; the commitment did not.
+2. **Private is forward-looking.** Marking a note private stops the next
+   pass; it does not retract passes already made. What was sent is in the
+   transcript, the state file and the payload log, and the agent's replies
+   for that day stay where they are.
+3. **A private block has no control.** It is typed by hand; there is no
+   keystroke and nothing on screen that says "the agent cannot see this" —
+   the page draws it as a callout in the theme's magenta, which reads as a
+   callout and not as a guarantee. The 2026-10-15 question offered one and
+   the student took the day-scope control first.
+4. **A private day is still a day.** It is listed in the calendar, its
+   sections still appear under their project, and its words are still
+   searched — the privacy is from the *agent*, not from the student.
+5. The usage log (`usage.tsv`) records event names and counts only, never a
+   word of a note; it is local and sent nowhere.
 
 ## The loop
 

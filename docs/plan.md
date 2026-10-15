@@ -465,6 +465,21 @@ a fix or a feature to decide first):
 
 **Not ordered yet:**
 
+- **How far does private go?** (2026-10-15, from asking what the new toggle
+  actually covers.) The toggle is the whole note; a `> [!private]` callout is
+  the block. The model and its edges are written up under "Privacy" in
+  `docs/diary.md`; the one that needs a decision is the first: a dated
+  checkbox in a private note still binds, so its title, project and date are
+  in the store, and every payload carries the store whole. Three ways out,
+  none obviously right: a private note binds nothing (you lose the deadline
+  you meant to keep); it binds but the deadline is marked private too and
+  left out of the payload (the store grows a privacy flag, and "what is
+  due?" stops being one list); or it stays as it is and the rule is stated
+  plainly — your words are private, the commitments you make are not. Also
+  waiting: a keystroke and a visible treatment for the block-level callout,
+  which is typed by hand today and reads as a callout rather than a
+  guarantee.
+
 - **A face for prose** (2026-10-13) — the page draws in the system
   monospace (JetBrains Mono); a proportional face reads better as prose
   and makes the 72-character measure physically narrower. A page-only
