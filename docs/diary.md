@@ -397,3 +397,15 @@ only the window and the panels around it differ.
   now carries every send — `sendCurrent` — and it still waits for the
   deadline queue to settle, so a list reaches the agent with its dates
   already bound and no duplicate proposals (the 2026-10-13 fix).
+- 2026-10-15: a project's notes belong on the left. They first opened in the
+  margin, which was the nearest panel rather than a decision; the margin is
+  the *agent's* side (reply, proposals, chat, what's next) and a project's
+  sections are the student's own writing, so finding them is navigation and
+  navigation lives in the sidebar with the calendar and the deadlines. The
+  projects list drills into the project in place, `←` or Esc comes back, and
+  the sidebar widens while a project is open only where the note can still
+  have its full measure beside it. A second left-hand column was weighed and
+  dropped: it would spend the width the measure needs. With that, the way in
+  inverts — a click or Enter on a project *opens* it, and writing one into
+  the note moves to Shift+Enter (start a class) and Ctrl+Enter (its tag),
+  with `@` to come. The list is for finding; the note is for writing.

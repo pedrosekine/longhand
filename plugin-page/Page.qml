@@ -200,7 +200,10 @@ Item {
     var p = svc.configured && svc.noteDate !== "" ? Days.parse(svc.noteDate, svc.dailyFormat()) : null
     return p ? Days.key(p.date) : ""
   }
-  readonly property int sidebarWidth: root.sp(236)
+  // A project's sections want more room than a month grid, but only where
+  // the note can still have its full measure beside them.
+  readonly property int sidebarWidth: root.projectOpen
+    && content.width - root.sp(320) - root.marginGap >= root.sheetFor ? root.sp(320) : root.sp(236)
 
   // Deadlines by the day they fall on, for the calendar (hidden ones too:
   // the calendar is history), each day's in due order.
@@ -729,7 +732,6 @@ Item {
   function diveIn() {
     root.used("margin")
     if (root.marginWidth <= 0 || root.currentHash === "") return
-    root.projectOpen = false
     root.marginOpen = true
     if (root.currentProposals.length > 0) {
       root.marginFocus = 0
@@ -744,7 +746,6 @@ Item {
     root.marginFocus = -1
     root.marginOpen = false
     root.tasksOpen = false
-    root.projectOpen = false
     editor.focusNote()
   }
 
@@ -770,7 +771,6 @@ Item {
     root.tasksOpen = !root.tasksOpen
     if (root.tasksOpen) root.used("whats-next")
     if (root.tasksOpen) {
-      root.projectOpen = false
       root.marginOpen = true
       root.taskFocus = 0
       root.refreshTasks()
@@ -792,19 +792,48 @@ Item {
   // them): every section of the project's tag, newest first, opened in
   // place. The claiming rule lives in `student-agent sections`.
   function openProject(pr) {
-    if (!pr || root.marginWidth <= 0) return
+    if (!pr) return
     root.used("project-notes")
     root.projectTag = pr.tag
     root.projectName = pr.name || pr.tag
     root.sections = []
     root.sectionFocus = 0
-    root.tasksOpen = false
+    root.sidebarOpen = true
     root.projectOpen = true
-    root.marginOpen = true
-    root.marginFocus = -1
     sectionsProc.command = [svc.runner, "sections", "--tag", pr.tag]
     sectionsProc.running = true
-    marginKeys.forceActiveFocus()
+    sidebarKeys.forceActiveFocus()
+  }
+
+  // The projects list's keys, in one function so the page can be driven
+  // without a keyboard. Enter (or Right) opens the project's own notes —
+  // the list is there to find them. Writing into the note is the shifted
+  // pair: Shift+Enter starts a class, Ctrl+Enter puts the tag at the
+  // cursor. Inverted 2026-10-15; `@` in the note is the way to write one.
+  function projectsKey(k, ctrl, shift) {
+    var pr = root.projects[root.projFocus]
+    if (k === Qt.Key_Up && !ctrl) root.projFocus = Math.max(0, root.projFocus - 1)
+    else if (k === Qt.Key_Down && !ctrl) root.projFocus = Math.min(root.projects.length - 1, root.projFocus + 1)
+    else if (k === Qt.Key_Return || k === Qt.Key_Enter) {
+      if (pr && ctrl) root.insertTag(pr)
+      else if (pr && shift) root.startClass(pr)
+      else if (pr) root.openProject(pr)
+    }
+    else if (k === Qt.Key_Right && !ctrl) root.openProject(pr)
+    else if (k === Qt.Key_Tab || k === Qt.Key_Backtab || k === Qt.Key_Escape) root.projFocus = -1
+    else if (!ctrl) { root.projFocus = -1; return false }
+    else return false
+    return true
+  }
+
+  // Back out of a project to the list it came from.
+  function leaveProject() {
+    root.projectOpen = false
+    root.sections = []
+    var i = -1
+    for (var k = 0; k < root.projects.length; k++) if (root.projects[k].tag === root.projectTag) i = k
+    root.projFocus = Math.max(0, i)
+    sidebarKeys.forceActiveFocus()
   }
 
   function moveSectionFocus(d) {
@@ -813,12 +842,10 @@ Item {
   }
 
   // Enter: the note itself, the cursor on the section's own heading. The
-  // panel closes, because finding it was the point — the reading happens in
-  // the sheet, where the words can also be changed.
+  // list stays in the sidebar, as the calendar does after opening a day, so
+  // the next section is one key away.
   function openSection(s) {
     if (!s) return
-    root.projectOpen = false
-    root.marginOpen = false
     root.pendingSection = s
     if (s.date === svc.noteDate && svc.ready) root.landOnSection()
     else root.openNote(s.date)
@@ -1476,7 +1503,6 @@ Item {
     root.ask = null
     root.marginOpen = false
     root.tasksOpen = false
-    root.projectOpen = false
     root.marginFocus = -1
     if (svc.saving) { root.pendingStamp = stamp; return }
     svc.openDate(stamp)
@@ -2216,6 +2242,20 @@ Item {
           var alt = event.modifiers & Qt.AltModifier
           var k = event.key
           if (root.zoomKey(event)) { event.accepted = true; return }
+          // Inside a project: its sections, newest first. Enter opens one in
+          // the sheet (the list stays), Left or Esc goes back to the list of
+          // projects.
+          if (root.projectOpen) {
+            if (k === Qt.Key_Up) root.moveSectionFocus(-1)
+            else if (k === Qt.Key_Down) root.moveSectionFocus(1)
+            else if (k === Qt.Key_Return || k === Qt.Key_Enter) root.openSection(root.sections[root.sectionFocus])
+            else if (k === Qt.Key_Left || k === Qt.Key_Escape || k === Qt.Key_Backtab) root.leaveProject()
+            else if (k === Qt.Key_Right && alt) editor.focusNote()
+            else if (k === Qt.Key_B && ctrl) { root.sidebarOpen = false; root.projectOpen = false; editor.focusNote() }
+            else return
+            event.accepted = true
+            return
+          }
           // Tab walks the sidebar: the days, the day's deadlines (when it
           // has some), the projects, and back to the days.
           // In the day's deadline list: up/down pick, Enter goes to the line.
@@ -2230,22 +2270,8 @@ Item {
             event.accepted = true
             return
           }
-          // In the projects: Enter starts a class, Ctrl+Enter puts the tag,
-          // Right goes into the project's own notes.
           if (root.projFocus >= 0 && !alt) {
-            var np = root.projects.length
-            if (k === Qt.Key_Up && !ctrl) root.projFocus = Math.max(0, root.projFocus - 1)
-            else if (k === Qt.Key_Down && !ctrl) root.projFocus = Math.min(np - 1, root.projFocus + 1)
-            else if (k === Qt.Key_Return || k === Qt.Key_Enter) {
-              var pr = root.projects[root.projFocus]
-              if (pr && ctrl) root.insertTag(pr)
-              else if (pr) root.startClass(pr)
-            }
-            else if (k === Qt.Key_Right && !ctrl) root.openProject(root.projects[root.projFocus])
-            else if (k === Qt.Key_Tab || k === Qt.Key_Backtab || k === Qt.Key_Escape) root.projFocus = -1
-            else if (!ctrl) { root.projFocus = -1; return }
-            else return
-            event.accepted = true
+            if (root.projectsKey(k, ctrl, event.modifiers & Qt.ShiftModifier)) event.accepted = true
             return
           }
           if (k === Qt.Key_Tab && (root.focusDue.length > 0 || root.projects.length > 0)) {
@@ -2283,6 +2309,7 @@ Item {
 
       Column {
         id: calendar
+        visible: !root.projectOpen
         anchors.fill: parent
         anchors.topMargin: sidebar.contentTopInset
         anchors.leftMargin: sidebar.contentLeftInset
@@ -2524,8 +2551,8 @@ Item {
               cursorShape: Qt.PointingHandCursor
               onClicked: function (mouse) {
                 if (mouse.modifiers & Qt.ControlModifier) root.insertTag(modelData)
-                else if (mouse.modifiers & Qt.ShiftModifier) root.openProject(modelData)
-                else root.startClass(modelData)
+                else if (mouse.modifiers & Qt.ShiftModifier) root.startClass(modelData)
+                else root.openProject(modelData)
               }
             }
           }
@@ -2536,12 +2563,143 @@ Item {
           visible: sidebarKeys.activeFocus
           textFormat: Text.PlainText
           wrapMode: Text.WordWrap
-          text: root.projFocus >= 0 ? "↑↓ pick · → its notes · Enter starts a class in today's note · Ctrl+Enter puts the tag · Tab back"
+          text: root.projFocus >= 0 ? "↑↓ pick · Enter its notes · Shift+Enter starts a class · Ctrl+Enter puts the tag · Tab back"
             : root.dueFocus >= 0 ? "↑↓ pick · Enter goes to its line · Tab on to the projects"
             : "arrows move · Ctrl+←→ month · Home today · Enter opens" + (root.focusDue.length > 0 || root.projects.length > 0 ? " · Tab: " + (root.focusDue.length > 0 ? "this day's deadlines" : "the projects") : "")
           color: root.faint
           font.family: root.fontFamily
           font.pixelSize: root.fs(Style.font.caption)
+        }
+      }
+
+      // Drilled into a project: its sections across the days, newest first.
+      // This is navigation, so it belongs on this side with the calendar —
+      // the margin on the right is the agent's (decided 2026-10-15).
+      Flickable {
+        id: projectFlick
+        visible: root.projectOpen
+        anchors.fill: parent
+        anchors.topMargin: sidebar.contentTopInset
+        anchors.leftMargin: sidebar.contentLeftInset
+        anchors.rightMargin: sidebar.contentRightInset
+        anchors.bottomMargin: sidebar.contentBottomInset
+        clip: true
+        contentWidth: width
+        contentHeight: projectColumn.implicitHeight
+        boundsBehavior: Flickable.StopAtBounds
+
+        TouchScroll { flickable: projectFlick }
+
+        function revealFocused() {
+          var kids = projectColumn.children
+          for (var i = 0; i < kids.length; i++) {
+            var k = kids[i]
+            if (k.index === undefined || k.index !== root.sectionFocus) continue
+            if (contentY > k.y) contentY = k.y
+            else if (contentY + height < k.y + k.height) contentY = k.y + k.height - height
+            return
+          }
+        }
+        Connections { target: root; function onSectionFocusChanged() { Qt.callLater(projectFlick.revealFocused) } }
+
+        Column {
+          id: projectColumn
+          width: parent.width
+          spacing: root.sp(4)
+
+          Text {
+            width: parent.width
+            textFormat: Text.PlainText
+            elide: Text.ElideRight
+            text: "← #" + root.projectTag
+            color: root.dim
+            font.family: root.fontFamily
+            font.pixelSize: root.fs(Style.font.caption)
+            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.leaveProject() }
+          }
+
+          Text {
+            width: parent.width
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
+            text: root.projectName
+            color: root.foreground
+            font.family: root.fontFamily
+            font.pixelSize: root.fs(Style.font.bodySmall)
+          }
+
+          Text {
+            width: parent.width
+            visible: root.sections.length === 0
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
+            topPadding: root.sp(6)
+            text: sectionsProc.running ? "…" : "nothing under #" + root.projectTag + " yet — a “# Course #" + root.projectTag + "” heading starts one"
+            color: root.faint
+            font.family: root.fontFamily
+            font.pixelSize: root.fs(Style.font.caption)
+          }
+
+          Repeater {
+            model: root.sections
+            Rectangle {
+              required property var modelData
+              required property int index
+              readonly property bool hot: root.sectionFocus === index && sidebarKeys.activeFocus
+              width: projectColumn.width
+              height: secCol.implicitHeight + root.sp(8)
+              radius: Style.cornerRadius
+              color: hot ? Style.selectedFill : "transparent"
+              Column {
+                id: secCol
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.leftMargin: root.sp(4)
+                anchors.rightMargin: root.sp(4)
+                anchors.verticalCenter: parent.verticalCenter
+                Text {
+                  width: parent.width
+                  textFormat: Text.PlainText
+                  elide: Text.ElideRight
+                  text: root.sectionWhen(modelData)
+                    + (modelData.open > 0 ? "   ○ " + modelData.open : "")
+                    + (modelData.done > 0 ? "   ✓ " + modelData.done : "")
+                  color: modelData.date === svc.noteDate ? root.accent : root.dim
+                  font.family: root.fontFamily
+                  font.pixelSize: root.fs(Style.font.caption)
+                }
+                Text {
+                  width: parent.width
+                  visible: text !== ""
+                  textFormat: Text.PlainText
+                  wrapMode: Text.WordWrap
+                  maximumLineCount: 2
+                  elide: Text.ElideRight
+                  text: root.sectionUnder(modelData)
+                  color: root.foreground
+                  font.family: root.fontFamily
+                  font.pixelSize: root.fs(Style.font.caption)
+                }
+              }
+              MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: { root.sectionFocus = index; root.openSection(modelData) }
+              }
+            }
+          }
+
+          Text {
+            width: parent.width
+            visible: sidebarKeys.activeFocus
+            topPadding: root.sp(6)
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
+            text: "↑↓ pick · Enter opens it in the sheet · ← back to the projects"
+            color: root.faint
+            font.family: root.fontFamily
+            font.pixelSize: root.fs(Style.font.caption)
+          }
         }
       }
     }
@@ -2573,13 +2731,6 @@ Item {
           var k = event.key
           if (root.zoomKey(event)) { event.accepted = true; return }
           if (k === Qt.Key_Escape || (k === Qt.Key_Left && alt)) { root.backToNote(); event.accepted = true; return }
-          if (root.projectOpen) {
-            if (k === Qt.Key_Up) { root.moveSectionFocus(-1); event.accepted = true }
-            else if (k === Qt.Key_Down) { root.moveSectionFocus(1); event.accepted = true }
-            else if (k === Qt.Key_Return || k === Qt.Key_Enter) { root.openSection(root.sections[root.sectionFocus]); event.accepted = true }
-            else if (k === Qt.Key_T && (event.modifiers & Qt.ControlModifier)) { root.toggleTasks(); event.accepted = true }
-            return
-          }
           if (root.tasksOpen) {
             var ctrl = event.modifiers & Qt.ControlModifier
             if (k === Qt.Key_Up) { root.moveTaskFocus(-1); event.accepted = true }
@@ -2715,131 +2866,9 @@ Item {
         }
       }
 
-      // A project's notes: every section of its tag, newest first.
-      Flickable {
-        id: projectFlick
-        visible: root.projectOpen
-        anchors.fill: parent
-        anchors.topMargin: margin.contentTopInset + root.sp(4)
-        anchors.leftMargin: margin.contentLeftInset
-        anchors.rightMargin: margin.contentRightInset
-        anchors.bottomMargin: margin.contentBottomInset
-        clip: true
-        contentWidth: width
-        contentHeight: projectColumn.implicitHeight
-        boundsBehavior: Flickable.StopAtBounds
-
-        TouchScroll { flickable: projectFlick }
-
-        function revealFocused() {
-          var kids = projectColumn.children
-          for (var i = 0; i < kids.length; i++) {
-            var k = kids[i]
-            if (k.index === undefined || k.index !== root.sectionFocus) continue
-            if (contentY > k.y) contentY = k.y
-            else if (contentY + height < k.y + k.height) contentY = k.y + k.height - height
-            return
-          }
-        }
-        Connections { target: root; function onSectionFocusChanged() { Qt.callLater(projectFlick.revealFocused) } }
-
-        Column {
-          id: projectColumn
-          width: parent.width
-          spacing: root.sp(4)
-
-          Text {
-            width: parent.width
-            textFormat: Text.PlainText
-            elide: Text.ElideRight
-            text: "#" + root.projectTag + "  " + root.projectName.toUpperCase()
-            color: root.dim
-            font.family: root.fontFamily
-            font.pixelSize: root.fs(Style.font.caption)
-          }
-
-          Text {
-            width: parent.width
-            visible: root.sections.length === 0
-            textFormat: Text.PlainText
-            wrapMode: Text.WordWrap
-            text: sectionsProc.running ? "…" : "no notes under #" + root.projectTag + " yet — a `# Course #" + root.projectTag + "` heading starts one"
-            color: root.faint
-            font.family: root.fontFamily
-            font.pixelSize: root.fs(Style.font.bodySmall)
-          }
-
-          Repeater {
-            model: root.sections
-            Rectangle {
-              required property var modelData
-              required property int index
-              readonly property bool hot: root.sectionFocus === index
-              width: projectColumn.width
-              height: secCol.implicitHeight + root.sp(10)
-              radius: Style.cornerRadius
-              color: hot ? Style.selectedFill : "transparent"
-              Column {
-                id: secCol
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.leftMargin: root.sp(6)
-                anchors.rightMargin: root.sp(6)
-                anchors.verticalCenter: parent.verticalCenter
-                Text {
-                  width: parent.width
-                  textFormat: Text.PlainText
-                  elide: Text.ElideRight
-                  text: root.sectionWhen(modelData)
-                    + (modelData.open > 0 ? "   ○ " + modelData.open : "")
-                    + (modelData.done > 0 ? "   ✓ " + modelData.done : "")
-                  color: root.dim
-                  font.family: root.fontFamily
-                  font.pixelSize: root.fs(Style.font.caption)
-                }
-                Text {
-                  width: parent.width
-                  textFormat: Text.PlainText
-                  elide: Text.ElideRight
-                  text: modelData.title
-                  color: root.foreground
-                  font.family: root.fontFamily
-                  font.pixelSize: root.fs(Style.font.body)
-                }
-                Text {
-                  width: parent.width
-                  visible: text !== ""
-                  textFormat: Text.PlainText
-                  elide: Text.ElideRight
-                  text: root.sectionUnder(modelData)
-                  color: root.faint
-                  font.family: root.fontFamily
-                  font.pixelSize: root.fs(Style.font.caption)
-                }
-              }
-              MouseArea {
-                anchors.fill: parent
-                cursorShape: Qt.PointingHandCursor
-                onClicked: { root.sectionFocus = index; root.openSection(modelData) }
-              }
-            }
-          }
-
-          Text {
-            width: parent.width
-            textFormat: Text.PlainText
-            wrapMode: Text.WordWrap
-            text: "↑↓ move · Enter opens it in the sheet · Esc back"
-            color: root.faint
-            font.family: root.fontFamily
-            font.pixelSize: root.fs(Style.font.caption)
-          }
-        }
-      }
-
       Flickable {
         id: marginFlick
-        visible: !root.tasksOpen && !root.projectOpen
+        visible: !root.tasksOpen
         anchors.top: parent.top
         anchors.topMargin: margin.contentTopInset + root.sp(4)
         anchors.left: parent.left
@@ -2947,7 +2976,7 @@ Item {
 
       Item {
         id: chatBox
-        visible: !root.tasksOpen && !root.projectOpen
+        visible: !root.tasksOpen
         anchors.left: parent.left
         anchors.leftMargin: margin.contentLeftInset
         anchors.right: parent.right
@@ -2960,7 +2989,7 @@ Item {
           id: chatField
           anchors.left: parent.left
           anchors.right: parent.right
-          visible: root.marginOpen && !root.tasksOpen && !root.projectOpen
+          visible: root.marginOpen && !root.tasksOpen
           placeholderText: "…"
           font.family: root.fontFamily
           font.pixelSize: root.fs(Style.font.body)

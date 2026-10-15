@@ -437,7 +437,9 @@ def main() -> int:
         p.open_fresh()
         p.call("sidebar")
         p.wait(lambda: len(json.loads(p.call("projects"))) == 2)
-        p.call("openProject", 0)
+        # Enter on a project opens its notes; writing into the note is the
+        # shifted pair (inverted 2026-10-15).
+        p.call("projectEnter", 0, "false", "false")
         check(p.wait(lambda: len(json.loads(p.call("sections"))) == 2),
               f"the project's sections, both days ({p.call('sections')})")
         se = json.loads(p.call("sections"))
@@ -446,14 +448,22 @@ def main() -> int:
         check(se[0].split("|")[2] == "Today's seminar" and "Learning goals" in se[1],
               f"what is under it, as its index ({se})")
         check("Methods" not in p.call("sections"), "another H1's section is not in the list")
-        check(json.loads(p.call("panel"))["project"] is True, "the margin is the project, not the agent")
+        check(json.loads(p.call("panel"))["project"] is True and json.loads(p.call("panel"))["margin"] is False,
+              "the project is in the sidebar, and the agent's margin stays shut")
         p.call("openSection", 1)
         check(p.wait(lambda: p.call("header") != "" and not p.call("header").startswith(dt.date.today().strftime("%A"))),
               "Enter on an older section opens its day")
         check(p.wait(lambda: p.lines()[int(p.call("cursorLine"))] == "# Interdisciplinary Seminar #intsem"),
               f"…with the cursor on that section's heading ({p.lines()[int(p.call('cursorLine'))]!r})")
-        check(json.loads(p.call("panel"))["project"] is False, "…and the panel is out of the way")
-        p.call("sidebar")
+        check(json.loads(p.call("panel"))["project"] is True,
+              "…and the list stays, as the calendar does after opening a day")
+        p.call("leaveProject")
+        check(p.wait(lambda: json.loads(p.call("sections")) == []), "← goes back to the projects")
+        before = p.note()
+        p.call("projectEnter", 0, "false", "true")
+        check(p.wait(lambda: p.note().rstrip().endswith("# Interdisciplinary Seminar #intsem")),
+              "Shift+Enter still starts a class")
+        check(json.loads(p.call("panel"))["project"] is False, "…and does not open the project")
         p.call("openProject", 1)
         check(p.wait(lambda: json.loads(p.call("sections")) == [f"{YDAY}|Design Theory & Methods|Methods"]),
               f"the other project has its own one ({p.call('sections')})")

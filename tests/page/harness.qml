@@ -70,6 +70,9 @@ ShellRoot {
     function openProject(i: int): void { page.openProject(page.projects[i]) }
     function sections(): string { return JSON.stringify(page.sections.map(function (s) { return s.date + "|" + s.title + "|" + page.sectionUnder(s) })) }
     function openSection(i: int): void { page.sectionFocus = i; page.openSection(page.sections[i]) }
+    function leaveProject(): void { page.leaveProject() }
+    // The projects list as the keyboard drives it: focus a row, then Enter.
+    function projectEnter(i: int, ctrl: bool, shift: bool): void { page.projFocus = i; page.projectsKey(Qt.Key_Return, ctrl, shift) }
     function panel(): string { return JSON.stringify({ project: page.projectOpen, tasks: page.tasksOpen, margin: page.marginOpen, focus: page.sectionFocus }) }
     function insertTag(i: int): void { page.insertTag(page.projects[i]) }
     // The measure
