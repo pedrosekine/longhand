@@ -50,11 +50,12 @@ body text at the contrast the theme chose.
 `**` and `*`, `` Ctrl+` `` in backticks, `Ctrl+Shift+S` in `~~`; the same keys
 take them off again. Emphasis is **drawn**: the markers go to nothing and
 the words carry the weight, nested ones too (`***both***`). They are still
-in the file exactly as written, so Obsidian reads the same markdown — and
-break one of a pair and it stops being emphasis, so the markers come back
-at full size, which is how you see them to edit them. A `*` with spaces
-around it is arithmetic and an underscore inside a word is part of the
-word; neither is markup.
+in the file exactly as written, so Obsidian reads the same markdown. A `*`
+with spaces around it is arithmetic and an underscore inside a word is part
+of the word; neither is markup. Known rough edge: a hidden marker is still
+a character, so Backspace at the edge of an emphasised word deletes one and
+the pair reappears — the parking lot in `docs/plan.md` has the measured
+behaviour and what it should be.
 
 The page is set in **iA Writer Quattro S**, a proportional face made for
 writing: prose reads as prose rather than as code, and 72 characters take

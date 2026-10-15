@@ -566,6 +566,19 @@ def main() -> int:
         check(p.wait(lambda: "sending" in p.call("marks"), 4), f"asking marks the block ({p.call('marks')})")
         check(p.wait(lambda: "sending" not in p.call("marks"), 8), "…and the mark goes when it is back")
 
+        # A run of list items is one submission, but the mark is on the line
+        # the student asked from — the whole list lighting up read as the
+        # page leaving rather than the line (2026-10-15).
+        (p.daily / f"{TODAY}.md").write_text(header(TODAY) +
+            "- [ ] drill the verbs\n- [ ] read chapter 7\n- [ ] hand in the sheet\n")
+        p.open_fresh()
+        p.call("cursor", p.offset_of_line(p.line_of("read chapter 7")) + 8)
+        p.wait(lambda: p.call("sign") != "")
+        p.call("askNow")
+        check(p.wait(lambda: "sending" in p.call("marks"), 4), "a checkbox in a list marks too")
+        check(json.loads(p.call("marks")).count("sending") == 1,
+              f"…only the line it was asked from ({p.call('marks')})")
+
         # 12. the theme: roles come from the Omarchy palette, headings apart
         pal = p.call("palette")
         heads = pal.split(" h=")[1].split(" ")[0].split(",")

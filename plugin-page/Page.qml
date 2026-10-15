@@ -559,14 +559,20 @@ Item {
       var trigger = root.triggerForBlock(h)
       if (trigger === "") { root.doneSending(); root.noSignHint = true; hintTimer.restart(); return }
       // A list of boxes is one submission however it is sent.
-      root.send(trigger, trigger === "checkbox" || trigger === "tick" ? root.listAround(h) : [h])
+      root.send(trigger, trigger === "checkbox" || trigger === "tick" ? root.listAround(h) : [h], h)
     })
   }
 
-  function send(trigger, hashes) {
+  // `hashes` is the submission — a run of list items goes as one — but only
+  // `focus`, the line the student asked from, is marked while it is away.
+  // The mark answers "did that register?", and that is one place; lighting
+  // up every item of the list to say so reads as the whole page leaving.
+  // The reply, when it comes, does land on all of them: that is the group,
+  // and by then it is information rather than noise.
+  function send(trigger, hashes, focus) {
     root.used("send", trigger)
     root.ask = null
-    root.markSending(hashes)
+    root.markSending([focus || hashes[0]])
     root.requestRun(trigger, hashes.join(","))
   }
 
@@ -664,7 +670,14 @@ Item {
   }
 
   function markSending(hashes) {
-    var next = root.sending.slice()
+    // Drop anything that is no longer a block in the note: a line whose
+    // date bound between the ask and the send is a different block now.
+    var live = {}
+    var blocks = Blocks.split(editor.text)
+    for (var b = 0; b < blocks.length; b++) live[blocks[b].hash] = true
+    var next = []
+    for (var k = 0; k < root.sending.length; k++)
+      if (live[root.sending[k]]) next.push(root.sending[k])
     for (var i = 0; i < hashes.length; i++) {
       var h = String(hashes[i])
       if (h !== "" && next.indexOf(h) < 0) next.push(h)

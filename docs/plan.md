@@ -546,6 +546,41 @@ a fix or a feature to decide first):
   softening of the morning (a fifth back from the theme's maximum) went
   with it: it was treating a symptom, and with the real Regular in place it
   only cost legibility.
+- **Hidden markers are still editable, and Backspace eats them** (bug,
+  2026-10-15, the student's, the evening emphasis landed). A marker drawn to
+  nothing is still a character: the cursor can stand between the two stars
+  of a pair and Backspace takes one. Measured, from the end of each:
+
+  | from | Backspace 1 | 2 |
+  | --- | --- | --- |
+  | `a **bold**` | `a **bold*` — **markers appear** | `a **bold` |
+  | `a *it*` | `a *it` — markers appear | `a *i` |
+  | `` a `c` `` | `` a `c `` — markers appear | `` a ` `` |
+  | `a ~~gone~~` | `a ~~gone~` — markers appear | `a ~~gone` |
+  | `a ***both***` | `a ***both**` — *nothing visibly happens* | `a ***both*` — markers appear |
+
+  So one keystroke changes nothing you can see except make the markdown
+  pop into view, and on `***both***` the first one silently demotes bold
+  italic to bold with no feedback at all. Walking right with the arrow keys
+  costs two dead presses at each boundary (`a **b** c`: 2→3→4 crosses the
+  two hidden stars).
+
+  The rule it comes from was a choice made the same evening — markers are
+  hidden only while they are doing a job, so breaking a pair brings them
+  back "which is how you see them to edit them". Lived with for an hour,
+  that is wrong: it makes an invisible character deletable and turns an
+  ordinary Backspace into a mode change.
+
+  **Wanted** (the student's own words): never see the `**` again once they
+  are in. To take emphasis off, either delete the whole emphasised text or
+  select it and press the key again. Which means the pair has to behave as
+  one thing — the cursor steps over it rather than into it, Backspace at
+  the outer edge takes the pair (or the last letter, never a marker),
+  Delete likewise, and a selection's ends snap outside it. That is cursor
+  arithmetic on top of the drawn row, not a change to how it is drawn, so
+  `Emph.js` and the one-position-per-character guarantee stay as they are.
+  Test every marker and the nested combinations (`**`, `*`, `` ` ``, `~~`,
+  `***both***`, `**bold *and* italic**`), since they already differ.
 - **Tag suggestions while typing** (idea, 2026-10-11) — typing `#` offers the
   tags that exist (the projects list), so a new tag is a choice, not a typo.
   The sidebar list is the first step; this would be the stronger guard.

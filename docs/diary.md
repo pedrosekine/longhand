@@ -572,3 +572,25 @@ only the window and the panels around it differ.
   question in that gap. A mark that moves means still thinking, a mark that
   rests means answered — the state the student asked about is now a motion,
   not another colour to tell apart.
+- 2026-10-15, correcting the entry above: "the markers come back when you
+  break a pair, which is how you see them to edit them" did not survive an
+  hour of use. It makes a character that is drawn to nothing deletable, so
+  Backspace at the edge of an emphasised word spends one keystroke changing
+  nothing visible except making the markdown pop into view — and on
+  `***both***` the first Backspace demotes bold italic to bold with no
+  feedback at all. The student's reading is better than mine: once the
+  markers are in, they should never be seen again, and emphasis comes off by
+  deleting the text or by pressing the key again on it. That makes the pair
+  one thing to the cursor, which is arithmetic on top of the drawn row
+  rather than a change to how it is drawn — `Emph.js` and the
+  one-position-per-character guarantee are untouched by it. Written up as a
+  bug with the measured behaviour per marker; not built yet.
+- 2026-10-15: the in-flight mark now sits on the line the student asked
+  from, not on every block of the submission. A run of list items is one
+  submission and the marks honestly showed all of it leaving — but the
+  question a moving mark answers is "did that register?", and that is one
+  place; a whole list lighting up reads as the page leaving rather than the
+  line. The reply still lands on the group, where it is information rather
+  than noise. The optimistic mark is also pruned against the note now, so a
+  line whose date bound between the ask and the send does not leave a mark
+  behind on a hash that no longer exists.
