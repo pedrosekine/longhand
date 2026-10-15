@@ -70,6 +70,12 @@ The file stays plain
 markdown, changed only where you typed. What you wrote is always drawn at
 full strength; a block with a reply carries a gutter mark and its reply shows
 in the margin to the right when asked — that is the only mark on your words.
+Typing `@` calls a project: the list narrows as you type, Enter leaves its
+`#tag` where the `@` was, and Shift+Enter (on a line the `@` opened) starts
+the class with its `# Course #tag` heading. It is the same vocabulary as the
+sidebar's projects list, wherever your hands are. An address — `pedro@it-u` —
+is never a call, since `@` only counts at the start of a word.
+
 **private** in the header (or `Ctrl+Shift+P`) marks the open note unseen: it
 writes `agent: false` into the note, the word then reads "private · the agent
 sees nothing here", and **ask** and the agent mark disappear — no pass runs

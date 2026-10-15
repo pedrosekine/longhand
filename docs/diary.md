@@ -121,8 +121,8 @@ is written back untouched apart from the `agent:` line.
 **Triggers, all from the page, never by accident.** No file watcher. Two
 things must both be true for a block to reach the model: it carries a
 **sign** for the agent, and the student **says so**.
-- The signs: a checkbox line (`- [ ] …`), a line starting with `@`, a line
-  ending with `?`, a ticked box. The student says so with `Ctrl+Enter` or
+- The signs: a checkbox line (`- [ ] …`), a line ending with `?`, a ticked
+  box. (`@` was a sign until 2026-10-15; it calls a project now.) The student says so with `Ctrl+Enter` or
   the header's **ask**, both of which send the block the cursor is in.
   Nothing is offered while writing: the washed "send to agent?" prompt that
   used to appear on finishing an `@` or `?` line went on 2026-10-15, and
@@ -429,3 +429,14 @@ only the window and the panels around it differ.
   that is what the runner reads; any other property the student or Obsidian
   put there survives, and an emptied block is removed rather than left as
   two bare rules.
+- 2026-10-15: `@` calls a project. The student asked for one way to say
+  "this is about that course" wherever their hands are — "this guarantees
+  the consistency" — and `@` was nearly free: it had been the agent's fourth
+  sign and had been used once in a month, against `#tag` in every note. So
+  typing `@` offers the projects, narrowing as you type; Enter leaves the
+  project's own `#tag` where the `@` was, and Shift+Enter, on a line the `@`
+  opened, writes the `# Course #tag` heading instead. What lands in the note
+  is always the tag the store, the payload and the sidebar already read —
+  `@` is a way of writing, not a new thing to parse. An address is never a
+  call, because `@` only counts at a word's start. The agent keeps three
+  signs (checkbox, `?`, tick) and the margin chat for anything free-form.

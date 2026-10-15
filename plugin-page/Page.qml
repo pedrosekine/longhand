@@ -271,6 +271,8 @@ Item {
   property int taskFocus: 0
   property string currentHash: ""
   property string currentTrigger: ""   // the sign on the block under the cursor, for the header's "ask"
+  property var mention: null           // { start, query, items } while an `@` is being written
+  property int mentionFocus: 0
   property bool searchOpen: false
   property var matches: []       // [{ start, end }] text offsets, in note order
   property int matchIndex: -1
@@ -309,6 +311,9 @@ Item {
       root.tasksOpen = false
       root.projectOpen = false
       root.marginFocus = -1
+      root.projectOpen = false
+      // `@` can call a project without the sidebar ever being opened.
+      root.refreshProjects()
       agent.reload()
       if (goto && svc.configured && goto.stem !== svc.todayStamp()) {
         svc.openDate(goto.stem)
@@ -454,7 +459,6 @@ Item {
 
   function triggerFor(lineText) {
     var t = lineText.trim()
-    if (/^@/.test(t)) return "mention"
     if (/^[-*+] \[ \] \S/.test(t)) return "checkbox"
     if (/^[-*+] \[[xX]\] \S/.test(t)) return "tick"
     if (/\?$/.test(t)) return "question"
@@ -722,12 +726,71 @@ Item {
     else root.afterWrites = root.afterWrites.concat([fn])
   }
 
+  // ------------------------------------------------- calling a project
+
+  // `@` in the note calls a project, the way the sidebar's list does with a
+  // click — one vocabulary for "this is about that course", wherever you
+  // are (2026-10-15). It is only a way of *writing*: what lands in the note
+  // is the project's own `#tag`, which is what the store, the payload and
+  // the sidebar have always read.
+  function updateMention() {
+    if (!svc.ready || !root.showing) { root.mention = null; return }
+    var pos = editor.cursorPosition
+    var text = editor.text
+    var before = text.substring(text.lastIndexOf("\n", pos - 1) + 1, pos)
+    // Only at a word's start, so an address ("a@b") is never a call.
+    var m = before.match(/(^|\s)@([\w\/-]*)$/)
+    if (!m) { root.mention = null; return }
+    var q = m[2].toLowerCase()
+    var items = []
+    for (var i = 0; i < root.projects.length; i++) {
+      var pr = root.projects[i]
+      if (q === "" || pr.tag.toLowerCase().indexOf(q) >= 0 || String(pr.name || "").toLowerCase().indexOf(q) >= 0)
+        items.push(pr)
+    }
+    root.mention = { start: pos - m[2].length - 1, query: m[2], items: items, atLineStart: m[1] === "" }
+    if (root.mentionFocus > items.length - 1) root.mentionFocus = Math.max(0, items.length - 1)
+  }
+
+  // Enter puts the project's tag where the `@` was. Shift+Enter starts the
+  // class instead — only where the `@` opened the line, since a heading in
+  // the middle of a sentence is not what anyone meant.
+  function acceptMention(shift) {
+    var m = root.mention
+    if (!m || m.items.length === 0) return
+    var pr = m.items[root.mentionFocus]
+    var to = editor.cursorPosition
+    root.mention = null
+    editor.remove(m.start, to)
+    if (shift && m.atLineStart) {
+      editor.insert(m.start, "# " + (pr.name || pr.tag) + " #" + pr.tag)
+      root.used("mention", "class")
+    } else {
+      editor.insert(m.start, "#" + pr.tag + " ")
+      root.used("mention", "tag")
+    }
+  }
+
+  function mentionKey(event) {
+    if (!root.mention || root.mention.items.length === 0) return false
+    var k = event.key
+    if (k === Qt.Key_Up) { root.mentionFocus = Math.max(0, root.mentionFocus - 1); return true }
+    if (k === Qt.Key_Down) { root.mentionFocus = Math.min(root.mention.items.length - 1, root.mentionFocus + 1); return true }
+    if (k === Qt.Key_Return || k === Qt.Key_Enter || k === Qt.Key_Tab) {
+      root.acceptMention(event.modifiers & Qt.ShiftModifier)
+      return true
+    }
+    if (k === Qt.Key_Escape) { root.mention = null; return true }
+    return false
+  }
+
   // Keys the page owns, ahead of editing. True when taken.
   function pageKey(event) {
     var ctrl = event.modifiers & Qt.ControlModifier
     var alt = event.modifiers & Qt.AltModifier
     var shift = event.modifiers & Qt.ShiftModifier
     var k = event.key
+    if (root.mentionKey(event)) return true
     if (root.askKey(event)) return true
     if (root.zoomKey(event)) return true
     if (k === Qt.Key_Escape) { if (!root.alongside) root.dismiss(); return true }
@@ -2167,7 +2230,11 @@ Item {
             // Which line the cursor is on is read once the edit is whole: the
             // editor moves the cursor a moment before its text catches up, and
             // read then, a keystroke at a line's end looked like leaving it.
-            onCursorPositionChanged: { root.currentHash = root.hashNearLine(root.lineIndexAt(cursorPosition)); Qt.callLater(root.trackLine) }
+            onCursorPositionChanged: {
+              root.currentHash = root.hashNearLine(root.lineIndexAt(cursorPosition))
+              Qt.callLater(root.trackLine)
+              Qt.callLater(root.updateMention)
+            }
             onWidthChanged: root.scheduleRepaint()
             onHeightChanged: root.scheduleRepaint()
             onReturnFinished: function (lineIndex, lineText) { root.lineFinished(lineIndex, lineText) }
@@ -2186,6 +2253,7 @@ Item {
               root.boundEdited(was, root.bound)
               root.tickedCount = root.countTicked(text)
               root.scheduleRepaint()
+              Qt.callLater(root.updateMention)
             }
           }
 
@@ -2209,12 +2277,75 @@ Item {
             wrapMode: Text.WordWrap
             text: root.hint !== "" ? root.hint
               : root.noSignHint
-              ? "no sign for the agent on this block — start a line with @, make it a checkbox, or end it with ?"
+              ? "no sign for the agent on this block — make it a checkbox, end it with ?, or tick a box"
               : (root.ask ? root.askText(root.ask) : "")
             color: root.faint
             font.family: root.fontFamily
             font.pixelSize: root.fs(Style.font.bodySmall)
             z: 2
+          }
+
+          // `@`: the projects, under the cursor, narrowing as you type.
+          Rectangle {
+            visible: !!root.mention && root.mention.items.length > 0
+            x: root.gutter
+            y: editor.cursorRect.y + editor.cursorRect.height + root.sp(4)
+            width: Math.min(editor.width, root.sp(260))
+            height: mentionCol.implicitHeight + root.sp(10)
+            radius: Style.cornerRadius
+            color: root.background
+            border.width: 1
+            border.color: root.faint
+            z: 4
+            Column {
+              id: mentionCol
+              anchors.left: parent.left
+              anchors.right: parent.right
+              anchors.verticalCenter: parent.verticalCenter
+              anchors.leftMargin: root.sp(6)
+              anchors.rightMargin: root.sp(6)
+              Repeater {
+                model: root.mention ? root.mention.items : []
+                Rectangle {
+                  required property var modelData
+                  required property int index
+                  width: mentionCol.width
+                  height: mentionRow.implicitHeight + root.sp(4)
+                  radius: Style.cornerRadius
+                  color: root.mentionFocus === index ? Style.selectedFill : "transparent"
+                  Text {
+                    id: mentionRow
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.leftMargin: root.sp(4)
+                    anchors.verticalCenter: parent.verticalCenter
+                    textFormat: Text.PlainText
+                    elide: Text.ElideRight
+                    text: "#" + modelData.tag + "  " + modelData.name
+                    color: root.foreground
+                    font.family: root.fontFamily
+                    font.pixelSize: root.fs(Style.font.bodySmall)
+                  }
+                  MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: { root.mentionFocus = index; root.acceptMention(false) }
+                  }
+                }
+              }
+              Text {
+                width: parent.width
+                topPadding: root.sp(4)
+                textFormat: Text.PlainText
+                wrapMode: Text.WordWrap
+                text: root.mention && root.mention.atLineStart
+                  ? "Enter its tag · Shift+Enter starts the class · Esc leaves it"
+                  : "Enter its tag · Esc leaves it"
+                color: root.faint
+                font.family: root.fontFamily
+                font.pixelSize: root.fs(Style.font.caption)
+              }
+            }
           }
 
           // Ctrl+D's question: when? Under the line, in the page's own words.

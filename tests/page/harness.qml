@@ -24,8 +24,17 @@ ShellRoot {
     function insert(s: string): void { var e = page.editorItem; e.insert(e.cursorPosition, s) }
     // As fingers do it: into the focused line's field, so the editor sees
     // typing (typed()), and Enter as the key does it.
-    function type(s: string): void { var e = page.editorItem; var f = e.rowItem(e.focusedRow).field; f.insert(f.cursorPosition, s) }
-    function enter(): void { var e = page.editorItem; e.returnKey(e.rowItem(e.focusedRow), false) }
+    // The row the fingers would be in: the focused one, or — since this
+    // window is told never to take focus — the one the cursor sits on.
+    function type(s: string): void {
+      var e = page.editorItem
+      var it = e.rowItem(e.focusedRow) || e.rowItem(page.lineIndexAt(e.cursorPosition))
+      it.field.insert(it.field.cursorPosition, s)
+    }
+    function enter(): void {
+      var e = page.editorItem
+      e.returnKey(e.rowItem(e.focusedRow) || e.rowItem(page.lineIndexAt(e.cursorPosition)), false)
+    }
     function undo(): void { page.editorItem.undo() }
     function pending(line: int): bool { var it = page.editorItem.rowItem(line); return !!it && it.pending }
     function cursor(pos: int): void { page.editorItem.setCursor(pos, true) }
@@ -46,6 +55,10 @@ ShellRoot {
     function togglePrivate(): void { page.togglePrivate() }
     function isPrivate(): bool { return page.noteService.notePrivate }
     function agentOn(): bool { return page.agentOn }
+    // `@` calling a project
+    function mention(): string { return JSON.stringify(page.mention ? page.mention.items.map(function (p) { return p.tag }) : null) }
+    function focusedRow(): string { var e = page.editorItem; return e.focusedRow + "/" + e.rows.length + " item=" + (!!e.rowItem(e.focusedRow)) }
+    function mentionPick(i: int, shift: bool): void { page.mentionFocus = i; page.acceptMention(shift) }
     function hint(): string { return page.hint }
     function yes(): void { page.acceptAsk() }
     function no(): void { page.declineAsk() }

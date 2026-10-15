@@ -75,6 +75,18 @@ Item {
       compare(focused().cursorPosition, 9)
     }
 
+    // Opening a shorter note must not leave the focused row pointing past
+    // the end: everything that reads it (the drawn cursor, paste and Enter
+    // over a selection) would quietly stop working.
+    function test_a_shorter_note_drops_a_dangling_focus() {
+      start("\nline one\nline two\nline three\nline four")
+      verify(ed.focusedRow >= 3, "the cursor is on a late row (" + ed.focusedRow + ")")
+      ed.load("\nshort")
+      verify(ed.focusedRow < ed.rows.length, "focused row is inside the note (" + ed.focusedRow + "/" + ed.rows.length + ")")
+      ed.setCursor(ed.length, true)
+      compare(ed.rowItem(ed.focusedRow).field.text, "short")
+    }
+
     function test_typing_writes_through() {
       start("\nhello")
       type(" world")

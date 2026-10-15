@@ -218,6 +218,11 @@ Item {
     var newMid = next.length - a - b
     ed.syncing = true
     ed.rows = next
+    // A row that no longer exists cannot be the focused one. When the rows
+    // shrink — a shorter note opened, lines deleted — the old index would
+    // dangle, and everything that reads it quietly stops: the drawn cursor
+    // (updateCursorRect), paste over a selection, Enter over a selection.
+    if (ed.focusedRow >= next.length) ed.focusedRow = -1
     if (oldMid > newMid) rowModel.remove(a + newMid, oldMid - newMid)
     for (var k = oldMid; k < newMid; k++) rowModel.insert(a + k, ed.roleValues(next[a + k]))
     for (var i = 0; i < next.length; i++) {

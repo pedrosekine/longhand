@@ -494,6 +494,29 @@ def main() -> int:
         check(p.wait(lambda: p.call("isPrivate") == "false"), "turning it off puts the day back")
         check(p.wait(lambda: not p.note().startswith("---")), f"…with no frontmatter left behind ({p.note()[:20]!r})")
 
+        # 11d. `@` calls a project, the same vocabulary as the sidebar's list
+        (p.daily / f"{TODAY}.md").write_text(header(TODAY) + "Notes.\n")
+        p.open_fresh()
+        p.wait(lambda: len(json.loads(p.call("projects"))) == 2)
+        p.call("cursorEnd")
+        p.call("type", "today in @")
+        check(p.wait(lambda: json.loads(p.call("mention")) == ["intsem", "dtm"]),
+              f"@ offers the projects ({p.call('mention')})")
+        p.call("type", "dt")
+        check(p.wait(lambda: json.loads(p.call("mention")) == ["dtm"]), f"…narrowing as you type ({p.call('mention')})")
+        p.call("mentionPick", 0, "false")
+        check(p.wait(lambda: "today in #dtm " in p.call("text")), f"Enter writes its tag where the @ was ({p.call('text')[-30:]!r})")
+        check(p.call("mention") == "null", "…and the list is done")
+        p.call("enter")
+        p.call("type", "@ints")
+        check(p.wait(lambda: json.loads(p.call("mention")) == ["intsem"]), "@ at a line's start offers the same")
+        p.call("mentionPick", 0, "true")
+        check(p.wait(lambda: "# Interdisciplinary Seminar #intsem" in p.call("text")),
+              f"Shift+Enter starts the class there ({p.call('text')[-40:]!r})")
+        p.call("enter")
+        p.call("type", "mail me at pedro@it")
+        check(p.call("mention") == "null", "an address is not a call")
+
         # 12. the theme: roles come from the Omarchy palette, headings apart
         pal = p.call("palette")
         heads = pal.split(" h=")[1].split(" ")[0].split(",")
