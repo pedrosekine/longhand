@@ -87,7 +87,43 @@ Item {
     return root.mix(c, end, hi)
   }
 
-  // Heading levels: one colour, walking home to the text.
+  // Perceptual distance, CIE76: how far apart two colours *look*. Contrast
+  // cannot answer that — three tints of one blue at 6:1, 8:1 and 10:1 are
+  // three readable steps and one colour, which is how the first ramp came
+  // out (ΔE 14, 12, 11 under this theme: a difference you have to hunt for).
+  // Roughly, under 10 is "the same colour, maybe", over 20 is "plainly not".
+  function lab(c) {
+    function lin(x) { return x <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4) }
+    function f(t) { return t > 0.008856 ? Math.pow(t, 1 / 3) : 7.787 * t + 16 / 116 }
+    var r = lin(c.r), g = lin(c.g), b = lin(c.b)
+    var x = f((0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047)
+    var y = f(0.2126 * r + 0.7152 * g + 0.0722 * b)
+    var z = f((0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883)
+    return [116 * y - 16, 500 * (x - y), 200 * (y - z)]
+  }
+  function apart(a, b) {
+    var p = root.lab(a), q = root.lab(b)
+    return Math.sqrt(Math.pow(p[0] - q[0], 2) + Math.pow(p[1] - q[1], 2) + Math.pow(p[2] - q[2], 2))
+  }
+
+  // A colour taken further from `from` — out along the line that joins them,
+  // which deepens it without turning it into another colour — until the two
+  // are plainly not the same. It stops at 1.3× (past that the page would be
+  // inventing a chroma the theme chose not to have), and never below 4.5:1.
+  function deepen(c, from, want) {
+    var out = c
+    for (var k = 1.05; k <= 1.301; k += 0.05) {
+      if (root.apart(out, from) >= want) break
+      var v = Qt.rgba(Math.min(1, Math.max(0, from.r + (c.r - from.r) * k)),
+                      Math.min(1, Math.max(0, from.g + (c.g - from.g) * k)),
+                      Math.min(1, Math.max(0, from.b + (c.b - from.b) * k)), 1)
+      if (root.contrast(v, root.background) < 4.5) break
+      out = v
+    }
+    return out
+  }
+
+  // Heading levels: four states, each a different kind of thing.
   //
   // Hue has no order — blue is not "more" than magenta — so giving each
   // level its own hue (the rule until 2026-10-15: the first four distinct of
@@ -97,13 +133,23 @@ Item {
   // under this one (accent #C9C3BC, chroma 0.05, 7.8:1) a title was a big
   // grey line dimmer than the paragraph below it.
   //
-  // So rank is carried by the channels that have an order — size, weight,
-  // the air above (Rows.js), and how far the colour has travelled back to
-  // the prose. H1 is the theme's one chromatic voice at full strength; H2
-  // and H3 are that same colour two fifths and three quarters of the way to
-  // the text; H4–H6 are the text. A theme with no chroma to lend (vantablack,
-  // white, solitude) ramps the only ladder it has instead — the text down
-  // toward its quiet grey.
+  // The first fix ramped one colour to the text in four even steps, which
+  // was right about hue and wrong about spacing: the top three all landed in
+  // the pale end, ΔE 14/12/11 apart, near enough that you could not tell a
+  // level from its neighbour without comparing. So the ladder now spends its
+  // whole range, and each rung changes a different quality rather than a
+  // little more of the same one:
+  //
+  //   H1  the theme's chroma, deepened until it is plainly not the text
+  //   H2  that colour halfway home — a tint, still coloured
+  //   H3  the prose, with no colour at all
+  //   H4  the quiet grey (`dim`), the one step below the prose there is
+  //
+  // Rank still rides the channels that have an order — size, weight and the
+  // air above a heading (Rows.js) — and no rung is within ΔE 20 of the one
+  // under it in this theme. A palette with no chroma to lend (vantablack,
+  // white, solitude) has only the one ladder, and walks the text down to the
+  // same grey in even thirds.
   readonly property var headings: {
     root.keys
     var prose = root.foreground
@@ -113,12 +159,11 @@ Item {
       if (!v) continue
       var c = Qt.color(v)
       if (root.chroma(c) < 0.15 || root.contrast(c, root.background) < 3.0) continue
-      var h1 = root.toward(c, 4.5)   // never fainter than secondary text is let be
-      return [String(h1), String(root.mix(h1, prose, 0.40)),
-              String(root.mix(h1, prose, 0.72)), String(prose)]
+      var h1 = root.deepen(root.toward(c, 4.5), prose, 45)
+      return [String(h1), String(root.mix(h1, prose, 0.5)), String(prose), String(root.dim)]
     }
-    return [String(prose), String(root.mix(prose, root.dim, 0.40)),
-            String(root.mix(prose, root.dim, 0.72)), String(root.dim)]
+    return [String(prose), String(root.mix(prose, root.dim, 0.33)),
+            String(root.mix(prose, root.dim, 0.66)), String(root.dim)]
   }
 
   function parse(raw) {

@@ -255,10 +255,12 @@
 - [x] 14.6k theme (2026-10-11, the last change before the freeze) — the page
       draws in the Omarchy theme's palette by role (ThemeColors.qml, read from
       the theme's colors.toml and re-read on a theme switch): headings h1–h4
-      one colour walking home to the text (2026-10-15 — H1 the theme's one
-      chroma, lifted to 4.5:1 if it is fainter; H2 and H3 that colour 40% and
-      72% of the way to the prose; H4–H6 the prose. A palette with no chroma
-      to lend ramps the text down to its grey instead), search
+      four kinds of thing (2026-10-15, spaced out 2026-10-16 — H1 the theme's
+      one chroma, lifted to 4.5:1 if fainter and deepened up to 1.3× if it
+      sits within ΔE 45 of the text; H2 that colour halfway to the prose; H3
+      the prose; H4–H6 `dim`. Adjacent levels are at least ΔE 15 apart, which
+      contrast alone does not give you. A palette with no chroma to lend
+      walks the prose down to its grey in thirds instead), search
       matches yellow and the current one orange, the theme's own selection, a
       ticked box green, bullets and numbers in the accent, a private callout in
       magenta. Secondary text uses the theme's grey only if it reads at 4.5:1

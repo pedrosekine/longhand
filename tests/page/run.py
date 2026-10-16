@@ -191,6 +191,25 @@ def contrast(a: str, b: str) -> float:
     return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
 
 
+def delta_e(a: str, b: str) -> float:
+    """How far apart two colours look (CIE76), the way ThemeColors.qml
+    measures it — contrast says nothing about this."""
+    def lab(c):
+        def lin(x):
+            x /= 255.0
+            return x / 12.92 if x <= 0.04045 else ((x + 0.055) / 1.055) ** 2.4
+        def f(t):
+            return t ** (1 / 3) if t > 0.008856 else 7.787 * t + 16 / 116
+        h = c.lstrip("#")[-6:]
+        r, g, bl = (lin(int(h[i:i + 2], 16)) for i in (0, 2, 4))
+        x = f((0.4124 * r + 0.3576 * g + 0.1805 * bl) / 0.95047)
+        y = f(0.2126 * r + 0.7152 * g + 0.0722 * bl)
+        z = f((0.0193 * r + 0.1192 * g + 0.9505 * bl) / 1.08883)
+        return (116 * y - 16, 500 * (x - y), 200 * (y - z))
+    p, q = lab(a), lab(b)
+    return sum((p[i] - q[i]) ** 2 for i in range(3)) ** 0.5
+
+
 def theme_switch() -> None:
     """Replay `omarchy theme set` the way it runs: the new theme is staged,
     the old folder removed, the new one moved in, then the colours pushed
@@ -221,8 +240,10 @@ def theme_switch() -> None:
         print(f"     (file watch alone caught it: {file_only}; after the shell's push: {took:.2f}s)")
         check(f"accent={want}" not in before and repainted and took < 1.0, f"a theme switch repaints the page at once ({target})")
         heads = p.call("palette").split(" h=")[1].split(" ")[0].split(",")
-        check(len(set(heads)) == 4 and heads[0] == want,
-              f"…and the new theme's accent leads the heading ramp ({','.join(heads)})")
+        # H1 is the new accent, deepened if that accent sat too near the text:
+        # the same colour, never another one.
+        check(len(set(heads)) == 4 and delta_e(heads[0], want) < 25,
+              f"…and the new theme's accent leads the heading ramp ({','.join(heads)}, {delta_e(heads[0], want):.0f} ΔE off {want})")
     finally:
         p.close()
 
@@ -660,23 +681,26 @@ def main() -> int:
         check(json.loads(p.call("marks")).count("sending") == 1,
               f"…only the line it was asked from ({p.call('marks')})")
 
-        # 12. the theme: roles come from the Omarchy palette, and the heading
-        # levels are one colour walking home to the text (2026-10-15) — four
-        # distinct steps, H1 chromatic and never fainter than 4.5:1, H4 the
-        # prose itself.
+        # 12. the theme: roles come from the Omarchy palette, and the four
+        # heading levels are four kinds of thing (2026-10-16) — the theme's
+        # chroma, that colour halfway home, the prose, the quiet grey. Each
+        # rung has to be plainly not the one under it, which is a perceptual
+        # distance and not a contrast ratio: the first ramp was legible at
+        # every step and still read as one colour.
         pal = p.call("palette")
         heads = pal.split(" h=")[1].split(" ")[0].split(",")
         fg = pal.split(" fg=")[1].split(" ")[0]
         bg = pal.split(" bg=")[1].split(" ")[0]
+        dim = pal.split(" dim=")[1].split(" ")[0]
         check("keys=0" not in pal and len(set(heads)) == 4, f"the page draws in the theme's palette ({pal[:60]}…)")
         check(pal.split(" eh=")[1].split(" ")[0] == ",".join(heads), "…and the editor draws headings with them")
-        check(heads[3] == fg, f"a deep heading is simply the text ({heads[3]} vs {fg})")
+        check(heads[2] == fg and heads[3] == dim,
+              f"the deep levels are the prose and the grey below it ({heads[2]}, {heads[3]})")
         rgb = [int(heads[0].lstrip("#")[-6:][i:i + 2], 16) for i in (0, 2, 4)]
         check(max(rgb) - min(rgb) >= 38, f"H1 carries the theme's colour, not a grey ({heads[0]})")
         check(contrast(heads[0], bg) >= 4.4, f"…and reads at 4.5:1 ({contrast(heads[0], bg):.1f}:1)")
-        steps = [contrast(h, bg) for h in heads]
-        check(steps == sorted(steps) or steps == sorted(steps, reverse=True),
-              f"the four steps move one way only ({[round(s, 1) for s in steps]})")
+        gaps = [delta_e(heads[i], heads[i + 1]) for i in range(3)]
+        check(min(gaps) >= 15, f"no level is mistakable for the next ({[round(g) for g in gaps]} ΔE)")
 
         # 12b. the measure: 72 characters at any zoom, centred; a window too
         # narrow for them wraps instead (the window is 701 wide)

@@ -788,3 +788,24 @@ only the window and the panels around it differ.
   screenshot of the thing is worth more than a passing test here — the
   tests were green while the bands still read `#intsem` and every row
   repeated its own course.
+- 2026-10-16, amending yesterday's heading ramp: right about hue, wrong
+  about spacing. One colour in four even steps put three of them in the
+  pale end — ΔE 14, 12, 11 apart under this theme — and the student said
+  the levels were "too close to the point that I don't trust that there's
+  a difference". That is the right complaint: contrast was never the
+  measure, perceptual distance is, and four tints of one blue can each be
+  legibly different from the background and still read as one colour. So
+  the ladder now spends the whole range it has and changes a *kind* of
+  thing at every rung: H1 the theme's chroma, H2 that colour halfway home,
+  H3 the prose with no colour at all, H4 the quiet grey below it. The
+  title is also deepened — out along the line that joins it to the prose,
+  up to 1.3× and never below 4.5:1 — when the theme's own accent sits too
+  near its text (lumon, catppuccin, tokyo-night). The cap is the point:
+  past 1.3× the page would be inventing a saturation the theme chose not
+  to have, and everforest's sage would come out as a vivid teal. Picking
+  instead "whichever palette colour is least like the text" was tried and
+  dropped: it gave tokyo-night a green title and nord a yellow one, which
+  is a page that no longer looks like its theme. Sizes widened with it
+  (1.7 / 1.4 / 1.15 / 1), and the live test now asserts ΔE ≥ 15 between
+  neighbours rather than a direction of travel — this theme comes out at
+  22, 24, 33.
