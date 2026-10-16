@@ -129,6 +129,8 @@ ShellRoot {
     // Hyprland's six, as hyprkeys.py last answered, and whether it is busy.
     function hyprKeys(): string { return JSON.stringify(page.hyprKeys) }
     function keysListening(): bool { return !!page.keysListen }
+    // A hover's hint for an action, as the mouse would see it.
+    function tip(id: string): string { return page.tip("does", id) }
     function pageKey(key: int, mods: int): bool { return page.pageKey({ key: key, text: "", modifiers: mods }) }
 
     // The dashboard

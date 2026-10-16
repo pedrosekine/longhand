@@ -163,6 +163,13 @@ listed but never taken. What you move is kept in
 names in `plugin-page/Shortcuts.js` — `{"bold": ["Ctrl+K"]}` — and the page
 reads it again when you edit it by hand. Delete it to have every key back.
 
+The mouse teaches the keys. Hover over anything you can click: the header's
+words, a checkbox, a dashboard row, a calendar day or arrow, a deadline,
+project or section in the sidebar, an `@` suggestion, a proposal in the
+margin. A hint says what it does and which key does the same, and it names
+a key you moved, or says there is none. The bar glyph's hint names the
+Hyprland key that opens the page.
+
 Hyprland's six keys for the page, the timer and the deadlines
 (`SUPER+ALT+=`, `\`, `D`, `O`, `P`, `N`) are listed last, read from your
 Hyprland config, wherever and on whatever keys you bound them. Above them, one row

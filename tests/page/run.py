@@ -850,6 +850,8 @@ def main() -> int:
         check("again" in p.call("keysNote") and keys_of("bold") == ["Ctrl+K"], "a key bold has: asked first, not taken")
         p.call("keysKey", KEY_K, CTRL)
         check(keys_of("italic") == ["Ctrl+K"] and keys_of("bold") == [], "…and taken on the second press")
+        check(p.call("tip", "italic") == "does   Ctrl+K" and p.call("tip", "bold") == "does   no key (Ctrl+/ gives it one)",
+              f"a hover's hint names the moved key, or says there is none ({p.call('tip', 'bold')!r})")
         p.call("keysFind", "bold")
         p.call("keysKey", KEY_DELETE, 0)
         check(keys_of("bold") == ["Ctrl+B"], "Del gives bold its own key back")
@@ -867,6 +869,7 @@ def main() -> int:
         p.call("cursor", p.call("text").index("word") + 1)
         check(p.call("pageKey", KEY_B, CTRL) == "false", "Ctrl+B is nothing once bold has moved")
         check(p.call("pageKey", KEY_K, CTRL) == "true", "…and Ctrl+K is bold")
+        check(p.call("tip", "ask") == "does   Ctrl+Enter" and p.call("tip", "bold") == "does   Ctrl+K", "…and the hints say so")
         check(p.wait(lambda: "a **word** here" in p.call("text")), f"…on the word ({p.call('text')!r})")
         keysjson.write_text("{}\n")
         check(p.wait(lambda: keys_of("bold") == ["Ctrl+B"]), "an empty keys.json is every key its own")

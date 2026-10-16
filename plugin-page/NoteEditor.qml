@@ -38,6 +38,9 @@ Item {
 
   // function (event) -> bool; true when the page consumed the key.
   property var keyFilter: null
+  // Drawn while the mouse is on a checkbox: the page's hint, naming the
+  // key that does the same (an Item; the editor knows nothing of tooltips).
+  property Component boxTip: null
 
   // The line being written: its text after the last keystroke in it. A
   // checkbox there that ends in a date has it lit up and its pill shown,
@@ -1115,8 +1118,10 @@ Item {
           MouseArea {
             anchors.fill: parent
             anchors.margins: -Math.round(ed.textSize * 0.25)
+            hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: ed.clickCheckbox(row.index)
+            Loader { anchors.fill: parent; active: !!ed.boxTip && parent.containsMouse; sourceComponent: ed.boxTip }
           }
         }
 

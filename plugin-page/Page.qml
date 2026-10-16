@@ -1024,6 +1024,20 @@ Item {
   // An action's key as a hint names it, kept current as it moves.
   function keyName(id) { root.keysVersion; return Sc.label(id) }
 
+  // A hover's hint: what a thing does, and the key that does the same, so
+  // the mouse teaches the keyboard. `lines` is [[words, action id], …] for
+  // a thing that does more than one thing; an id of "" has no key. Read
+  // from Shortcuts.js, so a key moved in the sheet is the one named.
+  function tip(does, id) { return root.tips([[does, id]]) }
+  function tips(lines) {
+    root.keysVersion
+    return lines.map(function (l) {
+      if (!l[1]) return l[0]
+      var k = Sc.label(l[1])
+      return l[0] + "   " + (k === "—" ? "no key (" + Sc.label("keys") + " gives it one)" : k)
+    }).join("\n")
+  }
+
   function nextKeyRow(from, d) {
     var rows = root.keyRows
     for (var i = from + d; i >= 0 && i < rows.length; i += d) if (rows[i].kind !== "head") return i
@@ -2871,7 +2885,9 @@ Item {
                       anchors.fill: parent
                       anchors.margins: -root.sp(6)
                       cursorShape: Qt.PointingHandCursor
+                      hoverEnabled: true
                       onClicked: { root.taskFocus = dashRow.index; root.tickFocused() }
+                      PanelToolTip { visible: parent.containsMouse; text: root.tip("Done (again: not done)", "dashDone") }
                     }
                   }
 
@@ -2976,7 +2992,16 @@ Item {
                   anchors.fill: parent
                   enabled: !dashRow.isHead
                   acceptedButtons: Qt.LeftButton
+                  hoverEnabled: true
                   onClicked: { root.taskFocus = index; root.activateTask() }
+                  PanelToolTip {
+                    readonly property string kind: dashRow.modelData.kind
+                    visible: parent.containsMouse && (kind === "task" || kind === "deadline" || kind === "older" || kind === "raised")
+                    text: kind === "task" ? root.tips([["Go to the line", "dashOpen"], ["Done", "dashDone"], ["Reschedule", "dashWhen"], ["Cycle its priority", "dashPriority"], ["Drop it", "dashDrop"]])
+                      : kind === "deadline" ? root.tips([["Go to its line", "dashOpen"], ["Done", "dashDone"]])
+                      : kind === "older" ? root.tip("Show the older ones", "dashOpen")
+                      : root.tip("Dismiss it", "dashOpen")
+                  }
                   z: -1
                 }
               }
@@ -3407,6 +3432,7 @@ Item {
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: root.toggleKeys()
+                PanelToolTip { visible: parent.containsMouse; text: root.tip("Every key the page answers to, and moving one", "keys") }
               }
             }
 
@@ -3420,7 +3446,13 @@ Item {
               font.styleName: root.fontStyle
               font.pixelSize: root.fs(Style.font.bodySmall)
               Behavior on color { ColorAnimation { duration: 240 } }
-              MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.togglePin() }
+              MouseArea {
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.togglePin()
+                PanelToolTip { visible: parent.containsMouse; text: root.tip(root.alongside ? "Back to the overlay" : "Pin it as a window beside your work", "pin") }
+              }
             }
 
             // Private: the one place that says whether the agent can see
@@ -3444,6 +3476,10 @@ Item {
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: { root.togglePrivate(); editor.focusNote() }
+                PanelToolTip {
+                  visible: parent.containsMouse
+                  text: root.tip(svc.notePrivate ? "Let the agent see this note again" : "Make this note private: the agent sees nothing", "private")
+                }
               }
             }
 
@@ -3473,6 +3509,10 @@ Item {
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: { root.sendCurrent(); editor.focusNote() }
+                PanelToolTip {
+                  visible: parent.containsMouse
+                  text: root.tip(root.answered(root.currentRecord) ? "Open the conversation on this block" : "Ask the agent about this block", "ask")
+                }
               }
             }
 
@@ -3488,6 +3528,16 @@ Item {
               font.family: root.fontFamily
               font.styleName: root.fontStyle
               font.pixelSize: root.fs(Style.font.bodySmall)
+              MouseArea {
+                anchors.fill: parent
+                hoverEnabled: true
+                acceptedButtons: Qt.NoButton
+                PanelToolTip {
+                  visible: parent.containsMouse
+                  text: root.tips([[root.replyWaiting ? "A reply is waiting in this note" : root.working ? "The agent is thinking" : "The agent reads what you ask it", ""],
+                                   ["The margin for this block", "margin"]])
+                }
+              }
               Behavior on color { ColorAnimation { duration: 240 } }
             }
 
@@ -3639,6 +3689,7 @@ Item {
 
           NoteEditor {
             id: editor
+            boxTip: Component { Item { PanelToolTip { visible: true; text: root.tip("Tick or untick it", "checkbox") } } }
             x: root.gutter
             width: flick.width - root.gutter
             height: implicitHeight
@@ -3773,7 +3824,9 @@ Item {
                   MouseArea {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
+                    hoverEnabled: true
                     onClicked: { root.mentionFocus = index; root.acceptMention(false) }
+                    PanelToolTip { visible: parent.containsMouse; text: root.tips([["Write its #tag", "mentionPick"], ["Start the class", "mentionClass"]]) }
                   }
                 }
               }
@@ -3957,7 +4010,14 @@ Item {
             font.family: root.fontFamily
             font.styleName: root.fontStyle
             font.pixelSize: root.fs(Style.font.title)
-            MouseArea { anchors.fill: parent; anchors.margins: -root.sp(6); cursorShape: Qt.PointingHandCursor; onClicked: root.moveCalendar(0, -1) }
+            MouseArea {
+              anchors.fill: parent
+              anchors.margins: -root.sp(6)
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.moveCalendar(0, -1)
+              PanelToolTip { visible: parent.containsMouse; text: root.tip("A month back", "calPrevMonth") }
+            }
           }
           Text {
             id: monthText
@@ -3978,7 +4038,14 @@ Item {
             font.family: root.fontFamily
             font.styleName: root.fontStyle
             font.pixelSize: root.fs(Style.font.title)
-            MouseArea { anchors.fill: parent; anchors.margins: -root.sp(6); cursorShape: Qt.PointingHandCursor; onClicked: root.moveCalendar(0, 1) }
+            MouseArea {
+              anchors.fill: parent
+              anchors.margins: -root.sp(6)
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.moveCalendar(0, 1)
+              PanelToolTip { visible: parent.containsMouse; text: root.tip("A month on", "calNextMonth") }
+            }
           }
         }
 
@@ -4071,8 +4138,10 @@ Item {
               MouseArea {
                 anchors.fill: parent
                 enabled: !!modelData
+                hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: root.openCalendarDay(modelData)
+                PanelToolTip { visible: parent.containsMouse && !!modelData; text: root.tips([["Open the day in the sheet", "calOpen"], ["Today", "calToday"]]) }
               }
             }
           }
@@ -4124,8 +4193,10 @@ Item {
             }
             MouseArea {
               anchors.fill: parent
+              hoverEnabled: true
               cursorShape: Qt.PointingHandCursor
               onClicked: root.goToDeadline(modelData)
+              PanelToolTip { visible: parent.containsMouse; text: root.tip("Go to its line", "listOpen") }
             }
           }
         }
@@ -4180,7 +4251,12 @@ Item {
             }
             MouseArea {
               anchors.fill: parent
+              hoverEnabled: true
               cursorShape: Qt.PointingHandCursor
+              PanelToolTip {
+                visible: parent.containsMouse
+                text: root.tips([["Its notes", "listOpen"], ["Shift-click: start its class", "listClass"], ["Ctrl-click: put its #tag at the cursor", "listTag"]])
+              }
               onClicked: function (mouse) {
                 if (mouse.modifiers & Qt.ControlModifier) root.insertTag(modelData)
                 else if (mouse.modifiers & Qt.ShiftModifier) root.startClass(modelData)
@@ -4253,7 +4329,13 @@ Item {
             font.family: root.fontFamily
             font.styleName: root.fontStyle
             font.pixelSize: root.fs(Style.font.caption)
-            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.leaveProject() }
+            MouseArea {
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.leaveProject()
+              PanelToolTip { visible: parent.containsMouse; text: root.tip("Back out of the project", "listBack") }
+            }
           }
 
           Text {
@@ -4325,8 +4407,10 @@ Item {
               }
               MouseArea {
                 anchors.fill: parent
+                hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: { root.sectionFocus = index; root.openSection(modelData) }
+                PanelToolTip { visible: parent.containsMouse; text: root.tip("Open the section", "listOpen") }
               }
             }
           }
@@ -4448,7 +4532,9 @@ Item {
               }
               MouseArea {
                 anchors.fill: parent
+                hoverEnabled: true
                 onClicked: { root.marginFocus = index; root.acceptProposal(index) }
+                PanelToolTip { visible: parent.containsMouse; text: root.tip("Do what it says", "marginAccept") }
               }
             }
           }
