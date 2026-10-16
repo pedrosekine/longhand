@@ -387,6 +387,10 @@ Item {
     var goto = payload.goto ? Bound.parseLink(payload.goto) : null
     var fresh = !root.showing
     if (payload.shape === "alongside" || (goto && root.windowOpen && !root.overlayOpen)) {
+      // Already a window (maybe on another workspace): bring it here. The
+      // app launcher waits for a window to appear or take focus, and says
+      // "Launching…" over the page until one does.
+      if (root.windowOpen && !root.overlayOpen) root.raiseWindow()
       root.windowOpen = true
       if (root.overlayOpen) root.dismiss()
     } else {
@@ -499,6 +503,13 @@ Item {
     root.close()
     if (root.shell && typeof root.shell.hide === "function")
       root.shell.hide((root.manifest && root.manifest.id) || "longhand.page")
+  }
+
+  function raiseWindow() {
+    raiseProc.running = false
+    raiseProc.command = ["hyprctl", "eval",
+      'hl.dispatch(hl.dsp.focus({ window = "title:^' + root.windowTitle + '$" }))']
+    raiseProc.running = true
   }
 
   function toggle() {
@@ -2641,6 +2652,7 @@ Item {
     stderr: StdioCollector { onStreamFinished: if (text.trim() !== "") console.warn("longhand.page hyprkeys: " + text.trim()) }
   }
   Process { id: submapProc }
+  Process { id: raiseProc }
   // The sheet stops waiting a little before Hyprland would leave the submap.
   Timer {
     id: hyprListenTimer
