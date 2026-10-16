@@ -41,6 +41,9 @@ cp -r plugin-deadline ~/.config/omarchy/plugins/student.deadline
 ln -s "$PWD/cli/pomo"            ~/.local/bin/pomo
 ln -s "$PWD/agent/student-agent" ~/.local/bin/student-agent
 student-agent install
+mkdir -p ~/.local/share/icons/hicolor/scalable/apps         # "Longhand" in the app launcher (Super+Space)
+ln -s "$PWD/launcher/longhand.desktop" ~/.local/share/applications/longhand.desktop
+ln -s "$PWD/launcher/longhand.svg"     ~/.local/share/icons/hicolor/scalable/apps/longhand.svg
 ```
 
 ## The page
