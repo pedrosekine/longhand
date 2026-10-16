@@ -4,6 +4,9 @@
 - `cli/` — single-source timer + deadline core (bash, no deps)
   - state in `~/.local/state/longhand/` (`state.json`, `deadlines.tsv`, `pomo.log`)
   - commands: start, pause, resume, toggle, reset, skip, status, stats, deadline, report
+- `cli/longhand-check` — one copy of a task: brings the deadline store, the ledger
+  (`ledger.json`) and the note lines in line with each other; the page and the
+  popup run it. Reference: `docs/tasks.md`
 - `plugin/`, `plugin-deadline/` — thin Omarchy bar widgets that read the state files
 - `page/` (next) — Quickshell full-screen panel: today's note, blank page, the trigger
 - `agent/` (next) — the runner: allowlist context builder, payload log, tool-less
@@ -331,6 +334,18 @@
 Everything waiting, in one place. The freeze decided the order on
 2026-10-15 with the stats above; new ideas still land here first (date,
 where they came from, what they need) rather than in code.
+
+**From the consistency grilling, 2026-10-17** (`docs/tasks.md`):
+
+- **A project as one continuous page.** Every section of a project in one
+  scroll, newest first, editable in place, each edit landing in its day's
+  note — the Tana feel on markdown. Needs writing another day's note while
+  it is on screen and finding blocks by identity, which the consistency work
+  builds; after it.
+- **A sent block keeps its conversation through edits.** Conversations are
+  keyed by a hash of the block's words, so editing one word after asking
+  detaches the reply. Identity in the layer (its last words and place,
+  followed through every edit in the page), never a tag in the prose.
 
 **From the week of classes, 2026-10-15** (the student's own three, on
 lifting the freeze; the numbers above cannot see any of them):

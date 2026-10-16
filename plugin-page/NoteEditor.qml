@@ -277,7 +277,7 @@ Item {
 
   // ------------------------------------------------------------ rows
 
-  readonly property var roles: ["kind", "body", "level", "checked", "ordinal", "headingLevel", "callout", "priv", "blank", "lead", "space", "deadline", "dueLabel", "dueAt", "raw", "cueAt", "cueLabel"]
+  readonly property var roles: ["kind", "body", "level", "checked", "cancelled", "ordinal", "headingLevel", "callout", "priv", "blank", "lead", "space", "deadline", "dueLabel", "dueAt", "raw", "cueAt", "cueLabel"]
 
   function roleValues(r) {
     var o = {}
@@ -806,6 +806,7 @@ Item {
     ed.snapshot(true)
     if (r.kind === "task") {
       var at = r.start + r.indent.length + 3
+      // A cancelled box clicked is open again, as a ticked one is.
       ed.replace(at, at + 1, r.checked ? " " : "x")
     } else if (r.kind === "bullet") {
       ed.insert(r.start + r.prefixLen, "[ ] ")
@@ -1042,6 +1043,7 @@ Item {
         required property string body
         required property int level
         required property bool checked
+        required property bool cancelled
         required property string ordinal
         required property int headingLevel
         required property string callout
@@ -1151,7 +1153,7 @@ Item {
             anchors.centerIn: parent
             visible: row.checked
             textFormat: Text.PlainText
-            text: "✓"
+            text: row.cancelled ? "–" : "✓"
             color: ed.background
             font.family: ed.fontFamily
             font.pixelSize: Math.round(box.size * 0.85)

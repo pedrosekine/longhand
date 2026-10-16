@@ -52,7 +52,8 @@ ShellRoot {
     function openDay(stem: string): void { page.openNote(stem) }
     function header(): string { return page.dateLabel }
     // Prompts and keys
-    function ask(): string { return JSON.stringify(page.ask) }
+    // Nothing is asked under the cursor any more (2026-10-17): always null.
+    function ask(): string { return "null" }
     function marks(): string { return JSON.stringify(page.paint.map(function (m) { return m.sending ? "sending" : m.reply ? (m.unread ? "reply:unread" : "reply") : "other" })) }
     function trigger(): string { return page.triggerForBlock(page.currentHash) }
     function sign(): string { return page.currentTrigger }
@@ -76,11 +77,8 @@ ShellRoot {
     function hint(): string { return page.hint }
     function yes(): void { page.acceptAsk() }
     function no(): void { page.declineAsk() }
-    function typeAtPrompt(ch: string): bool { return page.askKey({ key: ch.toUpperCase().charCodeAt(0), text: ch, modifiers: 0 }) }
     // A key as the note's own filter sees it (Qt.Key_*, Qt modifiers).
     function keyPage(key: int, mods: int): bool { return page.pageKey({ key: key, text: "", modifiers: mods }) }
-    function enterAtPrompt(): bool { return page.askKey({ key: Qt.Key_Return, text: "\r", modifiers: 0 }) }
-    function rightAtPrompt(): bool { return page.askKey({ key: Qt.Key_Right, text: "", modifiers: 0 }) }
     function ctrlD(): void { page.deadlineKey() }
     function when(s: string): void { page.whenInput.text = s; page.submitWhen() }
     // Panels
@@ -137,6 +135,8 @@ ShellRoot {
     function moveLines(d: int): void { page.editorItem.moveLines(d) }
 
     // The dashboard
+    function editQueue(): string { return JSON.stringify(page.editQueueState) }
+    function checkState(): string { return JSON.stringify({ wanted: page.checkWanted, checking: page.checking, hint: page.hint }) }
     function dash(): void { page.toggleDash() }
     function dashOpen(): bool { return page.dashOpen }
     function dashFocus(i: int): void { page.taskFocus = i }

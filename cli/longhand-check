@@ -1,0 +1,392 @@
+#!/usr/bin/env python3
+"""longhand-check — one copy of a task, and the check that keeps it so.
+
+The note line is the task (docs/tasks.md). The deadline store and the
+ledger beside it are the layer around the notes: what a line cannot hold.
+This reads every daily note, finds each line tagged `^dN`, and brings the
+three in line with each other:
+
+- the line says whether a deadline exists, its words and its project;
+- a tick or a date may change on either side, and the side that changed
+  since the two last agreed wins (the ledger keeps what they agreed on);
+- a deadline is cancelled exactly while no note holds its tag, and comes
+  back as the line says when one does again;
+- a deadline that never had a line waits ("not in a note yet") and counts
+  as the agent's, with its first wording kept.
+
+It changes only a line's facts — its tick and its date — never its words.
+It is a program of its own, not the agent runner: `longhand-agent` refuses
+to write under the daily folder, which is how the agent can say it never
+touched the prose, and that stays true.
+
+    longhand-check [--open <stem>] [--json] [--quiet]
+
+`--open <stem>`: the note the page has open. It is read like any other but
+never written — the page is its writer while it is in the editor, and
+brings its lines in line with the store itself.
+"""
+import argparse
+import contextlib
+import datetime as dt
+import fcntl
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "agent"))
+import task as tasklib  # noqa: E402
+
+CONFIG_PATH = Path(os.environ.get("LONGHAND_CONFIG")
+                   or Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "longhand" / "config.json")
+STATE_HOME = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state") / "longhand"
+LEDGER = STATE_HOME / "ledger.json"
+POMO = os.environ.get("LONGHAND_POMO") or "pomo"
+DRY: list[str] = []     # --dry-run: what would be done, and nothing done
+DRY_RUN = False
+
+DUE_RE = re.compile(r"📅\s*\d{4}-\d{2}-\d{2}(?:\s+\d{1,2}:\d{2})?")
+ANCHOR_TAIL_RE = re.compile(r"\s\^d(\d+)\s*$")
+STATE_RE = re.compile(r"^(\s*[-*+] \[)[ xX/\-](\])")
+CANCELLED_RE = re.compile(r"\s*❌\s*\d{4}-\d{2}-\d{2}")
+
+
+class Fail(Exception):
+    pass
+
+
+# ------------------------------------------------------------------ io
+
+def load_config() -> dict:
+    try:
+        cfg = json.loads(CONFIG_PATH.read_text())
+    except (OSError, json.JSONDecodeError) as e:
+        raise Fail(f"no readable config at {CONFIG_PATH}: {e}")
+    if not cfg.get("vault") or not cfg.get("daily", {}).get("dir"):
+        raise Fail("config needs vault and daily.dir")
+    return cfg
+
+
+def write_atomic(target: Path, text: str) -> None:
+    if DRY_RUN:
+        DRY.append(f"write {target}")
+        return
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix=f".{target.name}.", dir=target.parent)
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(text)
+        os.replace(tmp, target)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
+
+
+def pomo(*args: str) -> str:
+    """The store has one writer, `pomo`, which holds its lock."""
+    if DRY_RUN and args[0] != "list":
+        DRY.append("pomo deadline " + " ".join(args))
+        return ""
+    env = dict(os.environ, LONGHAND_NO_CHECK="1")
+    r = subprocess.run([POMO, "deadline", *args], capture_output=True, text=True, timeout=20, env=env)
+    if r.returncode != 0:
+        raise Fail(f"pomo deadline {' '.join(args)}: {(r.stderr or r.stdout).strip()}")
+    return r.stdout
+
+
+def store() -> list[dict]:
+    # A store that is not there is unknown, not empty: every tag in the
+    # notes would look stale, and taking them off would lose every link.
+    if not (STATE_HOME / "deadlines.tsv").is_file():
+        raise Fail(f"no deadline store at {STATE_HOME / 'deadlines.tsv'}; nothing checked")
+    return json.loads(pomo("list", "--all", "--json"))["deadlines"]
+
+
+def load_ledger() -> dict:
+    try:
+        led = json.loads(LEDGER.read_text())
+    except (OSError, json.JSONDecodeError):
+        led = {}
+    led.setdefault("version", 1)
+    led.setdefault("deadlines", {})
+    return led
+
+
+# ------------------------------------------------------------- the lines
+
+def epoch_of(iso: str) -> int:
+    """A line's `📅 YYYY-MM-DD [HH:MM]` as the store keeps it: a date with
+    no time is the end of that day."""
+    day, _, hm = iso.partition(" ")
+    at = dt.datetime.strptime(day + " " + (hm or "23:59"), "%Y-%m-%d %H:%M")
+    return int(at.timestamp())
+
+
+def iso_of(epoch: int) -> str:
+    at = dt.datetime.fromtimestamp(epoch)
+    return at.strftime("%Y-%m-%d") + ("" if (at.hour, at.minute) == (23, 59) else at.strftime(" %H:%M"))
+
+
+def same_minute(a: int, b: int) -> bool:
+    return a // 60 == b // 60
+
+
+def state_of(box: dict) -> str:
+    return "cancelled" if box["cancelled"] else "done" if box["done"] else "open"
+
+
+def with_state(raw: str, state: str, today: str = "") -> str:
+    """The box set; a cancelled one says when, as the page's drop does
+    (`- [-] … ❌ 2026-10-17`), and loses it again when it comes back."""
+    ch = {"open": " ", "done": "x", "cancelled": "-"}[state]
+    raw = STATE_RE.sub(lambda m: m.group(1) + ch + m.group(2), raw, count=1)
+    raw = CANCELLED_RE.sub("", raw)
+    if state == "cancelled" and today:
+        a = ANCHOR_TAIL_RE.search(raw)
+        raw = raw[:a.start()] + " ❌ " + today + raw[a.start():] if a else raw + " ❌ " + today
+    return raw
+
+
+def with_due(raw: str, epoch: int) -> str:
+    """The date tail rewritten, everything else on the line as it was."""
+    mark = "📅 " + iso_of(epoch)
+    if DUE_RE.search(raw):
+        return DUE_RE.sub(lambda m: mark, raw, count=1)
+    a = ANCHOR_TAIL_RE.search(raw)
+    return raw[:a.start()] + " " + mark + raw[a.start():] if a else raw + " " + mark
+
+
+def without_anchor(raw: str) -> str:
+    return ANCHOR_TAIL_RE.sub("", raw)
+
+
+def notes(cfg: dict) -> list[Path]:
+    daily = Path(cfg["vault"]) / cfg["daily"]["dir"]
+    if not daily.is_dir():
+        raise Fail(f"no daily folder at {daily}")
+    # Every note, whatever its name's format: a deadline's line may sit in a
+    # note named the old way, and missing it would cancel it.
+    return sorted(daily.glob("*.md"), reverse=True)
+
+
+# ---------------------------------------------------------------- the check
+
+def check(cfg: dict, open_stem: str = "", now: int | None = None) -> dict:
+    now = int(now if now is not None else dt.datetime.now().timestamp())
+    today = dt.datetime.fromtimestamp(now).strftime("%Y-%m-%d")
+    files = notes(cfg)
+    texts: dict[Path, list[str]] = {}
+    lines: dict[int, dict] = {}       # id -> where its line is
+    dupes: list[int] = []
+    for f in files:
+        try:
+            text = f.read_text()
+        except OSError:
+            continue
+        if "^d" not in text:
+            continue
+        texts[f] = text.split("\n")
+        for box in tasklib.scan(text):
+            if box["anchor"] <= 0:
+                continue
+            if box["anchor"] in lines:
+                dupes.append(box["anchor"])
+                continue
+            lines[box["anchor"]] = {"file": f, "stem": f.stem, "line": box["line"], "box": box}
+
+    items = store()
+    led = load_ledger()
+    seen_ids = {d["id"] for d in items}
+    out: dict = {"cancelled": [], "restored": [], "changed": [], "lines": [], "waiting": [], "stale": [], "duplicates": sorted(set(dupes))}
+    edits: dict[Path, dict[int, str]] = {}
+    texts_before = {f: list(ls) for f, ls in texts.items()}
+
+    def edit(where: dict, raw: str) -> None:
+        texts[where["file"]][where["line"]] = raw
+        edits.setdefault(where["file"], {})[where["line"]] = raw
+
+    for d in items:
+        key = str(d["id"])
+        rec = led["deadlines"].setdefault(key, {})
+        seen = rec.get("seen") or {}
+        where = lines.get(d["id"])
+        status = d["status"]
+
+        if where is None:
+            if status in ("cancelled", "hidden"):
+                continue
+            if seen or d.get("link"):
+                # It had a line, and no note holds its tag now.
+                rec["cancelled"] = {"at": now, "status": status, "doneAt": d.get("done_at") or 0}
+                pomo("cancel", key)
+                out["cancelled"].append({"id": d["id"], "title": d["title"]})
+            elif status == "open":
+                # Never written: waiting, and the agent's (docs/tasks.md).
+                rec.setdefault("origin", "agent")
+                rec.setdefault("firstTitle", d["title"])
+                if d["title"] != rec["firstTitle"]:
+                    rec["rewritten"] = True
+                out["waiting"].append(d["id"])
+            continue
+
+        box = where["box"]
+        writable = where["stem"] != open_stem
+        rec.setdefault("origin", "note")
+        if rec["origin"] == "agent" and box["title"] != rec.get("firstTitle", box["title"]):
+            rec["rewritten"] = True
+
+        # Status: open / done / cancelled, as the line's box says or as the
+        # store says, whichever moved since they last agreed.
+        line_state = state_of(box)
+        if status == "hidden":
+            pass                      # put away by hand; not this check's to undo
+        elif status == "cancelled" and line_state != "cancelled" and "cancelled" in rec:
+            # Cancelled because its line was gone, and the line is back (a
+            # paste, an undo, Obsidian): as it says.
+            was = rec.pop("cancelled", {})
+            if line_state == "done":
+                pomo("done", key, "--at", str(was.get("doneAt") or now))
+            else:
+                pomo("reopen", key)
+            status = line_state
+            out["restored"].append({"id": d["id"], "title": d["title"]})
+        elif line_state != status:
+            # With nothing agreed on yet, the line is the task and wins.
+            base = seen.get("state")
+            line_moved = base is None or line_state != base
+            if line_moved:
+                if line_state == "done":
+                    pomo("done", key)
+                elif line_state == "open":
+                    pomo("reopen", key)
+                else:
+                    rec["cancelled"] = {"at": now, "status": status, "doneAt": d.get("done_at") or 0}
+                    pomo("cancel", key)
+                    out["cancelled"].append({"id": d["id"], "title": d["title"]})
+                status = line_state
+                out["changed"].append({"id": d["id"], "what": "state", "from": "line"})
+            elif writable:
+                # The store moved since they agreed (the popup, the
+                # dashboard, a terminal).
+                edit(where, with_state(texts[where["file"]][where["line"]], status, today))
+                line_state = status
+                out["lines"].append({"id": d["id"], "what": "state"})
+
+        # The date, the same way.
+        due = d["due"]
+        line_due = epoch_of(box["due"]) if box["due"] else 0
+        if line_due and not same_minute(line_due, due):
+            base = seen.get("due")
+            if base is None or not same_minute(line_due, base):
+                pomo("set", key, iso_of(line_due))
+                due = line_due
+                out["changed"].append({"id": d["id"], "what": "due", "from": "line"})
+            elif writable:
+                edit(where, with_due(texts[where["file"]][where["line"]], due))
+                line_due = due
+                out["lines"].append({"id": d["id"], "what": "due"})
+        elif not line_due and writable:
+            edit(where, with_due(texts[where["file"]][where["line"]], due))
+            line_due = due
+
+        # Words, project and place: the line's, always.
+        link = f"[[{where['stem']}#^d{d['id']}]]"
+        args = []
+        if box["title"] and box["title"] != d["title"]:
+            args += ["--title", box["title"]]
+        if box["project"] != (d.get("project") or ""):
+            args += ["--project", box["project"]]
+        if d.get("link") != link:
+            args += ["--link", link]
+        if args:
+            pomo("set", key, *args)
+            out["changed"].append({"id": d["id"], "what": "facts", "from": "line"})
+
+        if status != "cancelled":
+            rec.pop("cancelled", None)
+
+        # What the two now agree on. A fact the page still has to write into
+        # its open note is not agreed yet, so its base stays where it was.
+        new_seen = {"stem": where["stem"], "title": box["title"], "project": box["project"]}
+        new_seen["state"] = line_state if line_state == status else seen.get("state")
+        new_seen["due"] = due if line_due and same_minute(line_due, due) else seen.get("due")
+        rec["seen"] = new_seen
+
+    # Tags no deadline stands behind (removed outright from the store): the
+    # line keeps its words and its date, and stops pointing at nothing.
+    for i, where in lines.items():
+        if i in seen_ids:
+            continue
+        out["stale"].append(i)
+        if where["stem"] != open_stem:
+            edit(where, without_anchor(texts[where["file"]][where["line"]]))
+
+    for f, changed in edits.items():
+        # Read again and change only the lines meant: the note may have been
+        # written since it was read above.
+        current = f.read_text().split("\n")
+        applied = False
+        for i, raw in changed.items():
+            # Still the line that was read, or it is not this check's to change.
+            if i < len(current) and current[i] == texts_before[f][i] and current[i] != raw:
+                current[i] = raw
+                applied = True
+        if applied:
+            write_atomic(f, "\n".join(current))
+
+    for key in list(led["deadlines"]):
+        if int(key) not in seen_ids or not led["deadlines"][key]:
+            led["deadlines"].pop(key)
+    write_atomic(LEDGER, json.dumps(led, indent=2, ensure_ascii=False) + "\n")
+    out["origins"] = {k: {kk: v[kk] for kk in ("origin", "firstTitle", "rewritten") if kk in v}
+                      for k, v in led["deadlines"].items() if v.get("origin") == "agent"}
+    return out
+
+
+def main(argv: list[str]) -> int:
+    ap = argparse.ArgumentParser(prog="longhand-check")
+    ap.add_argument("--open", default="", help="the stem of the note the page has open: read, never written")
+    ap.add_argument("--json", action="store_true")
+    ap.add_argument("--quiet", action="store_true")
+    ap.add_argument("--dry-run", action="store_true", help="say what would change, change nothing")
+    ap.add_argument("--now", type=int, default=None, help=argparse.SUPPRESS)
+    args = ap.parse_args(argv)
+    global DRY_RUN
+    DRY_RUN = args.dry_run
+    try:
+        cfg = load_config()
+        STATE_HOME.mkdir(parents=True, exist_ok=True)
+        # One check at a time: the page and the popup may both start one.
+        with open(STATE_HOME / "ledger.lock", "w") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            out = check(cfg, args.open, args.now)
+    except (Fail, subprocess.TimeoutExpired) as e:
+        print(f"longhand-check: {e}", file=sys.stderr)
+        return 2
+    if DRY_RUN:
+        out["would"] = DRY
+    if args.json:
+        print(json.dumps(out, ensure_ascii=False))
+    elif not args.quiet:
+        for c in out["cancelled"]:
+            print(f"cancelled #{c['id']} · {c['title']} (its line is gone)")
+        for c in out["restored"]:
+            print(f"back #{c['id']} · {c['title']}")
+        if out["lines"]:
+            print(f"{len(out['lines'])} line(s) brought in line with the store")
+        if out["waiting"]:
+            print(f"{len(out['waiting'])} deadline(s) not in a note yet: " + ", ".join(f"#{i}" for i in out["waiting"]))
+        if out["duplicates"]:
+            print("the same tag on two lines: " + ", ".join(f"^d{i}" for i in out["duplicates"]))
+        for w in DRY:
+            print("would: " + w)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

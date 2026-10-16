@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The page's own logic, driven live: bound lines, prompts, catching up with
+"""The page's own logic, driven live: bound lines, cancelling, catching up with
 the deadline store, outside edits, going to a line, agent accepts.
 
 Needs a Hyprland session with quickshell and the omarchy shell modules. It
@@ -90,7 +90,7 @@ class Page:
         self.runner = self.tmp / "runner"
         (cfg / "longhand" / "config.json").write_text(json.dumps({
             "vault": str(self.vault), "daily": {"dir": "Daily", "format": "YYYY.MM.DD"},
-            "runner": str(self.runner), "weekStart": "monday"}))
+            "runner": str(self.runner), "check": str(ROOT / "cli" / "longhand-check"), "weekStart": "monday"}))
         bindir = self.tmp / "bin"
         bindir.mkdir()
         (bindir / "pomo").symlink_to(ROOT / "cli" / "pomo")
@@ -159,6 +159,10 @@ esac
 
     def pomo(self, *args):
         return subprocess.run(["pomo", "deadline", *args], capture_output=True, text=True, env=self.env).stdout
+
+    def check(self):
+        """The check, as the popup runs it after a change."""
+        return subprocess.run([str(ROOT / "cli" / "longhand-check"), "--quiet"], capture_output=True, text=True, env=self.env)
 
     def deadline(self, i):
         for line in (self.store.read_text().splitlines() if self.store.exists() else []):
@@ -311,24 +315,37 @@ def main() -> int:
         p.call("when", "tomorrow")
         check(p.wait(lambda: "Plan for the week. 📅 " in p.note() and "^d2" in p.note()), "Ctrl+D + when binds a plain line")
 
-        # 5. deleting a bound line asks; a typed letter never answers
+        # 5. deleting a bound line cancels its deadline and says so; nothing
+        # is asked, and the line coming back brings it back (docs/tasks.md)
         p.call("removeLine", p.line_of("^d1"))
-        check(p.wait(lambda: json.loads(p.call("ask"))["kind"] == "delete"), "deleting a bound line asks")
-        consumed = p.call("typeAtPrompt", "y")
-        check(consumed == "false" and p.call("ask") == "null", "typing 'y' does not answer the prompt (it dismisses it and types)")
-        time.sleep(0.5)
-        check(p.deadline(1)["status"] == "done", "…and the deadline is untouched")
-        p.call("removeLine", p.line_of("^d2"))
-        p.wait(lambda: json.loads(p.call("ask"))["kind"] == "delete")
-        p.call("rightAtPrompt")
-        p.call("enterAtPrompt")
-        check(p.wait(lambda: p.deadline(2)["status"] == "hidden"), "choosing yes hides it (kept in history), not rm")
+        check(p.wait(lambda: p.deadline(1)["status"] == "cancelled"), "deleting a bound line cancels its deadline")
+        check(p.call("ask") == "null" and "cancelled" in p.call("hint"), f"…said under the cursor, nothing asked ({p.call('hint')!r})")
+        p.call("undo")
+        check(p.wait(lambda: p.deadline(1)["status"] == "done"), "Ctrl+Z brings the line back, and its deadline as it was")
+        # A block with two of them: both, not the last one only.
+        # (The editor's Ctrl+Z also took back the Ctrl+D binding before it:
+        # the page's own writes share an undo step with the edit after them.)
+        # A line pasted back, tag and all, brings its deadline back.
+        plan = p.line_of("Plan for the week.")
+        p.call("cursor", p.offset_of_line(plan) + len(p.lines()[plan]))
+        p.call("insert", "\n- [ ] Plan for the week. 📅 2030-01-01 ^d2")
+        p.call("cursor", 1)
+        check(p.wait(lambda: p.deadline(2)["status"] == "open" and "^d2" in p.note()),
+              f"a bound line pasted in brings its deadline back ({p.deadline(2)}, {p.call('checkState')})")
+        lo, hi = sorted((p.line_of("^d1"), p.line_of("^d2")))
+        p.call("removeLine", hi)
+        p.call("removeLine", lo)
+        check(p.wait(lambda: p.deadline(1)["status"] == "cancelled" and p.deadline(2)["status"] == "cancelled"),
+              "deleting several bound lines cancels every one of their deadlines")
+        check(p.wait(lambda: "2 deadlines" in p.call("hint")), f"…and says how many ({p.call('hint')!r})")
 
         # 6. changes made outside reach the lines when their note opens
         p.pomo("add", "from cli", "friday")
         p.pomo("add", "goes away", "friday")
         (p.daily / f"{YDAY}.md").write_text(header(YDAY) + "- [ ] from cli 📅 2030-01-01 ^d3\n- [ ] goes away 📅 2030-01-01 ^d4\n")
+        p.check()   # the line is the task: the store takes its date
         p.pomo("done", "3")
+        p.pomo("set", "3", "friday")
         p.pomo("rm", "4")
         p.call("openDay", YDAY)
         check(p.wait(lambda: "- [x] from cli 📅 2030-01-01" not in p.note(YDAY) and "- [x] from cli 📅 " in p.note(YDAY)),
@@ -794,7 +811,7 @@ def main() -> int:
         p.call("dashWhen", "tomorrow")
         tomorrow = (dt.date.today() + dt.timedelta(days=1)).isoformat()
         check(p.wait(lambda: f"⏳ {tomorrow}" in (p.daily / f"{YDAY}.md").read_text()),
-              f"…read by the note's own parser, written as a day with no hour ({(p.daily / f'{YDAY}.md').read_text()!r})")
+              f"…read by the note's own parser, written as a day with no hour ({(p.daily / f'{YDAY}.md').read_text()!r}, {p.call('editQueue')})")
         check(p.wait(lambda: any(r.get("text") == "ask about the rubric" and r["when"] == tomorrow
                                  for r in json.loads(p.call("dashRows")))),
               f"…and the row moves to DOING ({[r for r in json.loads(p.call('dashRows')) if r.get('text') == 'ask about the rubric']})")
@@ -824,6 +841,53 @@ def main() -> int:
         check(p.wait(lambda: p.call("dashOpen") == "false"), "Enter leaves the dashboard for the line")
         check(int(p.call("cursorLine")) == p.line_of("read the paper"),
               f"…with the cursor on it (cursor {p.call('cursorLine')}, line {p.line_of('read the paper')}, text {p.call('text')!r})")
+
+        # 12a. one copy of a task (docs/tasks.md, 2026-10-17): Enter reaches
+        # a line on any day; Ctrl+E renames; a deadline is cancelled through
+        # its line; one that no note holds waits as the agent's, and Enter
+        # writes it in.
+        KEY_E = 0x45
+        p.call("dash")
+        row("ask about the rubric")
+        p.call("dashKey", KEY_RETURN, 0)
+        check(p.wait(lambda: p.call("dashOpen") == "false" and "ask about the rubric" in p.call("text")),
+              "Enter on a task written on another day opens that day's note")
+        check(p.wait(lambda: int(p.call("cursorLine")) == p.line_of("ask about the rubric")),
+              f"…with the cursor on its line ({p.call('cursorLine')})")
+        p.call("openDay", TODAY)
+        p.wait(lambda: p.call("header").startswith(dt.date.today().strftime("%A")))
+
+        p.call("dash")
+        row("read the paper")
+        check(p.call("dashKey", KEY_E, CTRL) == "true", "Ctrl+E renames")
+        p.call("dashWhen", "read the whole paper")
+        check(p.wait(lambda: "- [ ] read the whole paper ⏫" in p.call("text")),
+              f"…the line's words, its facts kept ({p.call('text')[-60:]!r})")
+
+        out = p.pomo("add", "essay outline", "2030-01-05")
+        eid = int(re.search(r"#(\d+)", out).group(1))
+        p.call("cursorEnd")
+        p.call("insert", f"\n- [ ] essay outline 📅 2030-01-05 ^d{eid}")
+        p.call("cursor", 1)
+        check(p.wait(lambda: p.deadline(eid)["link"] != ""), "a line written with a tag is the deadline's line")
+        p.call("dash")
+        row("essay outline")
+        check(p.call("dashKey", KEY_DELETE, 0) == "true", "Delete on a deadline row is taken")
+        check(p.wait(lambda: "- [-] essay outline 📅 2030-01-05 ❌" in p.call("text")),
+              f"…its line is cancelled, words kept ({p.call('text')[-70:]!r})")
+        check(p.wait(lambda: p.deadline(eid)["status"] == "cancelled"), "…and so is the deadline")
+        p.call("dashKey", KEY_Z, CTRL)
+        check(p.wait(lambda: p.deadline(eid)["status"] == "open" and f"- [ ] essay outline 📅 2030-01-05 ^d{eid}" in p.call("text")),
+              f"Ctrl+Z brings both back ({p.deadline(eid)}, {p.call('text')[-80:]!r}, {p.call('checkState')})")
+
+        out = p.pomo("add", "Registered topic and supervisor", "2030-01-06")
+        wid = int(re.search(r"#(\d+)", out).group(1))
+        check(p.wait(lambda: "NOT IN A NOTE YET" in heads()), f"a deadline no note holds waits in its own band ({heads()})")
+        row("Registered topic and supervisor")
+        p.call("dashKey", KEY_RETURN, 0)
+        check(p.wait(lambda: f"Registered topic and supervisor 📅 2030-01-06 ^d{wid}" in p.call("text")),
+              "Enter writes it into today's note")
+        check(p.wait(lambda: p.deadline(wid)["link"] != ""), "…and the store knows its line")
 
         # 12b. the keys sheet: every key the page answers to, listed; one
         # moved through the sheet, kept in keys.json, and working in the note
@@ -1015,7 +1079,7 @@ def main() -> int:
         usage = p.state / "longhand" / "usage.tsv"
         check(p.wait(lambda: "\tclose\t" in usage.read_text()), "closing the page writes its usage log")
         events = {line.split("\t")[1] for line in usage.read_text().splitlines()}
-        check({"open", "close", "ctrl-d", "bound", "day", "prompt"} <= events, f"…with what was used ({sorted(events)})")
+        check({"open", "close", "ctrl-d", "bound", "day", "drop", "rename"} <= events, f"…with what was used ({sorted(events)})")
         check(not any(w in usage.read_text() for w in ("chapter", "obsidian", "one-pager")), "…and none of the note's words")
     finally:
         p.close()

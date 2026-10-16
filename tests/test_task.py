@@ -20,7 +20,7 @@ let src = fs.readFileSync(process.argv[1], 'utf8').replace('.pragma library', ''
 const m = {};
 new Function('module', src + '\\nmodule.parse = parse;\\nmodule.scan = scan;\\nmodule.where = where;'
   + '\\nmodule.setField = setField;\\nmodule.setPriority = setPriority;\\nmodule.setState = setState;'
-  + '\\nmodule.nextPriority = nextPriority;\\nmodule.sameWords = sameWords;')(m);
+  + '\\nmodule.nextPriority = nextPriority;\\nmodule.sameWords = sameWords;\\nmodule.setWords = setWords;')(m);
 const input = JSON.parse(fs.readFileSync(0, 'utf8'));
 process.stdout.write(JSON.stringify({
   lines: input.lines.map(m.parse),
@@ -30,6 +30,7 @@ process.stdout.write(JSON.stringify({
     : e[1] === 'prio' ? m.setPriority(e[0], e[2])
     : e[1] === 'state' ? m.setState(e[0], e[2])
     : e[1] === 'same' ? m.sameWords(e[0], e[2])
+    : e[1] === 'words' ? m.setWords(e[0], e[2])
     : m.nextPriority(e[0])),
 }));
 """
@@ -122,6 +123,9 @@ EDITS = [
     (["- [ ] loose thought again", "same", "loose thought", None], False),
     (["- [ ] read ch.7 #hfpi ⏳ 2026-10-18", "same", "read ch.7 #hfpi", None], True),
     (["# a heading", "same", "a heading", None], False),
+    (["- [ ] draft the intro #dtm ⏳ 2026-10-18 📅 2026-10-20 ^d12", "words", "draft the introduction #dtm", None],
+     "- [ ] draft the introduction #dtm ⏳ 2026-10-18 📅 2026-10-20 ^d12"),
+    (["- [x] old words ", "words", "  new   words ", None], "- [x] new words"),
     ([0, "cycle", None, None], 2),
     ([2, "cycle", None, None], -1),
     ([-1, "cycle", None, None], 0),
@@ -208,6 +212,10 @@ def main() -> int:
     t = task.scan(NOTES[1])
     check([x["title"] for x in t] == ["real one", "after the fence"],
           "a box in a fence or the frontmatter is text, not a task")
+    t = task.scan("- [ ] essay\n  what the brief says\n\n  - [ ] outline\n- [ ] next\n# h\n  under a heading")
+    check([x["details"] for x in t] == [2, 0, 0], "a box counts the lines of detail under it, and a sibling or heading ends them")
+    t = task.scan("- [ ]\n- [ ] \n- [x]\n- [ ] 📅 2026-10-20 ^d4\n- [ ] words")
+    check([x["line"] for x in t] == [3, 4], "an empty box is not a task; a bound one with its words cleared still is")
     check(task.scan(NOTES[2])[0]["path"] == ["Untitled", "Lab"], "a rule is not frontmatter")
     check(task.scan(NOTES[2])[0]["project"] == "intsem", "the innermost tagged heading claims")
 

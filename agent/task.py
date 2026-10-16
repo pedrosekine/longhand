@@ -112,7 +112,10 @@ def scan(text: str) -> list[dict]:
             continue
 
         t = parse(line)
-        if not t:
+        # A box with no words is a leftover of editing, not a task
+        # (2026-10-17). A bound one keeps its place: its deadline must not be
+        # cancelled because its words were cleared.
+        if not t or (t["title"] == "" and t["anchor"] == 0):
             continue
         while boxes and boxes[-1]["indent"] >= t["indent"]:
             boxes.pop()
@@ -129,7 +132,23 @@ def scan(text: str) -> list[dict]:
             t["project"] = t["claimed"]
         boxes.append({"indent": t["indent"], "line": i})
         out.append(t)
+    for t in out:
+        t["details"] = details(lines, t["line"], t["indent"])
     return out
+
+
+def details(lines: list[str], at: int, indent: int) -> int:
+    """How many lines of detail a box has: the lines under it indented
+    deeper than it, up to the first that is not (docs/tasks.md — details
+    stay in the note, under the task)."""
+    n = 0
+    for line in lines[at + 1:]:
+        if line.strip() == "":
+            continue
+        if len(line) - len(line.lstrip()) <= indent or HEADING_RE.match(line):
+            break
+        n += 1
+    return n
 
 
 def where(t: dict) -> str:

@@ -42,6 +42,7 @@ cp -r plugin-deadline ~/.config/omarchy/plugins/longhand.deadline
 # add {"id":"longhand.page"}, {"id":"longhand.pomo"}, {"id":"longhand.deadline"} to plugins[] in ~/.config/omarchy/shell.json
 ln -s "$PWD/cli/pomo"             ~/.local/bin/pomo
 ln -s "$PWD/agent/longhand-agent" ~/.local/bin/longhand-agent
+ln -s "$PWD/cli/longhand-check"   ~/.local/bin/longhand-check    # keeps the notes, the store and the popup one thing
 longhand-agent install
 mkdir -p ~/.local/share/icons/hicolor/scalable/apps         # "Longhand" in the app launcher (Super+Space)
 ln -s "$PWD/launcher/longhand.desktop" ~/.local/share/applications/longhand.desktop
@@ -231,6 +232,7 @@ Hyprland reports a new config error, the old file is put back.
 python3 tests/test_blocks.py                                # block splitter, JS and Python must agree (needs node)
 QT_QPA_PLATFORM=offscreen /usr/lib/qt6/bin/qmltestrunner -input tests   # editor (driven by keys), keys, emphasis, calendar days, bound lines
 python3 tests/test_pomo.py                                    # the deadline CLI's contract with the page
+python3 tests/test_check.py                                   # one copy of a task: the notes, the store and the ledger agree
 python3 tests/test_keys_guide.py                              # docs/keys.md is the keys as they are (needs node)
 python3 tests/test_hyprkeys.py                                # Hyprland's six keys, against a fake hyprctl
 python3 tests/test_migrate.py                                 # the move from omarchy-student, in a throwaway $HOME
@@ -251,12 +253,16 @@ no date, and on a bound line reschedules (empty unbinds). A checkbox list
 goes to the agent only once its dates are bound. The line then
 reads `- [ ] chapter 2 draft #thesis 📅 2026-10-16 17:00 ^d6` on disk —
 Obsidian shows the date, `^d6` is a block id the deadline links back to —
-and the page draws the date at the line's end. The deadline module is the
-truth: ticking the line marks it done, editing its words renames it, the
-first `#tag` is its project; changes made in the popup or `pomo` reach the
-line when its note opens. Deleting a bound line asks whether the deadline
-goes too. The calendar marks deadline days, `Ctrl+T` lists deadlines
-first, and in the bar popup `o` opens a deadline's line.
+and the page draws the date at the line's end. The line is the task: its
+words are the deadline's title, its `#tag` (or the tagged heading above it)
+its project, and a tick or a date changed anywhere — the line, the
+dashboard, the bar popup, `pomo`, Obsidian — reaches every other place.
+Deleting the line, or a whole block, cancels its deadlines and says so
+under the cursor; pasting the line anywhere or `Ctrl+Z` brings them back.
+Nothing is asked, and nothing is erased: cancelled is history. The
+calendar marks deadline days, `Ctrl+T` lists deadlines first, and in the
+bar popup `o` opens a deadline's line. How it all holds together, and why:
+[docs/tasks.md](docs/tasks.md).
 
 ## The dashboard
 
@@ -268,12 +274,18 @@ never by the day the thought was written. Each row says where it was written
 and how long ago ("Design Theory › Essay 2 · yesterday"); dates are the same
 pills as in the note.
 
-Enter opens the line in its note, as it does everywhere. `Ctrl+Enter` ticks
-it — in the day it was written, so the note and the dashboard never disagree.
-`t` asks "when?" in words ("friday"), `p` walks the three priorities, `Del`
-drops it (kept in the note as `- [-] … ❌ <day>`, so the decision is on
-record), `Ctrl+Z` takes a tick or a drop back. The bar's deadline popup
-(`SUPER+ALT+D`) stays the glance; the dashboard is where the work gets done.
+Enter opens the line in its note, on any day, as it does everywhere.
+`Ctrl+Enter` ticks it — in the day it was written, so the note and the
+dashboard never disagree. `t` asks "when?" in words ("friday"), `p` walks
+the three priorities, `Ctrl+E` renames it (the line's words; details stay in
+the note, as indented lines under it, and the row says how many), `Del`
+cancels it (kept in the note as `- [-] … ❌ <day>`, so the decision is on
+record), `Ctrl+Z` takes a tick or a cancel back. A deadline no note holds
+yet — an agent's proposal that matched none of your checkboxes, or one
+added with `pomo` — waits under **not in a note yet**, marked as the
+agent's: `Ctrl+E` lets you write over its words, Enter writes it into
+today's note. The bar's deadline popup (`SUPER+ALT+D`) stays the glance;
+the dashboard is where the work gets done.
 
 ## How it is used
 

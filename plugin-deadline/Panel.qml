@@ -18,9 +18,11 @@ import qs.Ui
 //                           there is no line to open)
 //   1 grade                 Enter = inline grade editor
 //   2 hide                  Enter = keep the record, drop it from the list
-//   3 remove                Enter = delete outright
+//   3 cancel                Enter = cancel it: its line becomes `[-]`, the
+//                           deadline is kept as history (nothing is deleted
+//                           outside the note, docs/tasks.md)
 // Up/Down pick a row, Left/Right a column, `d` `g` `x` are shortcuts for
-// done, grade, remove; `o` (or a click on the title) opens the page at the
+// done, grade, cancel; `o` (or a click on the title) opens the page at the
 // note line as well. Mouse hover drives the same cursor so exactly one cell
 // is highlighted at a time.
 //
@@ -113,7 +115,7 @@ Panel {
     }
     else if (root.cursorCol === 1) root.startGrade(item)
     else if (root.cursorCol === 2) svc.hide(item.id)
-    else svc.remove(item.id)
+    else svc.cancel(item.id)
   }
 
   function toggleSelected() {
@@ -135,7 +137,7 @@ Panel {
 
   function removeSelected() {
     var item = root.selectedItem()
-    if (item) svc.remove(item.id)
+    if (item) svc.cancel(item.id)
   }
 
   function startGrade(item) {
@@ -170,6 +172,9 @@ Panel {
     root.cursorRow = 0
     root.cursorCol = 0
     root.gradingId = 0
+    // Edits made while the page was closed (in Obsidian, a deleted line)
+    // are caught when the popup opens, so it never shows a stale list.
+    if (root.opened) svc.check()
   }
 
   Connections {
@@ -342,7 +347,7 @@ Panel {
                   model: row.grading ? [] : [
                     { col: 1, label: row.modelData.grade !== "" ? "grade " + row.modelData.grade : "grade", tip: "Type the grade (g)" },
                     { col: 2, label: "hide", tip: "Keep the record, drop it from the list" },
-                    { col: 3, label: "✕", tip: "Delete (x)" }
+                    { col: 3, label: "✕", tip: "Cancel (x)" }
                   ]
 
                   Button {
@@ -431,7 +436,7 @@ Panel {
           wrapMode: Text.WordWrap
           text: root.gradingId > 0
             ? "Enter saves the grade · Esc cancels"
-            : "↑↓ ←→ move · Enter act · d done · g grade · o open its line · x remove" + (root.waiting.length > 0 ? " · w waiting" : "")
+            : "↑↓ ←→ move · Enter act · d done · g grade · o open its line · x cancel" + (root.waiting.length > 0 ? " · w waiting" : "")
           color: root.faint
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption

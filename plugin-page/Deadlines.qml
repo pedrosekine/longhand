@@ -33,7 +33,7 @@ Item {
       var due = parseInt(f[1], 10)
       if (!isFinite(id) || !isFinite(due)) continue
       var status = f.length > 3 ? f[3] : "open"
-      if (status !== "done" && status !== "hidden") status = "open"
+      if (status !== "done" && status !== "hidden" && status !== "cancelled") status = "open"
       var doneAt = f.length > 4 ? parseInt(f[4], 10) : 0
       var d = { id: id, due: due, title: f[2], status: status, doneAt: isFinite(doneAt) ? doneAt : 0,
                 grade: f.length > 5 ? f[5] : "", project: f.length > 6 ? f[6] : "", link: f.length > 7 ? f[7] : "" }
@@ -63,6 +63,9 @@ Item {
   // `done` already run), so what it wrote is in the note too.
   readonly property bool busy: root.job !== null || root.queue.length > 0
   signal idle()
+  // The store was changed by the page (not a date being read): the notes'
+  // other lines follow, through the check.
+  signal changed()
   property int exitCode: 0
   property bool exited: false
   property bool streamed: false
@@ -91,7 +94,7 @@ Item {
     if (root.exitCode !== 0) console.warn("longhand.page pomo " + j.args.join(" ") + ": " + err.text.trim())
     // A first deadline creates the file, which a watch on a missing file
     // does not see: read it again after every change.
-    else if (j.args[0] !== "when") file.reload()
+    else if (j.args[0] !== "when") { file.reload(); root.changed() }
     if (j.done) j.done(root.exitCode, out.text)
     root.next()
     if (!root.busy) root.idle()
@@ -129,4 +132,8 @@ Item {
   function reopen(id) { root.run(["reopen", String(id)]) }
   function remove(id) { root.run(["rm", String(id)]) }
   function hide(id) { root.run(["hide", String(id)]) }
+  function cancel(id) { root.run(["cancel", String(id)]) }
+  // Read the file again now, rather than when the watch says so: after a
+  // check, the page wants the store as it was left before it catches up.
+  function reload() { file.reload() }
 }

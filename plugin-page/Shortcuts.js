@@ -25,7 +25,6 @@ var places = {
   any: "anywhere in the page",
   note: "in the note",
   mention: "while @ lists projects",
-  prompt: "while a question is under the cursor",
   search: "in find",
   dash: "in the dashboard",
   calendar: "in the calendar",
@@ -33,7 +32,7 @@ var places = {
   margin: "in the margin",
   chat: "in the conversation box"
 }
-var typing = { note: true, mention: true, prompt: true, search: true, chat: true }
+var typing = { note: true, mention: true, search: true, chat: true }
 
 var groups = [
   { id: "page", title: "The page" },
@@ -41,7 +40,6 @@ var groups = [
   { id: "move", title: "Moving through the note" },
   { id: "agent", title: "The agent" },
   { id: "mention", title: "@ a project" },
-  { id: "prompt", title: "A question under the cursor" },
   { id: "find", title: "Find" },
   { id: "dash", title: "Dashboard" },
   { id: "calendar", title: "Calendar" },
@@ -104,9 +102,6 @@ var actions = [
   { id: "mentionClass", group: "mention", places: ["mention"], does: "Start the class (# Course #tag)", keys: ["Shift+Enter"] },
   { id: "mentionClose", group: "mention", places: ["mention"], does: "Close the list", keys: ["Esc"] },
 
-  { id: "promptSwitch", group: "prompt", places: ["prompt"], does: "Switch between yes and no", keys: ["Left", "Right", "Up", "Down", "Tab"] },
-  { id: "promptAnswer", group: "prompt", places: ["prompt"], does: "Answer", keys: ["Enter"] },
-  { id: "promptDismiss", group: "prompt", places: ["prompt"], does: "Say no", keys: ["Esc"] },
 
   { id: "findNext", group: "find", places: ["search"], does: "Next match", keys: ["Enter"] },
   { id: "findPrev", group: "find", places: ["search"], does: "Previous match", keys: ["Shift+Enter"] },
@@ -126,7 +121,8 @@ var actions = [
   { id: "dashDone", group: "dash", places: ["dash"], does: "Done (again: not done)", keys: ["Ctrl+Enter", "Space", "E", "Ctrl+L"] },
   { id: "dashWhen", group: "dash", places: ["dash"], does: "When: reschedule it", keys: ["T", "Ctrl+D"] },
   { id: "dashPriority", group: "dash", places: ["dash"], does: "Cycle its priority", keys: ["P"] },
-  { id: "dashDrop", group: "dash", places: ["dash"], does: "Drop it", keys: ["Del", "Backspace"] },
+  { id: "dashRename", group: "dash", places: ["dash"], does: "Rename it (its line's words)", keys: ["Ctrl+E"] },
+  { id: "dashDrop", group: "dash", places: ["dash"], does: "Cancel it (the line stays, as cancelled)", keys: ["Del", "Backspace"] },
   { id: "dashUndo", group: "dash", places: ["dash"], does: "Take the last tick back", keys: ["Ctrl+Z"] },
   { id: "dashBack", group: "dash", places: ["dash"], does: "Back to the note", keys: ["Esc"] },
 

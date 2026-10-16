@@ -17,7 +17,7 @@
 var CUE_RE = /^(.*\S)\s+(?:due|by|until|before)\s+(.+?)\s*$/i
 var CAL_RE = /^(.*\S)\s*📅\s*(.+?)\s*$/
 var TAG_RE = /(^|\s)#([\w\/-]+)/
-var ANCHOR_RE = /^\s*[-*+] \[([ xX])\] .*\s\^d(\d+)\s*$/
+var ANCHOR_RE = /^\s*[-*+] \[([ xX\/\-])\] .*\s\^d(\d+)\s*$/
 // What a date phrase has in it. "by phone" or "until done" must not read as
 // one (GNU date accepts single letters as time zones, so be strict here).
 var DATEISH_RE = /\d|\b(today|tonight|tomorrow|yesterday|mon|tues?|wed|thu|thur|fri|sat|sun|monday|tuesday|wednesday|thursday|friday|saturday|sunday|jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec|january|february|march|april|june|july|august|september|october|november|december|week|month|noon|midnight|next)\b/i
@@ -112,13 +112,14 @@ function tail(ms, id) {
   return id > 0 ? s + " ^d" + id : s
 }
 
-// Bound lines in a text: id -> { line, checked }.
+// Bound lines in a text: id -> { line, checked, state }. A cancelled line
+// (`[-]`) is still bound: its tag is in the note.
 function anchors(text) {
   var out = {}
   var lines = text.split("\n")
   for (var i = 0; i < lines.length; i++) {
     var m = lines[i].match(ANCHOR_RE)
-    if (m) out[m[2]] = { line: i, checked: m[1] !== " " }
+    if (m) out[m[2]] = { line: i, checked: m[1] === "x" || m[1] === "X", state: m[1] === "X" ? "x" : m[1] }
   }
   return out
 }

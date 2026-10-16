@@ -491,7 +491,8 @@ cmd_expired() {
 # --- deadlines (manual entry; TSV, no jq) ---
 # One deadline per line:
 #   id<TAB>due<TAB>title<TAB>status<TAB>done_at<TAB>grade<TAB>project<TAB>link
-# status is open | done | hidden; done_at is an epoch (0 while open); grade is
+# status is open | done | hidden | cancelled; done_at is an epoch (0 while
+# open; for a cancelled one, when it was cancelled); grade is
 # free text ("7.5", "A-", "82/100") and may be empty; project is what it
 # belongs to (a course, a thesis, anything: "stats"); link is a file path or URL for the thing
 # itself. The last three may be empty. Lines written before the status column
@@ -594,7 +595,7 @@ next_id() { # never returns the same id twice, even across removals
 normalize_deadlines() { # stdin -> stdout, eight tab-separated fields per line
   awk -F'\t' 'BEGIN { OFS = "\t" }
     NF >= 3 {
-      s = $4; if (s != "open" && s != "done" && s != "hidden") s = "open"
+      s = $4; if (s != "open" && s != "done" && s != "hidden" && s != "cancelled") s = "open"
       print $1, $2, $3, s, $5+0, $6, $7, $8
     }'
 }
@@ -624,7 +625,7 @@ find_deadline() { # $1=id -> the normalized line, or empty
 # the order a student wants to scan, and the widget mirrors it.
 sorted_deadlines() {
   normalize_deadlines < "$DEADLINE_FILE" \
-    | awk -F'\t' 'BEGIN { OFS = "\t"; r["open"] = 0; r["done"] = 1; r["hidden"] = 2 } { print r[$4], $0 }' \
+    | awk -F'\t' 'BEGIN { OFS = "\t"; r["open"] = 0; r["done"] = 1; r["hidden"] = 2; r["cancelled"] = 3 } { print r[$4], $0 }' \
     | sort -t"$TAB" -k1,1n -k3,3n \
     | cut -f2-
 }
@@ -733,13 +734,18 @@ cmd_deadline_set() { # <id> [--title <t>] [--project <s>] [--link <l>] [<when...
   report "deadline #$ID · $(when_text "$ts") · $title${project:+ · $project}"
 }
 
-cmd_deadline_done() { # <id> -> submitted: drops out of the countdown, stays on the list
+cmd_deadline_done() { # <id> [--at <epoch>] -> submitted: drops out of the countdown, stays on the list
+  # --at: when it was done, for a deadline brought back from cancelled
+  # (longhand-check), so it keeps the time it was really done.
+  local at
   require_deadline "${1:-}" done
+  at=$(now)
+  if [ "${2:-}" = "--at" ] && [[ "${3:-}" =~ ^[0-9]+$ ]]; then at="$3"; fi
   if [ "$STATUS" = "done" ]; then
     echo "deadline #$ID already done"
     return
   fi
-  write_deadline "$ID" "$TS" "$TITLE" "done" "$(now)" "$GRADE" "$PROJECT" "$LINK"
+  write_deadline "$ID" "$TS" "$TITLE" "done" "$at" "$GRADE" "$PROJECT" "$LINK"
   report "deadline #$ID done · $TITLE"
 }
 
@@ -794,6 +800,18 @@ cmd_deadline_hide() { # <id> -> keep the record (agents still see it), drop it f
   report "deadline #$ID hidden · $TITLE"
 }
 
+cmd_deadline_cancel() { # <id> -> its line is gone or was cancelled: kept as history, off every list
+  # Cancelled is not deleted (docs/tasks.md): the line coming back, by a
+  # paste or an undo, brings the deadline back as it was. done_at says when.
+  require_deadline "${1:-}" cancel
+  if [ "$STATUS" = "cancelled" ]; then
+    echo "deadline #$ID already cancelled"
+    return
+  fi
+  write_deadline "$ID" "$TS" "$TITLE" "cancelled" "$(now)" "$GRADE" "$PROJECT" "$LINK"
+  report "deadline #$ID cancelled · $TITLE"
+}
+
 cmd_deadline_unhide() { # <id> -> back on the list as done
   require_deadline "${1:-}" unhide
   if [ "$STATUS" != "hidden" ]; then
@@ -845,19 +863,20 @@ cmd_deadline_list() { # [--all] [--json] [--project <s>]; hidden deadlines only 
     printf '{"deadlines":'
     # The project filter goes through the environment (see write_deadline).
     sorted_deadlines | proj="$project" awk -F'\t' -v all="$all" '
-      (all == "true" || $4 != "hidden") && (ENVIRON["proj"] == "" || tolower($7) == tolower(ENVIRON["proj"]))' \
+      (all == "true" || ($4 != "hidden" && $4 != "cancelled")) && (ENVIRON["proj"] == "" || tolower($7) == tolower(ENVIRON["proj"]))' \
       | deadline_json
     echo '}'
     return
   fi
   local id ts title status done_at grade proj link mark shown=0
   while IFS="$US" read -r id ts title status done_at grade proj link; do
-    [ "$status" = "hidden" ] && [ "$all" != "true" ] && continue
+    { [ "$status" = "hidden" ] || [ "$status" = "cancelled" ]; } && [ "$all" != "true" ] && continue
     [ -n "$project" ] && [ "${proj,,}" != "${project,,}" ] && continue
     shown=$(( shown + 1 ))
     case "$status" in
       done)   mark="✓" ;;
       hidden) mark="·" ;;
+      cancelled) mark="×" ;;
       *)      mark=" " ;;
     esac
     printf '%3s %s %-17s %-9s %s%s%s\n' "$id" "$mark" "$(when_text "$ts")" \
@@ -924,7 +943,7 @@ cmd_deadline() {
   local sub="${1:-list}"
   shift 2>/dev/null || true
   case "$sub" in
-    add|set|edit|done|submit|undone|reopen|grade|hide|unhide|show|rm|remove)
+    add|set|edit|done|submit|undone|reopen|grade|hide|unhide|show|cancel|rm|remove)
       # One writer at a time: the page, the popup and the agent can all call
       # in at once, and every change rewrites (or appends to) the file and
       # bumps the id counter. The lock lives beside the file.
@@ -939,10 +958,11 @@ cmd_deadline() {
     add)          cmd_deadline_add "$@" ;;
     set|edit)     cmd_deadline_set "$@" ;;
     list|ls)      cmd_deadline_list "$@" ;;
-    done|submit)  cmd_deadline_done "${1:-}" ;;
+    done|submit)  cmd_deadline_done "$@" ;;
     undone|reopen) cmd_deadline_reopen "${1:-}" ;;
     grade)        cmd_deadline_grade "$@" ;;
     hide)         cmd_deadline_hide "${1:-}" ;;
+    cancel)       cmd_deadline_cancel "${1:-}" ;;
     unhide|show)  cmd_deadline_unhide "${1:-}" ;;
     rm|remove)    cmd_deadline_rm "${1:-}" ;;
     next)         cmd_deadline_next "${1:-}" ;;
@@ -950,6 +970,16 @@ cmd_deadline() {
     --json|--all|--project|--subject) cmd_deadline_list "$sub" "$@" ;;
     help|-h|--help) deadline_usage 2>&1 ;;
     *) deadline_usage; exit 1 ;;
+  esac
+  case "$sub" in
+    add|set|edit|done|submit|undone|reopen|grade|hide|unhide|show|cancel|rm|remove)
+      # Typed by hand in a terminal: the note lines follow at once (one copy
+      # of a task, docs/tasks.md). The page and the popup run the check
+      # themselves, and the check runs pomo with LONGHAND_NO_CHECK set.
+      if [ -t 1 ] && [ -z "${LONGHAND_NO_CHECK:-}" ] && command -v longhand-check >/dev/null 2>&1; then
+        exec 9>&-
+        longhand-check --quiet || true
+      fi ;;
   esac
 }
 
@@ -963,6 +993,7 @@ usage: pomo deadline add <title> [--project <s>] [--link <url-or-path>] <when...
        pomo deadline done|reopen <id>           # submitted / back to open
        pomo deadline grade <id> [<grade>]       # record the mark (marks done); no grade clears it
        pomo deadline hide|unhide <id>           # keep the record, drop it from the list
+       pomo deadline cancel <id>                # its line is gone: history, off every list
        pomo deadline rm <id>                    # delete outright
        pomo deadline next [--json]              # the one the bar counts down to
        pomo deadline when <when...>             # how a date phrase reads: epoch<TAB>text

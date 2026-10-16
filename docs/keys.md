@@ -70,14 +70,6 @@ Where a row has two keys, either works: the second is usually the one another ap
 | Start the class (# Course #tag) | `Shift+Enter` | while @ lists projects |
 | Close the list | `Esc` | while @ lists projects |
 
-## A question under the cursor
-
-| | Keys | Works |
-|---|---|---|
-| Switch between yes and no | `←` · `→` · `↑` · `↓` · `Tab` | while a question is under the cursor |
-| Answer | `Enter` | while a question is under the cursor |
-| Say no | `Esc` | while a question is under the cursor |
-
 ## Find
 
 | | Keys | Works |
@@ -100,7 +92,8 @@ Where a row has two keys, either works: the second is usually the one another ap
 | Done (again: not done) | `Ctrl+Enter` · `Space` · `e` · `Ctrl+L` | in the dashboard |
 | When: reschedule it | `t` · `Ctrl+D` | in the dashboard |
 | Cycle its priority | `p` | in the dashboard |
-| Drop it | `Del` · `Backspace` | in the dashboard |
+| Rename it (its line's words) | `Ctrl+E` | in the dashboard |
+| Cancel it (the line stays, as cancelled) | `Del` · `Backspace` | in the dashboard |
 | Take the last tick back | `Ctrl+Z` | in the dashboard |
 | Back to the note | `Esc` | in the dashboard |
 

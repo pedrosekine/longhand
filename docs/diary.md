@@ -23,10 +23,14 @@ in code, and the vault path is never recorded in this public repo.
 2. **The canvas is the student's, the store is the system's.** Every
    thought and every word in a note is written by the student, only ever by
    the student; the agent talks in its own place (the margin, the chat),
-   never in the canvas. Structured facts (due dates, status, project) live
-   in the store the CLI owns, and when they disagree the store wins — so the
-   page may change the *facts* on a line that stands for a deadline (its
-   tick, its date, its anchor), never its words. (Amended 2026-10-11.)
+   never in the canvas. The line is the task: it says whether a deadline
+   exists, its words and its project; the store is a ledger of what a line
+   cannot hold (when it was done or cancelled, its grade), and a date or a
+   tick changed on either side wins over the side that did not change. The
+   page and `longhand-check` may change the *facts* on a line that stands
+   for a deadline (its tick, its date, its anchor), never its words.
+   (Amended 2026-10-11; 2026-10-17, see `tasks.md`: the store no longer
+   wins.)
 3. **Consent is an allowlist, enforced locally.** The model sees exactly what
    local code assembled: today's note minus private blocks, the agent's own
    knowledge files, the curriculum folder, the timer report. Nothing else on
@@ -853,4 +857,26 @@ only the window and the panels around it differ.
   match, as browsers and editors do; going back is `Shift+Esc`. The written
   guide, docs/keys.md, is generated from Shortcuts.js and hyprkeys.py and a
   test fails when it falls behind.
-
+- 2026-10-17: one copy of a task, not two. Found while asking why some
+  tasks had no project and could be neither opened nor deleted: the line and
+  the store were two copies with a sync between them, and every way a task
+  went missing was a gap in that sync (the "remove it too?" prompt defaulting
+  to no, a block deleted with several deadlines asking about only the last,
+  cuts and Obsidian edits never noticed, two rules for a project, Enter
+  previewing instead of going, Delete doing nothing on a deadline). Compared
+  against Org's agenda and Obsidian Tasks (files are the truth, lists are
+  views), Logseq's file version and Obsidian block links (files plus ids on
+  the blocks something refers to), and Tana, Roam and Notion (a database the
+  page is a view of): Longhand takes the middle, so Obsidian stays a full
+  second editor and principle 1 holds. The contract: the person's words
+  live only in markdown; the layer holds ids, history, conversations and
+  views, and repairs itself after outside edits; no id is ever shown inside
+  Longhand. A deadline is cancelled exactly while no note holds its tag, and
+  the person is told by a notice that waits for nothing, which retires the
+  2026-10-10 prompt. Born without a line means the agent's, kept in a "not
+  in a note yet" band until the person writes it in, with its origin kept.
+  The dashboard: Enter goes to the line on any day, Delete cancels a line,
+  Ctrl+E renames (Todoist's key; the second place the dashboard takes
+  words). Project is one rule everywhere — the line's tag, else the heading's.
+  Empty boxes are not tasks. The whole model, and what was learned, is in
+  `tasks.md`.

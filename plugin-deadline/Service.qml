@@ -100,8 +100,8 @@ Item {
       // title: the widget is installed as a *copy* of this file, so a newer
       // CLI adding a column must not make a stale install render it as text.
       var status = f.length > 3 ? f[3] : "open"
-      if (status !== "done" && status !== "hidden") status = "open"
-      if (status === "hidden") continue
+      if (status !== "done" && status !== "hidden" && status !== "cancelled") status = "open"
+      if (status === "hidden" || status === "cancelled") continue
       var doneAt = f.length > 4 ? parseInt(f[4], 10) : 0
       out.push({
         id: id,
@@ -136,7 +136,9 @@ Item {
     actionProc.running = true
   }
 
-  function remove(id) { run(["rm", String(id)]) }
+  // Nothing is deleted from here: cancelling marks the line `[-]` and keeps
+  // the deadline as history (docs/tasks.md).
+  function cancel(id) { run(["cancel", String(id)]) }
   function markDone(id) { run(["done", String(id)]) }
   function reopen(id) { run(["reopen", String(id)]) }
   function hide(id) { run(["hide", String(id)]) }
@@ -164,8 +166,24 @@ Item {
     onLoadFailed: root.fileGone()
   }
 
+  // After every change, the note lines follow (one copy of a task); and
+  // when the popup opens, edits made elsewhere are caught. One at a time.
+  function check() {
+    if (checkProc.running) { checkProc.again = true; return }
+    checkProc.running = true
+  }
+
   Process {
     id: actionProc
     running: false
+    onExited: root.check()
+  }
+
+  Process {
+    id: checkProc
+    property bool again: false
+    command: ["longhand-check", "--quiet"]
+    running: false
+    onExited: if (checkProc.again) { checkProc.again = false; checkProc.running = true }
   }
 }

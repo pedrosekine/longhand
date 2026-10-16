@@ -143,7 +143,10 @@ function scan(text) {
     }
 
     var t = parse(line)
-    if (!t) continue
+    // A box with no words is a leftover of editing, not a task (2026-10-17).
+    // A bound one keeps its place: its deadline must not be cancelled
+    // because its words were cleared.
+    if (!t || (t.title === "" && t.anchor === 0)) continue
     while (boxes.length > 0 && boxes[boxes.length - 1].indent >= t.indent) boxes.pop()
     t.line = i
     t.depth = boxes.length
@@ -155,7 +158,22 @@ function scan(text) {
     boxes.push({ indent: t.indent, line: i })
     out.push(t)
   }
+  for (var k = 0; k < out.length; k++) out[k].details = details(lines, out[k].line, out[k].indent)
   return out
+}
+
+// How many lines of detail a box has: the lines under it indented deeper
+// than it, up to the first that is not (docs/tasks.md — details stay in the
+// note, under the task).
+function details(lines, at, indent) {
+  var n = 0
+  for (var i = at + 1; i < lines.length; i++) {
+    var line = lines[i]
+    if (line.trim() === "") continue
+    if (line.length - line.replace(/^\s+/, "").length <= indent || HEADING_RE.test(line)) break
+    n++
+  }
+  return n
 }
 
 // Where a task sits, for a row too narrow for the note: "Design Theory ›
@@ -249,6 +267,21 @@ function setField(line, mark, value) {
     p.fields.splice(_slot(p.fields, mark), 0, { mark: mark, value: value })
   }
   return render(p)
+}
+
+// A line with new words and every fact it carried kept: the dashboard's
+// rename (Ctrl+E). The words are the person's, typed by them.
+function setWords(line, words) {
+  var p = pieces(line)
+  if (!p) return line
+  p.words = String(words).replace(/\s+/g, " ").trim()
+  return render(p)
+}
+
+// The words of a box's text, without its facts: what a rename starts from.
+function wordsOf(text) {
+  var p = pieces("- [ ] " + text)
+  return p ? p.words : text
 }
 
 // Priority is one of the five glyphs or none, so setting it takes the old

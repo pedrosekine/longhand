@@ -9,7 +9,6 @@ import "Blocks.js" as Blocks
 import "Bound.js" as Bound
 import "Dates.js" as Dates
 import "Days.js" as Days
-import "Tasks.js" as Tasks
 import "Task.js" as Task
 import "Shortcuts.js" as Sc
 
@@ -290,6 +289,7 @@ Item {
   property int projFocus: -1         // in the projects list (-1: not there)
   property var projects: []          // [{ tag, name, next: { at, room } }]
   property int pendingGoto: 0        // a deadline whose line to land on once its note is open
+  property var pendingTask: null     // { text, line }: a task's line to land on, the same way
   readonly property int sideSpace: root.sidebarOpen && root.problem === "" ? root.sidebarWidth + root.marginGap : 0
   property bool applying: false
 
@@ -314,7 +314,6 @@ Item {
 
   // What is painted and what the margin shows.
   property var paint: []
-  property var ask: null         // { hashes, trigger, yes } — the prompt after Enter
   property bool marginOpen: false
   property int marginFocus: -1   // -1 note; 0..n-1 proposal rows; n = chat field
   property bool dashOpen: false
@@ -327,10 +326,11 @@ Item {
   property var tasks: []
   property var raised: []
   property var tickHistory: []   // ticks made from the panel, newest last, for Ctrl+Z
-  property var contextFor: null  // task whose surrounding block is shown in the panel
   property bool showOlder: false
-  property var dashWhenFor: null     // the task the dashboard is asking "when?" about
+  property var dashWhenFor: null     // what the dashboard's field is for: a task, or { deadline }
   property string dashWhenText: ""
+  property string dashFieldKind: "when"   // "when" (t) or "rename" (Ctrl+E)
+  property string dashFieldStart: ""      // the words a rename starts from
   property int taskFocus: 0
   property string currentHash: ""
   property string currentTrigger: ""   // the sign on the block under the cursor, for the header's "ask"
@@ -642,7 +642,6 @@ Item {
   // and by then it is information rather than noise.
   function send(trigger, hashes, focus) {
     root.used("send", trigger)
-    root.ask = null
     root.markSending([focus || hashes[0]])
     root.requestRun(trigger, hashes.join(","))
   }
@@ -667,52 +666,6 @@ Item {
     for (var i = 0; i < blocks.length; i++)
       if (hashes.indexOf(blocks[i].hash) >= 0 && /^\s*[-*+] \[ \] \S/m.test(blocks[i].text)) return true
     return false
-  }
-
-  function dropAsk() { root.ask = null }
-
-  // Keys while the prompt is up. Returns true when the key was consumed.
-  function askKey(event) {
-    if (!root.ask) return false
-    if (Sc.hit(event, "promptSwitch")) {
-      root.ask = Object.assign({}, root.ask, { yes: !root.ask.yes })
-      return true
-    }
-    // No letters answer a prompt: a "y" may be the first letter of the
-    // next word (in Spanish it is a word), and a prompt must never act on
-    // what was meant as writing.
-    if (Sc.hit(event, "promptDismiss")) { root.declineAsk(); return true }
-    if (Sc.hit(event, "promptAnswer")) {
-      if (root.ask.yes) { root.acceptAsk(); return true }
-      root.declineAsk()
-      return false   // a plain Enter: let it fall through and behave as usual
-    }
-    root.declineAsk(true)   // anything else: the prompt just goes away
-    return false
-  }
-
-  // One thing is ever asked under the cursor now: delete the deadline of a
-  // line that went. (A date at the end of a checkbox is not asked about
-  // either: it lights up and binds. Sending is never asked about — the
-  // header's "ask" and Ctrl+Enter are the ways in.)
-  function acceptAsk() {
-    var a = root.ask
-    root.ask = null
-    if (!a) return
-    root.used("prompt", a.kind + ":yes")
-    if (a.kind === "delete") dl.hide(a.id)
-  }
-
-  // `brushed`: typed past, not answered.
-  function declineAsk(brushed) {
-    var a = root.ask
-    root.ask = null
-    if (a) root.used("prompt", a.kind + (brushed ? ":dismissed" : ":no"))
-  }
-
-  function askText(a) {
-    var choice = (a.yes ? "[yes]   no" : "yes   [no]") + "   · ←→ choose · " + root.keyName("promptAnswer")
-    return "this line had a deadline: " + a.title + ". remove it too (kept in history)?   " + choice
   }
 
   function blockBounds(hash) {
@@ -948,7 +901,6 @@ Item {
   // Keys the page owns, ahead of editing. True when taken.
   function pageKey(event) {
     if (root.mentionKey(event)) return true
-    if (root.askKey(event)) return true
     if (root.anywhereKey(event)) return true
     if (Sc.hit(event, "close")) { if (!root.alongside) root.dismiss(); return true }
     if (Sc.hit(event, "private")) { root.togglePrivate(); return true }
@@ -1269,7 +1221,6 @@ Item {
       root.used("dashboard")
       root.taskFocus = 0
       root.moveTaskFocus(0)
-      root.contextFor = null
       root.refreshTasks()
       dashKeys.forceActiveFocus()
     } else {
@@ -1348,7 +1299,7 @@ Item {
   }
 
   // By its words, not its line number: the note may have been written in
-  // since the list was gathered (the same reason Tasks.js looks by words).
+  // since the list was gathered (the same reason tasks are found by words).
   function landOnSection() {
     if (!root.pendingSection || !svc.ready) return
     var want = root.pendingSection.heading
@@ -1396,9 +1347,14 @@ Item {
     var older = 0
     var today = new Date()
     today.setHours(0, 0, 0, 0)
+    // Closed today (done, or cancelled) stays until tomorrow, so what just
+    // happened can still be seen; a deadline no line stands for yet has a
+    // band of its own.
     var due = dl.items.filter(function (d) {
-      return d.status === "open" || (d.status === "done" && d.doneAt * 1000 >= today.getTime())
+      return (d.status === "open" && d.link !== "")
+        || ((d.status === "done" || d.status === "cancelled") && d.doneAt * 1000 >= today.getTime())
     })
+    var waiting = dl.items.filter(function (d) { return d.status === "open" && d.link === "" })
     due.sort(function (a, b) {
       if (a.status !== b.status) return a.status === "open" ? -1 : 1
       return a.due - b.due
@@ -1411,6 +1367,11 @@ Item {
         if (lbl !== month) { rows.push({ kind: "month", text: lbl }); month = lbl }
         rows.push({ kind: "deadline", deadline: due[k] })
       }
+    }
+    if (waiting.length > 0) {
+      waiting.sort(function (a, b) { return a.due - b.due })
+      rows.push({ kind: "head", text: "NOT IN A NOTE YET", tag: "" })
+      for (var w = 0; w < waiting.length; w++) rows.push({ kind: "deadline", deadline: waiting[w] })
     }
 
     var doing = [], later = [], notes = []
@@ -1471,6 +1432,34 @@ Item {
     return rows
   }
 
+  // The line that stands for a deadline, as a task the edit path can find —
+  // by its tag, which survives any change of words. null when no note
+  // holds it.
+  function lineTaskOf(d) {
+    for (var i = 0; i < root.tasks.length; i++) if (root.tasks[i].anchor === d.id) return root.tasks[i]
+    var l = Bound.parseLink(d.link)
+    if (!l || !svc.configured) return null
+    return { anchor: d.id, date: l.stem, file: svc.pathFor(l.stem), text: "", line: -1, details: 0, path: [] }
+  }
+
+  // A deadline row's second line: where its line is, where it came from,
+  // how much is written under it.
+  function deadlineWhere(d) {
+    var bits = []
+    var t = null
+    for (var i = 0; i < root.tasks.length; i++) if (root.tasks[i].anchor === d.id) t = root.tasks[i]
+    var place = t ? (t.path || []).slice() : []
+    var full = d.project ? root.courseName(d.project) : ""
+    if (full !== "" && full !== d.project && place.length > 0) place[0] = full
+    if (place.length > 0) bits.push(place.join(" › "))
+    else if (d.project) bits.push(root.courseLabel(d.project))
+    if (d.status === "cancelled") bits.push("cancelled")
+    var o = root.origins[String(d.id)]
+    if (o && o.origin === "agent") bits.push("from the agent" + (o.rewritten ? " · rewritten by you" : ""))
+    if (t && t.details > 0) bits.push(t.details === 1 ? "1 line of detail" : t.details + " lines of detail")
+    return bits.join("   ·   ")
+  }
+
   // What a row says. The title is the words alone: the dates and the
   // priority a line carries are drawn as marks, so the metadata is on disk
   // and quiet on screen.
@@ -1519,6 +1508,7 @@ Item {
     var bits = []
     if (path.length > 0) bits.push(path.join(" › "))
     bits.push(root.sayAge(t.age))
+    if (t.details > 0) bits.push(t.details === 1 ? "1 line of detail" : t.details + " lines of detail")
     return bits.join("   ·   ")
   }
 
@@ -1595,9 +1585,9 @@ Item {
     return open + " open" + (due > 0 ? "   ·   " + due + " with a date to meet" : "")
   }
 
-  // Enter: go to the task. Today's note: the cursor lands on its line and
-  // the panel closes. Another day: its surrounding block unfolds under the
-  // row. Space or x ticks; Ctrl+Z takes the last tick back.
+  // Enter: go to the task's line, on any day; the dashboard closes. A
+  // deadline no line stands for yet is written into today's note — the
+  // person's act, which is what makes its words theirs (docs/tasks.md).
   function activateTask() {
     var row = root.taskRows[root.taskFocus]
     if (!row) return
@@ -1606,10 +1596,7 @@ Item {
     if (row.kind === "deadline") {
       var d = row.deadline
       if (Bound.parseLink(d.link)) { root.backToNote(); root.goToDeadline(d); return }
-      // No line yet: the first Enter says so, the second writes one into
-      // today's note.
-      if (root.contextFor && root.contextFor.deadline === d.id) root.writeIntoToday(d)
-      else root.contextFor = { deadline: d.id }
+      root.writeIntoToday(d)
     }
     if (row.kind === "raised") {
       dismissProc.command = [svc.runner, "dismiss", "--date", row.item.date, "--kind", row.item.kind, "--index", String(row.item.index)]
@@ -1624,13 +1611,31 @@ Item {
 
   // Delete: dropping something is an answer, and the only honest one for a
   // box that is never going to happen. The line keeps its words and becomes
-  // `- [-] … ❌ <today>`, so the note still says what was decided.
+  // `- [-] … ❌ <today>`, so the note still says what was decided. A
+  // deadline is cancelled the same way, through its line — words are only
+  // ever deleted in the note — and one with no line yet is cancelled in the
+  // store.
   function dropFocused() {
+    var row = root.taskRows[root.taskFocus]
+    if (row && row.kind === "deadline") { root.dropDeadline(row.deadline); return }
     var t = root.focusedTask()
     if (!t) return
     root.tickHistory = root.tickHistory.concat([{ drop: t }])
     root.editTask(t, "drop", "")
     root.used("drop")
+  }
+
+  function dropDeadline(d) {
+    if (d.status === "cancelled") return
+    var t = root.lineTaskOf(d)
+    if (t) {
+      root.tickHistory = root.tickHistory.concat([{ drop: t }])
+      root.editTask(t, "drop", "")
+    } else {
+      root.tickHistory = root.tickHistory.concat([{ uncancel: d.id }])
+      dl.cancel(d.id)
+    }
+    root.used("drop", "deadline")
   }
 
   // `p`: none → high → low → none. One key for the whole scale, because
@@ -1647,11 +1652,47 @@ Item {
   // note's own parser, so "friday" means here what it means there.
   function startDashWhen() {
     if (!root.focusedTask()) return
+    root.dashFieldKind = "when"
+    root.dashFieldStart = ""
     root.dashWhenFor = root.focusedTask()
     root.dashWhenText = ""
   }
 
+  // Ctrl+E: the task's words, rewritten on its row (Todoist's key for it).
+  // The second place the dashboard takes typed words, beside `t`; the
+  // details stay in the note, under the line. A deadline the agent wrote
+  // and no line holds yet is where a person writes over the agent's words.
+  function startDashRename() {
+    var row = root.taskRows[root.taskFocus]
+    if (!row) return
+    var target = null, words = ""
+    if (row.kind === "task") { target = row.task; words = Task.wordsOf(row.task.text) }
+    else if (row.kind === "deadline" && row.deadline.status !== "cancelled") {
+      var t = root.lineTaskOf(row.deadline)
+      if (t && t.text !== "") { target = t; words = Task.wordsOf(t.text) }
+      else if (!t) { target = { deadline: row.deadline }; words = row.deadline.title }
+      else { target = t; words = row.deadline.title }
+    }
+    if (!target) return
+    root.dashFieldKind = "rename"
+    root.dashFieldStart = words
+    root.dashWhenText = words
+    root.dashWhenFor = target
+  }
+
+  function commitDashRename() {
+    var t = root.dashWhenFor
+    var words = root.dashWhenText.replace(/\s+/g, " ").trim()
+    root.dashWhenFor = null
+    root.dashWhenText = ""
+    if (!t || words === "" || words === root.dashFieldStart) return
+    if (t.deadline) dl.set(t.deadline.id, ["--title", words])
+    else root.editTask(t, "rename", words)
+    root.used("rename")
+  }
+
   function commitDashWhen() {
+    if (root.dashFieldKind === "rename") { root.commitDashRename(); return }
     var t = root.dashWhenFor
     var phrase = root.dashWhenText.trim()
     root.dashWhenFor = null
@@ -1667,21 +1708,20 @@ Item {
 
   // The one edit path. Today's note is live in the editor; any other day is
   // rewritten on disk, one line at a time, found by its words because the
-  // note may have moved on since the list was read (Tasks.js).
+  // note may have moved on since the list was read.
   function editTask(t, how, arg) {
     if (t.date === svc.noteDate) {
-      var rows = editor.rows
-      for (var i = 0; i < rows.length; i++) {
-        if (!Task.sameWords(rows[i].raw, t.text)) continue
-        root.writeLine(rows[i], root.applyEdit(rows[i].raw, how, arg))
-        Qt.callLater(root.refreshTasks)
-        return
-      }
+      // By its tag when it has one: it survives any change of words or
+      // state (a cancelled `[-]` line still holds it).
+      var tagged = t.anchor > 0 ? Bound.anchors(editor.text)[t.anchor] : null
+      var r = t.anchor > 0 ? (tagged ? editor.rows[tagged.line] : null) : root.rowByWords(t.text, t.line)
+      if (!r) return
+      root.writeLine(r, root.applyEdit(r.raw, how, arg))
+      Qt.callLater(root.refreshTasks)
+      if (t.anchor > 0) root.scheduleCheck()
       return
     }
-    editFile.pending = { task: t, how: how, arg: arg }
-    if (editFile.path === t.file) editFile.reload()
-    else editFile.path = t.file
+    editFile.add(t, how, arg)
   }
 
   // The facts the page may change on a line, and nothing else on it
@@ -1691,6 +1731,8 @@ Item {
     if (how === "undrop") return Task.setField(Task.setState(line, " "), "❌", "")
     if (how === "prio") return Task.setPriority(line, arg)
     if (how === "when") return Task.setField(line, "⏳", arg)
+    if (how === "state") return Task.setState(line, arg)
+    if (how === "rename") return Task.setWords(line, arg)
     return line
   }
 
@@ -1720,6 +1762,7 @@ Item {
     if (Sc.hit(e, "dashUndo")) { root.untickLast(); return true }
     if (Sc.hit(e, "dashPriority")) { root.cyclePriorityFocused(); return true }
     if (Sc.hit(e, "dashWhen")) { root.startDashWhen(); return true }
+    if (Sc.hit(e, "dashRename")) { root.startDashRename(); return true }
     return false
   }
 
@@ -1761,7 +1804,6 @@ Item {
   property var pendingWrite: null
   function writeIntoToday(d) {
     root.pendingWrite = d
-    root.contextFor = null
     root.backToNote()
     if (svc.isToday && svc.ready) root.doPendingWrite()
     else root.openNote(svc.todayStamp())
@@ -1784,23 +1826,34 @@ Item {
     root.landOnGoto()
   }
 
+  // Enter: to the task's own line, on any day — its note opens and the
+  // cursor lands at the end of its words. (Until 2026-10-17 another day only
+  // unfolded a preview, so a task written on an earlier day could not be
+  // reached; see docs/tasks.md.)
   function goToTask(t) {
-    if (t.date === svc.noteDate) {
-      var m = root.taskRegex(t.text).exec(editor.text)
-      if (!m) return
-      root.backToNote()
-      editor.setCursor(m.index + m[0].length, true)
-      return
-    }
-    root.contextFor = (root.contextFor && root.contextFor.file === t.file && root.contextFor.line === t.line) ? null : t
-    if (root.contextFor) {
-      contextFile.path = t.file
-      if (contextFile.path === t.file) contextFile.reload()
-    }
+    root.pendingTask = { text: t.text, line: t.line }
+    root.backToNote()
+    if (t.date === svc.noteDate && svc.ready) root.landOnTask()
+    else root.openNote(t.date)
+    editor.focusNote()
   }
 
-  function taskRegex(text) {
-    return new RegExp("^(\\s*[-*+] )\\[ \\] " + text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$", "m")
+  function landOnTask() {
+    var p = root.pendingTask
+    if (!p || !svc.ready) return
+    root.pendingTask = null
+    var r = root.rowByWords(p.text, p.line)
+    if (r) editor.setCursor(r.start + r.raw.length, true)
+  }
+
+  // The one way a line is found again, here and in every other note: by its
+  // words, whatever facts it now carries (Task.sameWords) — where it was,
+  // else wherever it is now.
+  function rowByWords(text, hint) {
+    var rows = editor.rows
+    if (hint >= 0 && hint < rows.length && Task.sameWords(rows[hint].raw, text)) return rows[hint]
+    for (var i = 0; i < rows.length; i++) if (Task.sameWords(rows[i].raw, text)) return rows[i]
+    return null
   }
 
   function untickLast() {
@@ -1809,41 +1862,14 @@ Item {
     root.tickHistory = root.tickHistory.slice(0, -1)
     if (t.deadline) { dl.reopen(t.deadline); root.tickBoundLine(t.deadline, false); return }
     if (t.drop) { root.editTask(t.drop, "undrop", ""); return }
-    var re = new RegExp("^(\\s*[-*+] )\\[[xX]\\] " + t.text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$", "m")
-    if (t.date === svc.noteDate) {
-      var m = re.exec(editor.text)
-      if (!m) return
-      var pos = m.index + m[1].length + 1
-      editor.remove(pos, pos + 1)
-      editor.insert(pos, " ")
-      root.flush()
-      Qt.callLater(root.refreshTasks)
-      return
-    }
-    tickFile.pending = { task: t, untick: true }
-    if (tickFile.path === t.file) tickFile.reload()
-    else tickFile.path = t.file
+    if (t.uncancel) { dl.reopen(t.uncancel); return }
+    root.editTask(t, "state", " ")
   }
 
-  // Tick in the original note. Today's note is live in the editor; any
-  // other day is rewritten on disk, one line changed.
+  // Tick in the original note, through the one edit path.
   function tickTask(t) {
-    var re = root.taskRegex(t.text)
     root.tickHistory = root.tickHistory.concat([t])
-    if (t.date === svc.noteDate) {
-      var text = editor.text
-      var m = re.exec(text)
-      if (!m) return
-      var pos = m.index + m[1].length + 1
-      editor.remove(pos, pos + 1)
-      editor.insert(pos, "x")
-      root.flush()
-      Qt.callLater(root.refreshTasks)
-      return
-    }
-    tickFile.pending = { task: t, untick: false }
-    if (tickFile.path === t.file) tickFile.reload()
-    else tickFile.path = t.file
+    root.editTask(t, "state", "x")
   }
 
   // ------------------------------------------------------------ deadlines
@@ -1940,14 +1966,16 @@ Item {
     return false
   }
 
-  // What changed among bound lines with the last edit: a box ticked or
-  // unticked goes to the store at once; a line gone (not cut) asks — unless
-  // it is the page's own binding taken back with Ctrl+Z: the words are back,
-  // the deadline it made for them goes, and the line stays words.
+  // What changed among bound lines with the last edit. A line gone, back,
+  // ticked or cancelled is the check's to carry to the store (one rule:
+  // a deadline is cancelled exactly while no note holds its tag, and the
+  // person is told, never asked — docs/tasks.md). The one exception is the
+  // page's own binding taken back with Ctrl+Z: the words are back, the
+  // deadline it made for them goes, and the line stays words.
   function boundEdited(was, now) {
+    var changed = false
     for (var id in was) {
       if (!(id in now)) {
-        var d = dl.byId[id]
         var ab = root.autoBound
         // (The text, not editor.rows: they catch up after this signal.)
         if (ab && ab.id === parseInt(id, 10) && editor.text.split("\n").indexOf(ab.raw) >= 0) {
@@ -1958,14 +1986,13 @@ Item {
           root.used("bound", "undone")
           continue
         }
-        if (d && !editor.cutting) root.ask = { kind: "delete", id: d.id, title: d.title, yes: false }
-        continue
-      }
-      if (was[id].checked !== now[id].checked) {
-        if (now[id].checked) dl.markDone(id)
-        else dl.reopen(id)
+        changed = true
+      } else if (was[id].state !== now[id].state) {
+        changed = true
       }
     }
+    for (var n in now) if (!(n in was)) changed = true
+    if (changed) root.scheduleCheck()
   }
 
   // The cursor left line `i`: a bound line's words and #tag go to the
@@ -1981,13 +2008,10 @@ Item {
       // Spaces left at the end of its words would sit unseen before the
       // date, where the cursor wanders into them: a left line has none.
       if (/\s$/.test(r.body)) root.writeLine(r, r.raw.substring(0, r.prefixLen) + r.body.replace(/\s+$/, "") + r.suffix)
+      // Its words and its project (the line's tag, else its heading's) are
+      // the line's: the check carries them to the store.
       var d = dl.byId[r.deadline]
-      var title = Bound.titleOf(r.body)
-      // A #tag sets the project; a line without one leaves it as it is (an
-      // agent's proposal may have named it without the line saying so).
-      var project = Bound.projectOf(r.body) || (d ? d.project : "")
-      if (d && title !== "" && (title !== d.title || project !== d.project))
-        dl.set(d.id, ["--title", title, "--project", project])
+      if (d && Bound.titleOf(r.body) !== d.title) root.scheduleCheck()
       return
     }
     if (r.raw !== typed || r.cueAt < 0 || root.declined[r.raw]) return
@@ -2038,7 +2062,6 @@ Item {
   }
 
   function openWhen(raw, id, text) {
-    root.ask = null
     root.whenFor = { raw: raw, id: id }
     whenField.text = text
     whenField.forceActiveFocus()
@@ -2094,7 +2117,7 @@ Item {
   // it, and a line whose deadline is gone keeps its date but not its
   // anchor.
   function reconcile() {
-    if (!root.reconcilePending || !dl.loaded || !svc.ready) return
+    if (!root.reconcilePending || !dl.loaded || !svc.ready || root.checking || root.checkWanted) return
     root.reconcilePending = false
     var a = Bound.anchors(editor.text)
     for (var id in a) {
@@ -2106,13 +2129,18 @@ Item {
       if (!d) {
         want = base + (r.dueAt > 0 ? Bound.tail(r.dueAt, 0) : "")
       } else {
-        base = base.replace(/^(\s*[-*+] \[)[ xX](\])/, "$1" + (d.status === "open" ? " " : "x") + "$2")
+        // The store's state on the box; a cancelled one says when, as a
+        // drop does (`- [-] … ❌ <day>`).
+        var box = d.status === "open" ? " " : d.status === "cancelled" ? "-" : "x"
+        base = Task.setState(base, box).replace(/\s*❌\s*\d{4}-\d{2}-\d{2}/, "")
+        if (box === "-") base += " ❌ " + Qt.formatDate(new Date(d.doneAt > 0 ? d.doneAt * 1000 : Date.now()), "yyyy-MM-dd")
         want = base + Bound.tail(d.due * 1000, d.id)
       }
       root.writeLine(r, want)
     }
     root.bound = Bound.anchors(editor.text)
     root.landOnGoto()
+    root.landOnTask()
     root.landOnSection()
     root.doPendingWrite()
     root.writeClass()
@@ -2150,6 +2178,84 @@ Item {
     root.writeBinding(free[at].raw, heads[at], dl.byId[id].due * 1000, id)
   }
 
+  // ------------------------------------------------------------ the check
+
+  // One copy of a task (docs/tasks.md). `longhand-check` brings the store,
+  // the ledger and every other note's lines in line with what the notes
+  // say. It runs when a note is loaded and a moment after an edit takes a
+  // tagged line away, brings one back or changes one. It reads the note in
+  // the editor from disk, so it starts once the save has landed, and never
+  // writes it: the page brings that one in line itself (reconcile), after.
+  readonly property var editQueueState: ({ busy: editFile.busy, queue: editFile.queue.length, path: String(editFile.path) })
+  property bool checkWanted: false
+  property bool checking: false
+  property var origins: ({})        // id -> { origin, firstTitle, rewritten }: the agent's deadlines
+  readonly property string checkPath: (svc.config && svc.config.check) || (Quickshell.env("HOME") + "/.local/bin/longhand-check")
+
+  function scheduleCheck() { checkTimer.restart() }
+
+  function startCheck() {
+    checkTimer.stop()
+    root.checkWanted = true
+    root.flush()
+    root.runCheck()
+  }
+
+  function runCheck() {
+    if (!root.checkWanted || root.checking || !svc.ready || svc.saving || svc.pending) return
+    root.checkWanted = false
+    root.checking = true
+    checkGuard.restart()
+    checkProc.command = [root.checkPath, "--json", "--open", svc.noteDate]
+    checkProc.running = true
+  }
+
+  function checkDone(text) {
+    if (!root.checking) return
+    root.checking = false
+    checkGuard.stop()
+    var out = null
+    try { out = JSON.parse(text) } catch (e) { out = null }
+    if (out) {
+      root.origins = out.origins || ({})
+      root.sayChecked(out)
+    }
+    // The store as the check left it, then the open note in line with it
+    // (reconcile runs when the store's items arrive).
+    root.reconcilePending = true
+    dl.reload()
+    if (root.checkWanted) root.runCheck()
+  }
+
+  // What the check did, said under the cursor and waiting for nothing.
+  function sayChecked(out) {
+    var gone = out.cancelled || [], back = out.restored || []
+    if (gone.length === 1) root.showHint("“" + gone[0].title + "” cancelled: its line is gone · " + root.keyName("undo") + " brings it back")
+    else if (gone.length > 1) root.showHint(gone.length + " deadlines cancelled with their lines · " + root.keyName("undo") + " brings them back")
+    else if (back.length === 1) root.showHint("“" + back[0].title + "” is back")
+    else if (back.length > 1) root.showHint(back.length + " deadlines are back")
+  }
+
+  Timer {
+    id: checkTimer
+    interval: 500
+    onTriggered: root.startCheck()
+  }
+
+  // A check that never answers (not installed, stuck) must not hold the
+  // note back from its own catch-up.
+  Timer {
+    id: checkGuard
+    interval: 8000
+    onTriggered: { if (root.checking) { console.warn("longhand.page: longhand-check did not answer"); root.checkDone("") } }
+  }
+
+  Process {
+    id: checkProc
+    stdout: StdioCollector { id: checkOut; onStreamFinished: root.checkDone(checkOut.text) }
+    stderr: StdioCollector { id: checkErr; onStreamFinished: if (checkErr.text.trim() !== "") console.warn("longhand.page " + checkErr.text.trim()) }
+  }
+
   // ------------------------------------------------------------ sidebar
 
   function toggleSidebar() {
@@ -2173,9 +2279,11 @@ Item {
 
   function landOnGoto() {
     if (!root.pendingGoto || !svc.ready) return
-    var r = root.rowByDeadline(root.pendingGoto)
+    var id = root.pendingGoto
+    var r = root.rowByDeadline(id)
     root.pendingGoto = 0
     if (r) editor.setCursor(r.bodyEnd, true)
+    else if (dl.byId[id]) root.showHint("“" + dl.byId[id].title + "” has no line in this note any more")
   }
 
   // Into the calendar, its cursor on the day in the sheet.
@@ -2312,7 +2420,6 @@ Item {
     var today = new Date()
     today.setHours(0, 0, 0, 0)
     root.used("day", p ? Math.round((today - p.date) / 86400000) : "")
-    root.ask = null
     root.marginOpen = false
     root.dashOpen = false
     root.marginFocus = -1
@@ -2407,9 +2514,10 @@ Item {
 
   Service {
     id: svc
-    onLoaded: { root.applyText(svc.body); root.reconcilePending = true; root.reconcile(); root.openPass() }
-    onExternalChange: { root.applyText(svc.body, true); root.reconcilePending = true; root.reconcile() }
+    onLoaded: { root.applyText(svc.body); root.reconcilePending = true; root.startCheck(); root.reconcile(); root.openPass() }
+    onExternalChange: { root.applyText(svc.body, true); root.reconcilePending = true; root.startCheck(); root.reconcile() }
     onSavedNow: {
+      root.runCheck()
       if (root.pendingStamp !== "") {
         var s = root.pendingStamp
         root.pendingStamp = ""
@@ -2424,6 +2532,7 @@ Item {
   Deadlines {
     id: dl
     onItemsChanged: { root.reconcile(); root.checkAccept() }
+    onChanged: root.scheduleCheck()
     onIdle: {
       var waiting = root.afterWrites
       root.afterWrites = []
@@ -2502,72 +2611,55 @@ Item {
 
   // One-line rewrite of another day's note when a task is ticked from
   // the panel. Atomic, and only ever the line the student pointed at.
-  FileView {
-    id: tickFile
-    property var pending: null
-    atomicWrites: true
-    printErrors: false
-    onLoaded: {
-      var p = tickFile.pending
-      if (!p) return
-      tickFile.pending = null
-      var t = p.task
-      var lines = text().split("\n")
-      // The note may have changed since the list was read (Tasks.js).
-      var at = Tasks.find(lines, t.line, t.text, p.untick)
-      if (at >= 0) {
-        lines[at] = Tasks.flip(lines[at], !p.untick)
-        setText(lines.join("\n"))
-      }
-    }
-    onSaved: root.refreshTasks()
-    onLoadFailed: tickFile.pending = null
-  }
-
-  // The same, for the facts the dashboard changes: a do-date, a priority, a
-  // drop. One line, atomic, and never a line the student did not point at.
+  // Another day's note, rewritten for the facts the dashboard changes: a
+  // tick, a do-date, a priority, a drop. One line, atomic, and never a line the student did not point at.
   FileView {
     id: editFile
-    property var pending: null
+    // Edits waiting, in the order asked: { task, how, arg }. One file is
+    // open at a time; the edits for it are applied together, and the next
+    // file is opened once it is written.
+    property var queue: []
+    property bool busy: false   // a file open or being written
     atomicWrites: true
     printErrors: false
     onLoaded: {
-      var p = editFile.pending
-      if (!p) return
-      editFile.pending = null
+      var mine = editFile.queue.filter(function (q) { return q.task.file === editFile.path })
+      if (mine.length === 0) { editFile.nextFile(); return }
+      editFile.queue = editFile.queue.filter(function (q) { return q.task.file !== editFile.path })
       var lines = text().split("\n")
-      var at = Task.findWords(lines, p.task.line, p.task.text)
-      if (at >= 0) {
-        var next = root.applyEdit(lines[at], p.how, p.arg)
-        if (next !== lines[at]) { lines[at] = next; setText(lines.join("\n")) }
+      var changed = false
+      for (var k = 0; k < mine.length; k++) {
+        var tk = mine[k].task
+        var tagged = tk.anchor > 0 ? Bound.anchors(lines.join("\n"))[tk.anchor] : null
+        var at = tk.anchor > 0 ? (tagged ? tagged.line : -1) : Task.findWords(lines, tk.line, tk.text)
+        if (at < 0) continue
+        var next = root.applyEdit(lines[at], mine[k].how, mine[k].arg)
+        if (next !== lines[at]) { lines[at] = next; changed = true }
       }
-      Qt.callLater(root.refreshTasks)
+      if (changed) setText(lines.join("\n"))
+      // (setText writes at once; waiting for a saved signal left the queue
+      // stuck after the first file.)
+      Qt.callLater(editFile.nextFile)
     }
-    onSaved: root.refreshTasks()
-    onLoadFailed: editFile.pending = null
+    onLoadFailed: { editFile.queue = editFile.queue.filter(function (q) { return q.task.file !== editFile.path }); editFile.nextFile() }
+
+    function add(task, how, arg) {
+      editFile.queue = editFile.queue.concat([{ task: task, how: how, arg: arg }])
+      if (!editFile.busy) editFile.open(task.file)
+    }
+    function nextFile() {
+      editFile.busy = false
+      Qt.callLater(root.refreshTasks)
+      root.scheduleCheck()
+      if (editFile.queue.length > 0) editFile.open(editFile.queue[0].task.file)
+    }
+    function open(file) {
+      editFile.busy = true
+      if (editFile.path === file) editFile.reload()
+      else editFile.path = file
+    }
   }
 
-  // Another day's note, read to show the block around a task in the panel.
-  FileView {
-    id: contextFile
-    property string snippet: ""
-    printErrors: false
-    onLoaded: {
-      var t = root.contextFor
-      if (!t) { contextFile.snippet = ""; return }
-      var blocks = Blocks.split(text())
-      var k = Blocks.blockAt(blocks, t.line)
-      var lo = k, hi = k
-      while (lo > 0 && blocks[lo - 1].kind === "item" && blocks[lo - 1].end === blocks[lo].start) lo--
-      while (hi < blocks.length - 1 && blocks[hi + 1].kind === "item" && blocks[hi + 1].start === blocks[hi].end) hi++
-      var parts = []
-      if (lo > 0) parts.push(blocks[lo - 1].text)
-      for (var i = Math.max(0, lo); i <= hi && i < blocks.length; i++) parts.push(blocks[i].text)
-      if (hi + 1 < blocks.length) parts.push(blocks[hi + 1].text)
-      contextFile.snippet = parts.join("\n\n")
-    }
-    onLoadFailed: contextFile.snippet = ""
-  }
 
   // Looking at a reply for a moment marks it read — nothing else needs to.
   Process { id: ackProc }
@@ -3055,7 +3147,7 @@ Item {
                       textFormat: Text.PlainText
                       elide: Text.ElideRight
                       text: dashRow.kind === "task" ? root.taskWhere(modelData.task, modelData.under)
-                        : dashRow.kind === "deadline" ? root.courseLabel(modelData.deadline.project)
+                        : dashRow.kind === "deadline" ? root.deadlineWhere(modelData.deadline)
                         : dashRow.kind === "raised" ? (modelData.item.evidence || "")
                         : ""
                       color: root.faint
@@ -3085,20 +3177,6 @@ Item {
               }
             }
 
-            // The block around a task from another day, unfolded on Enter.
-            Text {
-              width: parent.width
-              visible: !!root.contextFor && (root.contextFor.deadline !== undefined || contextFile.snippet !== "")
-              textFormat: Text.PlainText
-              wrapMode: Text.WordWrap
-              text: !root.contextFor ? ""
-                : root.contextFor.deadline !== undefined ? "Not written in a note yet. " + root.keyName("dashOpen") + " again writes it into today's note."
-                : root.contextFor.date + "\n\n" + contextFile.snippet
-              color: root.dim
-              font.family: root.fontFamily
-              font.styleName: root.fontStyle
-              font.pixelSize: root.fs(Style.font.bodySmall)
-            }
           }
         }
 
@@ -3118,7 +3196,7 @@ Item {
             wrapMode: Text.WordWrap
             text: root.keyName("dashUp") + root.keyName("dashDown") + " move · " + root.keyName("dashOpen") + " opens the line · "
               + root.keyName("dashDone") + " done · " + root.keyName("dashWhen") + " when · " + root.keyName("dashPriority") + " priority · "
-              + root.keyName("dashDrop") + " drop · " + root.keyName("dashUndo") + " undo · " + root.keyName("dashBack") + " back · "
+              + root.keyName("dashRename") + " rename · " + root.keyName("dashDrop") + " cancel · " + root.keyName("dashUndo") + " undo · " + root.keyName("dashBack") + " back · "
               + root.keyName("keys") + " all keys"
             color: root.faint
             font.family: root.fontFamily
@@ -3136,7 +3214,9 @@ Item {
             Text {
               anchors.verticalCenter: parent.verticalCenter
               textFormat: Text.PlainText
-              text: root.dashWhenFor ? "when · " + root.taskTitle(root.dashWhenFor) : ""
+              text: !root.dashWhenFor ? ""
+                : root.dashFieldKind === "rename" ? "rename"
+                : "when · " + root.taskTitle(root.dashWhenFor)
               color: root.dim
               font.family: root.fontFamily
               font.styleName: root.fontStyle
@@ -3145,8 +3225,8 @@ Item {
 
             TextField {
               id: dashWhenField
-              width: root.sp(220)
-              placeholderText: "friday, tomorrow, 20 oct…"
+              width: root.dashFieldKind === "rename" ? root.sp(460) : root.sp(220)
+              placeholderText: root.dashFieldKind === "rename" ? "its words" : "friday, tomorrow, 20 oct…"
               font.family: root.fontFamily
               font.styleName: root.fontStyle
               font.pixelSize: root.fs(Style.font.body)
@@ -3161,7 +3241,7 @@ Item {
           Connections {
             target: root
             function onDashWhenForChanged() {
-              if (root.dashWhenFor) { dashWhenField.text = ""; dashWhenField.forceActiveFocus() }
+              if (root.dashWhenFor) { dashWhenField.text = root.dashFieldStart; dashWhenField.forceActiveFocus(); dashWhenField.selectAll() }
               else if (root.dashOpen) dashKeys.forceActiveFocus()
             }
           }
@@ -3842,11 +3922,11 @@ Item {
             onClicked: editor.setCursor(editor.length, true)
           }
 
-          // The gentle prompt after Enter on a signed line, and the
-          // no-sign hint: washed text just under the cursor, gone as soon
-          // as you type.
+          // A passing word under the cursor (what a check did, a date that
+          // did not read) and the no-sign hint: washed text, gone as soon
+          // as you type. Nothing here waits for an answer.
           Text {
-            visible: (!!root.ask || root.noSignHint || root.hint !== "") && !root.whenFor
+            visible: (root.noSignHint || root.hint !== "") && !root.whenFor
             x: root.gutter
             y: editor.cursorRect.y + editor.cursorRect.height + root.sp(2)
             width: editor.width
@@ -3855,7 +3935,7 @@ Item {
             text: root.hint !== "" ? root.hint
               : root.noSignHint
               ? "no sign for the agent on this block — make it a checkbox, end it with ?, or tick a box"
-              : (root.ask ? root.askText(root.ask) : "")
+              : ""
             color: root.faint
             font.family: root.fontFamily
             font.styleName: root.fontStyle

@@ -34,7 +34,7 @@ def main() -> int:
     r = pomo("add", "Old habit", "--subject", "stats", "tomorrow")
     check(r.returncode == 0 and "deadline #2" in r.stdout, "--subject still accepted")
     def by_id(i):
-        return next(x for x in json.loads(pomo("list", "--json").stdout)["deadlines"] if x["id"] == i)
+        return next(x for x in json.loads(pomo("list", "--all", "--json").stdout)["deadlines"] if x["id"] == i)
     check(by_id(1)["project"] == "thesis" and "subject" not in by_id(1), "JSON says project")
     check([x["id"] for x in json.loads(pomo("list", "--json", "--project", "stats").stdout)["deadlines"]] == [2], "list filters by project")
     r = pomo("set", "1", "--project", "")
@@ -71,6 +71,16 @@ def main() -> int:
         p.wait()
     ids = [x["id"] for x in json.loads(pomo("list", "--json").stdout)["deadlines"] if x["title"].startswith("race")]
     check(len(ids) == 8 and len(set(ids)) == 8, f"concurrent adds keep every row and id ({sorted(ids)})")
+
+    # Cancelled: its line is gone (docs/tasks.md). History, off every list,
+    # and brought back as it was.
+    r = pomo("cancel", "1")
+    check(r.returncode == 0 and by_id(1)["status"] == "cancelled", "cancel keeps the deadline, as cancelled")
+    check(all(x["id"] != 1 for x in json.loads(pomo("list", "--json").stdout)["deadlines"]), "…off the list without --all")
+    check("1 ×" in pomo("list", "--all").stdout.replace("  ", " "), "…marked × with --all")
+    r = pomo("done", "1", "--at", "1790000000")
+    check(r.returncode == 0 and by_id(1)["status"] == "done" and by_id(1)["done_at"] == 1790000000,
+          "done --at brings it back with the time it was really done")
     print("PASS" if failures == 0 else f"{failures} FAILED")
     return 1 if failures else 0
 

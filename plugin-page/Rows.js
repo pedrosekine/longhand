@@ -28,12 +28,13 @@
 var HEADING_RE = /^(#{1,6} )(.*)$/
 var CALLOUT_RE = /^(>[ \t]?\[!([^\]]+)\][+-]?[ \t]?)(.*)$/
 var QUOTE_RE = /^(>[ \t]?)(.*)$/
-var TASK_RE = /^([-*+] \[([ xX])\] )(.*)$/
+var TASK_RE = /^([-*+] \[([ xX\-])\] )(.*)$/
 var BULLET_RE = /^([-*+] )(.*)$/
 var ORDERED_RE = /^((\d+)([.)]) )(.*)$/
 var FENCE_RE = /^[ \t]*(```|~~~)/
-// The tail of a bound checkbox: a due date (and time), then the anchor.
-var TAIL_RE = /^([\s\S]*?)((?:\s+📅\s*(\d{4}-\d{2}-\d{2})(?:\s+(\d{1,2}:\d{2}))?)?(?:\s+\^d(\d+))?\s*)$/
+// The tail of a checkbox the page draws instead of showing: a due date
+// (and time), the day it was closed (❌ cancelled, ✅ done), then the anchor.
+var TAIL_RE = /^([\s\S]*?)((?:\s+📅\s*(\d{4}-\d{2}-\d{2})(?:\s+(\d{1,2}:\d{2}))?)?(?:\s+[❌✅]\s*(\d{4}-\d{2}-\d{2}))?(?:\s+\^d(\d+))?\s*)$/
 var DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
@@ -52,7 +53,7 @@ function make(kind, indent, marker, body) {
   return {
     kind: kind, indent: indent, marker: marker, body: body,
     prefixLen: indent.length + marker.length, level: levelOf(indent),
-    checked: false, ordinal: "", headingLevel: 0, callout: "",
+    checked: false, cancelled: false, ordinal: "", headingLevel: 0, callout: "",
     suffix: "", deadline: 0, dueLabel: "", dueAt: 0, cueAt: -1, cueLabel: ""
   }
 }
@@ -77,7 +78,11 @@ function parseLine(raw) {
   }
   if ((x = rest.match(TASK_RE))) {
     var t = make("task", indent, x[1], x[3])
+    // A cancelled box (`[-]`, a drop) is closed too: drawn with a dash, and
+    // its tag and dates lifted like any other's (docs/tasks.md: no tag is
+    // ever seen inside Longhand).
     t.checked = x[2] !== " "
+    t.cancelled = x[2] === "-"
     liftTail(t)
     if (t.deadline <= 0) readCue(t)
     return t
@@ -95,7 +100,7 @@ function parseLine(raw) {
 // body that merely ends in spaces keeps them (they are being typed).
 function liftTail(t) {
   var m = t.body.match(TAIL_RE)
-  if (!m || !(m[3] || m[5])) return
+  if (!m || !(m[3] || m[5] || m[6])) return
   t.body = m[1]
   t.suffix = m[2]
   // The tail owns one space before it; more are the words' own — a space
@@ -105,7 +110,7 @@ function liftTail(t) {
     t.body += lead.substring(0, lead.length - 1)
     t.suffix = t.suffix.substring(lead.length - 1)
   }
-  t.deadline = m[5] ? parseInt(m[5], 10) : 0
+  t.deadline = m[6] ? parseInt(m[6], 10) : 0
   if (m[3]) {
     var d = m[3].split("-")
     var hm = m[4] ? m[4].split(":") : ["23", "59"]
