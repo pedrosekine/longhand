@@ -806,6 +806,52 @@ def main() -> int:
         check(int(p.call("cursorLine")) == p.line_of("read the paper"),
               f"…with the cursor on it (cursor {p.call('cursorLine')}, line {p.line_of('read the paper')}, text {p.call('text')!r})")
 
+        # 12b. the keys sheet: every key the page answers to, listed; one
+        # moved through the sheet, kept in keys.json, and working in the note
+        KEY_B, KEY_K = 0x42, 0x4b
+        keysjson = p.tmp / "config" / "omarchy-student" / "keys.json"
+
+        def keys_of(i):
+            return json.loads(p.call("keysOf", i))
+
+        p.call("keys")
+        check(p.call("keysOpen") == "true", "the keys sheet opens")
+        check(keys_of("bold") == ["Ctrl+B"] and keys_of("dashPriority") == ["p"], "…listing every key, bold on Ctrl+B")
+        p.call("keysFind", "bold")
+        p.call("keysKey", KEY_RETURN, 0)
+        p.call("keysKey", KEY_K, CTRL)
+        check(keys_of("bold") == ["Ctrl+K"], "Enter, then a key: bold moves to it")
+        check(p.wait(lambda: keysjson.exists() and json.loads(keysjson.read_text()) == {"bold": ["Ctrl+K"]}),
+              "…and keys.json keeps only that")
+        p.call("keysFind", "italic")
+        p.call("keysKey", KEY_RETURN, 0)
+        p.call("keysKey", KEY_K, 0)
+        check("would be typed" in p.call("keysNote"), f"a letter alone is refused where you write ({p.call('keysNote')})")
+        p.call("keysKey", KEY_K, CTRL)
+        check("again" in p.call("keysNote") and keys_of("bold") == ["Ctrl+K"], "a key bold has: asked first, not taken")
+        p.call("keysKey", KEY_K, CTRL)
+        check(keys_of("italic") == ["Ctrl+K"] and keys_of("bold") == [], "…and taken on the second press")
+        p.call("keysFind", "bold")
+        p.call("keysKey", KEY_DELETE, 0)
+        check(keys_of("bold") == ["Ctrl+B"], "Del gives bold its own key back")
+        check(p.wait(lambda: json.loads(keysjson.read_text()) == {"italic": ["Ctrl+K"]}), "…and the file follows")
+        p.call("keysKey", KEY_ESC, 0)
+        p.call("keysKey", KEY_ESC, 0)
+        check(p.call("keysOpen") == "false", "Esc clears the search, then closes the sheet")
+
+        # Edited by hand, read again; the moved key works in the note.
+        keysjson.write_text(json.dumps({"bold": ["ctrl+k"]}))
+        check(p.wait(lambda: keys_of("bold") == ["Ctrl+K"]), "keys.json edited by hand is read again")
+        (p.daily / f"{TODAY}.md").write_text(header(TODAY) + "a word here\n")
+        p.open_fresh()
+        p.wait(lambda: "a word here" in p.call("text"))
+        p.call("cursor", p.call("text").index("word") + 1)
+        check(p.call("pageKey", KEY_B, CTRL) == "false", "Ctrl+B is nothing once bold has moved")
+        check(p.call("pageKey", KEY_K, CTRL) == "true", "…and Ctrl+K is bold")
+        check(p.wait(lambda: "a **word** here" in p.call("text")), f"…on the word ({p.call('text')!r})")
+        keysjson.write_text("{}\n")
+        check(p.wait(lambda: keys_of("bold") == ["Ctrl+B"]), "an empty keys.json is every key its own")
+
         # 13. the usage log: written on close, event names only
         p.call("closeAll")
         usage = p.state / "omarchy-student" / "usage.tsv"

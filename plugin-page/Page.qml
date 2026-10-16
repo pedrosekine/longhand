@@ -11,6 +11,7 @@ import "Dates.js" as Dates
 import "Days.js" as Days
 import "Tasks.js" as Tasks
 import "Task.js" as Task
+import "Shortcuts.js" as Sc
 
 // The page: today's note as a blank sheet in the shell, with the agent in
 // the margin. Two shapes of the same sheet: the overlay (a layer over
@@ -330,6 +331,17 @@ Item {
   property var mention: null           // { start, query, items } while an `@` is being written
   property int mentionFocus: 0
   property bool searchOpen: false
+  // The keys sheet (Ctrl+/). `keysVersion` moves whenever a key does, so
+  // every hint that names one is redrawn.
+  property bool keysOpen: false
+  property int keysVersion: 0
+  property string keysFilter: ""
+  property int keysFocus: -1
+  property var keysListen: null      // { id, add } while waiting for the new key
+  property string keysTake: ""       // a key another action has, pressed once
+  property string keysNote: ""       // what just happened, or why not
+  property var outsideKeys: []       // Hyprland's keys for the page, read live
+  readonly property var keyRows: { root.keysVersion; return Sc.rows(root.keysFilter, root.outsideKeys) }
   property var matches: []       // [{ start, end }] text offsets, in note order
   property int matchIndex: -1
   property int searchFrom: 0     // the cursor when the search opened
@@ -449,13 +461,14 @@ Item {
     root.scheduleRepaint()
   }
 
-  // Ctrl+= (or +), Ctrl+-, Ctrl+0: wherever the keyboard is in the page.
-  function zoomKey(event) {
-    if (!(event.modifiers & Qt.ControlModifier)) return false
-    var k = event.key
-    if (k === Qt.Key_Equal || k === Qt.Key_Plus) { root.zoomBy(1); return true }
-    if (k === Qt.Key_Minus || k === Qt.Key_Underscore) { root.zoomBy(-1); return true }
-    if (k === Qt.Key_0) { root.setZoom(1); return true }
+  // Zoom and the keys sheet: wherever the keyboard is in the page. Every
+  // key the page answers to is named in Shortcuts.js, where the student can
+  // move it (the keys sheet, below).
+  function anywhereKey(event) {
+    if (Sc.hit(event, "zoomIn")) { root.zoomBy(1); return true }
+    if (Sc.hit(event, "zoomOut")) { root.zoomBy(-1); return true }
+    if (Sc.hit(event, "zoomReset")) { root.setZoom(1); return true }
+    if (Sc.hit(event, "keys")) { root.toggleKeys(); return true }
     return false
   }
 
@@ -468,6 +481,7 @@ Item {
   // What the shell calls to hide the page: the overlay goes, the window
   // (if open) stays and gets the sheet back.
   function close() {
+    if (root.keysOpen) root.toggleKeys()
     root.leftLine(root.lastLine)
     root.flush()
     root.overlayOpen = false
@@ -642,16 +656,15 @@ Item {
   // Keys while the prompt is up. Returns true when the key was consumed.
   function askKey(event) {
     if (!root.ask) return false
-    var k = event.key
-    if (k === Qt.Key_Left || k === Qt.Key_Right || k === Qt.Key_Up || k === Qt.Key_Down || k === Qt.Key_Tab) {
+    if (Sc.hit(event, "promptSwitch")) {
       root.ask = Object.assign({}, root.ask, { yes: !root.ask.yes })
       return true
     }
     // No letters answer a prompt: a "y" may be the first letter of the
     // next word (in Spanish it is a word), and a prompt must never act on
     // what was meant as writing.
-    if (k === Qt.Key_Escape) { root.declineAsk(); return true }
-    if (k === Qt.Key_Return || k === Qt.Key_Enter) {
+    if (Sc.hit(event, "promptDismiss")) { root.declineAsk(); return true }
+    if (Sc.hit(event, "promptAnswer")) {
       if (root.ask.yes) { root.acceptAsk(); return true }
       root.declineAsk()
       return false   // a plain Enter: let it fall through and behave as usual
@@ -680,7 +693,7 @@ Item {
   }
 
   function askText(a) {
-    var choice = (a.yes ? "[yes]   no" : "yes   [no]") + "   · ←→ choose · Enter"
+    var choice = (a.yes ? "[yes]   no" : "yes   [no]") + "   · ←→ choose · " + root.keyName("promptAnswer")
     return "this line had a deadline: " + a.title + ". remove it too (kept in history)?   " + choice
   }
 
@@ -905,48 +918,40 @@ Item {
 
   function mentionKey(event) {
     if (!root.mention || root.mention.items.length === 0) return false
-    var k = event.key
-    if (k === Qt.Key_Up) { root.mentionFocus = Math.max(0, root.mentionFocus - 1); return true }
-    if (k === Qt.Key_Down) { root.mentionFocus = Math.min(root.mention.items.length - 1, root.mentionFocus + 1); return true }
-    if (k === Qt.Key_Return || k === Qt.Key_Enter || k === Qt.Key_Tab) {
-      root.acceptMention(event.modifiers & Qt.ShiftModifier)
-      return true
-    }
-    if (k === Qt.Key_Escape) { root.mention = null; return true }
+    if (Sc.hit(event, "mentionUp")) { root.mentionFocus = Math.max(0, root.mentionFocus - 1); return true }
+    if (Sc.hit(event, "mentionDown")) { root.mentionFocus = Math.min(root.mention.items.length - 1, root.mentionFocus + 1); return true }
+    if (Sc.hit(event, "mentionClass")) { root.acceptMention(true); return true }
+    if (Sc.hit(event, "mentionPick")) { root.acceptMention(false); return true }
+    if (Sc.hit(event, "mentionClose")) { root.mention = null; return true }
     return false
   }
 
   // Keys the page owns, ahead of editing. True when taken.
   function pageKey(event) {
-    var ctrl = event.modifiers & Qt.ControlModifier
-    var alt = event.modifiers & Qt.AltModifier
-    var shift = event.modifiers & Qt.ShiftModifier
-    var k = event.key
     if (root.mentionKey(event)) return true
     if (root.askKey(event)) return true
-    if (root.zoomKey(event)) return true
-    if (k === Qt.Key_Escape) { if (!root.alongside) root.dismiss(); return true }
-    // Ctrl+Shift+P before Ctrl+P: the pin does not take the shifted pair.
-    if (k === Qt.Key_P && ctrl && shift) { root.togglePrivate(); return true }
-    if (k === Qt.Key_P && ctrl && !shift) { root.togglePin(); return true }
-    if ((k === Qt.Key_Return || k === Qt.Key_Enter) && ctrl) { root.sendCurrent(); return true }
-    if (k === Qt.Key_Up && alt) { root.jumpBlock(-1); return true }
-    if (k === Qt.Key_Down && alt) { root.jumpBlock(1); return true }
-    // With Shift these select instead (the editor's selectToBlockEdge).
-    if (k === Qt.Key_Up && ctrl && !shift) { root.jumpWithinBlock(-1); return true }
-    if (k === Qt.Key_Down && ctrl && !shift) { root.jumpWithinBlock(1); return true }
-    if (k === Qt.Key_Right && alt) { root.diveIn(); return true }
-    if (k === Qt.Key_T && ctrl) { root.toggleDash(); return true }
-    if (k === Qt.Key_F && ctrl) { root.openSearch(); return true }
-    if (k === Qt.Key_B && ctrl && shift) { root.toggleSidebar(); return true }
+    if (root.anywhereKey(event)) return true
+    if (Sc.hit(event, "close")) { if (!root.alongside) root.dismiss(); return true }
+    if (Sc.hit(event, "private")) { root.togglePrivate(); return true }
+    if (Sc.hit(event, "pin")) { root.togglePin(); return true }
+    if (Sc.hit(event, "ask")) { root.sendCurrent(); return true }
+    if (Sc.hit(event, "blockPrev")) { root.jumpBlock(-1); return true }
+    if (Sc.hit(event, "blockNext")) { root.jumpBlock(1); return true }
+    // Selecting to the same edges is the editor's (selectToBlockEdge).
+    if (Sc.hit(event, "blockStart")) { root.jumpWithinBlock(-1); return true }
+    if (Sc.hit(event, "blockEnd")) { root.jumpWithinBlock(1); return true }
+    if (Sc.hit(event, "margin")) { root.diveIn(); return true }
+    if (Sc.hit(event, "dashboard")) { root.toggleDash(); return true }
+    if (Sc.hit(event, "find")) { root.openSearch(); return true }
+    if (Sc.hit(event, "sidebar")) { root.toggleSidebar(); return true }
     // Emphasis, where every editor puts it. The sidebar moved to the
     // shifted pair on 2026-10-15 so that Ctrl+B could be bold.
-    if (k === Qt.Key_B && ctrl) { editor.emphasise("**"); return true }
-    if (k === Qt.Key_I && ctrl) { editor.emphasise("*"); return true }
-    if (k === Qt.Key_QuoteLeft && ctrl) { editor.emphasise("`"); return true }
-    if (k === Qt.Key_S && ctrl && shift) { editor.emphasise("~~"); return true }
-    if (k === Qt.Key_D && ctrl) { root.deadlineKey(); return true }
-    if (k === Qt.Key_Left && alt && root.sidebarOpen) { root.focusSidebar(); return true }
+    if (Sc.hit(event, "bold")) { editor.emphasise("**"); return true }
+    if (Sc.hit(event, "italic")) { editor.emphasise("*"); return true }
+    if (Sc.hit(event, "code")) { editor.emphasise("`"); return true }
+    if (Sc.hit(event, "strike")) { editor.emphasise("~~"); return true }
+    if (Sc.hit(event, "deadline")) { root.deadlineKey(); return true }
+    if (Sc.hit(event, "toSidebar") && root.sidebarOpen) { root.focusSidebar(); return true }
     return false
   }
 
@@ -987,6 +992,141 @@ Item {
     root.pendingAccept = { hash: root.currentHash, index: i }
     acceptProc.command = [svc.runner, "accept", "--hash", root.currentHash, "--index", String(i), "--date", svc.noteDate]
     acceptProc.running = true
+  }
+
+  // ------------------------------------------------------------ keys
+
+  // The keys sheet: every key the page answers to, where it works, and the
+  // way to move it. Drawn from Shortcuts.js, which every handler reads, so
+  // the list cannot drift from what the keys do. It takes the sheet's place
+  // like the dashboard. What the student moves goes to keys.json beside
+  // config.json; Hyprland's keys are listed, read live, and stay Hyprland's.
+  function toggleKeys() {
+    root.keysOpen = !root.keysOpen
+    root.keysListen = null
+    root.keysTake = ""
+    root.keysNote = ""
+    if (root.keysOpen) {
+      root.used("keys")
+      keysField.text = ""
+      root.keysFocus = root.nextKeyRow(-1, 1)
+      outsideProc.running = true
+      Qt.callLater(keysField.forceActiveFocus)
+    } else if (root.dashOpen) {
+      dashKeys.forceActiveFocus()
+    } else {
+      editor.focusNote()
+    }
+  }
+
+  // An action's key as a hint names it, kept current as it moves.
+  function keyName(id) { root.keysVersion; return Sc.label(id) }
+
+  function nextKeyRow(from, d) {
+    var rows = root.keyRows
+    for (var i = from + d; i >= 0 && i < rows.length; i += d) if (rows[i].kind !== "head") return i
+    return from >= 0 && from < rows.length ? from : -1
+  }
+
+  // Keys while the sheet has them. Its own keys are fixed: a sheet whose
+  // way out could be moved could lock the student in.
+  function keysKey(event) {
+    var seq = Sc.fromEvent(event)
+    if (root.keysListen) {
+      if (seq === "") return true                   // a modifier alone: still waiting
+      if (seq === "Esc") { root.keysListen = null; root.keysTake = ""; root.keysNote = ""; return true }
+      root.offerKey(seq)
+      return true
+    }
+    if (root.anywhereKey(event)) return true
+    var row = root.keyRows[root.keysFocus]
+    if (seq === "Esc") {
+      if (root.keysFilter !== "") {
+        keysField.text = ""
+        root.keysFilter = ""
+        root.keysFocus = root.nextKeyRow(-1, 1)
+      } else {
+        root.toggleKeys()
+      }
+    } else if (seq === "Up") root.keysFocus = root.nextKeyRow(root.keysFocus, -1)
+    else if (seq === "Down") root.keysFocus = root.nextKeyRow(root.keysFocus, 1)
+    else if (seq === "Enter" || seq === "Shift+Enter") root.listenFor(row, seq === "Shift+Enter")
+    else if (seq === "Del") root.resetKey(row)
+    else return false                               // typing: it finds
+    return true
+  }
+
+  function listenFor(row, add) {
+    root.keysTake = ""
+    if (!row || row.kind === "head") return
+    if (row.kind === "fixed") {
+      root.keysNote = row.where === "Hyprland"
+        ? "Hyprland's key, not the page's: it is changed in your Hyprland bindings (~/.config/hypr/bindings.lua on Omarchy)"
+        : "The text field's own key: it stays, so writing works the same everywhere"
+      return
+    }
+    root.keysListen = { id: row.id, add: add }
+    root.keysNote = ""
+  }
+
+  function doesList(ids) { return ids.map(function (id) { return Sc.does(id) }).join("”, “") }
+
+  function offerKey(seq) {
+    var id = root.keysListen.id
+    var c = Sc.check(id, seq)
+    if (!c.ok) { root.keysTake = ""; root.keysNote = c.reason; return }   // still listening
+    if (c.taken.length > 0 && root.keysTake !== seq) {
+      root.keysTake = seq
+      root.keysNote = Sc.show(seq) + " is “" + root.doesList(c.taken) + "” — press it again to move it here, Esc to leave it there"
+      return
+    }
+    Sc.assign(id, seq, root.keysListen.add)
+    root.keysListen = null
+    root.keysTake = ""
+    var bare = c.taken.filter(function (t) { return Sc.keysOf(t).length === 0 })
+    root.keysNote = c.taken.length === 0 ? ""
+      : Sc.show(seq) + " moved here from “" + root.doesList(c.taken) + "”"
+        + (bare.length > 0 ? ", which has no key now (Del on it gives its own back)" : "")
+    root.used("keys", "moved")
+    root.saveKeys()
+  }
+
+  function resetKey(row) {
+    root.keysTake = ""
+    if (!row || row.kind !== "action") return
+    if (!row.changed) { root.keysNote = "“" + row.does + "” is on its own keys already"; return }
+    var from = Sc.reset(row.id)
+    root.keysNote = from.length > 0 ? "taken back from “" + root.doesList(from) + "”" : ""
+    root.used("keys", "reset")
+    root.saveKeys()
+  }
+
+  function saveKeys() {
+    root.keysVersion++
+    var at = root.keyRows[root.keysFocus]
+    if (!at || at.kind === "head") root.keysFocus = root.nextKeyRow(-1, 1)
+    keysFile.setText(JSON.stringify(Sc.save(), null, 2) + "\n")
+  }
+
+  // Hyprland's keys for the page, the timer and the deadlines. Found by
+  // their description, since a bind made in Lua does not say what it runs.
+  function readOutside(text) {
+    var out = []
+    var names = { equal: "=", backslash: "\\", minus: "-", plus: "Plus", slash: "/", comma: ",", period: ".",
+                  semicolon: ";", apostrophe: "'", grave: "`", bracketleft: "[", bracketright: "]",
+                  space: "Space", Return: "Enter", Escape: "Esc", Tab: "Tab" }
+    try {
+      var binds = JSON.parse(text)
+      for (var i = 0; i < binds.length; i++) {
+        var b = binds[i]
+        if (!/\b(pomo|deadlines? popup|page\b|student)/i.test(b.description || "")) continue
+        var m = b.modmask
+        var key = names[b.key] !== undefined ? names[b.key] : b.key
+        out.push({ does: b.description, keys: [(m & 64 ? "Super+" : "") + (m & 4 ? "Ctrl+" : "") + (m & 8 ? "Alt+" : "")
+          + (m & 1 ? "Shift+" : "") + (key === "Plus" ? "+" : key)] })
+      }
+    } catch (e) {}
+    return out
   }
 
   // ------------------------------------------------------------ tasks panel
@@ -1044,18 +1184,16 @@ Item {
   // the list is there to find them. Writing into the note is the shifted
   // pair: Shift+Enter starts a class, Ctrl+Enter puts the tag at the
   // cursor. Inverted 2026-10-15; `@` in the note is the way to write one.
-  function projectsKey(k, ctrl, shift) {
+  function projectsKey(event) {
     var pr = root.projects[root.projFocus]
-    if (k === Qt.Key_Up && !ctrl) root.projFocus = Math.max(0, root.projFocus - 1)
-    else if (k === Qt.Key_Down && !ctrl) root.projFocus = Math.min(root.projects.length - 1, root.projFocus + 1)
-    else if (k === Qt.Key_Return || k === Qt.Key_Enter) {
-      if (pr && ctrl) root.insertTag(pr)
-      else if (pr && shift) root.startClass(pr)
-      else if (pr) root.openProject(pr)
-    }
-    else if (k === Qt.Key_Right && !ctrl) root.openProject(pr)
-    else if (k === Qt.Key_Tab || k === Qt.Key_Backtab || k === Qt.Key_Escape) root.projFocus = -1
-    else if (!ctrl) { root.projFocus = -1; return false }
+    if (Sc.hit(event, "listUp")) root.projFocus = Math.max(0, root.projFocus - 1)
+    else if (Sc.hit(event, "listDown")) root.projFocus = Math.min(root.projects.length - 1, root.projFocus + 1)
+    else if (Sc.hit(event, "listTag")) { if (pr) root.insertTag(pr) }
+    else if (Sc.hit(event, "listClass")) { if (pr) root.startClass(pr) }
+    else if (Sc.hit(event, "listOpen")) { if (pr) root.openProject(pr) }
+    else if (Sc.hit(event, "listInto")) root.openProject(pr)
+    else if (Sc.hit(event, "listNext") || Sc.hit(event, "listBack")) root.projFocus = -1
+    else if (!(event.modifiers & Qt.ControlModifier)) { root.projFocus = -1; return false }
     else return false
     return true
   }
@@ -1436,28 +1574,26 @@ Item {
   // Every key the dashboard takes, in one function so it can be driven
   // without a keyboard (tests/page/run.py).
   function dashKey(e) {
-    var ctrl = e.modifiers & Qt.ControlModifier
     var k = e.key
     if (root.dashWhenFor) {
       if (k === Qt.Key_Escape) { root.dashWhenFor = null; root.dashWhenText = ""; return true }
       if (k === Qt.Key_Return || k === Qt.Key_Enter) { root.commitDashWhen(); return true }
       return false
     }
-    if (k === Qt.Key_Escape) { root.toggleDash(); return true }
-    if (k === Qt.Key_T && ctrl) { root.toggleDash(); return true }
-    if (k === Qt.Key_Up) { root.moveTaskFocus(-1); return true }
-    if (k === Qt.Key_Down) { root.moveTaskFocus(1); return true }
-    if (k === Qt.Key_Home) { root.taskFocus = 0; root.moveTaskFocus(0); return true }
-    if (k === Qt.Key_End) { root.taskFocus = root.taskRows.length; root.moveTaskFocus(-1); return true }
+    if (Sc.hit(e, "dashBack") || Sc.hit(e, "dashboard")) { root.toggleDash(); return true }
+    if (Sc.hit(e, "dashUp")) { root.moveTaskFocus(-1); return true }
+    if (Sc.hit(e, "dashDown")) { root.moveTaskFocus(1); return true }
+    if (Sc.hit(e, "dashFirst")) { root.taskFocus = 0; root.moveTaskFocus(0); return true }
+    if (Sc.hit(e, "dashLast")) { root.taskFocus = root.taskRows.length; root.moveTaskFocus(-1); return true }
     // Enter goes to it, everywhere in the page; Ctrl+Enter is the act that
     // settles it. Decided 2026-10-15, and it ends Enter meaning "done" in
     // the deadline popup and "go to it" here.
-    if ((k === Qt.Key_Return || k === Qt.Key_Enter) && ctrl) { root.tickFocused(); return true }
-    if (k === Qt.Key_Return || k === Qt.Key_Enter) { root.activateTask(); return true }
-    if (k === Qt.Key_Delete || k === Qt.Key_Backspace) { root.dropFocused(); return true }
-    if (k === Qt.Key_Z && ctrl) { root.untickLast(); return true }
-    if (!ctrl && e.text === "p") { root.cyclePriorityFocused(); return true }
-    if (!ctrl && e.text === "t") { root.startDashWhen(); return true }
+    if (Sc.hit(e, "dashDone")) { root.tickFocused(); return true }
+    if (Sc.hit(e, "dashOpen")) { root.activateTask(); return true }
+    if (Sc.hit(e, "dashDrop")) { root.dropFocused(); return true }
+    if (Sc.hit(e, "dashUndo")) { root.untickLast(); return true }
+    if (Sc.hit(e, "dashPriority")) { root.cyclePriorityFocused(); return true }
+    if (Sc.hit(e, "dashWhen")) { root.startDashWhen(); return true }
     return false
   }
 
@@ -1814,7 +1950,7 @@ Item {
     var row = root.rowByRaw(a.raw)
     if (!row) return
     var title = Bound.titleOf(row.body)
-    if (title === "") { root.showHint("write what it is first, then Ctrl+D"); return }
+    if (title === "") { root.showHint("write what it is first, then " + root.keyName("deadline")); return }
     var head = row.body
     var project = Bound.projectOf(row.body)
     dl.when(text, function (w) {
@@ -2322,6 +2458,28 @@ Item {
   }
   Timer { interval: 300000; running: root.usageBuf.length > 0; repeat: true; onTriggered: root.flushUsage() }
 
+  // keys.json: the keys the student moved (Shortcuts.js). A choice, so
+  // beside config.json rather than with the machine's state; written by the
+  // keys sheet, and read again when edited by hand.
+  FileView {
+    id: keysFile
+    path: (Quickshell.env("XDG_CONFIG_HOME") || Quickshell.env("HOME") + "/.config") + "/omarchy-student/keys.json"
+    watchChanges: true
+    atomicWrites: true
+    printErrors: false
+    onLoaded: {
+      try { Sc.load(JSON.parse(text())) } catch (e) { console.warn("student.page keys.json: " + e) }
+      root.keysVersion++
+    }
+    onFileChanged: reload()
+  }
+
+  Process {
+    id: outsideProc
+    command: ["hyprctl", "binds", "-j"]
+    stdout: StdioCollector { onStreamFinished: root.outsideKeys = root.readOutside(text) }
+  }
+
   // The zoom step survives restarts. Machine state, not config, and never
   // in the vault.
   FileView {
@@ -2385,7 +2543,7 @@ Item {
       anchors.centerIn: parent
       visible: root.overlayOpen
       textFormat: Text.PlainText
-      text: "on the overlay · Esc brings it back"
+      text: "on the overlay · " + root.keyName("close") + " brings it back"
       color: root.faint
       font.family: root.fontFamily
       font.styleName: root.fontStyle
@@ -2417,7 +2575,7 @@ Item {
     // it gets the width the window has.
     BorderSurface {
       id: dash
-      visible: root.dashOpen
+      visible: root.dashOpen && !root.keysOpen
       x: root.alongside ? 0 : root.sideSpace + root.sheetMargin
       y: root.alongside ? 0 : root.sheetMargin
       width: (root.alongside ? content.width : content.width - root.sheetMargin * 2) - root.sideSpace
@@ -2433,7 +2591,7 @@ Item {
         id: dashKeys
         anchors.fill: parent
         Keys.onPressed: function (event) {
-          if (root.zoomKey(event)) { event.accepted = true; return }
+          if (root.anywhereKey(event)) { event.accepted = true; return }
           if (root.dashKey(event)) event.accepted = true
         }
 
@@ -2689,7 +2847,7 @@ Item {
                       elide: Text.ElideRight
                       maximumLineCount: 2
                       wrapMode: Text.WordWrap
-                      text: dashRow.kind === "older" ? "+" + modelData.count + " written longer ago · Enter to show"
+                      text: dashRow.kind === "older" ? "+" + modelData.count + " written longer ago · " + root.keyName("dashOpen") + " to show"
                         : dashRow.kind === "raised"
                           ? (modelData.item.kind === "suggestion" ? "◇ " : "· ") + modelData.item.text
                         : dashRow.kind === "deadline" ? modelData.deadline.title
@@ -2739,7 +2897,7 @@ Item {
               textFormat: Text.PlainText
               wrapMode: Text.WordWrap
               text: !root.contextFor ? ""
-                : root.contextFor.deadline !== undefined ? "Not written in a note yet. Enter again writes it into today's note."
+                : root.contextFor.deadline !== undefined ? "Not written in a note yet. " + root.keyName("dashOpen") + " again writes it into today's note."
                 : root.contextFor.date + "\n\n" + contextFile.snippet
               color: root.dim
               font.family: root.fontFamily
@@ -2763,7 +2921,10 @@ Item {
             visible: !root.dashWhenFor
             textFormat: Text.PlainText
             wrapMode: Text.WordWrap
-            text: "↑↓ move · Enter opens the line · Ctrl+Enter done · t when · p priority · Del drop · Ctrl+Z undo · Esc back"
+            text: root.keyName("dashUp") + root.keyName("dashDown") + " move · " + root.keyName("dashOpen") + " opens the line · "
+              + root.keyName("dashDone") + " done · " + root.keyName("dashWhen") + " when · " + root.keyName("dashPriority") + " priority · "
+              + root.keyName("dashDrop") + " drop · " + root.keyName("dashUndo") + " undo · " + root.keyName("dashBack") + " back · "
+              + root.keyName("keys") + " all keys"
             color: root.faint
             font.family: root.fontFamily
             font.styleName: root.fontStyle
@@ -2813,9 +2974,254 @@ Item {
       }
     }
 
+    // The keys sheet (Ctrl+/, or "keys" in the header): every key the page
+    // answers to, under where it works, each one movable. A list, so it
+    // takes the dashboard's shape rather than the note's measure.
+    BorderSurface {
+      id: keysSheet
+      visible: root.keysOpen
+      x: root.alongside ? 0 : root.sideSpace + root.sheetMargin
+      y: root.alongside ? 0 : root.sheetMargin
+      width: (root.alongside ? content.width : content.width - root.sheetMargin * 2) - root.sideSpace
+      height: root.alongside ? content.height : content.height - root.sheetMargin * 2
+      radius: root.alongside ? 0 : Style.cornerRadius
+      color: root.background
+      borderSpec: root.alongside ? Border.none() : root.borderSpec
+      padding: root.sheetPadding
+
+      MouseArea { anchors.fill: parent; onClicked: keysField.forceActiveFocus() }
+
+      Item {
+        anchors.fill: parent
+        anchors.topMargin: keysSheet.contentTopInset
+        anchors.rightMargin: keysSheet.contentRightInset
+        anchors.bottomMargin: keysSheet.contentBottomInset
+        anchors.leftMargin: keysSheet.contentLeftInset
+
+        // Everything sits in one column, as wide as the dashboard's.
+        Item {
+          id: keysColumn
+          width: Math.min(parent.width, Math.round(root.measure * 1.45))
+          x: Math.round((parent.width - width) / 2)
+          height: parent.height
+
+          Text {
+            id: keysTitle
+            anchors.top: parent.top
+            anchors.left: parent.left
+            textFormat: Text.PlainText
+            text: {
+              root.keysVersion
+              var n = Object.keys(Sc.save()).length
+              return "KEYS" + (n > 0 ? "   ·   " + n + " moved" : "")
+            }
+            color: root.dim
+            font.family: root.fontFamily
+            font.styleName: root.fontStyle
+            font.pixelSize: root.fs(Style.font.caption)
+          }
+
+          TextField {
+            id: keysField
+            anchors.top: keysTitle.bottom
+            anchors.topMargin: root.sp(10)
+            anchors.left: parent.left
+            anchors.right: parent.right
+            placeholderText: "find a key, or what it does"
+            font.family: root.fontFamily
+            font.styleName: root.fontStyle
+            font.pixelSize: root.fs(Style.font.body)
+            foreground: root.foreground
+            onTextChanged: {
+              root.keysFilter = text
+              root.keysFocus = root.nextKeyRow(-1, 1)
+            }
+            Keys.priority: Keys.BeforeItem
+            Keys.onPressed: function (event) { if (root.keysKey(event)) event.accepted = true }
+          }
+
+          Flickable {
+            id: keysFlick
+            anchors.top: keysField.bottom
+            anchors.topMargin: root.sp(12)
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: keysFoot.top
+            anchors.bottomMargin: root.sp(10)
+            clip: true
+            contentWidth: width
+            contentHeight: keysList.implicitHeight
+            boundsBehavior: Flickable.StopAtBounds
+
+            TouchScroll { flickable: keysFlick }
+
+            function revealFocused() {
+              var kids = keysList.children
+              for (var i = 0; i < kids.length; i++) {
+                var k = kids[i]
+                if (k.index === undefined || k.index !== root.keysFocus) continue
+                if (contentY > k.y) contentY = k.y
+                else if (contentY + height < k.y + k.height) contentY = k.y + k.height - height
+                return
+              }
+            }
+            Connections { target: root; function onKeysFocusChanged() { Qt.callLater(keysFlick.revealFocused) } }
+
+            Column {
+              id: keysList
+              width: parent.width
+
+              Text {
+                width: parent.width
+                visible: root.keyRows.length === 0
+                textFormat: Text.PlainText
+                text: "no key does that"
+                color: root.faint
+                font.family: root.fontFamily
+                font.styleName: root.fontStyle
+                font.pixelSize: root.fs(Style.font.body)
+              }
+
+              Repeater {
+                model: root.keyRows
+                Item {
+                  id: keyRow
+                  required property var modelData
+                  required property int index
+                  readonly property bool isHead: modelData.kind === "head"
+                  readonly property bool hot: root.keysFocus === index && !isHead
+                  readonly property bool listening: hot && !!root.keysListen && root.keysListen.id === modelData.id
+                  width: keysList.width
+                  height: keyInner.height + root.sp(14) + (isHead ? (index === 0 ? root.sp(4) : root.sp(26)) : 0)
+
+                  Rectangle {
+                    anchors.fill: keyInner
+                    anchors.topMargin: -root.sp(6)
+                    anchors.bottomMargin: -root.sp(6)
+                    anchors.leftMargin: -root.sp(8)
+                    anchors.rightMargin: -root.sp(8)
+                    radius: Style.cornerRadius
+                    color: keyRow.hot ? Style.selectedFill : "transparent"
+                  }
+
+                  Item {
+                    id: keyInner
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    anchors.leftMargin: root.sp(10)
+                    anchors.rightMargin: root.sp(10)
+                    anchors.bottomMargin: root.sp(7)
+                    height: Math.max(doesText.implicitHeight, keyCaps.height)
+
+                    // A group: drawn like a band in the dashboard.
+                    Text {
+                      id: doesText
+                      anchors.left: parent.left
+                      anchors.right: keyCaps.left
+                      anchors.rightMargin: root.sp(12)
+                      anchors.verticalCenter: parent.verticalCenter
+                      textFormat: Text.PlainText
+                      wrapMode: Text.WordWrap
+                      text: keyRow.modelData.does
+                      color: keyRow.isHead ? (pal.headings.length > 0 ? pal.headings[0] : root.accent)
+                        : keyRow.modelData.kind === "fixed" ? root.dim : root.foreground
+                      font.family: root.fontFamily
+                      font.styleName: root.fontStyle
+                      font.pixelSize: root.fs(Style.font.body)
+                    }
+
+                    // Its keys, each a pill like a bound line's date. A
+                    // moved key is outlined in the accent; while the sheet
+                    // waits for the new key, the pills give way to that.
+                    Row {
+                      id: keyCaps
+                      anchors.right: parent.right
+                      anchors.verticalCenter: parent.verticalCenter
+                      spacing: root.sp(6)
+                      Repeater {
+                        model: keyRow.listening ? [root.keysTake !== "" ? Sc.show(root.keysTake) + " again to move it" : "press the new key · Esc keeps it"]
+                          : keyRow.modelData.keys.length === 0 && keyRow.modelData.kind === "action" ? ["no key"]
+                          : keyRow.modelData.keys
+                        Rectangle {
+                          required property var modelData
+                          readonly property bool strong: keyRow.listening || keyRow.modelData.changed
+                          width: capText.implicitWidth + Math.round(root.textSize * 0.9)
+                          height: capText.implicitHeight + Math.round(root.textSize * 0.25)
+                          radius: height / 2
+                          color: "transparent"
+                          border.width: 1
+                          border.color: strong ? root.accent : root.faint
+                          Text {
+                            id: capText
+                            anchors.centerIn: parent
+                            textFormat: Text.PlainText
+                            text: parent.modelData
+                            color: parent.strong ? root.accent : keyRow.modelData.kind === "fixed" ? root.dim : root.foreground
+                            font.family: root.fontFamily
+                            font.styleName: root.fontStyle
+                            font.pixelSize: Math.round(root.textSize * 0.78)
+                          }
+                        }
+                      }
+                    }
+                  }
+
+                  MouseArea {
+                    anchors.fill: parent
+                    enabled: !keyRow.isHead
+                    z: -1
+                    onClicked: {
+                      root.keysFocus = keyRow.index
+                      root.listenFor(keyRow.modelData, false)
+                      keysField.forceActiveFocus()
+                    }
+                  }
+                }
+              }
+            }
+          }
+
+          Column {
+            id: keysFoot
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            spacing: root.sp(4)
+
+            Text {
+              width: parent.width
+              visible: text !== ""
+              textFormat: Text.PlainText
+              wrapMode: Text.WordWrap
+              text: root.keysNote !== "" ? root.keysNote
+                : (root.keyRows[root.keysFocus] && root.keyRows[root.keysFocus].where !== "" && root.keyRows[root.keysFocus].where !== "Hyprland"
+                  ? "works " + root.keyRows[root.keysFocus].where : "")
+              color: root.keysNote !== "" ? root.accent : root.dim
+              font.family: root.fontFamily
+              font.styleName: root.fontStyle
+              font.pixelSize: root.fs(Style.font.bodySmall)
+            }
+
+            Text {
+              width: parent.width
+              textFormat: Text.PlainText
+              wrapMode: Text.WordWrap
+              text: root.keysListen ? "press the key, with Ctrl, Alt, Shift or Super if you want them · Esc keeps the old one"
+                : "↑↓ move · Enter changes the key · Shift+Enter adds one · Del gives back its own · type to find · Esc back"
+              color: root.faint
+              font.family: root.fontFamily
+              font.styleName: root.fontStyle
+              font.pixelSize: root.fs(Style.font.caption)
+            }
+          }
+        }
+      }
+    }
+
     BorderSurface {
       id: sheet
-      visible: !root.dashOpen
+      visible: !root.dashOpen && !root.keysOpen
       x: root.alongside ? root.windowSheetX : Math.max(Math.round((content.width - width) / 2), root.sideSpace > 0 ? root.sideSpace + root.sheetMargin : 0)
       y: root.alongside ? 0 : root.sheetMargin
       width: root.alongside ? root.windowSheetWidth : root.sheetWidth
@@ -2888,6 +3294,26 @@ Item {
               font.family: root.fontFamily
               font.styleName: root.fontStyle
               font.pixelSize: root.fs(Style.font.bodySmall)
+            }
+
+            // Keys: the sheet that lists every key and lets you move one.
+            // Faint like the pin; it is there to be found, not to be read.
+            Text {
+              anchors.verticalCenter: parent.verticalCenter
+              textFormat: Text.PlainText
+              text: "keys"
+              color: keysArea.containsMouse ? root.accent : root.faint
+              font.family: root.fontFamily
+              font.styleName: root.fontStyle
+              font.pixelSize: root.fs(Style.font.bodySmall)
+              Behavior on color { ColorAnimation { duration: 240 } }
+              MouseArea {
+                id: keysArea
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.toggleKeys()
+              }
             }
 
             // The pin: which shape you are in. Ctrl+P or a click flips it.
@@ -3006,20 +3432,14 @@ Item {
             foreground: root.foreground
             onTextChanged: if (root.searchOpen) root.runSearch()
             Keys.onPressed: function (event) {
-              var ctrl = event.modifiers & Qt.ControlModifier
-              var k = event.key
-              if (root.zoomKey(event)) { event.accepted = true; return }
-              if (k === Qt.Key_Return || k === Qt.Key_Enter) {
-                if (ctrl) root.closeSearch(true)
-                else root.stepMatch(event.modifiers & Qt.ShiftModifier ? -1 : 1)
-                event.accepted = true
-              } else if (k === Qt.Key_Escape) {
-                root.closeSearch(false)
-                event.accepted = true
-              } else if (k === Qt.Key_F && ctrl) {
-                searchField.selectAll()
-                event.accepted = true
-              }
+              if (root.anywhereKey(event)) { event.accepted = true; return }
+              if (Sc.hit(event, "findGo")) root.closeSearch(true)
+              else if (Sc.hit(event, "findNext")) root.stepMatch(1)
+              else if (Sc.hit(event, "findPrev")) root.stepMatch(-1)
+              else if (Sc.hit(event, "findClose")) root.closeSearch(false)
+              else if (Sc.hit(event, "find")) searchField.selectAll()
+              else return
+              event.accepted = true
             }
           }
 
@@ -3028,7 +3448,7 @@ Item {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             textFormat: Text.PlainText
-            text: searchField.text === "" ? "Enter next · Shift+Enter back · Ctrl+Enter go"
+            text: searchField.text === "" ? root.keyName("findNext") + " next · " + root.keyName("findPrev") + " back · " + root.keyName("findGo") + " go"
               : (root.matches.length === 0 ? "no match" : (root.matchIndex + 1) + " / " + root.matches.length)
             color: root.dim
             font.family: root.fontFamily
@@ -3269,8 +3689,8 @@ Item {
                 textFormat: Text.PlainText
                 wrapMode: Text.WordWrap
                 text: root.mention && root.mention.atLineStart
-                  ? "Enter its tag · Shift+Enter starts the class · Esc leaves it"
-                  : "Enter its tag · Esc leaves it"
+                  ? root.keyName("mentionPick") + " its tag · " + root.keyName("mentionClass") + " starts the class · " + root.keyName("mentionClose") + " leaves it"
+                  : root.keyName("mentionPick") + " its tag · " + root.keyName("mentionClose") + " leaves it"
                 color: root.faint
                 font.family: root.fontFamily
                 font.styleName: root.fontStyle
@@ -3304,7 +3724,7 @@ Item {
               font.pixelSize: root.fs(Style.font.body)
               foreground: root.foreground
               Keys.onPressed: function (event) {
-                if (root.zoomKey(event)) { event.accepted = true; return }
+                if (root.anywhereKey(event)) { event.accepted = true; return }
                 if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { root.submitWhen(); event.accepted = true }
                 else if (event.key === Qt.Key_Escape) { root.closeWhen(); event.accepted = true }
               }
@@ -3345,20 +3765,24 @@ Item {
         id: sidebarKeys
         anchors.fill: parent
         Keys.onPressed: function (event) {
-          var ctrl = event.modifiers & Qt.ControlModifier
-          var alt = event.modifiers & Qt.AltModifier
-          var k = event.key
-          if (root.zoomKey(event)) { event.accepted = true; return }
+          if (root.anywhereKey(event)) { event.accepted = true; return }
+          // Wherever the sidebar's focus is: back to the note, or close it.
+          if (Sc.hit(event, "toNote")) { editor.focusNote(); event.accepted = true; return }
+          if (Sc.hit(event, "sidebar")) {
+            root.sidebarOpen = false
+            root.projectOpen = false
+            editor.focusNote()
+            event.accepted = true
+            return
+          }
           // Inside a project: its sections, newest first. Enter opens one in
           // the sheet (the list stays), Left or Esc goes back to the list of
           // projects.
           if (root.projectOpen) {
-            if (k === Qt.Key_Up) root.moveSectionFocus(-1)
-            else if (k === Qt.Key_Down) root.moveSectionFocus(1)
-            else if (k === Qt.Key_Return || k === Qt.Key_Enter) root.openSection(root.sections[root.sectionFocus])
-            else if (k === Qt.Key_Left || k === Qt.Key_Escape || k === Qt.Key_Backtab) root.leaveProject()
-            else if (k === Qt.Key_Right && alt) editor.focusNote()
-            else if (k === Qt.Key_B && ctrl && (event.modifiers & Qt.ShiftModifier)) { root.sidebarOpen = false; root.projectOpen = false; editor.focusNote() }
+            if (Sc.hit(event, "listUp")) root.moveSectionFocus(-1)
+            else if (Sc.hit(event, "listDown")) root.moveSectionFocus(1)
+            else if (Sc.hit(event, "listOpen")) root.openSection(root.sections[root.sectionFocus])
+            else if (Sc.hit(event, "listBack")) root.leaveProject()
             else return
             event.accepted = true
             return
@@ -3366,46 +3790,45 @@ Item {
           // Tab walks the sidebar: the days, the day's deadlines (when it
           // has some), the projects, and back to the days.
           // In the day's deadline list: up/down pick, Enter goes to the line.
-          if (root.dueFocus >= 0 && !ctrl && !alt) {
+          // A key with Ctrl or Alt it does not use goes on to the calendar.
+          if (root.dueFocus >= 0) {
             var n = root.focusDue.length
-            if (k === Qt.Key_Up) root.dueFocus = Math.max(0, root.dueFocus - 1)
-            else if (k === Qt.Key_Down) root.dueFocus = Math.min(n - 1, root.dueFocus + 1)
-            else if (k === Qt.Key_Return || k === Qt.Key_Enter) root.goToDeadline(root.focusDue[root.dueFocus])
-            else if (k === Qt.Key_Tab) { root.dueFocus = -1; if (root.projects.length > 0) root.projFocus = 0 }
-            else if (k === Qt.Key_Backtab || k === Qt.Key_Escape) root.dueFocus = -1
-            else { root.dueFocus = -1; return }
-            event.accepted = true
+            var took = true
+            if (Sc.hit(event, "listUp")) root.dueFocus = Math.max(0, root.dueFocus - 1)
+            else if (Sc.hit(event, "listDown")) root.dueFocus = Math.min(n - 1, root.dueFocus + 1)
+            else if (Sc.hit(event, "listOpen")) root.goToDeadline(root.focusDue[root.dueFocus])
+            else if (Sc.hit(event, "listNext")) { root.dueFocus = -1; if (root.projects.length > 0) root.projFocus = 0 }
+            else if (Sc.hit(event, "listBack")) root.dueFocus = -1
+            else took = false
+            if (took) { event.accepted = true; return }
+            // Any other key leaves the list, one with Ctrl or Alt for the
+            // calendar below.
+            if (!(event.modifiers & (Qt.ControlModifier | Qt.AltModifier))) { root.dueFocus = -1; return }
+          }
+          if (root.projFocus >= 0) {
+            if (root.projectsKey(event)) event.accepted = true
             return
           }
-          if (root.projFocus >= 0 && !alt) {
-            if (root.projectsKey(k, ctrl, event.modifiers & Qt.ShiftModifier)) event.accepted = true
-            return
-          }
-          if (k === Qt.Key_Tab && (root.focusDue.length > 0 || root.projects.length > 0)) {
+          if (Sc.hit(event, "calLists") && (root.focusDue.length > 0 || root.projects.length > 0)) {
             if (root.focusDue.length > 0) root.dueFocus = 0
             else root.projFocus = 0
-          } else if (k === Qt.Key_Escape || (k === Qt.Key_B && ctrl && (event.modifiers & Qt.ShiftModifier))) {
-            if (k === Qt.Key_B) root.sidebarOpen = false
+          } else if (Sc.hit(event, "calBack")) {
             editor.focusNote()
-          } else if (k === Qt.Key_Right && alt) {
-            editor.focusNote()
-          } else if (k === Qt.Key_Left) {
-            if (ctrl) root.moveCalendar(0, -1)
-            else root.moveCalendar(-1, 0)
-          } else if (k === Qt.Key_Right) {
-            if (ctrl) root.moveCalendar(0, 1)
-            else root.moveCalendar(1, 0)
-          } else if (k === Qt.Key_Up) {
+          } else if (Sc.hit(event, "calPrevDay")) {
+            root.moveCalendar(-1, 0)
+          } else if (Sc.hit(event, "calNextDay")) {
+            root.moveCalendar(1, 0)
+          } else if (Sc.hit(event, "calPrevWeek")) {
             root.moveCalendar(-7, 0)
-          } else if (k === Qt.Key_Down) {
+          } else if (Sc.hit(event, "calNextWeek")) {
             root.moveCalendar(7, 0)
-          } else if (k === Qt.Key_PageUp) {
+          } else if (Sc.hit(event, "calPrevMonth")) {
             root.moveCalendar(0, -1)
-          } else if (k === Qt.Key_PageDown) {
+          } else if (Sc.hit(event, "calNextMonth")) {
             root.moveCalendar(0, 1)
-          } else if (k === Qt.Key_Home) {
+          } else if (Sc.hit(event, "calToday")) {
             root.calFocus = new Date()
-          } else if (k === Qt.Key_Return || k === Qt.Key_Enter) {
+          } else if (Sc.hit(event, "calOpen")) {
             root.openCalendarDay(root.calFocus)
           } else {
             return
@@ -3678,9 +4101,13 @@ Item {
           visible: sidebarKeys.activeFocus
           textFormat: Text.PlainText
           wrapMode: Text.WordWrap
-          text: root.projFocus >= 0 ? "↑↓ pick · Enter its notes · Shift+Enter starts a class · Ctrl+Enter puts the tag · Tab back"
-            : root.dueFocus >= 0 ? "↑↓ pick · Enter goes to its line · Tab on to the projects"
-            : "arrows move · Ctrl+←→ month · Home today · Enter opens" + (root.focusDue.length > 0 || root.projects.length > 0 ? " · Tab: " + (root.focusDue.length > 0 ? "this day's deadlines" : "the projects") : "")
+          text: root.projFocus >= 0 ? root.keyName("listUp") + root.keyName("listDown") + " pick · " + root.keyName("listOpen") + " its notes · "
+              + root.keyName("listClass") + " starts a class · " + root.keyName("listTag") + " puts the tag · " + root.keyName("listNext") + " back"
+            : root.dueFocus >= 0 ? root.keyName("listUp") + root.keyName("listDown") + " pick · " + root.keyName("listOpen") + " goes to its line · "
+              + root.keyName("listNext") + " on to the projects"
+            : "arrows move · " + root.keyName("calPrevMonth") + root.keyName("calNextMonth") + " month · " + root.keyName("calToday") + " today · "
+              + root.keyName("calOpen") + " opens" + (root.focusDue.length > 0 || root.projects.length > 0
+                ? " · " + root.keyName("calLists") + ": " + (root.focusDue.length > 0 ? "this day's deadlines" : "the projects") : "")
           color: root.faint
           font.family: root.fontFamily
           font.styleName: root.fontStyle
@@ -3816,7 +4243,8 @@ Item {
             topPadding: root.sp(6)
             textFormat: Text.PlainText
             wrapMode: Text.WordWrap
-            text: "↑↓ pick · Enter opens it in the sheet · ← back to the projects"
+            text: root.keyName("listUp") + root.keyName("listDown") + " pick · " + root.keyName("listOpen") + " opens it in the sheet · "
+              + root.keyName("listBack") + " back to the projects"
             color: root.faint
             font.family: root.fontFamily
             font.styleName: root.fontStyle
@@ -3831,7 +4259,7 @@ Item {
     // and the field to talk back.
     BorderSurface {
       id: margin
-      visible: root.marginWidth > 0 && root.problem === "" && root.marginOpen
+      visible: root.marginWidth > 0 && root.problem === "" && root.marginOpen && !root.keysOpen
       x: sheet.x + sheet.width + root.marginGap
       y: sheet.y
       height: sheet.height
@@ -3849,13 +4277,13 @@ Item {
         id: marginKeys
         anchors.fill: parent
         Keys.onPressed: function (event) {
-          var alt = event.modifiers & Qt.AltModifier
-          var k = event.key
-          if (root.zoomKey(event)) { event.accepted = true; return }
-          if (k === Qt.Key_Escape || (k === Qt.Key_Left && alt)) { root.backToNote(); event.accepted = true; return }
-          if (k === Qt.Key_Up) { root.moveMarginFocus(-1); event.accepted = true }
-          else if (k === Qt.Key_Down) { root.moveMarginFocus(1); event.accepted = true }
-          else if (k === Qt.Key_Return || k === Qt.Key_Enter || k === Qt.Key_Space) { root.acceptProposal(root.marginFocus); event.accepted = true }
+          if (root.anywhereKey(event)) { event.accepted = true; return }
+          if (Sc.hit(event, "marginBack")) root.backToNote()
+          else if (Sc.hit(event, "marginUp")) root.moveMarginFocus(-1)
+          else if (Sc.hit(event, "marginDown")) root.moveMarginFocus(1)
+          else if (Sc.hit(event, "marginAccept")) root.acceptProposal(root.marginFocus)
+          else return
+          event.accepted = true
         }
       }
 
@@ -3987,7 +4415,7 @@ Item {
             visible: !root.answered(root.currentRecord) && !root.answering
             textFormat: Text.PlainText
             wrapMode: Text.WordWrap
-            text: "Nothing from the agent on this block yet. Ctrl+Enter sends it, or ask below."
+            text: "Nothing from the agent on this block yet. " + root.keyName("ask") + " sends it, or ask below."
             color: root.faint
             font.family: root.fontFamily
             font.styleName: root.fontStyle
@@ -4016,13 +4444,13 @@ Item {
           font.styleName: root.fontStyle
           font.pixelSize: root.fs(Style.font.body)
           foreground: root.foreground
-          Keys.onReturnPressed: function (event) { event.accepted = true; root.sendChat() }
-          Keys.onEnterPressed: function (event) { event.accepted = true; root.sendChat() }
-          Keys.onEscapePressed: function (event) { event.accepted = true; root.backToNote() }
           Keys.onPressed: function (event) {
-            if (root.zoomKey(event)) { event.accepted = true; return }
-            if (event.key === Qt.Key_Left && (event.modifiers & Qt.AltModifier)) { root.backToNote(); event.accepted = true }
-            else if (event.key === Qt.Key_Up && text === "" && root.currentProposals.length > 0) { root.moveMarginFocus(-1); event.accepted = true }
+            if (root.anywhereKey(event)) { event.accepted = true; return }
+            if (Sc.hit(event, "chatSend")) root.sendChat()
+            else if (Sc.hit(event, "marginBack")) root.backToNote()
+            else if (Sc.hit(event, "marginUp") && text === "" && root.currentProposals.length > 0) root.moveMarginFocus(-1)
+            else return
+            event.accepted = true
           }
         }
       }

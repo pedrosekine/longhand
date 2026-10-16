@@ -146,9 +146,28 @@ block is written in. Needs `~/.config/omarchy-student/config.json` (copy
 `config.example.json`) pointing at your vault; the note lives at
 `<vault>/<daily.dir>/<date>.md` exactly where Obsidian's daily notes would.
 
+### Every key, and moving one
+
+`Ctrl+/`, or **keys** in the header, turns the sheet into the list of every
+key the page answers to, grouped by where it works: the page, writing,
+moving through the note, the agent, `@`, find, the dashboard, the calendar,
+the sidebar's lists and the margin. Type to narrow it ("bold", "ctrl+t").
+Enter on a row and press the new key to move it there; Shift+Enter adds a
+second key beside the first; `Del` gives the row its own keys back. Every
+hint in the page follows the move. A key that something else in the same
+place already has is asked about first (press it again to take it), a
+letter alone is refused wherever you write, since it would be typed, and the
+text field's own keys (arrows, selecting, the clipboard, Enter, Tab) are
+listed but never taken. Hyprland's keys for the page, the timer and the
+deadlines are listed too, read live; they are changed in your Hyprland
+bindings, not here. What you move is kept in
+`~/.config/omarchy-student/keys.json`, only the keys that differ, by the
+names in `plugin-page/Shortcuts.js` — `{"bold": ["Ctrl+K"]}` — and the page
+reads it again when you edit it by hand. Delete it to have every key back.
+
 ```bash
 python3 tests/test_blocks.py                                # block splitter, JS and Python must agree (needs node)
-QT_QPA_PLATFORM=offscreen /usr/lib/qt6/bin/qmltestrunner -input tests   # editor (driven by keys), emphasis, calendar days, bound lines
+QT_QPA_PLATFORM=offscreen /usr/lib/qt6/bin/qmltestrunner -input tests   # editor (driven by keys), keys, emphasis, calendar days, bound lines
 python3 tests/test_pomo.py                                    # the deadline CLI's contract with the page
 python3 tests/page/run.py                                     # the page itself, live: a window that never takes focus, a throwaway vault
 ```

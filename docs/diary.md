@@ -809,3 +809,16 @@ only the window and the panels around it differ.
   (1.7 / 1.4 / 1.15 / 1), and the live test now asserts ΔE ≥ 15 between
   neighbours rather than a direction of travel — this theme comes out at
   22, 24, 33.
+- 2026-10-16: every key in one place. The page answered to 91 keys for 76
+  actions, written into ten handlers and described only in prose; they are
+  now one list (`plugin-page/Shortcuts.js`) that every handler asks and the
+  keys sheet (`Ctrl+/`, **keys** in the header) draws, so the list cannot
+  drift from what the keys do. Every key the page defines can be moved,
+  including the dashboard's letters and the lists' arrows; what stays fixed
+  is the text field's own (arrows, selecting, the clipboard, Enter, Tab) and
+  the sheet's own keys, because a sheet whose way out can be moved can lock
+  the student in. Moving a key onto one taken in the same place asks first,
+  and a bare letter is refused wherever there is writing. Hyprland's keys
+  are shown but not edited from the page: they live in the student's own
+  bindings, and writing to those is a different trust. Matching became exact
+  (Ctrl+T no longer also answers Ctrl+Shift+T), which no test relied on.

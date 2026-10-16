@@ -3,6 +3,7 @@ import Quickshell.Io
 import QtQuick
 import qs.Commons
 import "page"
+import "page/Shortcuts.js" as Sc
 
 // The page under test: a stand-in for omarchy-shell (toggle / summon / hide
 // as shell.qml does them), plus IPC handles to drive the page without a
@@ -104,7 +105,10 @@ ShellRoot {
     function openSection(i: int): void { page.sectionFocus = i; page.openSection(page.sections[i]) }
     function leaveProject(): void { page.leaveProject() }
     // The projects list as the keyboard drives it: focus a row, then Enter.
-    function projectEnter(i: int, ctrl: bool, shift: bool): void { page.projFocus = i; page.projectsKey(Qt.Key_Return, ctrl, shift) }
+    function projectEnter(i: int, ctrl: bool, shift: bool): void {
+      page.projFocus = i
+      page.projectsKey({ key: Qt.Key_Return, text: "\r", modifiers: (ctrl ? Qt.ControlModifier : 0) | (shift ? Qt.ShiftModifier : 0) })
+    }
     function panel(): string { return JSON.stringify({ project: page.projectOpen, tasks: page.tasksOpen, margin: page.marginOpen, focus: page.sectionFocus }) }
     // The conversation as the margin draws it, and whether the box has the
     // keyboard — which is where Ctrl+Enter on an answered block must land.
@@ -114,13 +118,23 @@ ShellRoot {
     function chatFocused(): bool { return page.marginFocus === page.currentProposals.length }
     function sendChat(text: string): void { page.pendingChat = { hash: page.currentHash, text: text }; page.requestChat(page.currentHash, text) }
     function insertTag(i: int): void { page.insertTag(page.projects[i]) }
+    // The keys sheet, and a key as the page's own filter would get it.
+    function keys(): void { page.toggleKeys() }
+    function keysOpen(): bool { return page.keysOpen }
+    function keysFind(s: string): void { page.keysFilter = s; page.keysFocus = page.nextKeyRow(-1, 1) }
+    function keysKey(key: int, mods: int): bool { return page.keysKey({ key: key, text: "", modifiers: mods }) }
+    function keysNote(): string { return page.keysNote }
+    function keyRows(): string { return JSON.stringify(page.keyRows) }
+    function keysOf(id: string): string { page.keysVersion; return JSON.stringify(Sc.keysOf(id).map(Sc.show)) }
+    function pageKey(key: int, mods: int): bool { return page.pageKey({ key: key, text: "", modifiers: mods }) }
+
     // The dashboard
     function dash(): void { page.toggleDash() }
     function dashOpen(): bool { return page.dashOpen }
     function dashFocus(i: int): void { page.taskFocus = i }
     function dashAt(): int { return page.taskFocus }
     function dashKey(key: int, mods: int): bool { return page.dashKey({ key: key, text: "", modifiers: mods }) }
-    function dashType(ch: string): bool { return page.dashKey({ key: 0, text: ch, modifiers: 0 }) }
+    function dashType(ch: string): bool { return page.dashKey({ key: ch.toUpperCase().charCodeAt(0), text: ch, modifiers: 0 }) }
     function dashWhen(phrase: string): void { page.dashWhenText = phrase; page.commitDashWhen() }
     function dashRows(): string {
       return JSON.stringify(page.taskRows.map(function (r) {

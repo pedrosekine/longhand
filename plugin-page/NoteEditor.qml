@@ -2,6 +2,7 @@ import QtQuick
 import "Rows.js" as Rows
 import "Blocks.js" as Blocks
 import "Emph.js" as Emph
+import "Shortcuts.js" as Sc
 
 // The sheet's editor: the note drawn, not shown as markdown.
 //
@@ -874,8 +875,10 @@ Item {
 
     if (ed.spanning && k === Qt.Key_Escape) { ed.clearSelection(); ed.placeCursor(true); event.accepted = true; return }
     if (ed.keyFilter && ed.keyFilter(event)) { event.accepted = true; return }
-    if (ctrl && shift && !alt && (k === Qt.Key_Up || k === Qt.Key_Down)) {
-      ed.selectToBlockEdge(k === Qt.Key_Up ? -1 : 1, item)
+    // Which keys do what comes from Shortcuts.js; the student can move them.
+    var toStart = Sc.hit(event, "selectBlockStart")
+    if (toStart || Sc.hit(event, "selectBlockEnd")) {
+      ed.selectToBlockEdge(toStart ? -1 : 1, item)
       event.accepted = true
       return
     }
@@ -935,17 +938,19 @@ Item {
       ed.indent(i, false)
     } else if (k === Qt.Key_Backtab) {
       ed.indent(i, true)
-    } else if (k === Qt.Key_Z && ctrl) {
-      if (shift) ed.redo()
-      else ed.undo()
-    } else if (k === Qt.Key_Y && ctrl) {
+    } else if (Sc.hit(event, "undo")) {
+      ed.undo()
+    } else if (Sc.hit(event, "redo")) {
       ed.redo()
-    } else if (k === Qt.Key_L && ctrl) {
+    } else if (Sc.hit(event, "checkbox")) {
       ed.toggleCheckbox(i)
-    } else if (k === Qt.Key_Home && ctrl) {
+    } else if (Sc.hit(event, "noteStart")) {
       ed.setCursor(0, true)
-    } else if (k === Qt.Key_End && ctrl) {
+    } else if (Sc.hit(event, "noteEnd")) {
       ed.setCursor(ed.text.length, true)
+    } else if (Sc.fieldWouldTake(event)) {
+      // Moved to other keys: the field's own undo or jump must not take
+      // the old ones back.
     } else if (event.text === " " && noSel && f.length === 0 && /\s$/.test(ed.rows[i].marker)) {
       // The marker already ends in a space; "- [] " should not leave two.
     } else if (event.text === "]" && noSel) {
