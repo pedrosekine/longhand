@@ -981,6 +981,35 @@ def main() -> int:
         check(p.call("ask") == "null" and "^d" in next(l for l in p.call("text").split("\n") if "essay" in l),
               "…with its deadline anchor, and nothing asked")
 
+        # 12e. in the window, nothing is drawn on anything else: the sidebar
+        # beside the note, the dashboard and the keys sheet; the margin never
+        # over the dashboard
+        def overlaps():
+            sf = json.loads(p.call("surfaces"))
+            names = sorted(sf)
+            bad = [(a, b) for i, a in enumerate(names) for b in names[i + 1:]
+                   if sf[a]["x"] < sf[b]["x"] + sf[b]["w"] and sf[b]["x"] < sf[a]["x"] + sf[a]["w"]]
+            return sf, bad
+
+        p.open_fresh()
+        p.call("sidebar")
+        for what, on, off in (("the note", None, None), ("the dashboard", "dash", "dash"), ("the keys sheet", "keys", "keys")):
+            if on:
+                p.call(on)
+            time.sleep(0.3)
+            sf, bad = overlaps()
+            check("sidebar" in sf and not bad, f"the sidebar beside {what}, nothing over it ({sf})")
+            if off:
+                p.call(off)
+        p.call("marginOpen", "true")
+        p.call("dash")
+        time.sleep(0.3)
+        sf, bad = overlaps()
+        check("margin" not in sf and not bad, f"a margin left open does not sit on the dashboard ({sf})")
+        p.call("dash")
+        p.call("marginOpen", "false")
+        p.call("sidebar")
+
         # 13. the usage log: written on close, event names only
         p.call("closeAll")
         usage = p.state / "longhand" / "usage.tsv"

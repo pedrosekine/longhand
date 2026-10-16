@@ -208,6 +208,12 @@ Item {
   readonly property int windowSheetX: root.sideSpace + Math.max(0, Math.min(
     Math.round((content.width - root.sideSpace - root.windowSheetWidth) / 2), root.sheetRoom - root.windowSheetWidth))
   readonly property int sheetMargin: root.sp(28)
+  // The dashboard and the keys sheet are lists, so they take the width the
+  // sheet does not use — but never the sidebar's: in the window it is
+  // drawn at the left edge, on the overlay beside them.
+  readonly property bool wideOpen: root.dashOpen || root.keysOpen
+  readonly property int wideX: root.sideSpace + (root.alongside ? 0 : root.sheetMargin)
+  readonly property int wideWidth: (root.alongside ? content.width : content.width - root.sheetMargin * 2) - root.sideSpace
   readonly property int sheetPadding: alongside ? root.sp(28) : root.sp(44)
   readonly property int marginGap: root.sp(18)
   readonly property int gutter: root.sp(18)
@@ -1021,6 +1027,18 @@ Item {
     } else {
       editor.focusNote()
     }
+  }
+
+  // Where each surface is drawn, for tests/page/run.py to check that none
+  // sits on another.
+  function surfaces() {
+    var out = {}
+    var items = { sheet: sheet, dash: dash, keys: keysSheet, sidebar: sidebar, margin: margin }
+    for (var n in items) {
+      var it = items[n]
+      if (it.visible) out[n] = { x: Math.round(it.x), w: Math.round(it.width) }
+    }
+    return out
   }
 
   // An action's key as a hint names it, kept current as it moves.
@@ -2726,9 +2744,9 @@ Item {
     BorderSurface {
       id: dash
       visible: root.dashOpen && !root.keysOpen
-      x: root.alongside ? 0 : root.sideSpace + root.sheetMargin
+      x: root.wideX
       y: root.alongside ? 0 : root.sheetMargin
-      width: (root.alongside ? content.width : content.width - root.sheetMargin * 2) - root.sideSpace
+      width: root.wideWidth
       height: root.alongside ? content.height : content.height - root.sheetMargin * 2
       radius: root.alongside ? 0 : Style.cornerRadius
       color: root.background
@@ -2740,6 +2758,10 @@ Item {
       Item {
         id: dashKeys
         anchors.fill: parent
+        anchors.topMargin: dash.contentTopInset
+        anchors.rightMargin: dash.contentRightInset
+        anchors.bottomMargin: dash.contentBottomInset
+        anchors.leftMargin: dash.contentLeftInset
         Keys.onPressed: function (event) {
           if (root.anywhereKey(event)) { event.accepted = true; return }
           if (root.dashKey(event)) event.accepted = true
@@ -3141,9 +3163,9 @@ Item {
     BorderSurface {
       id: keysSheet
       visible: root.keysOpen
-      x: root.alongside ? 0 : root.sideSpace + root.sheetMargin
+      x: root.wideX
       y: root.alongside ? 0 : root.sheetMargin
-      width: (root.alongside ? content.width : content.width - root.sheetMargin * 2) - root.sideSpace
+      width: root.wideWidth
       height: root.alongside ? content.height : content.height - root.sheetMargin * 2
       radius: root.alongside ? 0 : Style.cornerRadius
       color: root.background
@@ -3936,7 +3958,9 @@ Item {
     BorderSurface {
       id: sidebar
       visible: root.sidebarOpen && root.problem === ""
-      x: root.alongside ? 0 : sheet.x - root.marginGap - root.sidebarWidth
+      // Beside whichever sheet is showing: the note's moves to stay centred,
+      // the dashboard's and the keys' leave room for this.
+      x: root.alongside ? 0 : (root.wideOpen ? root.wideX : sheet.x) - root.marginGap - root.sidebarWidth
       y: sheet.y
       height: sheet.height
       width: root.sidebarWidth
@@ -4488,7 +4512,7 @@ Item {
     // and the field to talk back.
     BorderSurface {
       id: margin
-      visible: root.marginWidth > 0 && root.problem === "" && root.marginOpen && !root.keysOpen
+      visible: root.marginWidth > 0 && root.problem === "" && root.marginOpen && !root.wideOpen
       x: sheet.x + sheet.width + root.marginGap
       y: sheet.y
       height: sheet.height
