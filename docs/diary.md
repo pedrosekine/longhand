@@ -56,17 +56,17 @@ All paths relative to the vault unless stated. Names of folders are config.
 | What | Where | Written by |
 |---|---|---|
 | Today's note | `inbox/Daily/YYYY.MM.DD.md` | the student, through the page |
-| Day transcript | `agents/student/daily/YYYY.MM.DD.md` | the runner |
-| Day state | `agents/student/daily/YYYY.MM.DD.json` | the runner, rendered by the page |
-| Knowledge | `agents/student/knowledge/` | the runner; the student may edit |
+| Day transcript | `agents/longhand/daily/YYYY.MM.DD.md` | the runner |
+| Day state | `agents/longhand/daily/YYYY.MM.DD.json` | the runner, rendered by the page |
+| Knowledge | `agents/longhand/knowledge/` | the runner; the student may edit |
 | Curriculum | folder named in config | the student; read-only for the agent |
-| Deadlines, sessions | `~/.local/state/omarchy-student/` (existing) | the CLI only |
-| Payload log | `~/.local/state/omarchy-student/payloads/` | the runner; never synced |
-| Cost ledger | `~/.local/state/omarchy-student/cost.tsv` | the runner |
+| Deadlines, sessions | `~/.local/state/longhand/` (existing) | the CLI only |
+| Payload log | `~/.local/state/longhand/payloads/` | the runner; never synced |
+| Cost ledger | `~/.local/state/longhand/cost.tsv` | the runner |
 
 **The note.** Created from a template by whoever gets there first (page or
 Obsidian); both check for existence. The template is one line: a link to the
-day's transcript, `[[agents/student/daily/YYYY.MM.DD|agent]]`, unresolved until
+day's transcript, `[[agents/longhand/daily/YYYY.MM.DD|agent]]`, unresolved until
 the first reply creates it. No code path except create-if-missing ever writes
 this folder. The page is the one program that edits the note: the student's
 typing and ticking, and — under principle 2 — a bound line's tick, date and
@@ -120,7 +120,7 @@ itself, so the note carries its own answer and nothing has to be looked up.
 | **A private block** | one block | a `> [!private]` callout | the student, by typing it | `blocks.py` marks the block `private`; `visible_blocks()` drops it before the payload exists |
 
 Both are enforced by local code *before* inference, and every payload is
-written to `~/.local/state/omarchy-student/payloads/` first, so "it was not
+written to `~/.local/state/longhand/payloads/` first, so "it was not
 sent" is checkable after the fact rather than promised. A private block is
 also absent from the day's state file and is refused outright as a trigger.
 Frontmatter is page-owned like the agent link line: it never enters the
@@ -244,8 +244,8 @@ and the ledger; limits are decided from usage, not guessed.
 ## The page
 
 - A Quickshell panel in `omarchy-shell`, full screen, summoned by a Hypr key.
-  Fully bound to the Omarchy theme, the way `student.pomo` and
-  `student.deadline` already are. No Chromium.
+  Fully bound to the Omarchy theme, the way `longhand.pomo` and
+  `longhand.deadline` already are. No Chromium.
 - Today's note only. No hierarchy, no file tree. A blank page.
 - Save after every keystroke, coalesced over ~300 ms, flushed on Enter and on
   close. Escape closes.
@@ -397,7 +397,7 @@ only the window and the panels around it differ.
   speaks in its own interface. Prompts no longer take `y`/`n` (Spanish "y"
   is a word); deleting a bound line hides the deadline instead of removing
   it. Features are frozen for two weeks of real use, measured by
-  `student-agent stats` (local only). Decided for after the freeze:
+  `longhand-agent stats` (local only). Decided for after the freeze:
   projects first — class notes must be findable by course without knowing
   the date; multi-language cue words and prompts, provided they cost no
   speed; the pomodoro stays a separate module and resurfaces with focus
@@ -471,7 +471,7 @@ only the window and the panels around it differ.
   sees nothing here" and **ask** and the agent mark are gone — not greyed,
   gone, because there is nothing to offer. Every run is gated on `agentOn`
   (the day is the agent's *and* the note is not private), which stops the
-  automatic open pass too; `student-agent` refuses such a note as well, so
+  automatic open pass too; `longhand-agent` refuses such a note as well, so
   the page simply never asks. The mark is one line of frontmatter because
   that is what the runner reads; any other property the student or Obsidian
   put there survives, and an emptied block is removed rather than left as
@@ -696,7 +696,7 @@ only the window and the panels around it differ.
   a guess. The dashboard itself is full screen, the pinned twin of
   `SUPER+ALT+D` as `SUPER+ALT+\` is of `SUPER+ALT+=`, and marking something
   done there ticks the line in the daily note, which forces it to be a shape
-  of the page: the page is the one writer, and `student-agent tasks` is
+  of the page: the page is the one writer, and `longhand-agent tasks` is
   read-only for that reason. Vocabulary stays Obsidian Tasks' (📅 ⏳ 🛫 🔁,
   the priority arrows, ✅, `- [/]` and `- [-]`) so the file still reads on
   the Mac and in any editor — richness on disk, quiet on screen, since the
@@ -715,7 +715,7 @@ only the window and the panels around it differ.
   pairing forced the architecture, pleasantly: marking something done in
   the dashboard ticks the line in the day it was written, so the dashboard
   had to be a shape of the page — the page is the only writer of notes, and
-  `student-agent tasks` is read-only for exactly that reason. Rows group by
+  `longhand-agent tasks` is read-only for exactly that reason. Rows group by
   what they ask of you (DUE, DOING, TO SCHEDULE) and then by project, never
   by the day the thought was written, which is not how it is looked for.
   Each row carries its heading path, so "draft the intro" reads as "Design

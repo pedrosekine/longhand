@@ -1,7 +1,7 @@
 // Task.js — one grammar for a checkbox line.
 //
 // Every surface reads checkbox lines, and until 2026-10-15 each read them
-// its own way: four regexes in `student-agent`, two more in Bound.js, and
+// its own way: four regexes in `longhand-agent`, two more in Bound.js, and
 // none of them agreed about a line inside a fence. One grammar, twinned in
 // `agent/task.py` and cross-checked line for line by `tests/test_task.py`.
 //

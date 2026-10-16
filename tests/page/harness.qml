@@ -17,7 +17,7 @@ ShellRoot {
   IpcHandler {
     target: "page"
     function summon(payload: string): void { page.open(payload) }
-    function toggle(payload: string): void { if (page.opened) fakeShell.hide("student.page"); else page.open(payload) }
+    function toggle(payload: string): void { if (page.opened) fakeShell.hide("longhand.page"); else page.open(payload) }
     function closeAll(): void { page.windowOpen = false; page.close() }
     function state(): string { return JSON.stringify({ overlay: page.overlayOpen, window: page.windowOpen, ready: page.editorItem.enabled }) }
     // The note

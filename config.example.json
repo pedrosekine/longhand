@@ -3,16 +3,16 @@
   "daily": {
     "dir": "inbox/Daily",
     "format": "YYYY.MM.DD",
-    "template": "agents/student/templates/daily"
+    "template": "agents/longhand/templates/daily"
   },
-  "agentDir": "agents/student",
+  "agentDir": "agents/longhand",
   "languages": [
     "English",
     "German",
     "Portuguese",
     "Spanish"
   ],
-  "curriculum": "agents/student/curriculum",
+  "curriculum": "agents/longhand/curriculum",
   "weekStart": "monday",
   "font": "iA Writer Quattro S",
   "codeFont": "",

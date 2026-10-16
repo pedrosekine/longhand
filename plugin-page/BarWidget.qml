@@ -10,7 +10,7 @@ import "Shortcuts.js" as Sc
 // looked at yet — the same signal as the mark in the page header.
 BarWidget {
   id: root
-  moduleName: "student.page"
+  moduleName: "longhand.page"
 
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
@@ -49,8 +49,8 @@ BarWidget {
       : "Today's note") + (root.pageKey !== "" ? "   " + root.pageKey : "")
     onTooltipHoveredChanged: if (tooltipHovered && !keyProc.running) keyProc.running = true
     onPressed: {
-      if (root.bar) root.bar.run("omarchy-shell shell toggle student.page '{}'")
-      else Quickshell.execDetached(["omarchy-shell", "shell", "toggle", "student.page", "{}"])
+      if (root.bar) root.bar.run("omarchy-shell shell toggle longhand.page '{}'")
+      else Quickshell.execDetached(["omarchy-shell", "shell", "toggle", "longhand.page", "{}"])
     }
   }
 }

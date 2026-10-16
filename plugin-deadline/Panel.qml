@@ -36,8 +36,8 @@ import qs.Ui
 // are graded or hidden.
 Panel {
   id: root
-  moduleName: "student.deadline"
-  ipcTarget: "student.deadline"
+  moduleName: "longhand.deadline"
+  ipcTarget: "longhand.deadline"
 
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property color dim: Qt.darker(foreground, 1.55)
@@ -129,7 +129,7 @@ Panel {
   // To the note line that stands for a deadline: the page opens on it.
   function openLine(item) {
     if (!item || !/^\[\[[^\]#|]+#\^d\d+\]\]$/.test(item.link)) return
-    Quickshell.execDetached(["omarchy-shell", "shell", "summon", "student.page", JSON.stringify({ goto: item.link })])
+    Quickshell.execDetached(["omarchy-shell", "shell", "summon", "longhand.page", JSON.stringify({ goto: item.link })])
     root.close()
   }
 

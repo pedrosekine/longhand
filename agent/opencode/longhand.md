@@ -1,5 +1,5 @@
 ---
-description: The student diary agent. Reads today's note, answers in the margin. No tools.
+description: Longhand's agent. Reads today's note, answers in the margin. No tools.
 mode: primary
 model: opencode-go/deepseek-v4.1-flash
 temperature: 0.4

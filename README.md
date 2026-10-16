@@ -1,10 +1,12 @@
-# omarchy-student
+# Longhand
 
-A daily page for students on [Omarchy](https://omarchy.org): you write the
-day in a blank sheet inside the shell, and an agent you call on reads it and
-answers in the margin. Deadlines, tasks and focus sessions live in the same
-notes, so a course's work is found by the course and not by the day it was
-written.
+You write the day by hand, in your own words, and it stays yours. Longhand is
+a daily page on [Omarchy](https://omarchy.org): a blank sheet inside the shell
+where you drive and own your threads (the courses, projects and questions you
+carry from day to day). An agent is there when you call it, to lend help and
+power: it reads only what you send it and answers in the margin, never in
+your text. Deadlines, tasks and focus sessions live in the same notes, so a
+course's work is found by the course and not by the day it was written.
 
 Keyboard-first, plain markdown underneath (your Obsidian vault reads the same
 files), and private by construction: the agent sees only what local code
@@ -16,7 +18,7 @@ when you ask.
 | Part | What it does |
 |------|--------------|
 | **The page** (`plugin-page/`) | Today's note as a full-screen overlay or a tiling window, drawn in the Omarchy theme: headings, checkboxes, emphasis, private callouts. Month calendar and your projects in a sidebar. |
-| **The agent** (`agent/student-agent`) | `Ctrl+Enter` sends the block you are in; the reply and the conversation appear beside it. Tool-less, sandboxed opencode, with a cost ledger. |
+| **The agent** (`agent/longhand-agent`) | `Ctrl+Enter` sends the block you are in; the reply and the conversation appear beside it. Tool-less, sandboxed opencode, with a cost ledger. |
 | **Deadlines in the notes** | Write `- [ ] essay draft #course due fri 17:00` and the line becomes a deadline, still readable in Obsidian. |
 | **The dashboard** (`Ctrl+T`) | Every open task and deadline across all your notes, grouped by what it asks of you and then by course. |
 | **Bar widgets** (`plugin/`, `plugin-deadline/`) | A Pomodoro countdown and the next deadline, with popups. |
@@ -32,16 +34,26 @@ Needs Omarchy (for `omarchy-shell`) and [opencode](https://opencode.ai) with
 one model key.
 
 ```bash
-mkdir -p ~/.config/omarchy-student
-cp config.example.json ~/.config/omarchy-student/config.json   # then point "vault" at your notes
-cp -r plugin-page     ~/.config/omarchy/plugins/student.page
-cp -r plugin          ~/.config/omarchy/plugins/student.pomo
-cp -r plugin-deadline ~/.config/omarchy/plugins/student.deadline
-# add {"id":"student.page"}, {"id":"student.pomo"}, {"id":"student.deadline"} to plugins[] in ~/.config/omarchy/shell.json
-ln -s "$PWD/cli/pomo"            ~/.local/bin/pomo
-ln -s "$PWD/agent/student-agent" ~/.local/bin/student-agent
-student-agent install
+mkdir -p ~/.config/longhand
+cp config.example.json ~/.config/longhand/config.json   # then point "vault" at your notes
+cp -r plugin-page     ~/.config/omarchy/plugins/longhand.page
+cp -r plugin          ~/.config/omarchy/plugins/longhand.pomo
+cp -r plugin-deadline ~/.config/omarchy/plugins/longhand.deadline
+# add {"id":"longhand.page"}, {"id":"longhand.pomo"}, {"id":"longhand.deadline"} to plugins[] in ~/.config/omarchy/shell.json
+ln -s "$PWD/cli/pomo"             ~/.local/bin/pomo
+ln -s "$PWD/agent/longhand-agent" ~/.local/bin/longhand-agent
+longhand-agent install
 ```
+
+Upgrading from **omarchy-student** (Longhand's name until 2026-10-16): run
+`tools/migrate-to-longhand` to see what it would move, then
+`tools/migrate-to-longhand --apply` and `omarchy restart shell`. It moves
+`~/.config/omarchy-student` and `~/.local/state/omarchy-student` to
+`longhand` (the old paths stay as symlinks), the vault's `agents/student` to
+`agents/longhand` with the agent link in each daily note, the plugins and
+their ids in `shell.json`, `hypr/student.lua`, and `student-agent`. A copy of
+everything it moves or replaces goes to `~/Backups/longhand-rename-<date>`
+first, and a second run does nothing.
 
 ## The page
 
@@ -143,9 +155,9 @@ the same way); `Alt+Up/Down` move the line, or every line selected, up or
 down, as in VS Code;
 `Alt+Right` goes into the margin — proposals first (Enter accepts one and runs
 it through `pomo`), then the chat — `Alt+Left` or `Esc` comes back. Drop
-course material into `agents/student/curriculum/` and run
-`student-agent curriculum` once for PDFs. List your `languages` in the config; the agent answers in the one the
-block is written in. Needs `~/.config/omarchy-student/config.json` (copy
+course material into `agents/longhand/curriculum/` and run
+`longhand-agent curriculum` once for PDFs. List your `languages` in the config; the agent answers in the one the
+block is written in. Needs `~/.config/longhand/config.json` (copy
 `config.example.json`) pointing at your vault; the note lives at
 `<vault>/<daily.dir>/<date>.md` exactly where Obsidian's daily notes would.
 
@@ -180,7 +192,7 @@ place already has is asked about first (press it again to take it), a
 letter alone is refused wherever you write, since it would be typed, and the
 text field's own keys (arrows, selecting, the clipboard, Enter, Tab) are
 listed but never taken. What you move is kept in
-`~/.config/omarchy-student/keys.json`, only the keys that differ, by the
+`~/.config/longhand/keys.json`, only the keys that differ, by the
 names in `plugin-page/Shortcuts.js` — `{"bold": ["Ctrl+K"]}` — and the page
 reads it again when you edit it by hand. Delete it to have every key back.
 
@@ -195,7 +207,7 @@ Hyprland's six keys for the page, the timer and the deadlines
 (`SUPER+ALT+=`, `\`, `D`, `O`, `P`, `N`) are listed last, read from your
 Hyprland config, wherever and on whatever keys you bound them. Above them, one row
 offers to let the page keep them. Enter on it says what it will write, and
-Enter again does it: the six go into `~/.config/hypr/student.lua`, a file
+Enter again does it: the six go into `~/.config/hypr/longhand.lua`, a file
 the page owns, and one line at the end of `~/.config/hypr/bindings.lua`
 loads it (through Omarchy's `require_optional`, so a deleted file is never
 an error). Your own lines for those six are commented out, saying where
@@ -206,11 +218,11 @@ submap of its own, so a key Hyprland already uses reaches the sheet
 instead of doing its job. Hyprland leaves that submap by itself after 30
 seconds. A Hyprland key must hold Super, so it can never take a key an app
 needs. A key that another bind has (Omarchy's `SUPER+ALT+F`, say) is asked
-about first; taking it writes an `hl.unbind` for it in `student.lua`, and
+about first; taking it writes an `hl.unbind` for it in `longhand.lua`, and
 moving off it gives the key back. Every change reloads Hyprland, and if
 Hyprland reports a new config error, the old file is put back.
 `plugin-page/hyprkeys.py` does the writing; you can edit the keys in
-`student.lua` by hand, and the sheet reads them back.
+`longhand.lua` by hand, and the sheet reads them back.
 
 ```bash
 python3 tests/test_blocks.py                                # block splitter, JS and Python must agree (needs node)
@@ -218,6 +230,7 @@ QT_QPA_PLATFORM=offscreen /usr/lib/qt6/bin/qmltestrunner -input tests   # editor
 python3 tests/test_pomo.py                                    # the deadline CLI's contract with the page
 python3 tests/test_keys_guide.py                              # docs/keys.md is the keys as they are (needs node)
 python3 tests/test_hyprkeys.py                                # Hyprland's six keys, against a fake hyprctl
+python3 tests/test_migrate.py                                 # the move from omarchy-student, in a throwaway $HOME
 python3 tests/page/run.py                                     # the page itself, live: a window that never takes focus, a throwaway vault
 ```
 
@@ -261,33 +274,33 @@ record), `Ctrl+Z` takes a tick or a drop back. The bar's deadline popup
 
 ## How it is used
 
-`student-agent stats [--days 14 | --since 2026-10-11] [--json]` prints, day
+`longhand-agent stats [--days 14 | --since 2026-10-11] [--json]` prints, day
 by day, what is already on disk: words written, checkboxes written → ticked,
 bound deadlines and whether they were closed by their time, agent runs and
 cost, focus sessions, the #tags and languages in the notes, and what the page
-was opened for. The page keeps its part in `~/.local/state/omarchy-student/usage.tsv`
+was opened for. The page keeps its part in `~/.local/state/longhand/usage.tsv`
 — event names and numbers, never a word of a note, never sent anywhere.
 
 ## The agent
 
-`agent/student-agent` is what the page calls when you finish a checkbox line,
+`agent/longhand-agent` is what the page calls when you finish a checkbox line,
 an `@` line, a line ending in `?`, tick a box, or open the page. It builds
 the context from an allowlist, logs it, runs a tool-less opencode agent, and
-writes the reply to `agents/student/daily/<date>.md` in your vault. It never
+writes the reply to `agents/longhand/daily/<date>.md` in your vault. It never
 writes under your daily-notes folder.
 
 opencode is run `--standalone`, from the agent's own empty directory, so a
 pass has a server of its own that dies with it and nothing of any project is
-ever in scope. The ledger (`~/.local/state/omarchy-student/cost.tsv`) reads
+ever in scope. The ledger (`~/.local/state/longhand/cost.tsv`) reads
 each pass's price back from its session.
 
 ```bash
-ln -s "$PWD/agent/student-agent" ~/.local/bin/student-agent
-student-agent install                       # opencode agent definition + folders
-student-agent context --trigger open        # show exactly what the model would see
-student-agent run --trigger open            # one pass over today's note
-student-agent sections --tag intsem         # one project's notes across every day (JSON)
-student-agent context --trigger mention --hash <h>   # incl. that project's earlier notes
+ln -s "$PWD/agent/longhand-agent" ~/.local/bin/longhand-agent
+longhand-agent install                       # opencode agent definition + folders
+longhand-agent context --trigger open        # show exactly what the model would see
+longhand-agent run --trigger open            # one pass over today's note
+longhand-agent sections --tag intsem         # one project's notes across every day (JSON)
+longhand-agent context --trigger mention --hash <h>   # incl. that project's earlier notes
 python3 tests/test_agent.py                 # offline, stub opencode
 ```
 
@@ -315,7 +328,7 @@ pomo deadline list --all --json
 pomo status               # timer only
 ```
 
-Files live in `~/.local/state/omarchy-student/`:
+Files live in `~/.local/state/longhand/`:
 
 | File | What |
 |------|------|

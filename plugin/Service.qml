@@ -41,7 +41,7 @@ Item {
   readonly property real progress: !countup && effTotal > 0 ? Math.max(0, Math.min(1, 1 - remaining / effTotal)) : 0
 
   readonly property string statePath: (Quickshell.env("XDG_STATE_HOME")
-    || Quickshell.env("HOME") + "/.local/state") + "/omarchy-student/state.json"
+    || Quickshell.env("HOME") + "/.local/state") + "/longhand/state.json"
 
   function fmt(s) {
     var m = Math.floor(s / 60)
@@ -88,7 +88,7 @@ Item {
   property int monthSec: 0
 
   readonly property string logPath: (Quickshell.env("XDG_STATE_HOME")
-    || Quickshell.env("HOME") + "/.local/state") + "/omarchy-student/pomo.log"
+    || Quickshell.env("HOME") + "/.local/state") + "/longhand/pomo.log"
 
   function pad(n) {
     return (n < 10 ? "0" : "") + n

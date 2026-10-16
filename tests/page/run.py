@@ -26,7 +26,7 @@ sys.path.insert(0, str(ROOT / "agent"))
 import blocks  # noqa: E402
 
 # What the runner writes when the student talks to a block: both turns, the
-# way `student-agent chat` records them. Enough for the page to settle the
+# way `longhand-agent chat` records them. Enough for the page to settle the
 # message it was holding and draw the answer.
 CHAT_STUB = """import json, pathlib, sys
 
@@ -51,10 +51,10 @@ path.write_text(json.dumps(state))
 BINDINGS = """o.bind("SUPER + SHIFT + T", "Todoist", { webapp = "https://app.todoist.com/app/today", focus = true })
 o.bind("SUPER + ALT + P", "Pomo toggle", "pomo toggle")
 o.bind("SUPER + ALT + N", "Pomo skip", "pomo skip")
-o.bind("SUPER + ALT + O", "Pomo popup", "omarchy-shell student.pomo toggle")
-o.bind("SUPER + ALT + D", "Deadlines popup", "omarchy-shell student.deadline toggle")
-o.bind("SUPER + ALT + equal", "Page (today's note)", "omarchy-shell shell toggle student.page '{}'")
-o.bind("SUPER + ALT + backslash", "Page alongside", "omarchy-shell shell summon student.page '{\\"shape\\":\\"alongside\\"}'")
+o.bind("SUPER + ALT + O", "Pomo popup", "omarchy-shell longhand.pomo toggle")
+o.bind("SUPER + ALT + D", "Deadlines popup", "omarchy-shell longhand.deadline toggle")
+o.bind("SUPER + ALT + equal", "Page (today's note)", "omarchy-shell shell toggle longhand.page '{}'")
+o.bind("SUPER + ALT + backslash", "Page alongside", "omarchy-shell shell summon longhand.page '{\\"shape\\":\\"alongside\\"}'")
 """
 
 TODAY = dt.date.today().strftime("%Y.%m.%d")
@@ -82,13 +82,13 @@ class Page:
         self.daily = self.vault / "Daily"
         self.daily.mkdir(parents=True)
         self.state = self.tmp / "state"
-        (self.state / "omarchy-student").mkdir(parents=True)
-        self.store = self.state / "omarchy-student" / "deadlines.tsv"
+        (self.state / "longhand").mkdir(parents=True)
+        self.store = self.state / "longhand" / "deadlines.tsv"
         cfg = self.tmp / "config"
-        (cfg / "omarchy-student").mkdir(parents=True)
+        (cfg / "longhand").mkdir(parents=True)
         (cfg / "omarchy").symlink_to(pathlib.Path.home() / ".config" / "omarchy")   # the theme
         self.runner = self.tmp / "runner"
-        (cfg / "omarchy-student" / "config.json").write_text(json.dumps({
+        (cfg / "longhand" / "config.json").write_text(json.dumps({
             "vault": str(self.vault), "daily": {"dir": "Daily", "format": "YYYY.MM.DD"},
             "runner": str(self.runner), "weekStart": "monday"}))
         bindir = self.tmp / "bin"
@@ -110,9 +110,9 @@ class Page:
         chatstub.write_text(CHAT_STUB)
         self.runner.write_text(f"""#!/bin/bash
 case "$1" in
-  accept|projects|sections|next|tasks) exec "{ROOT}/agent/student-agent" "$@" ;;
+  accept|projects|sections|next|tasks) exec "{ROOT}/agent/longhand-agent" "$@" ;;
   run) sleep 2; exit 0 ;;
-  chat) sleep 2; exec python3 "{chatstub}" "{self.vault}/agents/student/daily" "$@" ;;
+  chat) sleep 2; exec python3 "{chatstub}" "{self.vault}/agents/longhand/daily" "$@" ;;
 esac
 """)
         self.runner.chmod(0o755)
@@ -193,7 +193,7 @@ esac
 
 
 def header(stem):
-    return f"[[agents/student/daily/{stem}|agent]]\n\n"
+    return f"[[agents/longhand/daily/{stem}|agent]]\n\n"
 
 
 def contrast(a: str, b: str) -> float:
@@ -366,8 +366,8 @@ def main() -> int:
         # 10. accepting an agent proposal binds the block's checkbox
         line = "- [ ] one-pager by friday"
         h = blocks.split(line)[0]["hash"]
-        (p.vault / "agents" / "student" / "daily").mkdir(parents=True, exist_ok=True)
-        (p.vault / "agents" / "student" / "daily" / f"{TODAY}.json").write_text(json.dumps({"blocks": {h: {
+        (p.vault / "agents" / "longhand" / "daily").mkdir(parents=True, exist_ok=True)
+        (p.vault / "agents" / "longhand" / "daily" / f"{TODAY}.json").write_text(json.dumps({"blocks": {h: {
             "state": "reply", "reply": "Friday?", "read": True,
             "proposals": [{"kind": "deadline", "title": "one-pager", "when": "friday", "project": "DORO"}]}}}))
         (p.daily / f"{TODAY}.md").write_text(header(TODAY) + line + "\n")
@@ -384,7 +384,7 @@ def main() -> int:
         props = [{"kind": "deadline", "title": "Roles planned", "when": "30 Oct", "project": "intsem"},
                  {"kind": "deadline", "title": "Initial paper", "when": "30 Nov", "project": "intsem"},
                  {"kind": "deadline", "title": "Conference", "when": "03 Feb", "project": "intsem"}]
-        (p.vault / "agents" / "student" / "daily" / f"{TODAY}.json").write_text(json.dumps({"blocks": {
+        (p.vault / "agents" / "longhand" / "daily" / f"{TODAY}.json").write_text(json.dumps({"blocks": {
             h: {"state": "reply", "reply": "Dates.", "read": True, "group": hs, "proposals": props} for h in hs}}))
         (p.daily / f"{TODAY}.md").write_text(header(TODAY) + "\n".join(lst) + "\n")
         p.open_fresh()
@@ -477,7 +477,7 @@ def main() -> int:
               "written and left, it binds the deadline already there, adds none")
         line = next(l for l in p.lines() if "Canvas" in l)
         h = blocks.split(line)[0]["hash"]
-        (p.vault / "agents" / "student" / "daily" / f"{TODAY}.json").write_text(json.dumps({"blocks": {h: {
+        (p.vault / "agents" / "longhand" / "daily" / f"{TODAY}.json").write_text(json.dumps({"blocks": {h: {
             "state": "reply", "reply": "Today?", "read": True,
             "proposals": [{"kind": "deadline", "title": "Take a look into the Canvas course and thesis suggestions",
                            "when": f"today ({dt.date.today():%Y-%m-%d})", "project": "respro"}]}}}))
@@ -488,7 +488,7 @@ def main() -> int:
         check(len(p.store.read_text().splitlines()) == count, "accepting the agent's proposal for it afterwards adds none either")
 
         # 11. projects in the sidebar: the tags that exist, a class started
-        pd = p.vault / "agents" / "student" / "knowledge" / "projects"
+        pd = p.vault / "agents" / "longhand" / "knowledge" / "projects"
         pd.mkdir(parents=True, exist_ok=True)
         soon = dt.date.today() + dt.timedelta(days=1)
         (pd / "intsem.md").write_text(f"# Interdisciplinary Seminar\n\n- Tag: `#intsem`\n  - {soon:%a %d %b}: 10:45–12:15 (Gold)\n")
@@ -569,12 +569,12 @@ def main() -> int:
               f"…by writing the line the runner reads ({p.note()[:40]!r})")
         check("Dear diary." in p.note() and "|agent]]" in p.note(), "…leaving the note and its link line alone")
         check(p.call("agentOn") == "false", "…and the page stops offering the agent at all")
-        before = len(list((p.state / "omarchy-student" / "payloads").glob("*"))) if (p.state / "omarchy-student" / "payloads").is_dir() else 0
+        before = len(list((p.state / "longhand" / "payloads").glob("*"))) if (p.state / "longhand" / "payloads").is_dir() else 0
         p.call("cursorEnd")
         p.call("type", " Is this ok?")
         p.call("askNow")
         time.sleep(1)
-        after = len(list((p.state / "omarchy-student" / "payloads").glob("*"))) if (p.state / "omarchy-student" / "payloads").is_dir() else 0
+        after = len(list((p.state / "longhand" / "payloads").glob("*"))) if (p.state / "longhand" / "payloads").is_dir() else 0
         check(after == before, f"asking on a private note runs nothing ({before} → {after})")
         p.call("togglePrivate")
         check(p.wait(lambda: p.call("isPrivate") == "false"), "turning it off puts the day back")
@@ -677,12 +677,12 @@ def main() -> int:
               f"…the held turn let go of, never drawn twice ({p.call('chat')})")
         check(p.wait(lambda: p.call("answering") == "false"), "…and the thinking stops")
 
-        before = len(list((p.state / "omarchy-student" / "payloads").glob("*"))) \
-            if (p.state / "omarchy-student" / "payloads").is_dir() else 0
+        before = len(list((p.state / "longhand" / "payloads").glob("*"))) \
+            if (p.state / "longhand" / "payloads").is_dir() else 0
         p.call("askNow")
         time.sleep(1)
-        after = len(list((p.state / "omarchy-student" / "payloads").glob("*"))) \
-            if (p.state / "omarchy-student" / "payloads").is_dir() else 0
+        after = len(list((p.state / "longhand" / "payloads").glob("*"))) \
+            if (p.state / "longhand" / "payloads").is_dir() else 0
         check(after == before, f"asking an answered block runs nothing again ({before} → {after})")
         check(json.loads(p.call("panel"))["margin"] is True, "…it opens the conversation instead")
         check(p.call("chatFocused") == "true", "…with the cursor in the box")
@@ -828,7 +828,7 @@ def main() -> int:
         # 12b. the keys sheet: every key the page answers to, listed; one
         # moved through the sheet, kept in keys.json, and working in the note
         KEY_B, KEY_K = 0x42, 0x4b
-        keysjson = p.tmp / "config" / "omarchy-student" / "keys.json"
+        keysjson = p.tmp / "config" / "longhand" / "keys.json"
 
         def keys_of(i):
             return json.loads(p.call("keysOf", i))
@@ -876,11 +876,11 @@ def main() -> int:
 
         # 12c. Hyprland's six: listed as Hyprland's until the page is let
         # keep them (Enter twice on the row that offers), then moved like
-        # the rest — into hypr/student.lua, never a line the student wrote —
+        # the rest — into hypr/longhand.lua, never a line the student wrote —
         # with Hyprland in a submap of the sheet's own while it waits.
         META, ALT, KEY_F, KEY_L = 0x10000000, 0x08000000, 0x46, 0x4c
         calls = p.hypr / "calls"
-        ours = p.hypr / "student.lua"
+        ours = p.hypr / "longhand.lua"
 
         def hk():
             return json.loads(p.call("hyprKeys"))
@@ -902,13 +902,13 @@ def main() -> int:
         p.call("keysKey", KEY_RETURN, 0)
         check(p.wait(lambda: hk()["owned"]), "…Enter again: the page keeps them")
         b = (p.hypr / "bindings.lua").read_text()
-        check(b.count("hypr.student") == 1 and '-- o.bind("SUPER + ALT + P", "Pomo toggle"' in b and b.startswith('o.bind("SUPER + SHIFT + T"'),
-              "…bindings.lua loads student.lua, the six commented out, the student's own line kept")
+        check(b.count("hypr.longhand") == 1 and '-- o.bind("SUPER + ALT + P", "Pomo toggle"' in b and b.startswith('o.bind("SUPER + SHIFT + T"'),
+              "…bindings.lua loads longhand.lua, the six commented out, the student's own line kept")
         check([x.read_text() for x in p.hypr.glob("bindings.lua.bak.*")] == [BINDINGS], "…after a backup of it as it was")
         p.call("keysFind", "pomo toggle")
         check(json.loads(p.call("keyRows"))[1]["kind"] == "hypr", "the timer's row moves now")
         p.call("keysKey", KEY_RETURN, 0)
-        check(p.call("keysListening") == "true" and p.wait(lambda: 'hl.dsp.submap("student-keys"))' in last_call()),
+        check(p.call("keysListening") == "true" and p.wait(lambda: 'hl.dsp.submap("longhand-keys"))' in last_call()),
               "Enter: Hyprland goes into the sheet's submap while it waits")
         p.call("keysKey", KEY_K, ALT)
         check(p.wait(lambda: "Super" in p.call("keysNote")) and p.call("keysListening") == "true",
@@ -916,7 +916,7 @@ def main() -> int:
         p.call("keysKey", KEY_K, ALT | META)
         check(p.wait(lambda: hrow("pomoToggle") == ["Alt+Super+K"]), "Super+Alt+K: the timer moves to it")
         check('o.bind("SUPER + ALT + K", "Pomo toggle", "pomo toggle")' in ours.read_text() and "reload config-only" in calls.read_text(),
-              "…written into student.lua, and Hyprland reloaded")
+              "…written into longhand.lua, and Hyprland reloaded")
         check(p.wait(lambda: p.call("keysListening") == "false" and last_call().startswith("eval if hl.get_current_submap()")),
               "…and out of the submap")
         p.call("keysKey", KEY_RETURN, 0)
@@ -925,7 +925,7 @@ def main() -> int:
               "Super+Alt+F, Hyprland's Full width: asked first, not taken")
         p.call("keysKey", KEY_F, ALT | META)
         check(p.wait(lambda: hrow("pomoToggle") == ["Alt+Super+F"]), "…and taken on the second press")
-        check('hl.unbind("SUPER + ALT + F")  -- was: Full width' in ours.read_text(), "…unbound in student.lua, saying what it was")
+        check('hl.unbind("SUPER + ALT + F")  -- was: Full width' in ours.read_text(), "…unbound in longhand.lua, saying what it was")
         p.call("keysKey", KEY_DELETE, 0)
         check(p.wait(lambda: hrow("pomoToggle") == ["Alt+Super+P"]), "Del gives the timer its own key back")
         check("hl.unbind" not in ours.read_text(), "…and Full width its own")
@@ -983,7 +983,7 @@ def main() -> int:
 
         # 13. the usage log: written on close, event names only
         p.call("closeAll")
-        usage = p.state / "omarchy-student" / "usage.tsv"
+        usage = p.state / "longhand" / "usage.tsv"
         check(p.wait(lambda: "\tclose\t" in usage.read_text()), "closing the page writes its usage log")
         events = {line.split("\t")[1] for line in usage.read_text().splitlines()}
         check({"open", "close", "ctrl-d", "bound", "day", "prompt"} <= events, f"…with what was used ({sorted(events)})")

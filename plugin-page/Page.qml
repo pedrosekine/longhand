@@ -82,7 +82,7 @@ import "Shortcuts.js" as Sc
 // cannot read it, so the agent signs do nothing there.
 //
 // Under the calendar, the projects that exist (the agent's
-// knowledge/projects/, via `student-agent projects`), soonest session
+// knowledge/projects/, via `longhand-agent projects`), soonest session
 // first: the tags to use, so no new ones get invented. Enter starts a
 // class — `# Course #tag` on a new line at the end of today's note, the
 // cursor under it; Ctrl+Enter puts just the tag at the cursor.
@@ -169,7 +169,7 @@ Item {
   // margins, the panel. The base is the shell's own type scale (which
   // follows the theme's font base-size), so the page sits with the rest of
   // the desktop; Ctrl+= / Ctrl+- / Ctrl+0 step it and the step is kept in
-  // ~/.local/state/omarchy-student/page.json.
+  // ~/.local/state/longhand/page.json.
   readonly property var zoomSteps: [0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2]
   property real zoom: 1
   function sp(n) { return Math.max(1, Math.round(Style.spaceReal(n) * root.zoom)) }
@@ -227,7 +227,7 @@ Item {
   }
   // What every run and every offer is gated on. A note the student marked
   // private is simply not a day the agent has: no pass on opening it, no
-  // send, nothing to click. `student-agent` refuses such a note too — this
+  // send, nothing to click. `longhand-agent` refuses such a note too — this
   // is the page not even asking.
   readonly property bool agentOn: root.agentDay && !svc.notePrivate
 
@@ -417,10 +417,10 @@ Item {
   // ------------------------------------------------------------ usage
 
   // What the page is used for, for judging it after a stretch of real use
-  // (`student-agent stats`): event names and numbers only, never a word of
+  // (`longhand-agent stats`): event names and numbers only, never a word of
   // the notes. Appended to the state folder — not the vault, never in a
   // payload — a few lines at a time.
-  readonly property string usagePath: (Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state") + "/omarchy-student/usage.tsv"
+  readonly property string usagePath: (Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state") + "/longhand/usage.tsv"
   property var usageBuf: []
   property double openedAt: 0
 
@@ -492,7 +492,7 @@ Item {
   function dismiss() {
     root.close()
     if (root.shell && typeof root.shell.hide === "function")
-      root.shell.hide((root.manifest && root.manifest.id) || "student.page")
+      root.shell.hide((root.manifest && root.manifest.id) || "longhand.page")
   }
 
   function toggle() {
@@ -1101,7 +1101,7 @@ Item {
 
   // ------------------------------------------------------------ Hyprland's keys
 
-  // hyprkeys.py, beside this file, keeps the six in ~/.config/hypr/student.lua
+  // hyprkeys.py, beside this file, keeps the six in ~/.config/hypr/longhand.lua
   // and answers every call with its state. One call at a time.
   readonly property string hyprKeysPy: decodeURIComponent(Qt.resolvedUrl("hyprkeys.py").toString().replace(/^file:\/\//, ""))
   function hypr(args) {
@@ -1141,7 +1141,7 @@ Item {
   function offerAdopt() {
     if (!root.keysAdopt) {
       root.keysAdopt = true
-      root.keysNote = "Enter again to let the page keep these keys: it writes them to ~/.config/hypr/student.lua, adds one line at the end of "
+      root.keysNote = "Enter again to let the page keep these keys: it writes them to ~/.config/hypr/longhand.lua, adds one line at the end of "
         + "~/.config/hypr/bindings.lua to load it, and comments out your own lines for them there (bindings.lua is backed up first). Esc leaves them as they are."
       return
     }
@@ -1170,11 +1170,11 @@ Item {
     hyprListenTimer.running = on
     submapProc.running = false
     submapProc.command = ["hyprctl", "eval", on
-      ? 'hl.define_submap("student-keys", function() hl.bind("SUPER + CTRL + ALT + SHIFT + F24", hl.dsp.submap("reset")) end); '
-        + 'student_keys_wait = (student_keys_wait or 0) + 1; local n = student_keys_wait; '
-        + 'hl.timer(function() if student_keys_wait == n and hl.get_current_submap() == "student-keys" then hl.dispatch(hl.dsp.submap("reset")) end end, { timeout = 30000, type = "oneshot" }); '
-        + 'hl.dispatch(hl.dsp.submap("student-keys"))'
-      : 'if hl.get_current_submap() == "student-keys" then hl.dispatch(hl.dsp.submap("reset")) end']
+      ? 'hl.define_submap("longhand-keys", function() hl.bind("SUPER + CTRL + ALT + SHIFT + F24", hl.dsp.submap("reset")) end); '
+        + 'longhand_keys_wait = (longhand_keys_wait or 0) + 1; local n = longhand_keys_wait; '
+        + 'hl.timer(function() if longhand_keys_wait == n and hl.get_current_submap() == "longhand-keys" then hl.dispatch(hl.dsp.submap("reset")) end end, { timeout = 30000, type = "oneshot" }); '
+        + 'hl.dispatch(hl.dsp.submap("longhand-keys"))'
+      : 'if hl.get_current_submap() == "longhand-keys" then hl.dispatch(hl.dsp.submap("reset")) end']
     submapProc.running = true
   }
 
@@ -1258,7 +1258,7 @@ Item {
   // Class notes found by their course instead of by the date they happened
   // on (the week of 2026-10-12 opened the calendar 31 times looking for
   // them): every section of the project's tag, newest first, opened in
-  // place. The claiming rule lives in `student-agent sections`.
+  // place. The claiming rule lives in `longhand-agent sections`.
   function openProject(pr) {
     if (!pr) return
     root.used("project-notes")
@@ -2415,11 +2415,11 @@ Item {
     stderr: StdioCollector {
       onStreamFinished: {
         runner.said = text.trim()
-        if (runner.said !== "") console.warn("student.page runner: " + runner.said)
+        if (runner.said !== "") console.warn("longhand.page runner: " + runner.said)
       }
     }
     stdout: StdioCollector {
-      onStreamFinished: if (text.trim() !== "") console.log("student.page runner: " + text.trim())
+      onStreamFinished: if (text.trim() !== "") console.log("longhand.page runner: " + text.trim())
     }
     // A run that fails says so. It used to fail in silence: opencode moved
     // its flags under the runner on 2026-10-15 and every pass of that day
@@ -2437,7 +2437,7 @@ Item {
 
   Process {
     id: acceptProc
-    stderr: StdioCollector { onStreamFinished: if (text.trim() !== "") console.warn("student.page accept: " + text.trim()) }
+    stderr: StdioCollector { onStreamFinished: if (text.trim() !== "") console.warn("longhand.page accept: " + text.trim()) }
     onExited: function (code, status) { agent.reload() }
   }
 
@@ -2463,7 +2463,7 @@ Item {
         root.sectionFocus = Math.min(root.sectionFocus, Math.max(0, root.sections.length - 1))
       }
     }
-    stderr: StdioCollector { onStreamFinished: if (text.trim() !== "") console.warn("student.page sections: " + text.trim()) }
+    stderr: StdioCollector { onStreamFinished: if (text.trim() !== "") console.warn("longhand.page sections: " + text.trim()) }
   }
 
   Process {
@@ -2599,12 +2599,12 @@ Item {
   // keys sheet, and read again when edited by hand.
   FileView {
     id: keysFile
-    path: (Quickshell.env("XDG_CONFIG_HOME") || Quickshell.env("HOME") + "/.config") + "/omarchy-student/keys.json"
+    path: (Quickshell.env("XDG_CONFIG_HOME") || Quickshell.env("HOME") + "/.config") + "/longhand/keys.json"
     watchChanges: true
     atomicWrites: true
     printErrors: false
     onLoaded: {
-      try { Sc.load(JSON.parse(text())) } catch (e) { console.warn("student.page keys.json: " + e) }
+      try { Sc.load(JSON.parse(text())) } catch (e) { console.warn("longhand.page keys.json: " + e) }
       root.keysVersion++
     }
     onFileChanged: reload()
@@ -2616,11 +2616,11 @@ Item {
     stdout: StdioCollector {
       onStreamFinished: {
         var st = null
-        try { st = JSON.parse(text) } catch (e) { console.warn("student.page hyprkeys: " + text.trim()) }
+        try { st = JSON.parse(text) } catch (e) { console.warn("longhand.page hyprkeys: " + text.trim()) }
         root.hyprDone(st)
       }
     }
-    stderr: StdioCollector { onStreamFinished: if (text.trim() !== "") console.warn("student.page hyprkeys: " + text.trim()) }
+    stderr: StdioCollector { onStreamFinished: if (text.trim() !== "") console.warn("longhand.page hyprkeys: " + text.trim()) }
   }
   Process { id: submapProc }
   // The sheet stops waiting a little before Hyprland would leave the submap.
@@ -2634,7 +2634,7 @@ Item {
   // in the vault.
   FileView {
     id: zoomFile
-    path: (Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state") + "/omarchy-student/page.json"
+    path: (Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state") + "/longhand/page.json"
     atomicWrites: true
     printErrors: false
     onLoaded: {
@@ -2661,7 +2661,7 @@ Item {
     visible: root.overlayOpen
     anchors { top: true; bottom: true; left: true; right: true }
     color: "transparent"
-    WlrLayershell.namespace: "student-page"
+    WlrLayershell.namespace: "longhand-page"
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
     exclusionMode: ExclusionMode.Ignore

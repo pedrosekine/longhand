@@ -25,7 +25,7 @@ Item {
   Component.onCompleted: refreshStamp()
   Timer { interval: 60000; repeat: true; running: true; onTriggered: root.refreshStamp() }
 
-  readonly property string agentDir: configured ? config.vault + "/" + (config.agentDir || "agents/student") : ""
+  readonly property string agentDir: configured ? config.vault + "/" + (config.agentDir || "agents/longhand") : ""
   // The day whose state is read: today unless the page is showing another.
   property string date: ""
   readonly property string day: date !== "" ? date : stamp

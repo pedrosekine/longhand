@@ -18,7 +18,7 @@ Item {
   property bool loaded: false
 
   readonly property string filePath: (Quickshell.env("XDG_STATE_HOME")
-    || Quickshell.env("HOME") + "/.local/state") + "/omarchy-student/deadlines.tsv"
+    || Quickshell.env("HOME") + "/.local/state") + "/longhand/deadlines.tsv"
 
   // Same columns as the CLI writes: id, due (epoch), title, status, done_at,
   // grade, project, link. Shorter, older lines read as the CLI reads them.
@@ -88,7 +88,7 @@ Item {
     if (!root.exited || !root.streamed || !root.job) return
     var j = root.job
     root.job = null
-    if (root.exitCode !== 0) console.warn("student.page pomo " + j.args.join(" ") + ": " + err.text.trim())
+    if (root.exitCode !== 0) console.warn("longhand.page pomo " + j.args.join(" ") + ": " + err.text.trim())
     // A first deadline creates the file, which a watch on a missing file
     // does not see: read it again after every change.
     else if (j.args[0] !== "when") file.reload()

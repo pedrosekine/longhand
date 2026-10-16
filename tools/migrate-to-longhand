@@ -1,0 +1,254 @@
+#!/usr/bin/env python3
+"""migrate-to-longhand — move an omarchy-student install to its new names, once.
+
+Longhand was called omarchy-student until 2026-10-16. This moves what an
+install of that left on disk, so every deadline, session, cost line and key
+comes along:
+
+  ~/.config/omarchy-student/         → ~/.config/longhand/        (old path left as a symlink to it)
+  ~/.local/state/omarchy-student/    → ~/.local/state/longhand/   (same)
+  <vault>/agents/student/            → <vault>/agents/longhand/   (the [[agents/student/…|agent]]
+                                       links in the daily notes and the template follow, and the
+                                       config's agentDir/template/curriculum with them)
+  plugins student.page/.pomo/.deadline → longhand.* (copied from this repo; shell.json's ids follow)
+  ~/.config/hypr/student.lua         → longhand.lua (plugin-page/hyprkeys.py migrate)
+  ~/.local/bin/student-agent         → longhand-agent (the old name kept as a symlink to it)
+  opencode agent student.md          → longhand.md
+
+Everything it replaces or moves aside is copied first into the backup folder
+(default ~/Backups/longhand-rename-<date>). Without --apply it only says what
+it would do. Run it again and it does nothing: every step checks first.
+
+  tools/migrate-to-longhand [--apply] [--backup DIR]
+"""
+import argparse
+import datetime as dt
+import json
+import os
+import pathlib
+import re
+import shutil
+import subprocess
+import sys
+import time
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+HOME = pathlib.Path.home()
+CONFIG = pathlib.Path(os.environ.get("XDG_CONFIG_HOME") or HOME / ".config")
+STATE = pathlib.Path(os.environ.get("XDG_STATE_HOME") or HOME / ".local" / "state")
+BIN = HOME / ".local" / "bin"
+PLUGINS = {"page": "plugin-page", "pomo": "plugin", "deadline": "plugin-deadline"}
+
+said = []
+
+
+def say(line):
+    said.append(line)
+    print(line)
+
+
+class Run:
+    def __init__(self, apply, backup):
+        self.apply = apply
+        self.backup = backup
+
+    def keep(self, p):
+        """Copy p into the backup folder, under its path from $HOME."""
+        if not self.apply or not (p.exists() or p.is_symlink()):
+            return
+        rel = p.resolve().relative_to(HOME) if p.resolve().is_relative_to(HOME) else pathlib.Path(p.name)
+        dst = self.backup / rel
+        if dst.exists():
+            return
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        if p.is_dir():
+            shutil.copytree(p, dst, symlinks=True)
+        else:
+            shutil.copy2(p, dst)
+
+    def move_dir(self, old, new):
+        """old → new, and old left as a symlink to new."""
+        if old.is_symlink():
+            say(f"ok    {old} already points to {os.readlink(old)}")
+            return
+        if not old.exists():
+            say(f"ok    {old}: nothing there")
+            return
+        if new.exists():
+            say(f"STOP  {old} and {new} both exist; merge them by hand, then run this again")
+            sys.exit(1)
+        say(f"move  {old} → {new} ({count(old)} files), {old.name} left as a symlink")
+        if self.apply:
+            self.keep(old)
+            os.rename(old, new)
+            old.symlink_to(new.name if new.parent == old.parent else new)
+
+
+def count(d):
+    return sum(1 for p in d.rglob("*") if p.is_file())
+
+
+def config_path():
+    for d in (CONFIG / "longhand", CONFIG / "omarchy-student"):
+        if (d / "config.json").exists():
+            return d / "config.json"
+    return None
+
+
+def vault(r):
+    cp = config_path()
+    if cp is None:
+        say("ok    no config.json, so no vault to move")
+        return
+    cfg = json.loads(cp.read_text())
+    if not cfg.get("vault"):
+        say("ok    the config names no vault")
+        return
+    root = pathlib.Path(cfg["vault"]).expanduser()
+    old_rel = cfg.get("agentDir", "agents/student")
+    if old_rel != "agents/student":
+        say(f"ok    the agent folder is {old_rel}, not agents/student: left where it is")
+        return
+    old, new = root / "agents" / "student", root / "agents" / "longhand"
+    if new.exists() and old.exists():
+        say(f"STOP  {old} and {new} both exist; merge them by hand, then run this again")
+        sys.exit(1)
+    if old.exists():
+        say(f"move  <vault>/agents/student → <vault>/agents/longhand ({count(old)} files)")
+        if r.apply:
+            r.keep(old)
+            os.rename(old, new)
+    # The link the page writes at the top of a day: [[agents/student/daily/<date>|agent]]
+    link = re.compile(r"\[\[agents/student/")
+    daily = root / cfg.get("daily", {}).get("dir", "")
+    notes = [p for p in daily.glob("*.md") if link.search(p.read_text(errors="replace"))] if daily.is_dir() else []
+    tmpl = new / "templates" / "daily.md"
+    if tmpl.exists() and link.search(tmpl.read_text()):
+        notes.append(tmpl)
+    if notes:
+        say(f"link  [[agents/student/…]] → [[agents/longhand/…]] in {len(notes)} notes")
+    for p in notes if r.apply else []:
+        r.keep(p)
+        text = p.read_text()
+        write(p, link.sub("[[agents/longhand/", text))
+    changed = {k: v for k, v in (("agentDir", cfg.get("agentDir")),
+                                 ("curriculum", cfg.get("curriculum")),
+                                 ("template", cfg.get("daily", {}).get("template")))
+               if isinstance(v, str) and v.startswith("agents/student")}
+    if changed:
+        say(f"conf  {', '.join(changed)}: agents/student → agents/longhand in {cp}")
+        if r.apply:
+            r.keep(cp)
+            for k, v in changed.items():
+                v = "agents/longhand" + v[len("agents/student"):]
+                if k == "template":
+                    cfg["daily"]["template"] = v
+                else:
+                    cfg[k] = v
+            write(cp, json.dumps(cfg, indent=2, ensure_ascii=False) + "\n")
+
+
+def write(p, text):
+    tmp = p.with_name("." + p.name + ".tmp")
+    tmp.write_text(text)
+    if p.exists():
+        shutil.copymode(p, tmp)
+    os.replace(tmp, p)
+
+
+def shell(r):
+    plugins = CONFIG / "omarchy" / "plugins"
+    sj = CONFIG / "omarchy" / "shell.json"
+    for name, src in PLUGINS.items():
+        old, new = plugins / f"student.{name}", plugins / f"longhand.{name}"
+        if old.exists():
+            say(f"aside {old} (into the backup folder)")
+            if r.apply:
+                r.keep(old)
+                shutil.rmtree(old)
+        if old.exists() or not new.exists() or r.apply:
+            say(f"copy  {src}/ → {new}")
+            if r.apply:
+                shutil.rmtree(new, ignore_errors=True)
+                shutil.copytree(ROOT / src, new)
+    text = sj.read_text() if sj.exists() else ""
+    if re.search(r'"student\.(page|pomo|deadline)"', text):
+        say(f"ids   student.* → longhand.* in {sj} (backed up as {sj.name}.bak.<epoch>)")
+        if r.apply:
+            r.keep(sj)
+            shutil.copy2(sj, sj.with_name(f"{sj.name}.bak.{int(time.time())}"))
+            write(sj, re.sub(r'"student\.(page|pomo|deadline)"', r'"longhand.\1"', text))
+    else:
+        say(f"ok    {sj}: no student.* ids")
+
+
+def hypr(r):
+    old = CONFIG / "hypr" / "student.lua"
+    if not old.exists():
+        say("ok    no hypr/student.lua")
+        return
+    say("keys  hypr/student.lua → hypr/longhand.lua, bindings.lua's line with it (plugin-page/hyprkeys.py migrate)")
+    if r.apply:
+        r.keep(old)
+        r.keep(CONFIG / "hypr" / "bindings.lua")
+        out = subprocess.run([sys.executable, str(ROOT / "plugin-page" / "hyprkeys.py"), "migrate"],
+                             capture_output=True, text=True)
+        st = json.loads(out.stdout or "{}")
+        if st.get("error"):
+            say(f"STOP  {st['error']}")
+            sys.exit(1)
+        say(f"      {st.get('note', '')}")
+
+
+def cli(r):
+    old, new = BIN / "student-agent", BIN / "longhand-agent"
+    target = ROOT / "agent" / "longhand-agent"
+    if not new.exists():
+        say(f"link  {new} → {target}")
+        if r.apply:
+            new.parent.mkdir(parents=True, exist_ok=True)
+            new.symlink_to(target)
+    if old.is_symlink() and os.readlink(old) != new.name:
+        say(f"link  {old} → {new.name} (the old name still works)")
+        if r.apply:
+            old.unlink()
+            old.symlink_to(new.name)
+    oc = CONFIG / "opencode" / "agent"
+    if (oc / "student.md").exists():
+        say(f"aside {oc / 'student.md'} (into the backup folder); {oc / 'longhand.md'} from this repo")
+        if r.apply:
+            r.keep(oc / "student.md")
+            (oc / "student.md").unlink()
+    elif not (oc / "longhand.md").exists():
+        say(f"copy  agent/opencode/longhand.md → {oc / 'longhand.md'}")
+    if r.apply:
+        oc.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(ROOT / "agent" / "opencode" / "longhand.md", oc / "longhand.md")
+
+
+def main(argv):
+    ap = argparse.ArgumentParser(prog="migrate-to-longhand", description=__doc__.split("\n")[0])
+    ap.add_argument("--apply", action="store_true", help="do it (without: only say what it would do)")
+    ap.add_argument("--backup", type=pathlib.Path,
+                    default=HOME / "Backups" / f"longhand-rename-{dt.date.today().isoformat()}")
+    args = ap.parse_args(argv)
+    r = Run(args.apply, args.backup.expanduser())
+    if not args.apply:
+        print("(dry run: nothing is changed; --apply to do it)")
+    else:
+        r.backup.mkdir(parents=True, exist_ok=True)
+        print(f"backup folder: {r.backup}")
+    r.move_dir(CONFIG / "omarchy-student", CONFIG / "longhand")
+    r.move_dir(STATE / "omarchy-student", STATE / "longhand")
+    vault(r)
+    shell(r)
+    hypr(r)
+    cli(r)
+    if args.apply:
+        (r.backup / "migrate.log").write_text("\n".join(said) + "\n")
+        print("done; restart the shell: omarchy restart shell")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

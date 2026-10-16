@@ -6,11 +6,11 @@ the page's but Hyprland's: they open the page, the timer and the deadlines
 from anywhere. This moves those six, and only those, without the page ever
 editing a line the student wrote:
 
-- the keys live in ~/.config/hypr/student.lua, a file this writes whole
+- the keys live in ~/.config/hypr/longhand.lua, a file this writes whole
   and owns (the student may still edit its keys by hand; they are read
   back from it);
 - bindings.lua gets one line, once, when the student agrees in the sheet
-  (`adopt`): it loads student.lua last, through Omarchy's require_optional,
+  (`adopt`): it loads longhand.lua last, through Omarchy's require_optional,
   so deleting the file is never an error. The same step comments out the
   student's own lines for those six commands (a backup is made first, the
   way Omarchy does: bindings.lua.bak.<epoch>), so no key fires twice;
@@ -29,13 +29,14 @@ Keys travel to and from the page the way Shortcuts.js writes them,
 prints the state as JSON on stdout:
 
   hyprkeys.py state
+  hyprkeys.py migrate      (student.lua → longhand.lua; every command does it first)
   hyprkeys.py adopt
   hyprkeys.py set <id> [--add] [--take] <key>...
 
 `set` with no key leaves the action without one. A key some other
 Hyprland bind has is not taken unless --take is given; the answer then
 says whose it is, for the sheet to ask. A key taken is unbound in
-student.lua with a note of what it did, and given back (the line dropped)
+longhand.lua with a note of what it did, and given back (the line dropped)
 once none of the six is on it any more.
 """
 import json
@@ -49,10 +50,10 @@ import time
 # id, what the sheet says (also the bind's description, which is how a bind
 # is recognised in `hyprctl binds`), the command, its own key.
 ACTIONS = [
-    ("page", "Page (today's note)", "omarchy-shell shell toggle student.page '{}'", "SUPER + ALT + equal"),
-    ("alongside", "Page alongside", "omarchy-shell shell summon student.page '{\"shape\":\"alongside\"}'", "SUPER + ALT + backslash"),
-    ("deadlines", "Deadlines popup", "omarchy-shell student.deadline toggle", "SUPER + ALT + D"),
-    ("pomoPopup", "Pomo popup", "omarchy-shell student.pomo toggle", "SUPER + ALT + O"),
+    ("page", "Page (today's note)", "omarchy-shell shell toggle longhand.page '{}'", "SUPER + ALT + equal"),
+    ("alongside", "Page alongside", "omarchy-shell shell summon longhand.page '{\"shape\":\"alongside\"}'", "SUPER + ALT + backslash"),
+    ("deadlines", "Deadlines popup", "omarchy-shell longhand.deadline toggle", "SUPER + ALT + D"),
+    ("pomoPopup", "Pomo popup", "omarchy-shell longhand.pomo toggle", "SUPER + ALT + O"),
     ("pomoToggle", "Pomo toggle", "pomo toggle", "SUPER + ALT + P"),
     ("pomoSkip", "Pomo skip", "pomo skip", "SUPER + ALT + N"),
 ]
@@ -61,16 +62,18 @@ BY_DOES = {a[1]: a for a in ACTIONS}
 
 # How the student's own line for an action is recognised in bindings.lua:
 # by what it runs, backslashes aside (a Lua string may escape its quotes).
+# The ids were student.* before the rename to Longhand, so a line from then
+# is still the student's own line for the action.
 PATTERNS = {
-    "page": r"toggle\s+student\.page",
-    "alongside": r"summon\s+student\.page.*alongside",
-    "deadlines": r"student\.deadline\s+toggle",
-    "pomoPopup": r"student\.pomo\s+toggle",
+    "page": r"toggle\s+(?:longhand|student)\.page",
+    "alongside": r"summon\s+(?:longhand|student)\.page.*alongside",
+    "deadlines": r"(?:longhand|student)\.deadline\s+toggle",
+    "pomoPopup": r"(?:longhand|student)\.pomo\s+toggle",
     "pomoToggle": r"[\"']pomo\s+toggle[\"']",
     "pomoSkip": r"[\"']pomo\s+skip[\"']",
 }
 
-REQUIRE = 'require("default.hypr.require_optional").module("hypr.student")'
+REQUIRE = 'require("default.hypr.require_optional").module("hypr.longhand")'
 
 # ------------------------------------------------------------ keys
 
@@ -173,6 +176,11 @@ def bindings_path():
 
 
 def ours_path():
+    return hypr_dir() / "longhand.lua"
+
+
+def old_path():
+    """The file's name before the rename to Longhand (2026-10-16)."""
     return hypr_dir() / "student.lua"
 
 
@@ -191,7 +199,7 @@ def write(p, text):
 
 def wired(text):
     return text is not None and any(
-        "hypr.student" in l and not l.lstrip().startswith("--") for l in text.splitlines())
+        "hypr.longhand" in l and not l.lstrip().startswith("--") for l in text.splitlines())
 
 
 BIND_LINE = re.compile(r'^\s*o\.bind\(\s*"([^"]*)"\s*,\s*"((?:[^"\\]|\\.)*)"')
@@ -199,7 +207,7 @@ UNBIND_LINE = re.compile(r'^\s*hl\.unbind\(\s*"([^"]*)"\s*\)\s*(?:--\s*was:\s*(.
 
 
 def parse_ours(text):
-    """student.lua, read back: {id: [sheet keys]} and {sheet key: what it was}."""
+    """longhand.lua, read back: {id: [sheet keys]} and {sheet key: what it was}."""
     keys = {a[0]: [] for a in ACTIONS}
     taken = {}
     for line in (text or "").splitlines():
@@ -234,7 +242,7 @@ def own_lines(text):
 
 def render(keys, taken):
     out = [
-        "-- omarchy-student's Hyprland keys: the page, the timer, the deadlines.",
+        "-- Longhand's Hyprland keys: the page, the timer, the deadlines.",
         "-- Written by the page's keys sheet (Ctrl+/ in the page) and loaded by the",
         "-- last lines of bindings.lua. The keys may be edited here by hand; the sheet",
         "-- reads them back. Delete this file to drop them all.",
@@ -368,11 +376,11 @@ def adopt():
     lines = b.splitlines()
     stamp = time.strftime("%Y-%m-%d")
     for i, _, _ in own_lines(b):
-        lines[i] = "-- " + lines[i] + f"  -- moved to hypr/student.lua by the page, {stamp}"
+        lines[i] = "-- " + lines[i] + f"  -- moved to hypr/longhand.lua by the page, {stamp}"
     text = "\n".join(lines).rstrip("\n") + "\n"
     if not wired(text):
-        text += ("\n-- omarchy-student's keys (the page, the timer, the deadlines) live in\n"
-                 "-- hypr/student.lua, written by the page's keys sheet (Ctrl+/). Delete this\n"
+        text += ("\n-- Longhand's keys (the page, the timer, the deadlines) live in\n"
+                 "-- hypr/longhand.lua, written by the page's keys sheet (Ctrl+/). Delete this\n"
                  "-- line to drop them; the lines above that it moved stay commented out.\n"
                  + REQUIRE + "\n")
     backup = bindings_path().with_name(f"bindings.lua.bak.{int(time.time())}")
@@ -384,6 +392,29 @@ def adopt():
     if missing:
         note += f"; no free key for “{'”, “'.join(missing)}”, Enter on it to give it one"
     return state(note)
+
+
+def migrate():
+    """Once, from before the rename to Longhand: student.lua becomes
+    longhand.lua with the same keys (their commands now name longhand.*), and
+    the line in bindings.lua that loaded it loads the new one, bindings.lua
+    backed up first. "" when there is nothing to move; an error is put back."""
+    old = read(old_path())
+    if old is None or read(ours_path()) is not None:
+        return ""
+    keys, taken = parse_ours(old)
+    changes = {ours_path(): render(keys, taken), old_path(): None}
+    b = read(bindings_path())
+    if b is not None and "hypr.student" in b:
+        backup = bindings_path().with_name(f"bindings.lua.bak.{int(time.time())}")
+        write(backup, b)
+        changes[bindings_path()] = (b.replace("hypr.student", "hypr.longhand")
+                                    .replace("hypr/student.lua", "hypr/longhand.lua")
+                                    .replace("omarchy-student's", "Longhand's"))
+    errors = apply(changes)
+    if errors:
+        return "error: Hyprland refused the move to longhand.lua, nothing changed: " + errors[0]
+    return f"the keys moved from {old_path().name} to {ours_path().name}"
 
 
 def set_keys(aid, new, add=False, take=False):
@@ -426,8 +457,11 @@ def set_keys(aid, new, add=False, take=False):
 
 
 def main(argv):
-    if not argv or argv[0] == "state":
-        out = state()
+    moved = migrate()
+    if moved.startswith("error: "):
+        out = state(error=moved[len("error: "):])
+    elif not argv or argv[0] in ("state", "migrate"):
+        out = state(moved)
     elif argv[0] == "adopt":
         out = adopt()
     elif argv[0] == "set" and len(argv) >= 2:

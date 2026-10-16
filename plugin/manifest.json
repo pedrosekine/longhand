@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "id": "student.pomo",
+  "id": "longhand.pomo",
   "name": "Pomodoro",
   "version": "0.1.0",
-  "author": "student",
+  "author": "longhand",
   "description": "Pomodoro timer: live countdown in the bar, progress popup on click",
   "kinds": [
     "bar-widget"

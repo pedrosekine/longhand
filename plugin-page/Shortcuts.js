@@ -4,7 +4,7 @@
 // with. The keys sheet (Ctrl+/) draws this list and lets the student move
 // any action to other keys; every handler in the page asks `hit(event, id)`
 // instead of naming a key, so a change reaches the place the key is used.
-// What the student changed is kept in ~/.config/omarchy-student/keys.json,
+// What the student changed is kept in ~/.config/longhand/keys.json,
 // and only that: an action missing from the file has its own keys.
 //
 // A key is written the way it is shown, "Ctrl+Shift+P": modifiers in the

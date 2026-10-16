@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-"""student-agent — the loop between today's note and the model.
+"""longhand-agent — the loop between today's note and the model.
 
-    student-agent run --trigger <kind> [--hash <block>[,<block>…]] [--date YYYY.MM.DD]
-    student-agent chat --hash <block> --message <text>         # dive in: continue that block's session
-    student-agent ack --hash <block>                           # the student has seen the reply
-    student-agent accept --hash <block> --index <n>            # run a proposal through the CLI
-    student-agent tasks [--days 7]                             # open checkboxes across daily notes, JSON
-    student-agent next [--days 7]                              # tasks + open suggestions/observations, JSON
-    student-agent dismiss --date D --kind suggestion|observation --index <n>
-    student-agent curriculum                                   # convert PDFs in the curriculum folder to .md
-    student-agent context --trigger <kind> [--hash <block>]   # payload only, no model
-    student-agent state [--date YYYY.MM.DD]                    # today's state JSON
-    student-agent stats [--days 14 | --since YYYY-MM-DD] [--json]   # how the tool is used
-    student-agent projects                                     # the tags that exist, with their next session
-    student-agent install                                      # opencode agent def + dirs
+    longhand-agent run --trigger <kind> [--hash <block>[,<block>…]] [--date YYYY.MM.DD]
+    longhand-agent chat --hash <block> --message <text>         # dive in: continue that block's session
+    longhand-agent ack --hash <block>                           # the student has seen the reply
+    longhand-agent accept --hash <block> --index <n>            # run a proposal through the CLI
+    longhand-agent tasks [--days 7]                             # open checkboxes across daily notes, JSON
+    longhand-agent next [--days 7]                              # tasks + open suggestions/observations, JSON
+    longhand-agent dismiss --date D --kind suggestion|observation --index <n>
+    longhand-agent curriculum                                   # convert PDFs in the curriculum folder to .md
+    longhand-agent context --trigger <kind> [--hash <block>]   # payload only, no model
+    longhand-agent state [--date YYYY.MM.DD]                    # today's state JSON
+    longhand-agent stats [--days 14 | --since YYYY-MM-DD] [--json]   # how the tool is used
+    longhand-agent projects                                     # the tags that exist, with their next session
+    longhand-agent install                                      # opencode agent def + dirs
 
 One pass, then exit. Nothing is resident. The model gets no tools: everything
 it may see is assembled here from an allowlist (today's note minus private
@@ -23,7 +23,7 @@ everything it says back is applied here — transcript, state file, knowledge
 files, cost ledger. No code path in this file opens anything under the daily
 notes folder for writing; `guard_write` enforces that.
 
-Config: ~/.config/omarchy-student/config.json (see config.example.json).
+Config: ~/.config/longhand/config.json (see config.example.json).
 """
 from __future__ import annotations
 
@@ -45,9 +45,9 @@ TRIGGERS = ("checkbox", "mention", "question", "tick", "open")
 LINK_LINE = re.compile(r"^\[\[[^\]\n]*\|agent\]\]$")
 KNOWLEDGE_FILE = re.compile(r"^(profile\.md|patterns\.md|projects/[A-Za-z0-9._ -]{1,64}\.md)$")
 
-CONFIG_PATH = Path(os.environ.get("OMARCHY_STUDENT_CONFIG")
-                   or Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "omarchy-student" / "config.json")
-STATE_HOME = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state") / "omarchy-student"
+CONFIG_PATH = Path(os.environ.get("LONGHAND_CONFIG") or os.environ.get("OMARCHY_STUDENT_CONFIG")   # the old name, still read
+                   or Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "longhand" / "config.json")
+STATE_HOME = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state") / "longhand"
 
 
 class Fail(Exception):
@@ -83,7 +83,7 @@ class Paths:
         self.stamp = day_stamp(cfg, date)
         self.daily_dir = self.vault / cfg["daily"]["dir"]
         self.note = self.daily_dir / f"{self.stamp}.md"
-        self.agent_dir = self.vault / cfg.get("agentDir", "agents/student")
+        self.agent_dir = self.vault / cfg.get("agentDir", "agents/longhand")
         self.transcript = self.agent_dir / "daily" / f"{self.stamp}.md"
         self.state = self.agent_dir / "daily" / f"{self.stamp}.json"
         self.knowledge = self.agent_dir / "knowledge"
@@ -451,10 +451,10 @@ def run_model(cfg: dict, paths: Paths, payload: str, session: str = "", message:
     AGENTS.md, a repo, a stray file — is ever in scope."""
     paths.cwd.mkdir(parents=True, exist_ok=True)
     cmd = [cfg.get("opencode", "opencode"), "run", "--standalone", "--format", "json",
-           "--agent", cfg.get("agent", "student")]
+           "--agent", cfg.get("agent", "longhand")]
     # Reasoning effort is named per model and now rides on the model itself,
     # `provider/model#variant`; without a model named here the agent's own
-    # (agent/opencode/student.md) decides, variant and all.
+    # (agent/opencode/longhand.md) decides, variant and all.
     if cfg.get("model"):
         model = cfg["model"]
         if cfg.get("variant") and "#" not in model:
@@ -1320,8 +1320,8 @@ def cmd_projects(cfg: dict, args) -> int:
 
 def cmd_install(cfg: dict, args) -> int:
     here = Path(__file__).resolve().parent
-    src = here / "opencode" / "student.md"
-    dst = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "opencode" / "agent" / "student.md"
+    src = here / "opencode" / "longhand.md"
+    dst = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "opencode" / "agent" / "longhand.md"
     dst.parent.mkdir(parents=True, exist_ok=True)
     dst.write_text(src.read_text())
     paths = Paths(cfg, dt.date.today())
@@ -1333,7 +1333,7 @@ def cmd_install(cfg: dict, args) -> int:
 
 
 def main(argv: list[str]) -> int:
-    ap = argparse.ArgumentParser(prog="student-agent")
+    ap = argparse.ArgumentParser(prog="longhand-agent")
     sub = ap.add_subparsers(dest="cmd", required=True)
     for name in ("run", "context"):
         p = sub.add_parser(name)
@@ -1378,7 +1378,7 @@ def main(argv: list[str]) -> int:
                 "context": cmd_context, "state": cmd_state, "install": cmd_install, "stats": cmd_stats,
                 "projects": cmd_projects}[args.cmd](cfg, args)
     except Fail as e:
-        print(f"student-agent: {e}", file=sys.stderr)
+        print(f"longhand-agent: {e}", file=sys.stderr)
         return 2
 
 

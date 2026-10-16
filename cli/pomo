@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # pomo v0.1 — minimal Pomodoro CLI, no deps (no jq).
-# State: ${XDG_STATE_HOME:-~/.local/state}/omarchy-student/state.json
+# State: ${XDG_STATE_HOME:-~/.local/state}/longhand/state.json
 set -euo pipefail
 
 FOCUS_LEN=1500  # 25m
 BREAK_LEN=300   # 5m
 
-STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy-student"
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/longhand"
 STATE_FILE="$STATE_DIR/state.json"
 
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"

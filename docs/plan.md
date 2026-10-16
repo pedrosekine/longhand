@@ -1,8 +1,8 @@
-# Plan — omarchy-student
+# Plan — Longhand
 
 ## Architecture
 - `cli/` — single-source timer + deadline core (bash, no deps)
-  - state in `~/.local/state/omarchy-student/` (`state.json`, `deadlines.tsv`, `pomo.log`)
+  - state in `~/.local/state/longhand/` (`state.json`, `deadlines.tsv`, `pomo.log`)
   - commands: start, pause, resume, toggle, reset, skip, status, stats, deadline, report
 - `plugin/`, `plugin-deadline/` — thin Omarchy bar widgets that read the state files
 - `page/` (next) — Quickshell full-screen panel: today's note, blank page, the trigger
@@ -14,7 +14,7 @@
 - [x] Step 2 — `gh repo create pedrosekine/omarchy-student --public --source .` (done, origin set)
 - [x] Step 3 — v0.1 CLI prototype: `cli/pomo` bash script + state file — on PATH via `ln -sfn "$PWD/cli/pomo" ~/.local/bin/pomo` (absolute target: re-link after moving the repo, or the bindings and both widgets fail with "binary could not be found")
 - [x] Step 4 — Hypr bindings: `SUPER+ALT+P` toggle, `SUPER+ALT+N` skip in `~/.config/hypr/bindings.lua` (SUPER+P was taken by Pseudo window)
-- [x] Step 5 — v0.2 bar widget: `plugin/` QML (`student.pomo`: countdown label + progress popup, left=popup, right=toggle, middle=skip). Installed as real files in `~/.config/omarchy/plugins/student.pomo` (symlinks not allowed there — copy on change, shell auto-reloads).
+- [x] Step 5 — v0.2 bar widget: `plugin/` QML (`longhand.pomo`: countdown label + progress popup, left=popup, right=toggle, middle=skip). Installed as real files in `~/.config/omarchy/plugins/longhand.pomo` (symlinks not allowed there — copy on change, shell auto-reloads).
 - [x] Step 6 — session counter: `pomo stats [day|week|month|--json]` (calendar week Mon–Sun) + popup segmented Day/Week/Month selector with live count. Counts `focus started` lines in `pomo.log`.
 - [x] Step 7 — finish cue: `pomo bell` (desktop notification + bell sound), auto-fired once by the widget on running→expired edge. Sound: `sounds/done.wav` (Mixkit "Uplifting flute notification", free license, see sounds/README.md).
 - [x] Step 8 — auto-start flow: `auto` flag in state.json, `pomo autostart [on|off|toggle]`, `pomo expired` edge handler (bell + auto-advance), popup switch. Provisional name "auto-start" — naming decision tracked in issue #1.
@@ -24,10 +24,10 @@
 - [x] Step 12 — deadlines (manual): `pomo deadline add|list|rm|next`, stored as
       `deadlines.tsv` (`id<TAB>epoch<TAB>title`). Free-text dates via `date -d`
       ("next friday 17:00", "in 3 hours", "3d", "by friday"); a bare day snaps to
-      23:59 because a deadline means the end of that day. New `student.deadline`
+      23:59 because a deadline means the end of that day. New `longhand.deadline`
       bar widget (`plugin-deadline/`): calendar glyph + countdown to the next
       deadline, urgent-coloured inside 24h, popup lists the next 6 with `x` to
-      remove. Installed alongside `student.pomo` in the bar's center section.
+      remove. Installed alongside `longhand.pomo` in the bar's center section.
 - [x] Step 13a — deadline identity: ids are handed out once and never reused
       (high-water mark in `deadlines.seq`, self-healing from the store when the
       file is missing), and `pomo deadline set <id> [--title <text>] [<when...>]`
@@ -49,29 +49,29 @@
       QML into `~/.config/omarchy/plugins/` run `omarchy restart shell`.
 - [ ] Step 14 — the diary. Reference plan with files, loop, page, tests and
       phases: `docs/diary.md`. Phases, each shippable alone:
-      - [x] 14.1 the page — `plugin-page/` (`student.page`, kind `overlay`,
+      - [x] 14.1 the page — `plugin-page/` (`longhand.page`, kind `overlay`,
             keepLoaded). Themed sheet, date, today's note as plain text, save
             per keystroke (300 ms coalesce, flush on Enter/close, atomic
             writes), Esc closes, Enter continues list items and checkboxes,
             Ctrl+Up/Down jump blocks. Block splitting in `Blocks.js` with a
             Python twin `agent/blocks.py`; `tests/test_blocks.py` cross-checks
-            them. Config: `~/.config/omarchy-student/config.json` (see
+            them. Config: `~/.config/longhand/config.json` (see
             `config.example.json`). Note created from
-            `<vault>/agents/student/templates/daily.md` by whoever gets there
+            `<vault>/agents/longhand/templates/daily.md` by whoever gets there
             first — the same file is set as Obsidian's daily-notes template.
-            Install: copy to `~/.config/omarchy/plugins/student.page/`, add
-            `{"id":"student.page"}` to `plugins[]` in shell.json, bind
-            `SUPER+ALT+=` → `omarchy-shell shell toggle student.page '{}'`.
+            Install: copy to `~/.config/omarchy/plugins/longhand.page/`, add
+            `{"id":"longhand.page"}` to `plugins[]` in shell.json, bind
+            `SUPER+ALT+=` → `omarchy-shell shell toggle longhand.page '{}'`.
             Gotcha: overlays are toggled via the `shell` target, not their id.
-      - [x] 14.2 the loop — `agent/student-agent` (Python, no deps): builds
+      - [x] 14.2 the loop — `agent/longhand-agent` (Python, no deps): builds
             the payload from the allowlist (note minus private blocks and the
             link line, knowledge files, curriculum folder, `pomo report`),
-            logs it to `~/.local/state/omarchy-student/payloads/`, runs
-            `opencode run --pure --agent student --format json` with the
-            tool-less agent in `agent/opencode/student.md` (DeepSeek 4.1
+            logs it to `~/.local/state/longhand/payloads/`, runs
+            `opencode run --pure --agent longhand --format json` with the
+            tool-less agent in `agent/opencode/longhand.md` (DeepSeek 4.1
             flash via OpenCode Go), parses one fenced JSON block (reply,
             proposals, suggestions, knowledge), and applies it: transcript
-            `agents/student/daily/<date>.md`, state `<date>.json`, knowledge
+            `agents/longhand/daily/<date>.md`, state `<date>.json`, knowledge
             files (path-guarded), `cost.tsv`. `guard_write` refuses any path
             under the daily folder. Page triggers: Enter after a checkbox /
             `@` / `?` line, a tick, and page open (skipped when nothing is
@@ -92,8 +92,8 @@
             narrower sheet to the right showing the reply, proposals, and
             the dive-in chat for the block under the cursor (or the nearest
             one above when the cursor sits on a blank line); looking at it
-            for a second marks it read (`student-agent ack`). `Ctrl+Enter`
-            focuses the chat field, Enter sends (`student-agent chat`
+            for a second marks it read (`longhand-agent ack`). `Ctrl+Enter`
+            focuses the chat field, Enter sends (`longhand-agent chat`
             continues the block's opencode session), Esc returns to the
             note. Bar glyph `󰏫` (the plugin is now `overlay` + `bar-widget`)
             toggles the page and turns active when a reply is unread.
@@ -111,11 +111,11 @@
             kept in state under `observations` for the suggestions panel.
       - [x] 14.4 proposals — the margin lists the agent's proposals under the
             reply; `Alt+Right` focuses them (then the chat field), Enter
-            accepts one: `student-agent accept --hash --index` runs `pomo
+            accepts one: `longhand-agent accept --hash --index` runs `pomo
             deadline add` with title/subject/link/when, records the new id
             in state and transcript, never twice. The prompt now flags
             disagreements between the note and the deadline store (the
-            store is the truth). Tasks panel on `Ctrl+T`: `student-agent
+            store is the truth). Tasks panel on `Ctrl+T`: `longhand-agent
             tasks` lists every open checkbox across daily notes (read-only),
             last seven days open, older folded; Enter ticks — today's note
             in the editor, another day's file rewritten one line, atomic —
@@ -136,12 +136,12 @@
             Suggestions: deduplicated by content-word overlap against the
             day's list and against `knowledge/dismissed.md`, a file the
             runner writes and the model may only read; the payload lists
-            dismissals as "do not raise again". `student-agent next` lists
+            dismissals as "do not raise again". `longhand-agent next` lists
             open tasks plus undismissed suggestions and open-pass
             observations across the last 7 days; the `Ctrl+T` panel is now
             "what's next": tasks on top, "from the agent" below, Enter ticks
             a task or waves off a suggestion. `curriculum` folder in config
-            (`agents/student/curriculum`); `student-agent curriculum`
+            (`agents/longhand/curriculum`); `longhand-agent curriculum`
             converts PDFs to markdown once with pdftotext; `.md` files there
             are always in the payload. `- []` and a bare `[]` at line start
             become `- [ ] `.
@@ -187,7 +187,7 @@
             the terminal and GTK apps. Browser-style zoom of the whole page
             (type, spacing, margins, panel; not the window's own size):
             Ctrl+= / Ctrl+- / Ctrl+0 over 67–200%, shown in the header for a
-            moment, kept in `~/.local/state/omarchy-student/page.json`.
+            moment, kept in `~/.local/state/longhand/page.json`.
       - [x] 14.6d find — Ctrl+F opens a line under the date; matches are
             case-insensitive, in the rows' words only (never the lifted
             markdown), painted under the text (current one stronger) and
@@ -250,7 +250,7 @@
             note is watched for outside edits (Obsidian); `pomo` locks the
             store (eight racing adds gave duplicate ids before); the runner
             queue is FIFO; "today" follows the clock. tests/page/run.py drives
-            the page live over IPC (21 checks). `student-agent stats` and the
+            the page live over IPC (21 checks). `longhand-agent stats` and the
             page's local usage log, for the freeze.
 - [x] 14.6k theme (2026-10-11, the last change before the freeze) — the page
       draws in the Omarchy theme's palette by role (ThemeColors.qml, read from
@@ -268,14 +268,14 @@
       stock themes' `muted` is a 1.5–3:1 comment grey.
 - [x] 14.6l projects in the sidebar (2026-10-11, the one agreed exception to
       the freeze: it keeps tomorrow's tag convention from sprawling).
-      `student-agent projects` reads knowledge/projects/*.md — tag from a
+      `longhand-agent projects` reads knowledge/projects/*.md — tag from a
       `Tag: #x` line (else the file name), name from the H1, next session
       from `- Mon 12 Oct: 10:45–… (Room)` lines — and the calendar lists them
       soonest first. Enter starts a class (`# Course #tag` at the end of
       today's note, cursor under it); Ctrl+Enter puts the tag at the cursor.
       The five courses' files were written from the IT:U timetable feed.
       - [x] 14.6i projects for notes (2026-10-15, the first thing off the
-            parking lot once the freeze lifted). `student-agent sections
+            parking lot once the freeze lifted). `longhand-agent sections
             --tag <tag>` gathers every section of a project's tag across the
             daily notes, newest day first: a tagged heading claims
             everything under it until the next heading of the same or a
@@ -293,7 +293,7 @@
             alone. Tests: `tests/test_agent.py` (the claiming rule),
             `tests/page/run.py` (the list, the jump, the fresh open).
 - [x] **Freeze, 2026-10-11 → 2026-10-25: fixes only, use it.** At the end,
-      `student-agent stats --since 2026-10-11` and decide with it:
+      `longhand-agent stats --since 2026-10-11` and decide with it:
       - habit — days written in, days the page was opened, minutes;
       - intention → outcome — checkboxes ticked / written (0/17 before);
       - deadlines — bound from a note vs elsewhere, closed by their time;
@@ -302,7 +302,7 @@
       - languages — blocks per language (the case for multi-language cues);
       - focus — pomodoro sessions (0 since 2026-09-17).
 - [x] **Freeze lifted 2026-10-15**, ten days early: a week of classes had
-      given it enough to say. `student-agent stats --since 2026-10-11`:
+      given it enough to say. `longhand-agent stats --since 2026-10-11`:
       - habit — 4 of 5 days written in, 4 with the page opened (20 opens,
         371 min), 1324 words. **The habit took; that was the question.**
       - intention → outcome — 2 of 22 checkboxes closed (0/17 before).
@@ -571,9 +571,9 @@ a fix or a feature to decide first):
    the way `SUPER+ALT+\` is of `SUPER+ALT+=`: the popup is the glance, the
    dashboard is where the work gets done. Marking something done there ticks
    the line in the daily note — which means the dashboard has to be a
-   **shape of the page**, because the page is the one writer (`student-agent
+   **shape of the page**, because the page is the one writer (`longhand-agent
    tasks` is read-only for exactly that reason). The gathering already
-   exists: `student-agent next` returns every unticked box in every note
+   exists: `longhand-agent next` returns every unticked box in every note
    ever, and `buildTaskRows()` already assembles deadlines, boxes by day and
    what the agent raised into one list. What it needs is context on each
    row, grouping by project and by week, the three verbs, the entropy
@@ -728,8 +728,8 @@ a fix or a feature to decide first):
   The sidebar list is the first step; this would be the stronger guard.
 - **The agent's tools: observability and onboarding** (2026-10-14, from
   asking whether the loop needs a harness of its own) — it already runs
-  inside one: `opencode run --pure --format json --agent student`, with
-  every tool and permission denied in `agent/opencode/student.md`. Pi
+  inside one: `opencode run --pure --format json --agent longhand`, with
+  every tool and permission denied in `agent/opencode/longhand.md`. Pi
   (pi.dev, MIT) was weighed as a replacement and rejected — everything it
   adds over opencode (TUI, extensions, skills, session trees) lives in the
   layer this agent switches off, so it would be a new dependency for no new
@@ -739,8 +739,8 @@ a fix or a feature to decide first):
   left the door open ("adding tools later is one line in the agent
   definition"); three tiers, to decide separately:
   1. *Observability* — a second agent definition (`student-dev`) with
-     tools, pointed at the repo and `~/.local/state/omarchy-student`, never
-     at the daily folder; behind something like `student-agent explain
+     tools, pointed at the repo and `~/.local/state/longhand`, never
+     at the daily folder; behind something like `longhand-agent explain
      --date D`, answering "what did it see, what did it say, what did it
      cost, why was it silent" from the payload log, the event stream and
      `cost.tsv`. It reads logs, not notes, so it costs nothing in consent.
@@ -779,21 +779,29 @@ pomo status  # JSON for scripts/bar
 ```
 
 Hypr bindings (the page's keys sheet can take these over into
-`~/.config/hypr/student.lua` instead, since 2026-10-16; see the README,
+`~/.config/hypr/longhand.lua` instead, since 2026-10-16; see the README,
 "Every key, and moving one"):
 ```lua
 o.bind("SUPER + ALT + P", "Pomo toggle", "pomo toggle")
 o.bind("SUPER + ALT + N", "Pomo skip", "pomo skip")
-o.bind("SUPER + ALT + O", "Pomo popup", "omarchy-shell student.pomo toggle")
-o.bind("SUPER + ALT + D", "Deadlines popup", "omarchy-shell student.deadline toggle")
-o.bind("SUPER + ALT + equal", "Page (today's note)", "omarchy-shell shell toggle student.page '{}'")
-o.bind("SUPER + ALT + backslash", "Page alongside", "omarchy-shell shell summon student.page '{\"shape\":\"alongside\"}'")
+o.bind("SUPER + ALT + O", "Pomo popup", "omarchy-shell longhand.pomo toggle")
+o.bind("SUPER + ALT + D", "Deadlines popup", "omarchy-shell longhand.deadline toggle")
+o.bind("SUPER + ALT + equal", "Page (today's note)", "omarchy-shell shell toggle longhand.page '{}'")
+o.bind("SUPER + ALT + backslash", "Page alongside", "omarchy-shell shell summon longhand.page '{\"shape\":\"alongside\"}'")
 ```
 
 ## Decisions
 Longer-form design thinking lives in `docs/student-os.md` (agentic-first, cadence, progress, research).
 
 - 2026-09-05: Hybrid, name omarchy-student, v0.1 = keyboard shortcuts
+- 2026-10-16: Renamed **Longhand**. The old name said the platform and the
+  audience, not the product; the product is the inversion of "agents drive,
+  humans steer": the person writes and owns their threads, the agent lends
+  help when called and writes only in the margin. Plugin ids `longhand.*`,
+  `~/.config/longhand`, `~/.local/state/longhand`, `longhand-agent`,
+  `hypr/longhand.lua`, vault `agents/longhand/`; `tools/migrate-to-longhand`
+  moves an old install once and leaves the old paths as symlinks. The GitHub
+  repo and the local folder keep the old name for now.
 - 2026-09-07: Deadlines are manual-first and stay that way. Import was weighed
   and rejected for now: over years of study the feeds were "nothing but chaotic",
   and the deadlines that drive a study week (read ch.7, draft by Sunday, meet
@@ -833,7 +841,7 @@ Longer-form design thinking lives in `docs/student-os.md` (agentic-first, cadenc
   the Mac, and the phone are out of the design for now.
 - 2026-10-16: The keys sheet may write into the student's Hyprland config, but
   only into a file it owns. Four ways were weighed: a snippet to paste (the
-  sheet writes nothing), a file of its own (`hypr/student.lua`) loaded by one
+  sheet writes nothing), a file of its own (`hypr/longhand.lua`) loaded by one
   line added to `bindings.lua`, a managed block inside `bindings.lua`, or a
   file in Omarchy's toggles folder. The own file won. `bindings.lua` is
   touched once, with consent given in the sheet and a backup taken first, and

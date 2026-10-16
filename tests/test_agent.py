@@ -18,7 +18,7 @@ import tempfile
 import datetime as dt
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-AGENT = ROOT / "agent" / "student-agent"
+AGENT = ROOT / "agent" / "longhand-agent"
 
 STUB = """#!/usr/bin/env python3
 import json, sys
@@ -51,7 +51,7 @@ OLD_DAY = (dt.date.today() - dt.timedelta(days=60)).strftime("%Y.%m.%d")
 NOTE = """---
 agent: true
 ---
-[[agents/student/daily/DAY|agent]]
+[[agents/longhand/daily/DAY|agent]]
 
 Read the DORO brief again.
 
@@ -66,7 +66,7 @@ Read the DORO brief again.
 
 class T:
     def __init__(self):
-        self.tmp = pathlib.Path(tempfile.mkdtemp(prefix="student-agent-test-"))
+        self.tmp = pathlib.Path(tempfile.mkdtemp(prefix="longhand-agent-test-"))
         self.vault = self.tmp / "vault"
         self.daily = self.vault / "inbox" / "Daily"
         self.daily.mkdir(parents=True)
@@ -76,7 +76,7 @@ class T:
         self.note.write_text(NOTE)
         self.cfg = self.tmp / "config.json"
         self.cfg.write_text(json.dumps({"vault": str(self.vault), "daily": {"dir": "inbox/Daily", "format": "YYYY.MM.DD"},
-                                        "agentDir": "agents/student", "opencode": str(self.tmp / "bin" / "opencode")}))
+                                        "agentDir": "agents/longhand", "opencode": str(self.tmp / "bin" / "opencode")}))
         (self.tmp / "bin").mkdir()
         stub = self.tmp / "bin" / "opencode"
         stub.write_text(STUB)
@@ -89,7 +89,7 @@ class T:
         self.stub_dir = self.tmp / "stub"
         self.stub_dir.mkdir()
         self.state_home = self.tmp / "state"
-        self.env = dict(os.environ, OMARCHY_STUDENT_CONFIG=str(self.cfg), XDG_STATE_HOME=str(self.state_home),
+        self.env = dict(os.environ, LONGHAND_CONFIG=str(self.cfg), XDG_STATE_HOME=str(self.state_home),
                         STUB_DIR=str(self.stub_dir), PATH=str(self.tmp / "bin") + ":" + os.environ["PATH"])
         # keep `pomo report` out of it: an empty PATH entry first means the real pomo is still found;
         # that is fine — its output is just another allowlisted source.
@@ -140,7 +140,7 @@ def main() -> int:
         check(r.returncode == 0, f"context exits 0 ({r.stderr.strip()})")
         check("SECRET-PRIVATE-LINE" not in r.stdout, "private callout absent from payload")
         check("SECRET-VAULT-FILE" not in r.stdout, "vault secrets folder absent from payload")
-        check(f"[[agents/student/daily/{DAY}|agent]]" not in r.stdout, "template link line absent from payload")
+        check(f"[[agents/longhand/daily/{DAY}|agent]]" not in r.stdout, "template link line absent from payload")
         check("Read the DORO brief again." in r.stdout and "draft the one-pager" in r.stdout, "visible blocks present")
         check(f"block: {at_block['hash']}" in r.stdout, "fired block named")
 
@@ -162,8 +162,8 @@ def main() -> int:
         check(before == after, "daily note bytes and mtime untouched by a run")
         sent = (t.stub_dir / "last_payload.md").read_text()
         check("SECRET-PRIVATE-LINE" not in sent, "model received no private text")
-        tr = t.vault / "agents" / "student" / "daily" / f"{DAY}.md"
-        st = t.vault / "agents" / "student" / "daily" / f"{DAY}.json"
+        tr = t.vault / "agents" / "longhand" / "daily" / f"{DAY}.md"
+        st = t.vault / "agents" / "longhand" / "daily" / f"{DAY}.json"
         check(tr.exists() and "You said the brief was unclear." in tr.read_text(), "transcript written with reply")
         check("add deadline: one-pager — friday · DORO" in tr.read_text(), "proposal rendered as a checkbox")
         s = json.loads(st.read_text())
@@ -172,13 +172,13 @@ def main() -> int:
               "every visible block marked seen")
         check(priv["hash"] not in s["blocks"], "private block not in state")
         check(s["blocks"][at_block["hash"]]["session"] == "ses_stub", "session id kept for dive-in")
-        check((t.vault / "agents/student/knowledge/projects/DORO.md").read_text() == "one-pager due friday\n",
+        check((t.vault / "agents/longhand/knowledge/projects/DORO.md").read_text() == "one-pager due friday\n",
               "knowledge file written")
-        check((t.vault / "agents/student/knowledge/profile.md").exists(), "profile written")
+        check((t.vault / "agents/longhand/knowledge/profile.md").exists(), "profile written")
         check(not (t.vault / "escape.md").exists() and not (t.tmp / "escape.md").exists(), "path escape ignored")
-        ledger = (t.state_home / "omarchy-student" / "cost.tsv").read_text().splitlines()
+        ledger = (t.state_home / "longhand" / "cost.tsv").read_text().splitlines()
         check(len(ledger) == 2 and "0.000200" in ledger[1], "cost ledger has one run")
-        payloads = list((t.state_home / "omarchy-student" / "payloads").glob("*.md"))
+        payloads = list((t.state_home / "longhand" / "payloads").glob("*.md"))
         check(len(payloads) == 1 and "SECRET-PRIVATE-LINE" not in payloads[0].read_text(), "payload logged, clean")
 
         # 4. open with nothing new → no model call
@@ -267,7 +267,7 @@ def main() -> int:
         sug = next(x for x in nx["raised"] if x["kind"] == "suggestion")
         r = t.agent("dismiss", "--date", sug["date"], "--kind", "suggestion", "--index", str(sug["index"]))
         check(r.returncode == 0, f"dismiss exits 0 ({r.stderr.strip()})")
-        dm = t.vault / "agents/student/knowledge/dismissed.md"
+        dm = t.vault / "agents/longhand/knowledge/dismissed.md"
         check(dm.exists() and "book a slot" in dm.read_text(), "dismissal written to dismissed.md")
         nx = json.loads(t.agent("next").stdout)
         check(not any(x["text"] == "book a slot" for x in nx["raised"]), "dismissed suggestion gone from next")
@@ -320,10 +320,10 @@ def main() -> int:
         check(r.returncode != 0, "unknown block hash refused")
 
         # 13. stats: read-only signals from the notes, the ledger and the page's usage log
-        (t.state_home / "omarchy-student").mkdir(parents=True, exist_ok=True)
+        (t.state_home / "longhand").mkdir(parents=True, exist_ok=True)
         import time as _t
         now = int(_t.time())
-        (t.state_home / "omarchy-student" / "usage.tsv").write_text(
+        (t.state_home / "longhand" / "usage.tsv").write_text(
             f"{now}\topen\twindow\n{now}\tfind\t\n{now}\tday\t3\n{now}\tclose\t120\n")
         before = t.note.read_bytes()
         r = t.agent("stats", "--days", "2", "--json")
@@ -337,7 +337,7 @@ def main() -> int:
         check(t.note.read_bytes() == before, "stats writes nothing")
 
         # 14. projects: the tags that exist, soonest session first
-        pd = t.vault / "agents/student/knowledge/projects"
+        pd = t.vault / "agents/longhand/knowledge/projects"
         pd.mkdir(parents=True, exist_ok=True)
         import datetime as _dt
         soon = _dt.date.today() + _dt.timedelta(days=2)
@@ -370,7 +370,7 @@ def main() -> int:
         # 15. sections: a project's notes across days, found by its tag
         # A tagged H1 claims its H2s and H3s; only another H1 ends it.
         (t.daily / f"{DAY}.md").write_text(
-            "[[agents/student/daily/x|agent]]\n\n"
+            "[[agents/longhand/daily/x|agent]]\n\n"
             "# Interdisciplinary Seminar #intsem\n"
             "Gabriel on digital sovereignty\n"
             "## Learning goals\n"
@@ -415,7 +415,7 @@ def main() -> int:
             "OTHER-COURSE-WORDS\n")
         shut = t.daily / f"{(dt.date.today() - dt.timedelta(days=30)):%Y.%m.%d}.md"
         shut.write_text("---\nagent: false\n---\n# Interdisciplinary Seminar #intsem\nSHUT-DAY-WORDS\n")
-        t.note.write_text("[[agents/student/daily/x|agent]]\n\n"
+        t.note.write_text("[[agents/longhand/daily/x|agent]]\n\n"
                           "# Interdisciplinary Seminar #intsem\n"
                           "## Today\n"
                           "@ what did I say about reviews?\n")
@@ -440,9 +440,9 @@ def main() -> int:
         check(argv[0] == "run", "opencode is asked to run")
         check("--standalone" in argv, "a server of its own, nothing resident")
         check(argv[argv.index("--format") + 1] == "json", "machine-readable events")
-        check(argv[argv.index("--agent") + 1] == "student", "the student agent, with its denied tools")
+        check(argv[argv.index("--agent") + 1] == "longhand", "Longhand's agent, with its denied tools")
         check(not ({"--pure", "--dir", "--variant"} & set(argv)), "no flag opencode no longer knows")
-        check(pathlib.Path(called["cwd"]).resolve() == (t.state_home / "omarchy-student" / "agent-cwd").resolve(),
+        check(pathlib.Path(called["cwd"]).resolve() == (t.state_home / "longhand" / "agent-cwd").resolve(),
               "run from the agent's own empty directory, never a project")
 
         # A run that says nothing at all did not run. opencode prints its
@@ -454,7 +454,7 @@ def main() -> int:
         if env_was is None:
             t.env.pop("STUB_DEAF")
         check(r.returncode != 0, "the runner exits non-zero")
-        last = json.loads((t.vault / "agents" / "student" / "daily" / f"{DAY}.json").read_text())["runs"][-1]
+        last = json.loads((t.vault / "agents" / "longhand" / "daily" / f"{DAY}.json").read_text())["runs"][-1]
         check("Unrecognized flag" in last["error"], "what opencode said is kept")
 
         # The ledger when the events carry no price: asked of the session.
@@ -462,7 +462,7 @@ def main() -> int:
         t.env["STUB_FREE"] = "1"
         r = t.agent("run", "--trigger", "mention", "--hash", at_block["hash"], "--date", DAY)
         t.env.pop("STUB_FREE")
-        last = json.loads((t.vault / "agents" / "student" / "daily" / f"{DAY}.json").read_text())["runs"][-1]
+        last = json.loads((t.vault / "agents" / "longhand" / "daily" / f"{DAY}.json").read_text())["runs"][-1]
         check(abs(last["cost"] - 0.5) < 1e-9, "cost read back from the session")
         check(last["tokens"]["total"] == 11, "and its tokens")
     finally:

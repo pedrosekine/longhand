@@ -11,8 +11,8 @@ import qs.Ui
 // middle click skips to the next phase.
 Panel {
   id: root
-  moduleName: "student.pomo"
-  ipcTarget: "student.pomo"
+  moduleName: "longhand.pomo"
+  ipcTarget: "longhand.pomo"
 
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property color dim: Qt.darker(foreground, 1.55)

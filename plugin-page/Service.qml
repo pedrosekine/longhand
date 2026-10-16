@@ -4,7 +4,7 @@ import Quickshell.Io
 
 // Today's note: where it is, what it says, and the one place that writes it.
 //
-// Config comes from ~/.config/omarchy-student/config.json (see
+// Config comes from ~/.config/longhand/config.json (see
 // config.example.json in the repo). The vault path is machine-local and never
 // lives in code. The note path is <vault>/<daily.dir>/<date in daily.format>.md,
 // the same rule Obsidian's daily-notes plugin uses, so both agree on the file.
@@ -18,7 +18,7 @@ Item {
   id: root
 
   readonly property string configPath: (Quickshell.env("XDG_CONFIG_HOME")
-    || Quickshell.env("HOME") + "/.config") + "/omarchy-student/config.json"
+    || Quickshell.env("HOME") + "/.config") + "/longhand/config.json"
 
   property var config: ({})
   // The page's own type. `font` is the face the note is written in, `codeFont`
@@ -50,7 +50,7 @@ Item {
   property string body: ""
   // A day the student marked private: the runner refuses it whole, so the
   // page must not even offer the agent. One line of frontmatter is the
-  // mark, because that is what `student-agent` reads (note_is_private).
+  // mark, because that is what `longhand-agent` reads (note_is_private).
   readonly property bool notePrivate: /(^|\n)agent:[ \t]*false[ \t]*(\n|$)/.test(frontmatter)
   property bool ready: false
   property bool pending: false
@@ -62,8 +62,8 @@ Item {
   signal savedNow()
 
   // Where the runner lives and where it writes. The page only reads these.
-  readonly property string runner: (config && config.runner) || (Quickshell.env("HOME") + "/.local/bin/student-agent")
-  readonly property string agentDir: configured ? config.vault + "/" + (config.agentDir || "agents/student") : ""
+  readonly property string runner: (config && config.runner) || (Quickshell.env("HOME") + "/.local/bin/longhand-agent")
+  readonly property string agentDir: configured ? config.vault + "/" + (config.agentDir || "agents/longhand") : ""
   readonly property string statePath: agentDir !== "" && noteDate !== "" ? agentDir + "/daily/" + noteDate + ".json" : ""
 
   property string lastWritten: ""

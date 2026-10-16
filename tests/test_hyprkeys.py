@@ -28,6 +28,7 @@ def check(cond, what):
         failures += 1
 
 
+# As it is on Pedro's laptop: the ids from before the rename to Longhand.
 PEDRO = """-- Keep only your personal keybinding overrides here.
 o.bind("SUPER + SHIFT + T", "Todoist", { webapp = "https://app.todoist.com/app/today", focus = true })
 
@@ -97,22 +98,22 @@ check(any(o["does"] == "Full width" for o in st["others"]), "…and Hyprland's o
 st = h.run("adopt")
 b = h.file("bindings.lua")
 check(st["owned"] and not st.get("error"), f"adopt: the page keeps them ({st['note']})")
-check(b.count("hypr.student") == 1 and b.rstrip().endswith(hyprkeys.REQUIRE), "…one line loading student.lua, last")
-check(sum(1 for l in b.splitlines() if l.startswith("-- o.bind(") and "moved to hypr/student.lua" in l) == 6,
+check(b.count("hypr.longhand") == 1 and b.rstrip().endswith(hyprkeys.REQUIRE), "…one line loading longhand.lua, last")
+check(sum(1 for l in b.splitlines() if l.startswith("-- o.bind(") and "moved to hypr/longhand.lua" in l) == 6,
       "…the six old lines commented out, saying where they went")
 check('o.bind("SUPER + SHIFT + T", "Todoist"' in b and not b.count("-- o.bind(\"SUPER + SHIFT + T\""), "…the student's other lines untouched")
 backups = list(h.dir.glob("bindings.lua.bak.*"))
 check(len(backups) == 1 and backups[0].read_text() == PEDRO, "…bindings.lua backed up first, as it was")
-check(h.keys(st)["page"] == ["Alt+Super+="] and 'o.bind("SUPER + ALT + equal", "Page (today\'s note)"' in h.file("student.lua"),
-      "…the keys carried over into student.lua")
+check(h.keys(st)["page"] == ["Alt+Super+="] and 'o.bind("SUPER + ALT + equal", "Page (today\'s note)"' in h.file("longhand.lua"),
+      "…the keys carried over into longhand.lua")
 check("reload config-only" in h.calls(), "…and Hyprland reloaded")
 st = h.run("adopt")
-check(h.file("bindings.lua").count("hypr.student") == 1 and len(list(h.dir.glob("bindings.lua.bak.*"))) == 1,
+check(h.file("bindings.lua").count("hypr.longhand") == 1 and len(list(h.dir.glob("bindings.lua.bak.*"))) == 1,
       "adopting twice changes nothing")
 
 # Moving one
 st = h.run("set", "pomoToggle", "Alt+Super+K")
-check(h.keys(st)["pomoToggle"] == ["Alt+Super+K"] and 'o.bind("SUPER + ALT + K", "Pomo toggle", "pomo toggle")' in h.file("student.lua"),
+check(h.keys(st)["pomoToggle"] == ["Alt+Super+K"] and 'o.bind("SUPER + ALT + K", "Pomo toggle", "pomo toggle")' in h.file("longhand.lua"),
       "set: the timer moves to Super+Alt+K")
 st = h.run("set", "pomoToggle", "Alt+Super+N")
 check(h.keys(st)["pomoToggle"] == ["Alt+Super+N"] and h.keys(st)["pomoSkip"] == [] and "Pomo skip" in st["note"],
@@ -126,28 +127,28 @@ st = h.run("set", "deadlines", "Alt+Super+F")
 check(st.get("asks", {}).get("does") == "Full width" and h.keys(st)["deadlines"] == ["Alt+Super+D"],
       "a key Hyprland uses is asked about, not taken")
 st = h.run("set", "deadlines", "--take", "Alt+Super+F")
-ours = h.file("student.lua")
+ours = h.file("longhand.lua")
 check(h.keys(st)["deadlines"] == ["Alt+Super+F"] and 'hl.unbind("SUPER + ALT + F")  -- was: Full width' in ours,
-      "--take: unbound in student.lua, with what it was")
+      "--take: unbound in longhand.lua, with what it was")
 check(not any(o["does"] == "Full width" for o in st["others"]) and st["taken"] == {"Alt+Super+F": "Full width"},
       "…Full width is gone from Hyprland while the deadlines have it")
 st = h.run("set", "deadlines", "Alt+Super+D")
-check("hl.unbind" not in h.file("student.lua") and any(o["does"] == "Full width" for o in st["others"]),
+check("hl.unbind" not in h.file("longhand.lua") and any(o["does"] == "Full width" for o in st["others"]),
       "moving off it gives Full width its key back")
 
 # Refused
 st = h.run("set", "pomoSkip", "Ctrl+Alt+J")
 check("Super" in st.get("error", "") and h.keys(st)["pomoSkip"] == ["Alt+Super+J"], "a key without Super: refused, nothing written")
-before = h.file("student.lua")
+before = h.file("longhand.lua")
 (h.dir / "break").write_text("SUPER + ALT + L")
 st = h.run("set", "pomoSkip", "Alt+Super+L")
-check("refused" in st.get("error", "") and h.file("student.lua") == before, "a write Hyprland refuses is put back")
+check("refused" in st.get("error", "") and h.file("longhand.lua") == before, "a write Hyprland refuses is put back")
 check(h.calls().count("reload config-only") >= 2, "…and Hyprland reloaded on the old file")
 (h.dir / "break").unlink()
 
 # Read back after a hand edit
-h.dir.joinpath("student.lua").write_text(h.file("student.lua").replace('"SUPER + ALT + J"', '"SUPER + ALT + H"'))
-check(h.keys()["pomoSkip"] == ["Alt+Super+H"], "a key edited by hand in student.lua is read back")
+h.dir.joinpath("longhand.lua").write_text(h.file("longhand.lua").replace('"SUPER + ALT + J"', '"SUPER + ALT + H"'))
+check(h.keys()["pomoSkip"] == ["Alt+Super+H"], "a key edited by hand in longhand.lua is read back")
 h.close()
 
 # Another student: other keys, other names, some never bound
@@ -162,11 +163,55 @@ check(h.file("bindings.lua").startswith('-- o.bind("SUPER + CTRL + P", "Pomodoro
       "…their line commented out, a line already commented left as it was")
 h.close()
 
+# From before the rename: student.lua and the line loading it, moved once
+OLD_OURS = """-- omarchy-student's Hyprland keys: the page, the timer, the deadlines.
+
+-- Keys these took from another bind; the bind comes back once none of
+-- the keys below is on it.
+hl.unbind("SUPER + ALT + F")  -- was: Full width
+
+o.bind("SUPER + ALT + equal", "Page (today's note)", "omarchy-shell shell toggle student.page '{}'")
+o.bind("SUPER + ALT + F", "Deadlines popup", "omarchy-shell student.deadline toggle")
+o.bind("SUPER + ALT + K", "Pomo toggle", "pomo toggle")
+"""
+OLD_BINDINGS = """o.bind("SUPER + SHIFT + T", "Todoist", { webapp = "https://app.todoist.com/app/today", focus = true })
+-- o.bind("SUPER + ALT + P", "Pomo toggle", "pomo toggle")  -- moved to hypr/student.lua by the page, 2026-10-16
+
+-- omarchy-student's keys (the page, the timer, the deadlines) live in
+-- hypr/student.lua, written by the page's keys sheet (Ctrl+/). Delete this
+-- line to drop them; the lines above that it moved stay commented out.
+require("default.hypr.require_optional").module("hypr.student")
+"""
+h = Hypr(OLD_BINDINGS)
+(h.dir / "student.lua").write_text(OLD_OURS)
+st = h.run("state")
+b, ours = h.file("bindings.lua"), h.file("longhand.lua") or ""
+check(st["owned"] and h.file("student.lua") is None and "student.lua" in st["note"],
+      f"student.lua becomes longhand.lua on the first call ({st['note']})")
+check(h.keys(st)["page"] == ["Alt+Super+="] and h.keys(st)["deadlines"] == ["Alt+Super+F"] and h.keys(st)["pomoToggle"] == ["Alt+Super+K"]
+      and st["taken"] == {"Alt+Super+F": "Full width"}, "…the same keys, the taken one still taken")
+check("omarchy-shell longhand.deadline toggle" in ours and "student." not in ours, "…their commands name longhand.*")
+check(b.rstrip().endswith(hyprkeys.REQUIRE) and "hypr.student" not in b and "hypr/longhand.lua" in b
+      and 'o.bind("SUPER + SHIFT + T", "Todoist"' in b, "…bindings.lua loads the new file, its other lines untouched")
+backups = list(h.dir.glob("bindings.lua.bak.*"))
+check(len(backups) == 1 and backups[0].read_text() == OLD_BINDINGS, "…bindings.lua backed up first, as it was")
+h.run("state")
+check(len(list(h.dir.glob("bindings.lua.bak.*"))) == 1 and h.file("longhand.lua") == ours, "moving twice changes nothing")
+h.close()
+
+h = Hypr(OLD_BINDINGS)
+(h.dir / "student.lua").write_text(OLD_OURS)
+(h.dir / "break").write_text("longhand.page")
+st = h.run("state")
+check("refused" in st.get("error", "") and h.file("student.lua") == OLD_OURS and h.file("longhand.lua") is None
+      and h.file("bindings.lua") == OLD_BINDINGS, "a move Hyprland refuses is put back, both files as they were")
+h.close()
+
 # No bindings.lua: nothing to load from, nothing written
 h = Hypr("")
 (h.dir / "bindings.lua").unlink()
 st = h.run("adopt")
-check(st.get("error") and h.file("student.lua") is None, "no bindings.lua: refused, nothing written")
+check(st.get("error") and h.file("longhand.lua") is None, "no bindings.lua: refused, nothing written")
 h.close()
 
 print("all ok" if failures == 0 else f"{failures} failed")

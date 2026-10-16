@@ -51,7 +51,7 @@ def read(mine=None):
     if mine is None:
         hypr = [{"does": does, "keys": [hyprkeys.from_hypr(key)], "changed": False} for _id, does, _cmd, key in hyprkeys.ACTIONS]
     else:
-        # Yours: as Hyprland has them now (student.lua once the page keeps
+        # Yours: as Hyprland has them now (longhand.lua once the page keeps
         # them, bindings.lua before). Only read, never written.
         hypr = [{"does": a["does"], "keys": a["keys"], "changed": a["keys"] != a["own"]} for a in hyprkeys.state()["actions"]]
     out = subprocess.run(["node", "-e", JS, str(SHORTCUTS)], input=json.dumps({"mine": mine, "hypr": hypr}),
@@ -75,7 +75,7 @@ def render(d, mine=False):
          if mine else
          "Every key the page answers to, as it starts. Any of them can be moved in the page: "
          "`Ctrl+/` (or **keys** in the header) opens the same list, Enter on a row and the new key "
-         "moves it. The keys you move are kept in `~/.config/omarchy-student/keys.json`; "
+         "moves it. The keys you move are kept in `~/.config/longhand/keys.json`; "
          "`python3 tools/keys_guide.py --mine` prints this guide with them."),
         "",
         "Where a row has two keys, either works: the second is usually the one another app "
@@ -104,7 +104,7 @@ def render(d, mine=False):
 def main(argv):
     if "--mine" in argv:
         cfg = pathlib.Path(os.environ.get("XDG_CONFIG_HOME") or pathlib.Path.home() / ".config")
-        path = cfg / "omarchy-student" / "keys.json"
+        path = cfg / "longhand" / "keys.json"
         mine = json.loads(path.read_text()) if path.exists() else {}
         sys.stdout.write(render(read(mine), mine=True))
         return 0

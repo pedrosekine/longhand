@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "id": "student.deadline",
+  "id": "longhand.deadline",
   "name": "Deadlines",
   "version": "0.1.0",
-  "author": "student",
+  "author": "longhand",
   "description": "Countdown to your next deadline in the bar, upcoming list on click",
   "kinds": [
     "bar-widget"

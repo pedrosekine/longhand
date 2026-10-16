@@ -17,7 +17,7 @@ Item {
   property int nowSec: Math.floor(Date.now() / 1000)
 
   readonly property string filePath: (Quickshell.env("XDG_STATE_HOME")
-    || Quickshell.env("HOME") + "/.local/state") + "/omarchy-student/deadlines.tsv"
+    || Quickshell.env("HOME") + "/.local/state") + "/longhand/deadlines.tsv"
 
   // What the bar shows: the soonest *open* deadline still ahead, or — when
   // every open one has already passed — the least-late one. Done deadlines

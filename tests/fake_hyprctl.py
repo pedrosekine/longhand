@@ -2,9 +2,9 @@
 """A stand-in for `hyprctl`, enough for the page's Hyprland keys.
 
 It plays Hyprland over a throwaway config: `binds -j` is a few of
-Omarchy's binds (minus any student.lua unbinds), every live `o.bind` line
-in bindings.lua, and student.lua's binds once bindings.lua loads it.
-`configerrors -j` reports an error while student.lua holds the text in
+Omarchy's binds (minus any longhand.lua unbinds), every live `o.bind` line
+in bindings.lua, and longhand.lua's binds once bindings.lua loads it.
+`configerrors -j` reports an error while longhand.lua holds the text in
 $FAKE_HYPR_DIR/break, so a write Hyprland would refuse can be replayed.
 `reload` and `eval` only log — the sheet's submap never reaches the real
 Hyprland, so a test cannot hold the keyboard. With $FAKE_HYPR_REAL set,
@@ -44,8 +44,8 @@ def bind(keys, does):
 
 
 if args[:2] == ["binds", "-j"]:
-    ours = text("student.lua")
-    loaded = any("hypr.student" in l for l in live_lines(text("bindings.lua")))
+    ours = text("longhand.lua")
+    loaded = any("hypr.longhand" in l for l in live_lines(text("bindings.lua")))
     unbound = set(re.findall(r'hl\.unbind\("([^"]+)"\)', ours)) if loaded else set()
     out = [bind(k, n) for k, n in BASE if k not in unbound]
     srcs = [text("bindings.lua")] + ([ours] if loaded else [])
@@ -57,7 +57,7 @@ if args[:2] == ["binds", "-j"]:
     print(json.dumps(out))
 elif args[:2] == ["configerrors", "-j"]:
     brk = text("break").strip()
-    print(json.dumps(["student.lua: refused"] if brk and brk in text("student.lua") else [""]))
+    print(json.dumps(["longhand.lua: refused"] if brk and brk in text("longhand.lua") else [""]))
 elif args[:1] in (["reload"], ["eval"]) or not os.environ.get("FAKE_HYPR_REAL"):
     print("ok")
 else:

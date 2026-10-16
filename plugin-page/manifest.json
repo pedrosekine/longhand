@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "id": "student.page",
+  "id": "longhand.page",
   "name": "Page",
   "version": "0.1.0",
-  "author": "student",
+  "author": "longhand",
   "description": "Today's note as a blank page in the shell",
   "kinds": [
     "overlay",
