@@ -778,7 +778,9 @@ pomo skip    # next phase
 pomo status  # JSON for scripts/bar
 ```
 
-Hypr bindings (active):
+Hypr bindings (the page's keys sheet can take these over into
+`~/.config/hypr/student.lua` instead, since 2026-10-16; see the README,
+"Every key, and moving one"):
 ```lua
 o.bind("SUPER + ALT + P", "Pomo toggle", "pomo toggle")
 o.bind("SUPER + ALT + N", "Pomo skip", "pomo skip")
@@ -829,3 +831,14 @@ Longer-form design thinking lives in `docs/student-os.md` (agentic-first, cadenc
   unticked boxes go to a panel, never to a question; suggestions carry evidence
   and dismissals are remembered; no cost caps until usage is known. Syncthing,
   the Mac, and the phone are out of the design for now.
+- 2026-10-16: The keys sheet may write into the student's Hyprland config, but
+  only into a file it owns. Four ways were weighed: a snippet to paste (the
+  sheet writes nothing), a file of its own (`hypr/student.lua`) loaded by one
+  line added to `bindings.lua`, a managed block inside `bindings.lua`, or a
+  file in Omarchy's toggles folder. The own file won. `bindings.lua` is
+  touched once, with consent given in the sheet and a backup taken first, and
+  never rewritten after that. `omarchy refresh hyprland` leaves the file
+  alone, and it is plain to see in `~/.config/hypr/`. A key must hold Super;
+  a key taken from another bind is unbound with a note and given back when
+  the action moves off it. While the sheet waits for a key, Hyprland sits in a
+  submap with nothing bound, which it leaves by itself after 30 s.

@@ -126,6 +126,9 @@ ShellRoot {
     function keysNote(): string { return page.keysNote }
     function keyRows(): string { return JSON.stringify(page.keyRows) }
     function keysOf(id: string): string { page.keysVersion; return JSON.stringify(Sc.keysOf(id).map(Sc.show)) }
+    // Hyprland's six, as hyprkeys.py last answered, and whether it is busy.
+    function hyprKeys(): string { return JSON.stringify(page.hyprKeys) }
+    function keysListening(): bool { return !!page.keysListen }
     function pageKey(key: int, mods: int): bool { return page.pageKey({ key: key, text: "", modifiers: mods }) }
 
     // The dashboard

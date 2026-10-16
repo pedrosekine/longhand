@@ -340,8 +340,9 @@ Item {
   property var keysListen: null      // { id, add } while waiting for the new key
   property string keysTake: ""       // a key another action has, pressed once
   property string keysNote: ""       // what just happened, or why not
-  property var outsideKeys: []       // Hyprland's keys for the page, read live
-  readonly property var keyRows: { root.keysVersion; return Sc.rows(root.keysFilter, root.outsideKeys) }
+  property var hyprKeys: null        // Hyprland's keys for the page: hyprkeys.py's state
+  property bool keysAdopt: false     // Enter pressed once on "let the page keep these keys"
+  readonly property var keyRows: { root.keysVersion; return Sc.rows(root.keysFilter, root.hyprKeys) }
   property var matches: []       // [{ start, end }] text offsets, in note order
   property int matchIndex: -1
   property int searchFrom: 0     // the cursor when the search opened
@@ -1000,17 +1001,18 @@ Item {
   // way to move it. Drawn from Shortcuts.js, which every handler reads, so
   // the list cannot drift from what the keys do. It takes the sheet's place
   // like the dashboard. What the student moves goes to keys.json beside
-  // config.json; Hyprland's keys are listed, read live, and stay Hyprland's.
+  // config.json. Hyprland's six keys for the page, the timer and the
+  // deadlines are listed too; once the student lets the page keep them
+  // (one row, Enter twice), they move like the rest, through hyprkeys.py.
   function toggleKeys() {
     root.keysOpen = !root.keysOpen
-    root.keysListen = null
-    root.keysTake = ""
+    root.stopListening()
     root.keysNote = ""
     if (root.keysOpen) {
       root.used("keys")
       keysField.text = ""
       root.keysFocus = root.nextKeyRow(-1, 1)
-      outsideProc.running = true
+      root.hypr(["state"])
       Qt.callLater(keysField.forceActiveFocus)
     } else if (root.dashOpen) {
       dashKeys.forceActiveFocus()
@@ -1034,12 +1036,14 @@ Item {
     var seq = Sc.fromEvent(event)
     if (root.keysListen) {
       if (seq === "") return true                   // a modifier alone: still waiting
-      if (seq === "Esc") { root.keysListen = null; root.keysTake = ""; root.keysNote = ""; return true }
-      root.offerKey(seq)
+      if (seq === "Esc") { root.stopListening(); root.keysNote = ""; return true }
+      if (root.keysListen.hypr) root.offerHyprKey(seq)
+      else root.offerKey(seq)
       return true
     }
     if (root.anywhereKey(event)) return true
     var row = root.keyRows[root.keysFocus]
+    if (seq !== "Enter") root.keysAdopt = false
     if (seq === "Esc") {
       if (root.keysFilter !== "") {
         keysField.text = ""
@@ -1059,14 +1063,103 @@ Item {
   function listenFor(row, add) {
     root.keysTake = ""
     if (!row || row.kind === "head") return
+    if (row.kind === "offer") { root.offerAdopt(); return }
+    root.keysAdopt = false
     if (row.kind === "fixed") {
       root.keysNote = row.where === "Hyprland"
-        ? "Hyprland's key, not the page's: it is changed in your Hyprland bindings (~/.config/hypr/bindings.lua on Omarchy)"
+        ? "Hyprland's key, not the page's: the row above lets the page keep it, or change it in your Hyprland bindings (~/.config/hypr/bindings.lua)"
         : "The text field's own key: it stays, so writing works the same everywhere"
       return
     }
-    root.keysListen = { id: row.id, add: add }
+    root.keysListen = { id: row.id, add: add, hypr: row.kind === "hypr" }
     root.keysNote = ""
+    if (row.kind === "hypr") root.hyprListen(true)
+  }
+
+  // Waiting for a new key ends: Esc, the key taken, the sheet closed.
+  function stopListening() {
+    if (root.keysListen && root.keysListen.hypr) root.hyprListen(false)
+    root.keysListen = null
+    root.keysTake = ""
+  }
+
+  // ------------------------------------------------------------ Hyprland's keys
+
+  // hyprkeys.py, beside this file, keeps the six in ~/.config/hypr/student.lua
+  // and answers every call with its state. One call at a time.
+  readonly property string hyprKeysPy: decodeURIComponent(Qt.resolvedUrl("hyprkeys.py").toString().replace(/^file:\/\//, ""))
+  function hypr(args) {
+    if (hyprProc.running) return false
+    hyprProc.kind = args[0]
+    hyprProc.command = ["python3", root.hyprKeysPy].concat(args)
+    hyprProc.running = true
+    return true
+  }
+
+  function hyprDone(st) {
+    if (!st) return
+    root.hyprKeys = st
+    root.keysVersion++
+    var listening = !!root.keysListen && root.keysListen.hypr
+    if (st.asks && listening) {
+      // The second press of the same key takes it.
+      root.keysTake = st.asks.key
+      root.keysNote = Sc.show(st.asks.key) + " is Hyprland's “" + st.asks.does + "” — press it again to take it (it gets the key back when you move off it), Esc to leave it there"
+    } else if (st.asks) {
+      root.keysNote = Sc.show(st.asks.key) + " is Hyprland's “" + st.asks.does + "” now — Enter, then press it twice to take it back"
+    } else if (st.error) {
+      root.keysTake = ""
+      root.keysNote = st.error
+    } else if (hyprProc.kind !== "state") {
+      if (listening) root.stopListening()
+      root.keysNote = st.note || ""
+      if (hyprProc.kind === "set") root.used("keys", "hypr")
+    }
+    if (root.keysListen && root.keysListen.hypr) root.hyprListen(true)   // a reload ends the submap
+    var at = root.keyRows[root.keysFocus]
+    if (!at || at.kind === "head") root.keysFocus = root.nextKeyRow(-1, 1)
+  }
+
+  // Letting the page keep the six is asked once, in words, and done on a
+  // second Enter: it writes into the student's Hyprland config.
+  function offerAdopt() {
+    if (!root.keysAdopt) {
+      root.keysAdopt = true
+      root.keysNote = "Enter again to let the page keep these keys: it writes them to ~/.config/hypr/student.lua, adds one line at the end of "
+        + "~/.config/hypr/bindings.lua to load it, and comments out your own lines for them there (bindings.lua is backed up first). Esc leaves them as they are."
+      return
+    }
+    root.keysAdopt = false
+    root.keysNote = "…"
+    root.hypr(["adopt"])
+    root.used("keys", "adopt")
+  }
+
+  function offerHyprKey(seq) {
+    if (hyprProc.running) return
+    var l = root.keysListen
+    var args = ["set", l.id.slice(5)]
+    if (l.add) args.push("--add")
+    if (root.keysTake === seq) args.push("--take")
+    root.keysNote = "…"
+    root.hypr(args.concat([seq]))
+  }
+
+  // While the sheet waits for a Hyprland key, Hyprland is put in a submap
+  // of its own that binds nothing the student can press, so every key —
+  // Super+Alt+F, or the page's own Super+Alt+= — reaches the sheet instead
+  // of doing what it does. Hyprland leaves it by itself after 30 seconds,
+  // so a page that dies while waiting cannot keep the keyboard.
+  function hyprListen(on) {
+    hyprListenTimer.running = on
+    submapProc.running = false
+    submapProc.command = ["hyprctl", "eval", on
+      ? 'hl.define_submap("student-keys", function() hl.bind("SUPER + CTRL + ALT + SHIFT + F24", hl.dsp.submap("reset")) end); '
+        + 'student_keys_wait = (student_keys_wait or 0) + 1; local n = student_keys_wait; '
+        + 'hl.timer(function() if student_keys_wait == n and hl.get_current_submap() == "student-keys" then hl.dispatch(hl.dsp.submap("reset")) end end, { timeout = 30000, type = "oneshot" }); '
+        + 'hl.dispatch(hl.dsp.submap("student-keys"))'
+      : 'if hl.get_current_submap() == "student-keys" then hl.dispatch(hl.dsp.submap("reset")) end']
+    submapProc.running = true
   }
 
   function doesList(ids) { return ids.map(function (id) { return Sc.does(id) }).join("”, “") }
@@ -1093,6 +1186,12 @@ Item {
 
   function resetKey(row) {
     root.keysTake = ""
+    if (row && row.kind === "hypr") {
+      if (!row.changed) { root.keysNote = "“" + row.does + "” is on its own keys already"; return }
+      root.keysNote = "…"
+      root.hypr(["set", row.id.slice(5)].concat(row.own))
+      return
+    }
     if (!row || row.kind !== "action") return
     if (!row.changed) { root.keysNote = "“" + row.does + "” is on its own keys already"; return }
     var from = Sc.reset(row.id)
@@ -1106,27 +1205,6 @@ Item {
     var at = root.keyRows[root.keysFocus]
     if (!at || at.kind === "head") root.keysFocus = root.nextKeyRow(-1, 1)
     keysFile.setText(JSON.stringify(Sc.save(), null, 2) + "\n")
-  }
-
-  // Hyprland's keys for the page, the timer and the deadlines. Found by
-  // their description, since a bind made in Lua does not say what it runs.
-  function readOutside(text) {
-    var out = []
-    var names = { equal: "=", backslash: "\\", minus: "-", plus: "Plus", slash: "/", comma: ",", period: ".",
-                  semicolon: ";", apostrophe: "'", grave: "`", bracketleft: "[", bracketright: "]",
-                  space: "Space", Return: "Enter", Escape: "Esc", Tab: "Tab" }
-    try {
-      var binds = JSON.parse(text)
-      for (var i = 0; i < binds.length; i++) {
-        var b = binds[i]
-        if (!/\b(pomo|deadlines? popup|page\b|student)/i.test(b.description || "")) continue
-        var m = b.modmask
-        var key = names[b.key] !== undefined ? names[b.key] : b.key
-        out.push({ does: b.description, keys: [(m & 64 ? "Super+" : "") + (m & 4 ? "Ctrl+" : "") + (m & 8 ? "Alt+" : "")
-          + (m & 1 ? "Shift+" : "") + (key === "Plus" ? "+" : key)] })
-      }
-    } catch (e) {}
-    return out
   }
 
   // ------------------------------------------------------------ tasks panel
@@ -2475,9 +2553,23 @@ Item {
   }
 
   Process {
-    id: outsideProc
-    command: ["hyprctl", "binds", "-j"]
-    stdout: StdioCollector { onStreamFinished: root.outsideKeys = root.readOutside(text) }
+    id: hyprProc
+    property string kind: ""          // state, adopt or set
+    stdout: StdioCollector {
+      onStreamFinished: {
+        var st = null
+        try { st = JSON.parse(text) } catch (e) { console.warn("student.page hyprkeys: " + text.trim()) }
+        root.hyprDone(st)
+      }
+    }
+    stderr: StdioCollector { onStreamFinished: if (text.trim() !== "") console.warn("student.page hyprkeys: " + text.trim()) }
+  }
+  Process { id: submapProc }
+  // The sheet stops waiting a little before Hyprland would leave the submap.
+  Timer {
+    id: hyprListenTimer
+    interval: 25000
+    onTriggered: if (root.keysListen && root.keysListen.hypr) { root.stopListening(); root.keysNote = "stopped waiting for a key — Enter to try again" }
   }
 
   // The zoom step survives restarts. Machine state, not config, and never
@@ -3125,6 +3217,7 @@ Item {
                       wrapMode: Text.WordWrap
                       text: keyRow.modelData.does
                       color: keyRow.isHead ? (pal.headings.length > 0 ? pal.headings[0] : root.accent)
+                        : keyRow.modelData.kind === "offer" ? root.accent
                         : keyRow.modelData.kind === "fixed" ? root.dim : root.foreground
                       font.family: root.fontFamily
                       font.styleName: root.fontStyle
@@ -3141,7 +3234,7 @@ Item {
                       spacing: root.sp(6)
                       Repeater {
                         model: keyRow.listening ? [root.keysTake !== "" ? Sc.show(root.keysTake) + " again to move it" : "press the new key · Esc keeps it"]
-                          : keyRow.modelData.keys.length === 0 && keyRow.modelData.kind === "action" ? ["no key"]
+                          : keyRow.modelData.keys.length === 0 && (keyRow.modelData.kind === "action" || keyRow.modelData.kind === "hypr") ? ["no key"]
                           : keyRow.modelData.keys
                         Rectangle {
                           required property var modelData
@@ -3207,7 +3300,8 @@ Item {
               width: parent.width
               textFormat: Text.PlainText
               wrapMode: Text.WordWrap
-              text: root.keysListen ? "press the key, with Ctrl, Alt, Shift or Super if you want them · Esc keeps the old one"
+              text: root.keysListen ? (root.keysListen.hypr ? "press the key, with Super, and Ctrl, Alt or Shift if you want them · Esc keeps the old one"
+                  : "press the key, with Ctrl, Alt, Shift or Super if you want them · Esc keeps the old one")
                 : "↑↓ move · Enter changes the key · Shift+Enter adds one · Del gives back its own · type to find · Esc back"
               color: root.faint
               font.family: root.fontFamily

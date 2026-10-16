@@ -46,6 +46,17 @@ path.parent.mkdir(parents=True, exist_ok=True)
 path.write_text(json.dumps(state))
 """
 
+# The student's Hyprland bindings, as the throwaway config has them: the six
+# keys for the page, the timer and the deadlines, hand-written.
+BINDINGS = """o.bind("SUPER + SHIFT + T", "Todoist", { webapp = "https://app.todoist.com/app/today", focus = true })
+o.bind("SUPER + ALT + P", "Pomo toggle", "pomo toggle")
+o.bind("SUPER + ALT + N", "Pomo skip", "pomo skip")
+o.bind("SUPER + ALT + O", "Pomo popup", "omarchy-shell student.pomo toggle")
+o.bind("SUPER + ALT + D", "Deadlines popup", "omarchy-shell student.deadline toggle")
+o.bind("SUPER + ALT + equal", "Page (today's note)", "omarchy-shell shell toggle student.page '{}'")
+o.bind("SUPER + ALT + backslash", "Page alongside", "omarchy-shell shell summon student.page '{\\"shape\\":\\"alongside\\"}'")
+"""
+
 TODAY = dt.date.today().strftime("%Y.%m.%d")
 YDAY = (dt.date.today() - dt.timedelta(days=1)).strftime("%Y.%m.%d")
 failures = 0
@@ -83,6 +94,13 @@ class Page:
         bindir = self.tmp / "bin"
         bindir.mkdir()
         (bindir / "pomo").symlink_to(ROOT / "cli" / "pomo")
+        # Hyprland, played over a throwaway hypr folder: the keys sheet's
+        # writes, reloads and submap never reach the real one.
+        self.hypr = cfg / "hypr"
+        self.hypr.mkdir()
+        (self.hypr / "bindings.lua").write_text(BINDINGS)
+        (bindir / "hyprctl").write_text(f'#!/bin/sh\nexec python3 "{ROOT}/tests/fake_hyprctl.py" "$@"\n')
+        (bindir / "hyprctl").chmod(0o755)
         # Only the local commands run (no model): accept, projects, sections.
         # A model pass is a stub that takes its time, so the page's "this is
         # away" mark can be seen while it is away; `chat` also writes the
@@ -99,7 +117,8 @@ esac
 """)
         self.runner.chmod(0o755)
         self.env = dict(os.environ, XDG_CONFIG_HOME=str(cfg), XDG_STATE_HOME=str(self.state),
-                        PATH=f"{bindir}:{os.environ['PATH']}")
+                        PATH=f"{bindir}:{os.environ['PATH']}", FAKE_HYPR_DIR=str(self.hypr),
+                        FAKE_HYPR_REAL=shutil.which("hyprctl") or "")
         if fake_home:
             # A home of its own, holding a copy of the current theme, so a
             # theme switch can be replayed without touching the real one.
@@ -851,6 +870,74 @@ def main() -> int:
         check(p.wait(lambda: "a **word** here" in p.call("text")), f"…on the word ({p.call('text')!r})")
         keysjson.write_text("{}\n")
         check(p.wait(lambda: keys_of("bold") == ["Ctrl+B"]), "an empty keys.json is every key its own")
+
+        # 12c. Hyprland's six: listed as Hyprland's until the page is let
+        # keep them (Enter twice on the row that offers), then moved like
+        # the rest — into hypr/student.lua, never a line the student wrote —
+        # with Hyprland in a submap of the sheet's own while it waits.
+        META, ALT, KEY_F, KEY_L = 0x10000000, 0x08000000, 0x46, 0x4c
+        calls = p.hypr / "calls"
+        ours = p.hypr / "student.lua"
+
+        def hk():
+            return json.loads(p.call("hyprKeys"))
+
+        def hrow(i):
+            return next(a for a in hk()["actions"] if a["id"] == i)["keys"]
+
+        def last_call():
+            return calls.read_text().splitlines()[-1]
+
+        p.call("keys")
+        check(p.wait(lambda: hrow("pomoToggle") == ["Alt+Super+P"]), "the sheet reads Hyprland's key for the timer")
+        rows = json.loads(p.call("keyRows"))
+        check(any(r["kind"] == "offer" for r in rows) and next(r for r in rows if r["id"] == "hypr:pomoToggle")["kind"] == "fixed",
+              "…listed as Hyprland's, under a row that offers to keep them")
+        p.call("keysFind", "pomo toggle")
+        p.call("keysKey", KEY_RETURN, 0)
+        check("Enter again" in p.call("keysNote") and not ours.exists(), "Enter on it says what it will write, and writes nothing")
+        p.call("keysKey", KEY_RETURN, 0)
+        check(p.wait(lambda: hk()["owned"]), "…Enter again: the page keeps them")
+        b = (p.hypr / "bindings.lua").read_text()
+        check(b.count("hypr.student") == 1 and '-- o.bind("SUPER + ALT + P", "Pomo toggle"' in b and b.startswith('o.bind("SUPER + SHIFT + T"'),
+              "…bindings.lua loads student.lua, the six commented out, the student's own line kept")
+        check([x.read_text() for x in p.hypr.glob("bindings.lua.bak.*")] == [BINDINGS], "…after a backup of it as it was")
+        p.call("keysFind", "pomo toggle")
+        check(json.loads(p.call("keyRows"))[1]["kind"] == "hypr", "the timer's row moves now")
+        p.call("keysKey", KEY_RETURN, 0)
+        check(p.call("keysListening") == "true" and p.wait(lambda: 'hl.dsp.submap("student-keys"))' in last_call()),
+              "Enter: Hyprland goes into the sheet's submap while it waits")
+        p.call("keysKey", KEY_K, ALT)
+        check(p.wait(lambda: "Super" in p.call("keysNote")) and p.call("keysListening") == "true",
+              f"a key without Super is refused, still waiting ({p.call('keysNote')})")
+        p.call("keysKey", KEY_K, ALT | META)
+        check(p.wait(lambda: hrow("pomoToggle") == ["Alt+Super+K"]), "Super+Alt+K: the timer moves to it")
+        check('o.bind("SUPER + ALT + K", "Pomo toggle", "pomo toggle")' in ours.read_text() and "reload config-only" in calls.read_text(),
+              "…written into student.lua, and Hyprland reloaded")
+        check(p.wait(lambda: p.call("keysListening") == "false" and last_call().startswith("eval if hl.get_current_submap()")),
+              "…and out of the submap")
+        p.call("keysKey", KEY_RETURN, 0)
+        p.call("keysKey", KEY_F, ALT | META)
+        check(p.wait(lambda: "Full width" in p.call("keysNote")) and hrow("pomoToggle") == ["Alt+Super+K"],
+              "Super+Alt+F, Hyprland's Full width: asked first, not taken")
+        p.call("keysKey", KEY_F, ALT | META)
+        check(p.wait(lambda: hrow("pomoToggle") == ["Alt+Super+F"]), "…and taken on the second press")
+        check('hl.unbind("SUPER + ALT + F")  -- was: Full width' in ours.read_text(), "…unbound in student.lua, saying what it was")
+        p.call("keysKey", KEY_DELETE, 0)
+        check(p.wait(lambda: hrow("pomoToggle") == ["Alt+Super+P"]), "Del gives the timer its own key back")
+        check("hl.unbind" not in ours.read_text(), "…and Full width its own")
+        (p.hypr / "break").write_text("SUPER + ALT + L")
+        before = ours.read_text()
+        p.call("keysKey", KEY_RETURN, 0)
+        p.call("keysKey", KEY_L, ALT | META)
+        check(p.wait(lambda: "refused" in p.call("keysNote")) and ours.read_text() == before and hrow("pomoToggle") == ["Alt+Super+P"],
+              "a key Hyprland refuses: the file is put back, and the sheet says so")
+        p.call("keysKey", KEY_ESC, 0)
+        check(p.wait(lambda: p.call("keysListening") == "false" and last_call().startswith("eval if hl.get_current_submap()")),
+              "Esc stops waiting and leaves the submap")
+        (p.hypr / "break").unlink()
+        p.call("keysKey", KEY_ESC, 0)
+        p.call("keysKey", KEY_ESC, 0)
 
         # 13. the usage log: written on close, event names only
         p.call("closeAll")

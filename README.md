@@ -158,17 +158,37 @@ hint in the page follows the move. A key that something else in the same
 place already has is asked about first (press it again to take it), a
 letter alone is refused wherever you write, since it would be typed, and the
 text field's own keys (arrows, selecting, the clipboard, Enter, Tab) are
-listed but never taken. Hyprland's keys for the page, the timer and the
-deadlines are listed too, read live; they are changed in your Hyprland
-bindings, not here. What you move is kept in
+listed but never taken. What you move is kept in
 `~/.config/omarchy-student/keys.json`, only the keys that differ, by the
 names in `plugin-page/Shortcuts.js` — `{"bold": ["Ctrl+K"]}` — and the page
 reads it again when you edit it by hand. Delete it to have every key back.
+
+Hyprland's six keys for the page, the timer and the deadlines
+(`SUPER+ALT+=`, `\`, `D`, `O`, `P`, `N`) are listed last, read from your
+Hyprland config, wherever and on whatever keys you bound them. Above them, one row
+offers to let the page keep them. Enter on it says what it will write, and
+Enter again does it: the six go into `~/.config/hypr/student.lua`, a file
+the page owns, and one line at the end of `~/.config/hypr/bindings.lua`
+loads it (through Omarchy's `require_optional`, so a deleted file is never
+an error). Your own lines for those six are commented out, saying where
+they went, and `bindings.lua` is backed up first (`bindings.lua.bak.<time>`).
+After that the page never writes into `bindings.lua` again, and the six move
+like any other key. While the sheet waits for one, Hyprland is put in a
+submap of its own, so a key Hyprland already uses reaches the sheet
+instead of doing its job. Hyprland leaves that submap by itself after 30
+seconds. A Hyprland key must hold Super, so it can never take a key an app
+needs. A key that another bind has (Omarchy's `SUPER+ALT+F`, say) is asked
+about first; taking it writes an `hl.unbind` for it in `student.lua`, and
+moving off it gives the key back. Every change reloads Hyprland, and if
+Hyprland reports a new config error, the old file is put back.
+`plugin-page/hyprkeys.py` does the writing; you can edit the keys in
+`student.lua` by hand, and the sheet reads them back.
 
 ```bash
 python3 tests/test_blocks.py                                # block splitter, JS and Python must agree (needs node)
 QT_QPA_PLATFORM=offscreen /usr/lib/qt6/bin/qmltestrunner -input tests   # editor (driven by keys), keys, emphasis, calendar days, bound lines
 python3 tests/test_pomo.py                                    # the deadline CLI's contract with the page
+python3 tests/test_hyprkeys.py                                # Hyprland's six keys, against a fake hyprctl
 python3 tests/page/run.py                                     # the page itself, live: a window that never takes focus, a throwaway vault
 ```
 

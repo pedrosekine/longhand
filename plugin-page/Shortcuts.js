@@ -399,13 +399,16 @@ function does(id) { return byId[id] ? byId[id].does : id }
 // The sheet's rows, in group order: a heading, then the actions and the
 // fixed keys of that group. `filter` keeps the rows whose words or keys
 // hold it. `outside`: the keys that reach the page from Hyprland, as
-// { does, keys } with the keys already written for showing.
+// hyprkeys.py's state says them ({ owned, actions: [{ id, does, keys,
+// own }] }); movable once the page keeps them (`owned`).
 function rows(filter, outside) {
   var want = String(filter || "").trim().toLowerCase()
+  var wantKey = want.indexOf("+") > 0 ? canonical(want) : ""   // "super+alt+k" finds Alt+Super+K
   function keep(text, ks) {
     if (want === "") return true
     if (text.toLowerCase().indexOf(want) >= 0) return true
-    for (var i = 0; i < ks.length; i++) if (show(ks[i]).toLowerCase().indexOf(want) >= 0 || ks[i].toLowerCase().indexOf(want) >= 0) return true
+    for (var i = 0; i < ks.length; i++)
+      if (show(ks[i]).toLowerCase().indexOf(want) >= 0 || ks[i].toLowerCase().indexOf(want) >= 0 || (wantKey !== "" && canonical(ks[i]) === wantKey)) return true
     return false
   }
   var out = []
@@ -425,11 +428,20 @@ function rows(filter, outside) {
       if (fx.group !== gid || fx.show.length === 0 || !keep(fx.does + " " + groups[g].title, fx.show)) continue
       items.push({ kind: "fixed", id: "", does: fx.does, keys: fx.show.map(show), changed: false, where: "" })
     }
-    if (gid === "system") {
-      var os = outside || []
-      for (var o = 0; o < os.length; o++)
-        if (keep(os[o].does + " " + groups[g].title, os[o].keys))
-          items.push({ kind: "fixed", id: "", does: os[o].does, keys: os[o].keys, changed: false, where: "Hyprland" })
+    if (gid === "system" && outside) {
+      var os = outside.actions || []
+      var shown = []
+      for (var o = 0; o < os.length; o++) {
+        if (!keep(os[o].does + " " + groups[g].title, os[o].keys)) continue
+        shown.push({ kind: outside.owned ? "hypr" : "fixed", id: "hypr:" + os[o].id, does: os[o].does,
+                     keys: os[o].keys.map(show), raw: os[o].keys, own: os[o].own,
+                     changed: outside.owned && !same(os[o].keys, os[o].own), where: "Hyprland" })
+      }
+      // Until the student lets the page keep them, they are listed as
+      // Hyprland's, under the one row that offers to.
+      if (!outside.owned && shown.length > 0)
+        items.push({ kind: "offer", id: "hypr:adopt", does: "Let the page keep these keys, to move them here", keys: [], changed: false, where: "Hyprland" })
+      items = items.concat(shown)
     }
     if (items.length === 0) continue
     out.push({ kind: "head", id: "", does: groups[g].title, keys: [], changed: false, where: "" })

@@ -126,7 +126,16 @@ TestCase {
     compare(r2[1].id, "bold")
     var r3 = Sc.rows("ctrl+shift+p")
     verify(r3.some(function (x) { return x.id === "private" }))
-    var r4 = Sc.rows("pomo", [{ does: "Pomo toggle", keys: ["Super+Alt+P"] }])
+    var hy = [{ id: "pomoToggle", does: "Pomo toggle", keys: ["Alt+Super+P"], own: ["Alt+Super+P"] }]
+    var r4 = Sc.rows("pomo", { owned: false, actions: hy })
+    compare(r4[r4.length - 2].kind, "offer")
+    compare(r4[r4.length - 1].kind, "fixed")
     compare(r4[r4.length - 1].where, "Hyprland")
+    var r5 = Sc.rows("pomo", { owned: true, actions: [{ id: "pomoToggle", does: "Pomo toggle", keys: ["Alt+Super+K"], own: ["Alt+Super+P"] }] })
+    compare(r5[r5.length - 1].kind, "hypr")
+    compare(r5[r5.length - 1].id, "hypr:pomoToggle")
+    verify(r5[r5.length - 1].changed)
+    verify(!r5.some(function (x) { return x.kind === "offer" }))
+    compare(Sc.rows("super+alt+k", { owned: true, actions: [{ id: "pomoToggle", does: "Pomo toggle", keys: ["Alt+Super+K"], own: ["Alt+Super+P"] }] }).length, 2)
   }
 }
