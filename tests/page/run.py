@@ -942,6 +942,45 @@ def main() -> int:
         p.call("keysKey", KEY_ESC, 0)
         p.call("keysKey", KEY_ESC, 0)
 
+        # 12d. days by key: the day before or after that has a note, and
+        # today from anywhere, the dashboard included
+        ALT, KEY_H, KEY_PGUP, KEY_LBRACKET, KEY_RBRACKET = 0x08000000, 0x48, 0x01000016, 0x5b, 0x5d
+        p.call("closeAll")
+        for old in p.daily.glob("*.md"):
+            old.unlink()
+        before = (dt.date.today() - dt.timedelta(days=3)).strftime("%Y.%m.%d")
+        (p.daily / f"{before}.md").write_text(header(before) + "three days ago\n")
+        (p.daily / f"{TODAY}.md").write_text(header(TODAY) + "today's words\n")
+        p.open_fresh()
+        p.wait(lambda: "today's words" in p.call("text"))
+        p.call("pageKey", KEY_LBRACKET, CTRL)
+        check(p.wait(lambda: "three days ago" in p.call("text")), "Ctrl+[: the day before that has a note, days without one skipped")
+        p.call("pageKey", KEY_PGUP, CTRL)
+        check(p.wait(lambda: "no note before" in p.call("hint")), f"…and at the first note Ctrl+PgUp says so ({p.call('hint')!r})")
+        p.call("pageKey", KEY_RBRACKET, CTRL)
+        check(p.wait(lambda: "today's words" in p.call("text")), "Ctrl+]: the next one")
+        p.call("pageKey", KEY_LBRACKET, CTRL)
+        p.wait(lambda: "three days ago" in p.call("text"))
+        p.call("dash")
+        p.call("dashKey", KEY_H, CTRL)
+        check(p.wait(lambda: "today's words" in p.call("text") and p.call("dashOpen") == "false"),
+              "Ctrl+H from the dashboard: today's note, the dashboard closed")
+
+        # A bound line moved with Alt+Up keeps its deadline; nothing asks.
+        p.call("cursorEnd")
+        p.call("enter")
+        p.call("type", "- [ ] essay due fri 17:00")
+        p.call("cursor", 1)
+        p.wait(lambda: "essay 📅 " in p.note())
+        def essay_line():
+            return next(i for i, l in enumerate(p.call("text").split("\n")) if "essay" in l)
+        was = essay_line()
+        p.call("cursor", p.call("text").index("essay") + 1)
+        p.call("moveLines", -1)
+        check(p.wait(lambda: essay_line() == was - 1), f"Alt+Up moves the line up one ({p.call('text')!r})")
+        check(p.call("ask") == "null" and "^d" in next(l for l in p.call("text").split("\n") if "essay" in l),
+              "…with its deadline anchor, and nothing asked")
+
         # 13. the usage log: written on close, event names only
         p.call("closeAll")
         usage = p.state / "omarchy-student" / "usage.tsv"

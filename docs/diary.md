@@ -822,3 +822,35 @@ only the window and the panels around it differ.
   are shown but not edited from the page: they live in the student's own
   bindings, and writing to those is a different trust. Matching became exact
   (Ctrl+T no longer also answers Ctrl+Shift+T), which no test relied on.
+- 2026-10-16 (later): the keys measured against Obsidian, Notion, VS Code,
+  Google Docs and Todoist. Kept: everything that already matched, and the
+  page's own grammar where it is consistent — Alt+arrows move between
+  places, Ctrl+arrows take the bigger step, Enter goes and Ctrl+Enter acts,
+  Esc backs out one level. Added, never in place of a key: the other apps'
+  keys for the same act (Ctrl+E, Ctrl+\, j/k, Space, e, t), the note's own
+  keys inside the dashboard (Ctrl+L ticks, Ctrl+D asks when), and days by
+  key — `Alt+Home` today, `Ctrl+PgUp/PgDn` the neighbouring day with a note.
+  Today is not on Ctrl+T: that is the dashboard's, T for tasks, and Home
+  already meant today in the calendar. Fixed: on a layout with dead keys
+  `` Ctrl+` `` most likely reached nothing (xkb gives dead_grave, which Qt
+  reports as Key_Dead_Grave and the page did not read), so inline code had
+  no working key on the student's own keyboard; not yet confirmed by a real
+  press. Parked for a decision:
+  Ctrl+P (overlay ⇄ window) against every other app's switcher, Ctrl+Shift+P
+  (private) against VS Code's palette, Alt+Up/Down against VS Code's move
+  line.
+- 2026-10-16 (evening): the three parked keys decided, and today moved. The
+  student's laptop has Home and PgUp on Fn+arrows, so a key that needs them
+  is two hands: today is `Ctrl+H` (H for home, free since the page has no
+  replace) and the days `Ctrl+[` / `Ctrl+]` (Notion's back and forward),
+  with `Alt+Home` and `Ctrl+PgUp/PgDn` kept second. The overlay ⇄ window
+  flip leaves `Ctrl+P` for `F11`, every app's full-screen key, with
+  `Ctrl+Alt+P` for an F-row behind Fn; `Ctrl+P` is free for a switcher.
+  `Ctrl+Up/Down` walk on through blocks when pressed again (Word's
+  paragraphs, and what their Shift twins already did), which frees
+  `Alt+Up/Down` to move a line, as VS Code does; a bound line moved keeps
+  its anchor and asks nothing. Esc in find now leaves the cursor on the
+  match, as browsers and editors do; going back is `Shift+Esc`. The written
+  guide, docs/keys.md, is generated from Shortcuts.js and hyprkeys.py and a
+  test fails when it falls behind.
+

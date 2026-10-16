@@ -868,6 +868,28 @@ Item {
       compare(ed.text.slice(ed.selStart, ed.selEnd), "read ch.7 ")   // the box is not part of the words
     }
 
+    function test_alt_up_down_move_the_line() {
+      start("\none\n- [ ] two\nthree", 12)             // "t|wo"
+      keyClick(Qt.Key_Up, Qt.AltModifier)
+      compare(ed.text, "\n- [ ] two\none\nthree")
+      compare(ed.cursorPosition, 8)                        // still "t|wo"
+      keyClick(Qt.Key_Down, Qt.AltModifier)
+      keyClick(Qt.Key_Down, Qt.AltModifier)
+      compare(ed.text, "\none\nthree\n- [ ] two")
+      keyClick(Qt.Key_Down, Qt.AltModifier)                // the last line stays last
+      compare(ed.text, "\none\nthree\n- [ ] two")
+      keyClick(Qt.Key_Z, Qt.ControlModifier)
+      compare(ed.text, "\none\n- [ ] two\nthree")       // each move is one undo
+    }
+
+    function test_alt_up_moves_every_line_selected() {
+      start("\na\nb\nc\nd", 3)                          // in "b"
+      ed.selectSpan(3, 6)                                  // "b" through "c"
+      keyClick(Qt.Key_Up, Qt.AltModifier)
+      compare(ed.text, "\nb\nc\na\nd")
+      compare(ed.text.slice(ed.selStart, ed.selEnd), "b\nc")
+    }
+
     function test_block_rect() {
       start("\nalpha\nbeta\n\ngamma")
       var r = ed.blockRect(1, 3)

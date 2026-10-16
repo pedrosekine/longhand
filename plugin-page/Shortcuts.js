@@ -57,30 +57,42 @@ var actions = [
   { id: "zoomReset", group: "page", places: ["any"], does: "Zoom back to 100%", keys: ["Ctrl+0"] },
   { id: "keys", group: "page", places: ["any"], does: "Show these keys", keys: ["Ctrl+/"] },
   { id: "close", group: "page", places: ["note"], does: "Close the overlay", keys: ["Esc"] },
-  { id: "pin", group: "page", places: ["note"], does: "Flip between overlay and window", keys: ["Ctrl+P"] },
+  // F11 is every app's full-screen key, and the overlay is the full-screen
+  // shape; Ctrl+Alt+P for keyboards whose F-row wants Fn. Ctrl+P is left
+  // to what it means everywhere else (a switcher), off since 2026-10-16.
+  { id: "pin", group: "page", places: ["note"], does: "Flip between overlay and window", keys: ["F11", "Ctrl+Alt+P"] },
   { id: "private", group: "page", places: ["note"], does: "Make the note private (the agent sees nothing)", keys: ["Ctrl+Shift+P"] },
   { id: "dashboard", group: "page", places: ["note", "dash"], does: "Open or close the dashboard", keys: ["Ctrl+T"] },
-  { id: "sidebar", group: "page", places: ["note", "calendar", "lists"], does: "Open or close the calendar sidebar", keys: ["Ctrl+Shift+B"] },
+  { id: "sidebar", group: "page", places: ["note", "calendar", "lists"], does: "Open or close the calendar sidebar", keys: ["Ctrl+Shift+B", "Ctrl+\\"] },
   { id: "toSidebar", group: "page", places: ["note"], does: "Go to the sidebar (when open)", keys: ["Alt+Left"] },
   { id: "toNote", group: "page", places: ["calendar", "lists"], does: "Back to the note from the sidebar", keys: ["Alt+Right"] },
 
   { id: "bold", group: "write", places: ["note"], does: "Bold", keys: ["Ctrl+B"] },
   { id: "italic", group: "write", places: ["note"], does: "Italic", keys: ["Ctrl+I"] },
-  { id: "code", group: "write", places: ["note"], does: "Inline code", keys: ["Ctrl+`"] },
+  { id: "code", group: "write", places: ["note"], does: "Inline code", keys: ["Ctrl+`", "Ctrl+E"] },
   { id: "strike", group: "write", places: ["note"], does: "Strikethrough", keys: ["Ctrl+Shift+S"] },
   { id: "checkbox", group: "write", places: ["note"], does: "Tick or untick a checkbox", keys: ["Ctrl+L"] },
   { id: "deadline", group: "write", places: ["note"], does: "Bind a checkbox's date, reschedule or unbind it", keys: ["Ctrl+D"] },
+  { id: "lineUp", group: "write", places: ["note"], does: "Move the line (or the lines selected) up", keys: ["Alt+Up"] },
+  { id: "lineDown", group: "write", places: ["note"], does: "Move the line (or the lines selected) down", keys: ["Alt+Down"] },
   { id: "undo", group: "write", places: ["note"], does: "Undo", keys: ["Ctrl+Z"] },
   { id: "redo", group: "write", places: ["note"], does: "Redo", keys: ["Ctrl+Shift+Z", "Ctrl+Y"] },
 
-  { id: "blockPrev", group: "move", places: ["note"], does: "Previous block", keys: ["Alt+Up"] },
-  { id: "blockNext", group: "move", places: ["note"], does: "Next block", keys: ["Alt+Down"] },
-  { id: "blockStart", group: "move", places: ["note"], does: "Start of the block", keys: ["Ctrl+Up"] },
-  { id: "blockEnd", group: "move", places: ["note"], does: "End of the block", keys: ["Ctrl+Down"] },
+  // Ctrl+Up/Down walk the blocks as Word and Docs walk paragraphs, so
+  // Alt+Up/Down can move a line, as in VS Code (2026-10-16).
+  { id: "blockStart", group: "move", places: ["note"], does: "Start of the block (again: the block before)", keys: ["Ctrl+Up"] },
+  { id: "blockEnd", group: "move", places: ["note"], does: "End of the block (again: the block after)", keys: ["Ctrl+Down"] },
   { id: "selectBlockStart", group: "move", places: ["note"], does: "Select to the block's start (again: a block more)", keys: ["Ctrl+Shift+Up"] },
   { id: "selectBlockEnd", group: "move", places: ["note"], does: "Select to the block's end (again: a block more)", keys: ["Ctrl+Shift+Down"] },
   { id: "noteStart", group: "move", places: ["note"], does: "Top of the note", keys: ["Ctrl+Home"] },
   { id: "noteEnd", group: "move", places: ["note"], does: "End of the note", keys: ["Ctrl+End"] },
+  // Days, the way Obsidian's daily notes step them: the next day that has
+  // a note, since a day without one has nothing to read. Keys a laptop
+  // reaches without Fn first (Home and PgUp are Fn+arrows on many), then
+  // the ones a full keyboard knows. Ctrl+[ and ] are Notion's back and on.
+  { id: "today", group: "move", places: ["note", "dash", "calendar", "lists"], does: "Go to today's note", keys: ["Ctrl+H", "Alt+Home"] },
+  { id: "dayPrev", group: "move", places: ["note", "dash"], does: "The day before, with a note", keys: ["Ctrl+[", "Ctrl+PgUp"] },
+  { id: "dayNext", group: "move", places: ["note", "dash"], does: "The day after, with a note (and then today)", keys: ["Ctrl+]", "Ctrl+PgDn"] },
   { id: "find", group: "move", places: ["note", "search"], does: "Find in the note (in find: select the words)", keys: ["Ctrl+F"] },
 
   { id: "ask", group: "agent", places: ["note"], does: "Ask about this block, or open its conversation", keys: ["Ctrl+Enter"] },
@@ -99,15 +111,20 @@ var actions = [
   { id: "findNext", group: "find", places: ["search"], does: "Next match", keys: ["Enter"] },
   { id: "findPrev", group: "find", places: ["search"], does: "Previous match", keys: ["Shift+Enter"] },
   { id: "findGo", group: "find", places: ["search"], does: "Go to the match and close find", keys: ["Ctrl+Enter"] },
-  { id: "findClose", group: "find", places: ["search"], does: "Close find, back where you were", keys: ["Esc"] },
+  // Esc leaves you on the match, as in every browser and editor; going
+  // back to where the search began is its own key.
+  { id: "findClose", group: "find", places: ["search"], does: "Close find, on the match", keys: ["Esc"] },
+  { id: "findBack", group: "find", places: ["search"], does: "Close find, back where you were", keys: ["Shift+Esc"] },
 
-  { id: "dashUp", group: "dash", places: ["dash"], does: "Move up", keys: ["Up"] },
-  { id: "dashDown", group: "dash", places: ["dash"], does: "Move down", keys: ["Down"] },
+  // The list keys of Todoist, Gmail and vim beside the arrows; and the
+  // note's own keys for the same acts (Ctrl+L ticks, Ctrl+D asks when).
+  { id: "dashUp", group: "dash", places: ["dash"], does: "Move up", keys: ["Up", "K"] },
+  { id: "dashDown", group: "dash", places: ["dash"], does: "Move down", keys: ["Down", "J"] },
   { id: "dashFirst", group: "dash", places: ["dash"], does: "First row", keys: ["Home"] },
   { id: "dashLast", group: "dash", places: ["dash"], does: "Last row", keys: ["End"] },
   { id: "dashOpen", group: "dash", places: ["dash"], does: "Go to the line", keys: ["Enter"] },
-  { id: "dashDone", group: "dash", places: ["dash"], does: "Done (again: not done)", keys: ["Ctrl+Enter"] },
-  { id: "dashWhen", group: "dash", places: ["dash"], does: "When: reschedule it", keys: ["T"] },
+  { id: "dashDone", group: "dash", places: ["dash"], does: "Done (again: not done)", keys: ["Ctrl+Enter", "Space", "E", "Ctrl+L"] },
+  { id: "dashWhen", group: "dash", places: ["dash"], does: "When: reschedule it", keys: ["T", "Ctrl+D"] },
   { id: "dashPriority", group: "dash", places: ["dash"], does: "Cycle its priority", keys: ["P"] },
   { id: "dashDrop", group: "dash", places: ["dash"], does: "Drop it", keys: ["Del", "Backspace"] },
   { id: "dashUndo", group: "dash", places: ["dash"], does: "Take the last tick back", keys: ["Ctrl+Z"] },
@@ -119,13 +136,13 @@ var actions = [
   { id: "calNextWeek", group: "calendar", places: ["calendar"], does: "A week on", keys: ["Down"] },
   { id: "calPrevMonth", group: "calendar", places: ["calendar"], does: "A month back", keys: ["Ctrl+Left", "PgUp"] },
   { id: "calNextMonth", group: "calendar", places: ["calendar"], does: "A month on", keys: ["Ctrl+Right", "PgDn"] },
-  { id: "calToday", group: "calendar", places: ["calendar"], does: "Today", keys: ["Home"] },
+  { id: "calToday", group: "calendar", places: ["calendar"], does: "Today", keys: ["Home", "T"] },
   { id: "calOpen", group: "calendar", places: ["calendar"], does: "Open the day in the sheet", keys: ["Enter"] },
   { id: "calLists", group: "calendar", places: ["calendar"], does: "On to the day's deadlines and the projects", keys: ["Tab"] },
   { id: "calBack", group: "calendar", places: ["calendar"], does: "Back to the note", keys: ["Esc"] },
 
-  { id: "listUp", group: "lists", places: ["lists"], does: "Move up", keys: ["Up"] },
-  { id: "listDown", group: "lists", places: ["lists"], does: "Move down", keys: ["Down"] },
+  { id: "listUp", group: "lists", places: ["lists"], does: "Move up", keys: ["Up", "K"] },
+  { id: "listDown", group: "lists", places: ["lists"], does: "Move down", keys: ["Down", "J"] },
   { id: "listOpen", group: "lists", places: ["lists"], does: "Open it (a deadline: go to its line)", keys: ["Enter"] },
   { id: "listInto", group: "lists", places: ["lists"], does: "Into a project's notes", keys: ["Right"] },
   { id: "listClass", group: "lists", places: ["lists"], does: "A project: start its class in the note", keys: ["Shift+Enter"] },
@@ -176,6 +193,10 @@ var aliases = {
   esc: "Esc", enter: "Enter", tab: "Tab", backspace: "Backspace", del: "Del", ins: "Ins",
   home: "Home", end: "End", pgup: "PgUp", pgdn: "PgDn", space: "Space", plus: "Plus"
 }
+// A dead key (US-International's ` ' ~ ^ ", most European layouts' ^ and
+// ´) is the character it prints: with Ctrl held it composes nothing, and
+// Ctrl+` has to be Ctrl+` on every keyboard that has a backtick.
+var dead = { 0x01001250: "`", 0x01001251: "'", 0x01001252: "^", 0x01001253: "~", 0x01001257: "\"" }
 // A modifier on its own is not a key yet.
 var lone = { 0x01000020: 1, 0x01000021: 1, 0x01000022: 1, 0x01000023: 1, 0x01000024: 1, 0x01000025: 1,
   0x01000053: 1, 0x01000054: 1, 0x01000055: 1, 0x01000056: 1, 0x01000057: 1, 0x01001103: 1, 0x01ffffff: 1 }
@@ -198,6 +219,7 @@ function fromEvent(event) {
   var name
   if (k === 0x01000002) { name = "Tab"; shift = true }            // Backtab is Shift+Tab
   else if (named[k] !== undefined) name = named[k]
+  else if (dead[k] !== undefined) name = dead[k]
   else if (k >= 0x01000030 && k <= 0x01000047) name = "F" + (k - 0x01000030 + 1)
   else if (k > 0x20 && k < 0x01000000) name = String.fromCharCode(k).toUpperCase()
   else return ""

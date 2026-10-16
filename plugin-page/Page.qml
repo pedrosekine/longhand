@@ -704,12 +704,27 @@ Item {
     return null
   }
 
-  // Ctrl+Up / Ctrl+Down: start / end of the current block.
-  function jumpWithinBlock(direction) {
-    var b = root.blockBounds(root.currentHash)
-    if (!b) return
-    if (direction < 0) editor.setCursor(root.positionOfLine(b.start))
-    else editor.setCursor(Math.max(0, root.positionOfLine(b.end) - 1))
+  // Ctrl+Up / Ctrl+Down: to the start (end) of the block, and pressed
+  // again on to the block before (after) — the way Word and Docs walk
+  // paragraphs, and the way Ctrl+Shift+Up/Down already select.
+  function walkBlocks(direction) {
+    var blocks = Blocks.split(editor.text)
+    var t = editor.text
+    var pos = editor.cursorPosition
+    var to = -1
+    for (var i = 0; i < blocks.length; i++) {
+      var edge
+      if (direction < 0) {
+        edge = root.positionOfLine(blocks[i].start)
+        if (edge < pos && edge > to) to = edge
+      } else {
+        var last = root.positionOfLine(blocks[i].end - 1)
+        var nl = t.indexOf("\n", last)
+        edge = nl < 0 ? t.length : nl
+        if (edge > pos && (to < 0 || edge < to)) to = edge
+      }
+    }
+    if (to >= 0) editor.setCursor(to)
   }
 
   function triggerForBlock(hash) {
@@ -836,20 +851,6 @@ Item {
     return false
   }
 
-  function jumpBlock(direction) {
-    var blocks = Blocks.split(editor.text)
-    if (blocks.length === 0) return
-    var line = root.lineIndexAt(editor.cursorPosition)
-    var target = -1
-    if (direction < 0) {
-      for (var i = blocks.length - 1; i >= 0; i--) if (blocks[i].start < line) { target = i; break }
-    } else {
-      for (var j = 0; j < blocks.length; j++) if (blocks[j].start > line) { target = j; break }
-    }
-    if (target < 0) return
-    editor.setCursor(root.positionOfLine(blocks[target].start))
-  }
-
   // The editor carries list markers over Enter itself. The page used to
   // ask "send to agent?" here; it asks nothing now (2026-10-15 — the
   // prompt was answered no 41 times against yes once, and the agent has
@@ -936,13 +937,14 @@ Item {
     if (Sc.hit(event, "private")) { root.togglePrivate(); return true }
     if (Sc.hit(event, "pin")) { root.togglePin(); return true }
     if (Sc.hit(event, "ask")) { root.sendCurrent(); return true }
-    if (Sc.hit(event, "blockPrev")) { root.jumpBlock(-1); return true }
-    if (Sc.hit(event, "blockNext")) { root.jumpBlock(1); return true }
     // Selecting to the same edges is the editor's (selectToBlockEdge).
-    if (Sc.hit(event, "blockStart")) { root.jumpWithinBlock(-1); return true }
-    if (Sc.hit(event, "blockEnd")) { root.jumpWithinBlock(1); return true }
+    if (Sc.hit(event, "blockStart")) { root.walkBlocks(-1); return true }
+    if (Sc.hit(event, "blockEnd")) { root.walkBlocks(1); return true }
     if (Sc.hit(event, "margin")) { root.diveIn(); return true }
     if (Sc.hit(event, "dashboard")) { root.toggleDash(); return true }
+    if (Sc.hit(event, "today")) { root.goToday(); return true }
+    if (Sc.hit(event, "dayPrev")) { root.stepDay(-1); return true }
+    if (Sc.hit(event, "dayNext")) { root.stepDay(1); return true }
     if (Sc.hit(event, "find")) { root.openSearch(); return true }
     if (Sc.hit(event, "sidebar")) { root.toggleSidebar(); return true }
     // Emphasis, where every editor puts it. The sidebar moved to the
@@ -1673,6 +1675,9 @@ Item {
       return false
     }
     if (Sc.hit(e, "dashBack") || Sc.hit(e, "dashboard")) { root.toggleDash(); return true }
+    if (Sc.hit(e, "today")) { root.goToday(); return true }
+    if (Sc.hit(e, "dayPrev")) { root.stepDay(-1); return true }
+    if (Sc.hit(e, "dayNext")) { root.stepDay(1); return true }
     if (Sc.hit(e, "dashUp")) { root.moveTaskFocus(-1); return true }
     if (Sc.hit(e, "dashDown")) { root.moveTaskFocus(1); return true }
     if (Sc.hit(e, "dashFirst")) { root.taskFocus = 0; root.moveTaskFocus(0); return true }
@@ -2216,6 +2221,41 @@ Item {
     editor.insert(pos, (/\s/.test(before) ? "" : " ") + "#" + p.tag + " ")
   }
 
+  // Today's note, from wherever the keys are: the dashboard and the margin
+  // close, the calendar's cursor comes home too.
+  function goToday() {
+    root.used("today")
+    root.calFocus = new Date()
+    root.openNote(svc.todayStamp())
+    root.backToNote()
+  }
+
+  // The day before or after the open one that has a note, as Obsidian's
+  // previous/next daily note: a day without one has nothing to read. Past
+  // the last note, forward goes on to today, which is always there to
+  // write in.
+  function stepDay(d) {
+    if (!svc.configured) return
+    var fmt = svc.dailyFormat()
+    var cur = Days.parse(svc.noteDate, fmt)
+    if (!cur) return
+    var best = null
+    for (var i = 0; i < root.dayStems.length; i++) {
+      var p = Days.parse(root.dayStems[i], fmt)
+      if (!p) continue
+      var t = p.date - cur.date
+      if (d < 0 ? t >= 0 : t <= 0) continue
+      if (!best || Math.abs(t) < Math.abs(best.t)) best = { stem: root.dayStems[i], t: t, date: p.date }
+    }
+    var today = new Date()
+    today.setHours(0, 0, 0, 0)
+    if (!best && d > 0 && cur.date < today) best = { stem: svc.todayStamp(), date: today }
+    if (!best) { root.showHint(d < 0 ? "no note before this day" : "this is the last day"); return }
+    root.calFocus = best.date
+    root.openNote(best.stem)
+    root.backToNote()
+  }
+
   function openCalendarDay(d) {
     root.calFocus = d
     root.openNote(Days.stemFor(d, svc.dailyFormat(), root.dayIndex))
@@ -2236,7 +2276,7 @@ Item {
   // belonged to the old day (staging, the prompt, the margin) goes with it.
   function openNote(stamp) {
     if (stamp === "" || stamp === svc.noteDate) return
-    if (root.searchOpen) root.closeSearch(false)
+    if (root.searchOpen) root.closeSearch("back")
     root.leftLine(root.lastLine)
     root.flush()
     var p = svc.configured ? Days.parse(stamp, svc.dailyFormat()) : null
@@ -2302,12 +2342,16 @@ Item {
   }
 
   // Ctrl+Enter lands on the match, selected; Esc goes back where it was.
-  function closeSearch(go) {
+  // `how`: "select" lands on the match selected (Ctrl+Enter), "stay" with
+  // the cursor at it (Esc, as browsers and editors leave you), "back" where
+  // the search began (Shift+Esc). Without a match every way goes back.
+  function closeSearch(how) {
     var m = root.matches[root.matchIndex]
     root.searchOpen = false
     root.matches = []
     root.matchIndex = -1
-    if (go && m) editor.select(m.start, m.end)
+    if (how === "select" && m) editor.select(m.start, m.end)
+    else if (how === "stay" && m) editor.setCursor(m.start, true)
     else editor.setCursor(root.searchFrom, true)
   }
 
@@ -3395,7 +3439,12 @@ Item {
             MouseArea {
               anchors.fill: parent
               cursorShape: Qt.PointingHandCursor
-              onClicked: { root.openNote(svc.todayStamp()); editor.focusNote() }
+              hoverEnabled: true
+              onClicked: root.goToday()
+              PanelToolTip {
+                visible: parent.containsMouse
+                text: root.tips([["Today's note", "today"], ["The day before, with a note", "dayPrev"], ["The day after", "dayNext"]])
+              }
             }
           }
 
@@ -3577,10 +3626,11 @@ Item {
             onTextChanged: if (root.searchOpen) root.runSearch()
             Keys.onPressed: function (event) {
               if (root.anywhereKey(event)) { event.accepted = true; return }
-              if (Sc.hit(event, "findGo")) root.closeSearch(true)
+              if (Sc.hit(event, "findGo")) root.closeSearch("select")
               else if (Sc.hit(event, "findNext")) root.stepMatch(1)
               else if (Sc.hit(event, "findPrev")) root.stepMatch(-1)
-              else if (Sc.hit(event, "findClose")) root.closeSearch(false)
+              else if (Sc.hit(event, "findClose")) root.closeSearch("stay")
+              else if (Sc.hit(event, "findBack")) root.closeSearch("back")
               else if (Sc.hit(event, "find")) searchField.selectAll()
               else return
               event.accepted = true
@@ -3915,6 +3965,7 @@ Item {
           if (root.anywhereKey(event)) { event.accepted = true; return }
           // Wherever the sidebar's focus is: back to the note, or close it.
           if (Sc.hit(event, "toNote")) { editor.focusNote(); event.accepted = true; return }
+          if (Sc.hit(event, "today")) { root.goToday(); event.accepted = true; return }
           if (Sc.hit(event, "sidebar")) {
             root.sidebarOpen = false
             root.projectOpen = false

@@ -48,8 +48,8 @@ student-agent install
 `plugin-page/` is a full-screen overlay for `omarchy-shell`: today's note as a
 blank sheet in the current theme, saved on every keystroke. `SUPER+ALT+=` or
 the `󰏫` bar glyph opens it, `Esc` closes. `SUPER+ALT+\` opens the same
-sheet as a normal window to tile beside something; `Ctrl+P` flips between
-the two. The note is drawn, not shown as markdown: headings set large,
+sheet as a normal window to tile beside something; `F11` (or `Ctrl+Alt+P`)
+flips between the two. The note is drawn, not shown as markdown: headings set large,
 checkboxes as boxes (click or `Ctrl+L`), bullets, numbers, and private
 callouts marked "never sent"; typing `# `, `- [ ] ` or `> ` turns the line
 into that kind, Backspace at its start turns it back. Colours follow the
@@ -85,8 +85,9 @@ family without a style of that name is unaffected. Size follows the
 shell's scale (your Omarchy font size); `Ctrl+=` / `Ctrl+-` / `Ctrl+0`
 zoom the whole page like a browser, remembered across restarts. `Ctrl+F`
 finds in the note as you type: Enter next, Shift+Enter previous,
-`Ctrl+Enter` lands on the match selected and closes the search, Esc goes
-back to where you were. `Ctrl+Shift+B` shows a month calendar in a sidebar
+`Ctrl+Enter` lands on the match selected and closes the search, Esc closes
+it with the cursor on the match (as browsers and editors do), Shift+Esc
+goes back to where you were. `Ctrl+Shift+B` shows a month calendar in a sidebar
 (only when asked): days with a note are full, days without are faded;
 arrows move by day and week, `Ctrl+←/→` by month, Enter opens the day in
 the same sheet, editable (a day without a note gets its file on the first
@@ -135,9 +136,11 @@ few. From the moment you ask until the answer is back, the block's
 gutter mark carries a light travelling down it and the header's **agent**
 brightens — a mark that moves means still thinking, a mark that rests means
 answered. A pass that fails says so in a line under the cursor; it never
-looks like an agent with nothing to say. `Alt+Up/Down`
-move between blocks, `Ctrl+Up/Down` jump to a block's start or end
-(`Ctrl+Shift+Up/Down` select to it, a block more each press),
+looks like an agent with nothing to say. `Ctrl+Up/Down`
+go to a block's start or end and, pressed again, on through the blocks
+before or after, the way Word walks paragraphs (`Ctrl+Shift+Up/Down` select
+the same way); `Alt+Up/Down` move the line, or every line selected, up or
+down, as in VS Code;
 `Alt+Right` goes into the margin — proposals first (Enter accepts one and runs
 it through `pomo`), then the chat — `Alt+Left` or `Esc` comes back. Drop
 course material into `agents/student/curriculum/` and run
@@ -147,6 +150,24 @@ block is written in. Needs `~/.config/omarchy-student/config.json` (copy
 `<vault>/<daily.dir>/<date>.md` exactly where Obsidian's daily notes would.
 
 ### Every key, and moving one
+
+Days have keys of their own, ones a laptop reaches without Fn: `Ctrl+H` is
+today's note from anywhere (the dashboard and the sidebar too), `Ctrl+[` /
+`Ctrl+]` the day before or after that has a note — as Obsidian steps its
+daily notes, on Notion's back and forward keys — and forward from the last
+one is today. `Alt+Home` and `Ctrl+PgUp/PgDn` do the same on a keyboard
+with those keys of their own. Where another app has taught a key, the page answers
+to it as well: `Ctrl+E` for inline code beside `` Ctrl+` `` (Notion), `Ctrl+\`
+for the sidebar beside `Ctrl+Shift+B`; in the dashboard `j`/`k` move, Space
+or `e` ticks (Todoist), and the note's own `Ctrl+L` and `Ctrl+D` tick and ask
+"when?" there too; `t` in the calendar is today. On a keyboard with dead keys
+(US-International, most European layouts) `` Ctrl+` `` is the backtick, as it
+should be.
+
+Every key, with where it works, is in [docs/keys.md](docs/keys.md). It is
+written from the keys themselves (`python3 tools/keys_guide.py`, which
+`tests/test_keys_guide.py` holds to), so it never names a key the page no
+longer has; `--mine` prints it with the keys you moved.
 
 `Ctrl+/`, or **keys** in the header, turns the sheet into the list of every
 key the page answers to, grouped by where it works: the page, writing,
@@ -195,6 +216,7 @@ Hyprland reports a new config error, the old file is put back.
 python3 tests/test_blocks.py                                # block splitter, JS and Python must agree (needs node)
 QT_QPA_PLATFORM=offscreen /usr/lib/qt6/bin/qmltestrunner -input tests   # editor (driven by keys), keys, emphasis, calendar days, bound lines
 python3 tests/test_pomo.py                                    # the deadline CLI's contract with the page
+python3 tests/test_keys_guide.py                              # docs/keys.md is the keys as they are (needs node)
 python3 tests/test_hyprkeys.py                                # Hyprland's six keys, against a fake hyprctl
 python3 tests/page/run.py                                     # the page itself, live: a window that never takes focus, a throwaway vault
 ```

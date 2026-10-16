@@ -184,6 +184,43 @@ Item {
     }
   }
 
+  // Alt+Up / Alt+Down: the line the cursor is on — or every line a
+  // selection touches — trades places with the line above or below, as in
+  // VS Code; the cursor and the selection go with it. A bound line carries
+  // its anchor along, so its deadline follows the words.
+  function moveLines(dir) {
+    var t = ed.text
+    var spanning = ed.spanning
+    var anchor = ed.selAnchor
+    var cur = ed.cursorPosition
+    var a = spanning ? ed.selStart : cur
+    var b = spanning ? ed.selEnd : cur
+    if (spanning && t.charAt(b - 1) === "\n") b--      // ending at a line's start does not take that line
+    var first = t.lastIndexOf("\n", a - 1) + 1
+    var end = t.indexOf("\n", b)
+    if (end < 0) end = t.length
+    var lines = t.slice(first, end)
+    var out, shift
+    if (dir < 0) {
+      if (first === 0) return
+      var prevStart = t.lastIndexOf("\n", first - 2) + 1
+      var prev = t.slice(prevStart, first - 1)
+      out = t.slice(0, prevStart) + lines + "\n" + prev + t.slice(end)
+      shift = -(prev.length + 1)
+    } else {
+      if (end >= t.length) return
+      var nextEnd = t.indexOf("\n", end + 1)
+      if (nextEnd < 0) nextEnd = t.length
+      var next = t.slice(end + 1, nextEnd)
+      out = t.slice(0, first) + next + "\n" + lines + t.slice(nextEnd)
+      shift = next.length + 1
+    }
+    ed.snapshot(true)
+    ed.commit(out, cur + shift)
+    if (spanning) ed.selectSpan(anchor + shift, cur + shift)
+    else ed.placeCursor(true)
+  }
+
   // Move the cursor. With `focus`, the note takes the keyboard too;
   // otherwise the field only follows when the note already has it.
   function setCursor(pos, focus) {
@@ -882,6 +919,12 @@ Item {
     var toStart = Sc.hit(event, "selectBlockStart")
     if (toStart || Sc.hit(event, "selectBlockEnd")) {
       ed.selectToBlockEdge(toStart ? -1 : 1, item)
+      event.accepted = true
+      return
+    }
+    // Before a selection's own keys, which would take Alt+Up as an arrow.
+    if (Sc.hit(event, "lineUp") || Sc.hit(event, "lineDown")) {
+      ed.moveLines(Sc.hit(event, "lineUp") ? -1 : 1)
       event.accepted = true
       return
     }

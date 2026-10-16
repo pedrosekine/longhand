@@ -24,6 +24,11 @@ TestCase {
     compare(Sc.fromEvent(ev(Qt.Key_Plus, Qt.ControlModifier | Qt.ShiftModifier)), "Ctrl+Plus")
     compare(Sc.fromEvent(ev(Qt.Key_Question, Qt.ControlModifier | Qt.ShiftModifier)), "Ctrl+?")
     compare(Sc.fromEvent(ev(Qt.Key_Control, Qt.ControlModifier)), "")
+    // A dead key is what it prints: US-International's backtick.
+    compare(Sc.fromEvent(ev(Qt.Key_Dead_Grave, Qt.ControlModifier)), "Ctrl+`")
+    verify(Sc.hit(ev(Qt.Key_Dead_Grave, Qt.ControlModifier), "code"))
+    verify(Sc.hit(ev(Qt.Key_E, Qt.ControlModifier), "code"))
+    verify(Sc.hit(ev(Qt.Key_Backslash, Qt.ControlModifier), "sidebar"))
   }
 
   function test_spellings() {
@@ -105,7 +110,7 @@ TestCase {
     verify(Sc.check("dashPriority", "J").ok)
     // The text field's own keys are never taken.
     verify(!Sc.check("bold", "Ctrl+C").ok)
-    verify(!Sc.check("blockPrev", "Up").ok)
+    verify(!Sc.check("blockStart", "Up").ok)
     verify(!Sc.check("checkbox", "Enter").ok)
     verify(Sc.check("dashDown", "J").ok)
   }
@@ -114,7 +119,7 @@ TestCase {
     Sc.load({ bold: "ctrl+k", italic: ["Ctrl+J", "nonsense"], nothing: ["Ctrl+Q"], code: 3 })
     compare(Sc.keysOf("bold").join(), "Ctrl+K")
     compare(Sc.keysOf("italic").join(), "Ctrl+J")
-    compare(Sc.keysOf("code").join(), "Ctrl+`")
+    compare(Sc.keysOf("code").join(), "Ctrl+`,Ctrl+E")
     compare(Sc.save().nothing, undefined)
   }
 

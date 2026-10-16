@@ -132,6 +132,7 @@ ShellRoot {
     // A hover's hint for an action, as the mouse would see it.
     function tip(id: string): string { return page.tip("does", id) }
     function pageKey(key: int, mods: int): bool { return page.pageKey({ key: key, text: "", modifiers: mods }) }
+    function moveLines(d: int): void { page.editorItem.moveLines(d) }
 
     // The dashboard
     function dash(): void { page.toggleDash() }
