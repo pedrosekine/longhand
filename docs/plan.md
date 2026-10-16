@@ -11,7 +11,7 @@
 
 ## Steps (one at a time)
 - [x] Step 1 — folder + README + this plan
-- [x] Step 2 — `gh repo create pedrosekine/omarchy-student --public --source .` (done, origin set)
+- [x] Step 2 — `gh repo create pedrosekine/omarchy-student --public --source .` (done, origin set; renamed `pedrosekine/longhand` on 2026-10-16, folder `~/Projects/longhand`)
 - [x] Step 3 — v0.1 CLI prototype: `cli/pomo` bash script + state file — on PATH via `ln -sfn "$PWD/cli/pomo" ~/.local/bin/pomo` (absolute target: re-link after moving the repo, or the bindings and both widgets fail with "binary could not be found")
 - [x] Step 4 — Hypr bindings: `SUPER+ALT+P` toggle, `SUPER+ALT+N` skip in `~/.config/hypr/bindings.lua` (SUPER+P was taken by Pseudo window)
 - [x] Step 5 — v0.2 bar widget: `plugin/` QML (`longhand.pomo`: countdown label + progress popup, left=popup, right=toggle, middle=skip). Installed as real files in `~/.config/omarchy/plugins/longhand.pomo` (symlinks not allowed there — copy on change, shell auto-reloads).
