@@ -1,39 +1,49 @@
 # omarchy-student
 
-Hybrid Pomodoro and deadline tracker for Omarchy: CLI that works in terminal +
-thin bar widgets. Keyboard-first v0.1. Next: a diary page in the shell that an
-agent reads and answers — reference plan in `docs/diary.md`.
+A daily page for students on [Omarchy](https://omarchy.org): you write the
+day in a blank sheet inside the shell, and an agent you call on reads it and
+answers in the margin. Deadlines, tasks and focus sessions live in the same
+notes, so a course's work is found by the course and not by the day it was
+written.
 
-## Why hybrid?
+Keyboard-first, plain markdown underneath (your Obsidian vault reads the same
+files), and private by construction: the agent sees only what local code
+assembled for it, every payload is logged before it is sent, and it only runs
+when you ask.
 
-- **Plugin-only** = QML running inside `omarchy-shell`. Dies with shell, no terminal use.
-- **Standalone** = CLI/daemon (like `focusd`). Works in terminal, scriptable, survives restarts.
-- **Hybrid (this project)** = standalone core + thin plugin that just displays status.
-  Best for keyboard shortcuts because bindings call the CLI even when bar is closed.
+## What is in it
 
-## Scope v0.1 (keyboard shortcuts only)
+| Part | What it does |
+|------|--------------|
+| **The page** (`plugin-page/`) | Today's note as a full-screen overlay or a tiling window, drawn in the Omarchy theme: headings, checkboxes, emphasis, private callouts. Month calendar and your projects in a sidebar. |
+| **The agent** (`agent/student-agent`) | `Ctrl+Enter` sends the block you are in; the reply and the conversation appear beside it. Tool-less, sandboxed opencode, with a cost ledger. |
+| **Deadlines in the notes** | Write `- [ ] essay draft #course due fri 17:00` and the line becomes a deadline, still readable in Obsidian. |
+| **The dashboard** (`Ctrl+T`) | Every open task and deadline across all your notes, grouped by what it asks of you and then by course. |
+| **Bar widgets** (`plugin/`, `plugin-deadline/`) | A Pomodoro countdown and the next deadline, with popups. |
+| **`pomo`** (`cli/pomo`) | The timer and deadline store behind it all, scriptable from a terminal or Hyprland bindings. |
 
-- `pomo start [focus|break|up] [minutes|up] [--for <deadline id>]|pause|resume|toggle|reset|skip|status`
-  from terminal (`pomo start up` runs an open-ended count-up focus session;
-  skipping it logs the elapsed time as a completed session; `--for 3` ties
-  the session to deadline #3 so its log lines read `focus completed · 25:00 · for #3 Essay draft`)
-- `pomo deadline add <title> [--project <p>] [--link <url-or-path>] <when...>`,
-  `set <id> [--title <t>] [--project <p>] [--link <l>] [<when...>]`,
-  `list [--all] [--json] [--project <p>]`, `done|reopen|grade|hide|unhide|rm|next|when`
-  — manual deadlines with free-text dates ("next friday 17:00", "in 3 days");
-  `--project` is what it belongs to (a course, a thesis, anything; `--subject` still works), `--link` the file or URL
-  for the thing itself; `done` takes one off the clock, `grade` records the
-  mark, `hide` keeps the record but drops it from the list
-- Hypr bindings example in `docs/plan.md`
-- State in JSON file, no bar widget yet
+Status: in daily use by its author through the semester; installable by
+others, though setup is still manual. Design notes in `docs/diary.md`, the
+build log in `docs/plan.md`.
 
-## Out of scope for v0.1
+## Install
 
-- Bar widget, analytics UI, calendar integration
+Needs Omarchy (for `omarchy-shell`) and [opencode](https://opencode.ai) with
+one model key.
 
-See `docs/plan.md` for full steps.
+```bash
+mkdir -p ~/.config/omarchy-student
+cp config.example.json ~/.config/omarchy-student/config.json   # then point "vault" at your notes
+cp -r plugin-page     ~/.config/omarchy/plugins/student.page
+cp -r plugin          ~/.config/omarchy/plugins/student.pomo
+cp -r plugin-deadline ~/.config/omarchy/plugins/student.deadline
+# add {"id":"student.page"}, {"id":"student.pomo"}, {"id":"student.deadline"} to plugins[] in ~/.config/omarchy/shell.json
+ln -s "$PWD/cli/pomo"            ~/.local/bin/pomo
+ln -s "$PWD/agent/student-agent" ~/.local/bin/student-agent
+student-agent install
+```
 
-## The page (phase 14.1)
+## The page
 
 `plugin-page/` is a full-screen overlay for `omarchy-shell`: today's note as a
 blank sheet in the current theme, saved on every keystroke. `SUPER+ALT+=` or
@@ -129,10 +139,7 @@ looks like an agent with nothing to say. `Alt+Up/Down`
 move between blocks, `Ctrl+Up/Down` jump to a block's start or end
 (`Ctrl+Shift+Up/Down` select to it, a block more each press),
 `Alt+Right` goes into the margin — proposals first (Enter accepts one and runs
-it through `pomo`), then the chat — `Alt+Left` or `Esc` comes back. `Ctrl+T`
-opens the what's-next panel: every open checkbox across your daily notes and
-what the agent has raised. Enter goes to a task or waves off a suggestion,
-Space ticks, Ctrl+Z unticks. Drop
+it through `pomo`), then the chat — `Alt+Left` or `Esc` comes back. Drop
 course material into `agents/student/curriculum/` and run
 `student-agent curriculum` once for PDFs. List your `languages` in the config; the agent answers in the one the
 block is written in. Needs `~/.config/omarchy-student/config.json` (copy
@@ -140,7 +147,6 @@ block is written in. Needs `~/.config/omarchy-student/config.json` (copy
 `<vault>/<daily.dir>/<date>.md` exactly where Obsidian's daily notes would.
 
 ```bash
-cp -r plugin-page ~/.config/omarchy/plugins/student.page   # then add {"id":"student.page"} to plugins[] in ~/.config/omarchy/shell.json
 python3 tests/test_blocks.py                                # block splitter, JS and Python must agree (needs node)
 QT_QPA_PLATFORM=offscreen /usr/lib/qt6/bin/qmltestrunner -input tests   # editor (driven by keys), emphasis, calendar days, bound lines
 python3 tests/test_pomo.py                                    # the deadline CLI's contract with the page
@@ -168,6 +174,23 @@ line when its note opens. Deleting a bound line asks whether the deadline
 goes too. The calendar marks deadline days, `Ctrl+T` lists deadlines
 first, and in the bar popup `o` opens a deadline's line.
 
+## The dashboard
+
+`Ctrl+T` turns the sheet into the dashboard: every open checkbox and every
+deadline across all your daily notes, full width. Rows are grouped by what
+they ask of you — **due** (a date you owe), **doing** (a day you mean to work
+on it), **to schedule** (a priority and no day yet) — and then by course,
+never by the day the thought was written. Each row says where it was written
+and how long ago ("Design Theory › Essay 2 · yesterday"); dates are the same
+pills as in the note.
+
+Enter opens the line in its note, as it does everywhere. `Ctrl+Enter` ticks
+it — in the day it was written, so the note and the dashboard never disagree.
+`t` asks "when?" in words ("friday"), `p` walks the three priorities, `Del`
+drops it (kept in the note as `- [-] … ❌ <day>`, so the decision is on
+record), `Ctrl+Z` takes a tick or a drop back. The bar's deadline popup
+(`SUPER+ALT+D`) stays the glance; the dashboard is where the work gets done.
+
 ## How it is used
 
 `student-agent stats [--days 14 | --since 2026-10-11] [--json]` prints, day
@@ -177,7 +200,7 @@ cost, focus sessions, the #tags and languages in the notes, and what the page
 was opened for. The page keeps its part in `~/.local/state/omarchy-student/usage.tsv`
 — event names and numbers, never a word of a note, never sent anywhere.
 
-## The loop (phase 14.2)
+## The agent
 
 `agent/student-agent` is what the page calls when you finish a checkbox line,
 an `@` line, a line ending in `?`, tick a box, or open the page. It builds
@@ -199,6 +222,20 @@ student-agent sections --tag intsem         # one project's notes across every d
 student-agent context --trigger mention --hash <h>   # incl. that project's earlier notes
 python3 tests/test_agent.py                 # offline, stub opencode
 ```
+
+## The timer and the deadline store
+
+`pomo` is a plain CLI, so Hyprland bindings work even when the bar is closed
+(example bindings in `docs/plan.md`):
+
+- `pomo start [focus|break|up] [minutes] [--for <deadline id>]`, `pause`,
+  `resume`, `toggle`, `reset`, `skip`, `status`. `up` counts up instead of
+  down; `--for 3` ties the session to deadline #3, so the log reads
+  `focus completed · 25:00 · for #3 Essay draft`.
+- `pomo deadline add <title> [--project <p>] [--link <url-or-path>] <when...>`
+  with free-text dates ("next friday 17:00", "in 3 days"); also `set`,
+  `list [--all] [--json] [--project <p>]`, `done`, `reopen`, `grade`, `hide`,
+  `unhide`, `rm`, `next`, `when`.
 
 ## Pointing an agent at it
 
