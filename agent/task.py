@@ -154,3 +154,30 @@ def details(lines: list[str], at: int, indent: int) -> int:
 def where(t: dict) -> str:
     """Where a task sits, for a row too narrow for the note."""
     return " › ".join(t.get("path") or [])
+
+
+ITEM_RE = re.compile(r"^(\s*)(?:[-*+]|\d+[.)])\s+(?:\[[ xX/\-]\](?=\s|$)\s*)?(.*)$")
+
+
+def identity(text: str) -> str:
+    """A block as its conversation knows it: twin of Task.js `identity`.
+
+    Every list line reduced to its words, without its box, its facts or its
+    anchor, so ticking, binding or a priority leaves the block the agent
+    answered; only changing the words makes it another (2026-10-17).
+    """
+    out = []
+    for line in text.split("\n"):
+        m = ITEM_RE.match(line)
+        if not m:
+            out.append(line)
+            continue
+        rest = re.sub(r"\s+$", "", m.group(2))
+        a = ANCHOR_RE.search(rest)
+        if a:
+            rest = rest[:a.start()]
+        mm = MARK_RE.search(rest)
+        if mm:
+            rest = rest[:mm.start()]
+        out.append(m.group(1) + "- " + re.sub(r"\s+", " ", rest).strip())
+    return "\n".join(out)

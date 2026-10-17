@@ -321,3 +321,24 @@ function findWords(lines, hint, text) {
   for (var i = 0; i < lines.length; i++) if (sameWords(lines[i], text)) return i
   return -1
 }
+
+// A block as its conversation knows it: every list line reduced to its
+// words, without its box, its facts or its anchor. Ticking a box, binding
+// its date or setting its priority leaves the block the agent answered;
+// only changing the words makes it another (2026-10-17). Lines that are
+// not list items are kept as they are.
+var ITEM_RE = /^(\s*)(?:[-*+]|\d+[.)])\s+(?:\[[ xX\/\-]\](?=\s|$)\s*)?(.*)$/
+
+function identity(text) {
+  return String(text).split("\n").map(function (line) {
+    var m = line.match(ITEM_RE)
+    if (!m) return line
+    var rest = m[2].replace(/\s+$/, "")
+    var a = rest.match(ANCHOR_RE)
+    if (a) rest = rest.slice(0, a.index)
+    MARK_RE.lastIndex = 0
+    var mm = MARK_RE.exec(rest)
+    if (mm) rest = rest.slice(0, mm.index)
+    return m[1] + "- " + rest.replace(/\s+/g, " ").trim()
+  }).join("\n")
+}

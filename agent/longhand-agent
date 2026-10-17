@@ -40,6 +40,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import blocks as blocklib  # noqa: E402
 import task as tasklib  # noqa: E402
+import task as tasklib  # noqa: E402
 
 TRIGGERS = ("checkbox", "mention", "question", "tick", "open")
 LINK_LINE = re.compile(r"^\[\[[^\]\n]*\|agent\]\]$")
@@ -539,12 +540,19 @@ def group_of(state: dict, hash_: str) -> list[str]:
     return [h for h in g if h in state["blocks"]] if isinstance(g, list) and hash_ in g else [hash_]
 
 
+def block_key(text: str) -> str:
+    """What a block's record is found by when its text has moved on: its
+    words, without box or facts (Task.js `identity`, hashed the same way)."""
+    return blocklib.fnv1a(tasklib.identity(text))
+
+
 def apply(cfg: dict, paths: Paths, trigger: str, fired: list[dict], visible: list[dict],
           result: dict, reply: dict, payload_file: Path, hash_: str = "", message: str = "") -> dict:
     now = dt.datetime.now()
     at = now.isoformat(timespec="seconds")
     state = load_state(paths)
     hashes = [b["hash"] for b in fired] if fired else ([hash_] if hash_ else [])
+    keys = {b["hash"]: block_key(b["text"]) for b in visible}
     if fired:
         hash_ = fired[0]["hash"]
     chat = trigger == "chat"
@@ -555,6 +563,8 @@ def apply(cfg: dict, paths: Paths, trigger: str, fired: list[dict], visible: lis
     if chat:
         for h in group_of(state, hash_):
             rec = state["blocks"].setdefault(h, {"state": "seen", "at": at})
+            if h in keys and "key" not in rec:
+                rec["key"] = keys[h]
             turns = rec.setdefault("chat", [])
             turns.append({"role": "student", "text": message, "at": at})
             turns.append({"role": "agent", "text": reply["reply"], "at": at, "cost": result["cost"]})
@@ -570,7 +580,8 @@ def apply(cfg: dict, paths: Paths, trigger: str, fired: list[dict], visible: lis
             rec = state["blocks"].setdefault(h, {})
             rec.update({"state": "reply" if reply["reply"] else "seen", "trigger": trigger,
                         "reply": reply["reply"], "proposals": reply["proposals"], "read": False,
-                        "session": result["session"], "at": at, "cost": result["cost"], "head": head})
+                        "session": result["session"], "at": at, "cost": result["cost"], "head": head,
+                        "key": keys.get(h) or block_key(next(b["text"] for b in fired if b["hash"] == h))})
             if len(hashes) > 1:
                 rec["group"] = hashes
             else:
@@ -707,17 +718,24 @@ def cmd_chat(cfg: dict, args) -> int:
         raise Fail("today is marked agent: false")
     visible = visible_blocks(blks)
     block = next((b for b in visible if b["hash"] == args.hash), None)
+    # Ticked, dated or cancelled since it was asked: the same block (found by
+    # its words, Task.js `identity`), and the agent is told how it reads now.
+    now = None
+    if block is None and rec.get("key"):
+        now = next((b for b in visible if block_key(b["text"]) == rec["key"]), None)
     paths.payloads.mkdir(parents=True, exist_ok=True)
     stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
     payload_file = paths.payloads / f"{stamp}-chat-{args.hash}.md"
     if session:
         # The session already holds the context and the first reply; only the
         # student's words travel. Logged all the same.
-        payload = (f"{language_line(cfg, message)}\n\nThe student replies about block {args.hash}:\n\n{message}\n\n"
+        since = f"The block now reads:\n\n{now['text']}\n\n" if now else ""
+        payload = (f"{language_line(cfg, message)}\n\n{since}The student replies about block {args.hash}:\n\n{message}\n\n"
                    "Answer with the same JSON contract.\n")
         payload_file.write_text(payload)
         result = run_model(cfg, paths, "", session=session, message=payload)
     else:
+        block = block or now
         if block is None:
             raise Fail(f"block {args.hash} has no session and is not in the visible note")
         payload = build_payload(paths, "mention", [block], visible, cfg)

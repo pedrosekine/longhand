@@ -20,17 +20,19 @@ let src = fs.readFileSync(process.argv[1], 'utf8').replace('.pragma library', ''
 const m = {};
 new Function('module', src + '\\nmodule.parse = parse;\\nmodule.scan = scan;\\nmodule.where = where;'
   + '\\nmodule.setField = setField;\\nmodule.setPriority = setPriority;\\nmodule.setState = setState;'
-  + '\\nmodule.nextPriority = nextPriority;\\nmodule.sameWords = sameWords;\\nmodule.setWords = setWords;')(m);
+  + '\\nmodule.nextPriority = nextPriority;\\nmodule.sameWords = sameWords;\\nmodule.setWords = setWords;\\nmodule.identity = identity;')(m);
 const input = JSON.parse(fs.readFileSync(0, 'utf8'));
 process.stdout.write(JSON.stringify({
   lines: input.lines.map(m.parse),
   notes: input.notes.map(m.scan),
   wheres: input.notes.map(n => m.scan(n).map(m.where)),
+  identities: input.lines.concat(input.notes).map(m.identity),
   edits: input.edits.map(e => e[1] === 'field' ? m.setField(e[0], e[2], e[3])
     : e[1] === 'prio' ? m.setPriority(e[0], e[2])
     : e[1] === 'state' ? m.setState(e[0], e[2])
     : e[1] === 'same' ? m.sameWords(e[0], e[2])
     : e[1] === 'words' ? m.setWords(e[0], e[2])
+    : e[1] === 'identity' ? m.identity(e[0])
     : m.nextPriority(e[0])),
 }));
 """
@@ -126,6 +128,18 @@ EDITS = [
     (["- [ ] draft the intro #dtm ⏳ 2026-10-18 📅 2026-10-20 ^d12", "words", "draft the introduction #dtm", None],
      "- [ ] draft the introduction #dtm ⏳ 2026-10-18 📅 2026-10-20 ^d12"),
     (["- [x] old words ", "words", "  new   words ", None], "- [x] new words"),
+    # A block's conversation is found by its words: the box, the facts and
+    # the anchor are not part of it, nor is the kind of list marker.
+    (["- [ ] should I buy a scooter?", "identity", None, None], "- should I buy a scooter?"),
+    (["- [x] should I buy a scooter?", "identity", None, None], "- should I buy a scooter?"),
+    (["- [-] should I buy a scooter? ❌ 2026-10-17", "identity", None, None], "- should I buy a scooter?"),
+    (["- [ ] should I buy a scooter? ⏫ 📅 2026-10-20 17:00 ^d4", "identity", None, None], "- should I buy a scooter?"),
+    (["- should I buy a scooter?", "identity", None, None], "- should I buy a scooter?"),
+    (["1. should I buy a scooter?", "identity", None, None], "- should I buy a scooter?"),
+    (["- [ ] should I buy an e-scooter?", "identity", None, None], "- should I buy an e-scooter?"),
+    (["- [ ] list\n  - [x] child ⏳ 2026-10-18\n  more words", "identity", None, None], "- list\n  - child\n  more words"),
+    (["a question?", "identity", None, None], "a question?"),
+    (["- [ ] #dtm draft [est:: 1h]", "identity", None, None], "- #dtm draft [est:: 1h]"),
     ([0, "cycle", None, None], 2),
     ([2, "cycle", None, None], -1),
     ([-1, "cycle", None, None], 0),
@@ -158,6 +172,14 @@ def main() -> int:
     for (spec, want), got in zip(EDITS, other["edits"]):
         check(got == want, f"{spec[1]} {spec[2]!r} → {got!r}"
               + ("" if got == want else f" (wanted {want!r})"))
+
+    for spec, want in EDITS:
+        if spec[1] == "identity":
+            got = task.identity(spec[0])
+            check(got == want, f"py identity {spec[0]!r} → {got!r}" + ("" if got == want else f" (wanted {want!r})"))
+    texts = LINES + notes
+    same = [task.identity(t) for t in texts] == other["identities"]
+    check(same, f"{len(texts)} lines and notes have the same identity in both")
 
     for line, got in zip(LINES, other["lines"]):
         mine = task.parse(line)

@@ -352,13 +352,44 @@ Item {
   property var matches: []       // [{ start, end }] text offsets, in note order
   property int matchIndex: -1
   property int searchFrom: 0     // the cursor when the search opened
-  readonly property var currentRecord: agent.record(currentHash)
+  // A block's conversation is filed under the hash of its text when it was
+  // asked, and found again by its words: ticking the box, binding a date,
+  // setting a priority or cancelling it leaves the conversation where it
+  // was (2026-10-17). Changing the words still makes it another block.
+  // `currentRec` is the hash the cursor's block's record lives under — the
+  // block's own, or the one it had when it was answered.
+  readonly property var recordKeys: {
+    var idx = {}
+    var b = agent.blocks
+    for (var h in b) {
+      var r = b[h]
+      if (!root.answered(r)) continue
+      // Records from before the key was kept: their first line(s) stand in.
+      var ks = r.key ? [r.key]
+        : r.head ? (r.group ? r.head.split(" / ") : [r.head]).map(function (t) { return Blocks.fnv1a(Task.identity(t)) })
+        : []
+      for (var i = 0; i < ks.length; i++)
+        if (!idx[ks[i]] || String(r.at) > String(b[idx[ks[i]]].at)) idx[ks[i]] = h
+    }
+    return idx
+  }
+  function recordHash(hash, text) {
+    if (hash === "" || root.answered(agent.record(hash))) return hash
+    return root.recordKeys[Blocks.fnv1a(Task.identity(text))] || hash
+  }
+  property string currentRec: ""
+  function refreshRec() {
+    var b = root.blockBounds(root.currentHash)
+    root.currentRec = root.recordHash(root.currentHash, b ? b.text : "")
+  }
+  onRecordKeysChanged: root.refreshRec()
+  readonly property var currentRecord: agent.record(currentRec)
   // The conversation as the margin shows it: what the runner has written,
   // plus the turn that has not landed yet.
   readonly property var chatTurns: {
     var rec = root.currentRecord
     var turns = rec && rec.chat ? rec.chat.slice() : []
-    if (root.pendingChat && root.pendingChat.hash === root.currentHash)
+    if (root.pendingChat && root.pendingChat.hash === root.currentRec)
       turns.push({ role: "student", text: root.pendingChat.text })
     return turns
   }
@@ -366,6 +397,7 @@ Item {
   // list submission.
   readonly property bool answering: root.currentHash !== ""
     && (root.runningHash.split(",").indexOf(root.currentHash) >= 0
+        || root.runningHash.split(",").indexOf(root.currentRec) >= 0
         || root.sending.indexOf(root.currentHash) >= 0)
   readonly property var currentProposals: (currentRecord && currentRecord.proposals) ? currentRecord.proposals : []
   readonly property var taskRows: root.buildTaskRows()
@@ -597,7 +629,13 @@ Item {
   // Ctrl+Enter: send the block under the cursor, if it carries a sign for
   // the agent. A block without one stays where it is; the margin says why.
   property bool noSignHint: false
-  property string hint: ""   // a passing word under the cursor (a date that did not read, …)
+  property string hint: ""   // a passing word (a date that did not read, what a check did, …)
+  // What the page says in passing, in the header's status line. It used to
+  // float under the cursor and print over the line below it (2026-10-17);
+  // up there it covers nothing, so it can stay long enough to be read.
+  readonly property string status: root.hint !== "" ? root.hint
+    : root.noSignHint ? "nothing to ask here — make it a checkbox or end it with ?"
+    : ""
   function showHint(t) { root.hint = t; hintTimer.restart() }
   // A block the agent has already answered is not asked again. The hash is
   // of the block's text, so a block that still carries its answer is text
@@ -740,11 +778,14 @@ Item {
     root.scheduleRepaint()
   }
 
-  function requestChat(hash, message) {
+  // `hash` is the record's, `mark` the block's as the note has it now (they
+  // differ once a box answered has been ticked): the record is asked, the
+  // block is the one drawn as away.
+  function requestChat(hash, message, mark) {
     if (!root.agentOn) return
-    root.markSending([hash])
+    root.markSending([mark || hash])
     root.flush()
-    root.enqueue([svc.runner, "chat", "--hash", hash, "--message", message, "--date", svc.noteDate], hash)
+    root.enqueue([svc.runner, "chat", "--hash", hash, "--message", message, "--date", svc.noteDate], mark || hash)
   }
 
   // In order, each once: a confirmed send must never be dropped because
@@ -802,7 +843,7 @@ Item {
     var blocks = Blocks.split(editor.text)
     for (var i = 0; i < blocks.length; i++) {
       var b = blocks[i]
-      var rec = agent.record(b.hash)
+      var rec = agent.record(root.recordHash(b.hash, b.text))
       var flying = root.sending.indexOf(b.hash) >= 0
       if (!rec && !flying) continue
       var r = editor.blockRect(b.start, b.end)
@@ -960,9 +1001,9 @@ Item {
 
   function acceptProposal(i) {
     var p = root.currentProposals[i]
-    if (!p || p.accepted || root.currentHash === "" || acceptProc.running) return
-    root.pendingAccept = { hash: root.currentHash, index: i }
-    acceptProc.command = [svc.runner, "accept", "--hash", root.currentHash, "--index", String(i), "--date", svc.noteDate]
+    if (!p || p.accepted || root.currentRec === "" || acceptProc.running) return
+    root.pendingAccept = { hash: root.currentRec, index: i }
+    acceptProc.command = [svc.runner, "accept", "--hash", root.currentRec, "--index", String(i), "--date", svc.noteDate]
     acceptProc.running = true
   }
 
@@ -2263,7 +2304,7 @@ Item {
     if (root.checkWanted) root.runCheck()
   }
 
-  // What the check did, said under the cursor and waiting for nothing.
+  // What the check did, said in the status line, waiting for nothing.
   function sayChecked(out) {
     var gone = out.cancelled || [], back = out.restored || []
     if (gone.length === 1) root.showHint("“" + gone[0].title + "” cancelled: its line is gone · " + root.keyName("undo") + " brings it back")
@@ -2531,8 +2572,8 @@ Item {
     var msg = chatField.text.trim()
     if (msg === "" || root.currentHash === "") return
     chatField.text = ""
-    root.pendingChat = { hash: root.currentHash, text: msg }
-    root.requestChat(root.currentHash, msg)
+    root.pendingChat = { hash: root.currentRec, text: msg }
+    root.requestChat(root.currentRec, msg, root.currentHash)
   }
 
   // The runner has written the turn the page was holding: let go of it, so
@@ -2704,8 +2745,8 @@ Item {
     interval: 1200
     onTriggered: {
       var rec = root.currentRecord
-      if (rec && rec.state === "reply" && !rec.read && root.currentHash !== "") {
-        ackProc.command = [svc.runner, "ack", "--hash", root.currentHash, "--date", svc.noteDate]
+      if (rec && rec.state === "reply" && !rec.read && root.currentRec !== "") {
+        ackProc.command = [svc.runner, "ack", "--hash", root.currentRec, "--date", svc.noteDate]
         ackProc.running = true
       }
     }
@@ -2713,6 +2754,7 @@ Item {
   // One handler for the cursor's block changing: what the header may offer
   // to send, and the timer that marks a reply read once it has been looked at.
   onCurrentHashChanged: {
+    root.refreshRec()
     root.currentTrigger = root.triggerForBlock(root.currentHash)
     ackTimer.restart()
   }
@@ -2808,7 +2850,7 @@ Item {
 
   Timer {
     id: hintTimer
-    interval: 2500
+    interval: 6000
     onTriggered: { root.noSignHint = false; root.hint = "" }
   }
 
@@ -3565,6 +3607,8 @@ Item {
 
           Text {
             id: dateText
+            // The status line takes the date's place while it speaks.
+            opacity: root.status === "" ? 1 : 0
             anchors.left: parent.left
             textFormat: Text.PlainText
             text: root.dateLabel
@@ -3576,7 +3620,8 @@ Item {
 
           // On another day: the way back to today.
           Text {
-            visible: !svc.isToday && svc.noteDate !== ""
+            id: backToday
+            visible: !svc.isToday && svc.noteDate !== "" && root.status === ""
             anchors.left: dateText.right
             anchors.leftMargin: root.sp(12)
             anchors.verticalCenter: dateText.verticalCenter
@@ -3598,7 +3643,33 @@ Item {
             }
           }
 
+          // The status line: what the page says in passing, in the date's
+          // place for the moment it speaks, in the accent so it is seen,
+          // and cut short rather than wrapped (the whole of it on hover).
+          Text {
+            id: statusText
+            visible: root.status !== ""
+            anchors.left: parent.left
+            anchors.right: headerRight.left
+            anchors.rightMargin: root.sp(16)
+            anchors.verticalCenter: dateText.verticalCenter
+            textFormat: Text.PlainText
+            elide: Text.ElideRight
+            text: root.status
+            color: root.accent
+            font.family: root.fontFamily
+            font.styleName: root.fontStyle
+            font.pixelSize: root.fs(Style.font.bodySmall)
+            MouseArea {
+              anchors.fill: parent
+              hoverEnabled: true
+              acceptedButtons: Qt.NoButton
+              PanelToolTip { visible: parent.containsMouse && statusText.truncated; text: root.status }
+            }
+          }
+
           Row {
+            id: headerRight
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             spacing: root.sp(10)
@@ -3889,6 +3960,10 @@ Item {
 
           NoteEditor {
             id: editor
+            // What the page shows under a line opens room there, so the
+            // lines below move down rather than being drawn over.
+            roomRow: whenBox.visible || mentionBox.visible ? root.lineIndexAt(editor.cursorPosition) : -1
+            roomHeight: (whenBox.visible ? whenBox.height : mentionBox.visible ? mentionBox.height : 0) + root.sp(12)
             boxTip: Component { Item { PanelToolTip { visible: true; text: root.tip("Tick or untick it", "checkbox") } } }
             x: root.gutter
             width: flick.width - root.gutter
@@ -3958,32 +4033,13 @@ Item {
             onClicked: editor.setCursor(editor.length, true)
           }
 
-          // A passing word under the cursor (what a check did, a date that
-          // did not read) and the no-sign hint: washed text, gone as soon
-          // as you type. Nothing here waits for an answer.
-          Text {
-            visible: (root.noSignHint || root.hint !== "") && !root.whenFor
-            x: root.gutter
-            y: editor.cursorRect.y + editor.cursorRect.height + root.sp(2)
-            width: editor.width
-            textFormat: Text.PlainText
-            wrapMode: Text.WordWrap
-            text: root.hint !== "" ? root.hint
-              : root.noSignHint
-              ? "no sign for the agent on this block — make it a checkbox, end it with ?, or tick a box"
-              : ""
-            color: root.faint
-            font.family: root.fontFamily
-            font.styleName: root.fontStyle
-            font.pixelSize: root.fs(Style.font.bodySmall)
-            z: 2
-          }
-
-          // `@`: the projects, under the cursor, narrowing as you type.
+          // `@`: the projects, under the line, narrowing as you type. In
+          // the room the line opens for it, so it covers nothing.
           Rectangle {
+            id: mentionBox
             visible: !!root.mention && root.mention.items.length > 0
             x: root.gutter
-            y: editor.cursorRect.y + editor.cursorRect.height + root.sp(4)
+            y: editor.roomRow >= 0 ? editor.roomTop + root.sp(4) : editor.cursorRect.y + editor.cursorRect.height + root.sp(4)
             width: Math.min(editor.width, root.sp(260))
             height: mentionCol.implicitHeight + root.sp(10)
             radius: Style.cornerRadius
@@ -4046,11 +4102,13 @@ Item {
             }
           }
 
-          // Ctrl+D's question: when? Under the line, in the page's own words.
+          // Ctrl+D's question: when? Under the line, in the page's own words,
+          // in the room the line opens for it.
           Row {
+            id: whenBox
             visible: !!root.whenFor
             x: root.gutter
-            y: editor.cursorRect.y + editor.cursorRect.height + root.sp(4)
+            y: editor.roomRow >= 0 ? editor.roomTop + root.sp(4) : editor.cursorRect.y + editor.cursorRect.height + root.sp(4)
             spacing: root.sp(8)
             z: 3
             Text {

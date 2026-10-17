@@ -92,6 +92,14 @@ Item {
   readonly property bool hasFocus: focusedRow >= 0
   property rect cursorRect: Qt.rect(0, 0, 0, 0)
 
+  // Room under a line for something the page shows there (Ctrl+D's "when?",
+  // the `@` list): row `roomRow` grows by `roomHeight` below its words, so
+  // the lines after it move down instead of being drawn over (2026-10-17).
+  // `roomTop` is where that room starts, in editor coordinates.
+  property int roomRow: -1
+  property real roomHeight: 0
+  property real roomTop: 0
+
   // Search matches to paint, as text offsets ({ start, end }), and which of
   // them is the current one. Painting only: they never touch the text.
   property var marks: []
@@ -690,7 +698,7 @@ Item {
     var b = ed.rowItem(endLine - 1)
     if (!a || !b) return null
     var y = a.y + a.gapTop
-    return { y: y, h: b.y + b.height - y }
+    return { y: y, h: b.y + b.height - b.room - y }
   }
 
   // ------------------------------------------------------------ editing
@@ -1098,7 +1106,9 @@ Item {
         readonly property real firstLine: fm.height
 
         width: column.width
-        height: blank && !field.activeFocus ? Math.round(space * ed.textSize) : gapTop + field.height
+        readonly property real room: index === ed.roomRow ? ed.roomHeight : 0
+        height: (blank && !field.activeFocus ? Math.round(space * ed.textSize) : gapTop + field.height) + room
+        Binding { when: row.index === ed.roomRow; target: ed; property: "roomTop"; value: row.y + row.height - row.room }
 
         // What the field holds, read and written as the body: with emphasis
         // in it the field is rich text (Emph.js), and then its `text` is

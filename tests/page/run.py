@@ -630,11 +630,14 @@ def main() -> int:
         p.call("type", "today in @")
         check(p.wait(lambda: json.loads(p.call("mention")) == ["intsem", "dtm"]),
               f"@ offers the projects ({p.call('mention')})")
+        check(p.wait(lambda: json.loads(p.call("room"))["row"] == p.line_of("today in @")),
+              f"…in room the line opens under it, nothing drawn over ({p.call('room')})")
         p.call("type", "dt")
         check(p.wait(lambda: json.loads(p.call("mention")) == ["dtm"]), f"…narrowing as you type ({p.call('mention')})")
         p.call("mentionPick", 0, "false")
         check(p.wait(lambda: "today in #dtm " in p.call("text")), f"Enter writes its tag where the @ was ({p.call('text')[-30:]!r})")
         check(p.call("mention") == "null", "…and the list is done")
+        check(p.wait(lambda: json.loads(p.call("room"))["row"] == -1), "…and the room it opened closes")
         p.call("enter")
         p.call("type", "@ints")
         check(p.wait(lambda: json.loads(p.call("mention")) == ["intsem"]), "@ at a line's start offers the same")
@@ -728,6 +731,62 @@ def main() -> int:
         check(after == before, f"asking an answered block runs nothing again ({before} → {after})")
         check(json.loads(p.call("panel"))["margin"] is True, "…it opens the conversation instead")
         check(p.call("chatFocused") == "true", "…with the cursor in the box")
+
+        # 11i. a box answered, then ticked, is the same block to its
+        # conversation: found by its words, whatever its box and facts
+        # (2026-10-17). It used to vanish with the tick.
+        q = "- [ ] should I buy a scooter?"
+        qh = blocks.split(q)[0]["hash"]
+        (p.vault / "agents" / "longhand" / "daily" / f"{TODAY}.json").write_text(json.dumps({"blocks": {qh: {
+            "state": "reply", "reply": "What would you use it for?", "read": True, "head": q,
+            "chat": [{"role": "student", "text": "commuting"}, {"role": "agent", "text": "a bike will do"}]}}}))
+        (p.daily / f"{TODAY}.md").write_text(header(TODAY) + q + "\n")
+        p.open_fresh()
+        p.call("cursor", p.offset_of_line(p.line_of("scooter")) + 8)
+        check(p.wait(lambda: p.call("reply") == "What would you use it for?"), "an answered box shows its reply")
+        p.call("tick", p.line_of("scooter"))
+        check(p.wait(lambda: "- [x] should I buy a scooter?" in p.call("text")), "…ticked")
+        check(p.wait(lambda: p.call("reply") == "What would you use it for?") and p.call("askWord") == "reply",
+              f"…and the ticked box still has its conversation ({p.call('reply')!r}, {p.call('askWord')})")
+        check("reply" in p.call("marks"), f"…still marked as answered ({p.call('marks')})")
+        p.call("sendChat", "and in winter?")
+        check(p.wait(lambda: "agent: stub answer to: and in winter?" in p.call("chat"), 8)
+              and "agent: a bike will do" in p.call("chat"),
+              f"…and talking to it carries on the same conversation ({p.call('chat')})")
+        p.call("cursor", p.offset_of_line(p.line_of("scooter")) + len(p.lines()[p.line_of("scooter")]))
+        p.call("insert", " ⏫")
+        p.call("cursor", p.offset_of_line(p.line_of("scooter")) + 8)
+        check(p.wait(lambda: "scooter? ⏫" in p.call("text")) and p.wait(lambda: "agent: a bike will do" in p.call("chat")),
+              f"…a priority set on it leaves it too ({p.lines()[p.line_of('scooter')]!r})")
+        p.call("cursor", p.offset_of_line(p.line_of("scooter")) + len("- [x] should I buy a scooter?"))
+        p.call("insert", " now")
+        p.call("cursor", p.offset_of_line(p.line_of("scooter")) + 8)
+        check(p.wait(lambda: "scooter? now ⏫" in p.call("text")) and p.wait(lambda: p.call("askWord") == "ask"),
+              f"…but other words make it another block ({p.lines()[p.line_of('scooter')]!r})")
+
+        # 11j. what the page shows under a line opens room there: Ctrl+D's
+        # "when?" pushes the next line down rather than covering it, and a
+        # passing word goes to the header's status line (2026-10-17).
+        (p.daily / f"{TODAY}.md").write_text(header(TODAY) + "- [ ] first\n- [ ] second\n")
+        p.open_fresh()
+        a, b = p.line_of("first"), p.line_of("second")
+        p.call("cursor", p.offset_of_line(a) + 6)
+        time.sleep(0.3)
+        before = float(p.call("rowY", b))
+        p.call("ctrlD")
+        check(p.wait(lambda: json.loads(p.call("room"))["row"] == a), f"Ctrl+D opens room under its line ({p.call('room')})")
+        time.sleep(0.3)
+        rm = json.loads(p.call("room"))
+        after = float(p.call("rowY", b))
+        check(after >= before + rm["height"] - 1 and after >= rm["top"] + rm["height"] - 1,
+              f"…and the next line moves below the question ({before} → {after}, {rm})")
+        p.call("closeWhen")
+        check(p.wait(lambda: abs(float(p.call("rowY", b)) - before) < 1), "…and back when it is answered or left")
+        (p.daily / f"{TODAY}.md").write_text(header(TODAY) + "just words\n")
+        p.open_fresh()
+        p.call("cursor", 3)
+        p.call("askNow")
+        check(p.wait(lambda: "nothing to ask here" in p.call("status")), f"a passing word is in the status line ({p.call('status')!r})")
 
         # A run of list items is one submission, but the mark is on the line
         # the student asked from — the whole list lighting up read as the

@@ -102,6 +102,11 @@ ShellRoot {
     // A key as the note's own filter sees it (Qt.Key_*, Qt modifiers).
     function keyPage(key: int, mods: int): bool { return page.pageKey({ key: key, text: "", modifiers: mods }) }
     function ctrlD(): void { page.deadlineKey() }
+    function closeWhen(): void { page.closeWhen() }
+    // Where a row sits, and the room a line has opened under it.
+    function rowY(i: int): real { var it = page.editorItem.rowItem(i); return it ? it.y : -1 }
+    function room(): string { var e = page.editorItem; return JSON.stringify({ row: e.roomRow, top: e.roomTop, height: e.roomHeight }) }
+    function status(): string { return page.status }
     function when(s: string): void { page.whenInput.text = s; page.submitWhen() }
     // Panels
     function sidebar(): void { page.toggleSidebar() }
@@ -140,7 +145,9 @@ ShellRoot {
     function answering(): bool { return page.answering }
     function heldTurn(): string { return JSON.stringify(page.pendingChat) }
     function chatFocused(): bool { return page.marginFocus === page.currentProposals.length }
-    function sendChat(text: string): void { page.pendingChat = { hash: page.currentHash, text: text }; page.requestChat(page.currentHash, text) }
+    function sendChat(text: string): void { page.pendingChat = { hash: page.currentRec, text: text }; page.requestChat(page.currentRec, text, page.currentHash) }
+    function reply(): string { var r = page.currentRecord; return r && r.reply ? r.reply : "" }
+    function askWord(): string { return page.answered(page.currentRecord) ? "reply" : "ask" }
     function insertTag(i: int): void { page.insertTag(page.projects[i]) }
     // The keys sheet, and a key as the page's own filter would get it.
     function keys(): void { page.toggleKeys() }

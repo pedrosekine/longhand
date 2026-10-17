@@ -251,6 +251,27 @@ def main() -> int:
         check(r.returncode == 0 and not (t.stub_dir / "pomo_args.json").exists(), "…so the other item does not add it again")
         t.note.write_text(NOTE)
 
+        # 8b. a box answered, then ticked: the record keeps its words key, and
+        # a chat on it (by the hash it was answered under) still runs and
+        # tells the agent how the block reads now (2026-10-17).
+        t.note.write_text(NOTE + "\n- [ ] should I buy a scooter?\n")
+        q = _hash_of(t, "should I buy a scooter?")
+        t.set_reply(reply="What would you use it for?")
+        r = t.agent("run", "--trigger", "checkbox", "--hash", q, "--date", DAY)
+        rec = json.loads(st.read_text())["blocks"][q]
+        import task as tasklib
+        check(r.returncode == 0 and rec.get("key") == blocks.fnv1a(tasklib.identity("- [x] should I buy a scooter? ✅ 2026-10-17")),
+              f"an answered block keeps the key of its words ({rec.get('key')})")
+        t.note.write_text(NOTE + "\n- [x] should I buy a scooter?\n")
+        t.set_reply(reply="Then a bike will do.")
+        r = t.agent("chat", "--hash", q, "--message", "commuting", "--date", DAY)
+        sent = (t.stub_dir / "argv.json").read_text()
+        rec = json.loads(st.read_text())["blocks"][q]
+        check(r.returncode == 0 and [c["role"] for c in rec.get("chat", [])] == ["student", "agent"],
+              f"a chat on the ticked box continues its conversation ({r.stderr.strip()})")
+        check("The block now reads:\\n\\n- [x] should I buy a scooter?" in sent, "…telling the agent it is ticked now")
+        t.note.write_text(NOTE)
+
         # 9. tasks: open checkboxes across days, today recent, old collapsed
         old = t.daily / f"{OLD_DAY}.md"
         old.write_text("- [ ] ancient task\n- [x] done task\n")
