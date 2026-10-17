@@ -80,7 +80,12 @@ def refresh(url: str, cache: Path, now: float | None = None, max_age: int = MAX_
         with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
             body = r.read()
             if b"BEGIN:VCALENDAR" not in body[:2048]:
-                raise ValueError("not a calendar")
+                # A sign-in page where a calendar should be: the address is
+                # right but the university wants a login for it (IT:U's
+                # redirects to /sso/login, then Microsoft's "Sign in").
+                signin = re.search(r"sso|login|signin|oauth", r.geturl(), re.I) \
+                    or re.search(rb"sign.?in|log.?in", body[:8192], re.I)
+                raise ValueError("asks to sign in" if signin else "not a calendar")
             _write(cache, body)
             meta = {"fetched": now, "source": source, "etag": r.headers.get("ETag", ""),
                     "modified": r.headers.get("Last-Modified", "")}

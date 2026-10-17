@@ -1120,17 +1120,32 @@ Item {
     settingsProc.running = true
   }
 
-  // What the sheet says about the feed, line by line.
+  // What the sheet says about the feed: one headline that answers "is my
+  // timetable in use?" — yes, no, or yes but from an older copy — then what
+  // to do about it, then (only when there is something in use) the courses.
+  // Never "connected" beside "failed" (2026-10-17: that read as both).
   function settingsLines() {
     var st = root.settingsState
     if (!st) return []
     if (!st.configured) return [{ text: "Not connected. Paste your timetable's address — the .ics or webcal:// link from the university portal — and press Enter.", tone: "dim" }]
-    var out = [{ text: "Connected · " + st.address, tone: "fg" }]
-    if (root.settingsBusy) { out.push({ text: "asking the university…", tone: "dim" }); return out }
+    if (root.settingsBusy) return [{ text: st.address + " · asking the university…", tone: "dim" }]
+    var out = []
     var when = st.fetched > 0 ? root.sayAgo(st.fetched) : ""
-    if (st.error !== "") out.push({ text: "The last fetch failed: " + st.error + (st.sessions > 0 ? " · the copy from " + when + " is used" : ""), tone: "urgent" })
-    else if (when !== "") out.push({ text: "Fetched " + when + " · " + (st.sessions === 1 ? "1 session" : st.sessions + " sessions") + " ahead"
-                                     + (st.next ? " · next " + root.sayDate(st.next.replace("T", " ")) : ""), tone: "dim" })
+    var ahead = (st.sessions === 1 ? "1 session" : st.sessions + " sessions") + " ahead"
+      + (st.next ? " · next " + root.sayDate(st.next.replace("T", " ")) : "")
+    if (!st.copy) {
+      out.push({ text: "Not working yet — nothing from " + st.address + " is used.", tone: "urgent" })
+      out.push({ text: root.sayFeedError(st.error), tone: "dim" })
+      out.push({ text: "Until it works, the sidebar uses the session lines in your project notes.", tone: "faint" })
+      return out
+    }
+    if (st.error !== "") {
+      out.push({ text: "In use, from the copy fetched " + when + " · " + ahead, tone: "fg" })
+      out.push({ text: "The latest try did not work: " + root.sayFeedError(st.error), tone: "urgent" })
+    } else {
+      out.push({ text: "Working · " + st.address + " · fetched " + when, tone: "fg" })
+      out.push({ text: ahead, tone: "dim" })
+    }
     var known = [], missing = [], nocode = []
     for (var i = 0; i < (st.courses || []).length; i++) {
       var c = st.courses[i]
@@ -1143,6 +1158,20 @@ Item {
     if (nocode.length > 0) out.push({ text: "No course code to match by: " + nocode.join(", "), tone: "faint" })
     if ((st.other || []).length > 0) out.push({ text: "In it but no project of yours: " + st.other.join(", "), tone: "faint" })
     return out
+  }
+
+  // Why a fetch did not work, in words a student can act on.
+  function sayFeedError(err) {
+    if (err === "asks to sign in")
+      return "The university answered with its sign-in page instead of your timetable, so the link needs a login it cannot give. "
+        + "Look in the portal for a subscribe link or a way to renew the timetable link, and paste the new one here."
+    if (err === "not a calendar")
+      return "The address answered with a web page, not a calendar. Check that you copied the .ics or subscribe link."
+    if (/^HTTP 40[13]$/.test(err)) return "The university refused it (" + err + "): the link may have expired. Make a new one in the portal."
+    if (err === "HTTP 404") return "The university says there is nothing at that address (HTTP 404)."
+    if (/^HTTP /.test(err)) return "The university had a problem (" + err + "). Try again later."
+    if (err === "") return "It has not been fetched yet: " + root.keyName("settingsFetch") + " fetches it now."
+    return "It could not be reached: " + err + "."
   }
 
   function sayAgo(epoch) {

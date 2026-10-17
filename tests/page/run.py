@@ -1068,9 +1068,17 @@ def main() -> int:
 
         class Uni(http.server.BaseHTTPRequestHandler):
             def do_GET(self):
+                # /locked plays IT:U's feed on 2026-10-17: a redirect to its
+                # sign-in, and a sign-in page where the calendar should be.
+                if self.path.startswith("/locked"):
+                    self.send_response(307)
+                    self.send_header("Location", "/sso/login?id=1")
+                    self.end_headers()
+                    return
                 self.send_response(200)
                 self.end_headers()
-                self.wfile.write(feed)
+                self.wfile.write(b"<html><title>Sign in to your account</title></html>"
+                                 if self.path.startswith("/sso") else feed)
 
             def log_message(self, *a):
                 pass
@@ -1092,10 +1100,16 @@ def main() -> int:
         check(p.wait(lambda: any("1 session ahead" in l for l in json.loads(p.call("settingsLines"))), timeout=10),
               f"…is fetched at once, and says what came of it ({p.call('settingsLines')})")
         lines = json.loads(p.call("settingsLines"))
-        check(any(l == f"Connected · 127.0.0.1:{uni.server_port}/…" for l in lines) and "SECRET" not in json.dumps(lines),
-              "…showing where it goes, never its token")
+        check(lines[0].startswith(f"Working · 127.0.0.1:{uni.server_port}/…") and "SECRET" not in json.dumps(lines),
+              f"…one headline saying it works and where it goes, never its token ({lines[0]})")
         check(json.loads(p.call("surfaces")).keys() >= {"settings"} and "sheet" not in json.loads(p.call("surfaces")),
               f"settings takes the sheet's place ({p.call('surfaces')})")
+        p.call("settingsSave", f"http://127.0.0.1:{uni.server_port}/locked.ics?token=SECRET")
+        check(p.wait(lambda: json.loads(p.call("settingsLines"))[0].startswith("Not working yet"), timeout=10),
+              f"a link that lands on a sign-in page says, first, that it is not working ({p.call('settingsLines')})")
+        lines = json.loads(p.call("settingsLines"))
+        check("sign-in page" in lines[1] and not any(l.startswith(("Working", "Connected", "Not in it", "In the timetable")) for l in lines),
+              f"…why, in words, and nothing that reads as success ({lines})")
         check(p.call("settingsKey", KEY_BACKSPACE, CTRL | SHIFT) == "true", "Ctrl+Shift+Backspace is taken")
         check(p.wait(lambda: json.loads(settings_json.read_text()).get("timetable") == ""
                      and any("Not connected" in l for l in json.loads(p.call("settingsLines")))),

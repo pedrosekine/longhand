@@ -1418,7 +1418,10 @@ def cmd_timetable(cfg: dict, args) -> int:
             other.append(e["summary"])
     nxt = next((e for e in events if e["end"] > now), None)
     meta = timetable.meta_of(cache)
-    print(json.dumps({"configured": bool(url), "address": timetable.masked(url), "result": result,
+    # Whether there is anything from this address to use at all: a failed
+    # first fetch leaves none, and then nothing about courses can be said.
+    copy = bool(url) and cache.exists() and meta.get("source") == timetable._source(url)
+    print(json.dumps({"configured": bool(url), "copy": copy, "address": timetable.masked(url), "result": result,
                       "fetched": int(meta.get("fetched", 0)) if url else 0, "error": meta.get("error", "") if url else "",
                       "sessions": sum(1 for e in events if e["end"] > now),
                       "next": nxt["start"].isoformat(timespec="minutes") if nxt else "",

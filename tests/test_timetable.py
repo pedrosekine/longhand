@@ -151,9 +151,12 @@ def main() -> int:
     check(r.startswith("failed") and cache.read_bytes() == FIXED.encode(), f"the university down: the kept copy stays ({r})")
     check("SECRET" not in r and "SECRET" not in (tmp / "state" / "timetable.json").read_text(),
           "the address, which may carry a token, is never written down")
-    Uni.status, Uni.body, Uni.etag = 200, b"<html>login</html>", '"v2"'
+    Uni.status, Uni.body, Uni.etag = 200, b"<html><p>Maintenance</p></html>", '"v2"'
     r = timetable.refresh(url, cache, now=t0 + 9000)
-    check(r.startswith("failed") and cache.read_bytes() == FIXED.encode(), "a page that is not a calendar never replaces it")
+    check(r == "failed: not a calendar" and cache.read_bytes() == FIXED.encode(), f"a page that is not a calendar never replaces it ({r})")
+    Uni.body = b"<html><title>Sign in to your account</title></html>"
+    r = timetable.refresh(url, cache, now=t0 + 9500)
+    check(r == "failed: asks to sign in", f"a sign-in page where the calendar should be is named as one ({r})")
 
     # The sidebar and the agent, through the runner.
     today = dt.date.today()
@@ -224,7 +227,7 @@ def main() -> int:
     settings.write_text(json.dumps({"timetable": other}))
     Uni.status = 404
     st = json.loads(agent("timetable", "--fetch"))
-    check(st["error"] == "HTTP 404" and st["sessions"] == 0,
+    check(st["error"] == "HTTP 404" and st["sessions"] == 0 and st["copy"] is False,
           f"a new address that fails never shows the old one's sessions ({st['error']}, {st['sessions']})")
     pr = {p["tag"]: p for p in json.loads(agent("projects"))}
     check(pr["intsem"]["next"]["room"] == "Stale copy", "…and the sidebar falls back to the knowledge files")

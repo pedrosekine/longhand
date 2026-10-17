@@ -951,3 +951,15 @@ only the window and the panels around it differ.
   foreground while the sidebar is open. Never a sign of the agent or of
   something due (docs/brand/README.md). Clicks are counted as `seal`, so
   whether the mark is found is a number, not a guess.
+- 2026-10-17 (night, last): the first real timetable link, and a message
+  that said two things. IT:U's `ical-stream.php?action=ical&token=…`
+  answered every client (as Google Calendar, Outlook, an iPhone, curl)
+  with a 307 to `/sso/login` and then Microsoft's "Sign in to your
+  account": the token alone does not open it, so nothing was kept — which
+  was right. The sheet said "Connected" in white beside "The last fetch
+  failed" in red, over a list of courses "not in it", and read as success
+  and failure at once. Now it leads with one answer to "is my timetable in
+  use?" — "Working", "Not working yet — nothing from … is used", or "In use,
+  from the copy fetched …" — then why in words a student can act on (a
+  sign-in page is named as one), and says nothing about courses until there
+  is a timetable to say it from. Open: a link IT:U serves without a login.
