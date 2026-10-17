@@ -188,6 +188,14 @@ ShellRoot {
       }))
     }
 
+    // Settings
+    function settings(): void { page.toggleSettings() }
+    function settingsOpen(): bool { return page.settingsOpen }
+    function settingsSave(url: string): void { page.saveTimetable(url) }
+    function settingsKey(key: int, mods: int): bool { return page.settingsKey({ key: key, text: "", modifiers: mods }) }
+    function settingsLines(): string { return JSON.stringify(page.settingsLines().map(function (l) { return l.text })) }
+    function settingsNote(): string { return page.settingsNote }
+
     // The measure
     function zoom(z: real): void { page.setZoom(z) }
     function layout(): string { return JSON.stringify({ chars: page.editorItem.width / page.chWidth, x: page.windowSheetX, w: page.windowSheetWidth }) }

@@ -918,3 +918,17 @@ only the window and the panels around it differ.
   only. The parser reads what a timetable needs and no more (zones, UTC,
   folded lines, weekly and daily rules with their exceptions; all-day and
   cancelled events are not sessions), so no dependency came in.
+- 2026-10-17 (evening): Settings, so the timetable is set in the app. The
+  student asked to paste the feed address in the page rather than a config
+  file, and the reason it is better is feedback: the sheet fetches at once
+  and says what came of it — sessions ahead, the next one, which courses the
+  feed knows, which it does not, which have no course code to match by —
+  where a config file says nothing. It is a sheet like the keys sheet (full
+  width, opened only when asked, `Ctrl+,` and a faint "settings" in the
+  header), with one section, Calendar, so the next setting has a home
+  instead of a debate. What it sets goes to `settings.json` beside the
+  config, the page's own file as `keys.json` is; the runner reads only the
+  keys it allows from it (`SETTABLE`), so a file the page writes can never
+  move the vault. Once saved, the address is shown as where it goes
+  (`host/…`), never with its token; changing it drops the copy fetched from
+  the old one, and removing it drops the copy too.

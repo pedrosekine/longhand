@@ -15,6 +15,7 @@ Where a row has two keys, either works: the second is usually the one another ap
 | Zoom out | `Ctrl+-` · `Ctrl+_` | anywhere in the page |
 | Zoom back to 100% | `Ctrl+0` | anywhere in the page |
 | Show these keys | `Ctrl+/` | anywhere in the page |
+| Settings (the timetable) | `Ctrl+,` | anywhere in the page |
 | Close the overlay | `Esc` | in the note |
 | Flip between overlay and window | `F11` · `Ctrl+Alt+P` | in the note |
 | Make the note private (the agent sees nothing) | `Ctrl+Shift+P` | in the note |
@@ -138,6 +139,13 @@ Where a row has two keys, either works: the second is usually the one another ap
 | Do what the proposal says | `Enter` · `Space` | in the margin |
 | Send what you wrote | `Enter` | in the conversation box |
 | Back to the note | `Esc` · `Alt+←` | in the margin, in the conversation box |
+
+## Settings
+
+| | Keys | Works |
+|---|---|---|
+| Fetch the timetable now | `Ctrl+R` | in settings |
+| Remove the timetable's address | `Ctrl+Shift+Backspace` | in settings |
 
 ## Typing (the text field's own, not changeable)
 

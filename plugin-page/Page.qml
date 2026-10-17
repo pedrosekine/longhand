@@ -211,7 +211,7 @@ Item {
   // The dashboard and the keys sheet are lists, so they take the width the
   // sheet does not use — but never the sidebar's: in the window it is
   // drawn at the left edge, on the overlay beside them.
-  readonly property bool wideOpen: root.dashOpen || root.keysOpen
+  readonly property bool wideOpen: root.dashOpen || root.keysOpen || root.settingsOpen
   readonly property int wideX: root.sideSpace + (root.alongside ? 0 : root.sheetMargin)
   readonly property int wideWidth: (root.alongside ? content.width : content.width - root.sheetMargin * 2) - root.sideSpace
   readonly property int sheetPadding: alongside ? root.sp(28) : root.sp(44)
@@ -348,6 +348,16 @@ Item {
   property var keysListen: null      // { id, add } while waiting for the new key
   property string keysTake: ""       // a key another action has, pressed once
   property string keysNote: ""       // what just happened, or why not
+
+  // Settings (Ctrl+, or "settings" in the header): what the page lets you
+  // set without editing a file — the timetable's address, for now. Written
+  // to settings.json beside config.json (the page's own, as keys.json is);
+  // the runner reads the keys it allows from it over the config.
+  property bool settingsOpen: false
+  property var settingsState: null     // `longhand-agent timetable`, as JSON
+  property bool settingsBusy: false    // the runner is asking the university
+  property string settingsNote: ""     // what just happened, or why not
+  property var settingsPending: null   // the runner's flags, once the file is written
   property var hyprKeys: null        // Hyprland's keys for the page: hyprkeys.py's state
   property bool keysAdopt: false     // Enter pressed once on "let the page keep these keys"
   readonly property var keyRows: { root.keysVersion; return Sc.rows(root.keysFilter, root.hyprKeys) }
@@ -514,6 +524,7 @@ Item {
     if (Sc.hit(event, "zoomOut")) { root.zoomBy(-1); return true }
     if (Sc.hit(event, "zoomReset")) { root.setZoom(1); return true }
     if (Sc.hit(event, "keys")) { root.toggleKeys(); return true }
+    if (Sc.hit(event, "settings")) { root.toggleSettings(); return true }
     return false
   }
 
@@ -527,6 +538,7 @@ Item {
   // (if open) stays and gets the sheet back.
   function close() {
     if (root.keysOpen) root.toggleKeys()
+    if (root.settingsOpen) root.toggleSettings()
     root.leftLine(root.lastLine)
     root.flush()
     root.overlayOpen = false
@@ -1019,6 +1031,7 @@ Item {
   // deadlines are listed too; once the student lets the page keep them
   // (one row, Enter twice), they move like the rest, through hyprkeys.py.
   function toggleKeys() {
+    if (!root.keysOpen && root.settingsOpen) root.toggleSettings()
     root.keysOpen = !root.keysOpen
     root.stopListening()
     root.keysNote = ""
@@ -1035,11 +1048,116 @@ Item {
     }
   }
 
+  // Settings: one sheet, one section so far. Opening it reads the
+  // timetable's state (no fetch); Enter in the field saves an address and
+  // fetches at once, so whether it worked is seen, not hoped for.
+  function toggleSettings() {
+    if (!root.settingsOpen && root.keysOpen) root.toggleKeys()
+    root.settingsOpen = !root.settingsOpen
+    root.settingsNote = ""
+    if (root.settingsOpen) {
+      root.used("settings")
+      settingsField.text = ""
+      root.runTimetable([])
+      Qt.callLater(settingsField.forceActiveFocus)
+    } else if (root.dashOpen) {
+      dashKeys.forceActiveFocus()
+    } else {
+      editor.focusNote()
+    }
+  }
+
+  function settingsKey(event) {
+    if (root.anywhereKey(event)) return true
+    var seq = Sc.fromEvent(event)
+    if (seq === "Esc") { root.toggleSettings(); return true }
+    if (seq === "Enter") { root.saveTimetable(settingsField.text); return true }
+    if (Sc.hit(event, "settingsFetch")) { root.fetchTimetable(); return true }
+    if (Sc.hit(event, "settingsForget")) { root.forgetTimetable(); return true }
+    return false
+  }
+
+  // An address as calendars hand them out: https, http or webcal.
+  function saveTimetable(text) {
+    var url = String(text || "").trim()
+    if (url === "") { root.settingsNote = "paste the address first"; return }
+    if (!/^(https?|webcal):\/\/\S+$/i.test(url)) {
+      root.settingsNote = "that is not a calendar address: it starts with https:// or webcal://"
+      return
+    }
+    root.writeSetting("timetable", url, ["--fetch"])
+    settingsField.text = ""
+    root.settingsNote = ""
+    root.used("timetable", "saved")
+  }
+
+  function fetchTimetable() {
+    if (!root.settingsState || !root.settingsState.configured) { root.settingsNote = "no address to fetch yet"; return }
+    root.runTimetable(["--fetch"])
+  }
+
+  function forgetTimetable() {
+    if (!root.settingsState || !root.settingsState.configured) return
+    root.writeSetting("timetable", "", ["--forget"])
+    root.settingsNote = "removed: the sidebar goes back to the sessions in your project notes"
+    root.used("timetable", "removed")
+  }
+
+  // settings.json is merged, never replaced: one key changes at a time.
+  // The runner is asked only once the file is written (onSaved).
+  function writeSetting(key, value, then) {
+    var cur = {}
+    try { cur = JSON.parse(settingsFile.text()) || {} } catch (e) { cur = {} }
+    cur[key] = value
+    root.settingsPending = then
+    settingsFile.setText(JSON.stringify(cur, null, 2) + "\n")
+  }
+
+  function runTimetable(flags) {
+    if (settingsProc.running) return
+    root.settingsBusy = flags.indexOf("--fetch") >= 0
+    settingsProc.command = [svc.runner, "timetable"].concat(flags)
+    settingsProc.running = true
+  }
+
+  // What the sheet says about the feed, line by line.
+  function settingsLines() {
+    var st = root.settingsState
+    if (!st) return []
+    if (!st.configured) return [{ text: "Not connected. Paste your timetable's address — the .ics or webcal:// link from the university portal — and press Enter.", tone: "dim" }]
+    var out = [{ text: "Connected · " + st.address, tone: "fg" }]
+    if (root.settingsBusy) { out.push({ text: "asking the university…", tone: "dim" }); return out }
+    var when = st.fetched > 0 ? root.sayAgo(st.fetched) : ""
+    if (st.error !== "") out.push({ text: "The last fetch failed: " + st.error + (st.sessions > 0 ? " · the copy from " + when + " is used" : ""), tone: "urgent" })
+    else if (when !== "") out.push({ text: "Fetched " + when + " · " + (st.sessions === 1 ? "1 session" : st.sessions + " sessions") + " ahead"
+                                     + (st.next ? " · next " + root.sayDate(st.next.replace("T", " ")) : ""), tone: "dim" })
+    var known = [], missing = [], nocode = []
+    for (var i = 0; i < (st.courses || []).length; i++) {
+      var c = st.courses[i]
+      if (c.code === "") nocode.push(c.name)
+      else if (c.sessions > 0) known.push(c.name + " (" + c.sessions + ")")
+      else missing.push(c.name)
+    }
+    if (known.length > 0) out.push({ text: "In the timetable: " + known.join(", "), tone: "dim" })
+    if (missing.length > 0) out.push({ text: "Not in it: " + missing.join(", ") + " — their own session lines are used", tone: "dim" })
+    if (nocode.length > 0) out.push({ text: "No course code to match by: " + nocode.join(", "), tone: "faint" })
+    if ((st.other || []).length > 0) out.push({ text: "In it but no project of yours: " + st.other.join(", "), tone: "faint" })
+    return out
+  }
+
+  function sayAgo(epoch) {
+    var s = Math.max(0, Math.round(Date.now() / 1000 - epoch))
+    if (s < 60) return "just now"
+    if (s < 3600) return Math.round(s / 60) + " min ago"
+    if (s < 86400) return Math.round(s / 3600) + " h ago"
+    return Qt.formatDate(new Date(epoch * 1000), "ddd d MMM")
+  }
+
   // Where each surface is drawn, for tests/page/run.py to check that none
   // sits on another.
   function surfaces() {
     var out = {}
-    var items = { sheet: sheet, dash: dash, keys: keysSheet, sidebar: sidebar, margin: margin }
+    var items = { sheet: sheet, dash: dash, keys: keysSheet, settings: settingsSheet, sidebar: sidebar, margin: margin }
     for (var n in items) {
       var it = items[n]
       if (it.visible) out[n] = { x: Math.round(it.x), w: Math.round(it.width) }
@@ -2916,6 +3034,34 @@ Item {
     onFileChanged: reload()
   }
 
+  // settings.json: what the Settings sheet set. The page's own file, as
+  // keys.json is; the runner reads only the keys it allows from it.
+  FileView {
+    id: settingsFile
+    path: (Quickshell.env("XDG_CONFIG_HOME") || Quickshell.env("HOME") + "/.config") + "/longhand/settings.json"
+    blockLoading: true
+    atomicWrites: true
+    printErrors: false
+    onSaved: {
+      var then = root.settingsPending
+      root.settingsPending = null
+      if (then) root.runTimetable(then)
+    }
+    onSaveFailed: function (err) { root.settingsNote = "could not write settings.json: " + FileViewError.toString(err) }
+  }
+
+  Process {
+    id: settingsProc
+    stdout: StdioCollector {
+      onStreamFinished: {
+        try { root.settingsState = JSON.parse(text) } catch (e) { root.settingsNote = "the runner did not answer" }
+        root.settingsBusy = false
+        root.refreshProjects()
+      }
+    }
+    stderr: StdioCollector { onStreamFinished: if (text.trim() !== "") console.warn("longhand.page timetable: " + text.trim()) }
+  }
+
   Process {
     id: hyprProc
     property string kind: ""          // state, adopt or set
@@ -3032,7 +3178,7 @@ Item {
     // it gets the width the window has.
     BorderSurface {
       id: dash
-      visible: root.dashOpen && !root.keysOpen
+      visible: root.dashOpen && !root.keysOpen && !root.settingsOpen
       x: root.wideX
       y: root.alongside ? 0 : root.sheetMargin
       width: root.wideWidth
@@ -3441,6 +3587,165 @@ Item {
       }
     }
 
+    // Settings (Ctrl+, or "settings" in the header): drawn like the keys
+    // sheet, in the same column, with one section so far — the timetable.
+    BorderSurface {
+      id: settingsSheet
+      visible: root.settingsOpen
+      x: root.wideX
+      y: root.alongside ? 0 : root.sheetMargin
+      width: root.wideWidth
+      height: root.alongside ? content.height : content.height - root.sheetMargin * 2
+      radius: root.alongside ? 0 : Style.cornerRadius
+      color: root.background
+      borderSpec: root.alongside ? Border.none() : root.borderSpec
+      padding: root.sheetPadding
+
+      MouseArea { anchors.fill: parent; onClicked: settingsField.forceActiveFocus() }
+
+      Item {
+        anchors.fill: parent
+        anchors.topMargin: settingsSheet.contentTopInset
+        anchors.rightMargin: settingsSheet.contentRightInset
+        anchors.bottomMargin: settingsSheet.contentBottomInset
+        anchors.leftMargin: settingsSheet.contentLeftInset
+
+        Item {
+          id: settingsColumn
+          width: Math.min(parent.width, Math.round(root.measure * 1.45))
+          x: Math.round((parent.width - width) / 2)
+          height: parent.height
+
+          Text {
+            id: settingsTitle
+            anchors.top: parent.top
+            anchors.left: parent.left
+            textFormat: Text.PlainText
+            text: "SETTINGS"
+            color: root.dim
+            font.family: root.fontFamily
+            font.styleName: root.fontStyle
+            font.pixelSize: root.fs(Style.font.caption)
+          }
+
+          Column {
+            anchors.top: settingsTitle.bottom
+            anchors.topMargin: root.sp(30)
+            anchors.left: parent.left
+            anchors.right: parent.right
+            spacing: root.sp(8)
+
+            // A section: drawn like a band in the dashboard.
+            Text {
+              textFormat: Text.PlainText
+              text: "Calendar"
+              color: pal.headings.length > 0 ? pal.headings[0] : root.accent
+              font.family: root.fontFamily
+              font.styleName: root.fontStyle
+              font.pixelSize: root.fs(Style.font.body)
+            }
+
+            Text {
+              width: parent.width
+              textFormat: Text.PlainText
+              wrapMode: Text.WordWrap
+              text: "Your university timetable. The sidebar's next session and what the agent knows of your week follow it. "
+                + "It is fetched when the sidebar opens, at most once an hour, and the address stays on this machine."
+              color: root.faint
+              font.family: root.fontFamily
+              font.styleName: root.fontStyle
+              font.pixelSize: root.fs(Style.font.bodySmall)
+            }
+
+            Item { width: 1; height: root.sp(4) }
+
+            TextField {
+              id: settingsField
+              width: parent.width
+              placeholderText: root.settingsState && root.settingsState.configured
+                ? "paste a new address to replace it" : "https://…  or  webcal://…"
+              font.family: root.fontFamily
+              font.styleName: root.fontStyle
+              font.pixelSize: root.fs(Style.font.body)
+              foreground: root.foreground
+              Keys.priority: Keys.BeforeItem
+              Keys.onPressed: function (event) { if (root.settingsKey(event)) event.accepted = true }
+            }
+
+            Item { width: 1; height: root.sp(4) }
+
+            Repeater {
+              model: root.settingsLines()
+              Text {
+                required property var modelData
+                width: parent.width
+                textFormat: Text.PlainText
+                wrapMode: Text.WordWrap
+                text: modelData.text
+                color: modelData.tone === "urgent" ? root.urgent : modelData.tone === "fg" ? root.foreground
+                  : modelData.tone === "faint" ? root.faint : root.dim
+                font.family: root.fontFamily
+                font.styleName: root.fontStyle
+                font.pixelSize: root.fs(Style.font.bodySmall)
+              }
+            }
+
+            // The two things to do once connected, for the mouse too.
+            Row {
+              visible: !!root.settingsState && root.settingsState.configured && !root.settingsBusy
+              spacing: root.sp(16)
+              Repeater {
+                model: [{ text: "fetch now", act: "settingsFetch" }, { text: "remove", act: "settingsForget" }]
+                Text {
+                  required property var modelData
+                  textFormat: Text.PlainText
+                  text: modelData.text
+                  color: actArea.containsMouse ? root.accent : root.dim
+                  font.family: root.fontFamily
+                  font.styleName: root.fontStyle
+                  font.pixelSize: root.fs(Style.font.bodySmall)
+                  MouseArea {
+                    id: actArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: modelData.act === "settingsFetch" ? root.fetchTimetable() : root.forgetTimetable()
+                    PanelToolTip { visible: parent.containsMouse; text: root.tip(modelData.text, modelData.act) }
+                  }
+                }
+              }
+            }
+
+            Text {
+              visible: root.settingsNote !== ""
+              width: parent.width
+              textFormat: Text.PlainText
+              wrapMode: Text.WordWrap
+              text: root.settingsNote
+              color: root.accent
+              font.family: root.fontFamily
+              font.styleName: root.fontStyle
+              font.pixelSize: root.fs(Style.font.bodySmall)
+            }
+          }
+
+          Text {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
+            text: "Enter saves and fetches · " + root.keyName("settingsFetch") + " fetches again · "
+              + root.keyName("settingsForget") + " removes it · Esc back"
+            color: root.faint
+            font.family: root.fontFamily
+            font.styleName: root.fontStyle
+            font.pixelSize: root.fs(Style.font.caption)
+          }
+        }
+      }
+    }
+
     // The keys sheet (Ctrl+/, or "keys" in the header): every key the page
     // answers to, under where it works, each one movable. A list, so it
     // takes the dashboard's shape rather than the note's measure.
@@ -3690,7 +3995,7 @@ Item {
 
     BorderSurface {
       id: sheet
-      visible: !root.dashOpen && !root.keysOpen
+      visible: !root.dashOpen && !root.keysOpen && !root.settingsOpen
       x: root.alongside ? root.windowSheetX : Math.max(Math.round((content.width - width) / 2), root.sideSpace > 0 ? root.sideSpace + root.sheetMargin : 0)
       y: root.alongside ? 0 : root.sheetMargin
       width: root.alongside ? root.windowSheetWidth : root.sheetWidth
@@ -3817,6 +4122,26 @@ Item {
                 cursorShape: Qt.PointingHandCursor
                 onClicked: root.toggleKeys()
                 PanelToolTip { visible: parent.containsMouse; text: root.tip("Every key the page answers to, and moving one", "keys") }
+              }
+            }
+
+            // Settings, beside the keys and as quiet.
+            Text {
+              anchors.verticalCenter: parent.verticalCenter
+              textFormat: Text.PlainText
+              text: "settings"
+              color: settingsArea.containsMouse ? root.accent : root.faint
+              font.family: root.fontFamily
+              font.styleName: root.fontStyle
+              font.pixelSize: root.fs(Style.font.bodySmall)
+              Behavior on color { ColorAnimation { duration: 240 } }
+              MouseArea {
+                id: settingsArea
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.toggleSettings()
+                PanelToolTip { visible: parent.containsMouse; text: root.tip("Settings: your timetable", "settings") }
               }
             }
 

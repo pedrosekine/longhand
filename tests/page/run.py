@@ -111,7 +111,7 @@ class Page:
         chatstub.write_text(CHAT_STUB)
         self.runner.write_text(f"""#!/bin/bash
 case "$1" in
-  accept|projects|sections|next|tasks|box) exec "{ROOT}/agent/longhand-agent" "$@" ;;
+  accept|projects|sections|next|tasks|box|timetable) exec "{ROOT}/agent/longhand-agent" "$@" ;;
   run) sleep 2; exit 0 ;;
   chat) sleep 2; exec python3 "{chatstub}" "{self.vault}/agents/longhand/daily" "$@" ;;
 esac
@@ -1048,6 +1048,52 @@ def main() -> int:
         check(p.wait(lambda: p.deadline(lab)["grade"] == "7.5"), f"g grades it ({p.deadline(lab)})")
         p.pomo("hide", str(late))
         p.call("dash")
+
+        # 12d. Settings → Calendar (2026-10-17): the timetable's address
+        # pasted in the page, saved to settings.json, fetched at once, and
+        # what came of it said — never the address itself.
+        import http.server, threading
+        soon = dt.date.today() + dt.timedelta(days=2)
+        feed = ("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:s1\r\n"
+                f"DTSTART:{soon:%Y%m%d}T090000\r\nDTEND:{soon:%Y%m%d}T103000\r\n"
+                "SUMMARY:A seminar\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n").encode()
+
+        class Uni(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(feed)
+
+            def log_message(self, *a):
+                pass
+
+        uni = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Uni)
+        threading.Thread(target=uni.serve_forever, daemon=True).start()
+        settings_json = p.tmp / "config" / "longhand" / "settings.json"
+        KEY_COMMA, KEY_BACKSPACE = 0x2c, 0x01000003
+        check(p.call("pageKey", KEY_COMMA, CTRL) == "true" and p.call("settingsOpen") == "true", "Ctrl+, opens settings")
+        check(p.wait(lambda: any("Not connected" in l for l in json.loads(p.call("settingsLines")))),
+              f"…which says the timetable is not connected yet ({p.call('settingsLines')})")
+        p.call("settingsSave", "not a link")
+        check("not a calendar address" in p.call("settingsNote") and not settings_json.exists(),
+              "something that is not an address is refused, and nothing is written")
+        url = f"http://127.0.0.1:{uni.server_port}/feed.ics?token=SECRET"
+        p.call("settingsSave", url)
+        check(p.wait(lambda: settings_json.exists() and json.loads(settings_json.read_text()).get("timetable") == url),
+              "an address saved goes to settings.json, beside the config")
+        check(p.wait(lambda: any("1 session ahead" in l for l in json.loads(p.call("settingsLines"))), timeout=10),
+              f"…is fetched at once, and says what came of it ({p.call('settingsLines')})")
+        lines = json.loads(p.call("settingsLines"))
+        check(any(l == f"Connected · 127.0.0.1:{uni.server_port}/…" for l in lines) and "SECRET" not in json.dumps(lines),
+              "…showing where it goes, never its token")
+        check(json.loads(p.call("surfaces")).keys() >= {"settings"} and "sheet" not in json.loads(p.call("surfaces")),
+              f"settings takes the sheet's place ({p.call('surfaces')})")
+        check(p.call("settingsKey", KEY_BACKSPACE, CTRL | SHIFT) == "true", "Ctrl+Shift+Backspace is taken")
+        check(p.wait(lambda: json.loads(settings_json.read_text()).get("timetable") == ""
+                     and any("Not connected" in l for l in json.loads(p.call("settingsLines")))),
+              "…and removes the address")
+        check(p.call("settingsKey", 0x01000000, 0) == "true" and p.call("settingsOpen") == "false", "Esc goes back")
+        uni.shutdown()
 
         # 12b. the keys sheet: every key the page answers to, listed; one
         # moved through the sheet, kept in keys.json, and working in the note

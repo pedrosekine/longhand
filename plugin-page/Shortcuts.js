@@ -30,9 +30,10 @@ var places = {
   calendar: "in the calendar",
   lists: "in the sidebar's lists",
   margin: "in the margin",
-  chat: "in the conversation box"
+  chat: "in the conversation box",
+  settings: "in settings"
 }
-var typing = { note: true, mention: true, search: true, chat: true }
+var typing = { note: true, mention: true, search: true, chat: true, settings: true }
 
 var groups = [
   { id: "page", title: "The page" },
@@ -45,6 +46,7 @@ var groups = [
   { id: "calendar", title: "Calendar" },
   { id: "lists", title: "Deadlines, projects and sections in the sidebar" },
   { id: "margin", title: "The margin" },
+  { id: "settings", title: "Settings" },
   { id: "typing", title: "Typing (the text field's own, not changeable)" },
   { id: "system", title: "Outside the page (Hyprland)" }
 ]
@@ -54,6 +56,7 @@ var actions = [
   { id: "zoomOut", group: "page", places: ["any"], does: "Zoom out", keys: ["Ctrl+-", "Ctrl+_"] },
   { id: "zoomReset", group: "page", places: ["any"], does: "Zoom back to 100%", keys: ["Ctrl+0"] },
   { id: "keys", group: "page", places: ["any"], does: "Show these keys", keys: ["Ctrl+/"] },
+  { id: "settings", group: "page", places: ["any"], does: "Settings (the timetable)", keys: ["Ctrl+,"] },
   { id: "close", group: "page", places: ["note"], does: "Close the overlay", keys: ["Esc"] },
   // F11 is every app's full-screen key, and the overlay is the full-screen
   // shape; Ctrl+Alt+P for keyboards whose F-row wants Fn. Ctrl+P is left
@@ -126,6 +129,8 @@ var actions = [
   { id: "dashShelve", group: "dash", places: ["dash"], does: "Not now: put it aside (again: back)", keys: ["S"] },
   { id: "dashKeep", group: "dash", places: ["dash"], does: "Keep it: its clock starts again", keys: ["R"] },
   { id: "dashGrade", group: "dash", places: ["dash"], does: "Grade a deadline", keys: ["G"] },
+  { id: "settingsFetch", group: "settings", places: ["settings"], does: "Fetch the timetable now", keys: ["Ctrl+R"] },
+  { id: "settingsForget", group: "settings", places: ["settings"], does: "Remove the timetable's address", keys: ["Ctrl+Shift+Backspace"] },
   { id: "dashUndo", group: "dash", places: ["dash"], does: "Take the last tick back", keys: ["Ctrl+Z"] },
   { id: "dashBack", group: "dash", places: ["dash"], does: "Back to the note", keys: ["Esc"] },
 

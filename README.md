@@ -28,6 +28,10 @@ Status: in daily use by its author through the semester; installable by
 others, though setup is still manual. Design notes in `docs/diary.md`, the
 build log in `docs/plan.md`.
 
+Logo placement, exports, and theme integration: read the
+[logo source of truth](docs/brand/README.md). It identifies the active A2 seal,
+canonical assets, and historical studies.
+
 ## Install
 
 Needs Omarchy (for `omarchy-shell`) and [opencode](https://opencode.ai) with
@@ -161,9 +165,10 @@ down, as in VS Code;
 it through `pomo`), then the chat — `Alt+Left` or `Esc` comes back. Drop
 course material into `agents/longhand/curriculum/` and run
 `longhand-agent curriculum` once for PDFs. List your `languages` in the config; the agent answers in the one the
-block is written in. Put your university's `.ics` timetable address in the config as `timetable` and the
-sidebar's next session, and what the agent knows of your week, follow it (fetched when the sidebar opens, at
-most hourly; the address stays local). Needs `~/.config/longhand/config.json` (copy
+block is written in. Paste your university's `.ics` (or `webcal://`) timetable address
+into **Settings → Calendar** (`Ctrl+,`, or "settings" in the header) and the sidebar's next session, and what
+the agent knows of your week, follow it — the sheet fetches it at once and says which courses it found. After
+that it is fetched when the sidebar opens, at most hourly; the address stays in `settings.json` on your machine. Needs `~/.config/longhand/config.json` (copy
 `config.example.json`) pointing at your vault; the note lives at
 `<vault>/<daily.dir>/<date>.md` exactly where Obsidian's daily notes would.
 

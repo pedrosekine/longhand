@@ -23,6 +23,7 @@ INTERVAL, COUNT, UNTIL, BYDAY, EXDATE). All-day events are not sessions.
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import json
 import os
 import re
@@ -41,7 +42,7 @@ DAYS = {"MO": 0, "TU": 1, "WE": 2, "TH": 3, "FR": 4, "SA": 5, "SU": 6}
 
 # ------------------------------------------------------------------ fetch
 
-def _meta(cache: Path) -> dict:
+def meta_of(cache: Path) -> dict:
     try:
         return json.loads(cache.with_suffix(".json").read_text())
     except (OSError, ValueError):
@@ -59,7 +60,13 @@ def refresh(url: str, cache: Path, now: float | None = None, max_age: int = MAX_
     what happened: "fresh", "unchanged", "fetched", or "failed: …" — in
     which case the copy kept is used as it is."""
     now = now if now is not None else time.time()
-    meta = _meta(cache)
+    meta = meta_of(cache)
+    # A copy from another address is no copy: the address was changed.
+    source = _source(url)
+    url = http_url(url)
+    if meta.get("source") != source:
+        forget(cache)
+        meta = {}
     if cache.exists() and now - meta.get("fetched", 0) < max_age:
         return "fresh"
     req = urllib.request.Request(url, headers={"User-Agent": "longhand"})
@@ -75,10 +82,11 @@ def refresh(url: str, cache: Path, now: float | None = None, max_age: int = MAX_
             if b"BEGIN:VCALENDAR" not in body[:2048]:
                 raise ValueError("not a calendar")
             _write(cache, body)
-            meta = {"fetched": now, "etag": r.headers.get("ETag", ""),
+            meta = {"fetched": now, "source": source, "etag": r.headers.get("ETag", ""),
                     "modified": r.headers.get("Last-Modified", "")}
             what = "fetched"
     except urllib.error.HTTPError as e:
+        meta["source"] = source
         if e.code != 304:
             meta["error"] = f"HTTP {e.code}"
             _write(cache.with_suffix(".json"), json.dumps(meta).encode())
@@ -88,12 +96,52 @@ def refresh(url: str, cache: Path, now: float | None = None, max_age: int = MAX_
         what = "unchanged"
     except (OSError, ValueError) as e:
         # Never the address: it may carry a token.
-        reason = type(e).__name__ if not isinstance(e, ValueError) else str(e)
+        reason = _reason(e)
+        meta["source"] = source
         meta["error"] = reason
         _write(cache.with_suffix(".json"), json.dumps(meta).encode())
         return f"failed: {reason}"
     _write(cache.with_suffix(".json"), json.dumps(meta).encode())
     return what
+
+
+def _source(url: str) -> str:
+    """Which address a copy came from, without keeping the address."""
+    return hashlib.sha256(url.encode()).hexdigest()[:16]
+
+
+def _reason(e: Exception) -> str:
+    """Why a fetch failed, in words, and never with the address in them."""
+    if isinstance(e, ValueError):
+        return str(e)
+    r = getattr(e, "reason", None)
+    if isinstance(r, TimeoutError) or isinstance(e, TimeoutError):
+        return "the university did not answer"
+    if isinstance(r, OSError) and getattr(r, "errno", None) in (-2, -3, -5):
+        return "no such address (or no network)"
+    if isinstance(r, ConnectionRefusedError):
+        return "the connection was refused"
+    return type(r).__name__ if r is not None else type(e).__name__
+
+
+def http_url(url: str) -> str:
+    """webcal://, as calendar apps hand feeds out, is https underneath."""
+    return "https://" + url[len("webcal://"):] if url.lower().startswith("webcal://") else url
+
+
+def forget(cache: Path) -> None:
+    for p in (cache, cache.with_suffix(".json")):
+        try:
+            p.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def masked(url: str) -> str:
+    """An address as the Settings sheet shows it once saved: where it goes,
+    not the token it may carry."""
+    m = re.match(r"^\w+://([^/?#]+)", url or "")
+    return (m.group(1) + "/…") if m else ""
 
 
 # ------------------------------------------------------------------ parse
@@ -242,6 +290,8 @@ def sessions(cfg: dict, state_home: Path, fetch: bool = True) -> list[dict] | No
     if not url:
         return None
     cache = cache_path(state_home)
+    if not fetch and meta_of(cache).get("source") != _source(url):
+        return None      # a copy from another address, or none yet
     if fetch:
         refresh(url, cache)
     try:

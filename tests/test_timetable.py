@@ -198,6 +198,50 @@ def main() -> int:
     agent("context", "--trigger", "open")
     check(len(Uni.hits) == hits, "a pass never fetches: it reads the copy kept")
 
+    # The Settings sheet: the address in settings.json, the page's own file,
+    # read over the config; and what the sheet is told.
+    cfg.write_text(json.dumps(base))
+    settings = cfg.with_name("settings.json")
+    settings.write_text(json.dumps({"timetable": url, "vault": "/somewhere/else"}))
+    st = json.loads(agent("timetable", "--fetch"))
+    check(st["configured"] and st["result"] in ("fetched", "unchanged") and st["sessions"] == 2,
+          f"an address saved in the sheet is read, and fetched on asking ({st['result']}, {st['sessions']})")
+    check(st["address"] == f"127.0.0.1:{server.server_port}/…" and "SECRET" not in json.dumps(st),
+          f"the sheet is shown where it goes, not its token ({st['address']})")
+    sem = next(c for c in st["courses"] if c["name"] == "Interdisciplinary Seminar")
+    check(sem["sessions"] == 1 and any(c["name"] == "Thesis" and c["code"] == "" for c in st["courses"]),
+          "it says which courses the feed knows, and which have no code to match by")
+    check(st["other"] == ["Something else entirely"], "…and the sessions it could not name")
+    pr = {p["tag"]: p for p in json.loads(agent("projects"))}
+    check(pr["intsem"]["next"]["room"] == "Bronze", "the sidebar follows it")
+    check(json.loads(agent("timetable"))["result"] == "", "without --fetch, nothing is fetched")
+    hits = len(Uni.hits)
+    st = json.loads(agent("timetable"))
+    check(len(Uni.hits) == hits, "…not even once")
+
+    # Another address: the old copy is no copy.
+    other = url.replace("feed.ics", "other.ics")
+    settings.write_text(json.dumps({"timetable": other}))
+    Uni.status = 404
+    st = json.loads(agent("timetable", "--fetch"))
+    check(st["error"] == "HTTP 404" and st["sessions"] == 0,
+          f"a new address that fails never shows the old one's sessions ({st['error']}, {st['sessions']})")
+    pr = {p["tag"]: p for p in json.loads(agent("projects"))}
+    check(pr["intsem"]["next"]["room"] == "Stale copy", "…and the sidebar falls back to the knowledge files")
+    Uni.status = 200
+    check(timetable.http_url("webcal://uni.example/f.ics?t=1") == "https://uni.example/f.ics?t=1"
+          and timetable.http_url("https://uni.example/f.ics") == "https://uni.example/f.ics",
+          "a webcal:// address, as calendars hand them out, is fetched over https")
+    settings.write_text(json.dumps({"timetable": url}))
+    st = json.loads(agent("timetable", "--fetch"))
+    check(st["sessions"] == 2 and st["error"] == "", "the first address again: fetched afresh")
+
+    # Removed: no address, no copy.
+    settings.write_text(json.dumps({"timetable": ""}))
+    st = json.loads(agent("timetable", "--forget"))
+    check(not st["configured"] and not (tmp / "xdg" / "longhand" / "timetable.ics").exists(),
+          "removing the address drops the copy")
+
     server.shutdown()
     print("PASS" if failures == 0 else f"{failures} FAILED")
     return 1 if failures else 0
