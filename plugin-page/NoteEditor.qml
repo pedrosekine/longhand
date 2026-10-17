@@ -42,6 +42,11 @@ Item {
   // Drawn while the mouse is on a checkbox: the page's hint, naming the
   // key that does the same (an Item; the editor knows nothing of tooltips).
   property Component boxTip: null
+  // Who made each box and bullet (docs/agent.md): line index -> "agent" or
+  // "together"; a line not in it is the person's. Drawn in the box or dot
+  // itself — ◇ the agent's, the seal made together — so nothing is added
+  // to the line.
+  property var authors: ({})
 
   // The line being written: its text after the last keystroke in it. A
   // checkbox there that ends in a date has it lit up and its pill shown,
@@ -1117,6 +1122,7 @@ Item {
 
         property alias field: field
         property alias box: box
+        readonly property string author: ed.authors[row.index] || ""
         readonly property bool listy: kind === "task" || kind === "bullet" || kind === "ordered"
         readonly property bool quoted: kind === "quote" || kind === "calloutHead"
         // A date being written at the end of this checkbox: lit up, its
@@ -1204,9 +1210,36 @@ Item {
           width: size
           height: size
           radius: Math.max(2, Math.round(size * 0.22))
-          color: row.checked ? ed.checkColor : "transparent"
-          border.width: row.checked ? 0 : Math.max(1, Math.round(ed.textSize * 0.08))
+          // The person's box is this square; the agent's and the shared one
+          // draw their own shape inside it, and the square gives way.
+          color: row.checked && row.author === "" ? ed.checkColor : "transparent"
+          border.width: row.checked || row.author !== "" ? 0 : Math.max(1, Math.round(ed.textSize * 0.08))
           border.color: ed.boxColor
+
+          // The agent's: a diamond, outlined while open, filled when done.
+          Rectangle {
+            visible: row.author === "agent"
+            anchors.centerIn: parent
+            width: Math.round(box.size * 0.74)
+            height: width
+            rotation: 45
+            radius: Math.max(1, Math.round(width * 0.12))
+            color: row.checked ? ed.checkColor : "transparent"
+            border.width: row.checked ? 0 : Math.max(1, Math.round(ed.textSize * 0.08))
+            border.color: ed.boxColor
+          }
+
+          // Made together: the seal, quiet while open, the tick's colour
+          // when done.
+          LogoMark {
+            visible: row.author === "together"
+            anchors.centerIn: parent
+            width: Math.round(box.size * 1.12)
+            height: width
+            outline: !row.checked
+            strokePx: Math.max(1, Math.round(ed.textSize * 0.08))
+            color: row.checked ? ed.checkColor : ed.boxColor
+          }
 
           Text {
             anchors.centerIn: parent
@@ -1215,7 +1248,9 @@ Item {
             text: row.cancelled ? "–" : "✓"
             color: ed.background
             font.family: ed.fontFamily
-            font.pixelSize: Math.round(box.size * 0.85)
+            // Smaller in the agent's diamond and the seal, which hold less
+            // than the square.
+            font.pixelSize: Math.round(box.size * (row.author === "" ? 0.85 : 0.62))
             font.bold: true
           }
 
@@ -1230,6 +1265,7 @@ Item {
         }
 
         Rectangle {
+          id: dot
           readonly property int size: Math.max(4, Math.round(ed.textSize * 0.26))
           visible: row.kind === "bullet"
           x: row.indentX + Math.round((ed.markerWidth - size) / 2) - Math.round(ed.textSize * 0.15)
@@ -1237,7 +1273,25 @@ Item {
           width: size
           height: size
           radius: size / 2
-          color: ed.bulletColor
+          // The person's dot; the agent's and the shared one draw their own.
+          color: row.author === "" ? ed.bulletColor : "transparent"
+
+          Rectangle {
+            visible: row.author === "agent"
+            anchors.centerIn: parent
+            width: Math.round(dot.size * 0.9)
+            height: width
+            rotation: 45
+            color: ed.bulletColor
+          }
+
+          LogoMark {
+            visible: row.author === "together"
+            anchors.centerIn: parent
+            width: Math.round(dot.size * 1.9)
+            height: width
+            color: ed.bulletColor
+          }
         }
 
         Text {

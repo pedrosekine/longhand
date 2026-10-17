@@ -1033,3 +1033,18 @@ only the window and the panels around it differ.
   ~25 ms), and switchable in Settings → Sound, with "hear it". Tests count
   the ticks that asked for the sound and play none. Open: the deadline
   popup (its own plugin) ticks in silence — its day is written by the check.
+- 2026-10-17 (night): who made it, slice 1 of docs/agent.md. Each box and
+  bullet now knows whether it is the person's, the agent's, or made
+  together, kept in the layer (`authors.json`, keyed by the line's words —
+  never a mark in the note) and carried through every edit the page sees:
+  a tick or a date leaves it as it was, the person's words in the agent's
+  line make it "together", a line moved or pushed down keeps its mark, a
+  split gives the new half to the person, a join is an edit. An edit made in
+  Obsidian cannot be followed, and the line falls back to the person's. A
+  deadline's line needs no record: the ledger already knows the agent's
+  deadlines and whether their words were rewritten. Drawn in the box or dot
+  itself, so nothing is added to the line — the square, ◇, and the seal —
+  and, after the first look, open as an outline and done as a filled shape
+  in all three, the way the square always was (the first cut drew the open
+  seal solid, which read as nearly done). Nothing on the student's notes is
+  the agent's yet: slice 2 is what writes the agent's lines in.

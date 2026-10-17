@@ -348,7 +348,7 @@ section, word for word, and to the diary's decisions log.
    and questions are dashboard rows with the app's own keys; a ledger of
    outcomes; its notebook visible and correctable; course documents from
    the Downloads inbox, read in three tiers; a pluggable route to the model.
-   In slices: **(1)** who made it → **(2)** proposals and planning, starting
+   In slices: **(1)** who made it (built 2026-10-17) → **(2)** proposals and planning, starting
    with do-dates → **(3)** the notebook, visible → **(4)** documents →
    **(5)** the other actions. **Needs from the student:** a re-login to
    ChatGPT in opencode before a second model route.

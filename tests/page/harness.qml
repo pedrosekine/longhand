@@ -22,6 +22,8 @@ ShellRoot {
     function state(): string { return JSON.stringify({ overlay: page.overlayOpen, window: page.windowOpen, ready: page.editorItem.enabled }) }
     // The note
     function text(): string { return page.editorItem.text }
+    // The page photographs itself, whatever is in front of it on screen.
+    function shot(path: string): void { page.contentItem.grabToImage(function (r) { r.saveToFile(path) }) }
     function insert(s: string): void { var e = page.editorItem; e.insert(e.cursorPosition, s) }
     // As fingers do it: into the focused line's field, so the editor sees
     // typing (typed()), and Enter as the key does it.
@@ -176,6 +178,12 @@ ShellRoot {
     function dashAt(): int { return page.taskFocus }
     function dashCount(): string { return page.dashCount }
     function ticksHeard(): int { return page.ticksHeard }
+    // Who made it
+    function markAgent(line: int): void { page.markAuthor(line, "agent") }
+    function markAuthor(line: int, author: string): void { page.markAuthor(line, author) }
+    function authorOf(line: int): string { return page.shownAuthors[line] || "" }
+    function authorsStore(): string { return JSON.stringify(page.authorsStore) }
+    function rowAuthor(i: int): string { return page.rowAuthor(page.taskRows[i]) }
     function tickSoundToggle(): void { page.toggleTickSound() }
     function dashKey(key: int, mods: int): bool { return page.dashKey({ key: key, text: "", modifiers: mods }) }
     function dashType(ch: string): bool { return page.dashKey({ key: ch.toUpperCase().charCodeAt(0), text: ch, modifiers: 0 }) }

@@ -10,6 +10,7 @@ import "Bound.js" as Bound
 import "Dates.js" as Dates
 import "Days.js" as Days
 import "Task.js" as Task
+import "Authorship.js" as Authorship
 import "Shortcuts.js" as Sc
 
 // The page: today's note as a blank sheet in the shell, with the agent in
@@ -114,6 +115,7 @@ Item {
 
   // Handles for a test harness driving the page over IPC.
   readonly property alias editorItem: editor
+  readonly property alias contentItem: content    // what is drawn, for tests to photograph
   readonly property alias noteService: svc
   readonly property alias whenInput: whenField
   readonly property alias searchInput: searchField
@@ -2155,7 +2157,10 @@ Item {
     root.dashWhenText = ""
     if (!t || words === "" || words === root.dashFieldStart) return
     if (t.deadline) dl.set(t.deadline.id, ["--title", words])
-    else root.editTask(t, "rename", words)
+    else {
+      root.authorRenamed(t.date, "- [ ] " + t.text, Task.setWords("- [ ] " + t.text, words))
+      root.editTask(t, "rename", words)
+    }
     root.used("rename")
   }
 
@@ -2712,6 +2717,118 @@ Item {
   readonly property var editQueueState: ({ busy: editFile.busy, queue: editFile.queue.length, path: String(editFile.path) })
   property bool checkWanted: false
   property bool checking: false
+  // ------------------------------------------------------------ who made it
+  //
+  // docs/agent.md, "Who made it": for each box and bullet, the person's,
+  // the agent's, or made together — kept in the layer (authors.json), by
+  // the line's words, and carried through every edit the page sees
+  // (Authorship.js). A deadline's line needs no record: the ledger already
+  // knows which deadlines the agent proposed, and whether its words were
+  // rewritten since (`origins`).
+  property var authorsStore: ({})   // stem -> [{ id, author }], as authors.json keeps it
+  property var authorLines: []      // the open note's lines, as authorship last saw them
+  property var authorMap: ({})      // the open note: line index -> "agent" | "together"
+
+  // What the note draws: the records, and the agent's deadlines by the
+  // ledger.
+  readonly property var shownAuthors: {
+    var out = {}
+    for (var k in root.authorMap) out[k] = root.authorMap[k]
+    var rows = editor.rows
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i].deadline > 0) {
+        var a = root.anchoredAuthor(rows[i].deadline, Task.parse(rows[i].raw))
+        if (a) out[i] = a
+      }
+    }
+    return out
+  }
+
+  // A deadline's line, by the ledger: the agent's while its words are the
+  // agent's first ones, made together once the person rewrote them.
+  function anchoredAuthor(id, task) {
+    var o = root.origins[String(id)]
+    if (!o || o.origin !== "agent") return ""
+    if (o.rewritten) return "together"
+    return task && o.firstTitle && task.title !== o.firstTitle ? "together" : "agent"
+  }
+
+  // The note just read: its records laid on its lines.
+  function restoreAuthors(text) {
+    root.authorLines = String(text).split("\n")
+    root.authorMap = Authorship.restore(root.authorsStore[svc.noteDate] || [], root.authorLines)
+  }
+
+  // An edit in the page: who made each line, carried.
+  function carryAuthors(text) {
+    var lines = String(text).split("\n")
+    root.authorMap = Authorship.carry(root.authorLines, lines, root.authorMap)
+    root.authorLines = lines
+    root.keepAuthors()
+  }
+
+  // The open note's records, into the store and (soon) the file.
+  function keepAuthors() {
+    var stem = svc.noteDate
+    if (!stem) return
+    var recs = Authorship.serialize(root.authorMap, root.authorLines)
+    var was = root.authorsStore[stem] || []
+    if (JSON.stringify(recs) === JSON.stringify(was)) return
+    var st = {}
+    for (var k in root.authorsStore) st[k] = root.authorsStore[k]
+    if (recs.length > 0) st[stem] = recs
+    else delete st[stem]
+    root.authorsStore = st
+    authorsSave.restart()
+  }
+
+  // Who made a line of the open note says so: the agent wrote it (slice 2
+  // calls this when one of its proposals is written in), or it was made
+  // together (a rewording of the person's line, accepted).
+  function markAuthor(lineIndex, author) {
+    var m = {}
+    for (var k in root.authorMap) m[k] = root.authorMap[k]
+    if (author) m[lineIndex] = author
+    else delete m[lineIndex]
+    root.authorMap = m
+    root.keepAuthors()
+  }
+
+  // A line of another day renamed from the dashboard: the agent's becomes
+  // made together.
+  function authorRenamed(stem, oldRaw, newRaw) {
+    if (stem === svc.noteDate) return            // the open note carries its own
+    var recs = (root.authorsStore[stem] || []).slice()
+    var id = Authorship.key(oldRaw)
+    for (var i = 0; i < recs.length; i++) {
+      if (recs[i].id !== id) continue
+      recs[i] = { id: Authorship.key(newRaw), author: Authorship.edited(recs[i].author) }
+      var st = {}
+      for (var k in root.authorsStore) st[k] = root.authorsStore[k]
+      st[stem] = recs
+      root.authorsStore = st
+      authorsSave.restart()
+      return
+    }
+  }
+
+  // A dashboard row's maker: by the ledger for a deadline, by the records
+  // of its day for a box.
+  function rowAuthor(row) {
+    if (!row) return ""
+    if (row.kind === "deadline") {
+      var lt = root.lineTaskOf(row.deadline)
+      return root.anchoredAuthor(row.deadline.id, lt && lt.text ? Task.parse("- [ ] " + lt.text) : { title: row.deadline.title })
+    }
+    if (row.kind !== "task") return ""
+    var t = row.task
+    if (t.anchor > 0) return root.anchoredAuthor(t.anchor, t)
+    var recs = root.authorsStore[t.date] || []
+    var id = Authorship.key("- [ ] " + t.text)
+    for (var i = 0; i < recs.length; i++) if (recs[i].id === id) return recs[i].author
+    return ""
+  }
+
   property var origins: ({})        // id -> { origin, firstTitle, rewritten }: the agent's deadlines
   readonly property string checkPath: (svc.config && svc.config.check) || (Quickshell.env("HOME") + "/.local/bin/longhand-check")
 
@@ -3295,6 +3412,25 @@ Item {
 
   Process { id: tickSoundProc }
 
+  // authors.json: who made each box and bullet, by day (docs/agent.md). The
+  // layer's, beside the deadline store — never in the notes.
+  FileView {
+    id: authorsFile
+    path: (Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state") + "/longhand/authors.json"
+    blockLoading: true
+    atomicWrites: true
+    printErrors: false
+    onLoaded: {
+      try { root.authorsStore = JSON.parse(text()) || {} } catch (e) { root.authorsStore = {} }
+      if (svc.ready) root.restoreAuthors(editor.text)
+    }
+  }
+  Timer {
+    id: authorsSave
+    interval: 800
+    onTriggered: authorsFile.setText(JSON.stringify(root.authorsStore, null, 1) + "\n")
+  }
+
   Process {
     id: settingsProc
     stdout: StdioCollector {
@@ -3521,6 +3657,8 @@ Item {
                 readonly property var deadline: kind === "deadline" ? modelData.deadline : null
                 readonly property bool boxed: kind === "task" || kind === "deadline"
                 readonly property string rowKey: root.rowKey(modelData)
+                // Who made it (docs/agent.md): drawn in the box, as in the note.
+                readonly property string author: root.rowAuthor(modelData)
                 readonly property bool done: (deadline ? deadline.status !== "open" : (!!task && task.done)) || !!root.doneNow[rowKey]
                 // The tick, felt: the box pops and fills, the check comes in,
                 // the words are struck through left to right, the row glows
@@ -3645,9 +3783,31 @@ Item {
                     width: size
                     height: size
                     radius: Math.max(2, Math.round(size * 0.22))
-                    color: dashRow.done ? pal.green : "transparent"
-                    border.width: dashRow.done ? 0 : Math.max(1, Math.round(root.textSize * 0.08))
+                    color: dashRow.done && dashRow.author === "" ? pal.green : "transparent"
+                    border.width: dashRow.done || dashRow.author !== "" ? 0 : Math.max(1, Math.round(root.textSize * 0.08))
                     border.color: dashRow.late ? root.urgent : root.dim
+
+                    // The agent's: a diamond. Made together: the seal.
+                    Rectangle {
+                      visible: dashRow.author === "agent"
+                      anchors.centerIn: parent
+                      width: Math.round(box.size * 0.74)
+                      height: width
+                      rotation: 45
+                      radius: Math.max(1, Math.round(width * 0.12))
+                      color: dashRow.done ? pal.green : "transparent"
+                      border.width: dashRow.done ? 0 : Math.max(1, Math.round(root.textSize * 0.08))
+                      border.color: dashRow.late ? root.urgent : root.dim
+                    }
+                    LogoMark {
+                      visible: dashRow.author === "together"
+                      anchors.centerIn: parent
+                      width: Math.round(box.size * 1.12)
+                      height: width
+                      outline: !dashRow.done
+                      strokePx: Math.max(1, Math.round(root.textSize * 0.08))
+                      color: dashRow.done ? pal.green : dashRow.late ? root.urgent : root.dim
+                    }
                     // The outline gives way as the fill comes in, never
                     // before: the box is never empty mid-tick.
                     Behavior on color { ColorAnimation { duration: 140 } }
@@ -3663,7 +3823,7 @@ Item {
                       text: "✓"
                       color: root.background
                       font.family: root.fontFamily
-                      font.pixelSize: Math.round(box.size * 0.85)
+                      font.pixelSize: Math.round(box.size * (dashRow.author === "" ? 0.85 : 0.62))
                       font.bold: true
                     }
 
@@ -4857,6 +5017,7 @@ Item {
             roomHeight: (whenBox.visible ? whenBox.height : mentionBox.visible ? mentionBox.height : 0) + root.sp(12)
             boxTip: Component { Item { PanelToolTip { visible: true; text: root.tip("Tick or untick it", "checkbox") } } }
             onBoxTicked: function (lineIndex, done) { if (done) root.tickSound() }
+            authors: root.shownAuthors
             x: root.gutter
             width: flick.width - root.gutter
             height: implicitHeight
@@ -4906,7 +5067,8 @@ Item {
               if (root.searchOpen) Qt.callLater(root.runSearch)
               var was = root.bound
               root.bound = Bound.anchors(text)
-              if (root.applying) return
+              if (root.applying) { root.restoreAuthors(text); return }
+              root.carryAuthors(text)
               svc.markPending(text)
               saveTimer.restart()
               if (root.quiet) return

@@ -244,7 +244,15 @@ Each is usable alone.
 1. **Who made it** — authorship in the layer, kept through every edit in the
    page; the three marks in the note and the dashboard. Everything else
    rests on it, and it shares its machinery with keeping a sent block's
-   conversation through word edits (plan item 6).
+   conversation through word edits (plan item 6). **Built 2026-10-17:**
+   `plugin-page/Authorship.js` (pure: restore, carry, serialize; unit tests
+   in `tests/tst_authorship.qml`), records in `authors.json` beside the
+   deadline store, keyed by a line's words; a deadline's line by the ledger's
+   `origins` (the agent's while its first words stand, together once
+   rewritten). Drawn in the box or dot itself: the person's square and dot;
+   the agent's ◇; the seal for together — open as an outline, done filled
+   with the tick's colour, like the square. `markAuthor(line, author)` is
+   what slice 2 calls when one of the agent's proposals is written in.
 2. **Proposals and planning** — the ledger; the planning job with the
    arithmetic done locally; action 1 (do-dates) at "ask me"; questions with
    recommended answers; the rows and keys; the count in the bar; acceptance

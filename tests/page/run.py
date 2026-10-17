@@ -1175,6 +1175,60 @@ def main() -> int:
               "…and Ctrl+L again opens it, the day off, in silence")
         check(int(p.call("ticksHeard")) == heard + 1, "…no sound for the untick")
 
+        # 12f. who made it (docs/agent.md): a line the agent made keeps its
+        # mark through a tick, becomes "together" when the person changes its
+        # words, follows its line, is found again when the note is read, and
+        # shows in the dashboard; a deadline the agent proposed is the
+        # agent's once written in.
+        if p.call("dashOpen") == "true":
+            p.call("dash")
+        check(p.wait(lambda: p.call("authorOf", p.line_of("Registered topic and supervisor")) == "agent"),
+              f"a deadline the agent proposed, written into the note, is the agent's ({p.call('authorOf', p.line_of('Registered topic and supervisor'))!r})")
+        # On an empty line: a cursor is never inside a box's own markers, so
+        # an insert at the start of a box's line would land in that line.
+        p.call("cursor", p.offset_of_line(p.lines().index("")))
+        p.call("insert", "- [ ] steps the agent wrote\n")
+        ln = p.line_of("steps the agent wrote")
+        p.call("markAgent", ln)
+        check(p.call("authorOf", ln) == "agent", "a line marked as the agent's is drawn as the agent's")
+        check(p.wait(lambda: '"author":"agent"' in p.call("authorsStore").replace(" ", "")),
+              "…and kept in the layer, by its words")
+        authors_file = p.state / "longhand" / "authors.json"
+        check(p.wait(lambda: authors_file.exists() and "steps the agent wrote" in authors_file.read_text()),
+              "…written to authors.json, never into the note")
+        check("agent" not in p.note().split("steps the agent wrote")[1].split("\n")[0], "…with nothing added to the line")
+        p.call("tick", ln)
+        check(p.wait(lambda: "- [x] steps the agent wrote ✅" in p.call("text")) and p.call("authorOf", ln) == "agent",
+              f"a tick is a fact: still the agent's ({p.call('authorOf', ln)!r}, line {ln}, {p.call('text')[:90]!r})")
+        p.call("tick", ln)
+        p.wait(lambda: "- [ ] steps the agent wrote\n" in p.call("text"))
+        at = p.offset_of_line(ln) + len("- [ ] steps the agent wrote")
+        p.call("cursor", at)
+        p.call("type", " fully")
+        check(p.wait(lambda: p.call("authorOf", p.line_of("steps the agent wrote fully")) == "together"),
+              "the person's words in it make it made together")
+        p.call("cursor", p.offset_of_line(p.lines().index("")))
+        p.call("insert", "A line above it.\n\n")
+        check(p.wait(lambda: p.call("authorOf", p.line_of("steps the agent wrote fully")) == "together"),
+              "lines added above: the mark follows its line")
+        check(p.call("authorOf", p.line_of("A line above it.")) == "", "…and prose is the person's")
+        p.call("openDay", YDAY)
+        p.wait(lambda: "ask about the rubric" in p.call("text"))
+        p.call("openDay", TODAY)
+        check(p.wait(lambda: "steps the agent wrote fully" in p.call("text")
+                     and p.call("authorOf", p.line_of("steps the agent wrote fully")) == "together"),
+              "the note read again: found again by its words")
+        p.call("dash")
+        def author_row(title):
+            rows = json.loads(p.call("dashRows"))
+            i = next((n for n, r in enumerate(rows) if r.get("text") == title), -1)
+            return p.call("rowAuthor", i) if i >= 0 else None
+        check(p.wait(lambda: author_row("steps the agent wrote fully") == "together"),
+              f"the dashboard draws it too ({author_row('steps the agent wrote fully')!r})")
+        check(p.wait(lambda: author_row("Registered topic and supervisor") == "agent"),
+              "…and the agent's deadline there")
+        p.call("dash")
+
         # 12b. the keys sheet: every key the page answers to, listed; one
         # moved through the sheet, kept in keys.json, and working in the note
         KEY_B, KEY_K = 0x42, 0x4b
