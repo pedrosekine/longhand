@@ -328,6 +328,13 @@ Item {
   property var raised: []
   property var tickHistory: []   // ticks made from the panel, newest last, for Ctrl+Z
   property bool showShelf: false      // the "not now" band unfolded
+  // A tick from the dashboard is drawn at once, before the note is written
+  // and the list read again (rowKey → true), and the row that was just
+  // ticked plays the tick; the list waits for it (holdTasksUntil).
+  property var doneNow: ({})
+  property string justTicked: ""
+  property real holdTasksUntil: 0
+  property var afterTick: []          // what waits for the tick to be seen: a deadline's store write
   property bool showGrading: false    // the "waiting for a grade" band unfolded
   property var dashWhenFor: null     // what the dashboard's field is for: a task, or { deadline }
   property string dashWhenText: ""
@@ -1508,8 +1515,47 @@ Item {
   }
 
   function refreshTasks() {
+    // Not while a tick is still being drawn: the list read again rebuilds
+    // every row, which would cut the tick short.
+    var wait = root.holdTasksUntil - Date.now()
+    if (wait > 0) { tasksHold.interval = Math.ceil(wait); tasksHold.restart(); return }
     tasksProc.command = [svc.runner, "next", "--days", "7"]
     tasksProc.running = true
+  }
+
+  Timer { id: tasksHold; onTriggered: root.refreshTasks() }
+
+  // A row's identity across the list being read again.
+  function rowKey(row) {
+    if (!row) return ""
+    if (row.kind === "deadline") return "d" + row.deadline.id
+    if (row.kind === "task") return row.task.date + "|" + row.task.line + "|" + row.task.text
+    return ""
+  }
+
+  // The tick, felt (2026-10-17, after Todoist): the row is done on screen
+  // this frame, plays its tick, and stays — the list is not read again
+  // until the tick has been seen.
+  readonly property int tickMs: 450
+  function markTicked(key) {
+    var d = {}
+    for (var k in root.doneNow) d[k] = root.doneNow[k]
+    d[key] = true
+    // Which row, before it turns done: its delegate decides on the change
+    // whether to play the tick.
+    root.justTicked = key
+    root.doneNow = d
+    root.holdTasksUntil = Date.now() + root.tickMs
+  }
+
+  Timer {
+    id: tickSettle
+    interval: root.tickMs
+    onTriggered: {
+      var todo = root.afterTick
+      root.afterTick = []
+      for (var i = 0; i < todo.length; i++) todo[i]()
+    }
   }
 
   // ------------------------------------------------- a project's notes
@@ -1914,14 +1960,18 @@ Item {
 
   // What the list adds up to, for the line beside its name.
   readonly property string dashCount: {
-    var open = 0, due = 0
+    var open = 0, due = 0, done = 0
     var rows = root.taskRows
+    root.doneNow
     for (var i = 0; i < rows.length; i++) {
-      if (rows[i].kind === "task" && !rows[i].task.away) open++
-      else if (rows[i].kind === "deadline" && rows[i].deadline.status === "open") { due++; open++ }
+      var now = !!root.doneNow[root.rowKey(rows[i])]
+      if (rows[i].kind === "task" && !rows[i].task.away) { if (rows[i].task.done || now) done++; else open++ }
+      else if (rows[i].kind === "deadline" && rows[i].deadline.status === "open") { if (now) done++; else { due++; open++ } }
+      else if (rows[i].kind === "deadline" && rows[i].deadline.status === "done") done++
     }
-    if (open === 0) return ""
+    if (open === 0 && done === 0) return ""
     return open + " open" + (due > 0 ? "   ·   " + due + " with a date to meet" : "")
+      + (done > 0 ? "   ·   " + done + " done today" : "")
   }
 
   // Enter: go to the task's line, on any day; the dashboard closes. A
@@ -2117,6 +2167,8 @@ Item {
     if (how === "prio") return Task.setPriority(line, arg)
     if (how === "when") return Task.setField(line, "⏳", arg)
     if (how === "state") return Task.setState(line, arg)
+    if (how === "done") return Task.setField(Task.setState(line, "x"), "✅", Qt.formatDate(new Date(), "yyyy-MM-dd"))
+    if (how === "undone") return Task.setField(Task.setState(line, " "), "✅", "")
     if (how === "rename") return Task.setWords(line, arg)
     return line
   }
@@ -2157,7 +2209,18 @@ Item {
   function tickFocused() {
     var row = root.taskRows[root.taskFocus]
     if (row && row.kind === "task") root.tickTask(row.task)
-    if (row && row.kind === "deadline") root.tickDeadline(row.deadline)
+    if (row && row.kind === "deadline") {
+      var d = row.deadline
+      if (d.status === "open") {
+        // The store written once the tick has been seen: its change would
+        // rebuild the list mid-tick.
+        root.markTicked(root.rowKey(row))
+        root.afterTick = root.afterTick.concat([function () { root.tickDeadline(d) }])
+        tickSettle.restart()
+      } else {
+        root.tickDeadline(d)
+      }
+    }
   }
 
   // Done, or open again: from the dashboard and the sidebar's list alike,
@@ -2255,13 +2318,19 @@ Item {
     if (t.deadline) { dl.reopen(t.deadline); root.tickBoundLine(t.deadline, false); return }
     if (t.drop) { root.editTask(t.drop, "undrop", ""); return }
     if (t.uncancel) { dl.reopen(t.uncancel); return }
-    root.editTask(t, "state", " ")
+    root.editTask(t, "undone", "")
   }
 
-  // Tick in the original note, through the one edit path.
+  // Tick in the original note, through the one edit path, with the day it
+  // was done (`✅`, as Obsidian Tasks writes it; the note draws it quietly),
+  // which is how a box done today stays in the dashboard until tomorrow.
+  // Ticked again: open again, the day taken off.
   function tickTask(t) {
+    if (t.done) { root.editTask(t, "undone", ""); return }
+    root.markTicked(root.rowKey({ kind: "task", task: t }))
     root.tickHistory = root.tickHistory.concat([t])
-    root.editTask(t, "state", "x")
+    root.editTask(t, "done", "")
+    root.used("tick")
   }
 
   // ------------------------------------------------------------ deadlines
@@ -2949,7 +3018,7 @@ Item {
 
   Deadlines {
     id: dl
-    onItemsChanged: { root.reconcile(); root.checkAccept() }
+    onItemsChanged: { root.reconcile(); root.checkAccept(); if (!tickSettle.running) { root.doneNow = ({}); root.justTicked = "" } }
     onChanged: root.scheduleCheck()
     onIdle: {
       var waiting = root.afterWrites
@@ -3006,6 +3075,9 @@ Item {
           root.tasks = nx.tasks || []
           root.raised = nx.raised || []
         } catch (e) { root.tasks = []; root.raised = [] }
+        // The list now says what was drawn ahead of it.
+        root.doneNow = ({})
+        root.justTicked = ""
         root.taskFocus = Math.min(root.taskFocus, Math.max(0, root.taskRows.length - 1))
       }
     }
@@ -3400,7 +3472,26 @@ Item {
                 readonly property var task: kind === "task" ? modelData.task : null
                 readonly property var deadline: kind === "deadline" ? modelData.deadline : null
                 readonly property bool boxed: kind === "task" || kind === "deadline"
-                readonly property bool done: deadline ? deadline.status !== "open" : (!!task && task.done)
+                readonly property string rowKey: root.rowKey(modelData)
+                readonly property bool done: (deadline ? deadline.status !== "open" : (!!task && task.done)) || !!root.doneNow[rowKey]
+                // The tick, felt: the box pops and fills, the check comes in,
+                // the words are struck through left to right, the row glows
+                // and settles. Only for the row just ticked; a row already
+                // done is simply drawn done.
+                onDoneChanged: if (done && root.justTicked === rowKey) tickAnim.restart()
+                SequentialAnimation {
+                  id: tickAnim
+                  ParallelAnimation {
+                    NumberAnimation { target: box; property: "scale"; from: 1; to: 1.35; duration: 110; easing.type: Easing.OutQuad }
+                    NumberAnimation { target: tickGlow; property: "opacity"; from: 0; to: 0.28; duration: 110 }
+                    NumberAnimation { target: strike; property: "progress"; from: 0; to: 0.15; duration: 110 }
+                  }
+                  ParallelAnimation {
+                    NumberAnimation { target: box; property: "scale"; to: 1; duration: 300; easing.type: Easing.OutBack; easing.overshoot: 3 }
+                    NumberAnimation { target: strike; property: "progress"; to: 1; duration: 260; easing.type: Easing.OutCubic }
+                    NumberAnimation { target: tickGlow; property: "opacity"; to: 0; duration: 650; easing.type: Easing.OutQuad }
+                  }
+                }
                 readonly property bool late: !!deadline && deadline.status === "open" && deadline.due * 1000 < Date.now()
                 readonly property bool hot: root.taskFocus === index && !isHead
                 width: dashColumn.width
@@ -3418,6 +3509,19 @@ Item {
                   anchors.rightMargin: -root.sp(8)
                   radius: Style.cornerRadius
                   color: dashRow.hot ? Style.selectedFill : "transparent"
+                }
+
+                // The glow a tick leaves for a moment.
+                Rectangle {
+                  id: tickGlow
+                  anchors.fill: inner
+                  anchors.topMargin: -root.sp(7)
+                  anchors.bottomMargin: -root.sp(6)
+                  anchors.leftMargin: -root.sp(8)
+                  anchors.rightMargin: -root.sp(8)
+                  radius: Style.cornerRadius
+                  color: pal.green
+                  opacity: 0
                 }
 
                 Item {
@@ -3496,10 +3600,17 @@ Item {
                     color: dashRow.done ? pal.green : "transparent"
                     border.width: dashRow.done ? 0 : Math.max(1, Math.round(root.textSize * 0.08))
                     border.color: dashRow.late ? root.urgent : root.dim
+                    // The outline gives way as the fill comes in, never
+                    // before: the box is never empty mid-tick.
+                    Behavior on color { ColorAnimation { duration: 140 } }
+                    Behavior on border.width { NumberAnimation { duration: 140 } }
 
                     Text {
                       anchors.centerIn: parent
-                      visible: dashRow.done
+                      opacity: dashRow.done ? 1 : 0
+                      scale: dashRow.done ? 1 : 0.4
+                      Behavior on opacity { NumberAnimation { duration: 160 } }
+                      Behavior on scale { NumberAnimation { duration: 220; easing.type: Easing.OutBack } }
                       textFormat: Text.PlainText
                       text: "✓"
                       color: root.background
@@ -3594,10 +3705,24 @@ Item {
                         : dashRow.task && dashRow.task.away ? root.dim
                         : dashRow.done ? root.dim
                         : dashRow.late ? root.urgent : root.foreground
+                      Behavior on color { ColorAnimation { duration: 300 } }
                       font.family: root.fontFamily
                       font.styleName: root.fontStyle
                       font.pixelSize: root.fs(Style.font.body)
-                      font.strikeout: dashRow.done
+
+                      // Struck through, drawn rather than the font's, so a
+                      // tick can draw it left to right (tickAnim).
+                      Rectangle {
+                        id: strike
+                        // The row just ticked starts unstruck; its tick draws it.
+                        property real progress: dashRow.done && root.justTicked !== dashRow.rowKey ? 1 : 0
+                        visible: dashRow.boxed && progress > 0
+                        x: 0
+                        y: Math.round(inner.lineH / 2) - 1
+                        height: Math.max(1, Math.round(root.textSize * 0.07))
+                        width: Math.min(titleText.implicitWidth, titleText.width) * progress
+                        color: root.dim
+                      }
                     }
 
                     Text {

@@ -891,6 +891,16 @@ def main() -> int:
         check(p.call("dashKey", KEY_RETURN, CTRL) == "true", "Ctrl+Enter is the act that settles a row")
         check(p.wait(lambda: "- [x] draft the intro" in (p.daily / f"{YDAY}.md").read_text()),
               "…and it ticks the line in the day it was written")
+        done_on = dt.date.today().isoformat()
+        check(p.wait(lambda: f"- [x] draft the intro ✅ {done_on}" in (p.daily / f"{YDAY}.md").read_text()),
+              "…with the day it was done, as Obsidian Tasks writes it")
+        check(p.wait(lambda: any(r.get("text") == "draft the intro" and r.get("done") for r in json.loads(p.call("dashRows")))),
+              "…and it stays in the dashboard, done, rather than vanishing")
+        check(p.wait(lambda: "1 done today" in p.call("dashCount")), f"…counted as done today ({p.call('dashCount')})")
+        row("draft the intro")
+        p.call("dashKey", 0x4c, CTRL)
+        check(p.wait(lambda: "- [ ] draft the intro\n" in (p.daily / f"{YDAY}.md").read_text()),
+              "Ctrl+L on a box done today opens it again, the day taken off")
 
         row("ask about the rubric")
         check(p.call("dashType", "t") == "true", "t asks when")

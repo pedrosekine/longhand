@@ -84,7 +84,8 @@ def apply(rows: list[dict], path: Path, today: dt.date | None = None) -> list[di
     newest: dict[str, dt.date] = {}
     life_of: dict[str, int] = {}
     for r in rows:
-        life = LIFE.get(r.get("kind", ""), 0)
+        # A box done (today: it is still listed) has no silence to count.
+        life = 0 if r.get("done") else LIFE.get(r.get("kind", ""), 0)
         r["key"] = key_of(r)
         r["life"] = life
         if not life:

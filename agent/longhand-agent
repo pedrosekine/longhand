@@ -282,9 +282,14 @@ def outcomes(cfg: dict, days: int = 14, visible_only: bool = False) -> list[dict
 
 def open_tasks(cfg: dict, recent_days: int) -> list[dict]:
     """Every box still open across every daily note, newest day first — the
-    list the dashboard works from. A cancelled box is closed, not open:
-    dropping something is an answer, and the point of having the state."""
-    rows = [r for r in outcomes(cfg, days=3650) if not r["done"] and not r["cancelled"]]
+    list the dashboard works from — and the ones done today (a `✅` of
+    today), which stay where they were until tomorrow, so finishing
+    something is seen rather than made to vanish (2026-10-17). A cancelled
+    box is closed, not open: dropping something is an answer, and the point
+    of having the state."""
+    today = dt.date.today().isoformat()
+    rows = [r for r in outcomes(cfg, days=3650)
+            if not r["cancelled"] and (not r["done"] or r.get("doneAt", "")[:10] == today)]
     for r in rows:
         r["recent"] = r["age"] < recent_days
     return rows

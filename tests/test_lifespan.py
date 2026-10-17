@@ -104,6 +104,12 @@ def main() -> int:
     check(r["a thought from yesterday"]["life"] == 30 and r["a thought from yesterday"]["key"] == key,
           "a priority makes it a task, same box, 30 days")
 
+    # A box done today is still listed, and has no silence to count.
+    done = box("- [x] an old thought ✅ 2026-10-20", DAY0 - dt.timedelta(days=20), d3, "dtm")
+    done["done"] = True
+    r = lifespan.apply([done], path, d3)[0]
+    check(r["life"] == 0 and r["away"] == "" and not r["warn"], "a box done today never goes quiet or counts down")
+
     # A clock file that cannot be read is a first day, not an empty one.
     path.write_text("{not json")
     r = run(d3, [old_note])

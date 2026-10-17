@@ -1000,3 +1000,20 @@ only the window and the panels around it differ.
   over as "IT:U", shared whole. In the payload, an event that is not a class
   says which calendar it is from, and "weekdays with nothing on" counts what
   was sent.
+- 2026-10-17 (late): a tick is felt, and stays for the day. In the
+  dashboard Ctrl+L made a box vanish at once — correct, and no feedback at
+  all; the student wants the tactile answer Todoist gives. A tick from the
+  dashboard now writes the day it was done (`✅ <today>`, Obsidian Tasks'
+  own mark, drawn quietly in the note as `❌` is), and the runner lists
+  boxes done today, so a ticked box stays in its place, struck through,
+  until tomorrow — as deadlines closed today already did — and the header
+  counts "N done today". The tick itself, in about 0.4 s: the box pops and
+  fills, the check comes in, a line strikes the words left to right, the
+  row glows green and settles. The row is drawn done the same frame (before
+  the note is written), and the list waits for the tick before reading
+  itself again, since a re-read rebuilds every row; a deadline's store
+  write waits the same way. Ctrl+L on a box done today opens it again, the
+  day taken off. Filmed frame by frame before it shipped: the first cut
+  never played (the row turned done before it was marked as the one just
+  ticked) and blinked an empty box. Open: a sound, and whether a tick in
+  the note should write the day too.

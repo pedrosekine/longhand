@@ -174,6 +174,7 @@ ShellRoot {
     function dashOpen(): bool { return page.dashOpen }
     function dashFocus(i: int): void { page.taskFocus = i }
     function dashAt(): int { return page.taskFocus }
+    function dashCount(): string { return page.dashCount }
     function dashKey(key: int, mods: int): bool { return page.dashKey({ key: key, text: "", modifiers: mods }) }
     function dashType(ch: string): bool { return page.dashKey({ key: ch.toUpperCase().charCodeAt(0), text: ch, modifiers: 0 }) }
     function dashWhen(phrase: string): void { page.dashWhenText = phrase; page.commitDashWhen() }
@@ -186,7 +187,7 @@ ShellRoot {
           : r.kind === "deadline" ? { kind: "deadline", text: r.deadline.title, due: r.deadline.due,
                                       where: page.deadlineWhere(r.deadline), grade: r.deadline.grade }
           : { kind: "task", text: page.taskTitle(r.task), where: page.taskWhere(r.task),
-              date: r.task.date, prio: r.task.priority, when: r.task.when, away: r.task.away || "" }
+              date: r.task.date, prio: r.task.priority, when: r.task.when, away: r.task.away || "", done: !!r.task.done }
       }))
     }
 
