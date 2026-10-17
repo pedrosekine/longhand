@@ -90,14 +90,15 @@ Where a row has two keys, either works: the second is usually the one another ap
 | First row | `Home` | in the dashboard |
 | Last row | `End` | in the dashboard |
 | Go to the line | `Enter` | in the dashboard |
-| Done (again: not done) | `Ctrl+Enter` · `Space` · `e` · `Ctrl+L` | in the dashboard |
+| Done (again: not done); on the agent's proposal, accept | `Ctrl+Enter` · `Space` · `e` · `Ctrl+L` | in the dashboard |
 | When: reschedule it | `t` · `Ctrl+D` | in the dashboard |
 | Cycle its priority | `p` | in the dashboard |
 | Rename it (its line's words) | `Ctrl+E` | in the dashboard |
-| Cancel it (the line stays, as cancelled) | `Del` · `Backspace` | in the dashboard |
+| Cancel it (the line stays, as cancelled); on the agent's proposal, decline | `Del` · `Backspace` | in the dashboard |
 | Not now: put it aside (again: back) | `s` | in the dashboard |
 | Keep it: its clock starts again | `r` | in the dashboard |
 | Grade a deadline | `g` | in the dashboard |
+| Ask the agent to plan now | `Ctrl+R` | in the dashboard |
 | Take the last tick back | `Ctrl+Z` | in the dashboard |
 | Back to the note | `Esc` | in the dashboard |
 

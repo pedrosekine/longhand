@@ -333,6 +333,13 @@ Item {
   // A tick from the dashboard is drawn at once, before the note is written
   // and the list read again (rowKey → true), and the row that was just
   // ticked plays the tick; the list waits for it (holdTasksUntil).
+  // What the agent proposes or asks, open (`longhand-agent proposals`), and
+  // the do-dates it proposed that were accepted lately (key -> date), whose
+  // pills carry its tint. docs/agent.md, slice 2.
+  property var proposals: []
+  property var agentDates: ({})
+  property bool planning: false
+  property var proposalQueue: []      // answers waiting for the runner, in order
   property var doneNow: ({})
   property string justTicked: ""
   property real holdTasksUntil: 0
@@ -488,6 +495,8 @@ Item {
       root.projectOpen = false
       // `@` can call a project without the sidebar ever being opened.
       root.refreshProjects()
+      // The day's plan, at most once a day (the runner decides).
+      root.runPlan(false)
       agent.reload()
       if (goto && svc.configured && goto.stem !== svc.todayStamp()) {
         svc.openDate(goto.stem)
@@ -1546,6 +1555,8 @@ Item {
       root.taskFocus = 0
       root.moveTaskFocus(0)
       root.refreshTasks()
+      root.refreshProposals()
+      root.runPlan(false)
       dashKeys.forceActiveFocus()
     } else {
       editor.focusNote()
@@ -1567,6 +1578,7 @@ Item {
   function rowKey(row) {
     if (!row) return ""
     if (row.kind === "deadline") return "d" + row.deadline.id
+    if (row.kind === "proposal" || row.kind === "question") return "p" + row.item.id
     if (row.kind === "task") return row.task.date + "|" + row.task.line + "|" + row.task.text
     return ""
   }
@@ -1834,7 +1846,7 @@ Item {
       rows.push({ kind: "head", text: "FROM THE AGENT", tag: "" })
       for (var j = 0; j < root.raised.length; j++) rows.push({ kind: "raised", item: root.raised[j] })
     }
-    return rows
+    return root.withProposals(rows)
   }
 
   // The line that stands for a deadline, as a task the edit path can find —
@@ -1866,6 +1878,118 @@ Item {
     if (o && o.origin === "agent") bits.push("from the agent" + (o.rewritten ? " · rewritten by you" : ""))
     if (t && t.details > 0) bits.push(t.details === 1 ? "1 line of detail" : t.details + " lines of detail")
     return bits.join("   ·   ")
+  }
+
+  // The agent's proposals and questions, as rows (docs/agent.md): each right
+  // under the box it is about, so the decision is made where the box is;
+  // one about a box not on the list waits under "from the agent".
+  function withProposals(rows) {
+    var props = root.proposals
+    if (!props || props.length === 0) return rows
+    var byKey = {}, used = {}
+    for (var i = 0; i < props.length; i++) {
+      var k = props[i].key
+      if (k) (byKey[k] = byKey[k] || []).push(props[i])
+    }
+    var out = []
+    for (var r = 0; r < rows.length; r++) {
+      out.push(rows[r])
+      var t = rows[r].kind === "task" ? rows[r].task
+        : rows[r].kind === "deadline" ? root.taskOfAnchor(rows[r].deadline.id) : null
+      var mine = t && t.key ? byKey[t.key] : null
+      if (!mine) continue
+      for (var m = 0; m < mine.length; m++) {
+        if (used[mine[m].id]) continue
+        used[mine[m].id] = true
+        out.push({ kind: mine[m].kind === "question" ? "question" : "proposal", item: mine[m], task: t })
+      }
+    }
+    var rest = props.filter(function (x) { return !used[x.id] })
+    if (rest.length === 0) return out
+    var at = -1
+    for (var h = 0; h < out.length; h++) if (out[h].kind === "head" && out[h].text === "FROM THE AGENT") at = h
+    var extra = rest.map(function (x) {
+      return { kind: x.kind === "question" ? "question" : "proposal", item: x, task: root.taskOfKey(x.key) }
+    })
+    if (at < 0) return out.concat([{ kind: "head", text: "FROM THE AGENT", tag: "" }]).concat(extra)
+    return out.slice(0, at + 1).concat(extra).concat(out.slice(at + 1))
+  }
+
+  function taskOfAnchor(id) {
+    for (var i = 0; i < root.tasks.length; i++) if (root.tasks[i].anchor === id) return root.tasks[i]
+    return null
+  }
+
+  function taskOfKey(key) {
+    if (!key) return null
+    for (var i = 0; i < root.tasks.length; i++) if (root.tasks[i].key === key) return root.tasks[i]
+    return null
+  }
+
+  // Planning (docs/agent.md): when the page or the dashboard opens (the
+  // runner plans at most once a day unless what it plans around changed),
+  // and now, when asked. The arithmetic and the checks are the runner's;
+  // the proposals arrive as rows.
+  property bool planAgain: false     // "plan now" asked while a plan was running
+  property string planError: ""      // why the last plan could not be made, in words
+  function runPlan(force) {
+    if (!svc.configured) return
+    // Asked for while the day's own plan is still running: runs right after
+    // it, rather than being lost.
+    if (planProc.running) { if (force) root.planAgain = true; return }
+    root.planning = true
+    planProc.command = [svc.runner, "plan"].concat(force ? ["--force"] : [])
+    planProc.running = true
+    if (force) root.used("plan", "asked")
+  }
+
+  // Why a plan failed, in words that say what to do.
+  function sayPlanError(err) {
+    var e = String(err)
+    if (/api_key_expired|has expired/.test(e)) return "its model key has expired — make a new one and log opencode in again"
+    if (/401|authentication|unauthori/i.test(e)) return "its model login was refused — log opencode in again"
+    if (/timed out|ENOTFOUND|network|connect/i.test(e)) return "the model could not be reached"
+    return "the model said: " + e.slice(0, 80)
+  }
+
+  function refreshProposals() {
+    if (proposalsProc.running || !svc.configured) return
+    proposalsProc.command = [svc.runner, "proposals"]
+    proposalsProc.running = true
+  }
+
+  // The person's answer: the row goes at once, the runner records it in
+  // order.
+  function resolveProposal(item, how, answer) {
+    root.proposals = root.proposals.filter(function (x) { return x.id !== item.id })
+    var args = [svc.runner, "proposal", how, "--id", String(item.id)]
+    if (answer) args = args.concat(["--answer", answer])
+    root.proposalQueue = root.proposalQueue.concat([args])
+    root.nextProposal()
+    root.used("proposal", how)
+  }
+
+  function nextProposal() {
+    if (proposalProc.running || root.proposalQueue.length === 0) return
+    proposalProc.command = root.proposalQueue[0]
+    root.proposalQueue = root.proposalQueue.slice(1)
+    proposalProc.running = true
+  }
+
+  // Space / Ctrl+Enter on a proposal: the do-date is written on the box's
+  // line — by the page, the one writer of notes — and the acceptance
+  // recorded. On a question: the recommended answer.
+  function acceptPlanned(row) {
+    var p = row.item
+    if (row.kind === "question") { root.resolveProposal(p, "accept", ""); return }
+    var t = row.task || root.taskOfKey(p.key)
+    if (!t) { root.showHint("its box is not on the list any more"); return }
+    root.editTask(t, "when", p.date)
+    var d = {}
+    for (var k in root.agentDates) d[k] = root.agentDates[k]
+    d[p.key] = p.date
+    root.agentDates = d
+    root.resolveProposal(p, "accept", "")
   }
 
   // An open deadline a fortnight past its date steps aside (longhand-check);
@@ -1968,7 +2092,7 @@ Item {
     }
     if (row.kind !== "task") return out
     var t = row.task
-    if (t.when) out.push({ text: "do " + root.sayDate(t.when), tone: "do" })
+    if (t.when) out.push({ text: "do " + root.sayDate(t.when) + (root.agentDates[t.key] === t.when ? " ◇" : ""), tone: "do" })
     if (t.due) out.push({ text: root.sayDate(t.due), tone: "due" })
     if (t.est) out.push({ text: t.est, tone: "est" })
     return out
@@ -2012,9 +2136,12 @@ Item {
       else if (rows[i].kind === "deadline" && rows[i].deadline.status === "open") { if (now) done++; else { due++; open++ } }
       else if (rows[i].kind === "deadline" && rows[i].deadline.status === "done") done++
     }
-    if (open === 0 && done === 0) return ""
+    var asks = root.proposals.length
+    if (open === 0 && done === 0 && asks === 0) return root.planning ? "planning…" : root.planError !== "" ? "the agent could not plan" : ""
     return open + " open" + (due > 0 ? "   ·   " + due + " with a date to meet" : "")
       + (done > 0 ? "   ·   " + done + " done today" : "")
+      + (asks > 0 ? "   ·   " + asks + " from the agent" : "")
+      + (root.planning ? "   ·   planning…" : root.planError !== "" ? "   ·   the agent could not plan: " + root.planError : "")
   }
 
   // Enter: go to the task's line, on any day; the dashboard closes. A
@@ -2023,6 +2150,10 @@ Item {
   function activateTask() {
     var row = root.taskRows[root.taskFocus]
     if (!row) return
+    // Enter on a question: the person's own answer, typed; on a proposal:
+    // its box's line.
+    if (row.kind === "question") { root.startDashAnswer(row.item); return }
+    if (row.kind === "proposal") { if (row.task) root.goToTask(row.task); return }
     if (row.kind === "shelf") { root.showShelf = true; return }
     if (row.kind === "grading") { root.showGrading = true; return }
     if (row.kind === "task") root.goToTask(row.task)
@@ -2050,6 +2181,7 @@ Item {
   // store.
   function dropFocused() {
     var row = root.taskRows[root.taskFocus]
+    if (row && (row.kind === "proposal" || row.kind === "question")) { root.resolveProposal(row.item, "decline", ""); return }
     if (row && row.kind === "deadline") { root.dropDeadline(row.deadline); return }
     var t = root.focusedTask()
     if (!t) return
@@ -2108,6 +2240,14 @@ Item {
 
   // `g`: the grade, typed on a deadline's row, as in the popup. A grade on
   // one still open hands it in (pomo); empty clears it.
+  // Enter on the agent's question: the person's own answer, in words.
+  function startDashAnswer(q) {
+    root.dashFieldKind = "answer"
+    root.dashFieldStart = ""
+    root.dashWhenText = ""
+    root.dashWhenFor = { question: q }
+  }
+
   function startDashGrade() {
     var row = root.taskRows[root.taskFocus]
     if (!row || row.kind !== "deadline" || row.deadline.status === "cancelled") return
@@ -2166,6 +2306,14 @@ Item {
 
   function commitDashWhen() {
     if (root.dashFieldKind === "rename") { root.commitDashRename(); return }
+    if (root.dashFieldKind === "answer") {
+      var q = root.dashWhenFor
+      var said = root.dashWhenText.replace(/\s+/g, " ").trim()
+      root.dashWhenFor = null
+      root.dashWhenText = ""
+      if (q && q.question && said !== "") root.resolveProposal(q.question, "answer", said)
+      return
+    }
     if (root.dashFieldKind === "grade") {
       var g = root.dashWhenFor
       var mark = root.dashWhenText.replace(/\s+/g, " ").trim()
@@ -2249,11 +2397,13 @@ Item {
     if (Sc.hit(e, "dashShelve")) { root.shelveFocused(); return true }
     if (Sc.hit(e, "dashKeep")) { root.keepFocused(); return true }
     if (Sc.hit(e, "dashGrade")) { root.startDashGrade(); return true }
+    if (Sc.hit(e, "dashPlan")) { root.runPlan(true); return true }
     return false
   }
 
   function tickFocused() {
     var row = root.taskRows[root.taskFocus]
+    if (row && (row.kind === "proposal" || row.kind === "question")) { root.acceptPlanned(row); return }
     if (row && row.kind === "task") root.tickTask(row.task)
     if (row && row.kind === "deadline") {
       var d = row.deadline
@@ -2816,6 +2966,7 @@ Item {
   // of its day for a box.
   function rowAuthor(row) {
     if (!row) return ""
+    if (row.kind === "proposal" || row.kind === "question") return "agent"
     if (row.kind === "deadline") {
       var lt = root.lineTaskOf(row.deadline)
       return root.anchoredAuthor(row.deadline.id, lt && lt.text ? Task.parse("- [ ] " + lt.text) : { title: row.deadline.title })
@@ -3412,6 +3563,45 @@ Item {
 
   Process { id: tickSoundProc }
 
+  Process {
+    id: planProc
+    stdout: StdioCollector {
+      onStreamFinished: {
+        var r = null
+        try { r = JSON.parse(text) } catch (e) {}
+        root.planError = r && r.error ? root.sayPlanError(r.error) : (r && r.ran === false ? root.planError : "")
+        if (root.planError !== "" && r && r.error) root.showHint("the agent could not plan: " + root.planError)
+      }
+    }
+    stderr: StdioCollector { onStreamFinished: if (text.trim() !== "") console.warn("longhand.page plan: " + text.trim()) }
+    onExited: function (code, status) {
+      root.planning = false
+      root.refreshProposals()
+      if (root.planAgain) { root.planAgain = false; root.runPlan(true) }
+    }
+  }
+
+  Process {
+    id: proposalsProc
+    stdout: StdioCollector {
+      onStreamFinished: {
+        try {
+          var p = JSON.parse(text)
+          root.proposals = p.open || []
+          var d = {}
+          for (var i = 0; i < (p.accepted || []).length; i++) d[p.accepted[i].key] = p.accepted[i].date
+          root.agentDates = d
+        } catch (e) {}
+      }
+    }
+  }
+
+  Process {
+    id: proposalProc
+    stderr: StdioCollector { onStreamFinished: if (text.trim() !== "") console.warn("longhand.page proposal: " + text.trim()) }
+    onExited: function (code, status) { root.nextProposal() }
+  }
+
   // authors.json: who made each box and bullet, by day (docs/agent.md). The
   // layer's, beside the deadline store — never in the notes.
   FileView {
@@ -3655,7 +3845,9 @@ Item {
                 readonly property bool isHead: kind === "head" || kind === "month"
                 readonly property var task: kind === "task" ? modelData.task : null
                 readonly property var deadline: kind === "deadline" ? modelData.deadline : null
-                readonly property bool boxed: kind === "task" || kind === "deadline"
+                readonly property bool boxed: kind === "task" || kind === "deadline" || asks
+                // The agent's proposal or question, under the box it is about.
+                readonly property bool asks: kind === "proposal" || kind === "question"
                 readonly property string rowKey: root.rowKey(modelData)
                 // Who made it (docs/agent.md): drawn in the box, as in the note.
                 readonly property string author: root.rowAuthor(modelData)
@@ -3715,7 +3907,7 @@ Item {
                   anchors.left: parent.left
                   anchors.right: parent.right
                   anchors.bottom: parent.bottom
-                  anchors.leftMargin: root.sp(10)
+                  anchors.leftMargin: root.sp(10) + (dashRow.asks && !!modelData.task ? Math.round(root.textSize * 0.72) + root.sp(10) : 0)
                   anchors.rightMargin: root.sp(10)
                   anchors.bottomMargin: root.sp(5)
                   implicitHeight: texts.implicitHeight
@@ -3901,7 +4093,10 @@ Item {
                       elide: Text.ElideRight
                       maximumLineCount: 2
                       wrapMode: Text.WordWrap
-                      text: dashRow.kind === "shelf" ? "+" + modelData.count + " not now · " + root.keyName("dashOpen") + " to show"
+                      text: dashRow.kind === "proposal" ? "do " + root.sayDate(modelData.item.date)
+                          + (modelData.task ? "" : " · " + (modelData.item.title || ""))
+                        : dashRow.kind === "question" ? modelData.item.question
+                        : dashRow.kind === "shelf" ? "+" + modelData.count + " not now · " + root.keyName("dashOpen") + " to show"
                         : dashRow.kind === "grading" ? "+" + modelData.count + " waiting for a grade · " + root.keyName("dashOpen") + " to show"
                         : dashRow.kind === "raised"
                           ? (modelData.item.kind === "suggestion" ? "◇ " : "· ") + modelData.item.text
@@ -3938,7 +4133,9 @@ Item {
                       width: parent.width
                       textFormat: Text.PlainText
                       elide: Text.ElideRight
-                      text: dashRow.kind === "task" ? root.taskWhere(modelData.task, modelData.under)
+                      text: dashRow.kind === "proposal" ? (modelData.item.why || "")
+                        : dashRow.kind === "question" ? "recommended: " + modelData.item.recommended
+                        : dashRow.kind === "task" ? root.taskWhere(modelData.task, modelData.under)
                         : dashRow.kind === "deadline" ? root.deadlineWhere(modelData.deadline)
                         : dashRow.kind === "raised" ? (modelData.item.evidence || "")
                         : ""
@@ -3958,10 +4155,13 @@ Item {
                   onClicked: { root.taskFocus = index; root.activateTask() }
                   PanelToolTip {
                     readonly property string kind: dashRow.modelData.kind
-                    visible: parent.containsMouse && (kind === "task" || kind === "deadline" || kind === "shelf" || kind === "grading" || kind === "raised")
+                    visible: parent.containsMouse && (kind === "task" || kind === "deadline" || kind === "shelf" || kind === "grading" || kind === "raised"
+                                                      || kind === "proposal" || kind === "question")
                     text: kind === "task" ? root.tips([["Go to the line", "dashOpen"], ["Done", "dashDone"], ["Reschedule", "dashWhen"], ["Cycle its priority", "dashPriority"],
                                                        [dashRow.task && dashRow.task.away ? "Back" : "Not now", "dashShelve"], ["Keep it", "dashKeep"], ["Drop it", "dashDrop"]])
                       : kind === "deadline" ? root.tips([["Go to its line", "dashOpen"], ["Done", "dashDone"], ["Grade", "dashGrade"]])
+                      : kind === "proposal" ? root.tips([["Accept: the do-date goes on its line", "dashDone"], ["Decline", "dashDrop"], ["Go to its line", "dashOpen"]])
+                      : kind === "question" ? root.tips([["Accept the recommended answer", "dashDone"], ["Answer in your own words", "dashOpen"], ["Decline", "dashDrop"]])
                       : kind === "shelf" ? root.tip("Show what is not now", "dashOpen")
                       : kind === "grading" ? root.tip("Show what waits for a grade", "dashOpen")
                       : root.tip("Dismiss it", "dashOpen")
@@ -3991,6 +4191,7 @@ Item {
             text: root.keyName("dashUp") + root.keyName("dashDown") + " move · " + root.keyName("dashOpen") + " opens the line · "
               + root.keyName("dashDone") + " done · " + root.keyName("dashWhen") + " when · " + root.keyName("dashPriority") + " priority · "
               + root.keyName("dashShelve") + " not now · " + root.keyName("dashKeep") + " keep · " + root.keyName("dashGrade") + " grade · "
+              + root.keyName("dashPlan") + " plan now · "
               + root.keyName("dashRename") + " rename · " + root.keyName("dashDrop") + " cancel · " + root.keyName("dashUndo") + " undo · " + root.keyName("dashBack") + " back · "
               + root.keyName("keys") + " all keys"
             color: root.faint
@@ -4012,6 +4213,7 @@ Item {
               text: !root.dashWhenFor ? ""
                 : root.dashFieldKind === "rename" ? "rename"
                 : root.dashFieldKind === "grade" ? "grade · " + root.dashWhenFor.deadline.title
+                : root.dashFieldKind === "answer" ? "your answer"
                 : "when · " + root.taskTitle(root.dashWhenFor)
               color: root.dim
               font.family: root.fontFamily
@@ -4021,9 +4223,10 @@ Item {
 
             TextField {
               id: dashWhenField
-              width: root.dashFieldKind === "rename" ? root.sp(460) : root.sp(220)
+              width: root.dashFieldKind === "rename" || root.dashFieldKind === "answer" ? root.sp(460) : root.sp(220)
               placeholderText: root.dashFieldKind === "rename" ? "its words"
-                : root.dashFieldKind === "grade" ? "7.5, A-… · empty clears" : "friday, tomorrow, 20 oct…"
+                : root.dashFieldKind === "grade" ? "7.5, A-… · empty clears"
+                : root.dashFieldKind === "answer" ? root.dashWhenFor.question.question : "friday, tomorrow, 20 oct…"
               font.family: root.fontFamily
               font.styleName: root.fontStyle
               font.pixelSize: root.fs(Style.font.body)

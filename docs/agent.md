@@ -256,7 +256,19 @@ Each is usable alone.
 2. **Proposals and planning** — the ledger; the planning job with the
    arithmetic done locally; action 1 (do-dates) at "ask me"; questions with
    recommended answers; the rows and keys; the count in the bar; acceptance
-   in `stats`.
+   in `stats`. **Built 2026-10-17:** `agent/plan.py` (the fortnight, workload,
+   candidates — tasks and deadlines with no do-date, never a note box — the
+   checks on what the model answers, the ledger `proposals.json`) and
+   `longhand-agent plan | proposals | proposal`, with a planner of its own
+   (`agent/opencode/longhand-plan.md`, every tool denied). It plans when the
+   page or the dashboard opens (once a day unless what it plans around
+   changed; a failed plan is not counted), and on Ctrl+R in the dashboard.
+   Two choices made while building: the ledger's record goes into each plan
+   as data (`your_record`) rather than being written into `patterns.md` —
+   that file is the model's to rewrite; and the student's answers are kept
+   in `knowledge/answers.md`, which the agent reads and cannot write. An
+   accepted do-date's pill says so with ◇. Tests: `tests/test_plan.py`, and
+   the dashboard section of `tests/page/run.py` against a stub model.
 3. **The notebook, visible** — Settings → "What the agent knows", correct
    and forget, `corrections.md`.
 4. **Documents** — the Downloads inbox and filing, the index, conversion

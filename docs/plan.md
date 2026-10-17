@@ -348,9 +348,11 @@ section, word for word, and to the diary's decisions log.
    and questions are dashboard rows with the app's own keys; a ledger of
    outcomes; its notebook visible and correctable; course documents from
    the Downloads inbox, read in three tiers; a pluggable route to the model.
-   In slices: **(1)** who made it (built 2026-10-17) → **(2)** proposals and planning, starting
+   In slices: **(1)** who made it (built 2026-10-17) → **(2)** proposals and planning (built 2026-10-17), starting
    with do-dates → **(3)** the notebook, visible → **(4)** documents →
-   **(5)** the other actions. **Needs from the student:** a re-login to
+   **(5)** the other actions. **Needs from the student:** a new OpenCode
+   Go API key (the one in use expired — found 2026-10-17 on the first real
+   plan; every agent run fails until it is replaced), and a re-login to
    ChatGPT in opencode before a second model route.
 2. **The agent's cheap tiers** (2026-10-14, "the agent's tools" in the
    record). *Self-knowledge*: "how do I add a deadline?" answered from a

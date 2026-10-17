@@ -8,6 +8,9 @@
     longhand-agent tasks [--days 7]                             # open checkboxes across daily notes, JSON
     longhand-agent next [--days 7]                              # tasks (with their clock) + open suggestions/observations, JSON
     longhand-agent box keep|shelve --key <key>                  # a box kept on purpose, or not now (lifespan.py)
+    longhand-agent plan [--force]                               # the planning job: do-dates and questions (plan.py)
+    longhand-agent proposals                                    # what the agent proposes or asks, open, JSON
+    longhand-agent proposal accept|decline|answer --id N [--answer TEXT]
     longhand-agent dismiss --date D --kind suggestion|observation --index <n>
     longhand-agent curriculum                                   # convert PDFs in the curriculum folder to .md
     longhand-agent context --trigger <kind> [--hash <block>]   # payload only, no model
@@ -42,6 +45,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import blocks as blocklib  # noqa: E402
 import lifespan  # noqa: E402
+import plan as planlib  # noqa: E402
 import timetable  # noqa: E402
 import task as tasklib  # noqa: E402
 
@@ -54,6 +58,11 @@ CONFIG_PATH = Path(os.environ.get("LONGHAND_CONFIG") or os.environ.get("OMARCHY_
 STATE_HOME = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state") / "longhand"
 # How long each open box has been silent: the layer's, never the note's.
 SILENCE = STATE_HOME / "silence.json"
+# The agent's proposals and questions, and what came of them (plan.py).
+PROPOSALS = STATE_HOME / "proposals.json"
+# When the planning job last ran, and on what (so it does not plan the same
+# unchanged fortnight twice a day).
+PLAN_STATE = STATE_HOME / "plan.json"
 
 
 class Fail(Exception):
@@ -1137,6 +1146,18 @@ def sure_language(text: str, candidates: list[str]) -> str:
     return best if best and counts[best] >= 2 else ""
 
 
+def proposals_since(start: dt.date) -> dict:
+    """Per kind, what came of the agent's proposals and questions made since
+    `start` — the number that says whether the planner earns its place."""
+    out: dict[str, dict] = {}
+    for x in planlib.load_ledger(PROPOSALS)["items"]:
+        if (x.get("at") or "")[:10] < start.isoformat():
+            continue
+        k = out.setdefault(x["kind"], {})
+        k[x["status"]] = k.get(x["status"], 0) + 1
+    return out
+
+
 def cmd_stats(cfg: dict, args) -> int:
     """How the tool is being used, day by day, read from what is already on
     disk: the notes, the deadline store and pomo's log, the agent's cost
@@ -1288,6 +1309,7 @@ def cmd_stats(cfg: dict, args) -> int:
         "deadlines_added": sum(r["added"] for r in rows),
         "deadlines_closed": closed, "closed_on_time": on_time, "closed_late": late, "closed_from_a_note": from_note,
         "deadlines_missed": missed,
+        "proposals": proposals_since(start),
     }
     for r in rows:
         for k, v in r["features"].items():
@@ -1315,6 +1337,19 @@ def cmd_stats(cfg: dict, args) -> int:
           f"{t['closed_from_a_note']} from a note line)"
           + (f", {t['deadlines_missed']} missed (stepped aside a fortnight late)." if t["deadlines_missed"] else "."))
     print(f"Agent: {t['agent_runs']} runs, ${t['agent_cost']:.4f}. Focus sessions: {t['focus_sessions']}.")
+    pr = t["proposals"]
+    if pr:
+        bits = []
+        for kind, c in sorted(pr.items()):
+            if kind == "do-date":
+                said = c.get("accepted", 0) + c.get("declined", 0)
+                bits.append(f"do-dates {c.get('accepted', 0)}/{said} accepted" if said else "do-dates none answered yet")
+            else:
+                bits.append(f"questions {c.get('answered', 0)} answered")
+            rest = {k: v for k, v in c.items() if k not in ("accepted", "declined", "answered")}
+            if rest:
+                bits[-1] += " (" + ", ".join(f"{v} {k}" for k, v in sorted(rest.items())) + ")"
+        print("Agent proposals: " + "; ".join(bits) + ".")
     print(f"Tags: {' '.join('#' + x for x in t['tags']) or '—'}. Languages (blocks): "
           + (", ".join(f"{k} {v}" for k, v in t["languages"].items() if v) or "—") + ".")
     print("Page: " + (", ".join(f"{k} {v}" for k, v in sorted(t["features"].items())) or "—") + ".")
@@ -1482,12 +1517,210 @@ def timetable_section(cfg: dict, now: dt.datetime, days: int = 14) -> list[str]:
     return out
 
 
+# ------------------------------------------------------------------ planning
+
+def plan_tasks(cfg: dict) -> list[dict]:
+    """Every open box the agent may see — private notes and blocks left out
+    — with its silence clock (lifespan) and its key."""
+    rows = [r for r in outcomes(cfg, days=3650, visible_only=True) if not r["done"] and not r["cancelled"]]
+    return lifespan.apply(rows, SILENCE)
+
+
+def plan_events(cfg: dict, today: dt.date) -> list[dict]:
+    """The fortnight's events the agent may see: classes (named by their
+    course) and everything in a calendar shared whole."""
+    events = timetable.sessions(cfg, STATE_HOME, fetch=False) or []
+    codes = course_codes(cfg, today)
+    horizon = dt.datetime.combine(today + dt.timedelta(days=planlib.DAYS), dt.time())
+    out = []
+    for e in events:
+        if e["end"] <= dt.datetime.combine(today, dt.time()) or e["start"] >= horizon:
+            continue
+        course = next((name for code, name, _ in codes if code and timetable.matches(e, code)), None)
+        if course is None and e.get("agent") != "all":
+            continue
+        out.append(dict(e, label=course or e["summary"]))
+    return out
+
+
+def plan_payload(cfg: dict, paths: Paths, today: dt.date, data: dict) -> str:
+    parts = ["# Plan", f"today: {today.isoformat()} ({today:%A})", "",
+             "# Data (computed by local code; trust the numbers)", "",
+             "```json", json.dumps(data, indent=1, ensure_ascii=False), "```"]
+    knowledge = read_tree(paths.knowledge)
+    parts += ["", "# Your knowledge files", ""]
+    if knowledge:
+        for name, text in knowledge:
+            if name in ("answers.md", "dismissed.md"):
+                continue
+            parts += [f"## {name}", "", text.rstrip(), ""]
+    else:
+        parts.append("(none yet)")
+    answers = paths.knowledge / "answers.md"
+    if answers.exists():
+        parts += ["", "# The student's answers to your questions (true; never ask them again)", "",
+                  answers.read_text().rstrip()]
+    dismissed = read_dismissed(paths)
+    if dismissed:
+        parts += ["", "# Suggestions the student dismissed", ""] + [f"- {d}" for d in dismissed]
+    return "\n".join(parts) + "\n"
+
+
+def parse_plan(text: str) -> dict:
+    empty = {"proposals": [], "questions": [], "knowledge": []}
+    m = None
+    for m in re.finditer(r"```(?:json)?\s*\n(.*?)\n```", text, re.S):
+        pass
+    for c in ([m.group(1)] if m else []) + [text.strip()]:
+        try:
+            obj = json.loads(c)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(obj, dict):
+            return {k: obj.get(k) if isinstance(obj.get(k), list) else [] for k in empty}
+    return empty
+
+
+def cmd_plan(cfg: dict, args) -> int:
+    """The planning job (docs/agent.md): at most once a day, again when what
+    it plans around changed, and whenever asked (--force). The arithmetic is
+    local (plan.py); the model brings judgement; what it says is checked
+    before it reaches the ledger, and nothing is written into a note — the
+    page writes a do-date when the person accepts it."""
+    today = dt.date.today()
+    paths = Paths(cfg, today)
+    tasks = plan_tasks(cfg)
+    deadlines = planlib.store_deadlines(STATE_HOME / "deadlines.tsv")
+    days = planlib.fortnight(today, plan_events(cfg, today), deadlines, tasks)
+    cands = planlib.candidates(tasks, deadlines, today)
+    digest = planlib.inputs_hash(cands, days)
+    try:
+        last = json.loads(PLAN_STATE.read_text())
+    except (OSError, ValueError):
+        last = {}
+    at = dt.datetime.now().isoformat(timespec="seconds")
+    if not args.force and last.get("day") == today.isoformat() and last.get("hash") == digest:
+        print(json.dumps({"ran": False, "why": "nothing changed since today's plan"}))
+        return 0
+    state = {"day": today.isoformat(), "hash": digest, "at": at}
+    if not cands:
+        planlib._write(PLAN_STATE, state)
+        print(json.dumps({"ran": False, "why": "nothing to plan"}))
+        return 0
+
+    ledger = planlib.load_ledger(PROPOSALS)
+    data = {
+        "today": today.isoformat(),
+        "fortnight": days,
+        "candidates": cands,
+        "workload": planlib.workload(tasks, deadlines, today),
+        "deadlines": [{"title": x["title"], "due": x["due"].strftime("%Y-%m-%d %H:%M"), "project": x["project"]}
+                      for x in sorted(deadlines, key=lambda x: x["due"])][:20],
+        "your_record": planlib.summary(ledger),
+    }
+    payload = plan_payload(cfg, paths, today, data)
+    paths.payloads.mkdir(parents=True, exist_ok=True)
+    stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+    payload_file = paths.payloads / f"{stamp}-plan.md"
+    payload_file.write_text(payload)          # logged before inference
+
+    result = run_model(dict(cfg, agent=cfg.get("planAgent", "longhand-plan")), paths, payload,
+                       message="Plan the fortnight. The context follows on stdin.")
+    reply = parse_plan(result["text"]) if not result["error"] else {"proposals": [], "questions": [], "knowledge": []}
+    props, qs = planlib.validate(reply, cands, days, ledger, today)
+    new = planlib.record(ledger, props, qs, at)
+    planlib.save_ledger(PROPOSALS, ledger)
+
+    written = []
+    for k in reply["knowledge"]:
+        name = str((k or {}).get("file") or "")
+        if not KNOWLEDGE_FILE.match(name) or name == "dismissed.md":
+            continue
+        write_atomic(paths, paths.knowledge / name, str(k.get("content") or "").rstrip() + "\n")
+        written.append(name)
+
+    tk = result["tokens"]
+    paths.ledger.parent.mkdir(parents=True, exist_ok=True)
+    if not paths.ledger.exists():
+        paths.ledger.write_text("at\tdate\ttrigger\tblock\tcost\tinput\toutput\treasoning\tsession\n")
+    with open(paths.ledger, "a") as f:
+        f.write(f"{at}\t{paths.stamp}\tplan\t\t{result['cost']:.6f}\t{tk['input']}\t{tk['output']}\t{tk['reasoning']}\t{result['session']}\n")
+    # A plan that failed is not today's plan: the next opening tries again,
+    # and the page says why it could not (an expired key, no network).
+    if result["error"]:
+        state.pop("hash", None)
+    state["error"] = result["error"]
+    planlib._write(PLAN_STATE, state)
+    print(json.dumps({"ran": True, "proposals": sum(1 for x in new if x["kind"] == "do-date"),
+                      "questions": sum(1 for x in new if x["kind"] == "question"),
+                      "knowledge": written, "cost": result["cost"], "error": result["error"]}, ensure_ascii=False))
+    return 0 if not result["error"] else 1
+
+
+def cmd_proposals(cfg: dict, args) -> int:
+    """What the agent proposes or asks, open, for the dashboard — each with
+    where its box is — and the do-dates accepted lately (their pills carry
+    the agent's tint). A do-date whose box got a date some other way, is
+    done, or is gone, is settled as moot first."""
+    tasks = plan_tasks(cfg)
+    ledger = planlib.load_ledger(PROPOSALS)
+    at = dt.datetime.now().isoformat(timespec="seconds")
+    if planlib.settle_moot(ledger, tasks, at):
+        planlib.save_ledger(PROPOSALS, ledger)
+    by_key = {t["key"]: t for t in tasks}
+    out = []
+    for x in planlib.open_items(ledger):
+        t = by_key.get(x["key"]) if x["key"] else None
+        out.append(dict(x, where={"date": t["date"], "line": t["line"], "text": t["text"]} if t else None))
+    since = (dt.date.today() - dt.timedelta(days=planlib.DAYS)).isoformat()
+    accepted = [{"key": x["key"], "date": x["date"]} for x in ledger["items"]
+                if x["kind"] == "do-date" and x["status"] == "accepted" and x.get("resolved", "") >= since]
+    print(json.dumps({"open": out, "accepted": accepted, "count": len(out)}, ensure_ascii=False))
+    return 0
+
+
+def cmd_proposal(cfg: dict, args) -> int:
+    """The person's answer to one proposal or question. Accepting a do-date
+    is recorded here; the do-date itself is written into the note by the
+    page, the one writer of notes. An answered question is kept in the
+    agent's knowledge as `answers.md`, which it reads every time and never
+    writes, so it does not ask again."""
+    ledger = planlib.load_ledger(PROPOSALS)
+    at = dt.datetime.now().isoformat(timespec="seconds")
+    item = next((x for x in ledger["items"] if x["id"] == args.id), None)
+    if item is None:
+        raise Fail(f"no proposal #{args.id}")
+    if item["status"] != "open":
+        print(json.dumps({"id": args.id, "status": item["status"], "changed": False}))
+        return 0
+    if args.how == "answer" or (args.how == "accept" and item["kind"] == "question"):
+        answer = (args.answer or "").strip() or item.get("recommended", "")
+        if item["kind"] != "question" or not answer:
+            raise Fail("only a question takes an answer")
+        planlib.resolve(ledger, args.id, "answered", at, answer)
+        paths = Paths(cfg, dt.date.today())
+        f = paths.knowledge / "answers.md"
+        head = "" if f.exists() else "# The student's answers\n\nWhat the student told the agent when it asked. True; never to be asked again.\n\n"
+        about = f"{item['title']}: " if item.get("title") else ""
+        line = f"- {dt.date.today().isoformat()} · {about}{item['question']} → {answer}\n"
+        write_atomic(paths, f, head + (f.read_text() if f.exists() else "") + line)
+    else:
+        planlib.resolve(ledger, args.id, "accepted" if args.how == "accept" else "declined", at)
+    planlib.save_ledger(PROPOSALS, ledger)
+    print(json.dumps({"id": args.id, "status": next(x for x in ledger["items"] if x["id"] == args.id)["status"],
+                      "changed": True}))
+    return 0
+
+
 def cmd_install(cfg: dict, args) -> int:
     here = Path(__file__).resolve().parent
-    src = here / "opencode" / "longhand.md"
-    dst = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "opencode" / "agent" / "longhand.md"
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    dst.write_text(src.read_text())
+    agents = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "opencode" / "agent"
+    agents.mkdir(parents=True, exist_ok=True)
+    # The agent that answers in the margin, and the one that plans; both
+    # with every tool denied.
+    for name in ("longhand.md", "longhand-plan.md"):
+        (agents / name).write_text((here / "opencode" / name).read_text())
+    dst = agents / "longhand.md"
     paths = Paths(cfg, dt.date.today())
     for d in (paths.agent_dir / "daily", paths.knowledge, paths.payloads, paths.cwd, paths.curriculum):
         if d is not None:
@@ -1526,6 +1759,13 @@ def main(argv: list[str]) -> int:
     p.add_argument("--fetch", action="store_true", help="ask the university now")
     p.add_argument("--index", type=int, default=-1, help="with --fetch: only this calendar")
     p.add_argument("--forget", action="store_true", help="kept for the first version; copies are pruned anyway")
+    p = sub.add_parser("plan")
+    p.add_argument("--force", action="store_true", help="plan now, whatever today's plan was")
+    sub.add_parser("proposals")
+    p = sub.add_parser("proposal")
+    p.add_argument("how", choices=("accept", "decline", "answer"))
+    p.add_argument("--id", type=int, required=True)
+    p.add_argument("--answer", default="")
     p = sub.add_parser("box")
     p.add_argument("how", choices=("keep", "shelve"))
     p.add_argument("--key", required=True)
@@ -1545,7 +1785,7 @@ def main(argv: list[str]) -> int:
     try:
         cfg = load_config()
         return {"run": cmd_run, "chat": cmd_chat, "ack": cmd_ack, "accept": cmd_accept, "tasks": cmd_tasks, "sections": cmd_sections,
-                "next": cmd_next, "box": cmd_box, "timetable": cmd_timetable, "dismiss": cmd_dismiss, "curriculum": cmd_curriculum,
+                "next": cmd_next, "box": cmd_box, "plan": cmd_plan, "proposals": cmd_proposals, "proposal": cmd_proposal, "timetable": cmd_timetable, "dismiss": cmd_dismiss, "curriculum": cmd_curriculum,
                 "context": cmd_context, "state": cmd_state, "install": cmd_install, "stats": cmd_stats,
                 "projects": cmd_projects}[args.cmd](cfg, args)
     except Fail as e:

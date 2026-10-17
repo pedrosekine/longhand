@@ -47,6 +47,28 @@ path.parent.mkdir(parents=True, exist_ok=True)
 path.write_text(json.dumps(state))
 """
 
+# The planner's model, for the page's own tests: it answers only once a
+# test has turned it on (plan-on in its folder), so the dashboard's other
+# tests see no proposals. It proposes the first box it is offered for
+# tomorrow (or its due day, if sooner), and asks one question.
+PLAN_STUB = """#!/usr/bin/env python3
+import json, os, re, sys
+d = os.environ["STUB_DIR"]
+payload = sys.stdin.read()
+reply = {"proposals": [], "questions": [], "knowledge": []}
+if os.path.exists(os.path.join(d, "plan-on")) and payload.startswith("# Plan"):
+    data = json.loads(re.search(r"```json\\n(.*?)\\n```", payload, re.S).group(1))
+    c = data["candidates"][0]
+    day = data["fortnight"][1]["date"]
+    if c["due"] and c["due"][:10] < day:
+        day = c["due"][:10]
+    reply["proposals"].append({"kind": "do-date", "key": c["key"], "date": day, "why": "Tomorrow is free."})
+    reply["questions"].append({"key": "", "question": "Do you work on weekends?", "recommended": "No"})
+ev = lambda t, part: print(json.dumps({"type": t, "sessionID": "ses_page", "part": part}))
+ev("text", {"type": "text", "text": "```json\\n" + json.dumps(reply) + "\\n```"})
+ev("step_finish", {"type": "step-finish", "cost": 0.0001, "tokens": {"input": 1, "output": 1, "reasoning": 0, "total": 2}})
+"""
+
 # The student's Hyprland bindings, as the throwaway config has them: the six
 # keys for the page, the timer and the deadlines, hand-written.
 BINDINGS = """o.bind("SUPER + SHIFT + T", "Todoist", { webapp = "https://app.todoist.com/app/today", focus = true })
@@ -95,6 +117,10 @@ class Page:
         bindir = self.tmp / "bin"
         bindir.mkdir()
         (bindir / "pomo").symlink_to(ROOT / "cli" / "pomo")
+        (bindir / "opencode").write_text(PLAN_STUB)
+        (bindir / "opencode").chmod(0o755)
+        self.stub = self.tmp / "stub"
+        self.stub.mkdir()
         # Hyprland, played over a throwaway hypr folder: the keys sheet's
         # writes, reloads and submap never reach the real one.
         self.hypr = cfg / "hypr"
@@ -111,7 +137,7 @@ class Page:
         chatstub.write_text(CHAT_STUB)
         self.runner.write_text(f"""#!/bin/bash
 case "$1" in
-  accept|projects|sections|next|tasks|box|timetable) exec "{ROOT}/agent/longhand-agent" "$@" ;;
+  accept|projects|sections|next|tasks|box|timetable|plan|proposals|proposal) exec "{ROOT}/agent/longhand-agent" "$@" ;;
   run) sleep 2; exit 0 ;;
   chat) sleep 2; exec python3 "{chatstub}" "{self.vault}/agents/longhand/daily" "$@" ;;
 esac
@@ -119,6 +145,7 @@ esac
         self.runner.chmod(0o755)
         # LONGHAND_SILENT: the tick's sound is counted, never played.
         self.env = dict(os.environ, XDG_CONFIG_HOME=str(cfg), XDG_STATE_HOME=str(self.state), LONGHAND_SILENT="1",
+                        STUB_DIR=str(self.stub),
                         PATH=f"{bindir}:{os.environ['PATH']}", FAKE_HYPR_DIR=str(self.hypr),
                         FAKE_HYPR_REAL=shutil.which("hyprctl") or "")
         if fake_home:
@@ -1227,6 +1254,55 @@ def main() -> int:
               f"the dashboard draws it too ({author_row('steps the agent wrote fully')!r})")
         check(p.wait(lambda: author_row("Registered topic and supervisor") == "agent"),
               "…and the agent's deadline there")
+        p.call("dash")
+
+        # 12g. the agent plans (docs/agent.md, slice 2): its do-date is a row
+        # under the box it is about, accepted with the app's own key, written
+        # on the box's line by the page; its question is answered in words;
+        # a decline is recorded; nothing is written without the person.
+        (p.stub / "plan-on").write_text("")
+        if p.call("dashOpen") == "false":
+            p.call("dash")
+        p.call("plan", "true")
+
+        def asks():
+            return [(n, r) for n, r in enumerate(json.loads(p.call("dashRows"))) if r["kind"] in ("proposal", "question")]
+        check(p.wait(lambda: any(r["kind"] == "proposal" for _, r in asks()) and any(r["kind"] == "question" for _, r in asks()), timeout=15),
+              f"a plan asked for: a do-date and a question arrive as rows ({asks()})")
+        rows = json.loads(p.call("dashRows"))
+        i, prop = next((n, r) for n, r in asks() if r["kind"] == "proposal")
+        check(rows[i - 1]["kind"] in ("task", "deadline") and rows[i - 1]["text"] == prop["under"],
+              f"the do-date sits right under the box it is about ({rows[i - 1].get('text')!r} / {prop['under']!r})")
+        check(p.call("rowAuthor", i) == "agent", "…marked as the agent's")
+        ledger_file = p.state / "longhand" / "proposals.json"
+        notes_before = {f.name: f.read_text() for f in p.daily.glob("*.md")}
+        check(all(f.read_text() == notes_before[f.name] for f in p.daily.glob("*.md")), "proposing wrote nothing into a note")
+        p.call("dashFocus", i)
+        check(p.call("dashKey", KEY_RETURN, CTRL) == "true", "Ctrl+Enter on the proposal accepts it")
+        when = prop["date"]
+        check(p.wait(lambda: any(f"⏳ {when}" in f.read_text() for f in p.daily.glob("*.md"))),
+              f"…and the page writes the do-date on the box's line (⏳ {when})")
+        check(p.wait(lambda: any(x["kind"] == "do-date" and x["status"] == "accepted"
+                                 for x in json.loads(ledger_file.read_text())["items"])), "…recorded as accepted")
+        check(p.wait(lambda: not any(r["kind"] == "proposal" for _, r in asks())), "…and the row goes")
+        qi = next(n for n, r in asks() if r["kind"] == "question")
+        p.call("dashFocus", qi)
+        p.call("dashKey", KEY_RETURN, 0)
+        p.call("dashWhen", "Sometimes, on Sundays")
+        answers = p.vault / "agents" / "longhand" / "knowledge" / "answers.md"
+        check(p.wait(lambda: answers.exists() and "Do you work on weekends? → Sometimes, on Sundays" in answers.read_text()),
+              "Enter on a question takes the person's own answer, kept for the agent")
+        p.call("plan", "true")
+        check(p.wait(lambda: any(r["kind"] == "proposal" for _, r in asks()), timeout=15), "planning again proposes for the next box")
+        i2 = next(n for n, r in asks() if r["kind"] == "proposal")
+        p.call("dashFocus", i2)
+        check(p.call("dashKey", KEY_DELETE, 0) == "true", "Delete on the proposal declines it")
+        check(p.wait(lambda: any(x["kind"] == "do-date" and x["status"] == "declined"
+                                 for x in json.loads(ledger_file.read_text())["items"])), "…recorded as declined")
+        (p.stub / "plan-on").unlink()
+        for n, r in asks():
+            p.call("dashFocus", n)
+            p.call("dashKey", KEY_DELETE, 0)
         p.call("dash")
 
         # 12b. the keys sheet: every key the page answers to, listed; one

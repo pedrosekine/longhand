@@ -178,6 +178,7 @@ ShellRoot {
     function dashAt(): int { return page.taskFocus }
     function dashCount(): string { return page.dashCount }
     function ticksHeard(): int { return page.ticksHeard }
+    function plan(force: bool): void { page.runPlan(force) }
     // Who made it
     function markAgent(line: int): void { page.markAuthor(line, "agent") }
     function markAuthor(line: int, author: string): void { page.markAuthor(line, author) }
@@ -194,6 +195,9 @@ ShellRoot {
           : r.kind === "month" ? { kind: "month", text: r.text }
           : r.kind === "shelf" || r.kind === "grading" ? { kind: r.kind, count: r.count }
           : r.kind === "raised" ? { kind: "raised", text: r.item.text }
+          : r.kind === "proposal" ? { kind: "proposal", id: r.item.id, date: r.item.date, why: r.item.why,
+                                      under: r.task ? page.taskTitle(r.task) : "" }
+          : r.kind === "question" ? { kind: "question", id: r.item.id, text: r.item.question, recommended: r.item.recommended }
           : r.kind === "deadline" ? { kind: "deadline", text: r.deadline.title, due: r.deadline.due,
                                       where: page.deadlineWhere(r.deadline), grade: r.deadline.grade }
           : { kind: "task", text: page.taskTitle(r.task), where: page.taskWhere(r.task),

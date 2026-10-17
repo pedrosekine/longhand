@@ -1048,3 +1048,23 @@ only the window and the panels around it differ.
   in all three, the way the square always was (the first cut drew the open
   seal solid, which read as nearly done). Nothing on the student's notes is
   the agent's yet: slice 2 is what writes the agent's lines in.
+- 2026-10-17 (night, last): the agent plans — slice 2 of docs/agent.md.
+  The arithmetic is local (`agent/plan.py`): the fortnight day by day
+  (classes and the events the agent may see, the free hours of a working
+  day, what is due, what is already planned), workload per project, and the
+  boxes worth planning — tasks and deadlines with no do-date, never a note
+  box, never anything private. The model (a planner of its own, every tool
+  denied, its whole payload logged first) brings judgement, and what it
+  answers is checked before anything reaches the person: a do-date only for
+  a box it was offered, inside the fortnight, never after the box's due
+  date, never a day the person declined; at most two questions. Proposals
+  and questions are dashboard rows under the box they are about, with the
+  app's own keys — Space accepts (the page writes `⏳` on the line), Del
+  declines, Enter answers in the person's words, kept in `answers.md`; the
+  bar counts what waits, quietly; `stats` says what came of them. It plans
+  when the page or the dashboard opens, at most once a day unless what it
+  plans around changed, and on Ctrl+R. Built against a stub model; the first
+  real plan found that the OpenCode Go key had expired — so every agent run
+  fails until it is renewed — and that a failed plan had been counted as the
+  day's plan and was not shown; both are fixed, and the dashboard now says
+  why the agent could not plan.
