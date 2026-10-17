@@ -64,6 +64,7 @@ All paths relative to the vault unless stated. Names of folders are config.
 | Day state | `agents/longhand/daily/YYYY.MM.DD.json` | the runner, rendered by the page |
 | Knowledge | `agents/longhand/knowledge/` | the runner; the student may edit |
 | Curriculum | folder named in config | the student; read-only for the agent |
+| Box clocks | `~/.local/state/longhand/silence.json` | the runner (`lifespan.py`); never the note |
 | Deadlines, sessions | `~/.local/state/longhand/` (existing) | the CLI only |
 | Payload log | `~/.local/state/longhand/payloads/` | the runner; never synced |
 | Cost ledger | `~/.local/state/longhand/cost.tsv` | the runner |
@@ -880,3 +881,22 @@ only the window and the panels around it differ.
   words). Project is one rule everywhere — the line's tag, else the heading's.
   Empty boxes are not tasks. The whole model, and what was learned, is in
   `tasks.md`.
+- 2026-10-17 (later): lifespans, built. A box's clock is the layer's
+  (`agent/lifespan.py`, `silence.json` beside the store), keyed by its
+  project and words, and the note is never rewritten: a box silent for its
+  life (7 days a note box, 30 a task; a do-date ahead starts the clock on
+  that day) leaves the list and waits folded under **not now**, which is
+  also where `s` puts one by hand — a shelf, not a snooze, because `t`
+  already says "on this day". Touched means its words written or changed,
+  the same words in a later note, a priority set, or `r` (keep); `s` on a
+  box that is away is a keep too. Nothing goes unwarned: a row says "goes
+  quiet in N days" through the last quarter of its life, and on the clock's
+  first day every box already past its life starts in that quarter instead
+  of going at once (Fizzy's rule when its setting changes) — which on the
+  student's notes put all 35 open boxes on a 2-day countdown together. A
+  deadline still open a fortnight past its date steps aside (hidden, by
+  `longhand-check`, counted down over its last four days) and comes back if
+  its date moves on or its line is ticked; `stats` counts it as missed, not
+  as done late, and stops counting cancelled ones as closed. `g` grades a
+  deadline from the dashboard, and done ones with no grade wait folded, as
+  in the popup.

@@ -12,7 +12,9 @@ three in line with each other:
 - a deadline is cancelled exactly while no note holds its tag, and comes
   back as the line says when one does again;
 - a deadline that never had a line waits ("not in a note yet") and counts
-  as the agent's, with its first wording kept.
+  as the agent's, with its first wording kept;
+- a deadline still open a fortnight past its date steps aside (hidden),
+  and comes back if its date moves on or its line is ticked.
 
 It changes only a line's facts — its tick and its date — never its words.
 It is a program of its own, not the agent runner: `longhand-agent` refuses
@@ -45,6 +47,8 @@ CONFIG_PATH = Path(os.environ.get("LONGHAND_CONFIG")
                    or Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "longhand" / "config.json")
 STATE_HOME = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state") / "longhand"
 LEDGER = STATE_HOME / "ledger.json"
+# How long an open deadline stays on the list past its date.
+FORTNIGHT = 14 * 86400
 POMO = os.environ.get("LONGHAND_POMO") or "pomo"
 DRY: list[str] = []     # --dry-run: what would be done, and nothing done
 DRY_RUN = False
@@ -202,13 +206,32 @@ def check(cfg: dict, open_stem: str = "", now: int | None = None) -> dict:
     items = store()
     led = load_ledger()
     seen_ids = {d["id"] for d in items}
-    out: dict = {"cancelled": [], "restored": [], "changed": [], "lines": [], "waiting": [], "stale": [], "duplicates": sorted(set(dupes))}
+    out: dict = {"cancelled": [], "restored": [], "changed": [], "lines": [], "waiting": [], "stale": [], "hidden": [],
+                 "duplicates": sorted(set(dupes))}
     edits: dict[Path, dict[int, str]] = {}
     texts_before = {f: list(ls) for f, ls in texts.items()}
 
     def edit(where: dict, raw: str) -> None:
         texts[where["file"]][where["line"]] = raw
         edits.setdefault(where["file"], {})[where["line"]] = raw
+
+    def step_aside(d: dict, rec: dict, status: str, due: int) -> str:
+        """A deadline a fortnight past its date with nothing done to it
+        steps aside: hidden, the state the store already has, and kept
+        (docs/tasks.md, lifespans). The dashboard counts the last days down
+        first. Its date moved on since: back on the list."""
+        key = str(d["id"])
+        if status == "open" and due and now >= due + FORTNIGHT:
+            pomo("hide", key)
+            rec["hidden"] = {"at": now, "by": "check"}
+            out["hidden"].append({"id": d["id"], "title": d["title"]})
+            return "hidden"
+        if status == "hidden" and (rec.get("hidden") or {}).get("by") == "check" and now < due + FORTNIGHT:
+            pomo("reopen", key)
+            rec.pop("hidden", None)
+            out["restored"].append({"id": d["id"], "title": d["title"]})
+            return "open"
+        return status
 
     for d in items:
         key = str(d["id"])
@@ -231,7 +254,8 @@ def check(cfg: dict, open_stem: str = "", now: int | None = None) -> dict:
                 rec.setdefault("firstTitle", d["title"])
                 if d["title"] != rec["firstTitle"]:
                     rec["rewritten"] = True
-                out["waiting"].append(d["id"])
+                if step_aside(d, rec, status, d["due"]) == "open":
+                    out["waiting"].append(d["id"])
             continue
 
         box = where["box"]
@@ -244,7 +268,13 @@ def check(cfg: dict, open_stem: str = "", now: int | None = None) -> dict:
         # store says, whichever moved since they last agreed.
         line_state = state_of(box)
         if status == "hidden":
-            pass                      # put away by hand; not this check's to undo
+            # Put away by hand: not this check's to undo. Stepped aside by
+            # this check and ticked since: done, as the line says.
+            if (rec.get("hidden") or {}).get("by") == "check" and line_state == "done":
+                pomo("done", key)
+                rec.pop("hidden", None)
+                status = "done"
+                out["changed"].append({"id": d["id"], "what": "state", "from": "line"})
         elif status == "cancelled" and line_state != "cancelled" and "cancelled" in rec:
             # Cancelled because its line was gone, and the line is back (a
             # paste, an undo, Obsidian): as it says.
@@ -307,6 +337,7 @@ def check(cfg: dict, open_stem: str = "", now: int | None = None) -> dict:
             pomo("set", key, *args)
             out["changed"].append({"id": d["id"], "what": "facts", "from": "line"})
 
+        status = step_aside(d, rec, status, due)
         if status != "cancelled":
             rec.pop("cancelled", None)
 
@@ -377,6 +408,8 @@ def main(argv: list[str]) -> int:
             print(f"cancelled #{c['id']} · {c['title']} (its line is gone)")
         for c in out["restored"]:
             print(f"back #{c['id']} · {c['title']}")
+        for c in out["hidden"]:
+            print(f"stepped aside #{c['id']} · {c['title']} (a fortnight past its date)")
         if out["lines"]:
             print(f"{len(out['lines'])} line(s) brought in line with the store")
         if out["waiting"]:

@@ -39,8 +39,12 @@ def main() -> int:
         assert r.returncode == 0, r.stderr
         return r.stdout
 
-    def run(*args):
-        r = subprocess.run([str(CHECK), "--json", *args], capture_output=True, text=True, env=env)
+    # The check's clock is pinned, so a deadline's fortnight runs out when
+    # the test says and not when the calendar does.
+    NOW = int(dt.datetime(2026, 10, 17, 12, 0).timestamp())
+
+    def run(*args, now=None):
+        r = subprocess.run([str(CHECK), "--json", "--now", str(now or NOW), *args], capture_output=True, text=True, env=env)
         assert r.returncode == 0, r.stderr
         return json.loads(r.stdout)
 
@@ -163,6 +167,39 @@ def main() -> int:
     pomo("done", str(h))
     out = run()
     check(item(h)["status"] == "done" and h not in out["waiting"], "a done deadline that never had a line is history")
+
+    # A fortnight past its date with nothing done: it steps aside — hidden,
+    # kept, its line untouched — and comes back if the line says so.
+    late = add("Initial paper", "2026-10-01")
+    other.write_text(other.read_text() + f"- [ ] Initial paper 📅 2026-10-01 ^d{late}\n")
+    out = run(now=int(dt.datetime(2026, 10, 15, 12, 0).timestamp()))
+    check(item(late)["status"] == "open" and out["hidden"] == [], "thirteen days late it is still on the list")
+    out = run()
+    check(item(late)["status"] == "hidden" and [x["id"] for x in out["hidden"]] == [late],
+          f"a fortnight late with nothing done, it steps aside ({item(late)['status']}, {out['hidden']})")
+    check(ledger()[str(late)]["hidden"]["by"] == "check", "…remembered as stepped aside, not put away by hand")
+    check(f"- [ ] Initial paper 📅 2026-10-01 ^d{late}" in other.read_text(), "…its line untouched")
+    other.write_text(other.read_text().replace("📅 2026-10-01 ^d", "📅 2026-10-20 ^d"))
+    out = run()
+    check(item(late)["status"] == "open" and late in [x["id"] for x in out["restored"]],
+          "its date moved on in the note: back on the list")
+    other.write_text(other.read_text().replace("📅 2026-10-20 ^d", "📅 2026-10-01 ^d"))
+    run()
+    other.write_text(other.read_text().replace("- [ ] Initial paper", "- [x] Initial paper"))
+    run()
+    check(item(late)["status"] == "done" and "hidden" not in ledger()[str(late)],
+          f"ticked in the note after stepping aside: done, as the line says ({item(late)['status']})")
+    byhand = add("Put away by hand", "2026-10-01")
+    other.write_text(other.read_text() + f"- [ ] Put away by hand 📅 2026-10-01 ^d{byhand}\n")
+    run(now=int(dt.datetime(2026, 10, 2, 12, 0).timestamp()))
+    pomo("hide", str(byhand))
+    other.write_text(other.read_text().replace("📅 2026-10-01 ^d" + str(byhand), "📅 2026-10-25 ^d" + str(byhand)))
+    run()
+    check(item(byhand)["status"] == "hidden", "one hidden by hand stays hidden whatever its date does")
+    never = add("An agent's old proposal", "2026-09-20")
+    out = run()
+    check(item(never)["status"] == "hidden" and never not in out["waiting"],
+          "one that never had a line steps aside too, rather than waiting forever")
 
     # No store file: nothing is concluded from it either (every tag would look stale).
     store = tmp / "state" / "longhand" / "deadlines.tsv"

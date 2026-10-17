@@ -94,6 +94,9 @@ Where a row has two keys, either works: the second is usually the one another ap
 | Cycle its priority | `p` | in the dashboard |
 | Rename it (its line's words) | `Ctrl+E` | in the dashboard |
 | Cancel it (the line stays, as cancelled) | `Del` · `Backspace` | in the dashboard |
+| Not now: put it aside (again: back) | `s` | in the dashboard |
+| Keep it: its clock starts again | `r` | in the dashboard |
+| Grade a deadline | `g` | in the dashboard |
 | Take the last tick back | `Ctrl+Z` | in the dashboard |
 | Back to the note | `Esc` | in the dashboard |
 

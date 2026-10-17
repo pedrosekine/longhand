@@ -138,8 +138,8 @@ person inside Longhand.
 
 | Born | Lives | Ends |
 |---|---|---|
-| A checkbox typed in a note | the line | ticked, cancelled (`[-]`), or the line deleted |
-| A checkbox with a date at its end, or Ctrl+D | the line, tagged `^dN`, plus its ledger entry | done; cancelled by Delete; cancelled while its line is gone |
+| A checkbox typed in a note | the line, and its silence clock in the layer | ticked, cancelled (`[-]`), or the line deleted; out of the dashboard (never the note) after 7 silent days, 30 for a task |
+| A checkbox with a date at its end, or Ctrl+D | the line, tagged `^dN`, plus its ledger entry | done; cancelled by Delete; cancelled while its line is gone; stepped aside (hidden) when still open a fortnight past its date |
 | An agent proposal accepted, matched to a checkbox | that line, as above | as above |
 | An agent proposal accepted, no checkbox matches | "not in a note yet", origin agent | written into today's note (then as above), or cancelled |
 | `pomo deadline add` | "not in a note yet" | as above |

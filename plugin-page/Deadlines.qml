@@ -133,6 +133,9 @@ Item {
   function remove(id) { root.run(["rm", String(id)]) }
   function hide(id) { root.run(["hide", String(id)]) }
   function cancel(id) { root.run(["cancel", String(id)]) }
+  // A grade, as the popup takes it; empty clears it. Grading one still open
+  // hands it in (pomo).
+  function grade(id, text) { root.run(["grade", String(id)].concat(root.words(text))) }
   // Read the file again now, rather than when the watch says so: after a
   // check, the page wants the store as it was left before it catches up.
   function reload() { file.reload() }

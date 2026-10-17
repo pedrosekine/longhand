@@ -179,11 +179,12 @@ ShellRoot {
       return JSON.stringify(page.taskRows.map(function (r) {
         return r.kind === "head" ? { kind: "head", text: r.text, tag: r.tag || "" }
           : r.kind === "month" ? { kind: "month", text: r.text }
-          : r.kind === "older" ? { kind: "older", count: r.count }
+          : r.kind === "shelf" || r.kind === "grading" ? { kind: r.kind, count: r.count }
           : r.kind === "raised" ? { kind: "raised", text: r.item.text }
-          : r.kind === "deadline" ? { kind: "deadline", text: r.deadline.title, due: r.deadline.due }
+          : r.kind === "deadline" ? { kind: "deadline", text: r.deadline.title, due: r.deadline.due,
+                                      where: page.deadlineWhere(r.deadline), grade: r.deadline.grade }
           : { kind: "task", text: page.taskTitle(r.task), where: page.taskWhere(r.task),
-              date: r.task.date, prio: r.task.priority, when: r.task.when }
+              date: r.task.date, prio: r.task.priority, when: r.task.when, away: r.task.away || "" }
       }))
     }
 

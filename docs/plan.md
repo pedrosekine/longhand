@@ -549,9 +549,8 @@ a fix or a feature to decide first):
      editor or another day's on disk. Enter in the deadline popup opened
      *nothing* and meant *done*; it now opens the line there too (`d` still
      closes out), so one key means one thing across the page, the popup and
-     the dashboard. Left for the lifespans below: **not now** (`s`), which
-     needs the silence clock; and `g` (grade) in the dashboard, which only
-     the popup has. Tests: `tests/test_task.py` for the line editing,
+     the dashboard. **Not now** (`s`) and `g` (grade) came with the
+     lifespans, 2026-10-17. Tests: `tests/test_task.py` for the line editing,
      `tests/page/run.py` for the dashboard driven live.
      **Drawn 2026-10-15**, after the first version read as a wall of data:
      the dashboard borrows the note's own idiom rather than inventing one.
@@ -568,6 +567,16 @@ a fix or a feature to decide first):
      what it is, as `Rows.js` does for the note, and the column is 1.45
      measures wide and centred, because a list is wider than prose but not
      as wide as the wall.
+     **Lifespans built 2026-10-17:** the silence clock lives in the layer
+     (`agent/lifespan.py`, `silence.json`), the note is never rewritten,
+     and what runs out waits folded under **not now** with whatever `s`
+     put there by hand; `r` keeps a box, `g` grades a deadline, and a
+     deadline open a fortnight past its date steps aside through
+     `longhand-check`. Every row counts down through its last quarter, and
+     on the clock's first day nothing past its life went without that
+     countdown. Reasoning in the diary's decisions log; tests in
+     `tests/test_lifespan.py`, `tests/test_check.py` and the dashboard
+     section of `tests/page/run.py`.
    Also settled: **two dates, due and do.** The due date is a fact you
    receive; the do-date is the decision students avoid, which makes it the
    agent's job — workload across the next fortnight by project, proposed

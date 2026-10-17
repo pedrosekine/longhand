@@ -6,7 +6,8 @@
     longhand-agent ack --hash <block>                           # the student has seen the reply
     longhand-agent accept --hash <block> --index <n>            # run a proposal through the CLI
     longhand-agent tasks [--days 7]                             # open checkboxes across daily notes, JSON
-    longhand-agent next [--days 7]                              # tasks + open suggestions/observations, JSON
+    longhand-agent next [--days 7]                              # tasks (with their clock) + open suggestions/observations, JSON
+    longhand-agent box keep|shelve --key <key>                  # a box kept on purpose, or not now (lifespan.py)
     longhand-agent dismiss --date D --kind suggestion|observation --index <n>
     longhand-agent curriculum                                   # convert PDFs in the curriculum folder to .md
     longhand-agent context --trigger <kind> [--hash <block>]   # payload only, no model
@@ -39,7 +40,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import blocks as blocklib  # noqa: E402
-import task as tasklib  # noqa: E402
+import lifespan  # noqa: E402
 import task as tasklib  # noqa: E402
 
 TRIGGERS = ("checkbox", "mention", "question", "tick", "open")
@@ -49,6 +50,8 @@ KNOWLEDGE_FILE = re.compile(r"^(profile\.md|patterns\.md|projects/[A-Za-z0-9._ -
 CONFIG_PATH = Path(os.environ.get("LONGHAND_CONFIG") or os.environ.get("OMARCHY_STUDENT_CONFIG")   # the old name, still read
                    or Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "longhand" / "config.json")
 STATE_HOME = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state") / "longhand"
+# How long each open box has been silent: the layer's, never the note's.
+SILENCE = STATE_HOME / "silence.json"
 
 
 class Fail(Exception):
@@ -991,7 +994,7 @@ def state_days(cfg: dict, days: int) -> list[tuple[str, Paths, dict]]:
 def cmd_next(cfg: dict, args) -> int:
     """What's next: open tasks plus what the agent has raised and the
     student has not yet dealt with, across the last days."""
-    tasks = open_tasks(cfg, int(args.days))
+    tasks = lifespan.apply(open_tasks(cfg, int(args.days)), SILENCE)
     raised = []
     days = state_days(cfg, int(args.days))
     dismissed = read_dismissed(days[0][1]) if days else []
@@ -1009,6 +1012,14 @@ def cmd_next(cfg: dict, args) -> int:
                 raised.append({"date": stamp, "kind": "observation", "index": i, "text": ob.get("text", ""),
                                "evidence": "", "at": ob.get("at", "")})
     print(json.dumps({"tasks": tasks, "raised": raised}, ensure_ascii=False))
+    return 0
+
+
+def cmd_box(cfg: dict, args) -> int:
+    """Kept on purpose, or not now: the one thing the dashboard writes to
+    a box's clock (lifespan.py). The note is never touched."""
+    if not lifespan.touch(SILENCE, args.key, args.how):
+        raise Fail(f"no such touch: {args.how}")
     return 0
 
 
@@ -1203,8 +1214,15 @@ def cmd_stats(cfg: dict, args) -> int:
                 day[d]["done"] += 1
 
     # Deadlines in the window: met on time or late, made from a note or not.
+    # Cancelled is not closed (its line was dropped or deleted), and one
+    # that stepped aside a fortnight late was missed, not marked done late.
     store = STATE_HOME / "deadlines.tsv"
-    on_time = late = from_note = closed = 0
+    on_time = late = from_note = closed = missed = 0
+    try:
+        aside = {k for k, v in json.loads((STATE_HOME / "ledger.json").read_text()).get("deadlines", {}).items()
+                 if (v.get("hidden") or {}).get("by") == "check"}
+    except (OSError, ValueError, AttributeError):
+        aside = set()
     if store.exists():
         for line in store.read_text().splitlines():
             f = line.split("\t")
@@ -1212,11 +1230,15 @@ def cmd_stats(cfg: dict, args) -> int:
                 continue
             due, status = int(f[1]), f[3]
             done_at = int(f[4]) if f[4].isdigit() else 0
-            if status != "open" and done_at and dt.date.fromtimestamp(done_at) >= start:
-                closed += 1
-                on_time += done_at <= due
-                late += done_at > due
-                from_note += len(f) > 7 and "#^d" in f[7]
+            if status in ("open", "cancelled") or not done_at or dt.date.fromtimestamp(done_at) < start:
+                continue
+            if f[0] in aside:
+                missed += 1
+                continue
+            closed += 1
+            on_time += done_at <= due
+            late += done_at > due
+            from_note += len(f) > 7 and "#^d" in f[7]
 
     rows = [{"date": d.isoformat(), **day[d]} for d in span]
     totals = {
@@ -1240,6 +1262,7 @@ def cmd_stats(cfg: dict, args) -> int:
         "focus_sessions": sum(r["focus"] for r in rows),
         "deadlines_added": sum(r["added"] for r in rows),
         "deadlines_closed": closed, "closed_on_time": on_time, "closed_late": late, "closed_from_a_note": from_note,
+        "deadlines_missed": missed,
     }
     for r in rows:
         for k, v in r["features"].items():
@@ -1264,7 +1287,8 @@ def cmd_stats(cfg: dict, args) -> int:
           f"note boxes {t['note_boxes']} (thinking, not meant to close).")
     print(f"Bound lines: {t['bound_lines']}. Deadlines: {t['deadlines_added']} added, "
           f"{t['deadlines_closed']} closed ({t['closed_on_time']} by their time, {t['closed_late']} marked done after it, "
-          f"{t['closed_from_a_note']} from a note line).")
+          f"{t['closed_from_a_note']} from a note line)"
+          + (f", {t['deadlines_missed']} missed (stepped aside a fortnight late)." if t["deadlines_missed"] else "."))
     print(f"Agent: {t['agent_runs']} runs, ${t['agent_cost']:.4f}. Focus sessions: {t['focus_sessions']}.")
     print(f"Tags: {' '.join('#' + x for x in t['tags']) or '—'}. Languages (blocks): "
           + (", ".join(f"{k} {v}" for k, v in t["languages"].items() if v) or "—") + ".")
@@ -1376,6 +1400,9 @@ def main(argv: list[str]) -> int:
     p.add_argument("--days", default="0", help="0: every day there is")
     p = sub.add_parser("next")
     p.add_argument("--days", default="7")
+    p = sub.add_parser("box")
+    p.add_argument("how", choices=("keep", "shelve"))
+    p.add_argument("--key", required=True)
     p = sub.add_parser("dismiss")
     p.add_argument("--date", required=True)
     p.add_argument("--kind", required=True, choices=("suggestion", "observation"))
@@ -1392,7 +1419,7 @@ def main(argv: list[str]) -> int:
     try:
         cfg = load_config()
         return {"run": cmd_run, "chat": cmd_chat, "ack": cmd_ack, "accept": cmd_accept, "tasks": cmd_tasks, "sections": cmd_sections,
-                "next": cmd_next, "dismiss": cmd_dismiss, "curriculum": cmd_curriculum,
+                "next": cmd_next, "box": cmd_box, "dismiss": cmd_dismiss, "curriculum": cmd_curriculum,
                 "context": cmd_context, "state": cmd_state, "install": cmd_install, "stats": cmd_stats,
                 "projects": cmd_projects}[args.cmd](cfg, args)
     except Fail as e:

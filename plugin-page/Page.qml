@@ -55,12 +55,13 @@ import "Shortcuts.js" as Sc
 // screen until asked: Alt+Right opens the margin for the block under the
 // cursor — the reply, its proposals (Enter accepts one; local code runs the
 // CLI, the model never does), and the chat about that block; Alt+Left or
-// Esc closes it again. Ctrl+T opens the what's-next panel in the same
-// place: every open checkbox across the daily notes (last seven days open,
-// older collapsed; Enter ticks one, in the original note, because the page
-// is the one program that edits notes) and, below, what the agent has
-// raised — suggestions with their evidence, observations from open passes
-// — where Enter waves one off and the runner remembers that.
+// Esc closes it again. Ctrl+T opens the dashboard: every open checkbox
+// across the daily notes, carried while it is alive (a box goes quiet after
+// 7 days of silence, a task after 30 — agent/lifespan.py — and waits under
+// "not now"; it is never rewritten, the page being the one program that
+// edits notes) and, below, what the agent has raised — suggestions with
+// their evidence, observations from open passes — where Enter waves one off
+// and the runner remembers that.
 //
 // Ctrl+F finds in today's note, as you type, in the words you see (not
 // the markdown under them). Enter goes to the next match, Shift+Enter to
@@ -326,10 +327,11 @@ Item {
   property var tasks: []
   property var raised: []
   property var tickHistory: []   // ticks made from the panel, newest last, for Ctrl+Z
-  property bool showOlder: false
+  property bool showShelf: false      // the "not now" band unfolded
+  property bool showGrading: false    // the "waiting for a grade" band unfolded
   property var dashWhenFor: null     // what the dashboard's field is for: a task, or { deadline }
   property string dashWhenText: ""
-  property string dashFieldKind: "when"   // "when" (t) or "rename" (Ctrl+E)
+  property string dashFieldKind: "when"   // "when" (t), "rename" (Ctrl+E) or "grade" (g)
   property string dashFieldStart: ""      // the words a rename starts from
   property int taskFocus: 0
   property string currentHash: ""
@@ -1258,6 +1260,8 @@ Item {
     root.dashOpen = !root.dashOpen
     root.dashWhenFor = null
     root.dashWhenText = ""
+    root.showShelf = false
+    root.showGrading = false
     if (root.dashOpen) {
       root.used("dashboard")
       root.taskFocus = 0
@@ -1391,7 +1395,11 @@ Item {
   //   TO SCHEDULE    boxes with a priority but no day yet — the pile the
   //                  do-date is for
   //   #project       note boxes, under the project that claims them, newest
-  //                  first; older ones folded into one row
+  //                  first
+  //   NOT NOW        folded: boxes whose silence ran out, or put aside with
+  //                  `s` (agent/lifespan.py) — never rewritten, back when
+  //                  touched
+  //   WAITING FOR A GRADE   folded: done deadlines with no grade yet
   //   FROM THE AGENT
   //
   // Note boxes group by project rather than by the day they were written,
@@ -1400,7 +1408,6 @@ Item {
   // the store is listed once, as its deadline.
   function buildTaskRows() {
     var rows = []
-    var older = 0
     var today = new Date()
     today.setHours(0, 0, 0, 0)
     // Closed today (done, or cancelled) stays until tomorrow, so what just
@@ -1430,13 +1437,13 @@ Item {
       for (var w = 0; w < waiting.length; w++) rows.push({ kind: "deadline", deadline: waiting[w] })
     }
 
-    var doing = [], later = [], notes = []
+    var doing = [], later = [], notes = [], shelf = []
     for (var i = 0; i < root.tasks.length; i++) {
       var t = root.tasks[i]
       if (t.anchor > 0) continue
-      if (t.when !== "" || t.due !== "") doing.push(t)
+      if (t.away) shelf.push(t)
+      else if (t.when !== "" || t.due !== "") doing.push(t)
       else if (t.kind === "task") later.push(t)
-      else if (!t.recent && !root.showOlder) older++
       else notes.push(t)
     }
     doing.sort(function (a, b) { return (a.when || a.due).localeCompare(b.when || b.due) })
@@ -1480,7 +1487,26 @@ Item {
       for (var m = 0; m < groups[g].items.length; m++)
         rows.push({ kind: "task", task: groups[g].items[m], under: named })
     }
-    if (older > 0) rows.push({ kind: "older", count: older })
+    // What is away and what is owed a grade, each folded into one row until
+    // asked for: there to be found, never in the way.
+    if (shelf.length > 0) {
+      if (!root.showShelf) rows.push({ kind: "shelf", count: shelf.length })
+      else {
+        rows.push({ kind: "head", text: "NOT NOW", tag: "" })
+        for (var s = 0; s < shelf.length; s++) rows.push({ kind: "task", task: shelf[s] })
+      }
+    }
+    var grading = dl.items.filter(function (d) {
+      return d.status === "done" && d.grade === "" && d.doneAt * 1000 < today.getTime()
+    })
+    if (grading.length > 0) {
+      if (!root.showGrading) rows.push({ kind: "grading", count: grading.length })
+      else {
+        grading.sort(function (a, b) { return b.doneAt - a.doneAt })
+        rows.push({ kind: "head", text: "WAITING FOR A GRADE", tag: "" })
+        for (var gr = 0; gr < grading.length; gr++) rows.push({ kind: "deadline", deadline: grading[gr] })
+      }
+    }
     if (root.raised.length > 0) {
       rows.push({ kind: "head", text: "FROM THE AGENT", tag: "" })
       for (var j = 0; j < root.raised.length; j++) rows.push({ kind: "raised", item: root.raised[j] })
@@ -1510,10 +1536,21 @@ Item {
     if (place.length > 0) bits.push(place.join(" › "))
     else if (d.project) bits.push(root.courseLabel(d.project))
     if (d.status === "cancelled") bits.push("cancelled")
+    var aside = root.asideIn(d)
+    if (aside > 0) bits.push(aside === 1 ? "steps aside tomorrow" : "steps aside in " + aside + " days")
+    if (d.status === "done" && d.grade !== "") bits.push("graded " + d.grade)
     var o = root.origins[String(d.id)]
     if (o && o.origin === "agent") bits.push("from the agent" + (o.rewritten ? " · rewritten by you" : ""))
     if (t && t.details > 0) bits.push(t.details === 1 ? "1 line of detail" : t.details + " lines of detail")
     return bits.join("   ·   ")
+  }
+
+  // An open deadline a fortnight past its date steps aside (longhand-check);
+  // the days it has left, through the last four of them, else 0.
+  function asideIn(d) {
+    if (d.status !== "open") return 0
+    var left = Math.ceil(((d.due + 14 * 86400) * 1000 - Date.now()) / 86400000)
+    return left > 0 && left <= 4 ? left : 0
   }
 
   // What a row says. The title is the words alone: the dates and the
@@ -1565,7 +1602,19 @@ Item {
     if (path.length > 0) bits.push(path.join(" › "))
     bits.push(root.sayAge(t.age))
     if (t.details > 0) bits.push(t.details === 1 ? "1 line of detail" : t.details + " lines of detail")
+    var life = root.sayLife(t)
+    if (life !== "") bits.push(life)
     return bits.join("   ·   ")
+  }
+
+  // The silence clock, said only when it matters: through the last quarter
+  // of a box's life, and once it is away. Nothing goes without first being
+  // shown as about to (agent/lifespan.py).
+  function sayLife(t) {
+    if (t.away === "shelved") return "put aside"
+    if (t.away === "quiet") return "gone quiet"
+    if (!t.warn) return ""
+    return t.left === 1 ? "goes quiet tomorrow" : "goes quiet in " + t.left + " days"
   }
 
   // The month a row falls in, for the band above it.
@@ -1634,7 +1683,7 @@ Item {
     var open = 0, due = 0
     var rows = root.taskRows
     for (var i = 0; i < rows.length; i++) {
-      if (rows[i].kind === "task") open++
+      if (rows[i].kind === "task" && !rows[i].task.away) open++
       else if (rows[i].kind === "deadline" && rows[i].deadline.status === "open") { due++; open++ }
     }
     if (open === 0) return ""
@@ -1647,7 +1696,8 @@ Item {
   function activateTask() {
     var row = root.taskRows[root.taskFocus]
     if (!row) return
-    if (row.kind === "older") { root.showOlder = true; return }
+    if (row.kind === "shelf") { root.showShelf = true; return }
+    if (row.kind === "grading") { root.showGrading = true; return }
     if (row.kind === "task") root.goToTask(row.task)
     if (row.kind === "deadline") {
       var d = row.deadline
@@ -1700,7 +1750,44 @@ Item {
     var t = root.focusedTask()
     if (!t) return
     root.editTask(t, "prio", Task.nextPriority(t.priority || 0))
+    root.touchBox(t, "keep")
     root.used("priority")
+  }
+
+  // `s`: not now. The box goes where quiet ones go, and nothing is written
+  // into the note; `s` again (or `r`) brings it back. Its clock is the
+  // layer's (agent/lifespan.py).
+  function shelveFocused() {
+    var t = root.focusedTask()
+    if (!t || t.life === 0) return
+    root.touchBox(t, t.away ? "keep" : "shelve")
+    root.used(t.away ? "keep" : "shelve")
+  }
+
+  // `r`: kept on purpose — its clock starts again, and it is back if it was
+  // away.
+  function keepFocused() {
+    var t = root.focusedTask()
+    if (!t || t.life === 0) return
+    root.touchBox(t, "keep")
+    root.used("keep")
+  }
+
+  function touchBox(t, how) {
+    if (!t || !t.key || t.life === 0) return
+    boxProc.command = [svc.runner, "box", how, "--key", t.key]
+    boxProc.running = true
+  }
+
+  // `g`: the grade, typed on a deadline's row, as in the popup. A grade on
+  // one still open hands it in (pomo); empty clears it.
+  function startDashGrade() {
+    var row = root.taskRows[root.taskFocus]
+    if (!row || row.kind !== "deadline" || row.deadline.status === "cancelled") return
+    root.dashFieldKind = "grade"
+    root.dashFieldStart = row.deadline.grade
+    root.dashWhenText = row.deadline.grade
+    root.dashWhenFor = { deadline: row.deadline }
   }
 
   // `t`: the one place in the dashboard that takes words instead of keys,
@@ -1749,6 +1836,14 @@ Item {
 
   function commitDashWhen() {
     if (root.dashFieldKind === "rename") { root.commitDashRename(); return }
+    if (root.dashFieldKind === "grade") {
+      var g = root.dashWhenFor
+      var mark = root.dashWhenText.replace(/\s+/g, " ").trim()
+      root.dashWhenFor = null
+      root.dashWhenText = ""
+      if (g && g.deadline && mark !== root.dashFieldStart) { dl.grade(g.deadline.id, mark); root.used("grade") }
+      return
+    }
     var t = root.dashWhenFor
     var phrase = root.dashWhenText.trim()
     root.dashWhenFor = null
@@ -1819,6 +1914,9 @@ Item {
     if (Sc.hit(e, "dashPriority")) { root.cyclePriorityFocused(); return true }
     if (Sc.hit(e, "dashWhen")) { root.startDashWhen(); return true }
     if (Sc.hit(e, "dashRename")) { root.startDashRename(); return true }
+    if (Sc.hit(e, "dashShelve")) { root.shelveFocused(); return true }
+    if (Sc.hit(e, "dashKeep")) { root.keepFocused(); return true }
+    if (Sc.hit(e, "dashGrade")) { root.startDashGrade(); return true }
     return false
   }
 
@@ -2311,6 +2409,8 @@ Item {
     else if (gone.length > 1) root.showHint(gone.length + " deadlines cancelled with their lines · " + root.keyName("undo") + " brings them back")
     else if (back.length === 1) root.showHint("“" + back[0].title + "” is back")
     else if (back.length > 1) root.showHint(back.length + " deadlines are back")
+    else if ((out.hidden || []).length === 1) root.showHint("“" + out.hidden[0].title + "” stepped aside, a fortnight past its date")
+    else if ((out.hidden || []).length > 1) root.showHint(out.hidden.length + " deadlines stepped aside, a fortnight past their dates")
   }
 
   Timer {
@@ -2684,6 +2784,13 @@ Item {
   Process {
     id: dismissProc
     onExited: function (code, status) { root.refreshTasks(); agent.reload() }
+  }
+
+  // A box kept or put aside: the clock is written, then the list read again.
+  Process {
+    id: boxProc
+    stderr: StdioCollector { onStreamFinished: if (text.trim() !== "") console.warn("longhand.page box: " + text.trim()) }
+    onExited: function (code, status) { root.refreshTasks() }
   }
 
   // One-line rewrite of another day's note when a task is ticked from
@@ -3203,14 +3310,16 @@ Item {
                       elide: Text.ElideRight
                       maximumLineCount: 2
                       wrapMode: Text.WordWrap
-                      text: dashRow.kind === "older" ? "+" + modelData.count + " written longer ago · " + root.keyName("dashOpen") + " to show"
+                      text: dashRow.kind === "shelf" ? "+" + modelData.count + " not now · " + root.keyName("dashOpen") + " to show"
+                        : dashRow.kind === "grading" ? "+" + modelData.count + " waiting for a grade · " + root.keyName("dashOpen") + " to show"
                         : dashRow.kind === "raised"
                           ? (modelData.item.kind === "suggestion" ? "◇ " : "· ") + modelData.item.text
                         : dashRow.kind === "deadline" ? modelData.deadline.title
                         : dashRow.kind === "task" ? root.taskTitle(modelData.task)
                         : " "
                       color: dashRow.isHead ? "transparent"
-                        : dashRow.kind === "older" ? root.faint
+                        : dashRow.kind === "shelf" || dashRow.kind === "grading" ? root.faint
+                        : dashRow.task && dashRow.task.away ? root.dim
                         : dashRow.done ? root.dim
                         : dashRow.late ? root.urgent : root.foreground
                       font.family: root.fontFamily
@@ -3244,10 +3353,12 @@ Item {
                   onClicked: { root.taskFocus = index; root.activateTask() }
                   PanelToolTip {
                     readonly property string kind: dashRow.modelData.kind
-                    visible: parent.containsMouse && (kind === "task" || kind === "deadline" || kind === "older" || kind === "raised")
-                    text: kind === "task" ? root.tips([["Go to the line", "dashOpen"], ["Done", "dashDone"], ["Reschedule", "dashWhen"], ["Cycle its priority", "dashPriority"], ["Drop it", "dashDrop"]])
-                      : kind === "deadline" ? root.tips([["Go to its line", "dashOpen"], ["Done", "dashDone"]])
-                      : kind === "older" ? root.tip("Show the older ones", "dashOpen")
+                    visible: parent.containsMouse && (kind === "task" || kind === "deadline" || kind === "shelf" || kind === "grading" || kind === "raised")
+                    text: kind === "task" ? root.tips([["Go to the line", "dashOpen"], ["Done", "dashDone"], ["Reschedule", "dashWhen"], ["Cycle its priority", "dashPriority"],
+                                                       [dashRow.task && dashRow.task.away ? "Back" : "Not now", "dashShelve"], ["Keep it", "dashKeep"], ["Drop it", "dashDrop"]])
+                      : kind === "deadline" ? root.tips([["Go to its line", "dashOpen"], ["Done", "dashDone"], ["Grade", "dashGrade"]])
+                      : kind === "shelf" ? root.tip("Show what is not now", "dashOpen")
+                      : kind === "grading" ? root.tip("Show what waits for a grade", "dashOpen")
                       : root.tip("Dismiss it", "dashOpen")
                   }
                   z: -1
@@ -3274,6 +3385,7 @@ Item {
             wrapMode: Text.WordWrap
             text: root.keyName("dashUp") + root.keyName("dashDown") + " move · " + root.keyName("dashOpen") + " opens the line · "
               + root.keyName("dashDone") + " done · " + root.keyName("dashWhen") + " when · " + root.keyName("dashPriority") + " priority · "
+              + root.keyName("dashShelve") + " not now · " + root.keyName("dashKeep") + " keep · " + root.keyName("dashGrade") + " grade · "
               + root.keyName("dashRename") + " rename · " + root.keyName("dashDrop") + " cancel · " + root.keyName("dashUndo") + " undo · " + root.keyName("dashBack") + " back · "
               + root.keyName("keys") + " all keys"
             color: root.faint
@@ -3294,6 +3406,7 @@ Item {
               textFormat: Text.PlainText
               text: !root.dashWhenFor ? ""
                 : root.dashFieldKind === "rename" ? "rename"
+                : root.dashFieldKind === "grade" ? "grade · " + root.dashWhenFor.deadline.title
                 : "when · " + root.taskTitle(root.dashWhenFor)
               color: root.dim
               font.family: root.fontFamily
@@ -3304,7 +3417,8 @@ Item {
             TextField {
               id: dashWhenField
               width: root.dashFieldKind === "rename" ? root.sp(460) : root.sp(220)
-              placeholderText: root.dashFieldKind === "rename" ? "its words" : "friday, tomorrow, 20 oct…"
+              placeholderText: root.dashFieldKind === "rename" ? "its words"
+                : root.dashFieldKind === "grade" ? "7.5, A-… · empty clears" : "friday, tomorrow, 20 oct…"
               font.family: root.fontFamily
               font.styleName: root.fontStyle
               font.pixelSize: root.fs(Style.font.body)

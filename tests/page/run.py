@@ -24,6 +24,7 @@ import time
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "agent"))
 import blocks  # noqa: E402
+import lifespan  # noqa: E402
 
 # What the runner writes when the student talks to a block: both turns, the
 # way `longhand-agent chat` records them. Enough for the page to settle the
@@ -110,7 +111,7 @@ class Page:
         chatstub.write_text(CHAT_STUB)
         self.runner.write_text(f"""#!/bin/bash
 case "$1" in
-  accept|projects|sections|next|tasks) exec "{ROOT}/agent/longhand-agent" "$@" ;;
+  accept|projects|sections|next|tasks|box) exec "{ROOT}/agent/longhand-agent" "$@" ;;
   run) sleep 2; exit 0 ;;
   chat) sleep 2; exec python3 "{chatstub}" "{self.vault}/agents/longhand/daily" "$@" ;;
 esac
@@ -168,7 +169,8 @@ esac
         for line in (self.store.read_text().splitlines() if self.store.exists() else []):
             f = line.split("\t")
             if int(f[0]) == i:
-                return {"title": f[2], "status": f[3], "project": f[6] if len(f) > 6 else "", "link": f[7] if len(f) > 7 else ""}
+                return {"title": f[2], "status": f[3], "grade": f[5] if len(f) > 5 else "",
+                        "project": f[6] if len(f) > 6 else "", "link": f[7] if len(f) > 7 else ""}
         return None
 
     def note(self, stem=TODAY):
@@ -987,6 +989,65 @@ def main() -> int:
         check(p.wait(lambda: f"Registered topic and supervisor 📅 2030-01-06 ^d{wid}" in p.call("text")),
               "Enter writes it into today's note")
         check(p.wait(lambda: p.deadline(wid)["link"] != ""), "…and the store knows its line")
+
+        # 12c. lifespans (2026-10-17): a box counts down through the last
+        # quarter of its life and then waits under "not now"; `s` puts one
+        # there by hand, `s` or `r` brings it back, and the note is never
+        # touched. A deadline counts down to stepping aside, and `g` grades.
+        KEY_S, KEY_R, KEY_G = 0x53, 0x52, 0x47
+        old = (dt.date.today() - dt.timedelta(days=20)).strftime("%Y.%m.%d")
+        oldnote = p.daily / f"{old}.md"
+        oldnote.write_text(header(old) + "# Design Theory #dtm\n\n- [ ] a fading thought\n- [ ] an old aside\n")
+        silence = p.state / "longhand" / "silence.json"
+        clock = lifespan.load(silence) or {"checked": dt.date.today().isoformat(), "boxes": {}}
+        for words, days in (("a fading thought", 6), ("an old aside", 9)):
+            clock["boxes"][lifespan.key_of({"project": "dtm", "text": words})] = {
+                "touched": (dt.date.today() - dt.timedelta(days=days)).isoformat()}
+        lifespan.save(silence, clock)
+        before = oldnote.read_text()
+        if p.call("dashOpen") == "false":
+            p.call("dash")
+        check(p.wait(lambda: "goes quiet tomorrow" in row("a fading thought").get("where", "")),
+              f"a box in its last day says so on its row ({row('a fading thought')})")
+        check(p.wait(lambda: any(r["kind"] == "shelf" for r in json.loads(p.call("dashRows")))
+                     and row("an old aside") == {}),
+              "a box whose silence ran out leaves the list, folded under one row")
+        shelf = next(n for n, r in enumerate(json.loads(p.call("dashRows"))) if r["kind"] == "shelf")
+        p.call("dashFocus", shelf)
+        p.call("dashKey", KEY_RETURN, 0)
+        check(p.wait(lambda: "NOT NOW" in heads() and "gone quiet" in row("an old aside").get("where", "")),
+              f"Enter unfolds it: there to be found ({heads()})")
+        row("an old aside")
+        check(p.call("dashKey", KEY_S, 0) == "true", "s is taken")
+        check(p.wait(lambda: row("an old aside").get("away") == ""), "s on a box that is away brings it back")
+        row("a fading thought")
+        p.call("dashKey", KEY_S, 0)
+        check(p.wait(lambda: row("a fading thought").get("away") == "shelved"), "s puts a live box aside")
+        row("a fading thought")
+        check(p.call("dashKey", KEY_R, 0) == "true", "r is taken")
+        check(p.wait(lambda: row("a fading thought").get("away") == ""
+                     and "goes quiet" not in row("a fading thought").get("where", "")),
+              "r keeps it: back, its clock started again")
+        check(oldnote.read_text() == before, "the decay is in the view: the note is never touched")
+
+        late = int(re.search(r"#(\d+)", p.pomo("add", "Late essay",
+                                               (dt.date.today() - dt.timedelta(days=12)).isoformat())).group(1))
+        check(p.wait(lambda: re.search(r"steps aside in \d days", row("Late essay").get("where", ""))),
+              f"a deadline in its last days before stepping aside counts them down ({row('Late essay')})")
+        lab = int(re.search(r"#(\d+)", p.pomo("add", "Lab report", "2030-01-07")).group(1))
+        p.pomo("done", str(lab), "--at", str(int(time.time()) - 2 * 86400))
+        check(p.wait(lambda: any(r["kind"] == "grading" for r in json.loads(p.call("dashRows")))),
+              "a done deadline with no grade waits, folded")
+        grading = next(n for n, r in enumerate(json.loads(p.call("dashRows"))) if r["kind"] == "grading")
+        p.call("dashFocus", grading)
+        p.call("dashKey", KEY_RETURN, 0)
+        check(p.wait(lambda: "WAITING FOR A GRADE" in heads()), "…and unfolds")
+        row("Lab report")
+        check(p.call("dashKey", KEY_G, 0) == "true", "g is taken")
+        p.call("dashWhen", "7.5")
+        check(p.wait(lambda: p.deadline(lab)["grade"] == "7.5"), f"g grades it ({p.deadline(lab)})")
+        p.pomo("hide", str(late))
+        p.call("dash")
 
         # 12b. the keys sheet: every key the page answers to, listed; one
         # moved through the sheet, kept in keys.json, and working in the note

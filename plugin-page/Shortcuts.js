@@ -123,6 +123,9 @@ var actions = [
   { id: "dashPriority", group: "dash", places: ["dash"], does: "Cycle its priority", keys: ["P"] },
   { id: "dashRename", group: "dash", places: ["dash"], does: "Rename it (its line's words)", keys: ["Ctrl+E"] },
   { id: "dashDrop", group: "dash", places: ["dash"], does: "Cancel it (the line stays, as cancelled)", keys: ["Del", "Backspace"] },
+  { id: "dashShelve", group: "dash", places: ["dash"], does: "Not now: put it aside (again: back)", keys: ["S"] },
+  { id: "dashKeep", group: "dash", places: ["dash"], does: "Keep it: its clock starts again", keys: ["R"] },
+  { id: "dashGrade", group: "dash", places: ["dash"], does: "Grade a deadline", keys: ["G"] },
   { id: "dashUndo", group: "dash", places: ["dash"], does: "Take the last tick back", keys: ["Ctrl+Z"] },
   { id: "dashBack", group: "dash", places: ["dash"], does: "Back to the note", keys: ["Esc"] },
 
