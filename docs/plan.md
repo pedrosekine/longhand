@@ -331,6 +331,95 @@
 
 ## Parking lot
 
+What is waiting, and only that, in the order it is worth doing; each says
+what it needs. New ideas land here first (date, where they came from, what
+they need) rather than in code. Cleaned up on 2026-10-17: what is done or
+decided against moved out of the way — to the record at the end of this
+section, word for word, and to the diary's decisions log.
+
+### Open, in order
+
+1. **The agent that does things, while the person drives** — designed
+   2026-10-17 in a grilling; the whole design is `docs/agent.md`. Checkboxes
+   are its environment (structured work, not authored words); who made each
+   line is kept in the layer and drawn (the box, ◇, the seal for
+   "together"); autonomy per kind of action, all starting at "ask me"; it
+   asks when it would have to guess, at most two questions a run; proposals
+   and questions are dashboard rows with the app's own keys; a ledger of
+   outcomes; its notebook visible and correctable; course documents from
+   the Downloads inbox, read in three tiers; a pluggable route to the model.
+   In slices: **(1)** who made it → **(2)** proposals and planning, starting
+   with do-dates → **(3)** the notebook, visible → **(4)** documents →
+   **(5)** the other actions. **Needs from the student:** a re-login to
+   ChatGPT in opencode before a second model route.
+2. **The agent's cheap tiers** (2026-10-14, "the agent's tools" in the
+   record). *Self-knowledge*: "how do I add a deadline?" answered from a
+   payload section listing what the CLIs and the page can do — static,
+   auditable. *Observability*: `longhand-agent explain --date D`, answering
+   what it saw, said, cost, and why it was silent, from logs, never notes.
+   The third tier (internet, tools for the student's agent) cuts against
+   principle 3 and stays a decision, not a build.
+3. **How far does private go?** — a decision, not a build. A dated checkbox
+   in a private note still binds, so its title, project and date are in the
+   store, and every payload carries the store whole; calendars shared whole
+   make the boundary matter more. Three ways out, in the record; plus a key
+   and a visible treatment for the block-level `[!private]` callout.
+4. **Structure** — split `Page.qml` (5,822 lines on 2026-10-17, ~900 of them
+   added that day) into tested modules: bound lines, the runner queue, the
+   dashboard, settings; install by symlink so the repo is the install; one
+   deadline-store parser for both plugins. Before item 5.
+5. **A project as one continuous page** (2026-10-17, the consistency
+   grilling). Every section of a project in one scroll, newest first,
+   editable in place, each edit landing in its day's note. Needs writing
+   another day's note while it is on screen and finding blocks by identity.
+6. **A sent block keeps its conversation through word edits.** A tick, a
+   date or a priority keep it since `7740b51`; changing the words still
+   detaches it. Identity in the layer (its last words and place, followed
+   through every edit in the page), never a tag in the prose.
+7. **The deadline popup's tick** — the same sound and feel as the page's
+   (its own plugin, `plugin-deadline`); its day is already written by the
+   check.
+8. **The logo follows the theme on the launcher** (the page's seal already
+   does), and the live launcher looked at once. `docs/brand/README.md`
+   tracks both.
+
+Small, when passing by:
+
+- **Tag suggestions while typing** (2026-10-11) — `#` offers the tags that
+  exist, so a new tag is a choice, not a typo.
+- **"on" as a cue word** ("conference on the 8th of Feb").
+- **The calendar and the open pass race**: the page's first pass of the day
+  can read the copy from before the fetch that the same opening started.
+
+Later, by the student's own word (2026-09-17: "explicitly later"):
+**study mode** (14.8; the Anki hook of GitHub issue #7 belongs here — it
+was closed with the pomodoro issues on 2026-10-17, reopen it when this
+starts), **phone capture**, external reading; and from the old parked
+list, analytics (`history`) and a daily counter.
+
+To watch in use, no work unless they bite: whether "ask" is the right word;
+whether "seen, nothing to say" wants a mark; the type's weight on a light
+theme; the trackpad's `gain`.
+
+### Decided against
+
+- **Multi-language** cue words and prompts — refuted 2026-10-15 by the
+  counts it waited for (61 English blocks to 3 Portuguese). Revisit only if
+  the ratio moves.
+- **Focus mode, and the pomodoro in this tool** — refuted 2026-10-15: no
+  sessions in a month. `pomo` stays as the deadline CLI; GitHub issues #1–#8
+  (the pomodoro era) were closed with this, pointing here.
+- **Pi as the agent's harness** (2026-10-14) — everything it adds over
+  opencode lives in the layer this agent switches off.
+- **Classes in the page's calendar** (2026-10-17, the student's call) — the
+  sidebar's next session and the agent only, for now.
+
+### The record
+
+Everything below is done, settled or superseded, kept as it was written on
+the day; the reasoning is in the diary's decisions log.
+
+
 Everything waiting, in one place. The freeze decided the order on
 2026-10-15 with the stats above; new ideas still land here first (date,
 where they came from, what they need) rather than in code.
@@ -687,7 +776,8 @@ a fix or a feature to decide first):
   softening of the morning (a fifth back from the theme's maximum) went
   with it: it was treating a symptom, and with the real Regular in place it
   only cost legibility.
-- **Hidden markers are still editable, and Backspace eats them** (bug,
+- ~~**Hidden markers are still editable, and Backspace eats them**~~ — **fixed 2026-10-15**
+  (`60c5664`, a pair of markers is one thing to the cursor). (bug,
   2026-10-15, the student's, the evening emphasis landed). A marker drawn to
   nothing is still a character: the cursor can stand between the two stars
   of a pair and Backspace takes one. Measured, from the end of each:
@@ -792,7 +882,9 @@ a fix or a feature to decide first):
      next pass's payload — the same inversion already used for proposals,
      where local code runs the command and the model never does. Costs a
      round-trip; keeps the audit trail and the student's say.
-- **To decide, not build:** Enter twice on a deadline in what's next writes
+- ~~**To decide, not build:**~~ — **settled 2026-10-17** by rule 7 of `docs/tasks.md`
+  (Enter writes a deadline no line holds into today's note, which makes the
+  words the person's). Enter twice on a deadline in what's next writes
   its whole line into today's note — the words are the deadline's title,
   which may have come from an agent proposal. Keep, or offer only to bind an
   existing line? (principle 2, 2026-10-11)

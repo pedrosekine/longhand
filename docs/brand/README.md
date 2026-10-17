@@ -15,7 +15,7 @@ The files under `explorations/` are historical references.
 | Canonical identity | `a2-open-cuts`; use the current assets below for new work |
 | Launcher | Installed through the existing hicolor symlink to `launcher/longhand.svg` |
 | Page header | **Placed 2026-10-17**: the seal hangs before the date and opens or closes the sidebar (calendar, projects, keys, settings); drawn from the master path by `plugin-page/LogoMark.qml` |
-| Other product placements | Future work; no rollout across the bar or agent UI yet |
+| Other product placements | Planned: the seal as the "made together" mark on boxes and bullets (`docs/agent.md`), an experiment; nothing in the bar or agent UI yet |
 | Theme adaptation | In the page, yes: the seal takes the theme's colours (faint, the accent on hover, the foreground while the sidebar is open). The launcher still has fixed colours |
 | Verification | SVGs rendered at 16, 24, 32, 48, 64, and 256 px; installed bytes match. Rechecked 2026-10-17 at 16–64 px on dark and light: clear from 24 px; at 16 px the five cuts nearly close into a plain flower. The live launcher itself is still unseen |
 
@@ -52,9 +52,19 @@ retain breathing room. Colour and surrounding surface can follow the context.
 The serif lettering in proof sheets was contextual; no brand typeface or
 wordmark has been selected.
 
-Use the seal to identify Longhand itself. It should not become an agent-reply,
-notification, urgency, or task-status indicator. Repeated product placements
-are intended; their exact locations remain open.
+Use the seal to identify Longhand itself, and — since 2026-10-17, as an
+experiment the student chose — what a person and Longhand's agent made
+**together**. It should not become an agent-reply, notification, urgency, or
+task-status indicator. Repeated product placements are intended; their exact
+locations remain open.
+
+**Planned (2026-10-17, `docs/agent.md` → "Who made it"):** each box and
+bullet the agent touched will be drawn by who made it — the person's as
+today, the agent's as a hollow ◇, and a line made together as the seal,
+small, in place of the box or the dot, in the theme's colour. "Together" is
+read as identity, not status: it says what Longhand is (a person and an agent
+writing in one hand), so it narrows the rule above rather than breaking it.
+If it reads as a status in use, the fallback is ◈. Not built yet.
 
 **In the page (2026-10-17):** the seal hangs in the margin before the
 header's date, so the date stays in line with the writing, at about the
