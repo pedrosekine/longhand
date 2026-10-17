@@ -1068,3 +1068,17 @@ only the window and the panels around it differ.
   fails until it is renewed — and that a failed plan had been counted as the
   day's plan and was not shown; both are fixed, and the dashboard now says
   why the agent could not plan.
+- 2026-10-18: the model, and the prompts it needed. Twelve models were run on
+  the real plan and a real margin request. The verdict first seemed to be
+  "a cheap model with judgement beats a smart one", but the smart one was
+  being literal: the prompts asked for dates and rare questions, and GPT-6.1
+  Sol obeyed. Rewritten to say what good is — look across the payload and
+  name a specific; ask, with a best guess, when one answer would change
+  things; a box is thinking, a task or a deadline, and only a deadline wants
+  a date; a reason names what makes the day right; a question holds back
+  only its own box — Sol then planned the clear boxes and asked about the
+  supervisor shortlist and what "Roles Planned" means, and answered the
+  scooter question from what the student wrote on the 11th. It is the model
+  for both jobs now, through the ChatGPT subscription; DeepSeek v4.1 Flash
+  stays the fallback. Lesson kept: when a model disappoints, read the prompt
+  as the model would, literally, before changing the model.

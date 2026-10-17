@@ -241,6 +241,22 @@ subscription login.
   proposed two sensible do-dates and asked how big a task was; a margin
   pass on the day's real payload came back well-formed — both at no
   metered cost.
+- **Which model, 2026-10-18.** Twelve models from both subscriptions were
+  run on the real planning payload and a real past margin request,
+  recording nothing. All were reliable (every answer well-formed, every
+  do-date through plan.py's checks); they differed in judgement. DeepSeek
+  v4.1 Flash read the context and asked the right questions; the GPT models
+  were fast and plain — not for want of ability but because they follow the
+  prompts literally, and the prompts invited it: the margin's rule for a new
+  checkbox told it to ask for a date, and the planner's said questions were
+  rare. The prompts now say what good is — look across the payload first
+  and name a specific, ask (with a best guess) when one answer would change
+  the reply or the plan, never ask "by when?" by reflex, a reason names
+  what makes the day right, and a question holds back only its own box.
+  After that, GPT-6.1 Sol did what the design asks on both tasks in two runs
+  each (dates for the clear boxes, grounded questions for the unclear, in
+  ~15 s), and is the model for both jobs; DeepSeek v4.1 Flash is the
+  fallback (OpenCode Go key renewed the same day).
 - **Start planning on the model there is**, so the acceptance rate shows
   whether quality is the limit; switch planning to a stronger route if the
   student declines most of what it proposes.
