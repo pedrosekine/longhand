@@ -57,6 +57,7 @@ DUE_RE = re.compile(r"📅\s*\d{4}-\d{2}-\d{2}(?:\s+\d{1,2}:\d{2})?")
 ANCHOR_TAIL_RE = re.compile(r"\s\^d(\d+)\s*$")
 STATE_RE = re.compile(r"^(\s*[-*+] \[)[ xX/\-](\])")
 CANCELLED_RE = re.compile(r"\s*❌\s*\d{4}-\d{2}-\d{2}")
+DONE_RE = re.compile(r"\s*✅\s*\d{4}-\d{2}-\d{2}")
 
 
 class Fail(Exception):
@@ -145,14 +146,17 @@ def state_of(box: dict) -> str:
 
 
 def with_state(raw: str, state: str, today: str = "") -> str:
-    """The box set; a cancelled one says when, as the page's drop does
-    (`- [-] … ❌ 2026-10-17`), and loses it again when it comes back."""
+    """The box set, saying when, as every tick and drop in the page does: a
+    done one `✅ <day>`, a cancelled one `❌ <day>`; back open, neither."""
     ch = {"open": " ", "done": "x", "cancelled": "-"}[state]
     raw = STATE_RE.sub(lambda m: m.group(1) + ch + m.group(2), raw, count=1)
     raw = CANCELLED_RE.sub("", raw)
-    if state == "cancelled" and today:
+    if state != "done":
+        raw = DONE_RE.sub("", raw)
+    mark = {"done": "✅", "cancelled": "❌"}.get(state)
+    if mark and today and not (state == "done" and DONE_RE.search(raw)):
         a = ANCHOR_TAIL_RE.search(raw)
-        raw = raw[:a.start()] + " ❌ " + today + raw[a.start():] if a else raw + " ❌ " + today
+        raw = raw[:a.start()] + f" {mark} " + today + raw[a.start():] if a else raw + f" {mark} " + today
     return raw
 
 

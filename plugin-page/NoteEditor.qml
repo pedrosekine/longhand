@@ -3,6 +3,7 @@ import "Rows.js" as Rows
 import "Blocks.js" as Blocks
 import "Emph.js" as Emph
 import "Shortcuts.js" as Sc
+import "Task.js" as Task
 
 // The sheet's editor: the note drawn, not shown as markdown.
 //
@@ -52,6 +53,8 @@ Item {
   // then keeps the date as words (as Todoist does), instead of deleting.
   property int freshCue: -1
   signal cueDismissed(string raw)
+  // A box ticked (done) or unticked by the person, in the note.
+  signal boxTicked(int lineIndex, bool done)
 
   property string fontFamily: "sans-serif"
   property string fontStyle: ""        // the cut of the prose face (Page.qml)
@@ -153,6 +156,19 @@ Item {
     ed.placeCursor(false)
   }
   function insert(pos, s) { ed.replace(pos, pos, s) }
+
+  // A line rewritten by changing only what differs (a box, a date at its
+  // end), so a cursor in its words stays exactly where it was.
+  function replaceLine(r, next) {
+    var old = r.raw
+    var p = 0
+    while (p < old.length && p < next.length && old.charAt(p) === next.charAt(p)) p++
+    var q = 0
+    while (q < old.length - p && q < next.length - p
+           && old.charAt(old.length - 1 - q) === next.charAt(next.length - 1 - q)) q++
+    if (p === old.length && p === next.length) return
+    ed.replace(r.start + p, r.start + old.length - q, next.slice(p, next.length - q))
+  }
   function remove(a, b) { ed.replace(a, b, "") }
 
   // Emphasis: wrap the selection — or the word the cursor is in — in a
@@ -839,9 +855,16 @@ Item {
     if (!r) return
     ed.snapshot(true)
     if (r.kind === "task") {
-      var at = r.start + r.indent.length + 3
+      // Ticked, the line says the day it was done (`✅`, as Obsidian Tasks
+      // writes it; drawn quietly, as the cancel date is), which keeps it in
+      // the dashboard for the rest of the day; unticked, the day comes off.
       // A cancelled box clicked is open again, as a ticked one is.
-      ed.replace(at, at + 1, r.checked ? " " : "x")
+      var today = Qt.formatDate(new Date(), "yyyy-MM-dd")
+      var next = r.checked
+        ? Task.setField(Task.setField(Task.setState(r.raw, " "), "✅", ""), "❌", "")
+        : Task.setField(Task.setState(r.raw, "x"), "✅", today)
+      ed.replaceLine(r, next)
+      ed.boxTicked(i, !r.checked)
     } else if (r.kind === "bullet") {
       ed.insert(r.start + r.prefixLen, "[ ] ")
     } else if (r.kind === "plain" || r.kind === "blank") {

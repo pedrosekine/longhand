@@ -15,7 +15,7 @@ Where a row has two keys, either works: the second is usually the one another ap
 | Zoom out | `Ctrl+-` · `Ctrl+_` | anywhere in the page |
 | Zoom back to 100% | `Ctrl+0` | anywhere in the page |
 | Show these keys | `Ctrl+/` | anywhere in the page |
-| Settings (your calendars) | `Ctrl+,` | anywhere in the page |
+| Settings (calendars, sound) | `Ctrl+,` | anywhere in the page |
 | Close the overlay | `Esc` | in the note |
 | Flip between overlay and window | `F11` · `Ctrl+Alt+P` | in the note |
 | Make the note private (the agent sees nothing) | `Ctrl+Shift+P` | in the note |
@@ -148,6 +148,7 @@ Where a row has two keys, either works: the second is usually the one another ap
 | Fetch the picked calendar now | `Ctrl+R` | in settings |
 | Rename the picked calendar | `Ctrl+E` | in settings |
 | Remove the picked calendar | `Ctrl+Shift+Backspace` | in settings |
+| The tick's sound: on or off | `Ctrl+Shift+S` | in settings |
 
 ## Typing (the text field's own, not changeable)
 

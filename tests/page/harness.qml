@@ -175,6 +175,8 @@ ShellRoot {
     function dashFocus(i: int): void { page.taskFocus = i }
     function dashAt(): int { return page.taskFocus }
     function dashCount(): string { return page.dashCount }
+    function ticksHeard(): int { return page.ticksHeard }
+    function tickSoundToggle(): void { page.toggleTickSound() }
     function dashKey(key: int, mods: int): bool { return page.dashKey({ key: key, text: "", modifiers: mods }) }
     function dashType(ch: string): bool { return page.dashKey({ key: ch.toUpperCase().charCodeAt(0), text: ch, modifiers: 0 }) }
     function dashWhen(phrase: string): void { page.dashWhenText = phrase; page.commitDashWhen() }

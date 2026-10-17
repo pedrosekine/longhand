@@ -434,11 +434,18 @@ Item {
       compare(focused().cursorPosition, 3)
     }
 
+    // A tick says the day it was done (✅, drawn quietly: the row's words
+    // are still only the words), and an untick takes the day off again.
+    function today() { return Qt.formatDate(new Date(), "yyyy-MM-dd") }
+
     function test_ctrl_l_ticks() {
       start("\n- [ ] read")
+      var at = ed.cursorPosition
       keyClick(Qt.Key_L, Qt.ControlModifier)
-      compare(ed.text, "\n- [x] read")
+      compare(ed.text, "\n- [x] read ✅ " + today())
       compare(ed.rows[1].checked, true)
+      compare(ed.rows[1].body, "read")
+      compare(ed.cursorPosition, at)
       keyClick(Qt.Key_L, Qt.ControlModifier)
       compare(ed.text, "\n- [ ] read")
       start("\nplain")
@@ -449,7 +456,7 @@ Item {
     function test_click_ticks() {
       start("\n- [ ] read\n\nother")
       ed.clickCheckbox(1)
-      compare(ed.text, "\n- [x] read\n\nother")
+      compare(ed.text, "\n- [x] read ✅ " + today() + "\n\nother")
       compare(ed.focusedRow, 1)
     }
 
@@ -777,7 +784,7 @@ Item {
       start("\n- [ ] read\nother")
       var r = ed.rowItem(1)
       mouseClick(ed, r.box.x + r.box.width / 2, r.y + r.box.y + r.box.height / 2)
-      compare(ed.text, "\n- [x] read\nother")
+      compare(ed.text, "\n- [x] read ✅ " + today() + "\nother")
     }
 
     function test_bound_tail_is_lifted() {

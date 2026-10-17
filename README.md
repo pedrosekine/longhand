@@ -169,7 +169,8 @@ block is written in. Add your calendars in **Settings → Calendar** (`Ctrl+,`, 
 sidebar): paste an `.ics` or `webcal://` address and each calendar is fetched at once and says whether it works. Classes are
 matched to your projects by course code, so the sidebar's next session follows them; and for each calendar you choose
 what the agent sees — its classes only (the default), or everything in it (titles, times and places, never descriptions).
-They are fetched when the page or sidebar opens, at most hourly; the addresses stay in `settings.json` on your machine. Needs `~/.config/longhand/config.json` (copy
+They are fetched when the page or sidebar opens, at most hourly; the addresses stay in `settings.json` on your machine. A tick
+makes a short, soft sound — never an untick, never while notifications are silenced — which Settings can turn off. Needs `~/.config/longhand/config.json` (copy
 `config.example.json`) pointing at your vault; the note lives at
 `<vault>/<daily.dir>/<date>.md` exactly where Obsidian's daily notes would.
 

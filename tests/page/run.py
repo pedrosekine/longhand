@@ -117,7 +117,8 @@ case "$1" in
 esac
 """)
         self.runner.chmod(0o755)
-        self.env = dict(os.environ, XDG_CONFIG_HOME=str(cfg), XDG_STATE_HOME=str(self.state),
+        # LONGHAND_SILENT: the tick's sound is counted, never played.
+        self.env = dict(os.environ, XDG_CONFIG_HOME=str(cfg), XDG_STATE_HOME=str(self.state), LONGHAND_SILENT="1",
                         PATH=f"{bindir}:{os.environ['PATH']}", FAKE_HYPR_DIR=str(self.hypr),
                         FAKE_HYPR_REAL=shutil.which("hyprctl") or "")
         if fake_home:
@@ -887,8 +888,10 @@ def main() -> int:
         check(row("slides")["when"] == "2030-01-02" and row("read the paper")["prio"] == 2,
               "a do-date and a priority are read off the line")
 
+        heard = int(p.call("ticksHeard"))
         row("draft the intro")
         check(p.call("dashKey", KEY_RETURN, CTRL) == "true", "Ctrl+Enter is the act that settles a row")
+        check(int(p.call("ticksHeard")) == heard + 1, "…and the tick asks for its sound")
         check(p.wait(lambda: "- [x] draft the intro" in (p.daily / f"{YDAY}.md").read_text()),
               "…and it ticks the line in the day it was written")
         done_on = dt.date.today().isoformat()
@@ -901,6 +904,16 @@ def main() -> int:
         p.call("dashKey", 0x4c, CTRL)
         check(p.wait(lambda: "- [ ] draft the intro\n" in (p.daily / f"{YDAY}.md").read_text()),
               "Ctrl+L on a box done today opens it again, the day taken off")
+        check(int(p.call("ticksHeard")) == heard + 1, "…with no sound: an untick is not a tick")
+        p.call("tickSoundToggle")
+        row("draft the intro")
+        p.call("dashKey", 0x4c, CTRL)
+        check(p.wait(lambda: "- [x] draft the intro" in (p.daily / f"{YDAY}.md").read_text())
+              and int(p.call("ticksHeard")) == heard + 1, "with the sound turned off in Settings, a tick is silent")
+        p.call("tickSoundToggle")
+        row("draft the intro")
+        p.call("dashKey", 0x4c, CTRL)
+        p.wait(lambda: "- [ ] draft the intro\n" in (p.daily / f"{YDAY}.md").read_text())
 
         row("ask about the rubric")
         check(p.call("dashType", "t") == "true", "t asks when")
@@ -983,7 +996,8 @@ def main() -> int:
         p.call("sidebar")
         p.call("calDay", 2030, 1, 5)
         check(p.call("dueKey", 0, KEY_L, CTRL) == "true", "Ctrl+L in the sidebar's deadline list is taken")
-        check(p.wait(lambda: p.deadline(eid)["status"] == "done" and f"- [x] essay outline 📅 2030-01-05 ^d{eid}" in p.call("text")),
+        check(p.wait(lambda: p.deadline(eid)["status"] == "done"
+                     and f"- [x] essay outline 📅 2030-01-05 ✅ {dt.date.today().isoformat()} ^d{eid}" in p.call("text")),
               f"…the deadline is done and its line ticked ({p.deadline(eid)}, {p.call('text')[-80:]!r})")
         p.call("dueKey", 0, KEY_L, CTRL)
         check(p.wait(lambda: p.deadline(eid)["status"] == "open" and f"- [ ] essay outline 📅 2030-01-05 ^d{eid}" in p.call("text")),
@@ -1101,7 +1115,8 @@ def main() -> int:
         check(p.wait(lambda: any("No calendar yet" in l for l in json.loads(p.call("settingsLines")))),
               f"…which says there is no calendar yet ({p.call('settingsLines')})")
         p.call("settingsSave", "not a link")
-        check("not a calendar address" in p.call("settingsNote") and not settings_json.exists(),
+        check("not a calendar address" in p.call("settingsNote")
+              and (not settings_json.exists() or not json.loads(settings_json.read_text()).get("calendars")),
               "something that is not an address is refused, and nothing is written")
 
         def cals():
@@ -1140,6 +1155,25 @@ def main() -> int:
               "…and the last one, back to no calendar")
         check(p.call("settingsKey", 0x01000000, 0) == "true" and p.call("settingsOpen") == "false", "Esc goes back")
         uni.shutdown()
+
+        # 12e. a tick in the note, as in the dashboard: the day it was done
+        # on the line, and the sound asked for; an untick takes the day off
+        # and is silent.
+        if p.call("dashOpen") == "true":
+            p.call("dash")
+        # A line of its own at the very start (the end of the note may hold
+        # a bound line whose hidden tail an insert would land before).
+        p.call("cursor", 0)
+        p.call("insert", "- [ ] a box ticked in the note\n")
+        heard = int(p.call("ticksHeard"))
+        p.call("tick", p.line_of("a box ticked in the note"))
+        check(p.wait(lambda: f"- [x] a box ticked in the note ✅ {dt.date.today().isoformat()}" in p.call("text")),
+              f"Ctrl+L in the note ticks with the day it was done ({p.call('text')[-60:]!r})")
+        check(int(p.call("ticksHeard")) == heard + 1, "…and asks for the tick's sound")
+        p.call("tick", p.line_of("a box ticked in the note"))
+        check(p.wait(lambda: "- [ ] a box ticked in the note" in p.call("text") and "note ✅" not in p.call("text")),
+              "…and Ctrl+L again opens it, the day off, in silence")
+        check(int(p.call("ticksHeard")) == heard + 1, "…no sound for the untick")
 
         # 12b. the keys sheet: every key the page answers to, listed; one
         # moved through the sheet, kept in keys.json, and working in the note

@@ -1017,3 +1017,19 @@ only the window and the panels around it differ.
   never played (the row turned done before it was marked as the one just
   ticked) and blinked an empty box. Open: a sound, and whether a tick in
   the note should write the day too.
+- 2026-10-17 (late): every tick records its day, and a tick is heard. A
+  box ticked in the note now writes `✅ <day>` too (untick takes it off),
+  so it stays in the dashboard for the day like one ticked there; only the
+  end of the line is rewritten, so a cursor in its words never moves. A
+  deadline's line ticked from the dashboard or the sidebar, and the page's
+  own catch-up with the store, keep the day as well — the catch-up used to
+  rebuild the tail from the date and anchor and drop it; `longhand-check`
+  writes it when the popup ticks. And a sound, kept mindful, as the student
+  asked: synthesised here (`tools/make_tick.py`: ~90 ms, a soft wooden tock
+  at about -12 dBFS, no click at either end, no licence), played only for a
+  tick the person makes — the dashboard, the note, the sidebar's list —
+  never for an untick or a line the page writes itself, one at a time,
+  never in Omarchy's Do Not Disturb (asked of the shell before each tick,
+  ~25 ms), and switchable in Settings → Sound, with "hear it". Tests count
+  the ticks that asked for the sound and play none. Open: the deadline
+  popup (its own plugin) ticks in silence — its day is written by the check.

@@ -368,6 +368,31 @@ Item {
   property int settingsFocus: 0        // the calendar ↑↓ picks
   property int settingsBusyIndex: -1   // the calendar being fetched; -1 all
   property string settingsFieldKind: "add"   // the field adds a calendar, or renames the picked one
+  property var settingsData: ({})      // settings.json as last read or written
+
+  // The sound of a tick (2026-10-17), kept mindful: short and soft
+  // (tick.wav, made by tools/make_tick.py), only for a tick the person makes
+  // — never an untick, never a line the page or the check writes itself —
+  // one at a time, never while notifications are silenced (Omarchy's Do
+  // Not Disturb), and off in Settings if wanted.
+  readonly property bool tickSoundOn: root.settingsData.tickSound !== false
+  property int ticksHeard: 0           // ticks that asked for the sound (tests read this)
+  readonly property string tickFile: String(Qt.resolvedUrl("tick.wav")).replace(/^file:\/\//, "")
+  function tickSound() {
+    if (!root.tickSoundOn) return
+    root.ticksHeard++
+    root.playTick(false)
+  }
+  // `force`: asked for in Settings ("hear it"), so Do Not Disturb does not
+  // apply.
+  function playTick(force) {
+    // A test run counts the ticks and plays none (LONGHAND_SILENT).
+    if (tickSoundProc.running || Quickshell.env("LONGHAND_SILENT") !== "") return
+    var play = 'if command -v pw-play >/dev/null; then exec pw-play --volume=0.6 "$0"; else exec paplay "$0"; fi'
+    tickSoundProc.command = ["sh", "-c", force ? play
+      : '[ "$(omarchy-shell notifications isDnd 2>/dev/null)" = on ] && exit 0; ' + play, root.tickFile]
+    tickSoundProc.running = true
+  }
   property var hyprKeys: null        // Hyprland's keys for the page: hyprkeys.py's state
   property bool keysAdopt: false     // Enter pressed once on "let the page keep these keys"
   readonly property var keyRows: { root.keysVersion; return Sc.rows(root.keysFilter, root.hyprKeys) }
@@ -1099,6 +1124,7 @@ Item {
     if (Sc.hit(event, "settingsForget")) { root.removeCalendar(root.settingsFocus); return true }
     if (Sc.hit(event, "settingsShare")) { root.toggleShare(root.settingsFocus); return true }
     if (Sc.hit(event, "settingsRename")) { root.startRename(root.settingsFocus); return true }
+    if (Sc.hit(event, "settingsSound")) { root.toggleTickSound(); return true }
     return false
   }
 
@@ -1123,7 +1149,17 @@ Item {
     cur.calendars = list
     delete cur.timetable
     root.settingsPending = then
+    root.settingsData = cur
     settingsFile.setText(JSON.stringify(cur, null, 2) + "\n")
+  }
+
+  function toggleTickSound() {
+    var cur = root.readSettings()
+    cur.tickSound = cur.tickSound === false
+    root.settingsData = cur
+    settingsFile.setText(JSON.stringify(cur, null, 2) + "\n")
+    root.used("tick-sound", cur.tickSound ? "on" : "off")
+    if (cur.tickSound) root.playTick(true)
   }
 
   // An address as calendars hand them out: https, http or webcal. A new
@@ -1538,6 +1574,7 @@ Item {
   // until the tick has been seen.
   readonly property int tickMs: 450
   function markTicked(key) {
+    root.tickSound()
     var d = {}
     for (var k in root.doneNow) d[k] = root.doneNow[k]
     d[key] = true
@@ -1586,7 +1623,11 @@ Item {
     if (Sc.hit(event, "listUp")) root.dueFocus = Math.max(0, root.dueFocus - 1)
     else if (Sc.hit(event, "listDown")) root.dueFocus = Math.min(n - 1, root.dueFocus + 1)
     else if (Sc.hit(event, "listOpen")) root.goToDeadline(root.focusDue[root.dueFocus])
-    else if (Sc.hit(event, "listDone")) root.tickDeadline(root.focusDue[root.dueFocus])
+    else if (Sc.hit(event, "listDone")) {
+      var d = root.focusDue[root.dueFocus]
+      if (d && d.status === "open") root.tickSound()
+      root.tickDeadline(d)
+    }
     else if (Sc.hit(event, "listNext")) { root.dueFocus = -1; if (root.projects.length > 0) root.projFocus = 0 }
     else if (Sc.hit(event, "listBack")) root.dueFocus = -1
     else return false
@@ -2249,9 +2290,11 @@ Item {
     return d.due * 1000 < Date.now() ? root.urgent : root.foreground
   }
 
+  // With the day it was done, or without it, as every tick in the page.
   function tickBoundLine(id, done) {
     var r = root.rowByDeadline(id)
-    if (r) root.writeLine(r, r.raw.replace(/^(\s*[-*+] \[)[ xX](\])/, "$1" + (done ? "x" : " ") + "$2"))
+    if (r) root.writeLine(r, done ? Task.setField(Task.setState(r.raw, "x"), "✅", Qt.formatDate(new Date(), "yyyy-MM-dd"))
+                                  : Task.setField(Task.setState(r.raw, " "), "✅", ""))
   }
 
   // A deadline no line stands for gets one, at the end of today's note.
@@ -2607,12 +2650,14 @@ Item {
       if (!d) {
         want = base + (r.dueAt > 0 ? Bound.tail(r.dueAt, 0) : "")
       } else {
-        // The store's state on the box; a cancelled one says when, as a
-        // drop does (`- [-] … ❌ <day>`).
+        // The store's state on the box, and the day it was closed after its
+        // date, as every tick and drop writes it: `📅 … ✅ <day> ^dN`, or
+        // `❌ <day>` for a cancelled one; open again, neither.
         var box = d.status === "open" ? " " : d.status === "cancelled" ? "-" : "x"
-        base = Task.setState(base, box).replace(/\s*❌\s*\d{4}-\d{2}-\d{2}/, "")
-        if (box === "-") base += " ❌ " + Qt.formatDate(new Date(d.doneAt > 0 ? d.doneAt * 1000 : Date.now()), "yyyy-MM-dd")
-        want = base + Bound.tail(d.due * 1000, d.id)
+        base = Task.setState(base, box).replace(/\s*[❌✅]\s*\d{4}-\d{2}-\d{2}/g, "")
+        var closed = box === " " ? "" : (box === "-" ? " ❌ " : " ✅ ")
+          + Qt.formatDate(new Date(d.doneAt > 0 ? d.doneAt * 1000 : Date.now()), "yyyy-MM-dd")
+        want = base + Bound.tail(d.due * 1000, 0) + closed + " ^d" + d.id
       }
       root.catchUp(r, want)
     }
@@ -3237,6 +3282,7 @@ Item {
     blockLoading: true
     watchChanges: true
     onFileChanged: reload()
+    onLoaded: root.settingsData = root.readSettings()
     atomicWrites: true
     printErrors: false
     onSaved: {
@@ -3246,6 +3292,8 @@ Item {
     }
     onSaveFailed: function (err) { root.settingsNote = "could not write settings.json: " + FileViewError.toString(err) }
   }
+
+  Process { id: tickSoundProc }
 
   Process {
     id: settingsProc
@@ -4073,6 +4121,62 @@ Item {
               }
             }
 
+            Item { width: 1; height: root.sp(22) }
+
+            Text {
+              textFormat: Text.PlainText
+              text: "Sound"
+              color: pal.headings.length > 0 ? pal.headings[0] : root.accent
+              font.family: root.fontFamily
+              font.styleName: root.fontStyle
+              font.pixelSize: root.fs(Style.font.body)
+            }
+
+            Text {
+              width: parent.width
+              textFormat: Text.PlainText
+              wrapMode: Text.WordWrap
+              text: "A short, soft sound when you tick something. Never when you untick, never for what Longhand changes "
+                + "itself, and never while notifications are silenced (Do Not Disturb)."
+              color: root.faint
+              font.family: root.fontFamily
+              font.styleName: root.fontStyle
+              font.pixelSize: root.fs(Style.font.bodySmall)
+            }
+
+            Row {
+              spacing: root.sp(16)
+              Text {
+                textFormat: Text.PlainText
+                text: root.settingsData.tickSound === false ? "Off" : "On"
+                color: root.foreground
+                font.family: root.fontFamily
+                font.styleName: root.fontStyle
+                font.pixelSize: root.fs(Style.font.bodySmall)
+              }
+              Repeater {
+                model: [{ text: root.settingsData.tickSound === false ? "turn on" : "turn off", act: "settingsSound" },
+                        { text: "hear it", act: "" }]
+                Text {
+                  required property var modelData
+                  textFormat: Text.PlainText
+                  text: modelData.text
+                  color: soundArea.containsMouse ? root.accent : root.faint
+                  font.family: root.fontFamily
+                  font.styleName: root.fontStyle
+                  font.pixelSize: root.fs(Style.font.bodySmall)
+                  MouseArea {
+                    id: soundArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: { if (modelData.act === "settingsSound") root.toggleTickSound(); else root.playTick(true); settingsField.forceActiveFocus() }
+                    PanelToolTip { visible: parent.containsMouse && modelData.act !== ""; text: root.tip(modelData.text, modelData.act) }
+                  }
+                }
+              }
+            }
+
             Text {
               visible: root.settingsNote !== ""
               width: parent.width
@@ -4095,7 +4199,7 @@ Item {
             text: root.settingsFieldKind === "rename" ? "Enter renames it · Esc keeps the old name"
               : "Enter adds a calendar · ↑↓ pick one · " + root.keyName("settingsShare") + " what the agent sees · "
               + root.keyName("settingsFetch") + " fetches it · " + root.keyName("settingsRename") + " renames · "
-              + root.keyName("settingsForget") + " removes it · Esc back"
+              + root.keyName("settingsForget") + " removes it · " + root.keyName("settingsSound") + " tick sound · Esc back"
             color: root.faint
             font.family: root.fontFamily
             font.styleName: root.fontStyle
@@ -4752,6 +4856,7 @@ Item {
             roomRow: whenBox.visible || mentionBox.visible ? root.lineIndexAt(editor.cursorPosition) : -1
             roomHeight: (whenBox.visible ? whenBox.height : mentionBox.visible ? mentionBox.height : 0) + root.sp(12)
             boxTip: Component { Item { PanelToolTip { visible: true; text: root.tip("Tick or untick it", "checkbox") } } }
+            onBoxTicked: function (lineIndex, done) { if (done) root.tickSound() }
             x: root.gutter
             width: flick.width - root.gutter
             height: implicitHeight

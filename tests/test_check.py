@@ -85,7 +85,13 @@ def main() -> int:
     # A tick from the popup (the store moved): the line in its note follows.
     pomo("done", str(a))
     run()
-    check(f"- [x] Roles planned 📅 2026-10-30 ^d{a}" in note.read_text(), "a tick in the store ticks the line")
+    check(f"- [x] Roles planned 📅 2026-10-30 ✅ 2026-10-17 ^d{a}" in note.read_text(),
+          "a tick in the store ticks the line, with the day it was done")
+    pomo("reopen", str(a))
+    run()
+    check(f"- [ ] Roles planned 📅 2026-10-30 ^d{a}" in note.read_text(), "…and open again, the day comes off")
+    pomo("done", str(a))
+    run()
     # A tick in Obsidian (the line moved): the store follows.
     note.write_text(note.read_text().replace(f"- [ ] AI literacy", "- [x] AI literacy"))
     run()
@@ -160,7 +166,7 @@ def main() -> int:
     # A tag no deadline stands behind (removed outright): the line keeps its words and date.
     pomo("rm", str(a))
     out = run()
-    check(a in out["stale"] and "- [x] Roles planned 📅 2026-10-30\n" in note.read_text(), "a stale tag is taken off, the date stays")
+    check(a in out["stale"] and "- [x] Roles planned 📅 2026-10-30 ✅ 2026-10-17\n" in note.read_text(), "a stale tag is taken off, the dates stay")
 
     # Done and never in a note: history, left alone.
     h = add("Masters exam", "2026-09-10")
