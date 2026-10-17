@@ -110,6 +110,8 @@ ShellRoot {
     function when(s: string): void { page.whenInput.text = s; page.submitWhen() }
     // Panels
     function sidebar(): void { page.toggleSidebar() }
+    function seal(): void { page.sealClicked() }
+    function sidebarOpen(): bool { return page.sidebarOpen }
     function surfaces(): string { return JSON.stringify(page.surfaces()) }
     function marginOpen(on: bool): void { page.marginOpen = on }
     function calDay(y: int, m: int, d: int): void { page.calFocus = new Date(y, m - 1, d) }

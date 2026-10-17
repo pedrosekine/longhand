@@ -939,3 +939,15 @@ only the window and the panels around it differ.
   the agent's mark — and the sidebar, already navigation, ends with the two
   words, quiet like the pin and lit while their sheet is open. `Ctrl+/` and
   `Ctrl+,` still open either from anywhere.
+- 2026-10-17 (night, later): the seal in the page. With keys and settings
+  in the sidebar, a closed sidebar had no visible way in, and the student
+  asked whether the logo could be the nudge — to the sidebar, or to today.
+  One meaning, not two: the seal opens and closes the sidebar, because "back
+  to today" already sits beside the date whenever you are on another day,
+  and a mark that does one thing on one day and another on the next is not
+  learnable. It hangs in the margin before the date (the date keeps its
+  line with the writing), drawn from the brand master's own path and
+  coloured from the theme: faint, the accent when pointed at, the
+  foreground while the sidebar is open. Never a sign of the agent or of
+  something due (docs/brand/README.md). Clicks are counted as `seal`, so
+  whether the mark is found is a number, not a guess.

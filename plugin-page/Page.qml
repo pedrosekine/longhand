@@ -2553,6 +2553,13 @@ Item {
 
   // ------------------------------------------------------------ sidebar
 
+  // The seal in the header, clicked: counted apart from the key, so the
+  // stats can say whether the mark is found.
+  function sealClicked() {
+    root.used("seal")
+    root.toggleSidebar()
+  }
+
   function toggleSidebar() {
     root.sidebarOpen = !root.sidebarOpen
     if (root.sidebarOpen) root.used("calendar")
@@ -4023,6 +4030,36 @@ Item {
           anchors.left: parent.left
           anchors.right: parent.right
           height: dateText.implicitHeight
+
+          // The seal: Longhand's own mark, and the door to the sidebar — the
+          // calendar, the projects, the keys and the settings (2026-10-17).
+          // It hangs in the margin so the date stays in line with the
+          // writing; quiet until pointed at, lit while the sidebar is open.
+          // It identifies Longhand and opens the sidebar, nothing else: never
+          // a sign that the agent answered or that something is due
+          // (docs/brand/README.md).
+          LogoMark {
+            id: seal
+            anchors.right: dateText.left
+            anchors.rightMargin: root.sp(12)
+            anchors.verticalCenter: dateText.verticalCenter
+            width: Math.round(dateText.implicitHeight * 1.05)
+            height: width
+            color: sealArea.containsMouse ? root.accent : root.sidebarOpen ? root.foreground : root.faint
+            Behavior on color { ColorAnimation { duration: 240 } }
+            MouseArea {
+              id: sealArea
+              anchors.fill: parent
+              anchors.margins: -root.sp(6)
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.sealClicked()
+              PanelToolTip {
+                visible: parent.containsMouse
+                text: root.tip(root.sidebarOpen ? "Close the sidebar" : "The sidebar: calendar, projects, keys and settings", "sidebar")
+              }
+            }
+          }
 
           Text {
             id: dateText

@@ -1049,6 +1049,14 @@ def main() -> int:
         p.pomo("hide", str(late))
         p.call("dash")
 
+        # 12c'. the seal in the header opens and closes the sidebar, and
+        # nothing else (docs/brand/README.md).
+        was = p.call("sidebarOpen")
+        p.call("seal")
+        check(p.wait(lambda: p.call("sidebarOpen") != was), "the seal opens or closes the sidebar")
+        p.call("seal")
+        check(p.wait(lambda: p.call("sidebarOpen") == was), "…and again, back as it was")
+
         # 12d. Settings → Calendar (2026-10-17): the timetable's address
         # pasted in the page, saved to settings.json, fetched at once, and
         # what came of it said — never the address itself.
