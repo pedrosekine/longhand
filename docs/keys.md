@@ -138,6 +138,8 @@ Where a row has two keys, either works: the second is usually the one another ap
 | Previous proposal (from an empty box: into the proposals) | `↑` | in the margin, in the conversation box |
 | Next proposal, then the box | `↓` | in the margin |
 | Do what the proposal says | `Enter` · `Space` | in the margin |
+| The reply was helpful (again: take it back) | `+` · `=` | in the margin |
+| The reply was not helpful (again: take it back) | `-` | in the margin |
 | Send what you wrote | `Enter` | in the conversation box |
 | Back to the note | `Esc` · `Alt+←` | in the margin, in the conversation box |
 

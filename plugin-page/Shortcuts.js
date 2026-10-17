@@ -163,6 +163,8 @@ var actions = [
   { id: "marginUp", group: "margin", places: ["margin", "chat"], does: "Previous proposal (from an empty box: into the proposals)", keys: ["Up"] },
   { id: "marginDown", group: "margin", places: ["margin"], does: "Next proposal, then the box", keys: ["Down"] },
   { id: "marginAccept", group: "margin", places: ["margin"], does: "Do what the proposal says", keys: ["Enter", "Space"] },
+  { id: "marginHelpful", group: "margin", places: ["margin"], does: "The reply was helpful (again: take it back)", keys: ["Plus", "="] },
+  { id: "marginNotHelpful", group: "margin", places: ["margin"], does: "The reply was not helpful (again: take it back)", keys: ["-"] },
   { id: "chatSend", group: "margin", places: ["chat"], does: "Send what you wrote", keys: ["Enter"] },
   { id: "marginBack", group: "margin", places: ["margin", "chat"], does: "Back to the note", keys: ["Esc", "Alt+Left"] }
 ]

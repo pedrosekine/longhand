@@ -261,6 +261,51 @@ subscription login.
   whether quality is the limit; switch planning to a stronger route if the
   student declines most of what it proposes.
 
+## The improvement loop — instructions that are not static
+
+Built 2026-10-18. The agent learns facts about the student in its notebook;
+how it *behaves* changes only through an edit the person sees and approves,
+checked first. The loop:
+
+- **Every run records its prompt and model** — a short fingerprint of the
+  exact instructions used (`prompt_version`) and the model — on the block,
+  the plan's ledger items, the cost ledger. What came of a run can always be
+  told apart by what made it.
+- **The student's word on a reply.** Under each reply in the margin:
+  *helpful · not helpful* (`+` / `-` in the margin; the same again takes it
+  back), kept on the block and in `feedback.tsv`. The plan's accept and
+  decline are the same signal for proposals.
+- **The eval set** (`agent/evals.py`, `longhand-agent eval`). A case is a
+  real run's payload — kept in the vault (`agents/longhand/evals/cases/`),
+  never in the public repo — with `rules` checked by code (patterns a reply
+  must or must not have; for a plan, what survives plan.py's checks, which
+  questions are asked, which boxes get dates) and `criteria` in plain words,
+  graded by a judge of its own (`longhand-judge`, every tool denied, given
+  the payload so "grounded" can be judged). `eval add` makes a case of a run
+  that missed; `eval run` gives every case to the repo's prompts (a
+  throwaway opencode configuration, so a prompt is checked before it is
+  installed) and keeps the result with the prompt versions and models in
+  `evals/results/` — the history.
+- **The check before a change.** `longhand-agent install` refuses a changed
+  prompt that has not passed its cases on the model it will run on
+  (`--force` overrides, said aloud). A model change is checked the softer
+  way: Settings → The agent, `eval status` and the review say "never
+  checked" until the cases have passed on it.
+- **The weekly review** (`longhand-agent review`). Local arithmetic, no
+  model: what ran, by prompt and model; how replies were rated; what came of
+  proposals and questions; each reply rated not helpful and each declined
+  do-date, with the command that makes it a case; whether what runs has
+  passed. Written into the vault (`agents/longhand/reviews/<year>-W<week>.md`)
+  when the page opens and a week has passed — pull, never on a timer — and
+  said once; Settings → The agent opens the latest.
+
+The first three cases (2026-10-18) are the ones the weekend found: the
+e-scooter question (engage with the substance; never "by when?"), the
+first real plan (dates for the clear boxes, a question about the
+supervisor, reasons that name the day), and a page opening with nothing new
+(silence, or one grounded observation). The prompts from before the rewrite
+fail the first two, as they should; the prompts in use pass all three.
+
 ## Slices, in order
 
 Each is usable alone.

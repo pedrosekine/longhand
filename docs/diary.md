@@ -1082,3 +1082,16 @@ only the window and the panels around it differ.
   for both jobs now, through the ChatGPT subscription; DeepSeek v4.1 Flash
   stays the fallback. Lesson kept: when a model disappoints, read the prompt
   as the model would, literally, before changing the model.
+- 2026-10-18: the instructions stop being static. Asked for a way to keep
+  improving how the agent behaves, the answer kept the person driving: the
+  agent learns facts in its notebook, but its behaviour changes only through
+  a reviewed edit. Every run now records the fingerprint of the prompt that
+  made it and the model; a reply can be rated helpful or not in the margin
+  (`+` / `-`); runs that missed become eval cases in the vault (rules checked
+  by code, criteria graded by a judge model of its own); `install` refuses a
+  changed prompt that has not passed them; and a weekly review — no model,
+  written when the page opens and a week has passed — lists what missed with
+  the command that turns it into a case. Proof it is worth having: the three
+  first cases, made from this weekend's findings, fail the prompts from
+  before the rewrite exactly where they failed ("By when do you want to
+  decide…?"; reasons resting only on free hours) and pass the ones in use.

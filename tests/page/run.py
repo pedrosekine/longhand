@@ -137,7 +137,7 @@ class Page:
         chatstub.write_text(CHAT_STUB)
         self.runner.write_text(f"""#!/bin/bash
 case "$1" in
-  accept|projects|sections|next|tasks|box|timetable|plan|proposals|proposal) exec "{ROOT}/agent/longhand-agent" "$@" ;;
+  accept|projects|sections|next|tasks|box|timetable|plan|proposals|proposal|rate) exec "{ROOT}/agent/longhand-agent" "$@" ;;
   run) sleep 2; exit 0 ;;
   chat) sleep 2; exec python3 "{chatstub}" "{self.vault}/agents/longhand/daily" "$@" ;;
 esac
@@ -774,6 +774,14 @@ def main() -> int:
         p.open_fresh()
         p.call("cursor", p.offset_of_line(p.line_of("scooter")) + 8)
         check(p.wait(lambda: p.call("reply") == "What would you use it for?"), "an answered box shows its reply")
+        # The student's word on it (the improvement loop): from the margin,
+        # kept on the block; the same word again takes it back.
+        day_state = p.vault / "agents" / "longhand" / "daily" / f"{TODAY}.json"
+        rating = lambda: (json.loads(day_state.read_text())["blocks"][qh].get("rating") or {}).get("value")
+        p.call("rate", "down")
+        check(p.wait(lambda: rating() == "down"), "a reply rated not helpful from the margin is kept on its block")
+        p.call("rate", "down")
+        check(p.wait((lambda: rating() is None)), "…and the same word again takes it back")
         p.call("tick", p.line_of("scooter"))
         check(p.wait(lambda: "- [x] should I buy a scooter?" in p.call("text")), "…ticked")
         check(p.wait(lambda: p.call("reply") == "What would you use it for?") and p.call("askWord") == "reply",

@@ -354,6 +354,10 @@ section, word for word, and to the diary's decisions log.
    Go API key (the one in use expired — found 2026-10-17 on the first real
    plan; every agent run fails until it is replaced), and a re-login to
    ChatGPT in opencode before a second model route.
+   **The improvement loop, built 2026-10-18** (docs/agent.md): the prompt
+   version and model on every run, *helpful / not helpful* on replies, an
+   eval set of real runs (cases in the vault), the check before a prompt is
+   installed, and a weekly review written when the page opens.
 2. **The agent's cheap tiers** (2026-10-14, "the agent's tools" in the
    record). *Self-knowledge*: "how do I add a deadline?" answered from a
    payload section listing what the CLIs and the page can do — static,

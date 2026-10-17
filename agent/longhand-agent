@@ -4,6 +4,7 @@
     longhand-agent run --trigger <kind> [--hash <block>[,<block>…]] [--date YYYY.MM.DD]
     longhand-agent chat --hash <block> --message <text>         # dive in: continue that block's session
     longhand-agent ack --hash <block>                           # the student has seen the reply
+    longhand-agent rate up|down|none --hash <block>             # the student's word on a reply (feedback.tsv)
     longhand-agent accept --hash <block> --index <n>            # run a proposal through the CLI
     longhand-agent tasks [--days 7]                             # open checkboxes across daily notes, JSON
     longhand-agent next [--days 7]                              # tasks (with their clock) + open suggestions/observations, JSON
@@ -18,7 +19,11 @@
     longhand-agent stats [--days 14 | --since YYYY-MM-DD] [--json]   # how the tool is used
     longhand-agent projects                                     # the tags that exist, with their next session
     longhand-agent timetable [--fetch [--index n]]              # each calendar's state, for the Settings sheet, JSON
-    longhand-agent install                                      # opencode agent def + dirs
+    longhand-agent eval add <payload> [--job margin|plan]       # a real run made into an eval case (in the vault)
+    longhand-agent eval run [--model M] [--case ID]             # the cases against the repo's prompts; kept as history
+    longhand-agent eval status                                  # which prompt and model have passed
+    longhand-agent review [--write | --if-due]                  # the week of the agent, for the student to read
+    longhand-agent install [--force]                            # opencode agent defs (checked by their evals) + dirs
 
 One pass, then exit. Nothing is resident. The model gets no tools: everything
 it may see is assembled here from an allowlist (today's note minus private
@@ -34,6 +39,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import hashlib
 import json
 import os
 import re
@@ -46,6 +52,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import blocks as blocklib  # noqa: E402
 import lifespan  # noqa: E402
 import plan as planlib  # noqa: E402
+import evals as evallib  # noqa: E402
 import timetable  # noqa: E402
 import task as tasklib  # noqa: E402
 
@@ -63,6 +70,9 @@ PROPOSALS = STATE_HOME / "proposals.json"
 # When the planning job last ran, and on what (so it does not plan the same
 # unchanged fortnight twice a day).
 PLAN_STATE = STATE_HOME / "plan.json"
+# Every rating the student gave a reply: helpful or not, with the prompt and
+# model that made it (the improvement loop, docs/agent.md).
+FEEDBACK = STATE_HOME / "feedback.tsv"
 
 
 class Fail(Exception):
@@ -476,7 +486,40 @@ def session_cost(cfg: dict, paths: Paths, session: str) -> tuple[float, dict]:
     return float(info.get("cost") or 0.0), tokens
 
 
-def run_model(cfg: dict, paths: Paths, payload: str, session: str = "", message: str = "Context follows on stdin.") -> dict:
+def agent_def(name: str, prompts: Path | None = None) -> Path:
+    """The definition opencode will use for agent `name`: the one in
+    `prompts` when evaluating a candidate, else the installed one (what the
+    runs use), else the repo's."""
+    if prompts is not None:
+        return prompts / f"{name}.md"
+    installed = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "opencode" / "agent" / f"{name}.md"
+    return installed if installed.exists() else Path(__file__).resolve().parent / "opencode" / f"{name}.md"
+
+
+def prompt_version(name: str, prompts: Path | None = None) -> str:
+    """A short fingerprint of an agent's instructions: every run records it,
+    so what came of the runs can be told apart by the prompt that made
+    them (the improvement loop, docs/agent.md)."""
+    try:
+        return hashlib.sha256(agent_def(name, prompts).read_bytes()).hexdigest()[:10]
+    except OSError:
+        return ""
+
+
+def model_of(cfg: dict, name: str, prompts: Path | None = None) -> str:
+    """The model a run of agent `name` uses: the config's, else the one its
+    definition names."""
+    if cfg.get("model"):
+        return cfg["model"] + ("#" + cfg["variant"] if cfg.get("variant") and "#" not in cfg["model"] else "")
+    try:
+        m = re.search(r"^model:\s*(\S+)", agent_def(name, prompts).read_text(), re.M)
+        return m.group(1) if m else ""
+    except OSError:
+        return ""
+
+
+def run_model(cfg: dict, paths: Paths, payload: str, session: str = "", message: str = "Context follows on stdin.",
+              env: dict | None = None) -> dict:
     """Run one opencode pass. Returns {text, session, cost, tokens, events, error}.
 
     With `session`, continues an existing opencode session (dive-in), so the
@@ -503,15 +546,17 @@ def run_model(cfg: dict, paths: Paths, payload: str, session: str = "", message:
     cmd.append(message)
     try:
         proc = subprocess.run(cmd, input=payload, capture_output=True, text=True, timeout=600,
-                              cwd=str(paths.cwd))
+                              cwd=str(paths.cwd), env=env)
     except FileNotFoundError:
         raise Fail(f"opencode not found ({cmd[0]})")
     except subprocess.TimeoutExpired:
         raise Fail("opencode timed out after 600s")
 
+    name = cfg.get("agent", "longhand")
     out = {"text": "", "session": "", "cost": 0.0,
            "tokens": {"input": 0, "output": 0, "reasoning": 0, "total": 0},
-           "events": proc.stdout, "error": ""}
+           "events": proc.stdout, "error": "",
+           "prompt": prompt_version(name, cfg.get("_prompts")), "model": model_of(cfg, name, cfg.get("_prompts"))}
     texts = []
     for line in proc.stdout.splitlines():
         try:
@@ -604,7 +649,8 @@ def apply(cfg: dict, paths: Paths, trigger: str, fired: list[dict], visible: lis
                 rec["key"] = keys[h]
             turns = rec.setdefault("chat", [])
             turns.append({"role": "student", "text": message, "at": at})
-            turns.append({"role": "agent", "text": reply["reply"], "at": at, "cost": result["cost"]})
+            turns.append({"role": "agent", "text": reply["reply"], "at": at, "cost": result["cost"],
+                          "prompt": result.get("prompt", ""), "model": result.get("model", "")})
             rec["session"] = result["session"] or rec.get("session", "")
             rec["read"] = False
             if rec.get("state") != "reply":
@@ -618,6 +664,8 @@ def apply(cfg: dict, paths: Paths, trigger: str, fired: list[dict], visible: lis
             rec.update({"state": "reply" if reply["reply"] else "seen", "trigger": trigger,
                         "reply": reply["reply"], "proposals": reply["proposals"], "read": False,
                         "session": result["session"], "at": at, "cost": result["cost"], "head": head,
+                        "prompt": result.get("prompt", ""), "model": result.get("model", ""),
+                        "payload": str(payload_file),
                         "key": keys.get(h) or block_key(next(b["text"] for b in fired if b["hash"] == h))})
             if len(hashes) > 1:
                 rec["group"] = hashes
@@ -625,7 +673,9 @@ def apply(cfg: dict, paths: Paths, trigger: str, fired: list[dict], visible: lis
                 rec.pop("group", None)
     elif reply["reply"]:
         state.setdefault("observations", []).append({"text": reply["reply"], "at": at, "trigger": trigger,
-                                                     "session": result["session"], "read": False})
+                                                     "session": result["session"], "read": False,
+                                                     "prompt": result.get("prompt", ""), "model": result.get("model", ""),
+                                                     "payload": str(payload_file)})
     known = read_dismissed(paths) + [x.get("text", "") for x in state["suggestions"]]
     for s in reply["suggestions"]:
         text = str(s.get("text") or "").strip()
@@ -643,6 +693,7 @@ def apply(cfg: dict, paths: Paths, trigger: str, fired: list[dict], visible: lis
         written.append(name)
     state["runs"].append({"at": at, "trigger": trigger, "block": hash_, "session": result["session"],
                           "cost": result["cost"], "tokens": result["tokens"], "payload": str(payload_file),
+                          "prompt": result.get("prompt", ""), "model": result.get("model", ""),
                           "knowledge": written, "error": result["error"]})
     write_atomic(paths, paths.state, json.dumps(state, indent=2, ensure_ascii=False) + "\n")
 
@@ -672,9 +723,9 @@ def apply(cfg: dict, paths: Paths, trigger: str, fired: list[dict], visible: lis
     # Ledger: one line per run, never synced.
     paths.ledger.parent.mkdir(parents=True, exist_ok=True)
     if not paths.ledger.exists():
-        paths.ledger.write_text("at\tdate\ttrigger\tblock\tcost\tinput\toutput\treasoning\tsession\n")
+        paths.ledger.write_text("at\tdate\ttrigger\tblock\tcost\tinput\toutput\treasoning\tsession\tprompt\tmodel\n")
     with open(paths.ledger, "a") as f:
-        f.write(f"{at}\t{paths.stamp}\t{trigger}\t{hash_}\t{result['cost']:.6f}\t{tk['input']}\t{tk['output']}\t{tk['reasoning']}\t{result['session']}\n")
+        f.write(f"{at}\t{paths.stamp}\t{trigger}\t{hash_}\t{result['cost']:.6f}\t{tk['input']}\t{tk['output']}\t{tk['reasoning']}\t{result['session']}\t{result.get('prompt', '')}\t{result.get('model', '')}\n")
     return state
 
 
@@ -1120,6 +1171,39 @@ def cmd_ack(cfg: dict, args) -> int:
             changed = True
     if changed:
         write_atomic(paths, paths.state, json.dumps(state, indent=2, ensure_ascii=False) + "\n")
+    return 0
+
+
+def cmd_rate(cfg: dict, args) -> int:
+    """The student's word on a reply in the margin: helpful, not helpful, or
+    taken back (none). Kept on the block and in feedback.tsv, with the
+    prompt and model that made the reply, for the weekly review and for
+    turning a reply that missed into an eval case."""
+    date = dt.datetime.strptime(args.date, moment_to_strftime(cfg["daily"].get("format", "YYYY-MM-DD"))).date() \
+        if args.date else dt.date.today()
+    paths = Paths(cfg, date)
+    state = load_state(paths)
+    at = dt.datetime.now().isoformat(timespec="seconds")
+    rec = None
+    for h in group_of(state, args.hash):
+        r = state["blocks"].get(h)
+        if r is None:
+            continue
+        if args.value == "none":
+            r.pop("rating", None)
+        else:
+            r["rating"] = {"value": args.value, "at": at}
+        rec = rec or r
+    if rec is None:
+        raise Fail(f"no block {args.hash} on {paths.stamp}")
+    write_atomic(paths, paths.state, json.dumps(state, indent=2, ensure_ascii=False) + "\n")
+    FEEDBACK.parent.mkdir(parents=True, exist_ok=True)
+    if not FEEDBACK.exists():
+        FEEDBACK.write_text("at\tdate\tblock\ttrigger\tvalue\tprompt\tmodel\tpayload\n")
+    with open(FEEDBACK, "a") as f:
+        f.write(f"{at}\t{paths.stamp}\t{args.hash}\t{rec.get('trigger', '')}\t{args.value}\t"
+                f"{rec.get('prompt', '')}\t{rec.get('model', '')}\t{rec.get('payload', '')}\n")
+    print(json.dumps({"hash": args.hash, "rating": args.value}))
     return 0
 
 
@@ -1633,6 +1717,8 @@ def cmd_plan(cfg: dict, args) -> int:
     result = run_model(plan_cfg, paths, payload, message="Plan the fortnight. The context follows on stdin.")
     reply = parse_plan(result["text"]) if not result["error"] else {"proposals": [], "questions": [], "knowledge": []}
     props, qs = planlib.validate(reply, cands, days, ledger, today)
+    for item in props + qs:
+        item.update({"prompt": result.get("prompt", ""), "model": result.get("model", ""), "payload": str(payload_file)})
     new = planlib.record(ledger, props, qs, at)
     planlib.save_ledger(PROPOSALS, ledger)
 
@@ -1647,9 +1733,9 @@ def cmd_plan(cfg: dict, args) -> int:
     tk = result["tokens"]
     paths.ledger.parent.mkdir(parents=True, exist_ok=True)
     if not paths.ledger.exists():
-        paths.ledger.write_text("at\tdate\ttrigger\tblock\tcost\tinput\toutput\treasoning\tsession\n")
+        paths.ledger.write_text("at\tdate\ttrigger\tblock\tcost\tinput\toutput\treasoning\tsession\tprompt\tmodel\n")
     with open(paths.ledger, "a") as f:
-        f.write(f"{at}\t{paths.stamp}\tplan\t\t{result['cost']:.6f}\t{tk['input']}\t{tk['output']}\t{tk['reasoning']}\t{result['session']}\n")
+        f.write(f"{at}\t{paths.stamp}\tplan\t\t{result['cost']:.6f}\t{tk['input']}\t{tk['output']}\t{tk['reasoning']}\t{result['session']}\t{result.get('prompt', '')}\t{result.get('model', '')}\n")
     # A plan that failed is not today's plan: the next opening tries again,
     # and the page says why it could not (an expired key, no network).
     if result["error"]:
@@ -1717,13 +1803,277 @@ def cmd_proposal(cfg: dict, args) -> int:
     return 0
 
 
+# ------------------------------------------------------------------ evals
+
+REPO_PROMPTS = Path(__file__).resolve().parent / "opencode"
+JOB_AGENT = {"margin": "longhand", "plan": "longhand-plan"}
+
+
+def job_model(cfg: dict, job: str, override: str = "") -> tuple[str, str]:
+    """(model, variant) a job runs on: an override, else the config's —
+    the planner's own `planModel` for a plan."""
+    if override:
+        return override, ""
+    if job == "plan" and cfg.get("planModel"):
+        return cfg["planModel"], cfg.get("planVariant", "")
+    return cfg.get("model", ""), cfg.get("variant", "")
+
+
+def eval_env(prompts: Path) -> tuple[dict, Path]:
+    """A configuration of opencode's own in which the agents are the ones in
+    `prompts` (the candidate), everything else as installed — so a prompt is
+    checked before it is ever installed."""
+    home = Path(tempfile.mkdtemp(prefix="longhand-eval-"))
+    agents = home / "opencode" / "agent"
+    agents.mkdir(parents=True)
+    real = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "opencode"
+    for name in ("opencode.json", "opencode.jsonc", "config.json"):
+        if (real / name).exists():
+            (home / "opencode" / name).write_text((real / name).read_text())
+    for f in prompts.glob("*.md"):
+        (agents / f.name).write_text(f.read_text())
+    return dict(os.environ, XDG_CONFIG_HOME=str(home)), home
+
+
+def cmd_eval(cfg: dict, args) -> int:
+    paths = Paths(cfg, dt.date.today())
+    if args.what == "add":
+        src = Path(args.source)
+        if not src.exists():
+            raise Fail(f"no payload at {src}")
+        job = args.job or ("plan" if src.name.endswith("-plan.md") else "margin")
+        case = evallib.new_case(job, src.read_text(), src.name, args.note, args.answer)
+        folder = evallib.cases_dir(paths.agent_dir)
+        folder.mkdir(parents=True, exist_ok=True)
+        cid = args.id or src.stem
+        f = folder / f"{cid}.json"
+        if f.exists():
+            raise Fail(f"a case {cid} exists already ({f})")
+        f.write_text(json.dumps(dict(case, id=cid), indent=1, ensure_ascii=False) + "\n")
+        print(f"case {cid} → {f}\nwrite its rules and criteria there, then: longhand-agent eval run --case {cid}")
+        return 0
+
+    if args.what == "status":
+        rows = []
+        for job, agent in JOB_AGENT.items():
+            model = model_of(dict(cfg, model=job_model(cfg, job)[0], variant=job_model(cfg, job)[1]), agent)
+            for which, prompts in (("installed", None), ("repo", REPO_PROMPTS)):
+                v = prompt_version(agent, prompts)
+                ok = evallib.passed(paths.agent_dir, job, v, model)
+                rows.append({"job": job, "prompts": which, "prompt": v, "model": model,
+                             "checked": "passed" if ok else ("failed" if ok is False else "never run")})
+        n = {j: sum(1 for c in evallib.load_cases(paths.agent_dir) if c["job"] == j) for j in JOB_AGENT}
+        reviews = sorted((paths.agent_dir / "reviews").glob("*.md")) if (paths.agent_dir / "reviews").is_dir() else []
+        if args.json:
+            print(json.dumps({"rows": rows, "cases": n, "latest_review": str(reviews[-1]) if reviews else ""}))
+        else:
+            for r in rows:
+                print(f"{r['job']:7} {r['prompts']:9} prompt {r['prompt']} · {r['model']:28} · {r['checked']}")
+            print(f"cases: {n['margin']} margin, {n['plan']} plan")
+        return 0
+
+    # run
+    cases = evallib.load_cases(paths.agent_dir, args.case or None)
+    if not cases:
+        raise Fail("no eval cases yet: add one with `longhand-agent eval add <payload> --job margin|plan`")
+    prompts = Path(args.prompts) if args.prompts else REPO_PROMPTS
+    env, home = eval_env(prompts)
+    judge_model = args.judge_model or cfg.get("evalJudgeModel") or job_model(cfg, "plan")[0]
+    out_cases, jobs = [], {}
+    try:
+        for case in cases:
+            job = case["job"]
+            agent = JOB_AGENT[job]
+            model, variant = job_model(cfg, job, args.model)
+            c = dict(cfg, agent=agent, model=model, variant=variant, _prompts=prompts)
+            t0 = dt.datetime.now()
+            res = run_model(c, paths, case["payload"], env=env,
+                            message="Plan the fortnight. The context follows on stdin." if job == "plan" else "Context follows on stdin.")
+            secs = round((dt.datetime.now() - t0).total_seconds(), 1)
+            if job == "plan":
+                reply = parse_plan(res["text"]) if not res["error"] else {"proposals": [], "questions": [], "knowledge": []}
+                rules, kept = evallib.check_plan(case, reply)
+                answer = "\n".join([f"do {p['date']} · {p['title']} — {p['why']}" for p in kept["proposals"]]
+                                   + [f"? {q['question']} (recommended: {q['recommended']})" for q in kept["questions"]]) or "(nothing)"
+            else:
+                reply = parse_reply(res["text"]) if not res["error"] else {"reply": ""}
+                rules = evallib.check_margin(case, reply)
+                answer = reply.get("reply") or "(silence)"
+            if res["error"]:
+                rules.insert(0, {"check": "the model answered", "pass": False, "why": res["error"][:200]})
+            crit = []
+            if case.get("criteria") and not args.no_judge and not res["error"]:
+                jc = dict(cfg, agent="longhand-judge", model=judge_model, variant="", _prompts=prompts)
+                jr = run_model(jc, paths, evallib.judge_payload(case, answer), env=env,
+                               message="Grade the answer against the criteria. The material follows on stdin.")
+                verdicts = evallib.parse_judge(jr["text"], len(case["criteria"])) if not jr["error"] else \
+                    [{"pass": False, "why": "the judge failed: " + jr["error"][:120]} for _ in case["criteria"]]
+                crit = [dict(v, criterion=k) for k, v in zip(case["criteria"], verdicts)]
+            ok = all(r["pass"] for r in rules) and all(c["pass"] for c in crit)
+            out_cases.append({"id": case["id"], "job": job, "pass": ok, "secs": secs, "answer": answer,
+                              "rules": rules, "criteria": crit, "prompt": res["prompt"], "model": res["model"]})
+            j = jobs.setdefault((job, res["prompt"], res["model"]), {"job": job, "prompt": res["prompt"],
+                                                                     "model": res["model"], "cases": 0, "passed": 0})
+            j["cases"] += 1
+            j["passed"] += ok
+            mark = "PASS" if ok else "FAIL"
+            print(f"{mark} {case['id']} ({job}, {secs}s)")
+            for r in rules + crit:
+                if not r["pass"] or args.verbose:
+                    print(f"     {'ok ' if r['pass'] else 'no '} {r.get('check') or r.get('criterion')} — {r.get('why', '')}")
+            if not ok or args.verbose:
+                print("     answer: " + answer.replace("\n", " / ")[:400])
+    finally:
+        import shutil
+        shutil.rmtree(home, ignore_errors=True)
+    result = {"at": dt.datetime.now().isoformat(timespec="seconds"), "judge": judge_model,
+              "prompts_from": "repo" if prompts == REPO_PROMPTS else str(prompts),
+              "jobs": list(jobs.values()), "cases": out_cases}
+    f = evallib.save_result(paths.agent_dir, result)
+    total, good = len(out_cases), sum(1 for c in out_cases if c["pass"])
+    print(f"\n{good}/{total} cases pass · " + " · ".join(f"{j['job']} prompt {j['prompt']} on {j['model']}: {j['passed']}/{j['cases']}"
+                                                         for j in jobs.values()) + f"\nkept in {f}")
+    return 0 if good == total else 1
+
+
+# ------------------------------------------------------------------ the weekly review
+
+def review_text(cfg: dict, since: dt.date, until: dt.date) -> str:
+    """The week of the agent, for the student to read and act on: which
+    prompts and models ran, how the replies were rated, what came of the
+    proposals, what missed — each miss with the command that makes it an
+    eval case — and whether what runs now has passed its evals. Local
+    arithmetic over the records; no model."""
+    paths = Paths(cfg, until)
+    runs, replies = [], []
+    d = since
+    while d <= until:
+        p = Paths(cfg, d)
+        if p.state.exists():
+            st = load_state(p)
+            for r in st.get("runs", []):
+                runs.append(dict(r, date=p.stamp))
+            for h, rec in st.get("blocks", {}).items():
+                if rec.get("reply"):
+                    replies.append(dict(rec, hash=h, date=p.stamp))
+        d += dt.timedelta(days=1)
+    ledger = planlib.load_ledger(PROPOSALS)
+    items = [x for x in ledger["items"] if since.isoformat() <= (x.get("at") or "")[:10] <= until.isoformat()]
+
+    lines = [f"# The agent, {since.isoformat()} – {until.isoformat()}", "",
+             "A week of Longhand's agent, for you to read: what ran, what you said about it, what missed. "
+             "Instructions change only by an edit you make, checked by `longhand-agent eval run` first.", ""]
+    by = {}
+    for r in runs:
+        k = (r.get("prompt") or "?", r.get("model") or "?")
+        by.setdefault(k, 0)
+        by[k] += 1
+    lines += ["## What ran", ""]
+    if by:
+        for (pv, m), n in sorted(by.items(), key=lambda x: -x[1]):
+            lines.append(f"- {n} margin run{'s' if n != 1 else ''} · prompt `{pv}` · {m}")
+    else:
+        lines.append("- no margin runs")
+    plans = sum(1 for x in items if x["kind"] == "do-date") + sum(1 for x in items if x["kind"] == "question")
+    lines.append(f"- {plans} proposals and questions from the planner")
+
+    up = [r for r in replies if (r.get("rating") or {}).get("value") == "up"]
+    down = [r for r in replies if (r.get("rating") or {}).get("value") == "down"]
+    lines += ["", "## Replies", "",
+              f"- {len(replies)} replies · {len(up)} helpful · {len(down)} not helpful · {len(replies) - len(up) - len(down)} not rated"]
+    for r in down:
+        lines += ["", f"**Not helpful** — {r['date']}, on “{(r.get('head') or '')[:80]}” (prompt `{r.get('prompt', '?')}`, {r.get('model', '?')})",
+                  "", "> " + " ".join((r.get("reply") or "").split())[:400]]
+        if r.get("payload"):
+            lines += ["", f"Make it a case: `longhand-agent eval add {r['payload']} --job margin --answer \"…\"`"]
+
+    lines += ["", "## Proposals and questions", ""]
+    summ = {}
+    for x in items:
+        summ.setdefault(x["kind"], {}).setdefault(x["status"], 0)
+        summ[x["kind"]][x["status"]] += 1
+    if summ:
+        for kind, c in sorted(summ.items()):
+            lines.append(f"- {kind}: " + ", ".join(f"{v} {k}" for k, v in sorted(c.items())))
+    else:
+        lines.append("- none")
+    for x in items:
+        if x["kind"] == "do-date" and x["status"] == "declined":
+            lines += ["", f"**Declined** — do {x['date']} for “{x['title']}” ({x.get('model', '?')}): {x.get('why', '')}"]
+            if x.get("payload"):
+                lines += ["", f"Make it a case: `longhand-agent eval add {x['payload']} --job plan`"]
+    answered = [x for x in items if x["kind"] == "question" and x["status"] == "answered"]
+    for x in answered:
+        lines += [f"- answered: {x['question']} → {x.get('answer', '')}"]
+
+    lines += ["", "## Is what runs checked?", ""]
+    for job, agent in JOB_AGENT.items():
+        model, variant = job_model(cfg, job)
+        m = model_of(dict(cfg, model=model, variant=variant), agent)
+        v = prompt_version(agent)
+        ok = evallib.passed(paths.agent_dir, job, v, m)
+        lines.append(f"- {job}: prompt `{v}` on {m} — " + ("passed its evals" if ok else
+                     "**failed its last eval run**" if ok is False else "**never checked** — run `longhand-agent eval run`"))
+    hist = [r for r in evallib.history(paths.agent_dir) if since.isoformat() <= r["at"][:10] <= until.isoformat()]
+    for r in hist:
+        good = sum(1 for c in r["cases"] if c["pass"])
+        lines.append(f"- eval run {r['at'][:16]}: {good}/{len(r['cases'])} cases pass")
+    n = len(evallib.load_cases(paths.agent_dir))
+    lines += ["", f"{n} eval case{'s' if n != 1 else ''} in `agents/longhand/evals/cases/`.", ""]
+    return "\n".join(lines)
+
+
+def cmd_review(cfg: dict, args) -> int:
+    """The weekly review. `--if-due`: written only when no review covers the
+    last seven days — what the page asks when it opens (pull, not push:
+    nothing runs on a timer)."""
+    until = dt.date.today()
+    since = dt.date.fromisoformat(args.since) if args.since else until - dt.timedelta(days=6)
+    paths = Paths(cfg, until)
+    folder = paths.agent_dir / "reviews"
+    year, week, _ = until.isocalendar()
+    f = folder / f"{year}-W{week:02d}.md"
+    if args.if_due:
+        latest = max((p.stat().st_mtime for p in folder.glob("*.md")), default=0) if folder.is_dir() else 0
+        if latest and dt.date.fromtimestamp(latest) > until - dt.timedelta(days=7):
+            print(json.dumps({"written": "", "why": "a review covers this week already"}))
+            return 0
+    text = review_text(cfg, since, until)
+    if args.write or args.if_due:
+        write_atomic(paths, f, text)
+        print(json.dumps({"written": str(f)}))
+    else:
+        print(text)
+    return 0
+
+
 def cmd_install(cfg: dict, args) -> int:
     here = Path(__file__).resolve().parent
     agents = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "opencode" / "agent"
     agents.mkdir(parents=True, exist_ok=True)
+    # The check before a prompt change (the improvement loop): a changed
+    # prompt is installed only once it has passed its eval cases on the
+    # model it will run on — or when told to (--force).
+    paths0 = Paths(cfg, dt.date.today())
+    blocked = []
+    for job, name in JOB_AGENT.items():
+        if not (agents / f"{name}.md").exists():
+            continue                                  # a first install: nothing to compare
+        new = prompt_version(name, REPO_PROMPTS)
+        if new == prompt_version(name):
+            continue
+        if not any(c["job"] == job for c in evallib.load_cases(paths0.agent_dir)):
+            print(f"note: no {job} eval cases yet, so the changed {name}.md is installed unchecked", file=sys.stderr)
+            continue
+        model, variant = job_model(cfg, job)
+        if not evallib.passed(paths0.agent_dir, job, new, model_of(dict(cfg, model=model, variant=variant), name)):
+            blocked.append(f"{name}.md (prompt {new})")
+    if blocked and not args.force:
+        raise Fail("not installed: " + ", ".join(blocked) + " changed and has not passed its eval cases on the "
+                   "model it runs on. Run `longhand-agent eval run`, or install anyway with --force.")
     # The agent that answers in the margin, and the one that plans; both
     # with every tool denied.
-    for name in ("longhand.md", "longhand-plan.md"):
+    for name in ("longhand.md", "longhand-plan.md", "longhand-judge.md"):
         (agents / name).write_text((here / "opencode" / name).read_text())
     dst = agents / "longhand.md"
     paths = Paths(cfg, dt.date.today())
@@ -1764,6 +2114,10 @@ def main(argv: list[str]) -> int:
     p.add_argument("--fetch", action="store_true", help="ask the university now")
     p.add_argument("--index", type=int, default=-1, help="with --fetch: only this calendar")
     p.add_argument("--forget", action="store_true", help="kept for the first version; copies are pruned anyway")
+    p = sub.add_parser("rate")
+    p.add_argument("value", choices=("up", "down", "none"))
+    p.add_argument("--hash", required=True)
+    p.add_argument("--date", default="")
     p = sub.add_parser("plan")
     p.add_argument("--force", action="store_true", help="plan now, whatever today's plan was")
     sub.add_parser("proposals")
@@ -1780,7 +2134,25 @@ def main(argv: list[str]) -> int:
     p.add_argument("--index", type=int, required=True)
     sub.add_parser("curriculum")
     sub.add_parser("state").add_argument("--date", default="")
-    sub.add_parser("install")
+    sub.add_parser("install").add_argument("--force", action="store_true", help="install prompts that have not passed their evals")
+    p = sub.add_parser("review")
+    p.add_argument("--since", default="", help="YYYY-MM-DD; default the last seven days")
+    p.add_argument("--write", action="store_true", help="write it into the vault (agents/longhand/reviews/)")
+    p.add_argument("--if-due", action="store_true", help="write it only when no review covers the last seven days")
+    p = sub.add_parser("eval")
+    p.add_argument("what", choices=("run", "add", "status"))
+    p.add_argument("source", nargs="?", default="", help="add: the payload file to make a case of")
+    p.add_argument("--job", choices=("margin", "plan"), default="")
+    p.add_argument("--id", default="")
+    p.add_argument("--note", default="")
+    p.add_argument("--answer", default="", help="add: the answer that prompted the case")
+    p.add_argument("--case", action="append", default=[])
+    p.add_argument("--model", default="", help="run: try this model for every case")
+    p.add_argument("--judge-model", default="")
+    p.add_argument("--prompts", default="", help="run: a folder of candidate agent definitions (default: the repo's)")
+    p.add_argument("--no-judge", action="store_true")
+    p.add_argument("--verbose", action="store_true")
+    p.add_argument("--json", action="store_true")
     sub.add_parser("projects").add_argument("--now", default="", help="YYYY-MM-DDTHH:MM (tests)")
     p = sub.add_parser("stats")
     p.add_argument("--days", default="14")
@@ -1790,7 +2162,7 @@ def main(argv: list[str]) -> int:
     try:
         cfg = load_config()
         return {"run": cmd_run, "chat": cmd_chat, "ack": cmd_ack, "accept": cmd_accept, "tasks": cmd_tasks, "sections": cmd_sections,
-                "next": cmd_next, "box": cmd_box, "plan": cmd_plan, "proposals": cmd_proposals, "proposal": cmd_proposal, "timetable": cmd_timetable, "dismiss": cmd_dismiss, "curriculum": cmd_curriculum,
+                "next": cmd_next, "box": cmd_box, "rate": cmd_rate, "eval": cmd_eval, "review": cmd_review, "plan": cmd_plan, "proposals": cmd_proposals, "proposal": cmd_proposal, "timetable": cmd_timetable, "dismiss": cmd_dismiss, "curriculum": cmd_curriculum,
                 "context": cmd_context, "state": cmd_state, "install": cmd_install, "stats": cmd_stats,
                 "projects": cmd_projects}[args.cmd](cfg, args)
     except Fail as e:

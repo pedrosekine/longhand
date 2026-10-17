@@ -497,6 +497,11 @@ Item {
       root.refreshProjects()
       // The day's plan, at most once a day (the runner decides).
       root.runPlan(false)
+      // The agent's weekly review, when a week has passed since the last.
+      if (!reviewProc.running && svc.configured) {
+        reviewProc.command = [svc.runner, "review", "--if-due"]
+        reviewProc.running = true
+      }
       agent.reload()
       if (goto && svc.configured && goto.stem !== svc.todayStamp()) {
         svc.openDate(goto.stem)
@@ -1107,6 +1112,10 @@ Item {
       settingsField.text = ""
       root.settingsFocus = 0
       root.runTimetable([])
+      if (!agentChecksProc.running) {
+        agentChecksProc.command = [svc.runner, "eval", "status", "--json"]
+        agentChecksProc.running = true
+      }
       Qt.callLater(settingsField.forceActiveFocus)
     } else if (root.dashOpen) {
       dashKeys.forceActiveFocus()
@@ -3471,6 +3480,30 @@ Item {
   }
 
 
+  // The student's word on a reply: helpful or not (the improvement loop,
+  // docs/agent.md). The same word again takes it back. Shown at once, kept
+  // by the runner with the prompt and model that made the reply.
+  property var ratingNow: ({})   // block hash -> "up" | "down" | "none", until the state says so
+  function rateReply(value) {
+    var rec = root.currentRecord
+    if (!rec || !rec.reply || root.currentRec === "") return
+    var was = root.ratingNow[root.currentRec] || (rec.rating ? rec.rating.value : "")
+    var v = was === value ? "none" : value
+    var m = {}
+    for (var k in root.ratingNow) m[k] = root.ratingNow[k]
+    m[root.currentRec] = v
+    root.ratingNow = m
+    rateProc.command = [svc.runner, "rate", v, "--hash", root.currentRec, "--date", svc.noteDate]
+    rateProc.running = true
+    root.used("rate", v)
+  }
+  function ratingOf(hash) {
+    if (root.ratingNow[hash] !== undefined) return root.ratingNow[hash] === "none" ? "" : root.ratingNow[hash]
+    var rec = agent.record(hash)
+    return rec && rec.rating ? rec.rating.value : ""
+  }
+  Process { id: rateProc; onExited: function (code, status) { agent.reload() } }
+
   // Looking at a reply for a moment marks it read — nothing else needs to.
   Process { id: ackProc }
   Timer {
@@ -3562,6 +3595,36 @@ Item {
   }
 
   Process { id: tickSoundProc }
+
+  // The weekly review of the agent (docs/agent.md, the improvement loop):
+  // written when the page opens and a week has passed, said once.
+  Process {
+    id: reviewProc
+    stdout: StdioCollector {
+      onStreamFinished: {
+        try {
+          var r = JSON.parse(text)
+          if (r.written) root.showHint("this week's review of the agent is ready — Settings → The agent")
+        } catch (e) {}
+      }
+    }
+  }
+
+  // What Settings says about the agent: which prompts and models have
+  // passed their evals, and the latest review.
+  property var agentChecks: null
+  Process {
+    id: agentChecksProc
+    stdout: StdioCollector { onStreamFinished: { try { root.agentChecks = JSON.parse(text) } catch (e) { root.agentChecks = null } } }
+  }
+  function sayEvalState(job) {
+    var c = root.agentChecks
+    if (!c) return ""
+    var row = c.rows.filter(function (r) { return r.job === job && r.prompts === "installed" })[0]
+    if (!row) return ""
+    return (job === "margin" ? "Replies" : "Planning") + " · " + row.model + " · "
+      + (row.checked === "passed" ? "passed its evals" : row.checked === "failed" ? "failed its last evals" : "never checked")
+  }
 
   Process {
     id: planProc
@@ -4481,6 +4544,61 @@ Item {
                 font.family: root.fontFamily
                 font.styleName: root.fontStyle
                 font.pixelSize: root.fs(Style.font.bodySmall)
+              }
+            }
+
+            Item { width: 1; height: root.sp(22) }
+
+            // The agent: what runs, whether it has passed its evals, and the
+            // week's review — the improvement loop, seen.
+            Text {
+              textFormat: Text.PlainText
+              text: "The agent"
+              color: pal.headings.length > 0 ? pal.headings[0] : root.accent
+              font.family: root.fontFamily
+              font.styleName: root.fontStyle
+              font.pixelSize: root.fs(Style.font.body)
+            }
+            Text {
+              width: parent.width
+              textFormat: Text.PlainText
+              wrapMode: Text.WordWrap
+              text: "Its instructions change only by an edit you make, checked first against its eval cases "
+                + "(longhand-agent eval run). Rate its replies in the margin; the weekly review collects what missed."
+              color: root.faint
+              font.family: root.fontFamily
+              font.styleName: root.fontStyle
+              font.pixelSize: root.fs(Style.font.bodySmall)
+            }
+            Repeater {
+              model: ["margin", "plan"]
+              Text {
+                required property var modelData
+                width: parent.width
+                visible: text !== ""
+                textFormat: Text.PlainText
+                wrapMode: Text.WordWrap
+                text: root.sayEvalState(modelData)
+                color: text.indexOf("passed") >= 0 ? root.dim : root.urgent
+                font.family: root.fontFamily
+                font.styleName: root.fontStyle
+                font.pixelSize: root.fs(Style.font.bodySmall)
+              }
+            }
+            Text {
+              visible: !!root.agentChecks && root.agentChecks.latest_review !== ""
+              textFormat: Text.PlainText
+              text: "open the latest review"
+              color: reviewArea.containsMouse ? root.accent : root.faint
+              font.family: root.fontFamily
+              font.styleName: root.fontStyle
+              font.pixelSize: root.fs(Style.font.bodySmall)
+              MouseArea {
+                id: reviewArea
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: Qt.openUrlExternally("file://" + root.agentChecks.latest_review)
               }
             }
 
@@ -6008,6 +6126,8 @@ Item {
           else if (Sc.hit(event, "marginUp")) root.moveMarginFocus(-1)
           else if (Sc.hit(event, "marginDown")) root.moveMarginFocus(1)
           else if (Sc.hit(event, "marginAccept")) root.acceptProposal(root.marginFocus)
+          else if (Sc.hit(event, "marginHelpful")) root.rateReply("up")
+          else if (Sc.hit(event, "marginNotHelpful")) root.rateReply("down")
           else return
           event.accepted = true
         }
@@ -6045,6 +6165,36 @@ Item {
             font.family: root.fontFamily
             font.styleName: root.fontStyle
             font.pixelSize: root.fs(Style.font.title)
+          }
+
+          // Was it helpful? Two quiet words; the chosen one stays lit. What
+          // the student says here is what the weekly review and the eval set
+          // learn from.
+          Row {
+            visible: !!(root.currentRecord && root.currentRecord.reply)
+            spacing: root.sp(14)
+            Repeater {
+              model: [{ text: "helpful", value: "up", act: "marginHelpful" }, { text: "not helpful", value: "down", act: "marginNotHelpful" }]
+              Text {
+                required property var modelData
+                readonly property bool chosen: root.ratingOf(root.currentRec) === modelData.value
+                textFormat: Text.PlainText
+                text: modelData.text
+                color: rateArea.containsMouse ? root.accent : chosen ? root.foreground : root.faint
+                font.family: root.fontFamily
+                font.styleName: root.fontStyle
+                font.pixelSize: root.fs(Style.font.caption)
+                font.underline: chosen
+                MouseArea {
+                  id: rateArea
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: root.rateReply(modelData.value)
+                  PanelToolTip { visible: parent.containsMouse; text: root.tip(chosen ? "Take it back" : "Say it was " + modelData.text, modelData.act) }
+                }
+              }
+            }
           }
 
           // Proposals: what the agent would like to do, done only when the
