@@ -140,6 +140,8 @@ var actions = [
   { id: "listUp", group: "lists", places: ["lists"], does: "Move up", keys: ["Up", "K"] },
   { id: "listDown", group: "lists", places: ["lists"], does: "Move down", keys: ["Down", "J"] },
   { id: "listOpen", group: "lists", places: ["lists"], does: "Open it (a deadline: go to its line)", keys: ["Enter"] },
+  // The note's tick, on a deadline of the day (2026-10-17).
+  { id: "listDone", group: "lists", places: ["lists"], does: "A deadline: done (again: not done)", keys: ["Ctrl+L"] },
   { id: "listInto", group: "lists", places: ["lists"], does: "Into a project's notes", keys: ["Right"] },
   { id: "listClass", group: "lists", places: ["lists"], does: "A project: start its class in the note", keys: ["Shift+Enter"] },
   { id: "listTag", group: "lists", places: ["lists"], does: "A project: put its #tag at the cursor", keys: ["Ctrl+Enter"] },

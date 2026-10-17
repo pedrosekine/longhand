@@ -905,6 +905,21 @@ def main() -> int:
         check(p.wait(lambda: p.deadline(eid)["status"] == "open" and f"- [ ] essay outline 📅 2030-01-05 ^d{eid}" in p.call("text")),
               f"Ctrl+Z brings both back ({p.deadline(eid)}, {p.call('text')[-80:]!r}, {p.call('checkState')})")
 
+        # Ctrl+L ticks a deadline in the sidebar's list for its day, as in
+        # the note and the dashboard: the store and its line together.
+        KEY_L = 0x4c
+        p.call("dash")
+        p.call("sidebar")
+        p.call("calDay", 2030, 1, 5)
+        check(p.call("dueKey", 0, KEY_L, CTRL) == "true", "Ctrl+L in the sidebar's deadline list is taken")
+        check(p.wait(lambda: p.deadline(eid)["status"] == "done" and f"- [x] essay outline 📅 2030-01-05 ^d{eid}" in p.call("text")),
+              f"…the deadline is done and its line ticked ({p.deadline(eid)}, {p.call('text')[-80:]!r})")
+        p.call("dueKey", 0, KEY_L, CTRL)
+        check(p.wait(lambda: p.deadline(eid)["status"] == "open" and f"- [ ] essay outline 📅 2030-01-05 ^d{eid}" in p.call("text")),
+              f"…and again, open ({p.deadline(eid)}, {p.call('text')[-80:]!r})")
+        p.call("sidebar")
+        p.call("dash")
+
         out = p.pomo("add", "Registered topic and supervisor", "2030-01-06")
         wid = int(re.search(r"#(\d+)", out).group(1))
         check(p.wait(lambda: "NOT IN A NOTE YET" in heads()), f"a deadline no note holds waits in its own band ({heads()})")

@@ -119,6 +119,7 @@ Where a row has two keys, either works: the second is usually the one another ap
 | Move up | `↑` · `k` | in the sidebar's lists |
 | Move down | `↓` · `j` | in the sidebar's lists |
 | Open it (a deadline: go to its line) | `Enter` | in the sidebar's lists |
+| A deadline: done (again: not done) | `Ctrl+L` | in the sidebar's lists |
 | Into a project's notes | `→` | in the sidebar's lists |
 | A project: start its class in the note | `Shift+Enter` | in the sidebar's lists |
 | A project: put its #tag at the cursor | `Ctrl+Enter` | in the sidebar's lists |

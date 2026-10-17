@@ -109,6 +109,8 @@ ShellRoot {
     function marginOpen(on: bool): void { page.marginOpen = on }
     function calDay(y: int, m: int, d: int): void { page.calFocus = new Date(y, m - 1, d) }
     function goFirstDue(): void { page.goToDeadline(page.focusDue[0]) }
+    // The day's deadline list as the keyboard drives it: focus a row, a key.
+    function dueKey(i: int, key: int, mods: int): bool { page.dueFocus = i; return page.dueKey({ key: key, text: "", modifiers: mods }) }
     function tasks(): void { page.toggleTasks() }
     function rows(): string { return JSON.stringify(page.taskRows.map(function (r) { return r.kind + ":" + (r.deadline ? r.deadline.title : (r.date || "")) })) }
     function focusRow(i: int): void { page.taskFocus = i }

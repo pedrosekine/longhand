@@ -1253,6 +1253,21 @@ Item {
     sidebarKeys.forceActiveFocus()
   }
 
+  // The day's deadline list in the sidebar; false for a key it does not
+  // use. A function, as projectsKey is, so the page can be driven without
+  // a keyboard (tests/page/run.py).
+  function dueKey(event) {
+    var n = root.focusDue.length
+    if (Sc.hit(event, "listUp")) root.dueFocus = Math.max(0, root.dueFocus - 1)
+    else if (Sc.hit(event, "listDown")) root.dueFocus = Math.min(n - 1, root.dueFocus + 1)
+    else if (Sc.hit(event, "listOpen")) root.goToDeadline(root.focusDue[root.dueFocus])
+    else if (Sc.hit(event, "listDone")) root.tickDeadline(root.focusDue[root.dueFocus])
+    else if (Sc.hit(event, "listNext")) { root.dueFocus = -1; if (root.projects.length > 0) root.projFocus = 0 }
+    else if (Sc.hit(event, "listBack")) root.dueFocus = -1
+    else return false
+    return true
+  }
+
   // The projects list's keys, in one function so the page can be driven
   // without a keyboard. Enter (or Right) opens the project's own notes —
   // the list is there to find them. Writing into the note is the shifted
@@ -1769,16 +1784,19 @@ Item {
   function tickFocused() {
     var row = root.taskRows[root.taskFocus]
     if (row && row.kind === "task") root.tickTask(row.task)
-    if (row && row.kind === "deadline") {
-      var d = row.deadline
-      if (d.status === "open") {
-        dl.markDone(d.id)
-        root.tickHistory = root.tickHistory.concat([{ deadline: d.id }])
-        root.tickBoundLine(d.id, true)
-      } else {
-        dl.reopen(d.id)
-        root.tickBoundLine(d.id, false)
-      }
+    if (row && row.kind === "deadline") root.tickDeadline(row.deadline)
+  }
+
+  // Done, or open again: from the dashboard and the sidebar's list alike,
+  // the line that stands for it ticked to match.
+  function tickDeadline(d) {
+    if (d.status === "open") {
+      dl.markDone(d.id)
+      root.tickHistory = root.tickHistory.concat([{ deadline: d.id }])
+      root.tickBoundLine(d.id, true)
+    } else {
+      dl.reopen(d.id)
+      root.tickBoundLine(d.id, false)
     }
   }
 
@@ -4121,18 +4139,11 @@ Item {
           }
           // Tab walks the sidebar: the days, the day's deadlines (when it
           // has some), the projects, and back to the days.
-          // In the day's deadline list: up/down pick, Enter goes to the line.
+          // In the day's deadline list: up/down pick, Enter goes to the line,
+          // Ctrl+L marks it done (again: not done), as in the note.
           // A key with Ctrl or Alt it does not use goes on to the calendar.
           if (root.dueFocus >= 0) {
-            var n = root.focusDue.length
-            var took = true
-            if (Sc.hit(event, "listUp")) root.dueFocus = Math.max(0, root.dueFocus - 1)
-            else if (Sc.hit(event, "listDown")) root.dueFocus = Math.min(n - 1, root.dueFocus + 1)
-            else if (Sc.hit(event, "listOpen")) root.goToDeadline(root.focusDue[root.dueFocus])
-            else if (Sc.hit(event, "listNext")) { root.dueFocus = -1; if (root.projects.length > 0) root.projFocus = 0 }
-            else if (Sc.hit(event, "listBack")) root.dueFocus = -1
-            else took = false
-            if (took) { event.accepted = true; return }
+            if (root.dueKey(event)) { event.accepted = true; return }
             // Any other key leaves the list, one with Ctrl or Alt for the
             // calendar below.
             if (!(event.modifiers & (Qt.ControlModifier | Qt.AltModifier))) { root.dueFocus = -1; return }
@@ -4348,7 +4359,7 @@ Item {
         }
 
         // That day's deadlines. Tab goes into the list; Enter or a click
-        // goes to the line that stands for one.
+        // goes to the line that stands for one, Ctrl+L marks it done.
         Repeater {
           model: root.focusDue
           Rectangle {
@@ -4381,7 +4392,7 @@ Item {
               hoverEnabled: true
               cursorShape: Qt.PointingHandCursor
               onClicked: root.goToDeadline(modelData)
-              PanelToolTip { visible: parent.containsMouse; text: root.tip("Go to its line", "listOpen") }
+              PanelToolTip { visible: parent.containsMouse; text: root.tips([["Go to its line", "listOpen"], ["Done (again: not done)", "listDone"]]) }
             }
           }
         }
@@ -4459,7 +4470,7 @@ Item {
           text: root.projFocus >= 0 ? root.keyName("listUp") + root.keyName("listDown") + " pick · " + root.keyName("listOpen") + " its notes · "
               + root.keyName("listClass") + " starts a class · " + root.keyName("listTag") + " puts the tag · " + root.keyName("listNext") + " back"
             : root.dueFocus >= 0 ? root.keyName("listUp") + root.keyName("listDown") + " pick · " + root.keyName("listOpen") + " goes to its line · "
-              + root.keyName("listNext") + " on to the projects"
+              + root.keyName("listDone") + " done · " + root.keyName("listNext") + " on to the projects"
             : "arrows move · " + root.keyName("calPrevMonth") + root.keyName("calNextMonth") + " month · " + root.keyName("calToday") + " today · "
               + root.keyName("calOpen") + " opens" + (root.focusDue.length > 0 || root.projects.length > 0
                 ? " · " + root.keyName("calLists") + ": " + (root.focusDue.length > 0 ? "this day's deadlines" : "the projects") : "")

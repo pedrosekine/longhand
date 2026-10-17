@@ -22,7 +22,7 @@ import qs.Ui
 //                           deadline is kept as history (nothing is deleted
 //                           outside the note, docs/tasks.md)
 // Up/Down pick a row, Left/Right a column, `d` `g` `x` are shortcuts for
-// done, grade, cancel; `o` (or a click on the title) opens the page at the
+// done, grade, cancel (Ctrl+L is done too, the note's tick); `o` (or a click on the title) opens the page at the
 // note line as well. Mouse hover drives the same cursor so exactly one cell
 // is highlighted at a time.
 //
@@ -226,6 +226,16 @@ Panel {
       onActivateRequested: root.activateCursor()
       onDeleteRequested: root.removeSelected()
       onTabRequested: function (direction) { root.switchPanel(direction) }
+      // Ctrl+L ticks, as it does in the note, the dashboard and the
+      // sidebar's list; `d` stays beside it. The catcher reads keys by
+      // their text, so the Ctrl key is read here, beside it, by its code.
+      Keys.onPressed: function (event) {
+        if (root.gradingId > 0) return
+        if (event.key === Qt.Key_L && (event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.ShiftModifier | Qt.MetaModifier)) === Qt.ControlModifier) {
+          root.toggleSelected()
+          event.accepted = true
+        }
+      }
       onTextKey: function (t) {
         if (t === "d" || t === "D") root.toggleSelected()
         else if (t === "g" || t === "G") root.gradeSelected()
@@ -436,7 +446,7 @@ Panel {
           wrapMode: Text.WordWrap
           text: root.gradingId > 0
             ? "Enter saves the grade · Esc cancels"
-            : "↑↓ ←→ move · Enter act · d done · g grade · o open its line · x cancel" + (root.waiting.length > 0 ? " · w waiting" : "")
+            : "↑↓ ←→ move · Enter act · d or Ctrl+L done · g grade · o open its line · x cancel" + (root.waiting.length > 0 ? " · w waiting" : "")
           color: root.faint
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption

@@ -176,7 +176,8 @@ with those keys of their own. Where another app has taught a key, the page answe
 to it as well: `Ctrl+E` for inline code beside `` Ctrl+` `` (Notion), `Ctrl+\`
 for the sidebar beside `Ctrl+Shift+B`; in the dashboard `j`/`k` move, Space
 or `e` ticks (Todoist), and the note's own `Ctrl+L` and `Ctrl+D` tick and ask
-"when?" there too; `t` in the calendar is today. On a keyboard with dead keys
+"when?" there too. `Ctrl+L` ticks a deadline wherever one is listed: the
+sidebar's list for a day, and the bar's deadline popup beside its `d`; `t` in the calendar is today. On a keyboard with dead keys
 (US-International, most European layouts) `` Ctrl+` `` is the backtick, as it
 should be.
 
