@@ -36,6 +36,19 @@ ShellRoot {
       if (it.rich) e.insert(e.cursorPosition, s)
       else it.field.insert(it.field.cursorPosition, s)
     }
+    // Typing that stops once the note holds `stop`, checked in the same
+    // breath, so no key lands after it unseen.
+    function typeUnless(s: string, stop: string): bool {
+      if (page.editorItem.text.indexOf(stop) >= 0) return false
+      type(s)
+      return true
+    }
+    function backspace(n: int): void {
+      var e = page.editorItem
+      var f = (e.rowItem(e.focusedRow) || e.rowItem(page.lineIndexAt(e.cursorPosition))).field
+      var at = f.cursorPosition
+      f.remove(Math.max(0, at - n), at)
+    }
     function enter(): void {
       var e = page.editorItem
       e.returnKey(e.rowItem(e.focusedRow) || e.rowItem(page.lineIndexAt(e.cursorPosition)), false)
@@ -48,7 +61,16 @@ ShellRoot {
     function cursorAt(): int { return page.editorItem.cursorPosition }
     function tick(line: int): void { page.editorItem.toggleCheckbox(line) }
     function erase(a: int, b: int): void { page.editorItem.remove(a, b) }
-    function removeLine(line: int): void { var e = page.editorItem; var r = e.rows[line]; e.remove(r.start, r.start + r.raw.length + 1) }
+    // The whole lines, marker and tail, deleted as a selection is (an undo
+    // step of its own). Both ends are set as they are: a selection's
+    // moving end only stops where the cursor can, inside a line's words.
+    function removeLines(first: int, last: int): void {
+      var e = page.editorItem, a = e.rows[first], b = e.rows[last]
+      e.selAnchor = a.start
+      e.selCursor = Math.min(e.text.length, b.start + b.raw.length + 1)
+      e.removeSpan()
+    }
+    function removeLine(line: int): void { removeLines(line, line) }
     function openDay(stem: string): void { page.openNote(stem) }
     function header(): string { return page.dateLabel }
     // Prompts and keys

@@ -243,7 +243,8 @@ Item {
   // ------------------------------------------------------------ undo
 
   // Typing within a moment of the last edit joins its undo step; anything
-  // structural (Enter, merging lines, ticking) is a step of its own.
+  // structural (Enter, merging lines, ticking, a line the page writes
+  // because it was asked to) is a step of its own.
   function snapshot(force) {
     var now = Date.now()
     var join = !force && now - ed.lastSnapshot < 900
@@ -263,6 +264,31 @@ Item {
     ed.lastSnapshot = 0
     ed.commit(s.text, s.cursor)
     ed.placeCursor(true)
+  }
+
+  // A line the page changed that no undo should take back (caught up with
+  // the store): every saved state holding the line as it was (`was`) gets
+  // it as it is now (`now`). A state where the line differs keeps it: the
+  // facts there are the student's own, and undoing to it brings them back.
+  function rebase(was, now) {
+    var redone = function (s) {
+      var lines = s.text.split("\n")
+      var cur = s.cursor, pos = 0, hit = false
+      for (var i = 0; i < lines.length; i++) {
+        var end = pos + lines[i].length
+        if (lines[i] === was) {
+          if (cur >= end) cur += now.length - was.length
+          else if (cur > pos) cur = Math.min(cur, pos + now.length)
+          lines[i] = now
+          end = pos + now.length
+          hit = true
+        }
+        pos = end + 1
+      }
+      return hit ? { text: lines.join("\n"), cursor: cur } : s
+    }
+    ed.undoStack = ed.undoStack.map(redone)
+    ed.redoStack = ed.redoStack.map(redone)
   }
 
   function redo() {

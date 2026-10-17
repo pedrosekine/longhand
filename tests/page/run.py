@@ -308,33 +308,58 @@ def main() -> int:
         p.call("cursor", 1)
         check(p.wait(lambda: "#thesis v2 📅 " in p.note()), "spaces left at the end of a bound line's words go when it is left")
 
-        # 4. Ctrl+D binds a plain line
+        # 4. Ctrl+D binds a plain line — as an undo step of its own. The
+        # student goes on writing while its date is read and its deadline
+        # added; the binding lands inside that run of typing, and the
+        # Backspace after it, undone, brings back what it deleted and only
+        # that (until 2026-10-17 it took the binding back too, and with it
+        # the deadline: docs/tasks.md).
         p.call("cursor", p.offset_of_line(p.line_of("Plan for the week")))
+        p.call("insert", "then\n")                 # above it: no 📅 before it to count
         p.call("ctrlD")
         time.sleep(0.3)
+        p.call("cursor", p.offset_of_line(p.line_of("then")) + len("then"))
+        p.call("type", ".")                         # the run starts before the date is given
         p.call("when", "tomorrow")
-        check(p.wait(lambda: "Plan for the week. 📅 " in p.note() and "^d2" in p.note()), "Ctrl+D + when binds a plain line")
+        for _ in range(40):
+            if p.call("typeUnless", ".", "^d2") != "true":
+                break
+            time.sleep(0.1)
+        check("Plan for the week. 📅 " in p.call("text") and "^d2" in p.call("text"), "Ctrl+D + when binds a plain line")
+        typed = p.lines()[p.line_of("then")]
+        p.call("backspace", 1)
+        p.call("undo")
+        check(p.lines()[p.line_of("then")] == typed and "Plan for the week. 📅 " in p.lines()[p.line_of("Plan for the week")],
+              f"Ctrl+Z after a Backspace brings back only what it deleted ({p.lines()[p.line_of('Plan for the week')]!r})")
+        time.sleep(0.5)
+        check(p.deadline(2)["status"] == "open", f"…and the binding's deadline stays ({p.deadline(2)})")
 
         # 5. deleting a bound line cancels its deadline and says so; nothing
         # is asked, and the line coming back brings it back (docs/tasks.md)
         p.call("removeLine", p.line_of("^d1"))
         check(p.wait(lambda: p.deadline(1)["status"] == "cancelled"), "deleting a bound line cancels its deadline")
         check(p.call("ask") == "null" and "cancelled" in p.call("hint"), f"…said under the cursor, nothing asked ({p.call('hint')!r})")
+        bound = p.lines()[p.line_of("^d2")]
         p.call("undo")
         check(p.wait(lambda: p.deadline(1)["status"] == "done"), "Ctrl+Z brings the line back, and its deadline as it was")
-        # A block with two of them: both, not the last one only.
-        # (The editor's Ctrl+Z also took back the Ctrl+D binding before it:
-        # the page's own writes share an undo step with the edit after them.)
+        # …and only that: the Ctrl+D binding before the deletion is a step
+        # of its own, so the line keeps it and its deadline stays open.
+        check(p.lines()[p.line_of("Plan for the week.")] == bound and p.note().count("^d2") == 1,
+              f"Ctrl+Z after a deletion takes back only the deletion ({p.lines()[p.line_of('Plan for the week.')]!r})")
+        time.sleep(0.5)
+        check(p.deadline(2)["status"] == "open", f"…and the binding's deadline is untouched ({p.deadline(2)})")
         # A line pasted back, tag and all, brings its deadline back.
-        plan = p.line_of("Plan for the week.")
-        p.call("cursor", p.offset_of_line(plan) + len(p.lines()[plan]))
+        # (The Ctrl+D line, deleted for it.)
+        p.call("removeLine", p.line_of("^d2"))
+        check(p.wait(lambda: p.deadline(2)["status"] == "cancelled"), "deleting the Ctrl+D line cancels its deadline")
+        p.call("cursor", p.offset_of_line(p.line_of("then")) + len(p.lines()[p.line_of("then")]))
         p.call("insert", "\n- [ ] Plan for the week. 📅 2030-01-01 ^d2")
         p.call("cursor", 1)
         check(p.wait(lambda: p.deadline(2)["status"] == "open" and "^d2" in p.note()),
               f"a bound line pasted in brings its deadline back ({p.deadline(2)}, {p.call('checkState')})")
+        # A block with two of them: both, not the last one only.
         lo, hi = sorted((p.line_of("^d1"), p.line_of("^d2")))
-        p.call("removeLine", hi)
-        p.call("removeLine", lo)
+        p.call("removeLines", lo, hi)
         check(p.wait(lambda: p.deadline(1)["status"] == "cancelled" and p.deadline(2)["status"] == "cancelled"),
               "deleting several bound lines cancels every one of their deadlines")
         check(p.wait(lambda: "2 deadlines" in p.call("hint")), f"…and says how many ({p.call('hint')!r})")

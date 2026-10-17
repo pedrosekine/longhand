@@ -1816,6 +1816,7 @@ Item {
     var tag = /^[\w\/-]+$/.test(d.project) ? " #" + d.project : ""
     var line = "- [" + (d.status === "open" ? " " : "x") + "] " + d.title + tag + Bound.tail(d.due * 1000, d.id)
     var t = editor.text
+    editor.snapshot(true)
     root.quiet = true
     editor.insert(t.length, (t === "" || t.charAt(t.length - 1) === "\n" ? "" : "\n") + line)
     root.quiet = false
@@ -1895,9 +1896,27 @@ Item {
     return null
   }
 
-  // Replace a whole line as the page, not the student.
+  // Replace a whole line as the page, not the student, because they asked
+  // (a binding, a tick or a date from the dashboard): an undo step of its
+  // own, so Ctrl+Z takes it back alone, never together with the edit
+  // before or after it — an undo that silently unbinds a line cancels its
+  // deadline (docs/tasks.md).
   function writeLine(r, raw) {
     if (!r || raw === r.raw) return
+    editor.snapshot(true)
+    root.putLine(r, raw)
+  }
+
+  // A line caught up with the store, or tidied, which nobody asked for:
+  // the undo states that hold it as it was get it too, so no Ctrl+Z takes
+  // it back.
+  function catchUp(r, raw) {
+    if (!r || raw === r.raw) return
+    editor.rebase(r.raw, raw)
+    root.putLine(r, raw)
+  }
+
+  function putLine(r, raw) {
     root.quiet = true
     editor.replace(r.start, r.start + r.raw.length, raw)
     root.quiet = false
@@ -1907,16 +1926,14 @@ Item {
   }
 
   // Give a line its deadline: the words it keeps (`head`), then the tail.
-  // The store learns where the line is. `auto`: bound because it was left
-  // with a date at its end — an undo step of its own, so Ctrl+Z takes it
-  // back (boundEdited); `made`: the deadline was added for it.
+  // The store learns where the line is. Like every binding, an undo step
+  // of its own (writeLine). `auto`: bound because it was left with a date
+  // at its end, so Ctrl+Z also takes back the deadline it made, and the
+  // line stays words (boundEdited); `made`: the deadline was added for it.
   function writeBinding(raw, head, ms, id, auto, made) {
     var r = root.rowByRaw(raw)
     if (!r || r.kind !== "task" || r.deadline > 0) return
-    if (auto) {
-      editor.snapshot(true)
-      root.autoBound = { id: id, raw: raw, made: !!made }
-    }
+    if (auto) root.autoBound = { id: id, raw: raw, made: !!made }
     root.writeLine(r, r.raw.substring(0, r.prefixLen) + head.replace(/\s+$/, "") + Bound.tail(ms, id))
     if (editor.typedRaw === raw) editor.typedRaw = ""
     dl.set(id, ["--link", Bound.link(svc.noteDate, id)])
@@ -2007,7 +2024,7 @@ Item {
     if (r.deadline > 0) {
       // Spaces left at the end of its words would sit unseen before the
       // date, where the cursor wanders into them: a left line has none.
-      if (/\s$/.test(r.body)) root.writeLine(r, r.raw.substring(0, r.prefixLen) + r.body.replace(/\s+$/, "") + r.suffix)
+      if (/\s$/.test(r.body)) root.catchUp(r, r.raw.substring(0, r.prefixLen) + r.body.replace(/\s+$/, "") + r.suffix)
       // Its words and its project (the line's tag, else its heading's) are
       // the line's: the check carries them to the store.
       var d = dl.byId[r.deadline]
@@ -2084,6 +2101,7 @@ Item {
       if (text === "") {
         // Unbound by hand: the date goes, and the deadline is asked about
         // like a deleted line's.
+        editor.snapshot(true)
         editor.replace(r.bodyEnd, r.start + r.raw.length, "")
         return
       }
@@ -2136,7 +2154,7 @@ Item {
         if (box === "-") base += " ❌ " + Qt.formatDate(new Date(d.doneAt > 0 ? d.doneAt * 1000 : Date.now()), "yyyy-MM-dd")
         want = base + Bound.tail(d.due * 1000, d.id)
       }
-      root.writeLine(r, want)
+      root.catchUp(r, want)
     }
     root.bound = Bound.anchors(editor.text)
     root.landOnGoto()

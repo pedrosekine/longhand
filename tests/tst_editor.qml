@@ -558,6 +558,35 @@ Item {
       compare(ed.text, "\nhello!\n")
     }
 
+    // A line the page catches up with the store (Page.catchUp) is written
+    // into the saved states too: undoing the student's own edits around it
+    // never takes it back, and redo keeps it as well.
+    function test_rebase_is_never_undone() {
+      var was = "- [ ] read 📅 2026-11-30 ^d9", now = "- [x] read 📅 2026-11-30 ^d9"
+      start("\n" + was + "\nnotes")
+      type("!")
+      keyClick(Qt.Key_Return)
+      type("x")
+      ed.rebase(was, now)
+      ed.replace(1, 1 + was.length, now)
+      keyClick(Qt.Key_Z, Qt.ControlModifier)
+      compare(ed.text, "\n" + now + "\nnotes!\n")
+      keyClick(Qt.Key_Z, Qt.ControlModifier)
+      compare(ed.text, "\n" + now + "\nnotes!")
+      keyClick(Qt.Key_Z, Qt.ControlModifier | Qt.ShiftModifier)
+      compare(ed.text, "\n" + now + "\nnotes!\n")
+      // A state where the line differs keeps its own: undoing to it is
+      // the student's own words coming back, with the facts they had.
+      ed.load("\n" + was + "\nnotes")
+      ed.setCursor(1 + "- [ ] read".length, true)
+      type("ing")
+      var was2 = "- [ ] reading 📅 2026-11-30 ^d9", now2 = "- [x] reading 📅 2026-11-30 ^d9"
+      ed.rebase(was2, now2)
+      ed.replace(1, 1 + was2.length, now2)
+      keyClick(Qt.Key_Z, Qt.ControlModifier)
+      compare(ed.text, "\n" + was + "\nnotes")
+    }
+
     function test_quote_continues_and_ends() {
       start("\n> [!private]")
       keyClick(Qt.Key_Return)
