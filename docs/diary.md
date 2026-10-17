@@ -33,7 +33,8 @@ in code, and the vault path is never recorded in this public repo.
    wins.)
 3. **Consent is an allowlist, enforced locally.** The model sees exactly what
    local code assembled: today's note minus private blocks, the agent's own
-   knowledge files, the curriculum folder, the timer report. Nothing else on
+   knowledge files, the curriculum folder, the timer report, the next two
+   weeks of the university timetable (added 2026-10-17). Nothing else on
    disk, ever. Every payload is logged before inference, so "the private block
    was not sent" is a test, not a promise.
 4. **Never out of nowhere.** The agent runs only when the student acts in the
@@ -64,6 +65,7 @@ All paths relative to the vault unless stated. Names of folders are config.
 | Day state | `agents/longhand/daily/YYYY.MM.DD.json` | the runner, rendered by the page |
 | Knowledge | `agents/longhand/knowledge/` | the runner; the student may edit |
 | Curriculum | folder named in config | the student; read-only for the agent |
+| Timetable | `~/.local/state/longhand/timetable.ics`, from the feed named in config | the runner, when the sidebar opens; read-only for the agent |
 | Box clocks | `~/.local/state/longhand/silence.json` | the runner (`lifespan.py`); never the note |
 | Deadlines, sessions | `~/.local/state/longhand/` (existing) | the CLI only |
 | Payload log | `~/.local/state/longhand/payloads/` | the runner; never synced |
@@ -900,3 +902,19 @@ only the window and the panels around it differ.
   as done late, and stops counting cancelled ones as closed. `g` grades a
   deadline from the dashboard, and done ones with no grade wait folded, as
   in the popup.
+- 2026-10-17 (later still): the timetable, pulled. The feed's address goes
+  in the local config (`"timetable"`) and nowhere else, because it can carry
+  a token; it is never printed, logged or put in a payload. `longhand-agent
+  projects` — the sidebar opening — is the one moment it is fetched, and only
+  when the copy kept is over an hour old, with an ETag so an unchanged
+  timetable costs a 304. A pass never fetches: it reads the copy. Courses are
+  matched by the code their knowledge file already names (`Course code:`),
+  so the sidebar's next session is the university's, and the knowledge
+  file's own session lines stay the fallback for a course the feed does not
+  know or when there is no feed. The agent gets the next two weeks, each
+  session named by its course, and the weekdays with none — the fact that
+  makes a proposed do-date more than a guess. Classes stay out of the
+  page's calendar for now (the student's call): the sidebar and the agent
+  only. The parser reads what a timetable needs and no more (zones, UTC,
+  folded lines, weekly and daily rules with their exceptions; all-day and
+  cancelled events are not sessions), so no dependency came in.

@@ -161,7 +161,9 @@ down, as in VS Code;
 it through `pomo`), then the chat — `Alt+Left` or `Esc` comes back. Drop
 course material into `agents/longhand/curriculum/` and run
 `longhand-agent curriculum` once for PDFs. List your `languages` in the config; the agent answers in the one the
-block is written in. Needs `~/.config/longhand/config.json` (copy
+block is written in. Put your university's `.ics` timetable address in the config as `timetable` and the
+sidebar's next session, and what the agent knows of your week, follow it (fetched when the sidebar opens, at
+most hourly; the address stays local). Needs `~/.config/longhand/config.json` (copy
 `config.example.json`) pointing at your vault; the note lives at
 `<vault>/<daily.dir>/<date>.md` exactly where Obsidian's daily notes would.
 

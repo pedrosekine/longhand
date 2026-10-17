@@ -614,9 +614,11 @@ a fix or a feature to decide first):
    it in the state folder, and matches courses by timetable code
    (`M_IC_IntSem_W26`). The course list moves out of the agent's knowledge
    into a file the model cannot rewrite, so an agent edit can never drop a
-   schedule; today's session lines stay as a fallback. **Needs:** the feed
-   address from the IT:U portal (the link Google was given; local config
-   only, never the repo).
+   schedule; today's session lines stay as a fallback. **Built
+   2026-10-17** (`agent/timetable.py`, `tests/test_timetable.py`): the
+   sidebar's next session and the agent's next two weeks follow the feed;
+   classes stay out of the page's calendar for now. Live once the feed
+   address from the IT:U portal is in the local config as `timetable`.
 4. **Multi-language** — cue words ("bis Freitag", "até sexta", "para el
    viernes") and the page's prompts in DE / PT / ES, at no cost in speed.
    *Refuted 2026-10-15 by the counts it was waiting for* (61 English blocks

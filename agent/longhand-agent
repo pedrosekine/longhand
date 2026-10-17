@@ -19,7 +19,7 @@
 One pass, then exit. Nothing is resident. The model gets no tools: everything
 it may see is assembled here from an allowlist (today's note minus private
 blocks, the agent's own knowledge files, the curriculum folder, the timer and
-deadline report), logged verbatim to the payload log before inference, and
+deadline report, the next two weeks of the timetable), logged verbatim to the payload log before inference, and
 everything it says back is applied here — transcript, state file, knowledge
 files, cost ledger. No code path in this file opens anything under the daily
 notes folder for writing; `guard_write` enforces that.
@@ -41,6 +41,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import blocks as blocklib  # noqa: E402
 import lifespan  # noqa: E402
+import timetable  # noqa: E402
 import task as tasklib  # noqa: E402
 
 TRIGGERS = ("checkbox", "mention", "question", "tick", "open")
@@ -389,6 +390,11 @@ def build_payload(paths: Paths, trigger: str, fired: list[dict], visible: list[d
             parts += [f"## {name}", "", text.rstrip(), ""]
     else:
         parts.append("(none yet)")
+
+    sessions = timetable_section(cfg, dt.datetime.now()) if cfg else []
+    if sessions:
+        parts += ["", "# Timetable — the next two weeks, from the university's feed (read-only)", ""]
+        parts += sessions
 
     curriculum = read_tree(paths.curriculum)
     if curriculum:
@@ -1318,12 +1324,16 @@ def nearest_year(month: int, day: int, now: dt.datetime) -> dt.date | None:
 MONTH_NUM = {m: i + 1 for i, m in enumerate(["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"])}
 
 
-def project_list(cfg: dict, now: dt.datetime) -> list[dict]:
+CODE_RE = re.compile(r"Course code:\s*`?([\w-]+)")
+
+
+def project_list(cfg: dict, now: dt.datetime, events: list[dict] | None = None) -> list[dict]:
     """The projects the student keeps notes on, from knowledge/projects/:
     the tag (a `Tag: #x` line, else the file name), the name (its H1), and
-    the next session listed there (`- Mon 12 Oct: 10:45–12:15 (Gold)`).
-    These are the tags that exist; the page offers them instead of new
-    ones being invented."""
+    its next session — from the university's feed when there is one and it
+    knows the course (`Course code: …`), else as listed there (`- Mon 12
+    Oct: 10:45–12:15 (Gold)`). These are the tags that exist; the page
+    offers them instead of new ones being invented."""
     folder = Paths(cfg, now.date()).knowledge / "projects"
     out = []
     for f in sorted(folder.glob("*.md")) if folder.is_dir() else []:
@@ -1333,8 +1343,12 @@ def project_list(cfg: dict, now: dt.datetime) -> list[dict]:
             continue
         name = next((l[2:].strip() for l in text.splitlines() if l.startswith("# ")), f.stem)
         m = re.search(r"Tag:\s*`?#([\w/-]+)", text)
+        code = CODE_RE.search(text)
         nxt = None
-        for s in SESSION_RE.finditer(text):
+        mine = [e for e in events if timetable.matches(e, code.group(1))] if (events and code) else []
+        if mine:
+            nxt = next(({"at": e["start"], "end": e["end"], "room": e["location"]} for e in mine if e["end"] > now), None)
+        for s in [] if mine else SESSION_RE.finditer(text):
             mon = MONTH_NUM.get(s.group(2))
             day = nearest_year(mon, int(s.group(1)), now) if mon else None
             if day is None:
@@ -1355,9 +1369,46 @@ def project_list(cfg: dict, now: dt.datetime) -> list[dict]:
 
 
 def cmd_projects(cfg: dict, args) -> int:
+    """The sidebar opening: the one moment the timetable is fetched."""
     now = dt.datetime.fromisoformat(args.now) if args.now else dt.datetime.now()
-    print(json.dumps(project_list(cfg, now), ensure_ascii=False))
+    events = timetable.sessions(cfg, STATE_HOME, fetch=not args.now)
+    print(json.dumps(project_list(cfg, now, events), ensure_ascii=False))
     return 0
+
+
+def timetable_section(cfg: dict, now: dt.datetime, days: int = 14) -> list[str]:
+    """The next fortnight of sessions for the payload, from the copy kept
+    (no fetch inside a pass), each named by its course where the knowledge
+    files know it; and the weekdays with none, which is what makes "the
+    24th is free" a fact."""
+    events = timetable.sessions(cfg, STATE_HOME, fetch=False)
+    if not events:
+        return []
+    names = {}
+    folder = Paths(cfg, now.date()).knowledge / "projects"
+    for f in sorted(folder.glob("*.md")) if folder.is_dir() else []:
+        try:
+            text = f.read_text()
+        except OSError:
+            continue
+        code, tag = CODE_RE.search(text), re.search(r"Tag:\s*`?#([\w/-]+)", text)
+        if code:
+            title = next((l[2:].strip() for l in text.splitlines() if l.startswith("# ")), f.stem)
+            names[code.group(1)] = title + (f" #{tag.group(1)}" if tag else "")
+    horizon = now + dt.timedelta(days=days)
+    out, busy = [], set()
+    for e in events:
+        if e["end"] <= now or e["start"] >= horizon:
+            continue
+        course = next((n for c, n in names.items() if timetable.matches(e, c)), e["summary"])
+        busy.add(e["start"].date())
+        out.append(f"- {e['start']:%a %d %b} {e['start']:%H:%M}–{e['end']:%H:%M} {course}"
+                   + (f" ({e['location']})" if e["location"] else ""))
+    free = [d for d in (now.date() + dt.timedelta(days=i) for i in range(days))
+            if d.weekday() < 5 and d not in busy]
+    if free:
+        out.append("Weekdays with no session: " + ", ".join(f"{d:%a %d %b}" for d in free))
+    return out
 
 
 def cmd_install(cfg: dict, args) -> int:
