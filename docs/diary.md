@@ -963,3 +963,23 @@ only the window and the panels around it differ.
   from the copy fetched …" — then why in words a student can act on (a
   sign-in page is named as one), and says nothing about courses until there
   is a timetable to say it from. Open: a link IT:U serves without a login.
+- 2026-10-17 (night, working): the timetable, live — through Outlook. The
+  student reset the IT:U link and connected a calendar published from
+  Outlook (outlook.office365.com) that carries the classes: 91 sessions
+  ahead, all five courses matched by code. It also carries the student's
+  own events (meetings, a parents' evening, game night), and the payload
+  was built to send every event of the fortnight with its title. No pass
+  had run since the fetch, so nothing went out; the default is now the
+  narrow one — **the agent is sent class sessions only** (events that match
+  a course code), the weekdays it calls free count classes only, and the
+  sheet says the other events stay on the machine. Sending more is the
+  student's decision, not a side effect of which link was pasted. Reading
+  the real feed found four things the fixtures had not: Outlook names
+  zones the Windows way ("W. Europe Standard Time"); a moved occurrence
+  comes as a RECURRENCE-ID twin and must replace its slot; UNTIL is in UTC
+  and dropped a series' last date; and a cancelled or declined meeting
+  says so in its title and TRANSP:TRANSPARENT while STATUS stays
+  CONFIRMED. And one real bug: "local time" was today's fixed offset, so
+  every class after the clocks change on 25 October read an hour late. It
+  is the machine's zone now, with its rules, and a test fails in any
+  season if that regresses.

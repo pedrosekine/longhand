@@ -406,7 +406,7 @@ def build_payload(paths: Paths, trigger: str, fired: list[dict], visible: list[d
 
     sessions = timetable_section(cfg, dt.datetime.now()) if cfg else []
     if sessions:
-        parts += ["", "# Timetable — the next two weeks, from the university's feed (read-only)", ""]
+        parts += ["", "# Timetable — your class sessions for the next two weeks (read-only; other calendar events are not shown to you)", ""]
         parts += sessions
 
     curriculum = read_tree(paths.curriculum)
@@ -1425,15 +1425,20 @@ def cmd_timetable(cfg: dict, args) -> int:
                       "fetched": int(meta.get("fetched", 0)) if url else 0, "error": meta.get("error", "") if url else "",
                       "sessions": sum(1 for e in events if e["end"] > now),
                       "next": nxt["start"].isoformat(timespec="minutes") if nxt else "",
-                      "courses": courses, "other": other[:8]}, ensure_ascii=False))
+                      "courses": courses, "other": other[:8], "others": len(other)}, ensure_ascii=False))
     return 0
 
 
 def timetable_section(cfg: dict, now: dt.datetime, days: int = 14) -> list[str]:
-    """The next fortnight of sessions for the payload, from the copy kept
-    (no fetch inside a pass), each named by its course where the knowledge
-    files know it; and the weekdays with none, which is what makes "the
-    24th is free" a fact."""
+    """The next fortnight of class sessions for the payload, from the copy
+    kept (no fetch inside a pass), each named by its course; and the
+    weekdays with no class, which is what makes "the 24th is free" a fact.
+
+    Only events that belong to a course the knowledge files name (by its
+    code) are sent. A feed can be a whole personal calendar — Outlook's is
+    (2026-10-17) — and everything else in it stays on this machine: widening
+    what the agent sees is a decision taken deliberately, not a side effect
+    of which link was pasted."""
     events = timetable.sessions(cfg, STATE_HOME, fetch=False)
     if not events:
         return []
@@ -1453,14 +1458,16 @@ def timetable_section(cfg: dict, now: dt.datetime, days: int = 14) -> list[str]:
     for e in events:
         if e["end"] <= now or e["start"] >= horizon:
             continue
-        course = next((n for c, n in names.items() if timetable.matches(e, c)), e["summary"])
+        course = next((n for c, n in names.items() if timetable.matches(e, c)), None)
+        if course is None:
+            continue
         busy.add(e["start"].date())
         out.append(f"- {e['start']:%a %d %b} {e['start']:%H:%M}–{e['end']:%H:%M} {course}"
                    + (f" ({e['location']})" if e["location"] else ""))
     free = [d for d in (now.date() + dt.timedelta(days=i) for i in range(days))
             if d.weekday() < 5 and d not in busy]
     if free:
-        out.append("Weekdays with no session: " + ", ".join(f"{d:%a %d %b}" for d in free))
+        out.append("Weekdays with no class: " + ", ".join(f"{d:%a %d %b}" for d in free))
     return out
 
 

@@ -77,6 +77,47 @@ END:VCALENDAR\r
 """
 
 
+# The shape Exchange/Outlook publishes (2026-10-17, the student's real
+# feed): Windows zone names, a moved occurrence, UNTIL in UTC, and meetings
+# that are off said in the title and by TRANSP rather than by STATUS.
+OUTLOOK = """BEGIN:VCALENDAR\r
+PRODID:Microsoft Exchange Server 2010\r
+BEGIN:VEVENT\r
+UID:jf\r
+DTSTART;TZID=W. Europe Standard Time:20260922T121500\r
+DTEND;TZID=W. Europe Standard Time:20260922T131500\r
+RRULE:FREQ=WEEKLY;UNTIL=20261020T101500Z;INTERVAL=2;BYDAY=TU;WKST=MO\r
+SUMMARY:Jour Fixe\r
+STATUS:CONFIRMED\r
+TRANSP:OPAQUE\r
+END:VEVENT\r
+BEGIN:VEVENT\r
+UID:jf\r
+RECURRENCE-ID;TZID=W. Europe Standard Time:20261006T121500\r
+DTSTART;TZID=W. Europe Standard Time:20261005T150000\r
+DTEND;TZID=W. Europe Standard Time:20261005T160000\r
+SUMMARY:Jour Fixe\r
+STATUS:CONFIRMED\r
+END:VEVENT\r
+BEGIN:VEVENT\r
+UID:x1\r
+DTSTART;TZID=W. Europe Standard Time:20261201T161500\r
+DTEND;TZID=W. Europe Standard Time:20261201T171500\r
+SUMMARY:Canceled: Open Lab Day\r
+STATUS:CONFIRMED\r
+TRANSP:TRANSPARENT\r
+END:VEVENT\r
+BEGIN:VEVENT\r
+UID:x2\r
+DTSTART;TZID=W. Europe Standard Time:20261106T140000\r
+DTEND;TZID=W. Europe Standard Time:20261106T150000\r
+SUMMARY:Abgesagt: Workshop\r
+STATUS:CONFIRMED\r
+END:VEVENT\r
+END:VCALENDAR\r
+"""
+
+
 def relative_feed(today: dt.date) -> str:
     """Sessions around today, for the parts that ask for "next"."""
     def ev(uid, day, a, b, summary, room):
@@ -133,6 +174,27 @@ def main() -> int:
           f"a weekly rule, counted, with a date taken out ({[e['start'].date().isoformat() for e in rp]})")
     check(all(e["end"] - e["start"] == dt.timedelta(hours=2, minutes=30) for e in rp), "a duration instead of an end")
     check(ev == sorted(ev, key=lambda e: e["start"]), "soonest first")
+
+    # The machine's own zone, with its rules: a weekly class keeps its hour
+    # across the change of clocks on 25 Oct (a fixed offset put the winter
+    # ones an hour out, whichever season it was read in).
+    os.environ["TZ"] = "Europe/Vienna"
+    check(str(timetable.local_zone()) == "Europe/Vienna", "local time is this machine's zone, not today's offset")
+    rp = [e["start"] for e in timetable.parse(FIXED) if e["summary"].startswith("Research")]
+    check([t.time() for t in rp] == [dt.time(13, 15)] * 3 and rp[0].month == 10 and rp[-1].month == 11,
+          f"a class keeps its hour on both sides of the clocks changing ({[t.isoformat() for t in rp]})")
+
+    # Outlook's way of saying the same things.
+    ol = timetable.parse(OUTLOOK, local=ZoneInfo("Asia/Tokyo"))
+    jf = [e["start"] for e in ol if e["summary"] == "Jour Fixe"]
+    check(jf[0] == dt.datetime(2026, 9, 22, 19, 15),
+          f"a Windows zone name is read as its zone, not as local time (in Tokyo: {jf[0]})")
+    ol = timetable.parse(OUTLOOK, local=VIENNA)
+    jf = [e["start"] for e in ol if e["summary"] == "Jour Fixe"]
+    check(jf == [dt.datetime(2026, 9, 22, 12, 15), dt.datetime(2026, 10, 5, 15, 0), dt.datetime(2026, 10, 20, 12, 15)],
+          f"a moved occurrence stands in for its slot, and UNTIL in UTC keeps the last one ({[d.isoformat() for d in jf]})")
+    check(not any(e["summary"].startswith(("Canceled", "Abgesagt")) for e in ol),
+          "a meeting that is off — said in its title or marked free — is not a session")
 
     # Fetching: only when stale, and only what changed.
     tmp = pathlib.Path(tempfile.mkdtemp(prefix="timetable-"))
@@ -194,8 +256,11 @@ def main() -> int:
     payload = agent("context", "--trigger", "open")
     check("# Timetable" in payload and f"{soon:%a %d %b} 10:45–12:15 Interdisciplinary Seminar #intsem (Bronze)" in payload,
           "the agent sees the next two weeks, each session named by its course")
-    check("Something else entirely" in payload, "…and sessions it cannot name, by the feed's own words")
-    check("Weekdays with no session:" in payload, "…and the weekdays that are free")
+    check("Something else entirely" not in payload,
+          "…and nothing that is not a class: a feed can be a whole personal calendar, and the rest stays here")
+    check(f"Weekdays with no class:" in payload and f"{today + dt.timedelta(days=5):%a %d %b}" in payload.split("Weekdays with no class:")[1]
+          or (today + dt.timedelta(days=5)).weekday() >= 5,
+          "…and the weekdays with no class, counting only classes")
     check("SECRET" not in payload, "…and never the feed's address")
     hits = len(Uni.hits)
     agent("context", "--trigger", "open")

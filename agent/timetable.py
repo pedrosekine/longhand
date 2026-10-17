@@ -39,6 +39,23 @@ HORIZON = 400           # days of a recurrence expanded, at most
 
 DAYS = {"MO": 0, "TU": 1, "WE": 2, "TH": 3, "FR": 4, "SA": 5, "SU": 6}
 
+# Exchange and Outlook name zones the Windows way ("W. Europe Standard
+# Time"), which the tz database does not know; these are the ones a
+# European student's feed is likely to carry. An unknown name is read as
+# local time, as a floating time would be.
+WINDOWS_ZONES = {
+    "W. Europe Standard Time": "Europe/Berlin", "Central Europe Standard Time": "Europe/Budapest",
+    "Central European Standard Time": "Europe/Warsaw", "Romance Standard Time": "Europe/Paris",
+    "GMT Standard Time": "Europe/London", "GTB Standard Time": "Europe/Bucharest",
+    "E. Europe Standard Time": "Europe/Chisinau", "FLE Standard Time": "Europe/Kiev",
+    "Greenwich Standard Time": "Atlantic/Reykjavik", "UTC": "UTC", "Coordinated Universal Time": "UTC",
+    "Eastern Standard Time": "America/New_York", "Pacific Standard Time": "America/Los_Angeles",
+}
+
+# What Exchange writes at the front of a meeting that is off, rather than
+# a STATUS (it says CONFIRMED): cancelled by the organiser, or declined.
+OFF_RE = re.compile(r"^(canceled|cancelled|declined|abgesagt|abgelehnt|annulé|refusé|cancelado|recusado)\s*:", re.I)
+
 
 # ------------------------------------------------------------------ fetch
 
@@ -151,6 +168,24 @@ def masked(url: str) -> str:
 
 # ------------------------------------------------------------------ parse
 
+def local_zone() -> dt.tzinfo:
+    """This machine's time zone as a zone, with its rules — never today's
+    offset. `datetime.now().astimezone().tzinfo` is a fixed +02:00 in
+    summer, which put every class after the clocks changed an hour late
+    (found 2026-10-17, on the first real feed)."""
+    key = os.environ.get("TZ", "").lstrip(":")
+    if not key:
+        try:
+            target = os.path.realpath("/etc/localtime")
+            key = target.split("/zoneinfo/", 1)[1] if "/zoneinfo/" in target else ""
+        except OSError:
+            key = ""
+    try:
+        return ZoneInfo(key) if key else dt.datetime.now().astimezone().tzinfo
+    except (ZoneInfoNotFoundError, ValueError):
+        return dt.datetime.now().astimezone().tzinfo
+
+
 def _unfold(text: str) -> list[str]:
     out: list[str] = []
     for line in text.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
@@ -187,7 +222,7 @@ def _when(value: str, params: dict, local: dt.tzinfo) -> dt.datetime | None:
         t = t.replace(tzinfo=dt.timezone.utc)
     elif params.get("TZID"):
         try:
-            t = t.replace(tzinfo=ZoneInfo(params["TZID"]))
+            t = t.replace(tzinfo=ZoneInfo(WINDOWS_ZONES.get(params["TZID"], params["TZID"])))
         except (ZoneInfoNotFoundError, ValueError):
             return t
     else:
@@ -195,7 +230,7 @@ def _when(value: str, params: dict, local: dt.tzinfo) -> dt.datetime | None:
     return t.astimezone(local).replace(tzinfo=None)
 
 
-def _expand(start: dt.datetime, rule: str, exdates: set[dt.datetime]) -> list[dt.datetime]:
+def _expand(start: dt.datetime, rule: str, exdates: set[dt.datetime], local: dt.tzinfo) -> list[dt.datetime]:
     r = dict(p.partition("=")[::2] for p in rule.split(";") if "=" in p)
     freq = r.get("FREQ", "")
     if freq not in ("DAILY", "WEEKLY"):
@@ -204,9 +239,13 @@ def _expand(start: dt.datetime, rule: str, exdates: set[dt.datetime]) -> list[dt
     count = int(r["COUNT"]) if r.get("COUNT", "").isdigit() else None
     until = None
     if r.get("UNTIL"):
-        u = re.match(r"(\d{8})(?:T(\d{6}))?", r["UNTIL"])
+        u = re.match(r"(\d{8})(?:T(\d{6}))?(Z?)", r["UNTIL"])
         if u:
             until = dt.datetime.strptime(u.group(1) + (u.group(2) or "235959"), "%Y%m%d%H%M%S")
+            if u.group(3):
+                # In UTC (Outlook's always is): the last occurrence is at
+                # its local time, so compare in local time.
+                until = until.replace(tzinfo=dt.timezone.utc).astimezone(local).replace(tzinfo=None)
     days = sorted(DAYS[d[-2:]] for d in r.get("BYDAY", "").split(",") if d[-2:] in DAYS) \
         if freq == "WEEKLY" else []
     if not days and freq == "WEEKLY":
@@ -233,9 +272,15 @@ def _expand(start: dt.datetime, rule: str, exdates: set[dt.datetime]) -> list[dt
 
 def parse(text: str, local: dt.tzinfo | None = None) -> list[dict]:
     """Every session in a feed, soonest first: start and end (naive, local
-    time), summary, location, and all of its text for matching codes."""
-    local = local or dt.datetime.now().astimezone().tzinfo
+    time), summary, location, and all of its text for matching codes.
+
+    Not sessions: all-day events, cancelled ones, ones marked free
+    (TRANSP:TRANSPARENT — Exchange marks declined and cancelled meetings
+    so), ones whose title says they are off, and an occurrence of a
+    repeating event that was moved (its RECURRENCE-ID twin stands for it)."""
+    local = local or local_zone()
     out: list[dict] = []
+    moved: set[tuple[str, dt.datetime]] = set()
     ev: dict | None = None
     for line in _unfold(text):
         if line == "BEGIN:VEVENT":
@@ -245,12 +290,17 @@ def parse(text: str, local: dt.tzinfo | None = None) -> list[dict]:
             continue
         if line == "END:VEVENT":
             start, end = ev.get("start"), ev.get("end")
-            if start and (end or ev.get("duration")) and ev.get("status") != "CANCELLED":
+            if ev.get("recid"):
+                moved.add((ev.get("uid", ""), ev["recid"]))
+            off = ev.get("status") == "CANCELLED" or ev.get("transp") == "TRANSPARENT" \
+                or OFF_RE.match(ev.get("summary", ""))
+            if start and (end or ev.get("duration")) and not off:
                 length = (end - start) if end else ev["duration"]
-                starts = _expand(start, ev["rrule"], ev["exdates"]) if ev.get("rrule") else [start]
+                starts = _expand(start, ev["rrule"], ev["exdates"], local) if ev.get("rrule") else [start]
                 for s in starts:
                     out.append({"start": s, "end": s + length, "summary": ev.get("summary", ""),
-                                "location": ev.get("location", ""), "text": " ".join(ev["text"])})
+                                "location": ev.get("location", ""), "text": " ".join(ev["text"]),
+                                "uid": ev.get("uid", ""), "repeats": bool(ev.get("rrule"))})
             ev = None
             continue
         name, params, value = _prop(line)
@@ -272,11 +322,18 @@ def parse(text: str, local: dt.tzinfo | None = None) -> list[dict]:
                     ev["exdates"].add(t)
         elif name == "STATUS":
             ev["status"] = value.upper()
+        elif name == "TRANSP":
+            ev["transp"] = value.upper()
+        elif name == "RECURRENCE-ID":
+            ev["recid"] = _when(value, params, local)
         elif name in ("SUMMARY", "LOCATION", "DESCRIPTION", "CATEGORIES", "UID"):
             v = _unescape(value)
             if name in ("SUMMARY", "LOCATION"):
                 ev[name.lower()] = v.strip()
+            if name == "UID":
+                ev["uid"] = v.strip()
             ev["text"].append(v)
+    out = [e for e in out if not (e["repeats"] and (e["uid"], e["start"]) in moved)]
     out.sort(key=lambda e: e["start"])
     return out
 

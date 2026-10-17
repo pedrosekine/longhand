@@ -1156,7 +1156,12 @@ Item {
     if (known.length > 0) out.push({ text: "In the timetable: " + known.join(", "), tone: "dim" })
     if (missing.length > 0) out.push({ text: "Not in it: " + missing.join(", ") + " — their own session lines are used", tone: "dim" })
     if (nocode.length > 0) out.push({ text: "No course code to match by: " + nocode.join(", "), tone: "faint" })
-    if ((st.other || []).length > 0) out.push({ text: "In it but no project of yours: " + st.other.join(", "), tone: "faint" })
+    // A feed can be a whole personal calendar (Outlook's is): what is not a
+    // class is said to stay here, because it does — the agent is sent class
+    // sessions only (timetable_section).
+    var others = st.others !== undefined ? st.others : (st.other || []).length
+    if (others > 0) out.push({ text: "Also in this calendar, and never sent to the agent: " + (others === 1 ? "1 other event" : others + " other events")
+                                     + " (" + st.other.slice(0, 3).join(", ") + (others > 3 ? ", …" : "") + ")", tone: "faint" })
     return out
   }
 
