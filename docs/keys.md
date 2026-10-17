@@ -3,7 +3,7 @@
 <!-- Written by tools/keys_guide.py from plugin-page/Shortcuts.js and
      plugin-page/hyprkeys.py. Do not edit: change the keys there and run it. -->
 
-Every key the page answers to, as it starts. Any of them can be moved in the page: `Ctrl+/` (or **keys** in the header) opens the same list, Enter on a row and the new key moves it. The keys you move are kept in `~/.config/longhand/keys.json`; `python3 tools/keys_guide.py --mine` prints this guide with them.
+Every key the page answers to, as it starts. Any of them can be moved in the page: `Ctrl+/` (or **keys** at the foot of the sidebar) opens the same list, Enter on a row and the new key moves it. The keys you move are kept in `~/.config/longhand/keys.json`; `python3 tools/keys_guide.py --mine` prints this guide with them.
 
 Where a row has two keys, either works: the second is usually the one another app taught (Notion, Todoist, vim) or one a laptop reaches without Fn.
 

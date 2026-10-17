@@ -74,7 +74,7 @@ def render(d, mine=False):
         ("Every key the page answers to, with **your** keys from `keys.json` (moved ones marked •)."
          if mine else
          "Every key the page answers to, as it starts. Any of them can be moved in the page: "
-         "`Ctrl+/` (or **keys** in the header) opens the same list, Enter on a row and the new key "
+         "`Ctrl+/` (or **keys** at the foot of the sidebar) opens the same list, Enter on a row and the new key "
          "moves it. The keys you move are kept in `~/.config/longhand/keys.json`; "
          "`python3 tools/keys_guide.py --mine` prints this guide with them."),
         "",

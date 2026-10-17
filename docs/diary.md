@@ -932,3 +932,10 @@ only the window and the panels around it differ.
   move the vault. Once saved, the address is shown as where it goes
   (`host/…`), never with its token; changing it drops the copy fetched from
   the old one, and removing it drops the copy too.
+- 2026-10-17 (night): keys and settings move from the header to the foot of
+  the sidebar. The student's reasoning: the main pane keeps the essentials
+  of writing, and what supports it lives in the sidebar. The header keeps
+  what belongs to the note in front of you — its date, the pin, private and
+  the agent's mark — and the sidebar, already navigation, ends with the two
+  words, quiet like the pin and lit while their sheet is open. `Ctrl+/` and
+  `Ctrl+,` still open either from anywhere.

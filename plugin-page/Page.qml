@@ -349,7 +349,7 @@ Item {
   property string keysTake: ""       // a key another action has, pressed once
   property string keysNote: ""       // what just happened, or why not
 
-  // Settings (Ctrl+, or "settings" in the header): what the page lets you
+  // Settings (Ctrl+, or "settings" at the sidebar's foot): what the page lets you
   // set without editing a file — the timetable's address, for now. Written
   // to settings.json beside config.json (the page's own, as keys.json is);
   // the runner reads the keys it allows from it over the config.
@@ -3587,7 +3587,7 @@ Item {
       }
     }
 
-    // Settings (Ctrl+, or "settings" in the header): drawn like the keys
+    // Settings (Ctrl+, or "settings" at the sidebar's foot): drawn like the keys
     // sheet, in the same column, with one section so far — the timetable.
     BorderSurface {
       id: settingsSheet
@@ -3746,7 +3746,7 @@ Item {
       }
     }
 
-    // The keys sheet (Ctrl+/, or "keys" in the header): every key the page
+    // The keys sheet (Ctrl+/, or "keys" at the sidebar's foot): every key the page
     // answers to, under where it works, each one movable. A list, so it
     // takes the dashboard's shape rather than the note's measure.
     BorderSurface {
@@ -4102,47 +4102,6 @@ Item {
               font.family: root.fontFamily
               font.styleName: root.fontStyle
               font.pixelSize: root.fs(Style.font.bodySmall)
-            }
-
-            // Keys: the sheet that lists every key and lets you move one.
-            // Faint like the pin; it is there to be found, not to be read.
-            Text {
-              anchors.verticalCenter: parent.verticalCenter
-              textFormat: Text.PlainText
-              text: "keys"
-              color: keysArea.containsMouse ? root.accent : root.faint
-              font.family: root.fontFamily
-              font.styleName: root.fontStyle
-              font.pixelSize: root.fs(Style.font.bodySmall)
-              Behavior on color { ColorAnimation { duration: 240 } }
-              MouseArea {
-                id: keysArea
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.toggleKeys()
-                PanelToolTip { visible: parent.containsMouse; text: root.tip("Every key the page answers to, and moving one", "keys") }
-              }
-            }
-
-            // Settings, beside the keys and as quiet.
-            Text {
-              anchors.verticalCenter: parent.verticalCenter
-              textFormat: Text.PlainText
-              text: "settings"
-              color: settingsArea.containsMouse ? root.accent : root.faint
-              font.family: root.fontFamily
-              font.styleName: root.fontStyle
-              font.pixelSize: root.fs(Style.font.bodySmall)
-              Behavior on color { ColorAnimation { duration: 240 } }
-              MouseArea {
-                id: settingsArea
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.toggleSettings()
-                PanelToolTip { visible: parent.containsMouse; text: root.tip("Settings: your timetable", "settings") }
-              }
             }
 
             // The pin: which shape you are in. Ctrl+P or a click flips it.
@@ -4684,7 +4643,7 @@ Item {
         anchors.topMargin: sidebar.contentTopInset
         anchors.leftMargin: sidebar.contentLeftInset
         anchors.rightMargin: sidebar.contentRightInset
-        anchors.bottomMargin: sidebar.contentBottomInset
+        anchors.bottomMargin: sidebar.contentBottomInset + sidebarFoot.height + root.sp(12)
         spacing: root.sp(10)
 
         readonly property real cell: Math.floor(width / 7)
@@ -4978,6 +4937,43 @@ Item {
         }
       }
 
+      // The sidebar's foot: what supports the writing rather than the
+      // writing itself — the keys and the settings — so the header keeps
+      // only what belongs to the note (2026-10-17). Quiet, like the pin; a
+      // word is bright while its sheet is open.
+      Row {
+        id: sidebarFoot
+        anchors.left: parent.left
+        anchors.bottom: parent.bottom
+        anchors.leftMargin: sidebar.contentLeftInset
+        anchors.bottomMargin: sidebar.contentBottomInset
+        spacing: root.sp(16)
+
+        Repeater {
+          model: [{ text: "keys", act: "keys", tip: "Every key the page answers to, and moving one" },
+                  { text: "settings", act: "settings", tip: "Settings: your timetable" }]
+          Text {
+            required property var modelData
+            readonly property bool open: modelData.act === "keys" ? root.keysOpen : root.settingsOpen
+            textFormat: Text.PlainText
+            text: modelData.text
+            color: footArea.containsMouse ? root.accent : open ? root.foreground : root.faint
+            font.family: root.fontFamily
+            font.styleName: root.fontStyle
+            font.pixelSize: root.fs(Style.font.bodySmall)
+            Behavior on color { ColorAnimation { duration: 240 } }
+            MouseArea {
+              id: footArea
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: modelData.act === "keys" ? root.toggleKeys() : root.toggleSettings()
+              PanelToolTip { visible: parent.containsMouse; text: root.tip(modelData.tip, modelData.act) }
+            }
+          }
+        }
+      }
+
       // Drilled into a project: its sections across the days, newest first.
       // This is navigation, so it belongs on this side with the calendar —
       // the margin on the right is the agent's (decided 2026-10-15).
@@ -4988,7 +4984,7 @@ Item {
         anchors.topMargin: sidebar.contentTopInset
         anchors.leftMargin: sidebar.contentLeftInset
         anchors.rightMargin: sidebar.contentRightInset
-        anchors.bottomMargin: sidebar.contentBottomInset
+        anchors.bottomMargin: sidebar.contentBottomInset + sidebarFoot.height + root.sp(12)
         clip: true
         contentWidth: width
         contentHeight: projectColumn.implicitHeight

@@ -166,7 +166,7 @@ it through `pomo`), then the chat — `Alt+Left` or `Esc` comes back. Drop
 course material into `agents/longhand/curriculum/` and run
 `longhand-agent curriculum` once for PDFs. List your `languages` in the config; the agent answers in the one the
 block is written in. Paste your university's `.ics` (or `webcal://`) timetable address
-into **Settings → Calendar** (`Ctrl+,`, or "settings" in the header) and the sidebar's next session, and what
+into **Settings → Calendar** (`Ctrl+,`, or **settings** at the foot of the sidebar) and the sidebar's next session, and what
 the agent knows of your week, follow it — the sheet fetches it at once and says which courses it found. After
 that it is fetched when the sidebar opens, at most hourly; the address stays in `settings.json` on your machine. Needs `~/.config/longhand/config.json` (copy
 `config.example.json`) pointing at your vault; the note lives at
@@ -193,7 +193,7 @@ written from the keys themselves (`python3 tools/keys_guide.py`, which
 `tests/test_keys_guide.py` holds to), so it never names a key the page no
 longer has; `--mine` prints it with the keys you moved.
 
-`Ctrl+/`, or **keys** in the header, turns the sheet into the list of every
+`Ctrl+/`, or **keys** at the foot of the sidebar, turns the sheet into the list of every
 key the page answers to, grouped by where it works: the page, writing,
 moving through the note, the agent, `@`, find, the dashboard, the calendar,
 the sidebar's lists and the margin. Type to narrow it ("bold", "ctrl+t").
