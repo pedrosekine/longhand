@@ -358,6 +358,9 @@ Item {
   property bool settingsBusy: false    // the runner is asking the university
   property string settingsNote: ""     // what just happened, or why not
   property var settingsPending: null   // the runner's flags, once the file is written
+  property int settingsFocus: 0        // the calendar ↑↓ picks
+  property int settingsBusyIndex: -1   // the calendar being fetched; -1 all
+  property string settingsFieldKind: "add"   // the field adds a calendar, or renames the picked one
   property var hyprKeys: null        // Hyprland's keys for the page: hyprkeys.py's state
   property bool keysAdopt: false     // Enter pressed once on "let the page keep these keys"
   readonly property var keyRows: { root.keysVersion; return Sc.rows(root.keysFilter, root.hyprKeys) }
@@ -1055,9 +1058,11 @@ Item {
     if (!root.settingsOpen && root.keysOpen) root.toggleKeys()
     root.settingsOpen = !root.settingsOpen
     root.settingsNote = ""
+    root.settingsFieldKind = "add"
     if (root.settingsOpen) {
       root.used("settings")
       settingsField.text = ""
+      root.settingsFocus = 0
       root.runTimetable([])
       Qt.callLater(settingsField.forceActiveFocus)
     } else if (root.dashOpen) {
@@ -1070,47 +1075,116 @@ Item {
   function settingsKey(event) {
     if (root.anywhereKey(event)) return true
     var seq = Sc.fromEvent(event)
-    if (seq === "Esc") { root.toggleSettings(); return true }
-    if (seq === "Enter") { root.saveTimetable(settingsField.text); return true }
-    if (Sc.hit(event, "settingsFetch")) { root.fetchTimetable(); return true }
-    if (Sc.hit(event, "settingsForget")) { root.forgetTimetable(); return true }
+    var n = root.calendarList().length
+    if (seq === "Esc") {
+      if (root.settingsFieldKind === "rename") { root.settingsFieldKind = "add"; settingsField.text = "" }
+      else root.toggleSettings()
+      return true
+    }
+    if (seq === "Enter") {
+      if (root.settingsFieldKind === "rename") root.renameCalendar(settingsField.text)
+      else root.addCalendar(settingsField.text)
+      return true
+    }
+    if (seq === "Up") { root.settingsFocus = Math.max(0, root.settingsFocus - 1); return true }
+    if (seq === "Down") { root.settingsFocus = Math.max(0, Math.min(n - 1, root.settingsFocus + 1)); return true }
+    if (Sc.hit(event, "settingsFetch")) { root.fetchCalendar(root.settingsFocus); return true }
+    if (Sc.hit(event, "settingsForget")) { root.removeCalendar(root.settingsFocus); return true }
+    if (Sc.hit(event, "settingsShare")) { root.toggleShare(root.settingsFocus); return true }
+    if (Sc.hit(event, "settingsRename")) { root.startRename(root.settingsFocus); return true }
     return false
   }
 
-  // An address as calendars hand them out: https, http or webcal.
-  function saveTimetable(text) {
+  // The calendars as settings.json keeps them (the addresses live only
+  // there, never in what the runner reports); the first version's single
+  // address reads as one calendar whose classes only the agent sees.
+  function readSettings() {
+    try { return JSON.parse(settingsFile.text()) || {} } catch (e) { return {} }
+  }
+
+  function calendarList() {
+    var cur = root.readSettings()
+    if (Array.isArray(cur.calendars)) return cur.calendars.filter(function (c) { return c && c.url })
+    if (cur.timetable) return [{ name: "Timetable", url: cur.timetable, agent: "classes" }]
+    return []
+  }
+
+  // settings.json is merged, never replaced; the runner is asked only once
+  // the file is written (onSaved).
+  function writeCalendars(list, then) {
+    var cur = root.readSettings()
+    cur.calendars = list
+    delete cur.timetable
+    root.settingsPending = then
+    settingsFile.setText(JSON.stringify(cur, null, 2) + "\n")
+  }
+
+  // An address as calendars hand them out: https, http or webcal. A new
+  // calendar starts narrow — the agent sees its classes only — and is
+  // widened by choice (2026-10-17).
+  function addCalendar(text) {
     var url = String(text || "").trim()
-    if (url === "") { root.settingsNote = "paste the address first"; return }
+    if (url === "") { root.settingsNote = "paste a calendar's address first"; return }
     if (!/^(https?|webcal):\/\/\S+$/i.test(url)) {
       root.settingsNote = "that is not a calendar address: it starts with https:// or webcal://"
       return
     }
-    root.writeSetting("timetable", url, ["--fetch"])
+    var list = root.calendarList()
+    for (var i = 0; i < list.length; i++)
+      if (list[i].url === url) { root.settingsNote = "“" + list[i].name + "” already has that address"; root.settingsFocus = i; return }
+    var host = (url.match(/^\w+:\/\/([^\/?#]+)/) || [url, url])[1]
+    list.push({ name: host, url: url, agent: "classes" })
+    root.settingsFocus = list.length - 1
+    root.settingsBusyIndex = list.length - 1
+    root.writeCalendars(list, ["--fetch", "--index", String(list.length - 1)])
     settingsField.text = ""
     root.settingsNote = ""
-    root.used("timetable", "saved")
+    root.used("calendar", "added")
   }
 
-  function fetchTimetable() {
-    if (!root.settingsState || !root.settingsState.configured) { root.settingsNote = "no address to fetch yet"; return }
-    root.runTimetable(["--fetch"])
+  function removeCalendar(i) {
+    var list = root.calendarList()
+    if (i < 0 || i >= list.length) return
+    var gone = list.splice(i, 1)[0]
+    root.settingsFocus = Math.max(0, Math.min(i, list.length - 1))
+    root.writeCalendars(list, [])
+    root.settingsNote = "removed “" + gone.name + "”" + (list.length === 0 ? ": the sidebar goes back to the sessions in your project notes" : "")
+    root.used("calendar", "removed")
   }
 
-  function forgetTimetable() {
-    if (!root.settingsState || !root.settingsState.configured) return
-    root.writeSetting("timetable", "", ["--forget"])
-    root.settingsNote = "removed: the sidebar goes back to the sessions in your project notes"
-    root.used("timetable", "removed")
+  function toggleShare(i) {
+    var list = root.calendarList()
+    if (i < 0 || i >= list.length) return
+    list[i].agent = list[i].agent === "all" ? "classes" : "all"
+    root.writeCalendars(list, [])
+    root.settingsNote = ""
+    root.used("calendar", list[i].agent)
   }
 
-  // settings.json is merged, never replaced: one key changes at a time.
-  // The runner is asked only once the file is written (onSaved).
-  function writeSetting(key, value, then) {
-    var cur = {}
-    try { cur = JSON.parse(settingsFile.text()) || {} } catch (e) { cur = {} }
-    cur[key] = value
-    root.settingsPending = then
-    settingsFile.setText(JSON.stringify(cur, null, 2) + "\n")
+  function fetchCalendar(i) {
+    var n = root.calendarList().length
+    if (n === 0) { root.settingsNote = "no calendar to fetch yet"; return }
+    root.settingsBusyIndex = i >= 0 && i < n ? i : -1
+    root.runTimetable(["--fetch", "--index", String(root.settingsBusyIndex)])
+  }
+
+  function startRename(i) {
+    var list = root.calendarList()
+    if (i < 0 || i >= list.length) return
+    root.settingsFieldKind = "rename"
+    settingsField.text = list[i].name
+    settingsField.selectAll()
+  }
+
+  function renameCalendar(text) {
+    var name = String(text || "").replace(/\s+/g, " ").trim()
+    var list = root.calendarList()
+    root.settingsFieldKind = "add"
+    settingsField.text = ""
+    var i = root.settingsFocus
+    if (name === "" || i < 0 || i >= list.length || list[i].name === name) return
+    list[i].name = name
+    root.writeCalendars(list, [])
   }
 
   function runTimetable(flags) {
@@ -1120,32 +1194,30 @@ Item {
     settingsProc.running = true
   }
 
-  // What the sheet says about the feed: one headline that answers "is my
-  // timetable in use?" — yes, no, or yes but from an older copy — then what
-  // to do about it, then (only when there is something in use) the courses.
-  // Never "connected" beside "failed" (2026-10-17: that read as both).
-  function settingsLines() {
+  // One calendar's state, in one line that answers "is it in use?" —
+  // working, not working yet, or in use from an older copy — never
+  // "connected" beside "failed" (2026-10-17: that read as both).
+  function calendarStatus(c) {
+    if (root.settingsBusy && (root.settingsBusyIndex < 0 || root.settingsBusyIndex === c.index))
+      return { text: "asking…", tone: "dim" }
+    var when = c.fetched > 0 ? root.sayAgo(c.fetched) : ""
+    var ahead = (c.events === 1 ? "1 event" : c.events + " events") + " ahead"
+      + (c.classes > 0 ? ", " + c.classes + " of them classes" : "")
+    if (!c.copy) return { text: "Not working yet — nothing from it is used. " + root.sayFeedError(c.error), tone: "urgent" }
+    if (c.error !== "") return { text: "In use, from the copy fetched " + when + " · " + ahead + ". The latest try did not work: " + root.sayFeedError(c.error), tone: "urgent" }
+    return { text: "Working · fetched " + when + " · " + ahead, tone: "dim" }
+  }
+
+  function sayShare(c) {
+    return c.agent === "all" ? "The agent sees everything in it — titles, times and places, never descriptions"
+      : "The agent sees its classes only"
+  }
+
+  // Which courses the calendars know, said only when there is a calendar
+  // to say it from.
+  function courseLines() {
     var st = root.settingsState
-    if (!st) return []
-    if (!st.configured) return [{ text: "Not connected. Paste your timetable's address — the .ics or webcal:// link from the university portal — and press Enter.", tone: "dim" }]
-    if (root.settingsBusy) return [{ text: st.address + " · asking the university…", tone: "dim" }]
-    var out = []
-    var when = st.fetched > 0 ? root.sayAgo(st.fetched) : ""
-    var ahead = (st.sessions === 1 ? "1 session" : st.sessions + " sessions") + " ahead"
-      + (st.next ? " · next " + root.sayDate(st.next.replace("T", " ")) : "")
-    if (!st.copy) {
-      out.push({ text: "Not working yet — nothing from " + st.address + " is used.", tone: "urgent" })
-      out.push({ text: root.sayFeedError(st.error), tone: "dim" })
-      out.push({ text: "Until it works, the sidebar uses the session lines in your project notes.", tone: "faint" })
-      return out
-    }
-    if (st.error !== "") {
-      out.push({ text: "In use, from the copy fetched " + when + " · " + ahead, tone: "fg" })
-      out.push({ text: "The latest try did not work: " + root.sayFeedError(st.error), tone: "urgent" })
-    } else {
-      out.push({ text: "Working · " + st.address + " · fetched " + when, tone: "fg" })
-      out.push({ text: ahead, tone: "dim" })
-    }
+    if (!st || !(st.calendars || []).some(function (c) { return c.copy })) return []
     var known = [], missing = [], nocode = []
     for (var i = 0; i < (st.courses || []).length; i++) {
       var c = st.courses[i]
@@ -1153,28 +1225,38 @@ Item {
       else if (c.sessions > 0) known.push(c.name + " (" + c.sessions + ")")
       else missing.push(c.name)
     }
-    if (known.length > 0) out.push({ text: "In the timetable: " + known.join(", "), tone: "dim" })
-    if (missing.length > 0) out.push({ text: "Not in it: " + missing.join(", ") + " — their own session lines are used", tone: "dim" })
+    var out = []
+    if (known.length > 0) out.push({ text: "Classes found: " + known.join(", "), tone: "dim" })
+    if (missing.length > 0) out.push({ text: "No classes found for " + missing.join(", ") + " — their own session lines are used", tone: "dim" })
     if (nocode.length > 0) out.push({ text: "No course code to match by: " + nocode.join(", "), tone: "faint" })
-    // A feed can be a whole personal calendar (Outlook's is): what is not a
-    // class is said to stay here, because it does — the agent is sent class
-    // sessions only (timetable_section).
-    var others = st.others !== undefined ? st.others : (st.other || []).length
-    if (others > 0) out.push({ text: "Also in this calendar, and never sent to the agent: " + (others === 1 ? "1 other event" : others + " other events")
-                                     + " (" + st.other.slice(0, 3).join(", ") + (others > 3 ? ", …" : "") + ")", tone: "faint" })
     return out
+  }
+
+  // Everything the sheet says, as text, in order (tests/page/run.py).
+  function settingsLines() {
+    var st = root.settingsState
+    if (!st) return []
+    if (!st.configured) return [{ text: "No calendar yet. Paste a calendar's address — the .ics or webcal:// link from your university portal, or one you publish — and press Enter.", tone: "dim" }]
+    var out = []
+    for (var i = 0; i < st.calendars.length; i++) {
+      var c = st.calendars[i]
+      out.push({ text: c.name + " · " + c.address, tone: "fg" })
+      out.push(root.calendarStatus(c))
+      out.push({ text: root.sayShare(c), tone: "dim" })
+    }
+    return out.concat(root.courseLines())
   }
 
   // Why a fetch did not work, in words a student can act on.
   function sayFeedError(err) {
     if (err === "asks to sign in")
-      return "The university answered with its sign-in page instead of your timetable, so the link needs a login it cannot give. "
-        + "Look in the portal for a subscribe link or a way to renew the timetable link, and paste the new one here."
+      return "The address answered with a sign-in page instead of a calendar, so it needs a login it cannot give. "
+        + "Look for a subscribe or publish link, or a way to renew it, and paste the new one."
     if (err === "not a calendar")
       return "The address answered with a web page, not a calendar. Check that you copied the .ics or subscribe link."
-    if (/^HTTP 40[13]$/.test(err)) return "The university refused it (" + err + "): the link may have expired. Make a new one in the portal."
-    if (err === "HTTP 404") return "The university says there is nothing at that address (HTTP 404)."
-    if (/^HTTP /.test(err)) return "The university had a problem (" + err + "). Try again later."
+    if (/^HTTP 40[13]$/.test(err)) return "It was refused (" + err + "): the link may have expired."
+    if (err === "HTTP 404") return "There is nothing at that address (HTTP 404)."
+    if (/^HTTP /.test(err)) return "The server had a problem (" + err + "). Try again later."
     if (err === "") return "It has not been fetched yet: " + root.keyName("settingsFetch") + " fetches it now."
     return "It could not be reached: " + err + "."
   }
@@ -3081,6 +3163,8 @@ Item {
     id: settingsFile
     path: (Quickshell.env("XDG_CONFIG_HOME") || Quickshell.env("HOME") + "/.config") + "/longhand/settings.json"
     blockLoading: true
+    watchChanges: true
+    onFileChanged: reload()
     atomicWrites: true
     printErrors: false
     onSaved: {
@@ -3097,6 +3181,7 @@ Item {
       onStreamFinished: {
         try { root.settingsState = JSON.parse(text) } catch (e) { root.settingsNote = "the runner did not answer" }
         root.settingsBusy = false
+        root.settingsBusyIndex = -1
         root.refreshProjects()
       }
     }
@@ -3690,8 +3775,9 @@ Item {
               width: parent.width
               textFormat: Text.PlainText
               wrapMode: Text.WordWrap
-              text: "Your university timetable. The sidebar's next session and what the agent knows of your week follow it. "
-                + "It is fetched when the sidebar opens, at most once an hour, and the address stays on this machine."
+              text: "Your calendars. Classes are matched to your projects by their course code, for the sidebar's next session; "
+                + "for each calendar you choose what the agent sees. They are fetched when the page or the sidebar opens, "
+                + "at most once an hour, and the addresses stay on this machine."
               color: root.faint
               font.family: root.fontFamily
               font.styleName: root.fontStyle
@@ -3700,11 +3786,143 @@ Item {
 
             Item { width: 1; height: root.sp(4) }
 
+            Text {
+              visible: !!root.settingsState && !root.settingsState.configured
+              width: parent.width
+              textFormat: Text.PlainText
+              wrapMode: Text.WordWrap
+              text: visible ? root.settingsLines()[0].text : ""
+              color: root.dim
+              font.family: root.fontFamily
+              font.styleName: root.fontStyle
+              font.pixelSize: root.fs(Style.font.bodySmall)
+            }
+
+            // One block per calendar: its name and where it goes, whether it
+            // works, what the agent sees of it, and what can be done to it.
+            Repeater {
+              model: root.settingsState && root.settingsState.configured ? root.settingsState.calendars : []
+              Item {
+                id: calRow
+                required property var modelData
+                required property int index
+                readonly property bool picked: root.settingsFocus === index
+                width: parent.width
+                height: calCol.implicitHeight + root.sp(16)
+
+                Rectangle {
+                  anchors.fill: parent
+                  anchors.leftMargin: -root.sp(10)
+                  anchors.rightMargin: -root.sp(10)
+                  radius: Style.cornerRadius
+                  color: calRow.picked ? Style.selectedFill : "transparent"
+                }
+
+                MouseArea {
+                  anchors.fill: parent
+                  onClicked: { root.settingsFocus = calRow.index; settingsField.forceActiveFocus() }
+                }
+
+                Column {
+                  id: calCol
+                  anchors.left: parent.left
+                  anchors.right: parent.right
+                  anchors.verticalCenter: parent.verticalCenter
+                  spacing: root.sp(4)
+
+                  Row {
+                    spacing: root.sp(10)
+                    Text {
+                      textFormat: Text.PlainText
+                      text: calRow.modelData.name
+                      color: root.foreground
+                      font.family: root.fontFamily
+                      font.styleName: root.fontStyle
+                      font.pixelSize: root.fs(Style.font.body)
+                    }
+                    Text {
+                      // Not when the name is the address already (a calendar
+                      // not yet renamed is named for its host).
+                      visible: calRow.modelData.address !== calRow.modelData.name + "/…"
+                      anchors.baseline: parent.children[0].baseline
+                      textFormat: Text.PlainText
+                      text: calRow.modelData.address
+                      color: root.faint
+                      font.family: root.fontFamily
+                      font.styleName: root.fontStyle
+                      font.pixelSize: root.fs(Style.font.bodySmall)
+                    }
+                  }
+
+                  Text {
+                    readonly property var st: root.calendarStatus(calRow.modelData)
+                    width: parent.width
+                    textFormat: Text.PlainText
+                    wrapMode: Text.WordWrap
+                    text: st.text
+                    color: st.tone === "urgent" ? root.urgent : root.dim
+                    font.family: root.fontFamily
+                    font.styleName: root.fontStyle
+                    font.pixelSize: root.fs(Style.font.bodySmall)
+                  }
+
+                  // What the agent sees of it: the choice, and the way to change it.
+                  Row {
+                    spacing: root.sp(12)
+                    Text {
+                      textFormat: Text.PlainText
+                      text: root.sayShare(calRow.modelData)
+                      color: calRow.modelData.agent === "all" ? root.foreground : root.dim
+                      font.family: root.fontFamily
+                      font.styleName: root.fontStyle
+                      font.pixelSize: root.fs(Style.font.bodySmall)
+                    }
+                  }
+
+                  Row {
+                    spacing: root.sp(16)
+                    Repeater {
+                      model: [{ text: calRow.modelData.agent === "all" ? "classes only" : "share everything", act: "settingsShare" },
+                              { text: "fetch now", act: "settingsFetch" }, { text: "rename", act: "settingsRename" },
+                              { text: "remove", act: "settingsForget" }]
+                      Text {
+                        required property var modelData
+                        textFormat: Text.PlainText
+                        text: modelData.text
+                        color: actArea.containsMouse ? root.accent : root.faint
+                        font.family: root.fontFamily
+                        font.styleName: root.fontStyle
+                        font.pixelSize: root.fs(Style.font.bodySmall)
+                        MouseArea {
+                          id: actArea
+                          anchors.fill: parent
+                          hoverEnabled: true
+                          cursorShape: Qt.PointingHandCursor
+                          onClicked: {
+                            root.settingsFocus = calRow.index
+                            if (modelData.act === "settingsShare") root.toggleShare(calRow.index)
+                            else if (modelData.act === "settingsFetch") root.fetchCalendar(calRow.index)
+                            else if (modelData.act === "settingsRename") root.startRename(calRow.index)
+                            else root.removeCalendar(calRow.index)
+                            settingsField.forceActiveFocus()
+                          }
+                          PanelToolTip { visible: parent.containsMouse; text: root.tip(modelData.text, modelData.act) }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+
+            Item { width: 1; height: root.sp(4) }
+
             TextField {
               id: settingsField
               width: parent.width
-              placeholderText: root.settingsState && root.settingsState.configured
-                ? "paste a new address to replace it" : "https://…  or  webcal://…"
+              placeholderText: root.settingsFieldKind === "rename" ? "its name"
+                : root.settingsState && root.settingsState.configured
+                  ? "paste another calendar's address to add it" : "https://…  or  webcal://…"
               font.family: root.fontFamily
               font.styleName: root.fontStyle
               font.pixelSize: root.fs(Style.font.body)
@@ -3716,44 +3934,17 @@ Item {
             Item { width: 1; height: root.sp(4) }
 
             Repeater {
-              model: root.settingsLines()
+              model: root.courseLines()
               Text {
                 required property var modelData
                 width: parent.width
                 textFormat: Text.PlainText
                 wrapMode: Text.WordWrap
                 text: modelData.text
-                color: modelData.tone === "urgent" ? root.urgent : modelData.tone === "fg" ? root.foreground
-                  : modelData.tone === "faint" ? root.faint : root.dim
+                color: modelData.tone === "faint" ? root.faint : root.dim
                 font.family: root.fontFamily
                 font.styleName: root.fontStyle
                 font.pixelSize: root.fs(Style.font.bodySmall)
-              }
-            }
-
-            // The two things to do once connected, for the mouse too.
-            Row {
-              visible: !!root.settingsState && root.settingsState.configured && !root.settingsBusy
-              spacing: root.sp(16)
-              Repeater {
-                model: [{ text: "fetch now", act: "settingsFetch" }, { text: "remove", act: "settingsForget" }]
-                Text {
-                  required property var modelData
-                  textFormat: Text.PlainText
-                  text: modelData.text
-                  color: actArea.containsMouse ? root.accent : root.dim
-                  font.family: root.fontFamily
-                  font.styleName: root.fontStyle
-                  font.pixelSize: root.fs(Style.font.bodySmall)
-                  MouseArea {
-                    id: actArea
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: modelData.act === "settingsFetch" ? root.fetchTimetable() : root.forgetTimetable()
-                    PanelToolTip { visible: parent.containsMouse; text: root.tip(modelData.text, modelData.act) }
-                  }
-                }
               }
             }
 
@@ -3776,7 +3967,9 @@ Item {
             anchors.bottom: parent.bottom
             textFormat: Text.PlainText
             wrapMode: Text.WordWrap
-            text: "Enter saves and fetches · " + root.keyName("settingsFetch") + " fetches again · "
+            text: root.settingsFieldKind === "rename" ? "Enter renames it · Esc keeps the old name"
+              : "Enter adds a calendar · ↑↓ pick one · " + root.keyName("settingsShare") + " what the agent sees · "
+              + root.keyName("settingsFetch") + " fetches it · " + root.keyName("settingsRename") + " renames · "
               + root.keyName("settingsForget") + " removes it · Esc back"
             color: root.faint
             font.family: root.fontFamily
@@ -5022,7 +5215,7 @@ Item {
 
         Repeater {
           model: [{ text: "keys", act: "keys", tip: "Every key the page answers to, and moving one" },
-                  { text: "settings", act: "settings", tip: "Settings: your timetable" }]
+                  { text: "settings", act: "settings", tip: "Settings: your calendars" }]
           Text {
             required property var modelData
             readonly property bool open: modelData.act === "keys" ? root.keysOpen : root.settingsOpen

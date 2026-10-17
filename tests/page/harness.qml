@@ -193,7 +193,8 @@ ShellRoot {
     // Settings
     function settings(): void { page.toggleSettings() }
     function settingsOpen(): bool { return page.settingsOpen }
-    function settingsSave(url: string): void { page.saveTimetable(url) }
+    function settingsSave(url: string): void { page.addCalendar(url) }
+    function settingsFocus(i: int): void { page.settingsFocus = i }
     function settingsKey(key: int, mods: int): bool { return page.settingsKey({ key: key, text: "", modifiers: mods }) }
     function settingsLines(): string { return JSON.stringify(page.settingsLines().map(function (l) { return l.text })) }
     function settingsNote(): string { return page.settingsNote }

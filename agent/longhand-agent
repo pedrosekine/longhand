@@ -14,7 +14,7 @@
     longhand-agent state [--date YYYY.MM.DD]                    # today's state JSON
     longhand-agent stats [--days 14 | --since YYYY-MM-DD] [--json]   # how the tool is used
     longhand-agent projects                                     # the tags that exist, with their next session
-    longhand-agent timetable [--fetch] [--forget]               # the feed's state, for the Settings sheet, JSON
+    longhand-agent timetable [--fetch [--index n]]              # each calendar's state, for the Settings sheet, JSON
     longhand-agent install                                      # opencode agent def + dirs
 
 One pass, then exit. Nothing is resident. The model gets no tools: everything
@@ -65,7 +65,7 @@ class Fail(Exception):
 # What the page's Settings sheet may set (settings.json, beside the config,
 # written by the page only). Read over config.json, and nothing else: a
 # file the page writes never moves the vault or the daily folder.
-SETTABLE = ("timetable",)
+SETTABLE = ("timetable", "calendars")
 
 
 def load_config() -> dict:
@@ -406,7 +406,8 @@ def build_payload(paths: Paths, trigger: str, fired: list[dict], visible: list[d
 
     sessions = timetable_section(cfg, dt.datetime.now()) if cfg else []
     if sessions:
-        parts += ["", "# Timetable — your class sessions for the next two weeks (read-only; other calendar events are not shown to you)", ""]
+        parts += ["", "# Calendar — the next two weeks (read-only): your class sessions, and everything in the calendars"
+                      " you chose to share whole (titles, times, places); nothing else of your calendars is shown to you", ""]
         parts += sessions
 
     curriculum = read_tree(paths.curriculum)
@@ -1389,85 +1390,90 @@ def cmd_projects(cfg: dict, args) -> int:
     return 0
 
 
-def cmd_timetable(cfg: dict, args) -> int:
-    """For the Settings sheet: what the feed gave, and which courses it
-    knows. `--fetch` asks the university now, whatever the copy's age;
-    `--forget` drops the copy (the address was removed)."""
-    cache = timetable.cache_path(STATE_HOME)
-    if args.forget:
-        timetable.forget(cache)
-    url = (cfg.get("timetable") or "").strip()
-    result = timetable.refresh(url, cache, max_age=0) if (args.fetch and url) else ""
-    events = timetable.sessions(cfg, STATE_HOME, fetch=False) or []
-    now = dt.datetime.now()
-    courses = []
-    folder = Paths(cfg, now.date()).knowledge / "projects"
-    for f in sorted(folder.glob("*.md")) if folder.is_dir() else []:
-        try:
-            text = f.read_text()
-        except OSError:
-            continue
-        code = CODE_RE.search(text)
-        name = next((l[2:].strip() for l in text.splitlines() if l.startswith("# ")), f.stem)
-        n = sum(1 for e in events if code and timetable.matches(e, code.group(1)) and e["end"] > now)
-        courses.append({"name": name, "code": code.group(1) if code else "", "sessions": n})
-    known = [c["code"] for c in courses if c["code"]]
-    other = []
-    for e in events:
-        if e["end"] > now and not any(timetable.matches(e, c) for c in known) and e["summary"] not in other:
-            other.append(e["summary"])
-    nxt = next((e for e in events if e["end"] > now), None)
-    meta = timetable.meta_of(cache)
-    # Whether there is anything from this address to use at all: a failed
-    # first fetch leaves none, and then nothing about courses can be said.
-    copy = bool(url) and cache.exists() and meta.get("source") == timetable._source(url)
-    print(json.dumps({"configured": bool(url), "copy": copy, "address": timetable.masked(url), "result": result,
-                      "fetched": int(meta.get("fetched", 0)) if url else 0, "error": meta.get("error", "") if url else "",
-                      "sessions": sum(1 for e in events if e["end"] > now),
-                      "next": nxt["start"].isoformat(timespec="minutes") if nxt else "",
-                      "courses": courses, "other": other[:8], "others": len(other)}, ensure_ascii=False))
-    return 0
-
-
-def timetable_section(cfg: dict, now: dt.datetime, days: int = 14) -> list[str]:
-    """The next fortnight of class sessions for the payload, from the copy
-    kept (no fetch inside a pass), each named by its course; and the
-    weekdays with no class, which is what makes "the 24th is free" a fact.
-
-    Only events that belong to a course the knowledge files name (by its
-    code) are sent. A feed can be a whole personal calendar — Outlook's is
-    (2026-10-17) — and everything else in it stays on this machine: widening
-    what the agent sees is a decision taken deliberately, not a side effect
-    of which link was pasted."""
-    events = timetable.sessions(cfg, STATE_HOME, fetch=False)
-    if not events:
-        return []
-    names = {}
-    folder = Paths(cfg, now.date()).knowledge / "projects"
+def course_codes(cfg: dict, today: dt.date) -> list[tuple[str, str, str]]:
+    """(code, name, tag) for each project whose knowledge file names a
+    course code; code "" for those that do not."""
+    out = []
+    folder = Paths(cfg, today).knowledge / "projects"
     for f in sorted(folder.glob("*.md")) if folder.is_dir() else []:
         try:
             text = f.read_text()
         except OSError:
             continue
         code, tag = CODE_RE.search(text), re.search(r"Tag:\s*`?#([\w/-]+)", text)
-        if code:
-            title = next((l[2:].strip() for l in text.splitlines() if l.startswith("# ")), f.stem)
-            names[code.group(1)] = title + (f" #{tag.group(1)}" if tag else "")
+        name = next((l[2:].strip() for l in text.splitlines() if l.startswith("# ")), f.stem)
+        out.append((code.group(1) if code else "", name, tag.group(1) if tag else ""))
+    return out
+
+
+def cmd_timetable(cfg: dict, args) -> int:
+    """For the Settings sheet: each calendar — what came of it, and what the
+    agent may see of it — and which courses the calendars know. `--fetch`
+    asks now, whatever a copy's age (`--index` for one calendar). Copies of
+    calendars no longer in Settings are dropped."""
+    timetable.prune(cfg, STATE_HOME)
+    now = dt.datetime.now()
+    codes = course_codes(cfg, now.date())
+    known = [c for c, _, _ in codes if c]
+    cals, everything = [], []
+    for n, cal in enumerate(timetable.calendars(cfg)):
+        cache = timetable.cache_path(STATE_HOME, cal["url"])
+        result = timetable.refresh(cal["url"], cache, max_age=0) \
+            if args.fetch and (args.index < 0 or args.index == n) else ""
+        events = timetable.read(cal, STATE_HOME)
+        meta = timetable.meta_of(cache)
+        ahead = [e for e in events or [] if e["end"] > now]
+        classes = [e for e in ahead if any(timetable.matches(e, c) for c in known)]
+        try:
+            title = timetable.calname(cache.read_text(errors="replace")) if events is not None else ""
+        except OSError:
+            title = ""
+        cals.append({"index": n, "name": cal["name"], "title": title, "address": timetable.masked(cal["url"]),
+                     "agent": cal["agent"], "copy": events is not None, "result": result,
+                     "fetched": int(meta.get("fetched", 0)), "error": meta.get("error", ""),
+                     "events": len(ahead), "classes": len(classes)})
+        everything += ahead
+    courses = [{"name": name, "code": code,
+                "sessions": sum(1 for e in everything if code and timetable.matches(e, code))}
+               for code, name, _ in codes]
+    nxt = min((e["start"] for e in everything), default=None)
+    print(json.dumps({"configured": bool(cals), "calendars": cals, "courses": courses,
+                      "next": nxt.isoformat(timespec="minutes") if nxt else ""}, ensure_ascii=False))
+    return 0
+
+
+def timetable_section(cfg: dict, now: dt.datetime, days: int = 14) -> list[str]:
+    """The next fortnight from the calendars, for the payload, from the
+    copies kept (no fetch inside a pass): every class session, named by its
+    course; and, from a calendar the student chose to share whole,
+    everything else in it — title, time and place, never its description.
+    Then the weekdays with nothing on in what was sent, which is what makes
+    "the 24th is free" a fact.
+
+    What the agent sees of each calendar is the student's choice in
+    Settings (2026-10-17): a calendar can be a whole personal one, and
+    widening what the agent sees is a decision taken deliberately, not a
+    side effect of which link was pasted."""
+    events = timetable.sessions(cfg, STATE_HOME, fetch=False)
+    if not events:
+        return []
+    names = {code: name + (f" #{tag}" if tag else "") for code, name, tag in course_codes(cfg, now.date()) if code}
     horizon = now + dt.timedelta(days=days)
     out, busy = [], set()
     for e in events:
         if e["end"] <= now or e["start"] >= horizon:
             continue
         course = next((n for c, n in names.items() if timetable.matches(e, c)), None)
-        if course is None:
+        if course is None and e.get("agent") != "all":
             continue
+        what = course or f"{e['summary']} — from your {e['calendar']} calendar"
         busy.add(e["start"].date())
-        out.append(f"- {e['start']:%a %d %b} {e['start']:%H:%M}–{e['end']:%H:%M} {course}"
+        out.append(f"- {e['start']:%a %d %b} {e['start']:%H:%M}–{e['end']:%H:%M} {what}"
                    + (f" ({e['location']})" if e["location"] else ""))
     free = [d for d in (now.date() + dt.timedelta(days=i) for i in range(days))
             if d.weekday() < 5 and d not in busy]
     if free:
-        out.append("Weekdays with no class: " + ", ".join(f"{d:%a %d %b}" for d in free))
+        out.append("Weekdays with nothing on: " + ", ".join(f"{d:%a %d %b}" for d in free))
     return out
 
 
@@ -1513,7 +1519,8 @@ def main(argv: list[str]) -> int:
     p.add_argument("--days", default="7")
     p = sub.add_parser("timetable")
     p.add_argument("--fetch", action="store_true", help="ask the university now")
-    p.add_argument("--forget", action="store_true", help="drop the copy kept")
+    p.add_argument("--index", type=int, default=-1, help="with --fetch: only this calendar")
+    p.add_argument("--forget", action="store_true", help="kept for the first version; copies are pruned anyway")
     p = sub.add_parser("box")
     p.add_argument("how", choices=("keep", "shelve"))
     p.add_argument("--key", required=True)

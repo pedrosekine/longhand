@@ -120,13 +120,15 @@ END:VCALENDAR\r
 
 def relative_feed(today: dt.date) -> str:
     """Sessions around today, for the parts that ask for "next"."""
-    def ev(uid, day, a, b, summary, room):
+    def ev(uid, day, a, b, summary, room, note=""):
         return (f"BEGIN:VEVENT\r\nUID:{uid}\r\nDTSTART;TZID=Europe/Vienna:{day:%Y%m%d}T{a}00\r\n"
-                f"DTEND;TZID=Europe/Vienna:{day:%Y%m%d}T{b}00\r\nSUMMARY:{summary}\r\nLOCATION:{room}\r\nEND:VEVENT\r\n")
+                f"DTEND;TZID=Europe/Vienna:{day:%Y%m%d}T{b}00\r\nSUMMARY:{summary}\r\nLOCATION:{room}\r\n"
+                + (f"DESCRIPTION:{note}\r\n" if note else "") + "END:VEVENT\r\n")
     return ("BEGIN:VCALENDAR\r\nVERSION:2.0\r\n"
             + ev("a", today - dt.timedelta(days=3), "1045", "1215", "Interdisciplinary Seminar M_IC_IntSem_W26", "Gold")
             + ev("b", today + dt.timedelta(days=2), "1045", "1215", "Interdisciplinary Seminar M_IC_IntSem_W26", "Bronze")
-            + ev("c", today + dt.timedelta(days=5), "0900", "1030", "Something else entirely", "Room 9")
+            + ev("c", today + dt.timedelta(days=5), "0900", "1030", "Something else entirely", "Room 9",
+                 "Join on Teams: https://teams.example/meet/123")
             + "END:VCALENDAR\r\n")
 
 
@@ -244,71 +246,88 @@ def main() -> int:
     pr = {p["tag"]: p for p in json.loads(agent("projects"))}
     check(pr["intsem"]["next"]["room"] == "Stale copy", "no feed configured: the knowledge file's lines, as before")
 
+    # The first version's single address, in the config: read as one
+    # calendar whose classes only the agent sees.
     cfg.write_text(json.dumps({**base, "timetable": url}))
     pr = {p["tag"]: p for p in json.loads(agent("projects"))}
     soon = today + dt.timedelta(days=2)
     check(pr["intsem"]["next"]["at"] == f"{soon.isoformat()}T10:45" and pr["intsem"]["next"]["room"] == "Bronze",
           f"with a feed: the next session is the university's, matched by course code ({pr['intsem']['next']})")
     check(pr["thesis"]["next"]["room"] == "Lab", "a project the feed does not know keeps its own lines")
-    check((tmp / "xdg" / "longhand" / "timetable.ics").exists(), "the copy is kept in the state folder")
+    copies = tmp / "xdg" / "longhand" / "calendars"
+    check(len(list(copies.glob("*.ics"))) == 1 and "SECRET" not in " ".join(p.name for p in copies.iterdir()),
+          "each calendar's copy is kept in the state folder, named by a hash of its address")
 
     (vault / "Daily" / f"{today.isoformat()}.md").write_text("A line of today.\n")
     payload = agent("context", "--trigger", "open")
-    check("# Timetable" in payload and f"{soon:%a %d %b} 10:45–12:15 Interdisciplinary Seminar #intsem (Bronze)" in payload,
-          "the agent sees the next two weeks, each session named by its course")
+    check("# Calendar" in payload and f"{soon:%a %d %b} 10:45–12:15 Interdisciplinary Seminar #intsem (Bronze)" in payload,
+          "the agent sees the next two weeks, each class named by its course")
     check("Something else entirely" not in payload,
-          "…and nothing that is not a class: a feed can be a whole personal calendar, and the rest stays here")
-    check(f"Weekdays with no class:" in payload and f"{today + dt.timedelta(days=5):%a %d %b}" in payload.split("Weekdays with no class:")[1]
-          or (today + dt.timedelta(days=5)).weekday() >= 5,
-          "…and the weekdays with no class, counting only classes")
-    check("SECRET" not in payload, "…and never the feed's address")
+          "…and, from a calendar it may see the classes of, nothing else")
+    check("SECRET" not in payload, "…and never a calendar's address")
     hits = len(Uni.hits)
     agent("context", "--trigger", "open")
-    check(len(Uni.hits) == hits, "a pass never fetches: it reads the copy kept")
+    check(len(Uni.hits) == hits, "a pass never fetches: it reads the copies kept")
 
-    # The Settings sheet: the address in settings.json, the page's own file,
-    # read over the config; and what the sheet is told.
+    # The Settings sheet: calendars in settings.json, the page's own file,
+    # read over the config (and nothing else of it); each with its choice.
     cfg.write_text(json.dumps(base))
     settings = cfg.with_name("settings.json")
-    settings.write_text(json.dumps({"timetable": url, "vault": "/somewhere/else"}))
+
+    def save(*cals, **extra):
+        settings.write_text(json.dumps({"calendars": [dict(zip(("name", "url", "agent"), c)) for c in cals], **extra}))
+
+    save(("IT:U", url, "classes"), vault="/somewhere/else")
     st = json.loads(agent("timetable", "--fetch"))
-    check(st["configured"] and st["result"] in ("fetched", "unchanged") and st["sessions"] == 2,
-          f"an address saved in the sheet is read, and fetched on asking ({st['result']}, {st['sessions']})")
-    check(st["address"] == f"127.0.0.1:{server.server_port}/…" and "SECRET" not in json.dumps(st),
-          f"the sheet is shown where it goes, not its token ({st['address']})")
+    c0 = st["calendars"][0]
+    check(st["configured"] and c0["result"] in ("fetched", "unchanged") and c0["events"] == 2 and c0["classes"] == 1,
+          f"a calendar saved in the sheet is read, and fetched on asking ({c0})")
+    check(c0["name"] == "IT:U" and c0["address"] == f"127.0.0.1:{server.server_port}/…" and "SECRET" not in json.dumps(st),
+          f"…shown by its name and where it goes, never its token ({c0['address']})")
     sem = next(c for c in st["courses"] if c["name"] == "Interdisciplinary Seminar")
     check(sem["sessions"] == 1 and any(c["name"] == "Thesis" and c["code"] == "" for c in st["courses"]),
-          "it says which courses the feed knows, and which have no code to match by")
-    check(st["other"] == ["Something else entirely"], "…and the sessions it could not name")
-    pr = {p["tag"]: p for p in json.loads(agent("projects"))}
-    check(pr["intsem"]["next"]["room"] == "Bronze", "the sidebar follows it")
-    check(json.loads(agent("timetable"))["result"] == "", "without --fetch, nothing is fetched")
-    hits = len(Uni.hits)
-    st = json.loads(agent("timetable"))
-    check(len(Uni.hits) == hits, "…not even once")
+          "it says which courses the calendars know, and which have no code to match by")
+    check("Something else entirely" not in agent("context", "--trigger", "open"), "classes only: the rest stays here")
 
-    # Another address: the old copy is no copy.
+    save(("IT:U", url, "all"))
+    payload = agent("context", "--trigger", "open")
+    check(f"Something else entirely — from your IT:U calendar (Room 9)" in payload,
+          "shared whole: everything in it, by title, time and place, and which calendar it is from")
+    check("teams.example" not in payload and "Join on Teams" not in payload, "…never its descriptions")
+    fifth = today + dt.timedelta(days=5)
+    check(fifth.weekday() >= 5 or f"{fifth:%a %d %b}" not in payload.split("Weekdays with nothing on:")[-1],
+          "…and a weekday with something on in it is not free")
+    check(json.loads(agent("timetable"))["calendars"][0]["result"] == "", "without --fetch, nothing is fetched")
+
+    # Two calendars: the same event in both counts once; one failing does
+    # not touch the other.
     other = url.replace("feed.ics", "other.ics")
-    settings.write_text(json.dumps({"timetable": other}))
+    save(("IT:U", url, "all"), ("Personal", other, "classes"))
     Uni.status = 404
-    st = json.loads(agent("timetable", "--fetch"))
-    check(st["error"] == "HTTP 404" and st["sessions"] == 0 and st["copy"] is False,
-          f"a new address that fails never shows the old one's sessions ({st['error']}, {st['sessions']})")
-    pr = {p["tag"]: p for p in json.loads(agent("projects"))}
-    check(pr["intsem"]["next"]["room"] == "Stale copy", "…and the sidebar falls back to the knowledge files")
+    st = json.loads(agent("timetable", "--fetch", "--index", "1"))
+    c0, c1 = st["calendars"]
+    check(c1["error"] == "HTTP 404" and c1["copy"] is False and c0["copy"] is True and c0["result"] == "",
+          f"a second calendar that fails is its own failure; the first is not even asked ({c0['result']!r}, {c1['error']})")
     Uni.status = 200
+    agent("timetable", "--fetch", "--index", "1")
+    payload = agent("context", "--trigger", "open")
+    check(payload.count("Something else entirely") == 1 and payload.count("Interdisciplinary Seminar #intsem (Bronze)") == 1,
+          "the same event in two calendars counts once")
+    pr = {p["tag"]: p for p in json.loads(agent("projects"))}
+    check(pr["intsem"]["next"]["room"] == "Bronze", "the sidebar follows them")
+
+    # Removed: no calendar, no copy.
+    save(("IT:U", url, "all"))
+    agent("timetable")
+    check(len(list(copies.glob("*.ics"))) == 1, "a calendar removed drops its copy")
     check(timetable.http_url("webcal://uni.example/f.ics?t=1") == "https://uni.example/f.ics?t=1"
           and timetable.http_url("https://uni.example/f.ics") == "https://uni.example/f.ics",
           "a webcal:// address, as calendars hand them out, is fetched over https")
-    settings.write_text(json.dumps({"timetable": url}))
-    st = json.loads(agent("timetable", "--fetch"))
-    check(st["sessions"] == 2 and st["error"] == "", "the first address again: fetched afresh")
-
-    # Removed: no address, no copy.
-    settings.write_text(json.dumps({"timetable": ""}))
-    st = json.loads(agent("timetable", "--forget"))
-    check(not st["configured"] and not (tmp / "xdg" / "longhand" / "timetable.ics").exists(),
-          "removing the address drops the copy")
+    settings.write_text(json.dumps({"calendars": []}))
+    st = json.loads(agent("timetable"))
+    check(not st["configured"] and not list(copies.glob("*")), "removing the last calendar drops every copy")
+    pr = {p["tag"]: p for p in json.loads(agent("projects"))}
+    check(pr["intsem"]["next"]["room"] == "Stale copy", "…and the sidebar goes back to the knowledge files")
 
     server.shutdown()
     print("PASS" if failures == 0 else f"{failures} FAILED")

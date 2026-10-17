@@ -33,9 +33,10 @@ in code, and the vault path is never recorded in this public repo.
    wins.)
 3. **Consent is an allowlist, enforced locally.** The model sees exactly what
    local code assembled: today's note minus private blocks, the agent's own
-   knowledge files, the curriculum folder, the timer report, the next two
-   weeks of the university timetable (added 2026-10-17). Nothing else on
-   disk, ever. Every payload is logged before inference, so "the private block
+   knowledge files, the curriculum folder, the timer report, and the next
+   two weeks of the calendars — class sessions, plus everything (titles,
+   times, places) in a calendar the student chose to share whole (added
+   2026-10-17). Nothing else on disk, ever. Every payload is logged before inference, so "the private block
    was not sent" is a test, not a promise.
 4. **Never out of nowhere.** The agent runs only when the student acts in the
    page. It may be proactive *inside* that moment — surface an observation, a
@@ -983,3 +984,19 @@ only the window and the panels around it differ.
   every class after the clocks change on 25 October read an hour late. It
   is the machine's zone now, with its rules, and a test fails in any
   season if that regresses.
+- 2026-10-17 (late): what the agent sees is chosen per calendar. The
+  student's view: the IT:U calendar is the university's, so the agent may
+  see all of it — and consent belongs to the calendar, not to a rule about
+  event types. Settings → Calendar is now a list: each calendar has a name,
+  its address shown as `host/…`, whether it works, and one choice — the
+  agent sees **its classes only** (where a new one starts) or **everything
+  in it**, which is titles, times and places and never descriptions
+  (Outlook's carry Teams links, attendees and notes). Classes are matched by
+  course code whatever the choice. Each calendar keeps its own copy under
+  `calendars/`, named by a hash of its address; the same event in two
+  calendars counts once; one failing is its own failure; a calendar removed
+  drops its copy. The first version's single `timetable` address still
+  reads, as one calendar of classes only. The student's IT:U calendar moved
+  over as "IT:U", shared whole. In the payload, an event that is not a class
+  says which calendar it is from, and "weekdays with nothing on" counts what
+  was sent.

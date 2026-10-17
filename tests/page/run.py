@@ -1088,32 +1088,46 @@ def main() -> int:
         settings_json = p.tmp / "config" / "longhand" / "settings.json"
         KEY_COMMA, KEY_BACKSPACE = 0x2c, 0x01000003
         check(p.call("pageKey", KEY_COMMA, CTRL) == "true" and p.call("settingsOpen") == "true", "Ctrl+, opens settings")
-        check(p.wait(lambda: any("Not connected" in l for l in json.loads(p.call("settingsLines")))),
-              f"…which says the timetable is not connected yet ({p.call('settingsLines')})")
+        check(p.wait(lambda: any("No calendar yet" in l for l in json.loads(p.call("settingsLines")))),
+              f"…which says there is no calendar yet ({p.call('settingsLines')})")
         p.call("settingsSave", "not a link")
         check("not a calendar address" in p.call("settingsNote") and not settings_json.exists(),
               "something that is not an address is refused, and nothing is written")
+
+        def cals():
+            return json.loads(settings_json.read_text()).get("calendars", [])
+
         url = f"http://127.0.0.1:{uni.server_port}/feed.ics?token=SECRET"
         p.call("settingsSave", url)
-        check(p.wait(lambda: settings_json.exists() and json.loads(settings_json.read_text()).get("timetable") == url),
-              "an address saved goes to settings.json, beside the config")
-        check(p.wait(lambda: any("1 session ahead" in l for l in json.loads(p.call("settingsLines"))), timeout=10),
+        check(p.wait(lambda: settings_json.exists() and [c["url"] for c in cals()] == [url]),
+              "a calendar added goes to settings.json, beside the config")
+        check(cals()[0]["agent"] == "classes", "…and starts narrow: the agent sees its classes only")
+        check(p.wait(lambda: any(l.startswith("Working · fetched just now · 1 event ahead") for l in json.loads(p.call("settingsLines"))), timeout=10),
               f"…is fetched at once, and says what came of it ({p.call('settingsLines')})")
         lines = json.loads(p.call("settingsLines"))
-        check(lines[0].startswith(f"Working · 127.0.0.1:{uni.server_port}/…") and "SECRET" not in json.dumps(lines),
-              f"…one headline saying it works and where it goes, never its token ({lines[0]})")
+        check(lines[0] == f"127.0.0.1:{uni.server_port} · 127.0.0.1:{uni.server_port}/…" and "SECRET" not in json.dumps(lines),
+              f"…named for where it goes, never with its token ({lines[0]})")
+        check("The agent sees its classes only" in lines, "…saying what the agent sees of it")
         check(json.loads(p.call("surfaces")).keys() >= {"settings"} and "sheet" not in json.loads(p.call("surfaces")),
               f"settings takes the sheet's place ({p.call('surfaces')})")
+        KEY_A = 0x41
+        check(p.call("settingsKey", KEY_A, CTRL | SHIFT) == "true", "Ctrl+Shift+A is taken")
+        check(p.wait(lambda: cals()[0]["agent"] == "all"
+                     and any(l.startswith("The agent sees everything in it") for l in json.loads(p.call("settingsLines")))),
+              "…and shares the picked calendar whole: titles, times and places")
+
         p.call("settingsSave", f"http://127.0.0.1:{uni.server_port}/locked.ics?token=SECRET")
-        check(p.wait(lambda: json.loads(p.call("settingsLines"))[0].startswith("Not working yet"), timeout=10),
-              f"a link that lands on a sign-in page says, first, that it is not working ({p.call('settingsLines')})")
+        check(p.wait(lambda: len(cals()) == 2 and json.loads(p.call("settingsLines"))[4].startswith("Not working yet"), timeout=10),
+              f"a second calendar, landing on a sign-in page, says it is not working ({p.call('settingsLines')})")
         lines = json.loads(p.call("settingsLines"))
-        check("sign-in page" in lines[1] and not any(l.startswith(("Working", "Connected", "Not in it", "In the timetable")) for l in lines),
-              f"…why, in words, and nothing that reads as success ({lines})")
+        check("sign-in page" in lines[4] and lines[1].startswith("Working"),
+              f"…why, in words, while the first still works ({lines})")
         check(p.call("settingsKey", KEY_BACKSPACE, CTRL | SHIFT) == "true", "Ctrl+Shift+Backspace is taken")
-        check(p.wait(lambda: json.loads(settings_json.read_text()).get("timetable") == ""
-                     and any("Not connected" in l for l in json.loads(p.call("settingsLines")))),
-              "…and removes the address")
+        check(p.wait(lambda: [c["url"] for c in cals()] == [url]), "…and removes the picked calendar, the new one")
+        p.call("settingsFocus", 0)
+        p.call("settingsKey", KEY_BACKSPACE, CTRL | SHIFT)
+        check(p.wait(lambda: cals() == [] and any("No calendar yet" in l for l in json.loads(p.call("settingsLines")))),
+              "…and the last one, back to no calendar")
         check(p.call("settingsKey", 0x01000000, 0) == "true" and p.call("settingsOpen") == "false", "Esc goes back")
         uni.shutdown()
 

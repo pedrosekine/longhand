@@ -340,27 +340,93 @@ def parse(text: str, local: dt.tzinfo | None = None) -> list[dict]:
 
 # ------------------------------------------------------------------ use
 
-def cache_path(state_home: Path) -> Path:
-    return state_home / "timetable.ics"
+# What the agent may see of a calendar, chosen per calendar in Settings:
+# its classes only (events that match a course code), or everything in it —
+# titles, times and places, never descriptions.
+AGENT_SEES = ("classes", "all")
 
 
-def sessions(cfg: dict, state_home: Path, fetch: bool = True) -> list[dict] | None:
-    """The sessions in the kept copy, brought up to date first when `fetch`
-    (the sidebar opening). None when no feed is configured, or none has
-    ever been fetched — the knowledge files' lines are used then."""
-    url = (cfg.get("timetable") or "").strip()
-    if not url:
+def calendars(cfg: dict) -> list[dict]:
+    """The calendars to read, as Settings keeps them (`calendars`: name,
+    url, agent), or the one address of the first version (`timetable`),
+    read as a calendar whose classes only the agent sees."""
+    out = []
+    for c in cfg.get("calendars") or []:
+        if isinstance(c, dict) and (c.get("url") or "").strip():
+            out.append({"name": (c.get("name") or "").strip() or masked(c["url"]),
+                        "url": c["url"].strip(),
+                        "agent": c.get("agent") if c.get("agent") in AGENT_SEES else "classes"})
+    legacy = (cfg.get("timetable") or "").strip()
+    if not out and legacy:
+        out.append({"name": "Timetable", "url": legacy, "agent": "classes"})
+    return out
+
+
+def cache_path(state_home: Path, url: str) -> Path:
+    """Each calendar's copy, named by a hash of its address, never the
+    address."""
+    return state_home / "calendars" / (_source(url) + ".ics")
+
+
+def prune(cfg: dict, state_home: Path) -> None:
+    """Drop the copies of calendars no longer in Settings, and the first
+    version's single copy."""
+    keep = {cache_path(state_home, c["url"]).name for c in calendars(cfg)}
+    folder = state_home / "calendars"
+    for p in folder.glob("*.ics") if folder.is_dir() else []:
+        if p.name not in keep:
+            forget(p)
+    forget(state_home / "timetable.ics")
+
+
+def calname(text: str) -> str:
+    """The name a feed gives itself (X-WR-CALNAME), if any."""
+    m = re.search(r"^X-WR-CALNAME:(.*)$", text[:4096], re.M)
+    return _unescape(m.group(1).strip()) if m else ""
+
+
+def read(cal: dict, state_home: Path) -> list[dict] | None:
+    """One calendar's sessions from its copy, each marked with the calendar
+    it came from and what the agent may see of it; None without a copy."""
+    cache = cache_path(state_home, cal["url"])
+    if meta_of(cache).get("source") != _source(cal["url"]):
         return None
-    cache = cache_path(state_home)
-    if not fetch and meta_of(cache).get("source") != _source(url):
-        return None      # a copy from another address, or none yet
-    if fetch:
-        refresh(url, cache)
     try:
         text = cache.read_text(errors="replace")
     except OSError:
         return None
-    return parse(text)
+    events = parse(text)
+    for e in events:
+        e["calendar"], e["agent"] = cal["name"], cal["agent"]
+    return events
+
+
+def sessions(cfg: dict, state_home: Path, fetch: bool = True) -> list[dict] | None:
+    """Every calendar's sessions together, soonest first, each brought up
+    to date first when `fetch` (the page or the sidebar opening). The same
+    event in two calendars counts once. None when no calendar is set, or
+    none has a copy yet — the knowledge files' lines are used then."""
+    cals = calendars(cfg)
+    if not cals:
+        return None
+    out, seen, any_copy = [], set(), False
+    for cal in cals:
+        if fetch:
+            refresh(cal["url"], cache_path(state_home, cal["url"]))
+        events = read(cal, state_home)
+        if events is None:
+            continue
+        any_copy = True
+        for e in events:
+            key = (e["start"], e["summary"])
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(e)
+    if not any_copy:
+        return None
+    out.sort(key=lambda e: e["start"])
+    return out
 
 
 def matches(event: dict, code: str) -> bool:
