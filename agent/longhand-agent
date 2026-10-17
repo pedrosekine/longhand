@@ -1624,8 +1624,13 @@ def cmd_plan(cfg: dict, args) -> int:
     payload_file = paths.payloads / f"{stamp}-plan.md"
     payload_file.write_text(payload)          # logged before inference
 
-    result = run_model(dict(cfg, agent=cfg.get("planAgent", "longhand-plan")), paths, payload,
-                       message="Plan the fortnight. The context follows on stdin.")
+    # The planner may reach a model of its own (docs/agent.md, "Reaching a
+    # model"): `planModel` in the config, with `planVariant` if that model
+    # names one; otherwise the same model as the margin.
+    plan_cfg = dict(cfg, agent=cfg.get("planAgent", "longhand-plan"))
+    if cfg.get("planModel"):
+        plan_cfg["model"], plan_cfg["variant"] = cfg["planModel"], cfg.get("planVariant", "")
+    result = run_model(plan_cfg, paths, payload, message="Plan the fortnight. The context follows on stdin.")
     reply = parse_plan(result["text"]) if not result["error"] else {"proposals": [], "questions": [], "knowledge": []}
     props, qs = planlib.validate(reply, cands, days, ledger, today)
     new = planlib.record(ledger, props, qs, at)

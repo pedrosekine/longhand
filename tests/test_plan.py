@@ -114,6 +114,7 @@ def main() -> int:
     check(out["ran"] and calls() == 1, f"the first plan of the day runs ({out})")
     argv = json.loads((stub / "argv.json").read_text())
     check(argv[argv.index("--agent") + 1] == "longhand-plan", "…as the planner, an agent of its own (no tools)")
+    check("--model" not in argv, "…on the agent's own model when none is set")
     payload = (stub / "payload.md").read_text()
     logged = sorted((state / "longhand" / "payloads").glob("*-plan.md"))
     check(logged and logged[-1].read_text() == payload, "the payload is logged, whole, before inference")
@@ -233,6 +234,16 @@ def main() -> int:
     st = json.loads((state / "longhand" / "plan.json").read_text())
     check("hash" not in st and "expired" in st["error"], "…and is not counted as today's plan")
     (bindir / "opencode").write_text(STUB)
+
+    # A model of its own for planning.
+    c = json.loads(cfg.read_text())
+    cfg.write_text(json.dumps(dict(c, planModel="openai/gpt-6-luna", model="opencode-go/deepseek", variant="high")))
+    (stub / "reply.json").write_text(json.dumps({"proposals": [], "questions": [], "knowledge": []}))
+    agent("plan", "--force")
+    argv = json.loads((stub / "argv.json").read_text())
+    check(argv[argv.index("--model") + 1] == "openai/gpt-6-luna",
+          f"planModel gives the planner its own model, without the margin's variant ({argv[argv.index('--model') + 1]})")
+    cfg.write_text(json.dumps(c))
 
     # Nothing to plan: no model call.
     note.write_text("Just prose today.\n")

@@ -233,6 +233,14 @@ subscription login.
 - **Settings chooses the route per job** — for example, replies to blocks
   on the cheap model, planning on a stronger one.
 - **A failing route says so** and does not fall back silently.
+- **In use since 2026-10-17:** the OpenCode Go key expired, so the planner
+  reaches its own model — `planModel` in the config (with `planVariant` if
+  that model names one), set to a ChatGPT-subscription model through
+  opencode's renewed OpenAI login; at the student's word the margin moved
+  to the same model (`model`), its "high" variant kept. The first real plan
+  proposed two sensible do-dates and asked how big a task was; a margin
+  pass on the day's real payload came back well-formed — both at no
+  metered cost.
 - **Start planning on the model there is**, so the acceptance rate shows
   whether quality is the limit; switch planning to a stronger route if the
   student declines most of what it proposes.
