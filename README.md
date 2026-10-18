@@ -147,10 +147,12 @@ block carries a sign for the agent (a checkbox, an `@` line, a line ending
 in `?`, a ticked box) and faint when it does not; asking anyway says why in
 one line. A block that already has an answer is never asked twice: the word
 reads **reply**, and `Ctrl+Enter` opens the conversation on it with the
-cursor in the box. (A block's identity is its text, so changing the words
-makes it a new block that runs as usual — what cannot happen is paying to
-ask the identical question again and overwriting the first answer with the
-second.) What you send appears in the conversation at once, with *thinking*
+cursor in the box. (A block keeps its conversation whatever you change in
+it — a tick, a date, its words: the page follows it through every edit, in
+`threads.json` beside the deadline store, never as a mark in the note, and
+the agent is told how it reads now. A new question is a new block. What
+cannot happen is paying to ask the identical question again and overwriting
+the first answer with the second.) What you send appears in the conversation at once, with *thinking*
 under it until the answer arrives, counting the seconds once it has been a
 few. From the moment you ask until the answer is back, the block's
 gutter mark carries a light travelling down it and the header's **agent**

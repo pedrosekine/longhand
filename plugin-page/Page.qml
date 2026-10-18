@@ -14,6 +14,7 @@ import "Dates.js" as Dates
 import "Days.js" as Days
 import "Task.js" as Task
 import "Authorship.js" as Authorship
+import "Threads.js" as Threads
 import "Shortcuts.js" as Sc
 
 // The page: today's note as a blank sheet in the shell, with the agent in
@@ -443,16 +444,23 @@ Item {
     }
     return idx
   }
-  function recordHash(hash, text) {
+  // A block's conversation: under its own hash; else found by its words
+  // (a tick, a date, a priority leave them); else the one its lines carry
+  // through an edit of its words (Threads.js).
+  function recordHash(hash, text, block) {
     if (hash === "" || root.answered(agent.record(hash))) return hash
-    return root.recordKeys[Blocks.fnv1a(Task.identity(text))] || hash
+    var byWords = root.recordKeys[Blocks.fnv1a(Task.identity(text))]
+    if (byWords) return byWords
+    var carried = Threads.find(root.threadMap, block)
+    return carried !== "" && root.answered(agent.record(carried)) ? carried : hash
   }
   property string currentRec: ""
   function refreshRec() {
     var b = root.blockBounds(root.currentHash)
-    root.currentRec = root.recordHash(root.currentHash, b ? b.text : "")
+    root.currentRec = root.recordHash(root.currentHash, b ? b.text : "", b)
   }
-  onRecordKeysChanged: root.refreshRec()
+  onRecordKeysChanged: { root.refreshRec(); Qt.callLater(root.pinThreads) }
+  onThreadMapChanged: root.refreshRec()
   readonly property var currentRecord: agent.record(currentRec)
   // The conversation as the margin shows it: what the runner has written,
   // plus the turn that has not landed yet.
@@ -968,7 +976,7 @@ Item {
     var blocks = Blocks.split(editor.text)
     for (var i = 0; i < blocks.length; i++) {
       var b = blocks[i]
-      var rec = agent.record(root.recordHash(b.hash, b.text))
+      var rec = agent.record(root.recordHash(b.hash, b.text, b))
       var flying = root.sending.indexOf(b.hash) >= 0
       if (!rec && !flying) continue
       var r = editor.blockRect(b.start, b.end)
@@ -3440,6 +3448,52 @@ Item {
     root.keepAuthors()
   }
 
+  // A sent block's conversation, on its lines (Threads.js): restored with
+  // the note, carried through every edit, pinned when a reply arrives, and
+  // kept by the lines' words in threads.json beside authors.json.
+  property var threadsStore: ({})
+  property var threadMap: ({})
+  property var threadLines: []
+  function restoreThreads(text) {
+    root.threadLines = String(text).split("\n")
+    root.threadMap = Threads.restore(root.threadsStore[svc.noteDate] || [], root.threadLines)
+    Qt.callLater(root.pinThreads)
+  }
+  function carryThreads(text) {
+    var lines = String(text).split("\n")
+    root.threadMap = Threads.carry(root.threadLines, lines, root.threadMap)
+    root.threadLines = lines
+    root.keepThreads()
+  }
+  function pinThreads() {
+    if (!svc.ready) return
+    var blocks = Blocks.split(editor.text)
+    var m = {}
+    for (var k in root.threadMap) m[k] = root.threadMap[k]
+    var changed = false
+    for (var i = 0; i < blocks.length; i++) {
+      var b = blocks[i]
+      var h = root.answered(agent.record(b.hash)) ? b.hash : (root.recordKeys[Blocks.fnv1a(Task.identity(b.text))] || "")
+      if (h !== "" && Threads.pin(m, b, h)) changed = true
+    }
+    if (!changed) return
+    root.threadMap = m
+    root.keepThreads()
+  }
+  function keepThreads() {
+    var stem = svc.noteDate
+    if (!stem) return
+    var recs = Threads.serialize(root.threadMap, root.threadLines)
+    var was = root.threadsStore[stem] || []
+    if (JSON.stringify(recs) === JSON.stringify(was)) return
+    var st = {}
+    for (var k in root.threadsStore) st[k] = root.threadsStore[k]
+    if (recs.length > 0) st[stem] = recs
+    else delete st[stem]
+    root.threadsStore = st
+    threadsSave.restart()
+  }
+
   // The open note's records, into the store and (soon) the file.
   function keepAuthors() {
     var stem = svc.noteDate
@@ -4239,6 +4293,23 @@ Item {
     onTriggered: authorsFile.setText(JSON.stringify(root.authorsStore, null, 1) + "\n")
   }
 
+  FileView {
+    id: threadsFile
+    path: (Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state") + "/longhand/threads.json"
+    blockLoading: true
+    atomicWrites: true
+    printErrors: false
+    onLoaded: {
+      try { root.threadsStore = JSON.parse(text()) || {} } catch (e) { root.threadsStore = {} }
+      if (svc.ready) root.restoreThreads(editor.text)
+    }
+  }
+  Timer {
+    id: threadsSave
+    interval: 800
+    onTriggered: threadsFile.setText(JSON.stringify(root.threadsStore, null, 1) + "\n")
+  }
+
   Process {
     id: settingsProc
     stdout: StdioCollector {
@@ -4834,8 +4905,9 @@ Item {
               if (root.searchOpen) Qt.callLater(root.runSearch)
               var was = root.bound
               root.bound = Bound.anchors(text)
-              if (root.applying) { root.restoreAuthors(text); return }
+              if (root.applying) { root.restoreAuthors(text); root.restoreThreads(text); return }
               root.carryAuthors(text)
+              root.carryThreads(text)
               svc.markPending(text)
               saveTimer.restart()
               if (root.quiet) return

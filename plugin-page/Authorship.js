@@ -76,6 +76,13 @@ function serialize(map, lines) {
 // second is new, and the person's. Two lines joined: the joined line was
 // edited.
 function carry(oldLines, newLines, map) {
+  return carryBy(oldLines, newLines, map, isListLine, edited)
+}
+
+// The same, for any kind of line a value rides on (`accept`), and what an
+// edit of its words does to the value (`onEdit`): Threads.js keeps a
+// conversation on its block's lines this way.
+function carryBy(oldLines, newLines, map, accept, onEdit) {
   var out = {}
   var n = oldLines.length, m = newLines.length
   var p = 0
@@ -93,7 +100,7 @@ function carry(oldLines, newLines, map) {
     var found = -1
     var id = key(oldLines[o])
     for (var j = p; j < newEnd; j++) {
-      if (!taken[j] && isListLine(newLines[j]) && key(newLines[j]) === id) { found = j; break }
+      if (!taken[j] && accept(newLines[j]) && key(newLines[j]) === id) { found = j; break }
     }
     if (found >= 0) { out[found] = map[o]; taken[found] = true }
     else left.push(o)
@@ -102,8 +109,8 @@ function carry(oldLines, newLines, map) {
     var from = left[l]
     if (newEnd <= p) break                       // the stretch was deleted
     var to = Math.min(p + (from - p), newEnd - 1)
-    if (taken[to] || !isListLine(newLines[to])) continue
-    out[to] = edited(map[from])
+    if (taken[to] || !accept(newLines[to])) continue
+    out[to] = onEdit(map[from])
     taken[to] = true
   }
   return out

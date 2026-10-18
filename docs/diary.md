@@ -1183,3 +1183,10 @@ only the window and the panels around it differ.
   name that changes with the colours, since the launcher caches images by
   path. And the first pass of the day no longer races the calendar fetch
   the same opening started: the pass and the plan wait for it.
+- **2026-10-18 — A conversation survives its words.** Rewording a block
+  that has a reply used to cut it loose from its conversation: the block
+  was known by its words. Now the conversation rides on the block's lines
+  in the layer, carried through every edit in the page by the same
+  machinery that keeps who made a line, and the agent is told what the
+  block reads now. The trade, chosen in the plan: a reworded question no
+  longer gets a fresh answer — a new question is a new block.

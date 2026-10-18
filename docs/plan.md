@@ -397,7 +397,16 @@ section, word for word, and to the diary's decisions log.
 6. **A sent block keeps its conversation through word edits.** A tick, a
    date or a priority keep it since `7740b51`; changing the words still
    detaches it. Identity in the layer (its last words and place, followed
-   through every edit in the page), never a tag in the prose.
+   through every edit in the page), never a tag in the prose. *Done
+   2026-10-18*: `plugin-page/Threads.js` pins an answered block's
+   conversation to its first line and carries it through every edit with
+   authorship's machinery (`Authorship.carryBy`, now for any line), kept by
+   the lines' words in `threads.json`; the runner reads it, so a chat tells
+   the model what the block reads now and the open pass does not take the
+   reworded block for a new one. An edit made in Obsidian still lets it go,
+   as it does a line's authorship. `tests/tst_threads.qml`,
+   `tests/test_threads.py`, and the live check that used to assert the
+   opposite.
 7. **The deadline popup's tick** — the same sound and feel as the page's
    (its own plugin, `plugin-deadline`); its day is already written by the
    check. *Done 2026-10-18*: the page's sound (the same file, written by

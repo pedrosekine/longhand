@@ -822,8 +822,19 @@ def main() -> int:
         p.call("cursor", p.offset_of_line(p.line_of("scooter")) + len("- [x] should I buy a scooter?"))
         p.call("insert", " now")
         p.call("cursor", p.offset_of_line(p.line_of("scooter")) + 8)
-        check(p.wait(lambda: "scooter? now ⏫" in p.call("text")) and p.wait(lambda: p.call("askWord") == "ask"),
-              f"…but other words make it another block ({p.lines()[p.line_of('scooter')]!r})")
+        # Its words changed (2026-10-18): still the block its conversation is
+        # about, carried on its line in the layer (threads.json).
+        check(p.wait(lambda: "scooter? now ⏫" in p.call("text")) and p.wait(lambda: p.call("askWord") == "reply")
+              and "agent: a bike will do" in p.call("chat"),
+              f"…and so do other words: the conversation stays ({p.lines()[p.line_of('scooter')]!r}, {p.call('askWord')})")
+        threads = p.state / "longhand" / "threads.json"
+        check(p.wait(lambda: threads.exists() and qh in threads.read_text() and "should I buy a scooter? now" in threads.read_text()),
+              "…kept in the layer by the line's new words, never in the note")
+        p.call("closeAll")
+        p.open_fresh()
+        p.call("cursor", p.offset_of_line(p.line_of("scooter")) + 8)
+        check(p.wait(lambda: p.call("askWord") == "reply") and p.wait(lambda: "agent: a bike will do" in p.call("chat")),
+              "…and found again when the note is opened again")
 
         # 11j. what the page shows under a line opens room there: Ctrl+D's
         # "when?" pushes the next line down rather than covering it, and a

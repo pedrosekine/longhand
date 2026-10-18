@@ -79,6 +79,7 @@ PROPOSALS = STATE_HOME / "proposals.json"
 PLAN_STATE = STATE_HOME / "plan.json"
 INBOX_CACHE = STATE_HOME / "inbox.json"          # hashes only: what the inbox scan saw
 DOCS_CACHE = STATE_HOME / "documents.json"      # pages of filed documents
+THREADS = STATE_HOME / "threads.json"          # the page's: a conversation's lines, through word edits
 DOCS_TEXT = STATE_HOME / "doc-text"             # their text, converted when the agent asks
 # Every rating the student gave a reply: helpful or not, with the prompt and
 # model that made it (the improvement loop, docs/agent.md).
@@ -804,6 +805,29 @@ def prepare(cfg: dict, args) -> tuple[Paths, list[dict], list[dict]]:
     return paths, visible, fired
 
 
+def carried_threads(paths: Paths, visible: list[dict]) -> dict[str, str]:
+    """block hash -> the hash its conversation is filed under, for the blocks
+    whose words changed in the page since it was answered: the page keeps the
+    conversation on the block's lines (plugin-page/Threads.js), by each
+    line's words (Task.js identity, without its indentation)."""
+    try:
+        pins = json.loads(THREADS.read_text()).get(paths.stamp) or []
+    except (OSError, ValueError, AttributeError):
+        return {}
+    by_id = {}
+    for x in pins:
+        if isinstance(x, dict) and x.get("id") and x.get("rec"):
+            by_id.setdefault(x["id"], x["rec"])
+    out = {}
+    for b in visible:
+        for line in b["text"].split("\n"):
+            rec = by_id.get(tasklib.identity(line).lstrip()) if line.strip() else None
+            if rec:
+                out[b["hash"]] = rec
+                break
+    return out
+
+
 def cmd_context(cfg: dict, args) -> int:
     paths, visible, fired = prepare(cfg, args)
     sys.stdout.write(build_payload(paths, args.trigger, fired, visible, cfg))
@@ -814,7 +838,8 @@ def cmd_run(cfg: dict, args) -> int:
     paths, visible, fired = prepare(cfg, args)
     if args.trigger == "open":
         known = load_state(paths)["blocks"]
-        if all(b["hash"] in known for b in visible):
+        carried = carried_threads(paths, visible)      # reworded, with its conversation: not new
+        if all(b["hash"] in known or b["hash"] in carried for b in visible):
             print("open: nothing new since the last pass")
             return 0
     payload = build_payload(paths, args.trigger, fired, visible, cfg)
@@ -895,6 +920,10 @@ def cmd_chat(cfg: dict, args) -> int:
     now = None
     if block is None and rec.get("key"):
         now = next((b for b in visible if block_key(b["text"]) == rec["key"]), None)
+    if block is None and now is None:
+        # Its words changed in the page: the block that carries it now.
+        carried = carried_threads(paths, visible)
+        now = next((b for b in visible if carried.get(b["hash"]) == args.hash), None)
     paths.payloads.mkdir(parents=True, exist_ok=True)
     stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
     payload_file = paths.payloads / f"{stamp}-chat-{args.hash}.md"
