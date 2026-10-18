@@ -1190,3 +1190,10 @@ only the window and the panels around it differ.
   machinery that keeps who made a line, and the agent is told what the
   block reads now. The trade, chosen in the plan: a reworded question no
   longer gets a fresh answer — a new question is a new block.
+- **2026-10-18 — `#` offers tags; "on" cues a date.** Both small, both
+  about one judgement: when to help and when to keep out of the way. The
+  tag list opens only after a letter and closes when the word is a tag
+  already, so headings and Enter behave as before; "on" binds a date only
+  before a weekday or a month, since it is the commonest word in a sentence.
+  The first live run caught the list closing on its own first letter: the
+  tag being typed was counted as a tag already written.

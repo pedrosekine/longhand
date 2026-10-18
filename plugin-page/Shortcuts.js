@@ -24,7 +24,7 @@
 var places = {
   any: "anywhere in the page",
   note: "in the note",
-  mention: "while @ lists projects",
+  mention: "while @ or # lists tags",
   search: "in find",
   dash: "in the dashboard",
   calendar: "in the calendar",

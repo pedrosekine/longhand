@@ -502,7 +502,8 @@ BorderSurface {
           width: page.dashFieldKind === "rename" || page.dashFieldKind === "answer" ? page.sp(460) : page.sp(220)
           placeholderText: page.dashFieldKind === "rename" ? "its words"
             : page.dashFieldKind === "grade" ? "7.5, A-… · empty clears"
-            : page.dashFieldKind === "answer" ? page.dashWhenFor.question.question : "friday, tomorrow, 20 oct…"
+            : page.dashFieldKind === "answer" ? (page.dashWhenFor && page.dashWhenFor.question ? page.dashWhenFor.question.question : "")
+            : "friday, tomorrow, 20 oct…"
           font.family: page.fontFamily
           font.styleName: page.fontStyle
           font.pixelSize: page.fs(Style.font.body)

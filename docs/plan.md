@@ -421,9 +421,13 @@ section, word for word, and to the diary's decisions log.
 
 Small, when passing by:
 
-- **Tag suggestions while typing** (2026-10-11) — `#` offers the tags that
-  exist, so a new tag is a choice, not a typo.
-- **"on" as a cue word** ("conference on the 8th of Feb").
+- ~~**Tag suggestions while typing**~~ *done 2026-10-18*: `#` and a letter
+  offer the tags that exist — the projects', then those written in the
+  notes, most used first (`Tags.js`) — in the `@` list; never for a lone
+  `#` (a heading on its way), never once the word is a tag already.
+- ~~**"on" as a cue word**~~ *done 2026-10-18*: "conference on the 8th of
+  Feb" binds — but only when a weekday or a month follows "on", so "work on
+  part 3" and "focus on today" stay words (`Bound.js`, `tests/tst_bound.qml`).
 - ~~**The calendar and the open pass race**~~ *fixed 2026-10-18*: the open
   pass and the day's plan wait for the fetch the opening started (at most
   20 s); the live suite checks the order with a slow fetch.

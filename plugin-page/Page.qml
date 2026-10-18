@@ -15,6 +15,7 @@ import "Days.js" as Days
 import "Task.js" as Task
 import "Authorship.js" as Authorship
 import "Threads.js" as Threads
+import "Tags.js" as Tags
 import "Shortcuts.js" as Sc
 
 // The page: today's note as a blank sheet in the shell, with the agent in
@@ -1024,22 +1025,35 @@ Item {
   // are (2026-10-15). It is only a way of *writing*: what lands in the note
   // is the project's own `#tag`, which is what the store, the payload and
   // the sidebar have always read.
+  // `#` does the same for any tag (2026-10-18, Tags.js): the tags that
+  // exist, so a new tag is a choice and not a typo — once a letter follows
+  // it, so starting a heading never flashes a list, and never once what is
+  // written is a tag already.
   function updateMention() {
     if (!svc.ready || !root.showing) { root.mention = null; return }
     var pos = editor.cursorPosition
     var text = editor.text
     var before = text.substring(text.lastIndexOf("\n", pos - 1) + 1, pos)
     // Only at a word's start, so an address ("a@b") is never a call.
-    var m = before.match(/(^|\s)@([\w\/-]*)$/)
+    var m = before.match(/(^|\s)([@#])([\w\/-]*)$/)
     if (!m) { root.mention = null; return }
-    var q = m[2].toLowerCase()
+    var q = m[3].toLowerCase()
     var items = []
-    for (var i = 0; i < root.projects.length; i++) {
-      var pr = root.projects[i]
-      if (q === "" || pr.tag.toLowerCase().indexOf(q) >= 0 || String(pr.name || "").toLowerCase().indexOf(q) >= 0)
-        items.push(pr)
+    if (m[2] === "#") {
+      // The note's tags, without the one being written (it would count as
+      // written already, and close the list on its own first letter).
+      var rest = text.substring(0, pos - m[3].length - 1) + text.substring(pos)
+      items = Tags.suggest(Tags.known(root.projects, root.tasks, rest), q)
+      if (items.length === 0) { root.mention = null; return }
+    } else {
+      for (var i = 0; i < root.projects.length; i++) {
+        var pr = root.projects[i]
+        if (q === "" || pr.tag.toLowerCase().indexOf(q) >= 0 || String(pr.name || "").toLowerCase().indexOf(q) >= 0)
+          items.push(pr)
+      }
     }
-    root.mention = { start: pos - m[2].length - 1, query: m[2], items: items, atLineStart: m[1] === "" }
+    root.mention = { start: pos - m[3].length - 1, query: m[3], items: items, sign: m[2],
+                     atLineStart: m[1] === "" && m[2] === "@" }
     if (root.mentionFocus > items.length - 1) root.mentionFocus = Math.max(0, items.length - 1)
   }
 
@@ -1058,7 +1072,7 @@ Item {
       root.used("mention", "class")
     } else {
       editor.insert(m.start, "#" + pr.tag + " ")
-      root.used("mention", "tag")
+      root.used(m.sign === "#" ? "tag-suggested" : "mention", "tag")
     }
   }
 
@@ -4964,7 +4978,7 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     textFormat: Text.PlainText
                     elide: Text.ElideRight
-                    text: "#" + modelData.tag + "  " + modelData.name
+                    text: "#" + modelData.tag + (modelData.name ? "  " + modelData.name : "")
                     color: root.foreground
                     font.family: root.fontFamily
                     font.styleName: root.fontStyle
@@ -4975,7 +4989,8 @@ Item {
                     cursorShape: Qt.PointingHandCursor
                     hoverEnabled: true
                     onClicked: { root.mentionFocus = index; root.acceptMention(false) }
-                    PanelToolTip { visible: parent.containsMouse; text: root.tips([["Write its #tag", "mentionPick"], ["Start the class", "mentionClass"]]) }
+                    PanelToolTip { visible: parent.containsMouse; text: root.mention && root.mention.atLineStart
+                      ? root.tips([["Write its #tag", "mentionPick"], ["Start the class", "mentionClass"]]) : root.tip("Write its #tag", "mentionPick") }
                   }
                 }
               }

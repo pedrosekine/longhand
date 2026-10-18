@@ -15,6 +15,21 @@ TestCase {
     compare(Bound.cue("read paper by Smith due friday").phrase, "friday")   // the last cue counts
   }
 
+  function test_on_cues_a_date_only_when_one_follows() {
+    var c = Bound.cue("conference on the 8th of Feb")
+    compare(c.phrase, "the 8th of Feb"); compare(c.title, "conference")
+    compare(Bound.cue("call the dean on friday 10:00").phrase, "friday 10:00")
+    compare(Bound.cue("hand in on 12.11"), null)                         // the dates read no dotted days
+    compare(Bound.cue("defence on March 3").phrase, "March 3")
+    compare(Bound.cue("essay on Kant by monday").phrase, "monday")      // the last cue counts
+    compare(Bound.cue("read on friday by the 9th of Nov").phrase, "the 9th of Nov")
+    compare(Bound.cue("work on part 3"), null)
+    compare(Bound.cue("focus on today"), null)
+    compare(Bound.cue("comment on 3 papers"), null)
+    compare(Bound.cue("notes on monday's lecture").phrase, "monday's lecture")  // lights up only if it parses
+    compare(Bound.cue("on friday"), null)                                // nothing to name the deadline
+  }
+
   function test_no_cue_no_deadline() {
     compare(Bound.cue("call mum by phone"), null)
     compare(Bound.cue("work until done"), null)

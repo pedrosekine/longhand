@@ -131,7 +131,9 @@ Typing `@` calls a project: the list narrows as you type, Enter leaves its
 `#tag` where the `@` was, and Shift+Enter (on a line the `@` opened) starts
 the class with its `# Course #tag` heading. It is the same vocabulary as the
 sidebar's projects list, wherever your hands are. An address — `pedro@it-u` —
-is never a call, since `@` only counts at the start of a word.
+is never a call, since `@` only counts at the start of a word. Typing `#` and
+a letter offers the tags that already exist (the projects', then the ones
+in your notes), so a new tag is a choice rather than a typo.
 
 **private** in the header (or `Ctrl+Shift+P`) marks the open note unseen: it
 writes `agent: false` into the note, the word then reads "private · the agent
@@ -256,7 +258,8 @@ python3 tests/page/run.py                                     # the page itself,
 
 A checkbox can stand for a deadline. Write it with a date at the end —
 `- [ ] chapter 2 draft #thesis due fri 17:00` (or `by monday`, `until 20
-oct`, `the 8th of Feb`, `📅 tomorrow`) — and the date lights up as you type
+oct`, `the 8th of Feb`, `on friday`, `📅 tomorrow`; "on" counts only before
+a weekday or a month) — and the date lights up as you type
 it, with the pill it will become; when you leave the line it is the
 deadline, nothing asked (as in Todoist). To keep the date as words: Backspace
 right as it lights up, `Ctrl+D` on the line, or `Ctrl+Z` after it is bound.

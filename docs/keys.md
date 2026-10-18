@@ -65,11 +65,11 @@ Where a row has two keys, either works: the second is usually the one another ap
 
 | | Keys | Works |
 |---|---|---|
-| Previous project | `↑` | while @ lists projects |
-| Next project | `↓` | while @ lists projects |
-| Write its #tag | `Enter` · `Tab` | while @ lists projects |
-| Start the class (# Course #tag) | `Shift+Enter` | while @ lists projects |
-| Close the list | `Esc` | while @ lists projects |
+| Previous project | `↑` | while @ or # lists tags |
+| Next project | `↓` | while @ or # lists tags |
+| Write its #tag | `Enter` · `Tab` | while @ or # lists tags |
+| Start the class (# Course #tag) | `Shift+Enter` | while @ or # lists tags |
+| Close the list | `Esc` | while @ or # lists tags |
 
 ## Find
 

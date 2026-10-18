@@ -701,6 +701,21 @@ def main() -> int:
         p.call("type", "mail me at pedro@it")
         check(p.call("mention") == "null", "an address is not a call")
 
+        # `#` offers the tags that exist (2026-10-18): the projects', then the
+        # ones written in the notes; not for a heading, not for a tag done.
+        p.call("enter")
+        p.call("type", "#")
+        time.sleep(0.3)
+        check(p.call("mention") == "null", "a lone # (a heading on its way) offers nothing")
+        p.call("type", "d")
+        check(p.wait(lambda: (json.loads(p.call("mention")) or [""])[0] == "dtm"),
+              f"#d offers the tags that exist, the one starting so first ({p.call('mention')})")
+        p.call("mentionPick", 0, "true")
+        check(p.wait(lambda: p.call("text").endswith("#dtm ")), f"…Enter (even shifted) writes it ({p.call('text')[-20:]!r})")
+        p.call("type", "and #intsem")
+        time.sleep(0.3)
+        check(p.call("mention") == "null", "…and a tag written in full is left as it is: Enter stays a new line")
+
         # 11e. emphasis: Ctrl+B writes the markers the file keeps, and the
         # sidebar moved to the shifted pair to make room for it.
         CTRL, SHIFT, KEY_B = 0x04000000, 0x02000000, 0x42

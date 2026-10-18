@@ -10,12 +10,23 @@
 // with no time is a deadline at the end of that day (the store says 23:59).
 //
 // A line becomes bound when it is written with a cue at its end ("due
-// friday 17:00", "by monday", "until 20 oct", "before tomorrow", "📅 fri"),
+// friday 17:00", "by monday", "until 20 oct", "before tomorrow", "📅 fri",
+// "on the 8th of Feb"),
 // or by Ctrl+D. The first #tag in it is the deadline's project.
 .pragma library
 
 var CUE_RE = /^(.*\S)\s+(?:due|by|until|before)\s+(.+?)\s*$/i
 var CAL_RE = /^(.*\S)\s*📅\s*(.+?)\s*$/
+// "on" is the commonest of them in a sentence ("work on part 3", "focus on
+// today"), so it cues a date only when what follows begins as one: a
+// weekday, a month and a day, or a day and a month ("the 8th of Feb") —
+// never "today", never a lone number.
+var MONTH = "(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\\.?"
+var ON_RE = new RegExp("^(.*\\S)\\s+on\\s+("
+  + "(?:mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun)[a-z]*\\b.*"
+  + "|(?:the\\s+)?\\d{1,2}(?:st|nd|rd|th)?(?:\\s+of)?\\s+" + MONTH + "(?:\\s.*)?"
+  + "|" + MONTH + "\\s+\\d{1,2}(?:st|nd|rd|th)?\\b.*"
+  + ")\\s*$", "i")
 var TAG_RE = /(^|\s)#([\w\/-]+)/
 var ANCHOR_RE = /^\s*[-*+] \[([ xX\/\-])\] .*\s\^d(\d+)\s*$/
 // What a date phrase has in it. "by phone" or "until done" must not read as
@@ -36,7 +47,12 @@ function projectOf(words) {
 // A cue at the end of a checkbox's words, or null.
 // { head: the words before the cue, phrase: the date words, title, project }
 function cue(body) {
-  var m = body.match(CAL_RE) || body.match(CUE_RE)
+  var m = body.match(CAL_RE)
+  if (!m) {
+    // The last cue counts: of a cue word and "on", the one further along.
+    var w = body.match(CUE_RE), o = body.match(ON_RE)
+    m = w && o ? (o[1].length > w[1].length ? o : w) : (w || o)
+  }
   if (!m || !DATEISH_RE.test(m[2])) return null
   return { head: m[1], phrase: m[2], title: titleOf(m[1]), project: projectOf(body) }
 }
