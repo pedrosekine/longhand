@@ -370,10 +370,17 @@ section, word for word, and to the diary's decisions log.
    store, and every payload carries the store whole; calendars shared whole
    make the boundary matter more. Three ways out, in the record; plus a key
    and a visible treatment for the block-level `[!private]` callout.
-4. **Structure** — split `Page.qml` (5,822 lines on 2026-10-17, ~900 of them
-   added that day) into tested modules: bound lines, the runner queue, the
-   dashboard, settings; install by symlink so the repo is the install; one
-   deadline-store parser for both plugins. Before item 5.
+4. **Structure** — split `Page.qml` (5,822 lines on 2026-10-17, 6,337 by
+   the 18th). *First pass done 2026-10-18*: the five sheets beside the note
+   — the dashboard, settings, keys, the sidebar, the margin — each in a file
+   of its own (`Dashboard.qml`, `SettingsSheet.qml`, `KeysSheet.qml`,
+   `Sidebar.qml`, `Margin.qml`), moved by `tools/extract_sheet.py` with
+   their bodies unchanged; `Page.qml` is 4,415 lines. Left: the note sheet
+   itself (most coupled to the editor), and the logic — bound lines, the
+   runner queue — into `.js` libraries with unit tests. Install by symlink
+   is out: the Omarchy plugin folder refuses symlinks, so the install stays
+   a copy. One deadline-store parser for both plugins, still to do. Before
+   item 5.
 5. **A project as one continuous page** (2026-10-17, the consistency
    grilling). Every section of a project in one scroll, newest first,
    editable in place, each edit landing in its day's note. Needs writing

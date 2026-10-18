@@ -1095,3 +1095,15 @@ only the window and the panels around it differ.
   first cases, made from this weekend's findings, fail the prompts from
   before the rewrite exactly where they failed ("By when do you want to
   decide…?"; reasons resting only on free hours) and pass the ones in use.
+- **2026-10-18 — Page.qml split, first pass.** The page had grown to 6,337
+  lines, a third of them five sheets that only draw. Each sheet now lives in
+  its own file and receives the page as `page`; the page's objects it draws
+  from (the palette, the editor, the agent's state…) arrive as read-only
+  properties of the same names, and the few inner items the page's keys
+  reach for (a sheet's key catcher, its field) are exposed as `…Ref`
+  aliases, so nothing in a sheet's body changed but `root.` → `page.`. The
+  move was done by a script (`tools/extract_sheet.py`) rather than by hand,
+  so it can be repeated and checked; its first version rewrote words inside
+  strings and comments ("not a calendar." became an alias), caught by the
+  load check, and it now touches code only. Behaviour unchanged: the 182 unit
+  checks and the whole live page suite pass.
