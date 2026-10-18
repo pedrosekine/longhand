@@ -56,7 +56,8 @@ import json, os, re, sys
 d = os.environ["STUB_DIR"]
 payload = sys.stdin.read()
 reply = {"proposals": [], "questions": [], "knowledge": []}
-if os.path.exists(os.path.join(d, "plan-on")) and payload.startswith("# Plan"):
+if os.path.exists(os.path.join(d, "plan-on")) and payload.startswith("# Plan") \\
+        and json.loads(re.search(r"```json\\n(.*?)\\n```", payload, re.S).group(1))["candidates"]:
     data = json.loads(re.search(r"```json\\n(.*?)\\n```", payload, re.S).group(1))
     c = data["candidates"][0]
     day = data["fortnight"][1]["date"]
@@ -64,6 +65,14 @@ if os.path.exists(os.path.join(d, "plan-on")) and payload.startswith("# Plan"):
         day = c["due"][:10]
     reply["proposals"].append({"kind": "do-date", "key": c["key"], "date": day, "why": "Tomorrow is free."})
     reply["questions"].append({"key": "", "question": "Do you work on weekends?", "recommended": "No"})
+# A scripted reply (slice 5): its "key_of" names a box by its words.
+if os.path.exists(os.path.join(d, "plan-reply.json")) and payload.startswith("# Plan"):
+    data = json.loads(re.search(r"```json\\n(.*?)\\n```", payload, re.S).group(1))
+    reply = json.load(open(os.path.join(d, "plan-reply.json")))
+    for p in reply["proposals"]:
+        if "key_of" in p:
+            want = p.pop("key_of")
+            p["key"] = next((b["key"] for b in data["open_boxes"] if b["title"] == want), "")
 ev = lambda t, part: print(json.dumps({"type": t, "sessionID": "ses_page", "part": part}))
 ev("text", {"type": "text", "text": "```json\\n" + json.dumps(reply) + "\\n```"})
 ev("step_finish", {"type": "step-finish", "cost": 0.0001, "tokens": {"input": 1, "output": 1, "reasoning": 0, "total": 2}})
@@ -140,7 +149,7 @@ class Page:
         chatstub.write_text(CHAT_STUB)
         self.runner.write_text(f"""#!/bin/bash
 case "$1" in
-  accept|projects|sections|next|tasks|box|timetable|plan|proposals|proposal|rate|notebook) exec "{ROOT}/agent/longhand-agent" "$@" ;;
+  accept|projects|sections|next|tasks|box|timetable|plan|proposals|proposal|rate|notebook|autonomy) exec "{ROOT}/agent/longhand-agent" "$@" ;;
   run) sleep 2; exit 0 ;;
   chat) sleep 2; exec python3 "{chatstub}" "{self.vault}/agents/longhand/daily" "$@" ;;
 esac
@@ -1216,6 +1225,7 @@ def main() -> int:
         check(p.wait(lambda: "forget · profile.md: «Lives in Vienna.»" in (know / "corrections.md").read_text()),
               "…and recorded in corrections.md, so it stays forgotten")
         check(p.wait(lambda: "stays forgotten" in p.call("notebookNote")), f"…and the page says so ({p.call('notebookNote')})")
+        p.wait(lambda: not any(r["text"] == "Lives in Vienna." for r in json.loads(p.call("notebookRows"))))
         rows = json.loads(p.call("notebookRows"))
         p.call("notebookFocus", next(i for i, r in enumerate(rows) if r["text"].startswith("Grading")))
         p.call("notebookKey", KEY_RETURN, 0)
@@ -1223,7 +1233,8 @@ def main() -> int:
         p.call("notebookType", "Grades run 1 to 5; 4 passes.")
         p.call("notebookKey", KEY_RETURN, 0)
         check(p.wait(lambda: "- Grades run 1 to 5; 4 passes.\n" in (know / "profile.md").read_text()),
-              "…Enter puts the student's words in its place")
+              f"…Enter puts the student's words in its place (note: {p.call('notebookNote')!r}; "
+              f"correcting: {p.call('notebookCorrecting')}; file: {(know / 'profile.md').read_text()!r})")
         check(p.wait(lambda: any(r["kind"] == "correction" and "4 passes" in r["text"] for r in json.loads(p.call("notebookRows")))),
               "…and the correction is listed under the student's corrections")
         check(p.call("notebookKey", KEY_ESC, 0) == "true" and p.call("settingsView") == "main" and p.call("settingsOpen") == "true",
@@ -1363,7 +1374,8 @@ def main() -> int:
         p.call("refreshProposals")
         def filing():
             return [(n, r) for n, r in enumerate(json.loads(p.call("dashRows"))) if r["kind"] == "proposal" and r.get("file")]
-        check(p.wait(lambda: len(filing()) == 1), f"a document in the inbox arrives as a row to file it ({filing()})")
+        check(p.wait(lambda: len(filing()) == 1), f"a document in the inbox arrives as a row to file it ({filing()}; "
+              f"runner: {subprocess.run([str(p.runner), 'proposals'], capture_output=True, text=True, env=p.env).stdout[:400]!r})")
         fi, frow = filing()[0]
         check(frow["file"] == f"{TODAY_ISO} DTM handout.pdf" and "its name says Design Theory" in frow["why"],
               f"…named, and saying why it is the course's ({frow})")
@@ -1392,6 +1404,82 @@ def main() -> int:
         check(p.call("sayReads", json.dumps(read)) == "read: Seven Myths (p. 1, 4) · Brief (whole)",
               f"under a reply, what the agent read for it, with the pages ({p.call('sayReads', json.dumps(read))})")
         check(p.call("sayReads", json.dumps({"reply": "x"})) == "", "…and nothing when it read nothing")
+
+        # 12i. the agent's other actions (docs/agent.md, slice 5): steps and
+        # a deadline proposed and accepted, written by the page as the
+        # agent's; a priority raised to "do it and tell me" done on its own,
+        # told, and undone with one key; the levels set in Settings.
+        p.call("openDay", TODAY)
+        p.wait(lambda: p.call("header") != "" and p.call("header").startswith(dt.date.today().strftime("%A")))
+        p.call("cursor", len(p.call("text")))
+        p.call("type", "\n- [ ] write the essay")
+        check(p.wait(lambda: "- [ ] write the essay" in p.note()), "a box to work on")
+        poster_day = (dt.date.today() + dt.timedelta(days=20)).isoformat()
+        (p.stub / "plan-reply.json").write_text(json.dumps({"proposals": [
+            {"kind": "priority", "key_of": "write the essay", "priority": 2, "why": "due soonest"},
+            {"kind": "steps", "key_of": "write the essay", "steps": ["outline it", "draft the intro"], "why": "a big box"},
+            {"kind": "deadline", "title": "Poster", "date": poster_day, "project": "", "why": "the note says so"}],
+            "questions": [], "knowledge": []}))
+        p.call("setAutonomy", "priority", "do")
+        settings_json = p.tmp / "config" / "longhand" / "settings.json"
+        check(p.wait(lambda: settings_json.exists() and json.loads(settings_json.read_text()).get("autonomy") == {"priority": "do"}),
+              "a level set in Settings is kept in settings.json")
+        p.call("dash")
+        p.call("plan", "true")
+        def acts():
+            return [(n, r) for n, r in enumerate(json.loads(p.call("dashRows"))) if r["kind"] in ("proposal", "told")]
+        check(p.wait(lambda: {r.get("ask") for _, r in acts()} >= {"steps", "deadline", "priority"}, timeout=15),
+              f"three kinds arrive as rows ({[(r['kind'], r.get('ask')) for _, r in acts()]}; "
+              f"runner: {subprocess.run([str(p.runner), 'proposals'], capture_output=True, text=True, env=p.env).stdout[:600]!r}; "
+              f"plan: {(p.state / 'longhand' / 'plan.json').read_text() if (p.state / 'longhand' / 'plan.json').exists() else ''!r}; "
+              f"stub: {[f.name for f in p.stub.iterdir()]})")
+        check(p.wait(lambda: re.search(r"- \[ \] write the essay ⏫", p.note())), "the priority, at do it and tell me, is set on its own")
+        told = next(r for _, r in acts() if r.get("ask") == "priority")
+        check(told["kind"] == "told" and told["say"].startswith("done: priority ▲ high"), f"…and told ({told['say']!r})")
+        check(next(r for _, r in acts() if r.get("ask") == "steps")["say"] == "steps: outline it · draft the intro",
+              "steps are proposed under their box")
+        # The cursor on the deadline's row while the steps are accepted (by
+        # mouse, say): the rows they add above must not move it.
+        p.call("dashFocus", next(n for n, r in acts() if r.get("ask") == "deadline"))
+        check(p.call("acceptRow", "proposal", "steps") == "true", "the steps accepted")
+        check(p.wait(lambda: "  - [ ] outline it" in p.note()) and p.wait(lambda: p.call("focusedDashRow") == "proposal/deadline")
+              and p.call("focusedDashRow") == "proposal/deadline",
+              f"rows added above the cursor do not move it off its row ({p.call("focusedDashRow")})")
+        check(p.wait(lambda: re.search(r"- \[ \] write the essay ⏫[^\n]*\n  - \[ \] outline it\n  - \[ \] draft the intro\n", p.note() + "\n")),
+              f"accepting writes the steps under the box, one level in ({p.note()[-160:]!r})")
+        check(p.wait(lambda: p.call("authorOf", p.line_of("- [ ] outline it")) == "agent"), "…as the agent's (◇)")
+        p.wait(lambda: not any(r.get("ask") == "steps" for _, r in acts()))
+        check(p.call("dashKeyOn", "proposal", "deadline", KEY_RETURN, CTRL) == "true", "Ctrl+Enter accepts the deadline")
+        check(p.wait(lambda: f"- [ ] Poster 📅 {poster_day}" in p.note()),
+              f"accepting a deadline found in the writing writes its box (rows now: "
+              f"{[(r['kind'], r.get('ask'), r.get('say')) for _, r in acts()]}; text has it: {'Poster' in p.call('text')}; "
+              f"note tail: {p.note()[-160:]!r}; ledger: {[(x['kind'], x['status']) for x in json.loads(ledger_file.read_text())['items'][-4:]]})")
+        check(p.wait(lambda: p.call("authorOf", p.line_of("Poster 📅")) == "agent"), "…the agent's too")
+        p.wait(lambda: not any(r.get("ask") == "deadline" for _, r in acts()))
+        check(p.call("dashKeyOn", "told", "priority", KEY_DELETE, 0) == "true", "Delete on what it did undoes it")
+        check(p.wait(lambda: re.search(r"- \[ \] write the essay(?! ⏫)[^\n⏫]*\n  - \[ \] outline it", p.note())),
+              f"…the priority comes off the line ({p.note()[-200:]!r})")
+        check(p.wait(lambda: any(x["kind"] == "priority" and x["status"] == "undone"
+                                 for x in json.loads(ledger_file.read_text())["items"])), "…recorded as undone")
+        (p.stub / "plan-reply.json").unlink()
+        p.call("dash")
+        p.call("settings")
+        KEY_M, KEY_RIGHT = 0x4d, 0x01000014
+        check(p.call("settingsKey", KEY_M, CTRL) == "true" and p.call("settingsView") == "autonomy", "Ctrl+M in settings: what the agent may do")
+        check(p.wait(lambda: "priority=do" in p.call("autonomyKinds") and len(json.loads(p.call("autonomyKinds"))) == 7),
+              f"…every kind with its level ({p.call('autonomyKinds')})")
+        p.call("autonomyFocus", 0)
+        p.call("autonomyKey", KEY_RIGHT, 0)
+        check(p.wait(lambda: json.loads(settings_json.read_text())["autonomy"].get("do-date") == "do"),
+              "→ raises the picked kind one level")
+        last = json.loads(p.call("autonomyKinds")).index("done=ask")
+        p.call("autonomyFocus", last)
+        p.call("autonomyKey", KEY_RIGHT, 0)
+        check(p.wait(lambda: json.loads(settings_json.read_text())["autonomy"].get("done") == "never"),
+              "…a question only goes from ask me straight to never")
+        p.call("autonomyKey", 0x01000000, 0)
+        p.call("settingsKey", 0x01000000, 0)
+        settings_json.write_text(json.dumps({k: v for k, v in json.loads(settings_json.read_text()).items() if k != "autonomy"}))
 
         # 12b. the keys sheet: every key the page answers to, listed; one
         # moved through the sheet, kept in keys.json, and working in the note

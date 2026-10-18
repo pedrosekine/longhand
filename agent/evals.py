@@ -93,16 +93,20 @@ def check_plan(case: dict, reply: dict) -> tuple[list[dict], dict]:
     r = case.get("rules") or {}
     data = _plan_data(case["payload"])
     today = dt.date.fromisoformat(data.get("today") or dt.date.today().isoformat())
+    may = data.get("you_may")
+    allowed = {k: ("ask" if may is None or k in may else "never") for k in planlib.KINDS}
     props, qs = planlib.validate(reply, data.get("candidates") or [], data.get("fortnight") or [],
-                                 {"next": 1, "items": []}, today)
-    out = [{"check": f"at least {r.get('min_dates', 0)} do-dates kept", "pass": len(props) >= r.get("min_dates", 0),
-            "why": f"{len(props)} kept of {len(reply.get('proposals') or [])}"},
+                                 {"next": 1, "items": []}, today, data.get("open_boxes") or [],
+                                 data.get("deadlines") or [], allowed)
+    dates = [p for p in props if p["kind"] == "do-date"]
+    out = [{"check": f"at least {r.get('min_dates', 0)} do-dates kept", "pass": len(dates) >= r.get("min_dates", 0),
+            "why": f"{len(dates)} kept of {sum(1 for p in reply.get('proposals') or [] if p.get('kind') == 'do-date')}"},
            {"check": f"at most {r.get('max_questions', planlib.MAX_QUESTIONS)} questions",
             "pass": len(qs) <= r.get("max_questions", planlib.MAX_QUESTIONS), "why": f"{len(qs)}"}]
     asked = " | ".join(q["question"] for q in qs)
     for pat in r.get("ask_about") or []:
         out.append({"check": f"asks about /{pat}/", "pass": bool(re.search(pat, asked, re.I)), "why": asked[:160]})
-    dated = " | ".join(p["title"] for p in props)
+    dated = " | ".join(p["title"] for p in dates)
     for pat in r.get("date_for") or []:
         out.append({"check": f"dates /{pat}/", "pass": bool(re.search(pat, dated, re.I)), "why": dated[:160]})
     for pat in r.get("no_date_for") or []:
@@ -115,7 +119,10 @@ def judge_payload(case: dict, answer: str) -> str:
     payload the answer was made from (so 'grounded in the context' can be
     judged against the context)."""
     crit = "\n".join(f"{i + 1}. {c}" for i, c in enumerate(case.get("criteria") or []))
-    return (f"# Job\n{case['job']}\n\n# Criteria\n{crit}\n\n# The answer to grade\n\n{answer}\n\n"
+    limits = (f"\n\n# Limits\nA plan proposes at most {planlib.MAX_PROPOSALS} do-dates and asks at most "
+              f"{planlib.MAX_QUESTIONS} questions; with more candidates than that, the rest wait for a later plan."
+              if case["job"] == "plan" else "")
+    return (f"# Job\n{case['job']}{limits}\n\n# Criteria\n{crit}\n\n# The answer to grade\n\n{answer}\n\n"
             f"# The payload the answer was made from\n\n{case['payload']}\n")
 
 

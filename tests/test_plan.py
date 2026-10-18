@@ -245,11 +245,16 @@ def main() -> int:
           f"planModel gives the planner its own model, without the margin's variant ({argv[argv.index('--model') + 1]})")
     cfg.write_text(json.dumps(c))
 
-    # Nothing to plan: no model call.
+    # Prose alone is something to read now (a deadline may be in it, slice 5);
+    # an empty week is nothing to plan: no model call.
     note.write_text("Just prose today.\n")
     n = calls()
     out = json.loads(agent("plan", "--force").stdout)
-    check(not out["ran"] and calls() == n, f"with nothing to plan, no model is asked ({out['why']})")
+    check(out["ran"] and calls() == n + 1, "a week of prose with no box is read: a deadline may be in the writing")
+    note.write_text("")
+    n = calls()
+    out = json.loads(agent("plan", "--force").stdout)
+    check(not out["ran"] and calls() == n, f"with nothing to plan, no model is asked ({out.get('why')})")
 
     print("PASS" if failures == 0 else f"{failures} FAILED")
     return 1 if failures else 0

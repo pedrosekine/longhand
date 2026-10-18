@@ -32,7 +32,8 @@ var places = {
   margin: "in the margin",
   chat: "in the conversation box",
   settings: "in settings",
-  notebook: "in what the agent knows"
+  notebook: "in what the agent knows",
+  autonomy: "in what the agent may do"
 }
 var typing = { note: true, mention: true, search: true, chat: true, settings: true }
 
@@ -137,6 +138,7 @@ var actions = [
   { id: "settingsForget", group: "settings", places: ["settings"], does: "Remove the picked calendar", keys: ["Ctrl+Shift+Backspace"] },
   { id: "settingsSound", group: "settings", places: ["settings"], does: "The tick's sound: on or off", keys: ["Ctrl+Shift+S"] },
   { id: "settingsNotebook", group: "settings", places: ["settings"], does: "What the agent knows: its notes, to correct or forget", keys: ["Ctrl+K"] },
+  { id: "settingsAutonomy", group: "settings", places: ["settings"], does: "What the agent may do: each kind of action, ask me · do it and tell me · never", keys: ["Ctrl+M"] },
   { id: "notebookCorrect", group: "settings", places: ["notebook"], does: "Correct the picked note in your words (Enter too)", keys: ["Ctrl+E"] },
   { id: "notebookForget", group: "settings", places: ["notebook"], does: "Forget the picked note, or take a correction back", keys: ["Ctrl+Shift+Backspace"] },
   { id: "dashUndo", group: "dash", places: ["dash"], does: "Take the last tick back", keys: ["Ctrl+Z"] },

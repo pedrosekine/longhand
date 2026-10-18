@@ -1151,3 +1151,20 @@ only the window and the panels around it differ.
   The shell's own components are unaffected: inside their module the name
   still resolves to theirs; only a plugin's files, importing both, see
   Qt's.
+- **2026-10-18 — The agent's other actions, and how far each may go
+  (slice 5).** Five kinds join the do-date: a deadline found in the
+  writing, a priority, steps under a box, dropping a stale box, and "this
+  looks done — tick it?". The planner now reads the week's notes, because
+  most of what it could do is said in prose, not in boxes. Each kind has
+  a level the student sets — ask me, do it and tell me, never — and a
+  record beside it; Longhand may say "it could do this and tell you" after
+  nine of the last ten were accepted, and never raises anything itself.
+  What it does on its own is a row the student lets stand or undoes with
+  one key. Found while building: a refresh of the proposals asked for while
+  one was running was dropped — a PDF downloaded at that moment did not
+  show until the next refresh; it now runs once more. And the dashboard's
+  cursor was a row number: when rows were added above it (a plan run, the
+  agent's steps appearing), it silently moved to another row, and the next
+  key acted on that one. It now stays on its row by identity; a plan that
+  proposes the same thing again keeps the row on screen (same id) instead
+  of replacing it, and never proposes again what it already did and told.

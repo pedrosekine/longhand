@@ -153,6 +153,7 @@ Where a row has two keys, either works: the second is usually the one another ap
 | Remove the picked calendar | `Ctrl+Shift+Backspace` | in settings |
 | The tick's sound: on or off | `Ctrl+Shift+S` | in settings |
 | What the agent knows: its notes, to correct or forget | `Ctrl+K` | in settings |
+| What the agent may do: each kind of action, ask me · do it and tell me · never | `Ctrl+M` | in settings |
 | Correct the picked note in your words (Enter too) | `Ctrl+E` | in what the agent knows |
 | Forget the picked note, or take a correction back | `Ctrl+Shift+Backspace` | in what the agent knows |
 

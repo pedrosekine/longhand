@@ -181,11 +181,32 @@ ShellRoot {
     function dash(): void { page.toggleDash() }
     function dashOpen(): bool { return page.dashOpen }
     function dashFocus(i: int): void { page.taskFocus = i }
+    function focusedDashRow(): string { var r = page.taskRows[page.taskFocus]; return r ? r.kind + "/" + (r.item ? r.item.kind : (r.task ? page.taskTitle(r.task) : "")) : "" }
+    function acceptRow(rowKind: string, ask: string): bool {
+      for (var i = 0; i < page.taskRows.length; i++) {
+        var r = page.taskRows[i]
+        if (r.kind === rowKind && r.item && r.item.kind === ask) { page.acceptPlanned(r); return true }
+      }
+      return false
+    }
+    // Find the row and press the key in one step, so a list read again in
+    // between cannot move the key onto another row.
+    function dashKeyOn(rowKind: string, ask: string, key: int, mods: int): bool {
+      for (var i = 0; i < page.taskRows.length; i++) {
+        var r = page.taskRows[i]
+        if (r.kind === rowKind && r.item && r.item.kind === ask) { page.taskFocus = i; return page.dashKey({ key: key, text: "", modifiers: mods }) }
+      }
+      return false
+    }
     function dashAt(): int { return page.taskFocus }
     function dashCount(): string { return page.dashCount }
     function ticksHeard(): int { return page.ticksHeard }
     function plan(force: bool): void { page.runPlan(force) }
     function refreshProposals(): void { page.refreshProposals() }
+    function setAutonomy(kind: string, level: string): void { page.setAutonomy(kind, level) }
+    function autonomyKey(key: int, mods: int): bool { return page.autonomyKey({ key: key, text: "", modifiers: mods }) }
+    function autonomyKinds(): string { return JSON.stringify(page.autonomyData ? page.autonomyData.kinds.map(function (k) { return k.kind + "=" + k.level }) : []) }
+    function autonomyFocus(i: int): void { page.autonomyFocus = i }
     function sayReads(rec: string): string { return page.sayReads(JSON.parse(rec)) }
     function rate(value: string): void { page.rateReply(value) }
     // Who made it
@@ -206,8 +227,9 @@ ShellRoot {
           : r.kind === "month" ? { kind: "month", text: r.text }
           : r.kind === "shelf" || r.kind === "grading" ? { kind: r.kind, count: r.count }
           : r.kind === "raised" ? { kind: "raised", text: r.item.text }
-          : r.kind === "proposal" ? { kind: "proposal", id: r.item.id, date: r.item.date, why: r.item.why,
-                                      under: r.task ? page.taskTitle(r.task) : "", file: r.item.kind === "file" ? r.item.name : "" }
+          : r.kind === "proposal" || r.kind === "told" ? { kind: r.kind, id: r.item.id, date: r.item.date, why: r.item.why,
+                                      under: r.task ? page.taskTitle(r.task) : "", file: r.item.kind === "file" ? r.item.name : "",
+                                      ask: r.item.kind, say: page.sayAsk(r.item, !!r.task) }
           : r.kind === "question" ? { kind: "question", id: r.item.id, text: r.item.question, recommended: r.item.recommended }
           : r.kind === "deadline" ? { kind: "deadline", text: r.deadline.title, due: r.deadline.due,
                                       where: page.deadlineWhere(r.deadline), grade: r.deadline.grade }

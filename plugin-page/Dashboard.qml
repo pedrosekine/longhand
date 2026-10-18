@@ -121,7 +121,7 @@ BorderSurface {
             readonly property var deadline: kind === "deadline" ? modelData.deadline : null
             readonly property bool boxed: kind === "task" || kind === "deadline" || asks
             // The agent's proposal or question, under the box it is about.
-            readonly property bool asks: kind === "proposal" || kind === "question"
+            readonly property bool asks: kind === "proposal" || kind === "question" || kind === "told"
             readonly property string rowKey: page.rowKey(modelData)
             // Who made it (docs/agent.md): drawn in the box, as in the note.
             readonly property string author: page.rowAuthor(modelData)
@@ -367,10 +367,7 @@ BorderSurface {
                   elide: Text.ElideRight
                   maximumLineCount: 2
                   wrapMode: Text.WordWrap
-                  text: dashRow.kind === "proposal" && modelData.item.kind === "file"
-                      ? "file “" + modelData.item.name.replace(/\.pdf$/, "") + "” in " + (modelData.item.title || modelData.item.project)
-                    : dashRow.kind === "proposal" ? "do " + page.sayDate(modelData.item.date)
-                      + (modelData.task ? "" : " · " + (modelData.item.title || ""))
+                  text: dashRow.kind === "proposal" || dashRow.kind === "told" ? page.sayAsk(modelData.item, !!modelData.task)
                     : dashRow.kind === "question" ? modelData.item.question
                     : dashRow.kind === "shelf" ? "+" + modelData.count + " not now · " + page.keyName("dashOpen") + " to show"
                     : dashRow.kind === "grading" ? "+" + modelData.count + " waiting for a grade · " + page.keyName("dashOpen") + " to show"
@@ -409,7 +406,7 @@ BorderSurface {
                   width: parent.width
                   textFormat: Text.PlainText
                   elide: Text.ElideRight
-                  text: dashRow.kind === "proposal" ? (modelData.item.why || "")
+                  text: dashRow.kind === "proposal" || dashRow.kind === "told" ? (modelData.item.why || "")
                     : dashRow.kind === "question" ? "recommended: " + modelData.item.recommended
                     : dashRow.kind === "task" ? page.taskWhere(modelData.task, modelData.under)
                     : dashRow.kind === "deadline" ? page.deadlineWhere(modelData.deadline)
@@ -432,10 +429,11 @@ BorderSurface {
               PanelToolTip {
                 readonly property string kind: dashRow.modelData.kind
                 visible: parent.containsMouse && (kind === "task" || kind === "deadline" || kind === "shelf" || kind === "grading" || kind === "raised"
-                                                  || kind === "proposal" || kind === "question")
+                                                  || kind === "proposal" || kind === "question" || kind === "told")
                 text: kind === "task" ? page.tips([["Go to the line", "dashOpen"], ["Done", "dashDone"], ["Reschedule", "dashWhen"], ["Cycle its priority", "dashPriority"],
                                                    [dashRow.task && dashRow.task.away ? "Back" : "Not now", "dashShelve"], ["Keep it", "dashKeep"], ["Drop it", "dashDrop"]])
                   : kind === "deadline" ? page.tips([["Go to its line", "dashOpen"], ["Done", "dashDone"], ["Grade", "dashGrade"]])
+                  : kind === "told" ? page.tips([["Let it stand", "dashDone"], ["Undo it", "dashDrop"]])
                   : kind === "proposal" && dashRow.modelData.item.kind === "file"
                     ? page.tips([["File it: moved from Downloads into the course's documents", "dashDone"], ["Decline", "dashDrop"], ["Open it first", "dashOpen"]])
                   : kind === "proposal" ? page.tips([["Accept: the do-date goes on its line", "dashDone"], ["Decline", "dashDrop"], ["Go to its line", "dashOpen"]])

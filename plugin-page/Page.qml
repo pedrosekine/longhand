@@ -1155,6 +1155,7 @@ Item {
       root.settingsFocus = 0
       root.runTimetable([])
       root.loadNotebook()
+      root.loadAutonomy()
       if (!agentChecksProc.running) {
         agentChecksProc.command = [svc.runner, "eval", "status", "--json"]
         agentChecksProc.running = true
@@ -1189,6 +1190,77 @@ Item {
     if (Sc.hit(event, "settingsRename")) { root.startRename(root.settingsFocus); return true }
     if (Sc.hit(event, "settingsSound")) { root.toggleTickSound(); return true }
     if (Sc.hit(event, "settingsNotebook")) { root.openNotebook(); return true }
+    if (Sc.hit(event, "settingsAutonomy")) { root.openAutonomy(); return true }
+    return false
+  }
+
+  // What the agent may do (Settings → The agent, Ctrl+M; docs/agent.md,
+  // "Actions, and how far each may go"): each kind at ask me, do it and
+  // tell me, or never — the person's to set, kept in settings.json — with
+  // its record, and past 9 of the last 10 accepted, the suggestion that it
+  // could do more. Nothing is ever raised but by the person.
+  property var autonomyData: null          // `longhand-agent autonomy`
+  property int autonomyFocus: 0
+  readonly property var autonomyLevels: ["ask", "do", "never"]
+
+  function loadAutonomy() {
+    if (autonomyProc.running || !svc.configured) return
+    autonomyProc.command = [svc.runner, "autonomy"]
+    autonomyProc.running = true
+  }
+
+  function openAutonomy() {
+    root.settingsView = "autonomy"
+    root.used("autonomy")
+    root.loadAutonomy()
+    Qt.callLater(autonomySheet.autonomyKeysRef.forceActiveFocus)
+  }
+
+  function sayLevel(level) { return level === "do" ? "do it and tell me" : level === "never" ? "never" : "ask me" }
+
+  function sayRecord(k) {
+    if (!k || k.answered === 0) return k && k.ask_only ? "a question only: ticking is yours" : "nothing answered yet"
+    var r = "you accepted " + k.accepted + " of the last " + k.answered
+    if (k.suggest && k.level === "ask") r += " — it could do this and tell you"
+    return k.ask_only ? r + " · a question only" : r
+  }
+
+  function setAutonomy(kind, level) {
+    var cur = root.readSettings()
+    var a = {}
+    var was = cur.autonomy || {}
+    for (var k in was) a[k] = was[k]
+    a[kind] = level
+    cur.autonomy = a
+    root.settingsData = cur
+    settingsFile.setText(JSON.stringify(cur, null, 2) + "\n")
+    root.used("autonomy", kind + "=" + level)
+    // Shown at once; the runner's answer follows.
+    var d = root.autonomyData ? JSON.parse(JSON.stringify(root.autonomyData)) : null
+    if (d) d.kinds.forEach(function (x) { if (x.kind === kind) x.level = level })
+    root.autonomyData = d
+    Qt.callLater(root.loadAutonomy)
+  }
+
+  function stepAutonomy(d) {
+    var ks = root.autonomyData ? root.autonomyData.kinds : []
+    var k = ks[root.autonomyFocus]
+    if (!k) return
+    var levels = k.ask_only ? ["ask", "never"] : root.autonomyLevels
+    var i = Math.max(0, levels.indexOf(k.level))
+    var next = levels[Math.max(0, Math.min(levels.length - 1, i + d))]
+    if (next !== k.level) root.setAutonomy(k.kind, next)
+  }
+
+  function autonomyKey(event) {
+    if (root.anywhereKey(event)) return true
+    var seq = Sc.fromEvent(event)
+    var n = root.autonomyData ? root.autonomyData.kinds.length : 0
+    if (seq === "Esc") { root.closeNotebook(); return true }
+    if (seq === "Up") { root.autonomyFocus = Math.max(0, root.autonomyFocus - 1); return true }
+    if (seq === "Down") { root.autonomyFocus = Math.max(0, Math.min(n - 1, root.autonomyFocus + 1)); return true }
+    if (seq === "Left") { root.stepAutonomy(-1); return true }
+    if (seq === "Right" || seq === "Space" || seq === "Enter") { root.stepAutonomy(1); return true }
     return false
   }
 
@@ -1223,6 +1295,15 @@ Item {
       })
     }
     return out
+  }
+
+  function sayAutonomy() {
+    var d = root.autonomyData
+    if (!d) return ""
+    var done = d.kinds.filter(function (k) { return k.level === "do" }).length
+    var never = d.kinds.filter(function (k) { return k.level === "never" }).length
+    return done === 0 && never === 0 ? "It asks before every action."
+      : "It asks before most actions" + (done ? "; " + done + " it does and tells you" : "") + (never ? "; " + never + " never" : "") + "."
   }
 
   function sayNotebook() {
@@ -1772,7 +1853,7 @@ Item {
   function rowKey(row) {
     if (!row) return ""
     if (row.kind === "deadline") return "d" + row.deadline.id
-    if (row.kind === "proposal" || row.kind === "question") return "p" + row.item.id
+    if (row.kind === "proposal" || row.kind === "question" || row.kind === "told") return "p" + row.item.id
     if (row.kind === "task") return row.task.date + "|" + row.task.line + "|" + row.task.text
     return ""
   }
@@ -2125,15 +2206,16 @@ Item {
       for (var m = 0; m < mine.length; m++) {
         if (used[mine[m].id]) continue
         used[mine[m].id] = true
-        out.push({ kind: mine[m].kind === "question" ? "question" : "proposal", item: mine[m], task: t })
+        out.push({ kind: root.askKind(mine[m]), item: mine[m], task: t })
       }
     }
-    // A document to file goes in its course's band, when the list has one.
+    // A document to file, or a deadline found in the writing — about no box
+    // yet — goes in its course's band, when the list has one.
     for (var f = 0; f < props.length; f++) {
-      if (props[f].kind !== "file") continue
+      if (used[props[f].id] || (props[f].kind !== "file" && props[f].kind !== "deadline") || !props[f].project) continue
       for (var b = 0; b < out.length; b++) {
         if (out[b].kind !== "head" || out[b].tag !== props[f].project) continue
-        out.splice(b + 1, 0, { kind: "proposal", item: props[f], task: null })
+        out.splice(b + 1, 0, { kind: root.askKind(props[f]), item: props[f], task: null })
         used[props[f].id] = true
         break
       }
@@ -2143,10 +2225,28 @@ Item {
     var at = -1
     for (var h = 0; h < out.length; h++) if (out[h].kind === "head" && out[h].text === "FROM THE AGENT") at = h
     var extra = rest.map(function (x) {
-      return { kind: x.kind === "question" ? "question" : "proposal", item: x, task: root.taskOfKey(x.key) }
+      return { kind: root.askKind(x), item: x, task: root.taskOfKey(x.key) }
     })
     if (at < 0) return out.concat([{ kind: "head", text: "FROM THE AGENT", tag: "" }]).concat(extra)
     return out.slice(0, at + 1).concat(extra).concat(out.slice(at + 1))
+  }
+
+  // A row's kind: a question, something the agent did and tells (told), or
+  // something it proposes.
+  function askKind(x) { return x.told ? "told" : x.kind === "question" ? "question" : "proposal" }
+
+  // What a proposal or a told row says, by its kind.
+  function sayAsk(x, under) {
+    var what = x.kind === "do-date" ? "do " + root.sayDate(x.date) + (under ? "" : " · " + (x.title || ""))
+      : x.kind === "file" ? "file “" + x.name.replace(/\.pdf$/, "") + "” in " + (x.title || x.project)
+      : x.kind === "deadline" ? "deadline: " + x.title + " · 📅 " + root.sayDate(x.date)
+      : x.kind === "priority" ? "priority " + (x.priority === 2 ? "▲ high" : x.priority === 1 ? "medium" : "▽ low")
+        + (under ? "" : " · " + x.title)
+      : x.kind === "steps" ? "steps: " + x.steps.join(" · ")
+      : x.kind === "drop" ? "drop it?" + (under ? "" : " · " + x.title)
+      : x.kind === "done" ? "looks done — tick it?" + (under ? "" : " · " + x.title)
+      : x.title || ""
+    return x.told ? "done: " + what : what
   }
 
   function taskOfAnchor(id) {
@@ -2220,16 +2320,161 @@ Item {
   function acceptPlanned(row) {
     var p = row.item
     if (row.kind === "question") { root.resolveProposal(p, "accept", ""); return }
+    // What the agent did on its own: Space lets it stand.
+    if (row.kind === "told") { root.resolveProposal(p, "accept", ""); return }
     // A document: the runner moves it into the course's folder.
     if (p.kind === "file") { root.resolveProposal(p, "accept", ""); root.showHint("filed in " + (p.title || p.project)); return }
-    var t = row.task || root.taskOfKey(p.key)
-    if (!t) { root.showHint("its box is not on the list any more"); return }
-    root.editTask(t, "when", p.date)
-    var d = {}
-    for (var k in root.agentDates) d[k] = root.agentDates[k]
-    d[p.key] = p.date
-    root.agentDates = d
+    if (!root.applyProposal(p, row.task)) return
     root.resolveProposal(p, "accept", "")
+  }
+
+  // The agent's actions (docs/agent.md, slices 2 and 5): what each does
+  // when the person accepts it — or, at "do it and tell me", when it
+  // arrives — written by the page, the one writer of notes; and how each is
+  // undone. Facts on a box leave it the person's (a do-date's pill is
+  // tinted); new lines — steps, a deadline's box — are the agent's (◇).
+  function applyProposal(p, task) {
+    var t = task || (p.key ? root.taskOfKey(p.key) : null)
+    if (p.kind !== "deadline" && !t) { root.showHint("its box is not on the list any more"); return false }
+    if (p.kind === "do-date") {
+      root.editTask(t, "when", p.date)
+      var d = {}
+      for (var k in root.agentDates) d[k] = root.agentDates[k]
+      d[p.key] = p.date
+      root.agentDates = d
+    } else if (p.kind === "priority") root.editTask(t, "prio", p.priority)
+    else if (p.kind === "drop") root.editTask(t, "drop", "")
+    else if (p.kind === "done") root.tickTask(t)
+    else if (p.kind === "steps") {
+      root.editTask(t, "steps", p.steps)
+      var lead = root.leadOf(t.text)
+      for (var i = 0; i < p.steps.length; i++) root.markAgentLine(t.date, lead + "  - [ ] " + p.steps[i])
+    } else if (p.kind === "deadline") {
+      var line = root.deadlineLine(p)
+      root.addToToday(line, p.project)
+      root.markAgentLine(svc.todayStamp(), line)
+    } else return false
+    return true
+  }
+
+  function undoProposal(p) {
+    var t = p.key ? root.taskOfKey(p.key) : null
+    if (p.kind === "do-date" && t) root.editTask(t, "when", "")
+    else if (p.kind === "priority" && t) root.editTask(t, "prio", p.was || 0)
+    else if (p.kind === "drop" && t) root.editTask(t, "undrop", "")
+    else if (p.kind === "steps" && t) {
+      var lead = root.leadOf(t.text)
+      for (var i = 0; i < p.steps.length; i++)
+        root.editTask({ date: t.date, file: t.file, line: t.line + 1 + i, text: lead + "  - [ ] " + p.steps[i], anchor: 0 }, "remove", "")
+    } else if (p.kind === "deadline") {
+      // Its line is a deadline's now: cancelled through it, as any deadline
+      // is (docs/tasks.md), so the note still says what was decided.
+      var line = root.deadlineLine(p)
+      var d = root.tasks.filter(function (x) { return Task.sameWords(x.text, line) })[0]
+      if (d) root.editTask(d, "drop", "")
+    }
+    root.resolveProposal(p, "undo", "")
+  }
+
+  function leadOf(text) { var m = /^\s*/.exec(text || ""); return m ? m[0] : "" }
+
+  // The box a deadline found in the writing becomes: its words, its tag,
+  // its date (longhand-check binds it into the store).
+  function deadlineLine(p) {
+    return "- [ ] " + p.title + (/^[\w\/-]+$/.test(p.project || "") ? " #" + p.project : "") + " 📅 " + p.date
+  }
+
+  // Where a new box goes in today's note: at the end of its course's
+  // section when today has one, else at the end of the note.
+  function insertAt(lines, tag) {
+    var end = lines.length
+    if (tag) {
+      var re = new RegExp("^(#{1,6}) .*#" + tag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(\\b|$)")
+      for (var i = 0; i < lines.length; i++) {
+        var m = re.exec(lines[i])
+        if (!m) continue
+        var level = m[1].length
+        end = lines.length
+        for (var j = i + 1; j < lines.length; j++) {
+          var h = /^(#{1,6}) /.exec(lines[j])
+          if (h && h[1].length <= level) { end = j; break }
+        }
+        break
+      }
+    }
+    while (end > 0 && lines[end - 1].trim() === "") end--
+    return end
+  }
+
+  // Today's note open but being read again (a check just rewrote it): wait
+  // for it, rather than write the file under the open note, whose own
+  // save would then lose the line.
+  property var todayWaiting: []
+  Timer {
+    id: todayRetry
+    interval: 150
+    onTriggered: {
+      var w = root.todayWaiting
+      root.todayWaiting = []
+      for (var i = 0; i < w.length; i++) root.addToToday(w[i].line, w[i].tag)
+    }
+  }
+
+  function addToToday(line, tag) {
+    if (svc.noteDate === svc.todayStamp() && !svc.ready) {
+      root.todayWaiting = root.todayWaiting.concat([{ line: line, tag: tag }])
+      todayRetry.restart()
+      return
+    }
+    if (svc.isToday && svc.ready) {
+      var lines = editor.text.split("\n")
+      var at = root.insertAt(lines, tag)
+      var pos = lines.slice(0, at).join("\n").length
+      editor.snapshot(true)
+      root.quiet = true
+      editor.insert(pos, (at > 0 ? "\n" : "") + line + (at === 0 && lines.length > 0 && editor.text !== "" ? "\n" : ""))
+      root.quiet = false
+      Qt.callLater(root.flush)
+      Qt.callLater(root.refreshTasks)
+      root.scheduleCheck()
+      return
+    }
+    editFile.add({ file: svc.pathFor(svc.todayStamp()), date: svc.todayStamp(), line: -1, text: "", anchor: 0 },
+                 "insert", { line: line, tag: tag })
+  }
+
+  // A line the agent wrote, kept as the agent's in the layer.
+  function markAgentLine(stem, raw) {
+    if (stem === svc.noteDate) {
+      Qt.callLater(function () {
+        for (var i = 0; i < editor.rows.length; i++)
+          if (editor.rows[i].raw === raw) { root.markAuthor(i, "agent"); return }
+      })
+      return
+    }
+    var st = {}
+    for (var k in root.authorsStore) st[k] = root.authorsStore[k]
+    st[stem] = (st[stem] || []).concat([{ id: Authorship.key(raw), author: "agent" }])
+    root.authorsStore = st
+    authorsSave.restart()
+  }
+
+  // At "do it and tell me": what arrives marked for the page is done at
+  // once, then told — a row the person lets stand (Space) or undoes (Del).
+  property var autoApplied: ({})
+  function applyAuto(list) {
+    for (var i = 0; i < list.length; i++) {
+      var p = list[i]
+      if (!p.auto || p.status !== "open" || root.autoApplied[p.id] || p.kind === "file") continue
+      var a = {}
+      for (var k in root.autoApplied) a[k] = root.autoApplied[k]
+      a[p.id] = true
+      root.autoApplied = a
+      if (!root.applyProposal(p, null)) continue
+      root.proposalQueue = root.proposalQueue.concat([[svc.runner, "proposal", "applied", "--id", String(p.id)]])
+      root.nextProposal()
+      root.used("proposal", "auto-" + p.kind)
+    }
   }
 
   // An open deadline a fortnight past its date steps aside (longhand-check);
@@ -2393,7 +2638,10 @@ Item {
     // Enter on a question: the person's own answer, typed; on a proposal:
     // its box's line.
     if (row.kind === "question") { root.startDashAnswer(row.item); return }
-    if (row.kind === "proposal" && row.item.kind === "file") { Qt.openUrlExternally("file://" + row.item.src); root.used("document", "open"); return }
+    if ((row.kind === "proposal" || row.kind === "told") && row.item.kind === "file") {
+      Qt.openUrlExternally("file://" + (row.item.filed || row.item.src)); root.used("document", "open"); return
+    }
+    if (row.kind === "told" || (row.kind === "proposal" && row.item.kind === "deadline")) { if (row.task) root.goToTask(row.task); return }
     if (row.kind === "proposal") { if (row.task) root.goToTask(row.task); return }
     if (row.kind === "shelf") { root.showShelf = true; return }
     if (row.kind === "grading") { root.showGrading = true; return }
@@ -2422,6 +2670,7 @@ Item {
   // store.
   function dropFocused() {
     var row = root.taskRows[root.taskFocus]
+    if (row && row.kind === "told") { root.undoProposal(row.item); return }
     if (row && (row.kind === "proposal" || row.kind === "question")) { root.resolveProposal(row.item, "decline", ""); return }
     if (row && row.kind === "deadline") { root.dropDeadline(row.deadline); return }
     var t = root.focusedTask()
@@ -2586,6 +2835,17 @@ Item {
       var tagged = t.anchor > 0 ? Bound.anchors(editor.text)[t.anchor] : null
       var r = t.anchor > 0 ? (tagged ? editor.rows[tagged.line] : null) : root.rowByWords(t.text, t.line)
       if (!r) return
+      if (how === "remove") {
+        // Only a line the agent wrote is ever removed (undoing its steps).
+        editor.snapshot(true)
+        root.quiet = true
+        var end = Math.min(editor.text.length, r.start + r.raw.length + 1)
+        editor.remove(r.start, end)
+        root.quiet = false
+        Qt.callLater(root.flush)
+        Qt.callLater(root.refreshTasks)
+        return
+      }
       root.writeLine(r, root.applyEdit(r.raw, how, arg))
       Qt.callLater(root.refreshTasks)
       if (t.anchor > 0) root.scheduleCheck()
@@ -2605,6 +2865,8 @@ Item {
     if (how === "done") return Task.setField(Task.setState(line, "x"), "✅", Qt.formatDate(new Date(), "yyyy-MM-dd"))
     if (how === "undone") return Task.setField(Task.setState(line, " "), "✅", "")
     if (how === "rename") return Task.setWords(line, arg)
+    // Steps under a box: new boxes, one level in.
+    if (how === "steps") return line + arg.map(function (x) { return "\n" + root.leadOf(line) + "  - [ ] " + x }).join("")
     return line
   }
 
@@ -2644,7 +2906,7 @@ Item {
 
   function tickFocused() {
     var row = root.taskRows[root.taskFocus]
-    if (row && (row.kind === "proposal" || row.kind === "question")) { root.acceptPlanned(row); return }
+    if (row && (row.kind === "proposal" || row.kind === "question" || row.kind === "told")) { root.acceptPlanned(row); return }
     if (row && row.kind === "task") root.tickTask(row.task)
     if (row && row.kind === "deadline") {
       var d = row.deadline
@@ -3207,7 +3469,7 @@ Item {
   // of its day for a box.
   function rowAuthor(row) {
     if (!row) return ""
-    if (row.kind === "proposal" || row.kind === "question") return "agent"
+    if (row.kind === "proposal" || row.kind === "question" || row.kind === "told") return "agent"
     if (row.kind === "deadline") {
       var lt = root.lineTaskOf(row.deadline)
       return root.anchoredAuthor(row.deadline.id, lt && lt.text ? Task.parse("- [ ] " + lt.text) : { title: row.deadline.title })
@@ -3681,9 +3943,17 @@ Item {
       var changed = false
       for (var k = 0; k < mine.length; k++) {
         var tk = mine[k].task
+        if (mine[k].how === "insert") {
+          // A new box of the agent's (a deadline found in the writing).
+          var ins = root.insertAt(lines, mine[k].arg.tag)
+          lines.splice(ins, 0, mine[k].arg.line)
+          changed = true
+          continue
+        }
         var tagged = tk.anchor > 0 ? Bound.anchors(lines.join("\n"))[tk.anchor] : null
         var at = tk.anchor > 0 ? (tagged ? tagged.line : -1) : Task.findWords(lines, tk.line, tk.text)
         if (at < 0) continue
+        if (mine[k].how === "remove") { lines.splice(at, 1); changed = true; continue }
         var next = root.applyEdit(lines[at], mine[k].how, mine[k].arg)
         if (next !== lines[at]) { lines[at] = next; changed = true }
       }
@@ -3843,6 +4113,10 @@ Item {
   }
 
   Process {
+    id: autonomyProc
+    stdout: StdioCollector { onStreamFinished: { try { root.autonomyData = JSON.parse(text) } catch (e) {} } }
+  }
+  Process {
     id: notebookProc
     stdout: StdioCollector {
       onStreamFinished: {
@@ -3906,7 +4180,9 @@ Item {
       onStreamFinished: {
         try {
           var p = JSON.parse(text)
-          root.proposals = p.open || []
+          root.proposals = (p.open || []).filter(function (x) { return !x.auto }).concat(
+            (p.told || []).map(function (x) { return Object.assign({ told: true }, x) }))
+          root.applyAuto(p.open || [])
           if (root.proposalsAgain) { root.proposalsAgain = false; Qt.callLater(root.refreshProposals) }
           var d = {}
           for (var i = 0; i < (p.accepted || []).length; i++) d[p.accepted[i].key] = p.accepted[i].date
@@ -4077,6 +4353,9 @@ Item {
 
     // What the agent knows: Settings' second view, in its place. (NotebookSheet.qml)
     NotebookSheet { id: notebookSheet; page: root }
+
+    // What the agent may do: Settings' third view. (AutonomySheet.qml)
+    AutonomySheet { id: autonomySheet; page: root }
 
     // The keys sheet (Ctrl+/, or "keys" at the sidebar's foot): every key the page
     // answers to, under where it works, each one movable. A list, so it

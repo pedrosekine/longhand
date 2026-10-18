@@ -383,7 +383,29 @@ Each is usable alone.
    the one shown, its requests are not followed again, and the cost is
    both runs'. The block records what was read, and the margin says it
    under the reply ("read: … (p. 1, 4)"), so a citation can be checked.
-5. **The other actions** (2–7) and raising an action's autonomy.
+5. **The other actions** (2–7) and raising an action's autonomy. **Built
+   2026-10-18.** Decided first with the student: the planner reads the
+   last seven days of notes (private parts removed), as the margin reads
+   today's — without it, a deadline in the prose or "got the haircut" under
+   an open box cannot be seen; five proposals a run *of all kinds
+   together*, plus two questions; what is done on its own is told as
+   dashboard rows; raising is suggested at 9 of the last 10 accepted.
+   `plan.py` checks every kind against what the planner was shown (a
+   deadline not already in the store or a box, dated today to a year on; a
+   priority that changes something; at most five steps under a box with
+   none; dropping only a box quiet or two weeks old and not yet due; "looks
+   done" only with the words that say so) and against what the person
+   refused or undid. The page writes each on accept — facts on the box
+   (a do-date, a priority, a drop, the tick) or new lines that are the
+   agent's ◇ (steps one level in; a deadline's box in today's note, under
+   its course when today has one). Autonomy is per kind in settings.json,
+   set in Settings → what the agent may do (Ctrl+M; ←→): at "do it and
+   tell me" the page does it when it arrives and shows a "done: …" row —
+   Space lets it stand, Del undoes it (a deadline's box is cancelled, not
+   erased, as any deadline is); "looks done" stays a question, since
+   ticking is the person's act. The inbox follows the same setting: filed
+   at once and told, or never scanned. Tests: `tests/test_actions.py`,
+   and the dashboard and Settings sections of `tests/page/run.py`.
 
 The pluggable runner stands apart from the slices: it can come whenever a
 second route is wanted — first `codex exec` and the OpenAI API, once the

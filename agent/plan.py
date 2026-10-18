@@ -23,13 +23,37 @@ import os
 import tempfile
 from pathlib import Path
 
+import re
+
 import lifespan
 
 DAYS = 14                    # the fortnight planned over
 WORKDAY = (9 * 60, 18 * 60)  # minutes: the hours a free day is counted in
-MAX_PROPOSALS = 5
+MAX_PROPOSALS = 5            # of every kind together, a run
 MAX_QUESTIONS = 2
 MAX_CANDIDATES = 12
+MAX_BOXES = 40               # the open boxes the planner sees for the other actions
+MAX_STEPS = 5
+STALE_DAYS = 14              # a box this old, or gone quiet, may be proposed for dropping
+
+# The kinds of action (docs/agent.md, "Actions, and how far each may go"),
+# with the words Settings and the dashboard use. Each has an autonomy the
+# person sets: ask me (a proposal), do it and tell me (done, shown, one key
+# undoes it), never. Every kind starts at "ask"; only the person raises one.
+KINDS = {
+    "do-date": "set a do-date",
+    "deadline": "add a deadline from your writing",
+    "priority": "set a priority",
+    "steps": "add steps under a box",
+    "drop": "propose dropping a stale box",
+    "file": "file a document from the inbox",
+    "done": "ask whether a box is done",
+}
+LEVELS = ("ask", "do", "never")
+ASK_ONLY = {"done"}          # ticking is the person's act: a question only
+PRIORITY_LEVELS = {2: "high", 1: "medium", -1: "low"}
+RAISE_AFTER = 10             # answered proposals of a kind before raising is suggested
+RAISE_ACCEPTED = 9          # …of which accepted
 
 
 # ------------------------------------------------------------------ inputs
@@ -127,6 +151,28 @@ def candidates(tasks: list[dict], deadlines: list[dict], today: dt.date) -> list
     return out[:MAX_CANDIDATES]
 
 
+def open_boxes(tasks: list[dict], deadlines: list[dict], today: dt.date) -> list[dict]:
+    """Every open box the agent may see, for the actions that are not about a
+    day: a priority, steps under it, dropping it, whether it is done. Quiet
+    and shelved ones too (`quiet`) — a box gone quiet is what dropping is
+    for. Nearest due first, then the oldest."""
+    by_anchor = {x["id"]: x for x in deadlines}
+    out = []
+    for t in tasks:
+        if t.get("done") or t.get("cancelled"):
+            continue
+        due = t.get("due") or ""
+        if t.get("anchor") and t["anchor"] in by_anchor:
+            due = by_anchor[t["anchor"]]["due"].strftime("%Y-%m-%d %H:%M")
+        out.append({"key": t.get("key") or lifespan.key_of(t), "title": t.get("title") or t.get("text", ""),
+                    "project": t.get("project") or "", "where": " › ".join(t.get("path") or []),
+                    "due": due, "when": t.get("when") or "", "priority": t.get("priority") or 0,
+                    "steps_under_it": t.get("details") or 0, "written": t.get("date", ""),
+                    "age_days": t.get("age", 0), "quiet": bool(t.get("away")), "kind": t.get("kind") or "task"})
+    out.sort(key=lambda b: (b["due"] or "9999", -b["age_days"]))
+    return out[:MAX_BOXES]
+
+
 def inputs_hash(cands: list[dict], days: list[dict]) -> str:
     """What a plan rests on: when it has not changed, planning again the same
     day would only say the same thing."""
@@ -174,39 +220,144 @@ def summary(ledger: dict) -> dict:
 
 def declined(ledger: dict) -> set[tuple[str, str]]:
     return {(x["key"], x.get("date", "")) for x in ledger["items"]
-            if x["kind"] == "do-date" and x["status"] == "declined"}
+            if x["kind"] == "do-date" and x["status"] in ("declined", "undone")}
 
 
-def validate(reply: dict, cands: list[dict], days: list[dict], ledger: dict, today: dt.date) -> tuple[list[dict], list[dict]]:
-    """What the model said, kept only where it holds."""
+def norm(text: str) -> str:
+    return re.sub(r"\s+", " ", re.sub(r"[^\w\s]", " ", text or "")).strip().casefold()
+
+
+def ident(x: dict) -> tuple[str, str]:
+    """What one proposal is about: its kind and its box, or, for a deadline
+    (which has no box yet), its words."""
+    return (x["kind"], x.get("key") or norm(x.get("title", "")))
+
+
+def refused(ledger: dict) -> set[tuple[str, str]]:
+    """Every proposal the person said no to, or undid: never proposed again
+    (a do-date only on that day; another day may be proposed)."""
+    return {ident(x) for x in ledger["items"]
+            if x["status"] in ("declined", "undone") and x["kind"] not in ("do-date", "question")}
+
+
+# ---------------------------------------------------------------- autonomy
+
+def autonomy(settings: dict | None) -> dict[str, str]:
+    """Each kind's level, from settings.json's `autonomy`; "ask" when unset
+    or unknown. A kind that is a question only stays one."""
+    got = (settings or {}).get("autonomy") or {}
+    out = {}
+    for k in KINDS:
+        v = got.get(k) if isinstance(got, dict) else None
+        out[k] = v if v in LEVELS else "ask"
+        if k in ASK_ONLY and out[k] == "do":
+            out[k] = "ask"
+    return out
+
+
+def record_of(ledger: dict, kind: str) -> dict:
+    """A kind's evidence, for Settings: of its last RAISE_AFTER answered
+    proposals, how many were accepted — and whether that is enough to
+    suggest "do it and tell me". Undoing what was done counts as a no."""
+    answered = [x for x in ledger["items"] if x["kind"] == kind
+                and x["status"] in ("accepted", "declined", "undone", "answered")]
+    answered.sort(key=lambda x: x.get("resolved") or x.get("at") or "")
+    last = answered[-RAISE_AFTER:]
+    acc = sum(1 for x in last if x["status"] in ("accepted", "answered"))
+    return {"kind": kind, "answered": len(last), "accepted": acc, "all_answered": len(answered),
+            "suggest": len(last) >= RAISE_AFTER and acc >= RAISE_ACCEPTED and kind not in ASK_ONLY}
+
+
+def validate(reply: dict, cands: list[dict], days: list[dict], ledger: dict, today: dt.date,
+             boxes: list[dict] | None = None, deadlines: list[dict] | None = None,
+             allowed: dict[str, str] | None = None) -> tuple[list[dict], list[dict]]:
+    """What the model said, kept only where it holds: every kind checked
+    against what it was shown, against what the person already refused, and
+    against what the person allows ("never" drops it). At most
+    MAX_PROPOSALS of all kinds, in the model's order, and MAX_QUESTIONS."""
     by_key = {c["key"]: c for c in cands}
+    by_box = {b["key"]: b for b in boxes or []}
     window = {d["date"] for d in days}
-    no = declined(ledger)
+    no_day, no = declined(ledger), refused(ledger)
+    # Done on its own and told, or about to be: not proposed again.
+    busy = {ident(x) for x in ledger["items"] if x["status"] == "told" or (x["status"] == "open" and x.get("auto"))}
+    level = allowed or {}
+    known = {norm(x["title"]) for x in deadlines or []} | {norm(b["title"]) for b in boxes or []}
     props, seen = [], set()
     for p in reply.get("proposals") or []:
-        if not isinstance(p, dict) or p.get("kind") != "do-date":
-            continue
-        key, date = str(p.get("key") or ""), str(p.get("date") or "")[:10]
-        c = by_key.get(key)
-        if not c or date not in window or key in seen or (key, date) in no:
-            continue
-        if c["due"] and date > c["due"][:10]:
-            continue                                  # never after its own due date
-        seen.add(key)
-        props.append({"kind": "do-date", "key": key, "date": date, "why": str(p.get("why") or "").strip()[:300],
-                      "title": c["title"], "project": c["project"]})
         if len(props) >= MAX_PROPOSALS:
             break
+        if not isinstance(p, dict):
+            continue
+        kind = p.get("kind")
+        if kind not in KINDS or kind == "file" or level.get(kind) == "never":
+            continue
+        key, why = str(p.get("key") or ""), str(p.get("why") or "").strip()[:300]
+        item = None
+        if kind == "do-date":
+            date = str(p.get("date") or "")[:10]
+            c = by_key.get(key)
+            if not c or date not in window or (key, date) in no_day:
+                continue
+            if c["due"] and date > c["due"][:10]:
+                continue                                  # never after its own due date
+            item = {"kind": kind, "key": key, "date": date, "why": why, "title": c["title"], "project": c["project"]}
+        elif kind == "deadline":
+            title = re.sub(r"\s+", " ", str(p.get("title") or "")).strip()[:120]
+            date = str(p.get("date") or "")[:10]
+            try:
+                when = dt.date.fromisoformat(date)
+            except ValueError:
+                continue
+            if not title or not (today <= when <= today + dt.timedelta(days=366)) or norm(title) in known:
+                continue
+            project = str(p.get("project") or "").lstrip("#")
+            project = project if re.fullmatch(r"[\w/-]{1,40}", project) else ""
+            item = {"kind": kind, "key": "", "title": title, "date": date, "project": project, "why": why,
+                    "source": str(p.get("source") or "")[:200]}
+        else:
+            b = by_box.get(key)
+            if not b:
+                continue
+            base = {"kind": kind, "key": key, "why": why, "title": b["title"], "project": b["project"]}
+            if kind == "priority":
+                try:
+                    lv = int(p.get("priority"))
+                except (TypeError, ValueError):
+                    continue
+                if lv not in PRIORITY_LEVELS or lv == b["priority"]:
+                    continue
+                item = dict(base, priority=lv, was=b["priority"])
+            elif kind == "steps":
+                steps = [re.sub(r"\s+", " ", str(x)).strip()[:100] for x in (p.get("steps") or []) if str(x).strip()]
+                if not steps or b["steps_under_it"]:
+                    continue
+                item = dict(base, steps=steps[:MAX_STEPS])
+            elif kind == "drop":
+                if not (b["quiet"] or b["age_days"] >= STALE_DAYS) or (b["due"] and b["due"][:10] >= today.isoformat()):
+                    continue
+                item = base
+            elif kind == "done":
+                if not why:
+                    continue                          # "it looks done" must say why
+                item = base
+        if item is None or ident(item) in no or ident(item) in seen or ident(item) in busy:
+            continue
+        if level.get(kind) == "do" and kind not in ASK_ONLY:
+            item["auto"] = True                       # done by the page, then told
+        seen.add(ident(item))
+        props.append(item)
     qs = []
     for q in reply.get("questions") or []:
         if not isinstance(q, dict):
             continue
         text, rec = str(q.get("question") or "").strip(), str(q.get("recommended") or "").strip()
         key = str(q.get("key") or "")
-        if not text or not rec or (key and key not in by_key):
+        if not text or not rec or (key and key not in by_key and key not in by_box):
             continue
+        about = by_key.get(key) or by_box.get(key) or {}
         qs.append({"kind": "question", "key": key, "question": text[:300], "recommended": rec[:200],
-                   "title": by_key[key]["title"] if key else "", "project": by_key[key]["project"] if key else ""})
+                   "title": about.get("title", ""), "project": about.get("project", "")})
         if len(qs) >= MAX_QUESTIONS:
             break
     return props, qs
@@ -215,10 +366,16 @@ def validate(reply: dict, cands: list[dict], days: list[dict], ledger: dict, tod
 def record(ledger: dict, props: list[dict], qs: list[dict], at: str) -> list[dict]:
     """A new plan: what it proposes replaces what an earlier one left open
     about the same boxes (superseded); the rest of the earlier ones stand."""
-    keys = {p["key"] for p in props}
+    # A proposal the same as one still open keeps the one on screen (its row
+    # and id stay put); a different one about the same thing replaces it.
+    standing = {ident(x): x for x in open_items(ledger) if x["kind"] != "question"}
+    props = [p for p in props if not _same(standing.get(ident(p)), p)]
+    about = {ident(p) for p in props}
     asked = {q["key"] for q in qs if q["key"]}
     for x in open_items(ledger):
-        if (x["kind"] == "do-date" and x["key"] in keys) or (x["kind"] == "question" and x["key"] and x["key"] in asked):
+        if x.get("auto"):
+            continue                                  # being done: the page settles it
+        if (x["kind"] != "question" and ident(x) in about) or (x["kind"] == "question" and x["key"] and x["key"] in asked):
             x["status"], x["resolved"] = "superseded", at
     new = []
     for item in props + qs:
@@ -229,19 +386,31 @@ def record(ledger: dict, props: list[dict], qs: list[dict], at: str) -> list[dic
     return new
 
 
+def _same(old: dict | None, new: dict) -> bool:
+    return old is not None and all(old.get(k) == new.get(k) for k in ("date", "priority", "steps", "title"))
+
+
 def settle_moot(ledger: dict, tasks: list[dict], at: str) -> int:
     """An open do-date whose box has a date now, is done, or is gone, no
     longer asks anything: moot."""
     live = {(t.get("key") or lifespan.key_of(t)): t for t in tasks}
     n = 0
     for x in open_items(ledger):
-        if x["kind"] != "do-date":
+        if x["kind"] in ("question", "deadline", "file") or not x.get("key") or x.get("auto"):
             continue
         t = live.get(x["key"])
-        if t is None or t.get("when") or t.get("done") or t.get("cancelled"):
+        gone = t is None or t.get("done") or t.get("cancelled")
+        if gone or (x["kind"] == "do-date" and t.get("when")) \
+                or (x["kind"] == "priority" and (t.get("priority") or 0) == x.get("priority")) \
+                or (x["kind"] == "steps" and t.get("details")):
             x["status"], x["resolved"] = "moot", at
             n += 1
     return n
+
+
+def told(ledger: dict) -> list[dict]:
+    """What the agent did on its own (do it and tell me), not yet seen."""
+    return [x for x in ledger["items"] if x.get("status") == "told"]
 
 
 def resolve(ledger: dict, item_id: int, status: str, at: str, answer: str = "") -> dict | None:

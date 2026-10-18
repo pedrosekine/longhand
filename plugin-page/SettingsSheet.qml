@@ -23,7 +23,7 @@ BorderSurface {
   readonly property var pal: page.palette
   property alias settingsFieldRef: settingsField
 
-  visible: page.settingsOpen && page.settingsView !== "notebook"
+  visible: page.settingsOpen && page.settingsView === "main"
   x: page.wideX
   y: page.alongside ? 0 : page.sheetMargin
   width: page.wideWidth
@@ -320,6 +320,33 @@ BorderSurface {
             }
           }
         }
+        Row {
+          spacing: page.sp(16)
+          Text {
+            textFormat: Text.PlainText
+            text: page.sayAutonomy()
+            color: page.dim
+            font.family: page.fontFamily
+            font.styleName: page.fontStyle
+            font.pixelSize: page.fs(Style.font.bodySmall)
+          }
+          Text {
+            textFormat: Text.PlainText
+            text: "what it may do"
+            color: mayArea.containsMouse ? page.accent : page.faint
+            font.family: page.fontFamily
+            font.styleName: page.fontStyle
+            font.pixelSize: page.fs(Style.font.bodySmall)
+            MouseArea {
+              id: mayArea
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: page.openAutonomy()
+              PanelToolTip { visible: parent.containsMouse; text: page.tip("what it may do", "settingsAutonomy") }
+            }
+          }
+        }
         Text {
           visible: !!page.agentChecks && page.agentChecks.latest_review !== ""
           textFormat: Text.PlainText
@@ -416,7 +443,7 @@ BorderSurface {
           : "Enter adds a calendar · ↑↓ pick one · " + page.keyName("settingsShare") + " what the agent sees · "
           + page.keyName("settingsFetch") + " fetches it · " + page.keyName("settingsRename") + " renames · "
           + page.keyName("settingsForget") + " removes it · " + page.keyName("settingsSound") + " tick sound · "
-          + page.keyName("settingsNotebook") + " what the agent knows · Esc back"
+          + page.keyName("settingsNotebook") + " what the agent knows · " + page.keyName("settingsAutonomy") + " what it may do · Esc back"
         color: page.faint
         font.family: page.fontFamily
         font.styleName: page.fontStyle
