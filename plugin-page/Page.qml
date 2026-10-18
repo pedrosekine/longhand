@@ -535,8 +535,9 @@ Item {
       root.projectOpen = false
       // `@` can call a project without the sidebar ever being opened.
       root.refreshProjects()
-      // The day's plan, at most once a day (the runner decides).
-      root.runPlan(false)
+      // The day's plan, at most once a day (the runner decides) — after the
+      // calendars the opening fetches, so it plans around today's copy.
+      root.afterFetch(function () { root.runPlan(false) })
       // The agent's weekly review, when a week has passed since the last.
       if (!reviewProc.running && svc.configured) {
         reviewProc.command = [svc.runner, "review", "--if-due"]
@@ -619,8 +620,27 @@ Item {
     return false
   }
 
+  // What reads the calendars waits for the fetch the same opening started
+  // (refreshProjects, at most hourly), so the first pass of the day does not
+  // read the copy from before it — but not for ever: a fetch that hangs
+  // (no network) lets them go after 20 seconds, with the copy there is.
+  property var waitingForFetch: []
+  function afterFetch(fn) {
+    if (!projectsProc.running) { fn(); return }
+    root.waitingForFetch = root.waitingForFetch.concat([fn])
+    fetchPatience.restart()
+  }
+  function fetched() {
+    var w = root.waitingForFetch
+    root.waitingForFetch = []
+    fetchPatience.stop()
+    for (var i = 0; i < w.length; i++) w[i]()
+  }
+  Timer { id: fetchPatience; interval: 20000; onTriggered: root.fetched() }
+
   function openPass() {
     if (!root.openPassPending) return
+    if (projectsProc.running) { root.afterFetch(root.openPass); return }
     root.openPassPending = false
     root.requestRun("open", "")
   }
@@ -4058,6 +4078,7 @@ Item {
         root.projFocus = Math.min(root.projFocus, root.projects.length - 1)
       }
     }
+    onExited: function (code, status) { root.fetched() }
   }
   Timer { interval: 300000; running: root.usageBuf.length > 0; repeat: true; onTriggered: root.flushUsage() }
 

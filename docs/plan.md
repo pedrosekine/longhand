@@ -415,8 +415,9 @@ Small, when passing by:
 - **Tag suggestions while typing** (2026-10-11) — `#` offers the tags that
   exist, so a new tag is a choice, not a typo.
 - **"on" as a cue word** ("conference on the 8th of Feb").
-- **The calendar and the open pass race**: the page's first pass of the day
-  can read the copy from before the fetch that the same opening started.
+- ~~**The calendar and the open pass race**~~ *fixed 2026-10-18*: the open
+  pass and the day's plan wait for the fetch the opening started (at most
+  20 s); the live suite checks the order with a slow fetch.
 
 Later, by the student's own word (2026-09-17: "explicitly later"):
 **study mode** (14.8; the Anki hook of GitHub issue #7 belongs here — it

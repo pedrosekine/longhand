@@ -147,7 +147,18 @@ class Page:
         # followed — sent, thinking, answered.
         chatstub = self.tmp / "chatstub.py"
         chatstub.write_text(CHAT_STUB)
+        # Every call is logged with when it started (and, for the fetch, when
+        # it ended), so the order of an opening can be checked; with
+        # `slow-fetch` present the fetch takes two seconds, as a network does.
+        self.calls = self.tmp / "calls.log"
         self.runner.write_text(f"""#!/bin/bash
+echo "$(date +%s.%N) start $1 $3" >> "{self.calls}"
+if [ "$1" = projects ]; then
+  [ -e "{self.stub}/slow-fetch" ] && sleep 2
+  "{ROOT}/agent/longhand-agent" "$@"; rc=$?
+  echo "$(date +%s.%N) end $1" >> "{self.calls}"
+  exit $rc
+fi
 case "$1" in
   accept|projects|sections|next|tasks|box|timetable|plan|proposals|proposal|rate|notebook|autonomy) exec "{ROOT}/agent/longhand-agent" "$@" ;;
   run) sleep 2; exit 0 ;;
@@ -1204,6 +1215,25 @@ def main() -> int:
               "…and the last one, back to no calendar")
         check(p.call("settingsKey", 0x01000000, 0) == "true" and p.call("settingsOpen") == "false", "Esc goes back")
         uni.shutdown()
+
+        # 12c'. the calendars and the first pass of the day (2026-10-18): what
+        # reads the calendars waits for the fetch the same opening started.
+        (p.stub / "slow-fetch").write_text("")
+        p.call("closeAll")
+        p.calls.write_text("")
+        (p.state / "longhand" / "plan.json").unlink(missing_ok=True)
+        p.open_fresh()
+        def order():
+            rows = [l.split(" ", 2) for l in p.calls.read_text().splitlines() if l.strip()]
+            return [(float(t), what, rest.strip()) for t, what, rest in rows]
+        p.wait(lambda: any(r[2].startswith("plan") for r in order()) and any(r[2] == "run open" for r in order()), timeout=12)
+        o = order()
+        fetch_end = next((t for t, w, r in o if w == "end" and r == "projects"), None)
+        first = {r: t for t, w, r in reversed(o) if w == "start"}
+        check(fetch_end is not None and first.get("run open", 0) > fetch_end,
+              f"the open pass starts after the opening's fetch has ended ({o})")
+        check(fetch_end is not None and first.get("plan", 0) > fetch_end, "…and so does the day's plan")
+        (p.stub / "slow-fetch").unlink()
 
         # 12d'. Settings → what the agent knows (slice 3, 2026-10-18): the
         # notebook line by line; forget and correct, kept in corrections.md.
