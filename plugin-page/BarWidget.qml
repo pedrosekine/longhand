@@ -2,6 +2,9 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import qs.Commons
+// Qt 6.12's QtQuick has a `Color` of its own that shadows the shell's
+// (2026-10-18): the shell's palette is named through the module.
+import qs.Commons as Commons
 import qs.Ui
 import "Shortcuts.js" as Sc
 
@@ -57,8 +60,8 @@ BarWidget {
     bar: root.bar
     text: "󰏫" + (root.asks > 0 ? " " + root.asks : "")
     foreground: agent.unread > 0
-      ? (bar ? bar.urgent : Color.urgent)
-      : (bar ? bar.barForeground : Color.foreground)
+      ? (bar ? bar.urgent : Commons.Color.urgent)
+      : (bar ? bar.barForeground : Commons.Color.foreground)
     tooltipText: (agent.unread > 0
       ? "Today's note · " + agent.unread + (agent.unread === 1 ? " reply" : " replies") + " waiting"
       : "Today's note")

@@ -1135,3 +1135,12 @@ only the window and the panels around it differ.
   and could not see it; `tests/test_sheets.py` now fails on any such name,
   a live check asks whether the field really has the keys, and the
   extraction script rewrites a bare `root` too.
+- **2026-10-18 — Qt 6.12 took the page's colours.** An update in the
+  evening (Qt 6.12, Quickshell rebuilt) gave QtQuick a `Color` of its own,
+  which now wins over the shell's `qs.Commons` `Color`: the page's
+  foreground, background and greys came out black. The live suite's theme
+  checks caught it; the page names the shell's palette through its module
+  (`Commons.Color`), and `tests/test_sheets.py` fails on a bare `Color`.
+  The shell's own components are unaffected: inside their module the name
+  still resolves to theirs; only a plugin's files, importing both, see
+  Qt's.

@@ -2,6 +2,9 @@ import Quickshell
 import Quickshell.Io
 import QtQuick
 import qs.Commons
+// Qt 6.12's QtQuick has a `Color` of its own that shadows the shell's
+// (2026-10-18): the shell's palette is named through the module.
+import qs.Commons as Commons
 import "page"
 import "page/Shortcuts.js" as Sc
 
@@ -127,7 +130,7 @@ ShellRoot {
     function tickRow(): void { page.tickFocused() }
     function acceptAt(i: int): void { page.acceptProposal(i) }
     // What omarchy-shell's own applyTheme does when a theme is set.
-    function applyTheme(colorsB64: string, shellB64: string): string { Color.loadColors(Qt.atob(colorsB64)); Color.loadShell(Qt.atob(shellB64)); return "ok" }
+    function applyTheme(colorsB64: string, shellB64: string): string { Commons.Color.loadColors(Qt.atob(colorsB64)); Commons.Color.loadShell(Qt.atob(shellB64)); return "ok" }
     function palette(): string { var p = page.palette; return "keys=" + Object.keys(p.keys).length + " accent=" + p.accent + " dim=" + p.dim + " faint=" + p.faint + " h=" + p.headings.join(",") + " eh=" + page.editorItem.headingColors + " bullet=" + page.editorItem.bulletColor + " fg=" + page.foreground + " bg=" + page.background }
     function search(q: string): void { page.openSearch(); page.searchInput.text = q }
     function selectSpan(a: int, b: int): void { page.editorItem.selectSpan(a, b) }

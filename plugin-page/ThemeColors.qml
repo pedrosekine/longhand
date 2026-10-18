@@ -2,6 +2,9 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import qs.Commons
+// Qt 6.12's QtQuick has a `Color` of its own that shadows the shell's
+// (2026-10-18): the shell's palette is named through the module.
+import qs.Commons as Commons
 
 // The current Omarchy theme's palette, read from its colors.toml (watched,
 // so `omarchy theme set` repaints the page at once), turned into the roles
@@ -21,9 +24,9 @@ Item {
     return v ? v : fallback
   }
 
-  readonly property color foreground: Color.menu.text
-  readonly property color background: Color.menu.background
-  readonly property color accent: pick("accent", Color.accent)
+  readonly property color foreground: Commons.Color.menu.text
+  readonly property color background: Commons.Color.menu.background
+  readonly property color accent: pick("accent", Commons.Color.accent)
 
   // Contrast, WCAG's way: what decides whether a colour can carry text.
   function luminance(c) {
@@ -59,7 +62,7 @@ Item {
   readonly property color dim: { root.keys; return root.readable(["muted", "dark_foreground"], 4.5) }
   readonly property color faint: { root.keys; return root.readable(["dark_foreground", "muted"], 3.0) }
   readonly property color selection: pick("selection", Util.alpha(accent, 0.25))
-  readonly property color red: pick("red", Color.urgent)
+  readonly property color red: pick("red", Commons.Color.urgent)
   readonly property color yellow: pick("yellow", accent)
   readonly property color orange: pick("orange", yellow)
   readonly property color green: pick("green", accent)
@@ -190,7 +193,7 @@ Item {
   // and pushes the new colours to the shell: when the shell's change, read
   // the palette again.
   Connections {
-    target: Color
+    target: Commons.Color
     function onForegroundChanged() { file.reload() }
     function onBackgroundChanged() { file.reload() }
     function onAccentChanged() { file.reload() }

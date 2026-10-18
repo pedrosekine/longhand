@@ -4,6 +4,9 @@ import Quickshell.Wayland
 import QtQuick
 import Qt.labs.folderlistmodel
 import qs.Commons
+// Qt 6.12's QtQuick has a `Color` of its own that shadows the shell's
+// (2026-10-18): the shell's palette is named through the module.
+import qs.Commons as Commons
 import qs.Ui
 import "Blocks.js" as Blocks
 import "Bound.js" as Bound
@@ -132,14 +135,14 @@ Item {
   readonly property bool showing: overlayOpen || windowOpen
   readonly property bool alongside: !overlayOpen      // where the sheet is drawn
 
-  readonly property color background: Color.menu.background
+  readonly property color background: Commons.Color.menu.background
   // Text at the contrast the theme chose. It was softened a fifth of the way
   // back toward the background on 2026-10-15, to fight a heaviness that
   // turned out to be the font *cut*, not the contrast (see `fontStyle`);
   // against a genuine Regular the softening only cost legibility.
-  readonly property color foreground: Color.menu.text
-  readonly property color border: Color.menu.border
-  readonly property color scrim: Color.menu.scrim
+  readonly property color foreground: Commons.Color.menu.text
+  readonly property color border: Commons.Color.menu.border
+  readonly property color scrim: Commons.Color.menu.scrim
   // The Omarchy theme's palette, by role (ThemeColors.qml): secondary and faint
   // text in the theme's own tuned greys, headings and marks in its colours.
   readonly property color accent: pal.accent
