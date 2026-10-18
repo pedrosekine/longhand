@@ -186,6 +186,7 @@ ShellRoot {
     function ticksHeard(): int { return page.ticksHeard }
     function plan(force: bool): void { page.runPlan(force) }
     function refreshProposals(): void { page.refreshProposals() }
+    function sayReads(rec: string): string { return page.sayReads(JSON.parse(rec)) }
     function rate(value: string): void { page.rateReply(value) }
     // Who made it
     function markAgent(line: int): void { page.markAuthor(line, "agent") }

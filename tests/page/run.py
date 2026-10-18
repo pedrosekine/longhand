@@ -1386,6 +1386,12 @@ def main() -> int:
         p.call("leaveProject")
         if p.call("sidebarOpen") != side_was:
             p.call("sidebar")
+        read = {"documents": [{"document": "Seven Myths", "words": "autonomy", "found": True, "pages": [1, 4]},
+                              {"document": "Brief", "words": "", "found": True, "whole": True},
+                              {"document": "Rechnung", "words": "", "found": False}]}
+        check(p.call("sayReads", json.dumps(read)) == "read: Seven Myths (p. 1, 4) · Brief (whole)",
+              f"under a reply, what the agent read for it, with the pages ({p.call('sayReads', json.dumps(read))})")
+        check(p.call("sayReads", json.dumps({"reply": "x"})) == "", "…and nothing when it read nothing")
 
         # 12b. the keys sheet: every key the page answers to, listed; one
         # moved through the sheet, kept in keys.json, and working in the note

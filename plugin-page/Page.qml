@@ -469,6 +469,17 @@ Item {
     && (root.runningHash.split(",").indexOf(root.currentHash) >= 0
         || root.runningHash.split(",").indexOf(root.currentRec) >= 0
         || root.sending.indexOf(root.currentHash) >= 0)
+  // "read: The Seven Deadly Myths… (p. 1, 4)": what the agent read for the
+  // reply under the cursor; nothing when it read nothing.
+  function sayReads(rec) {
+    var ds = rec && rec.documents ? rec.documents.filter(function (d) { return d.found }) : []
+    if (ds.length === 0) return ""
+    return "read: " + ds.map(function (d) {
+      return d.document + (d.words === "" ? (d.whole === false ? " (its beginning)" : " (whole)")
+        : d.pages && d.pages.length ? " (p. " + d.pages.join(", ") + ")" : "")
+    }).join(" · ")
+  }
+
   readonly property var currentProposals: (currentRecord && currentRecord.proposals) ? currentRecord.proposals : []
   readonly property var taskRows: root.buildTaskRows()
   readonly property bool replyWaiting: root.hasUnreadInNote()

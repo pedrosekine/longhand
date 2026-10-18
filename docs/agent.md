@@ -370,8 +370,19 @@ Each is usable alone.
    the sidebar lists its documents above its sections (↑ reaches them,
    Enter opens the PDF viewer), and a run about a course carries their
    index, a line each. The vault's `.gitignore` leaves `projects/*/docs/`
-   out of git. **Still to do:** tiers 2 and 3 — the agent asking for a
-   document whole or for words in it, carried into its next run.
+   out of git. **Second half built 2026-10-18:** tiers 2 and 3. The
+   margin's reply contract has a fifth key, `read`: a document of the
+   index by name, whole (`words: ""`) or for a few words. Local code reads
+   only the documents of the course the block is about — the ones the
+   index showed — converting the PDF once into `doc-text/` in the state
+   folder (pages kept apart by pdftotext's form feeds); whole up to 60,000
+   characters (else its beginning, and a note to ask for words), search by
+   paragraph, best first, eight passages with their pages. "The next run"
+   is the same session at once: one follow-up, logged as its own payload
+   (`…-read.md`), framed as material and never instructions; its answer is
+   the one shown, its requests are not followed again, and the cost is
+   both runs'. The block records what was read, and the margin says it
+   under the reply ("read: … (p. 1, 4)"), so a citation can be checked.
 5. **The other actions** (2–7) and raising an action's autonomy.
 
 The pluggable runner stands apart from the slices: it can come whenever a

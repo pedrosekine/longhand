@@ -87,6 +87,20 @@ BorderSurface {
         font.pixelSize: page.fs(Style.font.title)
       }
 
+      // What it read to answer (docs/agent.md, slice 4): the course
+      // documents it asked for, and the pages, so a citation can be checked.
+      Text {
+        width: parent.width
+        visible: text !== ""
+        textFormat: Text.PlainText
+        wrapMode: Text.WordWrap
+        text: page.sayReads(page.currentRecord)
+        color: page.faint
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.caption)
+      }
+
       // Was it helpful? Two quiet words; the chosen one stays lit. What
       // the student says here is what the weekly review and the eval set
       // learn from.

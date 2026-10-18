@@ -243,3 +243,107 @@ def save_cache(path: Path, data: dict) -> None:
     tmp = path.with_name(path.name + ".tmp")
     tmp.write_text(json.dumps(data, ensure_ascii=False))
     os.replace(tmp, path)
+
+
+# ------------------------------------------------------------------ reading
+#
+# Tiers 2 and 3 (2026-10-18): the agent asks, in its reply, for a document
+# of the index whole or for words in it; local code reads the PDF here —
+# converted once, kept in the state folder, never in the vault — and
+# carries what it found into the agent's next run. Plain text and keyword
+# search: no embeddings, and an answer can say which page it came from.
+
+WHOLE_MAX = 60_000          # characters a document may carry whole
+PASSAGES = 8                # passages a search carries
+PASSAGE_CHARS = 700
+MAX_READS = 3               # requests honoured per run
+
+
+def pages(pdf: Path, cache_dir: Path) -> list[str]:
+    """The document's text, page by page (pdftotext's form feeds), converted
+    once and kept by its contents' hash."""
+    doc = content_hash(pdf)
+    cached = cache_dir / f"{doc}.json"
+    try:
+        return json.loads(cached.read_text())["pages"]
+    except (OSError, ValueError, KeyError):
+        pass
+    try:
+        r = subprocess.run(["pdftotext", "-layout", str(pdf), "-"], capture_output=True, text=True, timeout=120)
+        text = r.stdout if r.returncode == 0 else ""
+    except (OSError, subprocess.TimeoutExpired):
+        text = ""
+    out = [re.sub(r"[ \t]+\n", "\n", p).strip() for p in text.split("\f")]
+    while out and not out[-1]:
+        out.pop()
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    tmp = cached.with_name(cached.name + ".tmp")
+    tmp.write_text(json.dumps({"name": pdf.name, "pages": out}, ensure_ascii=False))
+    os.replace(tmp, cached)
+    return out
+
+
+def whole(pgs: list[str]) -> tuple[str, bool]:
+    """The pages with their numbers, as far as WHOLE_MAX allows; False when
+    the document did not fit."""
+    out, size = [], 0
+    for n, p in enumerate(pgs, 1):
+        chunk = f"[p. {n}]\n{p}\n"
+        if size + len(chunk) > WHOLE_MAX:
+            return "\n".join(out), False
+        out.append(chunk)
+        size += len(chunk)
+    return "\n".join(out), True
+
+
+def search(pgs: list[str], words: str) -> list[tuple[int, str]]:
+    """The passages (paragraphs) that hold the most of the words asked for,
+    best first, each with its page."""
+    # A plural finds its singular too ("myths" → "myth"); nothing cleverer.
+    terms = [t[:-1] if len(t) > 4 and t.endswith("s") else t
+             for t in re.findall(r"\w[\w'-]*", words.casefold()) if len(t) > 2]
+    if not terms:
+        return []
+    found = []
+    for n, p in enumerate(pgs, 1):
+        for para in re.split(r"\n\s*\n", p):
+            low = para.casefold()
+            hits = sum(1 for t in set(terms) if t in low)
+            if hits:
+                found.append((hits, sum(low.count(t) for t in terms), n, re.sub(r"\s+", " ", para).strip()))
+    found.sort(key=lambda x: (-x[0], -x[1], x[2]))
+    return [(n, para[:PASSAGE_CHARS] + ("…" if len(para) > PASSAGE_CHARS else "")) for _, _, n, para in found[:PASSAGES]]
+
+
+def fulfil(requests: list[dict], docs: list[dict], cache_dir: Path) -> tuple[list[str], list[dict]]:
+    """What the agent asked for, from the documents it was shown (and no
+    others), as payload sections; and a record of each request."""
+    by = {d["name"].casefold(): d for d in docs}
+    parts, done = [], []
+    for r in requests[:MAX_READS]:
+        name = str(r.get("document") or "").strip()
+        name = re.sub(r"\.pdf$", "", name, flags=re.I)
+        d = by.get(name.casefold())
+        words = str(r.get("words") or "").strip()[:200]
+        if d is None:
+            done.append({"document": name, "words": words, "found": False})
+            parts += [f"## {name}", "", "(not one of the documents in the index — nothing was read)", ""]
+            continue
+        pgs = pages(Path(d["path"]), cache_dir)
+        if not any(pgs):
+            done.append({"document": d["name"], "words": words, "found": False})
+            parts += [f"## {d['name']}", "", "(this PDF has no text layer — it is scanned; nothing could be read)", ""]
+            continue
+        if words:
+            hits = search(pgs, words)
+            done.append({"document": d["name"], "words": words, "found": bool(hits), "pages": sorted({n for n, _ in hits})})
+            parts += [f"## {d['name']} — passages with “{words}” ({len(pgs)} pages)", ""]
+            parts += [f"- p. {n}: {t}" for n, t in hits] or ["(none of those words is in it)"]
+            parts.append("")
+        else:
+            text, complete = whole(pgs)
+            done.append({"document": d["name"], "words": "", "found": True, "whole": complete})
+            head = f"## {d['name']} — whole ({len(pgs)} pages)" if complete else \
+                f"## {d['name']} — the beginning only ({len(pgs)} pages, too long to carry whole: ask for words in it)"
+            parts += [head, "", text, ""]
+    return parts, done

@@ -1135,6 +1135,13 @@ only the window and the panels around it differ.
   and could not see it; `tests/test_sheets.py` now fails on any such name,
   a live check asks whether the field really has the keys, and the
   extraction script rewrites a bare `root` too.
+- **2026-10-18 — The agent reads a document (slice 4, second half).** The
+  agent still has no tools: it asks, in its reply, for a document of the
+  index whole or for words in it, and local code reads it and runs the same
+  conversation once more. One round, so a run cannot turn into a loop; only
+  the course's own documents, so a name it makes up reads nothing; what is
+  read is framed as material, never instructions, since a PDF is someone
+  else's words. The margin says what was read and on which pages.
 - **2026-10-18 — Qt 6.12 took the page's colours.** An update in the
   evening (Qt 6.12, Quickshell rebuilt) gave QtQuick a `Color` of its own,
   which now wins over the shell's `qs.Commons` `Color`: the page's
