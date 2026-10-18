@@ -339,7 +339,19 @@ Each is usable alone.
    accepted do-date's pill says so with ◇. Tests: `tests/test_plan.py`, and
    the dashboard section of `tests/page/run.py` against a stub model.
 3. **The notebook, visible** — Settings → "What the agent knows", correct
-   and forget, `corrections.md`.
+   and forget, `corrections.md`. **Built 2026-10-18:** `agent/notebook.py`
+   and `longhand-agent notebook [forget|correct|take-back]`; Settings' second
+   view (`NotebookSheet.qml`, Ctrl+K from Settings) lists each of the agent's
+   files line by line, then the student's answers, then their corrections.
+   Forget takes the line out (with what is nested under it), correct puts
+   the student's words in its place; local code does both and records them
+   in `corrections.md`, which every payload carries as its own section and
+   the model can never write. A correction is *enforced*, not only told:
+   whenever the model rewrites a file, the whole record is applied again,
+   so a line it copies back is corrected or left out regardless of what the
+   prompt achieved. Forgetting an answer just removes it (the agent may ask
+   again); a correction can be taken back. Tests: `tests/test_notebook.py`,
+   and the Settings section of `tests/page/run.py`.
 4. **Documents** — the Downloads inbox and filing, the index, conversion
    and search, the project's documents in the sidebar.
 5. **The other actions** (2–7) and raising an action's autonomy.

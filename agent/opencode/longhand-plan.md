@@ -100,6 +100,8 @@ leave the others unplanned.
 Write a knowledge file only when you learned something durable — the same
 files and rules as always (`profile.md`, `patterns.md`,
 `projects/<name>.md`, each rewritten whole, short and factual).
+The student's corrections overrule your notes: keep what they corrected as
+corrected, and never write back what they told you to forget.
 
 ## Output contract
 

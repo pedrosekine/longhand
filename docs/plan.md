@@ -349,7 +349,7 @@ section, word for word, and to the diary's decisions log.
    outcomes; its notebook visible and correctable; course documents from
    the Downloads inbox, read in three tiers; a pluggable route to the model.
    In slices: **(1)** who made it (built 2026-10-17) → **(2)** proposals and planning (built 2026-10-17), starting
-   with do-dates → **(3)** the notebook, visible → **(4)** documents →
+   with do-dates → **(3)** the notebook, visible (built 2026-10-18) → **(4)** documents →
    **(5)** the other actions. **Needs from the student:** a new OpenCode
    Go API key (the one in use expired — found 2026-10-17 on the first real
    plan; every agent run fails until it is replaced), and a re-login to

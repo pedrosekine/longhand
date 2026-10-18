@@ -124,6 +124,7 @@ Item {
   readonly property alias sheetItem: sheet
   readonly property alias agentState: agent
   readonly property alias sectionsProcess: sectionsProc
+  readonly property alias notebookSheetItem: notebookSheet
   property bool overlayOpen: false
   property bool windowOpen: false
   readonly property bool opened: overlayOpen          // what the shell's toggle asks
@@ -374,6 +375,8 @@ Item {
   // to settings.json beside config.json (the page's own, as keys.json is);
   // the runner reads the keys it allows from it over the config.
   property bool settingsOpen: false
+  // Settings shows one view at a time: its sections, or what the agent knows.
+  property string settingsView: "main"
   property var settingsState: null     // `longhand-agent timetable`, as JSON
   property bool settingsBusy: false    // the runner is asking the university
   property string settingsNote: ""     // what just happened, or why not
@@ -1111,11 +1114,14 @@ Item {
     root.settingsOpen = !root.settingsOpen
     root.settingsNote = ""
     root.settingsFieldKind = "add"
+    root.settingsView = "main"
+    root.notebookCorrecting = false
     if (root.settingsOpen) {
       root.used("settings")
       settingsSheet.settingsFieldRef.text = ""
       root.settingsFocus = 0
       root.runTimetable([])
+      root.loadNotebook()
       if (!agentChecksProc.running) {
         agentChecksProc.command = [svc.runner, "eval", "status", "--json"]
         agentChecksProc.running = true
@@ -1149,6 +1155,148 @@ Item {
     if (Sc.hit(event, "settingsShare")) { root.toggleShare(root.settingsFocus); return true }
     if (Sc.hit(event, "settingsRename")) { root.startRename(root.settingsFocus); return true }
     if (Sc.hit(event, "settingsSound")) { root.toggleTickSound(); return true }
+    if (Sc.hit(event, "settingsNotebook")) { root.openNotebook(); return true }
+    return false
+  }
+
+  // What the agent knows (Settings → The agent): its notebook line by line,
+  // each one to correct or forget, the student's answers, and their
+  // corrections (docs/agent.md, slice 3). The runner does the writing and
+  // keeps the record in corrections.md, which the agent reads every run
+  // and never writes; the page only asks.
+  property var notebookData: null           // `longhand-agent notebook`
+  property int notebookFocus: -1
+  property bool notebookCorrecting: false
+  property string notebookNote: ""
+  readonly property var notebookList: root.notebookRows(root.notebookData)
+
+  function notebookRows(d) {
+    var out = []
+    if (!d) return out
+    d.files.forEach(function (f) {
+      out.push({ kind: "head", text: f.title, file: f.file, depth: 0 })
+      f.lines.forEach(function (l) { out.push({ kind: "line", text: l.text, file: l.file, depth: l.depth }) })
+    })
+    if (d.answers.length > 0) {
+      out.push({ kind: "head", text: "What you told it", file: "", depth: 0 })
+      d.answers.forEach(function (a) { out.push({ kind: "answer", text: a.text, file: "answers.md", depth: 0 }) })
+    }
+    if (d.corrections.length > 0) {
+      out.push({ kind: "head", text: "Your corrections", file: "", depth: 0 })
+      d.corrections.forEach(function (c) {
+        out.push({ kind: "correction", n: c.n, file: c.file, depth: 0,
+                   text: c.how === "forget" ? "forget “" + c.text + "”" : "“" + c.text + "” → “" + c.to + "”",
+                   note: c.date + " · " + c.file })
+      })
+    }
+    return out
+  }
+
+  function sayNotebook() {
+    var d = root.notebookData
+    if (!d) return ""
+    var n = 0
+    d.files.forEach(function (f) { n += f.lines.length })
+    if (n === 0) return "It has written nothing down yet."
+    var c = d.corrections.length
+    return "It keeps " + n + (n === 1 ? " note" : " notes") + " in " + d.files.length + (d.files.length === 1 ? " file" : " files")
+      + (c > 0 ? ", held to " + c + (c === 1 ? " correction" : " corrections") + " of yours" : "") + "."
+  }
+
+  function loadNotebook() {
+    if (notebookProc.running) return
+    notebookProc.command = [svc.runner, "notebook"]
+    notebookProc.running = true
+  }
+
+  function nextNotebookRow(from, dir) {
+    var rows = root.notebookList
+    for (var i = from + dir; i >= 0 && i < rows.length; i += dir)
+      if (rows[i].kind !== "head") return i
+    return from
+  }
+
+  function openNotebook() {
+    root.settingsView = "notebook"
+    root.notebookNote = ""
+    root.notebookCorrecting = false
+    root.used("notebook")
+    root.loadNotebook()
+    if (root.notebookFocus < 0 || root.notebookFocus >= root.notebookList.length
+        || root.notebookList[root.notebookFocus].kind === "head")
+      root.notebookFocus = root.nextNotebookRow(-1, 1)
+    Qt.callLater(notebookSheet.notebookKeysRef.forceActiveFocus)
+  }
+
+  function closeNotebook() {
+    root.settingsView = "main"
+    root.notebookCorrecting = false
+    Qt.callLater(settingsSheet.settingsFieldRef.forceActiveFocus)
+  }
+
+  function pickNotebook(i) {
+    if (i < 0 || i >= root.notebookList.length || root.notebookList[i].kind === "head") return
+    root.notebookFocus = i
+    root.notebookCorrecting = false
+    notebookSheet.notebookKeysRef.forceActiveFocus()
+  }
+
+  function startCorrect() {
+    var row = root.notebookList[root.notebookFocus]
+    if (!row) return
+    if (row.kind !== "line") {
+      root.notebookNote = row.kind === "answer" ? "an answer is yours: forget it, and answer again when it asks"
+        : "a correction is taken back, not corrected: " + root.keyName("notebookForget")
+      return
+    }
+    root.notebookNote = ""
+    root.notebookCorrecting = true
+    notebookSheet.notebookFieldRef.text = row.text
+    Qt.callLater(function () { notebookSheet.notebookFieldRef.forceActiveFocus(); notebookSheet.notebookFieldRef.selectAll() })
+  }
+
+  function notebookAct(args, note, event) {
+    if (notebookActProc.running) return
+    root.notebookPendingNote = note
+    notebookActProc.command = [svc.runner, "notebook"].concat(args)
+    notebookActProc.running = true
+    root.used("notebook", event)
+  }
+  property string notebookPendingNote: ""
+
+  function saveCorrection(text) {
+    var row = root.notebookList[root.notebookFocus]
+    var to = text.replace(/\s+/g, " ").trim()
+    root.notebookCorrecting = false
+    notebookSheet.notebookKeysRef.forceActiveFocus()
+    if (!row || row.kind !== "line" || to === "" || to === row.text) return
+    root.notebookAct(["correct", "--file", row.file, "--text", row.text, "--to", to], "corrected — it keeps your words from now on", "correct")
+  }
+
+  function forgetNote() {
+    var row = root.notebookList[root.notebookFocus]
+    if (!row) return
+    if (row.kind === "correction")
+      root.notebookAct(["take-back", "--n", String(row.n)], "taken back — the agent is no longer held to it", "take-back")
+    else if (row.kind === "answer")
+      root.notebookAct(["forget", "--file", row.file, "--text", row.text], "forgotten — it may ask again", "forget-answer")
+    else if (row.kind === "line")
+      root.notebookAct(["forget", "--file", row.file, "--text", row.text], "forgotten — it stays forgotten", "forget")
+  }
+
+  function notebookKey(event) {
+    if (root.anywhereKey(event)) return true
+    var seq = Sc.fromEvent(event)
+    if (root.notebookCorrecting) {
+      if (seq === "Esc") { root.notebookCorrecting = false; notebookSheet.notebookKeysRef.forceActiveFocus(); return true }
+      if (seq === "Enter") { root.saveCorrection(notebookSheet.notebookFieldRef.text); return true }
+      return false
+    }
+    if (seq === "Esc") { root.closeNotebook(); return true }
+    if (seq === "Up") { root.notebookFocus = root.nextNotebookRow(root.notebookFocus, -1); return true }
+    if (seq === "Down") { root.notebookFocus = root.nextNotebookRow(root.notebookFocus, 1); return true }
+    if (seq === "Enter" || Sc.hit(event, "notebookCorrect")) { root.startCorrect(); return true }
+    if (Sc.hit(event, "notebookForget")) { root.forgetNote(); return true }
     return false
   }
 
@@ -3614,6 +3762,30 @@ Item {
     }
   }
 
+  Process {
+    id: notebookProc
+    stdout: StdioCollector {
+      onStreamFinished: {
+        try { root.notebookData = JSON.parse(text) } catch (e) { root.notebookNote = "the runner did not answer" }
+        var rows = root.notebookList
+        if (root.notebookFocus >= rows.length || (rows[root.notebookFocus] && rows[root.notebookFocus].kind === "head"))
+          root.notebookFocus = root.nextNotebookRow(Math.min(root.notebookFocus, rows.length), -1)
+        if (root.notebookFocus < 0 || !rows[root.notebookFocus] || rows[root.notebookFocus].kind === "head")
+          root.notebookFocus = root.nextNotebookRow(-1, 1)
+      }
+    }
+  }
+  Process {
+    id: notebookActProc
+    stdout: StdioCollector {
+      onStreamFinished: {
+        if (text.trim() !== "") root.notebookNote = root.notebookPendingNote
+        root.loadNotebook()
+      }
+    }
+    stderr: StdioCollector { onStreamFinished: if (text.trim() !== "") root.notebookNote = text.trim().replace(/^longhand-agent: /, "") }
+  }
+
   // What Settings says about the agent: which prompts and models have
   // passed their evals, and the latest review.
   property var agentChecks: null
@@ -3820,6 +3992,9 @@ Item {
     // Settings (Ctrl+, or "settings" at the sidebar's foot): drawn like the keys
     // sheet, in the same column: calendars, the agent, sound. (SettingsSheet.qml)
     SettingsSheet { id: settingsSheet; page: root }
+
+    // What the agent knows: Settings' second view, in its place. (NotebookSheet.qml)
+    NotebookSheet { id: notebookSheet; page: root }
 
     // The keys sheet (Ctrl+/, or "keys" at the sidebar's foot): every key the page
     // answers to, under where it works, each one movable. A list, so it

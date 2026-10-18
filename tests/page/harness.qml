@@ -214,6 +214,14 @@ ShellRoot {
     function settingsKey(key: int, mods: int): bool { return page.settingsKey({ key: key, text: "", modifiers: mods }) }
     function settingsLines(): string { return JSON.stringify(page.settingsLines().map(function (l) { return l.text })) }
     function settingsNote(): string { return page.settingsNote }
+    function settingsView(): string { return page.settingsView }
+    function notebookKey(key: int, mods: int): bool { return page.notebookKey({ key: key, text: "", modifiers: mods }) }
+    function notebookRows(): string { return JSON.stringify(page.notebookList) }
+    function notebookFocus(i: int): void { page.notebookFocus = i }
+    function notebookPicked(): int { return page.notebookFocus }
+    function notebookNote(): string { return page.notebookNote }
+    function notebookCorrecting(): bool { return page.notebookCorrecting }
+    function notebookType(t: string): void { page.notebookSheetItem.notebookFieldRef.text = t }
 
     // The measure
     function zoom(z: real): void { page.setZoom(z) }

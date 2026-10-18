@@ -167,7 +167,10 @@ learned something durable — not on every run.
   section, what gets done and what lingers, when the student works, what
   they said they would do versus what happened. Numbers and dates, not
   adjectives.
-`dismissed.md` is not yours; read it, never write it.
+`dismissed.md`, `answers.md` and `corrections.md` are not yours; read them,
+never write them. The student's corrections overrule your notes: when you
+rewrite a file, keep what they corrected as corrected, and never write back
+what they told you to forget — not in other words, not in another file.
 
 ## Suggestions
 

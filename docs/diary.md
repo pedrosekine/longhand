@@ -1107,3 +1107,14 @@ only the window and the panels around it differ.
   strings and comments ("not a calendar." became an alias), caught by the
   load check, and it now touches code only. Behaviour unchanged: the 182 unit
   checks and the whole live page suite pass.
+- **2026-10-18 — What the agent knows, correctable (slice 3).** The notebook
+  was the agent's alone: it could be read in the vault but not answered.
+  Settings now shows it line by line (Ctrl+K); a line can be corrected in
+  the student's words or forgotten, and Longhand — not the model — makes
+  the change and records it in `corrections.md`. The choice that matters:
+  the record is enforced in code, applied again every time the model
+  rewrites a file, because a prompt can only ask the model to respect a
+  correction while code can make it stay made. The prompts say so too; both
+  passed their eval cases before install (the planner's case passed 2 of 3
+  runs — the miss was one criterion, dating every clear box, worth watching
+  in the weekly review).

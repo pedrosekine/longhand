@@ -23,6 +23,8 @@
     longhand-agent eval run [--model M] [--case ID]             # the cases against the repo's prompts; kept as history
     longhand-agent eval status                                  # which prompt and model have passed
     longhand-agent review [--write | --if-due]                  # the week of the agent, for the student to read
+    longhand-agent notebook [forget|correct|take-back] [--file F --text T [--to N] | --n K]
+                                                                # what the agent knows, and the student's corrections
     longhand-agent install [--force]                            # opencode agent defs (checked by their evals) + dirs
 
 One pass, then exit. Nothing is resident. The model gets no tools: everything
@@ -53,6 +55,7 @@ import blocks as blocklib  # noqa: E402
 import lifespan  # noqa: E402
 import plan as planlib  # noqa: E402
 import evals as evallib  # noqa: E402
+import notebook as nb  # noqa: E402
 import timetable  # noqa: E402
 import task as tasklib  # noqa: E402
 
@@ -158,6 +161,38 @@ def write_atomic(paths: Paths, target: Path, text: str) -> None:
         except OSError:
             pass
         raise
+
+
+def write_knowledge(paths: Paths, files: list, written: list) -> None:
+    """The knowledge files the model rewrote, with the student's corrections
+    applied again (notebook.py), so a correction made once stays made. Only
+    its own files: answers, dismissals and corrections are never the model's."""
+    record = nb.corrections(paths.knowledge)
+    for k in files:
+        name = str((k or {}).get("file") or "")
+        if not KNOWLEDGE_FILE.match(name) or name in nb.NOT_THE_MODELS:
+            continue
+        # The whole record, whichever file a correction was made in: a fact
+        # forgotten in one file does not come back by moving to another.
+        write_atomic(paths, paths.knowledge / name, nb.enforce(str(k.get("content") or "").rstrip(), record) + "\n")
+        written.append(name)
+
+
+def knowledge_parts(paths: Paths) -> list[str]:
+    """The notebook as every payload carries it: the agent's own files, the
+    student's answers to its questions, and the student's corrections."""
+    parts = ["", "# Your knowledge files", ""]
+    own = [(n, t) for n, t in read_tree(paths.knowledge) if Path(n).name not in nb.NOT_THE_MODELS]
+    if own:
+        for name, text in own:
+            parts += [f"## {name}", "", text.rstrip(), ""]
+    else:
+        parts.append("(none yet)")
+    answers = paths.knowledge / nb.ANSWERS
+    if answers.exists() and answers.read_text().strip():
+        parts += ["", "# The student's answers to your questions (true; never ask them again)", "",
+                  answers.read_text().rstrip()]
+    return parts + nb.payload_section(paths.knowledge)
 
 
 def append_text(paths: Paths, target: Path, text: str) -> None:
@@ -420,13 +455,7 @@ def build_payload(paths: Paths, trigger: str, fired: list[dict], visible: list[d
                           " your earlier daily notes, and nothing else of those days", ""]
             parts += earlier_project
 
-    knowledge = read_tree(paths.knowledge)
-    parts += ["", "# Your knowledge files", ""]
-    if knowledge:
-        for name, text in knowledge:
-            parts += [f"## {name}", "", text.rstrip(), ""]
-    else:
-        parts.append("(none yet)")
+    parts += knowledge_parts(paths)
 
     sessions = timetable_section(cfg, dt.datetime.now()) if cfg else []
     if sessions:
@@ -685,12 +714,7 @@ def apply(cfg: dict, paths: Paths, trigger: str, fired: list[dict], visible: lis
         state["suggestions"].append({"text": text, "evidence": str(s.get("evidence") or ""),
                                      "block": hash_, "at": at, "dismissed": False})
     written = []
-    for k in reply["knowledge"]:
-        name = str(k.get("file") or "")
-        if not KNOWLEDGE_FILE.match(name) or name == "dismissed.md":
-            continue
-        write_atomic(paths, paths.knowledge / name, str(k.get("content") or "").rstrip() + "\n")
-        written.append(name)
+    write_knowledge(paths, reply["knowledge"], written)
     state["runs"].append({"at": at, "trigger": trigger, "block": hash_, "session": result["session"],
                           "cost": result["cost"], "tokens": result["tokens"], "payload": str(payload_file),
                           "prompt": result.get("prompt", ""), "model": result.get("model", ""),
@@ -1631,19 +1655,7 @@ def plan_payload(cfg: dict, paths: Paths, today: dt.date, data: dict) -> str:
     parts = ["# Plan", f"today: {today.isoformat()} ({today:%A})", "",
              "# Data (computed by local code; trust the numbers)", "",
              "```json", json.dumps(data, indent=1, ensure_ascii=False), "```"]
-    knowledge = read_tree(paths.knowledge)
-    parts += ["", "# Your knowledge files", ""]
-    if knowledge:
-        for name, text in knowledge:
-            if name in ("answers.md", "dismissed.md"):
-                continue
-            parts += [f"## {name}", "", text.rstrip(), ""]
-    else:
-        parts.append("(none yet)")
-    answers = paths.knowledge / "answers.md"
-    if answers.exists():
-        parts += ["", "# The student's answers to your questions (true; never ask them again)", "",
-                  answers.read_text().rstrip()]
+    parts += knowledge_parts(paths)
     dismissed = read_dismissed(paths)
     if dismissed:
         parts += ["", "# Suggestions the student dismissed", ""] + [f"- {d}" for d in dismissed]
@@ -1723,12 +1735,7 @@ def cmd_plan(cfg: dict, args) -> int:
     planlib.save_ledger(PROPOSALS, ledger)
 
     written = []
-    for k in reply["knowledge"]:
-        name = str((k or {}).get("file") or "")
-        if not KNOWLEDGE_FILE.match(name) or name == "dismissed.md":
-            continue
-        write_atomic(paths, paths.knowledge / name, str(k.get("content") or "").rstrip() + "\n")
-        written.append(name)
+    write_knowledge(paths, reply["knowledge"], written)
 
     tk = result["tokens"]
     paths.ledger.parent.mkdir(parents=True, exist_ok=True)
@@ -1800,6 +1807,28 @@ def cmd_proposal(cfg: dict, args) -> int:
     planlib.save_ledger(PROPOSALS, ledger)
     print(json.dumps({"id": args.id, "status": next(x for x in ledger["items"] if x["id"] == args.id)["status"],
                       "changed": True}))
+    return 0
+
+
+# --------------------------------------------------------------- notebook
+
+def cmd_notebook(cfg: dict, args) -> int:
+    """What the agent knows, for Settings, and the student's word on it:
+    forget a line, correct it, or take a correction back (notebook.py)."""
+    paths = Paths(cfg, dt.date.today())
+    write = lambda f, text: write_atomic(paths, f, text)  # noqa: E731
+    try:
+        if args.how == "forget":
+            out = nb.forget(paths.knowledge, args.file, args.text, write)
+        elif args.how == "correct":
+            out = nb.correct(paths.knowledge, args.file, args.text, args.to, write)
+        elif args.how == "take-back":
+            out = nb.take_back(paths.knowledge, args.n, write)
+        else:
+            out = nb.read(paths.knowledge)
+    except ValueError as e:
+        raise Fail(str(e))
+    print(json.dumps(out, ensure_ascii=False))
     return 0
 
 
@@ -2132,6 +2161,12 @@ def main(argv: list[str]) -> int:
     p.add_argument("--date", required=True)
     p.add_argument("--kind", required=True, choices=("suggestion", "observation"))
     p.add_argument("--index", type=int, required=True)
+    p = sub.add_parser("notebook")
+    p.add_argument("how", nargs="?", default="show", choices=("show", "forget", "correct", "take-back"))
+    p.add_argument("--file", default="")
+    p.add_argument("--text", default="")
+    p.add_argument("--to", default="")
+    p.add_argument("--n", type=int, default=-1)
     sub.add_parser("curriculum")
     sub.add_parser("state").add_argument("--date", default="")
     sub.add_parser("install").add_argument("--force", action="store_true", help="install prompts that have not passed their evals")
@@ -2162,7 +2197,7 @@ def main(argv: list[str]) -> int:
     try:
         cfg = load_config()
         return {"run": cmd_run, "chat": cmd_chat, "ack": cmd_ack, "accept": cmd_accept, "tasks": cmd_tasks, "sections": cmd_sections,
-                "next": cmd_next, "box": cmd_box, "rate": cmd_rate, "eval": cmd_eval, "review": cmd_review, "plan": cmd_plan, "proposals": cmd_proposals, "proposal": cmd_proposal, "timetable": cmd_timetable, "dismiss": cmd_dismiss, "curriculum": cmd_curriculum,
+                "next": cmd_next, "box": cmd_box, "rate": cmd_rate, "eval": cmd_eval, "review": cmd_review, "plan": cmd_plan, "proposals": cmd_proposals, "proposal": cmd_proposal, "timetable": cmd_timetable, "notebook": cmd_notebook, "dismiss": cmd_dismiss, "curriculum": cmd_curriculum,
                 "context": cmd_context, "state": cmd_state, "install": cmd_install, "stats": cmd_stats,
                 "projects": cmd_projects}[args.cmd](cfg, args)
     except Fail as e:

@@ -23,7 +23,7 @@ BorderSurface {
   readonly property var pal: page.palette
   property alias settingsFieldRef: settingsField
 
-  visible: page.settingsOpen
+  visible: page.settingsOpen && page.settingsView !== "notebook"
   x: page.wideX
   y: page.alongside ? 0 : page.sheetMargin
   width: page.wideWidth
@@ -292,6 +292,34 @@ BorderSurface {
             font.pixelSize: page.fs(Style.font.bodySmall)
           }
         }
+        // What it knows: a count here, the notebook itself one key away.
+        Row {
+          spacing: page.sp(16)
+          Text {
+            textFormat: Text.PlainText
+            text: page.sayNotebook()
+            color: page.dim
+            font.family: page.fontFamily
+            font.styleName: page.fontStyle
+            font.pixelSize: page.fs(Style.font.bodySmall)
+          }
+          Text {
+            textFormat: Text.PlainText
+            text: "what it knows"
+            color: knowsArea.containsMouse ? page.accent : page.faint
+            font.family: page.fontFamily
+            font.styleName: page.fontStyle
+            font.pixelSize: page.fs(Style.font.bodySmall)
+            MouseArea {
+              id: knowsArea
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: page.openNotebook()
+              PanelToolTip { visible: parent.containsMouse; text: page.tip("what it knows", "settingsNotebook") }
+            }
+          }
+        }
         Text {
           visible: !!page.agentChecks && page.agentChecks.latest_review !== ""
           textFormat: Text.PlainText
@@ -387,7 +415,8 @@ BorderSurface {
         text: page.settingsFieldKind === "rename" ? "Enter renames it · Esc keeps the old name"
           : "Enter adds a calendar · ↑↓ pick one · " + page.keyName("settingsShare") + " what the agent sees · "
           + page.keyName("settingsFetch") + " fetches it · " + page.keyName("settingsRename") + " renames · "
-          + page.keyName("settingsForget") + " removes it · " + page.keyName("settingsSound") + " tick sound · Esc back"
+          + page.keyName("settingsForget") + " removes it · " + page.keyName("settingsSound") + " tick sound · "
+          + page.keyName("settingsNotebook") + " what the agent knows · Esc back"
         color: page.faint
         font.family: page.fontFamily
         font.styleName: page.fontStyle

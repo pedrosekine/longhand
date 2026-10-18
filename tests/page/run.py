@@ -137,7 +137,7 @@ class Page:
         chatstub.write_text(CHAT_STUB)
         self.runner.write_text(f"""#!/bin/bash
 case "$1" in
-  accept|projects|sections|next|tasks|box|timetable|plan|proposals|proposal|rate) exec "{ROOT}/agent/longhand-agent" "$@" ;;
+  accept|projects|sections|next|tasks|box|timetable|plan|proposals|proposal|rate|notebook) exec "{ROOT}/agent/longhand-agent" "$@" ;;
   run) sleep 2; exit 0 ;;
   chat) sleep 2; exec python3 "{chatstub}" "{self.vault}/agents/longhand/daily" "$@" ;;
 esac
@@ -1190,6 +1190,40 @@ def main() -> int:
               "…and the last one, back to no calendar")
         check(p.call("settingsKey", 0x01000000, 0) == "true" and p.call("settingsOpen") == "false", "Esc goes back")
         uni.shutdown()
+
+        # 12d'. Settings → what the agent knows (slice 3, 2026-10-18): the
+        # notebook line by line; forget and correct, kept in corrections.md.
+        know = p.vault / "agents" / "longhand" / "knowledge"
+        know.mkdir(parents=True, exist_ok=True)
+        (know / "profile.md").write_text("# Profile\n\n- Lives in Vienna.\n  - Commutes by train.\n- Grading scale not yet confirmed.\n")
+        KEY_K = 0x4b
+        p.call("settings")
+        check(p.call("settingsKey", KEY_K, CTRL) == "true" and p.wait(lambda: p.call("settingsView") == "notebook"),
+              "Ctrl+K in settings opens what the agent knows")
+        check(p.wait(lambda: any(r["text"] == "Lives in Vienna." for r in json.loads(p.call("notebookRows")))),
+              "…its notes, line by line")
+        rows = json.loads(p.call("notebookRows"))
+        check(rows[0]["kind"] == "head" and rows[0]["text"] == "Profile" and rows[int(p.call("notebookPicked"))]["kind"] == "line",
+              "…under each file's title, the first line picked")
+        p.call("notebookFocus", next(i for i, r in enumerate(rows) if r["text"] == "Lives in Vienna."))
+        check(p.call("notebookKey", KEY_BACKSPACE, CTRL | SHIFT) == "true", "Ctrl+Shift+Backspace forgets the picked line")
+        check(p.wait(lambda: "Vienna" not in (know / "profile.md").read_text()), "…taken out of the agent's file, with what hung off it")
+        check(p.wait(lambda: "forget · profile.md: «Lives in Vienna.»" in (know / "corrections.md").read_text()),
+              "…and recorded in corrections.md, so it stays forgotten")
+        check(p.wait(lambda: "stays forgotten" in p.call("notebookNote")), f"…and the page says so ({p.call('notebookNote')})")
+        rows = json.loads(p.call("notebookRows"))
+        p.call("notebookFocus", next(i for i, r in enumerate(rows) if r["text"].startswith("Grading")))
+        p.call("notebookKey", KEY_RETURN, 0)
+        check(p.call("notebookCorrecting") == "true", "Enter on a line starts correcting it")
+        p.call("notebookType", "Grades run 1 to 5; 4 passes.")
+        p.call("notebookKey", KEY_RETURN, 0)
+        check(p.wait(lambda: "- Grades run 1 to 5; 4 passes.\n" in (know / "profile.md").read_text()),
+              "…Enter puts the student's words in its place")
+        check(p.wait(lambda: any(r["kind"] == "correction" and "4 passes" in r["text"] for r in json.loads(p.call("notebookRows")))),
+              "…and the correction is listed under the student's corrections")
+        check(p.call("notebookKey", KEY_ESC, 0) == "true" and p.call("settingsView") == "main" and p.call("settingsOpen") == "true",
+              "Esc goes back to settings")
+        p.call("settingsKey", KEY_ESC, 0)
 
         # 12e. a tick in the note, as in the dashboard: the day it was done
         # on the line, and the sound asked for; an untick takes the day off
