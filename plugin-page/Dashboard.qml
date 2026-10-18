@@ -367,7 +367,9 @@ BorderSurface {
                   elide: Text.ElideRight
                   maximumLineCount: 2
                   wrapMode: Text.WordWrap
-                  text: dashRow.kind === "proposal" ? "do " + page.sayDate(modelData.item.date)
+                  text: dashRow.kind === "proposal" && modelData.item.kind === "file"
+                      ? "file “" + modelData.item.name.replace(/\.pdf$/, "") + "” in " + (modelData.item.title || modelData.item.project)
+                    : dashRow.kind === "proposal" ? "do " + page.sayDate(modelData.item.date)
                       + (modelData.task ? "" : " · " + (modelData.item.title || ""))
                     : dashRow.kind === "question" ? modelData.item.question
                     : dashRow.kind === "shelf" ? "+" + modelData.count + " not now · " + page.keyName("dashOpen") + " to show"
@@ -434,6 +436,8 @@ BorderSurface {
                 text: kind === "task" ? page.tips([["Go to the line", "dashOpen"], ["Done", "dashDone"], ["Reschedule", "dashWhen"], ["Cycle its priority", "dashPriority"],
                                                    [dashRow.task && dashRow.task.away ? "Back" : "Not now", "dashShelve"], ["Keep it", "dashKeep"], ["Drop it", "dashDrop"]])
                   : kind === "deadline" ? page.tips([["Go to its line", "dashOpen"], ["Done", "dashDone"], ["Grade", "dashGrade"]])
+                  : kind === "proposal" && dashRow.modelData.item.kind === "file"
+                    ? page.tips([["File it: moved from Downloads into the course's documents", "dashDone"], ["Decline", "dashDrop"], ["Open it first", "dashOpen"]])
                   : kind === "proposal" ? page.tips([["Accept: the do-date goes on its line", "dashDone"], ["Decline", "dashDrop"], ["Go to its line", "dashOpen"]])
                   : kind === "question" ? page.tips([["Accept the recommended answer", "dashDone"], ["Answer in your own words", "dashOpen"], ["Decline", "dashDrop"]])
                   : kind === "shelf" ? page.tip("Show what is not now", "dashOpen")

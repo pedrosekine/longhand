@@ -1118,3 +1118,20 @@ only the window and the panels around it differ.
   passed their eval cases before install (the planner's case passed 2 of 3
   runs — the miss was one criterion, dating every clear box, worth watching
   in the weekly review).
+- **2026-10-18 — Documents from the inbox (slice 4, first half).** The
+  design assumed a course document names its course. Measured before
+  building: of 67 PDFs in Downloads none did in its file name and two did
+  on their first pages; the time they were saved did better — both copies
+  of *The Seven Deadly Myths of Autonomous Systems* were downloaded during a
+  Human Factors class (the design had filed it under the Interdisciplinary
+  Seminar). Pedro chose all three signals. Filing is a proposal row like a
+  do-date; the scan remembers only hashes, so the invoices and the ID beside
+  the readings are never named, not even in a cache. The inbox is opt-in in
+  the config, so no test or fresh install reads anyone's Downloads.
+  Found on the way: the split of Page.qml left four `target: root` in the
+  sheets, where `root` is not the page — the dashboard's reschedule field
+  stopped taking the keys, and the keys sheet and sidebar stopped scrolling
+  to the picked row. The live tests called the page's functions directly
+  and could not see it; `tests/test_sheets.py` now fails on any such name,
+  a live check asks whether the field really has the keys, and the
+  extraction script rewrites a bare `root` too.

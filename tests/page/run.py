@@ -82,6 +82,7 @@ o.bind("SUPER + ALT + backslash", "Page alongside", "omarchy-shell shell summon 
 
 TODAY = dt.date.today().strftime("%Y.%m.%d")
 YDAY = (dt.date.today() - dt.timedelta(days=1)).strftime("%Y.%m.%d")
+TODAY_ISO = dt.date.today().isoformat()
 failures = 0
 
 
@@ -113,7 +114,9 @@ class Page:
         self.runner = self.tmp / "runner"
         (cfg / "longhand" / "config.json").write_text(json.dumps({
             "vault": str(self.vault), "daily": {"dir": "Daily", "format": "YYYY.MM.DD"},
-            "runner": str(self.runner), "check": str(ROOT / "cli" / "longhand-check"), "weekStart": "monday"}))
+            "runner": str(self.runner), "check": str(ROOT / "cli" / "longhand-check"), "weekStart": "monday",
+            "inbox": str(self.tmp / "Downloads")}))
+        (self.tmp / "Downloads").mkdir()
         bindir = self.tmp / "bin"
         bindir.mkdir()
         (bindir / "pomo").symlink_to(ROOT / "cli" / "pomo")
@@ -1347,7 +1350,42 @@ def main() -> int:
         for n, r in asks():
             p.call("dashFocus", n)
             p.call("dashKey", KEY_DELETE, 0)
+
+        # 12h. documents (docs/agent.md, slice 4): a PDF in the inbox that
+        # names a course is a row to file it; accepting moves it into the
+        # course's documents, which the project in the sidebar lists. An
+        # invoice beside it is never shown.
+        sys.path.insert(0, str(ROOT / "tests"))
+        from test_documents import pdf
+        inbox = p.tmp / "Downloads"
+        pdf(inbox / "DTM_handout.pdf", "Week two")
+        pdf(inbox / "Rechnung_4711.pdf", "Invoice")
+        p.call("refreshProposals")
+        def filing():
+            return [(n, r) for n, r in enumerate(json.loads(p.call("dashRows"))) if r["kind"] == "proposal" and r.get("file")]
+        check(p.wait(lambda: len(filing()) == 1), f"a document in the inbox arrives as a row to file it ({filing()})")
+        fi, frow = filing()[0]
+        check(frow["file"] == f"{TODAY_ISO} DTM handout.pdf" and "its name says Design Theory" in frow["why"],
+              f"…named, and saying why it is the course's ({frow})")
+        check("Rechnung" not in p.call("dashRows"), "…and the invoice beside it is not listed")
+        check(p.call("rowAuthor", fi) == "agent", "…as the agent's proposal")
+        p.call("dashFocus", fi)
+        check(p.call("dashKey", KEY_RETURN, CTRL) == "true", "Ctrl+Enter files it")
+        filed = p.vault / "projects" / "dtm" / "docs" / f"{TODAY_ISO} DTM handout.pdf"
+        check(p.wait(lambda: filed.is_file() and not (inbox / "DTM_handout.pdf").exists()),
+              "…moved from the inbox into projects/dtm/docs/")
+        check((inbox / "Rechnung_4711.pdf").exists(), "…and nothing else moved")
         p.call("dash")
+        side_was = p.call("sidebarOpen")
+        check(p.wait(lambda: "dtm|" in "".join(json.loads(p.call("projects")))), "the projects are listed")
+        p.call("openProject", next(n for n, x in enumerate(json.loads(p.call("projects"))) if x.startswith("dtm|")))
+        check(p.wait(lambda: [d["name"] for d in json.loads(p.call("projectDocs"))] == [f"{TODAY_ISO} DTM handout"]),
+              f"the project in the sidebar lists its documents ({p.call('projectDocs')})")
+        p.call("moveSectionFocus", -1)
+        check(p.call("docFocus") == "0", "↑ from the first section reaches the documents")
+        p.call("leaveProject")
+        if p.call("sidebarOpen") != side_was:
+            p.call("sidebar")
 
         # 12b. the keys sheet: every key the page answers to, listed; one
         # moved through the sheet, kept in keys.json, and working in the note

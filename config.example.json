@@ -13,6 +13,8 @@
     "Spanish"
   ],
   "curriculum": "agents/longhand/curriculum",
+  "inbox": "~/Downloads",
+  "projectsDir": "projects",
   "weekStart": "monday",
   "font": "iA Writer Quattro S",
   "codeFont": "",

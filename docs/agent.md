@@ -183,7 +183,11 @@ nothing — unless needed. The student does not read them in Longhand; opening
 the PDF is better.
 
 - **The inbox is the Downloads folder.** Local code, on this machine, finds
-  PDFs that name a course by its code or title and proposes filing them
+  PDFs that belong to a course — its code, title or tag in the file name
+  or on the first two pages, or downloaded during one of its classes or in
+  the two hours after (2026-10-18: of 67 PDFs in Downloads, no file name
+  named a course, two first pages did, and the class times found the
+  readings saved in class) — and proposes filing them
   ("move *The_Seven_Deadly_Myths…pdf* to Interdisciplinary Seminar as
   '2026-10-14 The Seven Deadly Myths of Autonomous Systems'?"). Nothing
   that does not match is ever listed, named or shown to the agent — the
@@ -353,7 +357,21 @@ Each is usable alone.
    again); a correction can be taken back. Tests: `tests/test_notebook.py`,
    and the Settings section of `tests/page/run.py`.
 4. **Documents** — the Downloads inbox and filing, the index, conversion
-   and search, the project's documents in the sidebar.
+   and search, the project's documents in the sidebar. **First half built
+   2026-10-18:** `agent/documents.py`; the inbox is opt-in (`"inbox":
+   "~/Downloads"` in config.json), scanned when the dashboard asks for
+   proposals, PDFs of the last 60 days only; a match is a ◇ row in its
+   course's band ("file “2026-10-14 The Seven Deadly Myths of Autonomous
+   Systems” in Human Factors…", why underneath), Space/Ctrl+Enter files
+   it into `projects/<tag>/docs/` (named by the download's date and the
+   document's own title), Del declines it for good, Enter opens it first.
+   The scan's cache keeps only hashes, so an invoice is never named
+   anywhere; two copies of one download are one proposal. The project in
+   the sidebar lists its documents above its sections (↑ reaches them,
+   Enter opens the PDF viewer), and a run about a course carries their
+   index, a line each. The vault's `.gitignore` leaves `projects/*/docs/`
+   out of git. **Still to do:** tiers 2 and 3 — the agent asking for a
+   document whole or for words in it, carried into its next run.
 5. **The other actions** (2–7) and raising an action's autonomy.
 
 The pluggable runner stands apart from the slices: it can come whenever a

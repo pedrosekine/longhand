@@ -124,8 +124,8 @@ Item {
   readonly property alias sheetItem: sheet
   readonly property alias agentState: agent
   readonly property alias sectionsProcess: sectionsProc
-  readonly property alias dashItem: dash
   readonly property alias notebookSheetItem: notebookSheet
+  readonly property alias dashItem: dash
   property bool overlayOpen: false
   property bool windowOpen: false
   readonly property bool opened: overlayOpen          // what the shell's toggle asks
@@ -331,6 +331,9 @@ Item {
   property string projectTag: ""
   property string projectName: ""
   property int sectionFocus: 0
+  // The project's filed documents above its sections (docs/agent.md, slice
+  // 4): -1 while the keys are on the sections, else the document picked.
+  property int docFocus: -1
   property var pendingSection: null  // a heading to land on once its note is open
   property var tasks: []
   property var raised: []
@@ -1784,6 +1787,7 @@ Item {
     root.projectName = pr.name || pr.tag
     root.sections = []
     root.sectionFocus = 0
+    root.docFocus = -1
     root.sidebarOpen = true
     root.projectOpen = true
     sectionsProc.command = [svc.runner, "sections", "--tag", pr.tag]
@@ -1832,6 +1836,7 @@ Item {
   // Back out of a project to the list it came from.
   function leaveProject() {
     root.projectOpen = false
+    root.docFocus = -1
     root.sections = []
     var i = -1
     for (var k = 0; k < root.projects.length; k++) if (root.projects[k].tag === root.projectTag) i = k
@@ -1840,8 +1845,36 @@ Item {
   }
 
   function moveSectionFocus(d) {
+    var docs = root.projectDocs().length
+    if (root.docFocus >= 0) {
+      var i = root.docFocus + d
+      if (i >= docs && root.sections.length > 0) { root.docFocus = -1; root.sectionFocus = 0 }
+      else root.docFocus = Math.max(0, Math.min(docs - 1, i))
+      return
+    }
+    if (d < 0 && root.sectionFocus === 0 && docs > 0) { root.docFocus = docs - 1; return }
     if (root.sections.length === 0) return
     root.sectionFocus = Math.max(0, Math.min(root.sections.length - 1, root.sectionFocus + d))
+  }
+
+  // The open project's documents, as the runner listed them with the
+  // projects; opened in the PDF viewer, never in the page.
+  function projectDocs() {
+    for (var k = 0; k < root.projects.length; k++)
+      if (root.projects[k].tag === root.projectTag) return root.projects[k].docs || []
+    return []
+  }
+
+  function openDocument(d) {
+    if (!d) return
+    Qt.openUrlExternally("file://" + d.path)
+    root.used("document", "open")
+  }
+
+  // Enter in a project: the document picked, or the section.
+  function openInProject() {
+    if (root.docFocus >= 0) root.openDocument(root.projectDocs()[root.docFocus])
+    else root.openSection(root.sections[root.sectionFocus])
   }
 
   // Enter: the note itself, the cursor on the section's own heading. The
@@ -2066,6 +2099,16 @@ Item {
         out.push({ kind: mine[m].kind === "question" ? "question" : "proposal", item: mine[m], task: t })
       }
     }
+    // A document to file goes in its course's band, when the list has one.
+    for (var f = 0; f < props.length; f++) {
+      if (props[f].kind !== "file") continue
+      for (var b = 0; b < out.length; b++) {
+        if (out[b].kind !== "head" || out[b].tag !== props[f].project) continue
+        out.splice(b + 1, 0, { kind: "proposal", item: props[f], task: null })
+        used[props[f].id] = true
+        break
+      }
+    }
     var rest = props.filter(function (x) { return !used[x.id] })
     if (rest.length === 0) return out
     var at = -1
@@ -2144,6 +2187,8 @@ Item {
   function acceptPlanned(row) {
     var p = row.item
     if (row.kind === "question") { root.resolveProposal(p, "accept", ""); return }
+    // A document: the runner moves it into the course's folder.
+    if (p.kind === "file") { root.resolveProposal(p, "accept", ""); root.showHint("filed in " + (p.title || p.project)); return }
     var t = row.task || root.taskOfKey(p.key)
     if (!t) { root.showHint("its box is not on the list any more"); return }
     root.editTask(t, "when", p.date)
@@ -2315,6 +2360,7 @@ Item {
     // Enter on a question: the person's own answer, typed; on a proposal:
     // its box's line.
     if (row.kind === "question") { root.startDashAnswer(row.item); return }
+    if (row.kind === "proposal" && row.item.kind === "file") { Qt.openUrlExternally("file://" + row.item.src); root.used("document", "open"); return }
     if (row.kind === "proposal") { if (row.task) root.goToTask(row.task); return }
     if (row.kind === "shelf") { root.showShelf = true; return }
     if (row.kind === "grading") { root.showGrading = true; return }
@@ -3839,7 +3885,8 @@ Item {
   Process {
     id: proposalProc
     stderr: StdioCollector { onStreamFinished: if (text.trim() !== "") console.warn("longhand.page proposal: " + text.trim()) }
-    onExited: function (code, status) { root.nextProposal() }
+    // A filed document shows in its course in the sidebar at once.
+    onExited: function (code, status) { root.nextProposal(); if (root.proposalQueue.length === 0) root.refreshProjects() }
   }
 
   // authors.json: who made each box and bullet, by day (docs/agent.md). The

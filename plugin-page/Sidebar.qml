@@ -71,7 +71,7 @@ BorderSurface {
       if (page.projectOpen) {
         if (Sc.hit(event, "listUp")) page.moveSectionFocus(-1)
         else if (Sc.hit(event, "listDown")) page.moveSectionFocus(1)
-        else if (Sc.hit(event, "listOpen")) page.openSection(page.sections[page.sectionFocus])
+        else if (Sc.hit(event, "listOpen")) page.openInProject()
         else if (Sc.hit(event, "listBack")) page.leaveProject()
         else return
         event.accepted = true
@@ -522,6 +522,52 @@ BorderSurface {
         font.pixelSize: page.fs(Style.font.bodySmall)
       }
 
+      // Its documents, filed from the inbox: opened in the PDF viewer.
+      Text {
+        visible: page.projectDocs().length > 0
+        topPadding: page.sp(8)
+        textFormat: Text.PlainText
+        text: "DOCUMENTS"
+        color: page.dim
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.caption)
+      }
+      Repeater {
+        model: page.projectDocs()
+        Rectangle {
+          required property var modelData
+          required property int index
+          readonly property bool hot: page.docFocus === index && sidebarKeys.activeFocus
+          width: projectColumn.width
+          height: docText.implicitHeight + page.sp(6)
+          radius: Style.cornerRadius
+          color: hot ? Style.selectedFill : "transparent"
+          Text {
+            id: docText
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.leftMargin: page.sp(4)
+            anchors.rightMargin: page.sp(4)
+            anchors.verticalCenter: parent.verticalCenter
+            textFormat: Text.PlainText
+            elide: Text.ElideRight
+            text: modelData.name + (modelData.pages ? "   " + modelData.pages + " p." : "")
+            color: page.foreground
+            font.family: page.fontFamily
+            font.styleName: page.fontStyle
+            font.pixelSize: page.fs(Style.font.caption)
+          }
+          MouseArea {
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: { page.docFocus = index; page.openDocument(modelData) }
+            PanelToolTip { visible: parent.containsMouse; text: page.tip("Open it in the PDF viewer", "listOpen") }
+          }
+        }
+      }
+
       Text {
         width: parent.width
         visible: page.sections.length === 0
@@ -540,7 +586,7 @@ BorderSurface {
         Rectangle {
           required property var modelData
           required property int index
-          readonly property bool hot: page.sectionFocus === index && sidebarKeys.activeFocus
+          readonly property bool hot: page.docFocus < 0 && page.sectionFocus === index && sidebarKeys.activeFocus
           width: projectColumn.width
           height: secCol.implicitHeight + page.sp(8)
           radius: Style.cornerRadius
@@ -582,7 +628,7 @@ BorderSurface {
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onClicked: { page.sectionFocus = index; page.openSection(modelData) }
+            onClicked: { page.docFocus = -1; page.sectionFocus = index; page.openSection(modelData) }
             PanelToolTip { visible: parent.containsMouse; text: page.tip("Open the section", "listOpen") }
           }
         }

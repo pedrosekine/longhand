@@ -164,7 +164,7 @@ down, as in VS Code;
 `Alt+Right` goes into the margin — proposals first (Enter accepts one and runs
 it through `pomo`), then the chat — `Alt+Left` or `Esc` comes back. Drop
 course material into `agents/longhand/curriculum/` and run
-`longhand-agent curriculum` once for PDFs. List your `languages` in the config; the agent answers in the one the
+`longhand-agent curriculum` once for PDFs. Set `inbox` (e.g. `~/Downloads`) and the PDFs there that belong to a course — its code, title or tag in the file name or on the first two pages, or downloaded during or just after one of its classes — are proposed in the dashboard for filing into `<vault>/projects/<tag>/docs/`; nothing else in the folder is ever listed. A course's documents are in its project in the sidebar, and the agent sees their titles on a run about the course. List your `languages` in the config; the agent answers in the one the
 block is written in. Add your calendars in **Settings → Calendar** (`Ctrl+,`, or **settings** at the foot of the
 sidebar): paste an `.ics` or `webcal://` address and each calendar is fetched at once and says whether it works. Classes are
 matched to your projects by course code, so the sidebar's next session follows them; and for each calendar you choose

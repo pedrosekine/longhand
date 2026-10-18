@@ -23,6 +23,7 @@
     longhand-agent eval run [--model M] [--case ID]             # the cases against the repo's prompts; kept as history
     longhand-agent eval status                                  # which prompt and model have passed
     longhand-agent review [--write | --if-due]                  # the week of the agent, for the student to read
+    longhand-agent documents [--tag T]                          # filed course documents (projects/<tag>/docs/), JSON
     longhand-agent notebook [forget|correct|take-back] [--file F --text T [--to N] | --n K]
                                                                 # what the agent knows, and the student's corrections
     longhand-agent install [--force]                            # opencode agent defs (checked by their evals) + dirs
@@ -56,6 +57,7 @@ import lifespan  # noqa: E402
 import plan as planlib  # noqa: E402
 import evals as evallib  # noqa: E402
 import notebook as nb  # noqa: E402
+import documents as doclib  # noqa: E402
 import timetable  # noqa: E402
 import task as tasklib  # noqa: E402
 
@@ -73,6 +75,8 @@ PROPOSALS = STATE_HOME / "proposals.json"
 # When the planning job last ran, and on what (so it does not plan the same
 # unchanged fortnight twice a day).
 PLAN_STATE = STATE_HOME / "plan.json"
+INBOX_CACHE = STATE_HOME / "inbox.json"          # hashes only: what the inbox scan saw
+DOCS_CACHE = STATE_HOME / "documents.json"      # pages of filed documents
 # Every rating the student gave a reply: helpful or not, with the prompt and
 # model that made it (the improvement loop, docs/agent.md).
 FEEDBACK = STATE_HOME / "feedback.tsv"
@@ -454,6 +458,11 @@ def build_payload(paths: Paths, trigger: str, fired: list[dict], visible: list[d
             parts += ["", f"# What you wrote before under #{tag} — this project's sections of"
                           " your earlier daily notes, and nothing else of those days", ""]
             parts += earlier_project
+        docs = doclib.index(paths.vault, cfg.get("projectsDir", "projects"), tag, doclib.load_cache(DOCS_CACHE))
+        if docs:
+            parts += ["", f"# Documents filed for #{tag} (an index only: their contents are not available to you;"
+                          " name one if the student should open it)", ""]
+            parts += [f"- {d['name']} ({d['pages']} pages)" if d["pages"] else f"- {d['name']}" for d in docs]
 
     parts += knowledge_parts(paths)
 
@@ -1498,6 +1507,7 @@ def project_list(cfg: dict, now: dt.datetime, events: list[dict] | None = None) 
     offers them instead of new ones being invented."""
     folder = Paths(cfg, now.date()).knowledge / "projects"
     out = []
+    pages = doclib.load_cache(DOCS_CACHE)
     for f in sorted(folder.glob("*.md")) if folder.is_dir() else []:
         try:
             text = f.read_text()
@@ -1523,10 +1533,13 @@ def project_list(cfg: dict, now: dt.datetime, events: list[dict] | None = None) 
                 end = dt.datetime.combine(day, dt.time(int(b_h), int(b_m)))
                 if end > now and (nxt is None or start < nxt["at"]):
                     nxt = {"at": start, "end": end, "room": room.group(1).strip() if room else ""}
-        out.append({"tag": m.group(1) if m else f.stem, "name": name, "file": f.name,
+        tag = m.group(1) if m else f.stem
+        out.append({"tag": tag, "name": name, "file": f.name,
+                    "docs": doclib.index(Paths(cfg, now.date()).vault, cfg.get("projectsDir", "projects"), tag, pages),
                     "next": {"at": nxt["at"].isoformat(timespec="minutes"), "end": nxt["end"].isoformat(timespec="minutes"),
                              "now": nxt["at"] <= now, "room": nxt["room"]} if nxt else None})
     out.sort(key=lambda p: (p["next"] is None, p["next"]["at"] if p["next"] else "", p["name"].lower()))
+    doclib.save_cache(DOCS_CACHE, pages)
     return out
 
 
@@ -1755,6 +1768,43 @@ def cmd_plan(cfg: dict, args) -> int:
     return 0 if not result["error"] else 1
 
 
+def inbox_pass(cfg: dict, ledger: dict, at: str) -> int:
+    """The Downloads inbox (documents.py): its PDFs that belong to a course
+    become proposals to file them — local code, no model; nothing else in
+    the folder is listed. A proposal whose file has left the inbox is moot.
+    Returns how many items changed."""
+    n = 0
+    for x in planlib.open_items(ledger):
+        if x["kind"] == "file" and not Path(x["src"]).is_file():
+            x["status"], x["resolved"] = "moot", at
+            n += 1
+    if not cfg.get("inbox"):                          # opt-in: config.json's "inbox"
+        return n
+    inbox = Path(cfg["inbox"]).expanduser()
+    now = dt.datetime.now()
+    courses = [{"code": c, "name": name, "tag": tag} for c, name, tag in course_codes(cfg, now.date()) if tag]
+    if not courses:
+        return n
+    events = timetable.sessions(cfg, STATE_HOME, fetch=False) or []
+    cache = doclib.load_cache(INBOX_CACHE)
+    found = doclib.scan(inbox, courses, events, cache, now, timetable.matches)
+    doclib.save_cache(INBOX_CACHE, cache)
+    new = doclib.proposals(found, ledger["items"], Paths(cfg, now.date()).vault, cfg.get("projectsDir", "projects"))
+    planlib.record(ledger, new, [], at)
+    return n + len(new)
+
+
+def cmd_documents(cfg: dict, args) -> int:
+    """A course's filed documents (or every course's), for the sidebar."""
+    paths = Paths(cfg, dt.date.today())
+    pages = doclib.load_cache(DOCS_CACHE)
+    tags = [args.tag] if args.tag else [t for _, _, t in course_codes(cfg, dt.date.today()) if t]
+    out = {t: doclib.index(paths.vault, cfg.get("projectsDir", "projects"), t, pages) for t in tags}
+    doclib.save_cache(DOCS_CACHE, pages)
+    print(json.dumps(out, ensure_ascii=False))
+    return 0
+
+
 def cmd_proposals(cfg: dict, args) -> int:
     """What the agent proposes or asks, open, for the dashboard — each with
     where its box is — and the do-dates accepted lately (their pills carry
@@ -1763,7 +1813,9 @@ def cmd_proposals(cfg: dict, args) -> int:
     tasks = plan_tasks(cfg)
     ledger = planlib.load_ledger(PROPOSALS)
     at = dt.datetime.now().isoformat(timespec="seconds")
-    if planlib.settle_moot(ledger, tasks, at):
+    changed = planlib.settle_moot(ledger, tasks, at)
+    changed += inbox_pass(cfg, ledger, at)
+    if changed:
         planlib.save_ledger(PROPOSALS, ledger)
     by_key = {t["key"]: t for t in tasks}
     out = []
@@ -1802,6 +1854,14 @@ def cmd_proposal(cfg: dict, args) -> int:
         about = f"{item['title']}: " if item.get("title") else ""
         line = f"- {dt.date.today().isoformat()} · {about}{item['question']} → {answer}\n"
         write_atomic(paths, f, head + (f.read_text() if f.exists() else "") + line)
+    elif args.how == "accept" and item["kind"] == "file":
+        paths = Paths(cfg, dt.date.today())
+        try:
+            item["filed"] = doclib.file_one(item, paths.vault, cfg.get("projectsDir", "projects"),
+                                            lambda d: guard_write(paths, d))
+            planlib.resolve(ledger, args.id, "accepted", at)
+        except FileNotFoundError:
+            planlib.resolve(ledger, args.id, "moot", at)
     else:
         planlib.resolve(ledger, args.id, "accepted" if args.how == "accept" else "declined", at)
     planlib.save_ledger(PROPOSALS, ledger)
@@ -2161,6 +2221,7 @@ def main(argv: list[str]) -> int:
     p.add_argument("--date", required=True)
     p.add_argument("--kind", required=True, choices=("suggestion", "observation"))
     p.add_argument("--index", type=int, required=True)
+    sub.add_parser("documents").add_argument("--tag", default="")
     p = sub.add_parser("notebook")
     p.add_argument("how", nargs="?", default="show", choices=("show", "forget", "correct", "take-back"))
     p.add_argument("--file", default="")
@@ -2197,7 +2258,7 @@ def main(argv: list[str]) -> int:
     try:
         cfg = load_config()
         return {"run": cmd_run, "chat": cmd_chat, "ack": cmd_ack, "accept": cmd_accept, "tasks": cmd_tasks, "sections": cmd_sections,
-                "next": cmd_next, "box": cmd_box, "rate": cmd_rate, "eval": cmd_eval, "review": cmd_review, "plan": cmd_plan, "proposals": cmd_proposals, "proposal": cmd_proposal, "timetable": cmd_timetable, "notebook": cmd_notebook, "dismiss": cmd_dismiss, "curriculum": cmd_curriculum,
+                "next": cmd_next, "box": cmd_box, "rate": cmd_rate, "eval": cmd_eval, "review": cmd_review, "plan": cmd_plan, "proposals": cmd_proposals, "proposal": cmd_proposal, "timetable": cmd_timetable, "notebook": cmd_notebook, "documents": cmd_documents, "dismiss": cmd_dismiss, "curriculum": cmd_curriculum,
                 "context": cmd_context, "state": cmd_state, "install": cmd_install, "stats": cmd_stats,
                 "projects": cmd_projects}[args.cmd](cfg, args)
     except Fail as e:

@@ -136,6 +136,9 @@ ShellRoot {
     function openProject(i: int): void { page.openProject(page.projects[i]) }
     function sections(): string { return JSON.stringify(page.sections.map(function (s) { return s.date + "|" + s.title + "|" + page.sectionUnder(s) })) }
     function openSection(i: int): void { page.sectionFocus = i; page.openSection(page.sections[i]) }
+    function projectDocs(): string { return JSON.stringify(page.projectDocs()) }
+    function docFocus(): int { return page.docFocus }
+    function moveSectionFocus(d: int): void { page.moveSectionFocus(d) }
     function leaveProject(): void { page.leaveProject() }
     // The projects list as the keyboard drives it: focus a row, then Enter.
     function projectEnter(i: int, ctrl: bool, shift: bool): void {
@@ -179,6 +182,7 @@ ShellRoot {
     function dashCount(): string { return page.dashCount }
     function ticksHeard(): int { return page.ticksHeard }
     function plan(force: bool): void { page.runPlan(force) }
+    function refreshProposals(): void { page.refreshProposals() }
     function rate(value: string): void { page.rateReply(value) }
     // Who made it
     function markAgent(line: int): void { page.markAuthor(line, "agent") }
@@ -199,7 +203,7 @@ ShellRoot {
           : r.kind === "shelf" || r.kind === "grading" ? { kind: r.kind, count: r.count }
           : r.kind === "raised" ? { kind: "raised", text: r.item.text }
           : r.kind === "proposal" ? { kind: "proposal", id: r.item.id, date: r.item.date, why: r.item.why,
-                                      under: r.task ? page.taskTitle(r.task) : "" }
+                                      under: r.task ? page.taskTitle(r.task) : "", file: r.item.kind === "file" ? r.item.name : "" }
           : r.kind === "question" ? { kind: "question", id: r.item.id, text: r.item.question, recommended: r.item.recommended }
           : r.kind === "deadline" ? { kind: "deadline", text: r.deadline.title, due: r.deadline.due,
                                       where: page.deadlineWhere(r.deadline), grade: r.deadline.grade }
