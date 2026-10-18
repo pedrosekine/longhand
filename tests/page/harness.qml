@@ -190,6 +190,8 @@ ShellRoot {
     function dashKey(key: int, mods: int): bool { return page.dashKey({ key: key, text: "", modifiers: mods }) }
     function dashType(ch: string): bool { return page.dashKey({ key: ch.toUpperCase().charCodeAt(0), text: ch, modifiers: 0 }) }
     function dashWhen(phrase: string): void { page.dashWhenText = phrase; page.commitDashWhen() }
+    function dashWhenStart(): void { page.startDashWhen() }
+    function dashWhenField(): string { var f = page.dashItem.dashWhenFieldRef; return JSON.stringify({ focus: f.focus, text: f.text }) }
     function dashRows(): string {
       return JSON.stringify(page.taskRows.map(function (r) {
         return r.kind === "head" ? { kind: "head", text: r.text, tag: r.tag || "" }

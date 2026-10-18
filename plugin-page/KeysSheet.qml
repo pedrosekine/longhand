@@ -109,7 +109,7 @@ BorderSurface {
             return
           }
         }
-        Connections { target: root; function onKeysFocusChanged() { Qt.callLater(keysFlick.revealFocused) } }
+        Connections { target: page; function onKeysFocusChanged() { Qt.callLater(keysFlick.revealFocused) } }
 
         Column {
           id: keysList

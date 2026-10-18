@@ -486,7 +486,7 @@ BorderSurface {
         return
       }
     }
-    Connections { target: root; function onSectionFocusChanged() { Qt.callLater(projectFlick.revealFocused) } }
+    Connections { target: page; function onSectionFocusChanged() { Qt.callLater(projectFlick.revealFocused) } }
 
     Column {
       id: projectColumn

@@ -6,7 +6,8 @@ The block becomes `<Name>.qml`, a component whose root keeps the block's id
 and takes the page as `page`; inside it, `root.` becomes `page.`, and the
 page's own objects it used (the palette, the content area, the editor…)
 arrive as read-only properties of the same names, so its body is otherwise
-unchanged. The inner items the page's logic reaches for are exposed as
+unchanged (`root` itself, as a Connections target, becomes `page`
+too). The inner items the page's logic reaches for are exposed as
 aliases named `<id>Ref`, and the page's references to them are rewritten.
 
 Run: python3 tools/extract_sheet.py <block id> <Name> "<one-line comment>"
@@ -57,7 +58,8 @@ exposed = sorted({k for k in inner if k != block_id and re.search(r"(?<![\w.])" 
 def dedent(l):
     return l[indent:] if l.startswith(" " * indent) else l.lstrip()
 lines = [dedent(l) for l in body]
-lines = [re.sub(r"\broot\.", "page.", l) for l in lines]
+# `root.x` and a bare `root` (a Connections target, an argument) alike.
+lines = [re.sub(r"(?<![\w.])root\b", "page", l) for l in lines]
 lines = [l for l in lines if not re.match(r"^  id: " + block_id + r"\s*$", l)]
 
 imports = [l for l in src[:40] if l.startswith("import ")]

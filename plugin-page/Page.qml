@@ -124,6 +124,7 @@ Item {
   readonly property alias sheetItem: sheet
   readonly property alias agentState: agent
   readonly property alias sectionsProcess: sectionsProc
+  readonly property alias dashItem: dash
   readonly property alias notebookSheetItem: notebookSheet
   property bool overlayOpen: false
   property bool windowOpen: false

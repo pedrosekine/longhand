@@ -22,6 +22,7 @@ BorderSurface {
   readonly property var content: page.contentItem
   readonly property var pal: page.palette
   property alias dashKeysRef: dashKeys
+  property alias dashWhenFieldRef: dashWhenField
 
   visible: page.dashOpen && !page.keysOpen && !page.settingsOpen
   x: page.wideX
@@ -86,7 +87,7 @@ BorderSurface {
           return
         }
       }
-      Connections { target: root; function onTaskFocusChanged() { Qt.callLater(dashFlick.revealFocused) } }
+      Connections { target: page; function onTaskFocusChanged() { Qt.callLater(dashFlick.revealFocused) } }
 
       Column {
         id: dashColumn
@@ -512,7 +513,7 @@ BorderSurface {
       }
 
       Connections {
-        target: root
+        target: page
         function onDashWhenForChanged() {
           if (page.dashWhenFor) { dashWhenField.text = page.dashFieldStart; dashWhenField.forceActiveFocus(); dashWhenField.selectAll() }
           else if (page.dashOpen) dashKeys.forceActiveFocus()

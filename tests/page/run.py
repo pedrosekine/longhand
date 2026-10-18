@@ -952,6 +952,8 @@ def main() -> int:
 
         row("ask about the rubric")
         check(p.call("dashType", "t") == "true", "t asks when")
+        check(p.wait(lambda: json.loads(p.call("dashWhenField"))["focus"]),
+              f"…and the field to say it in takes the keys ({p.call('dashWhenField')})")
         p.call("dashWhen", "tomorrow")
         tomorrow = (dt.date.today() + dt.timedelta(days=1)).isoformat()
         check(p.wait(lambda: f"⏳ {tomorrow}" in (p.daily / f"{YDAY}.md").read_text()),
