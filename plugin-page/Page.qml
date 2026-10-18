@@ -482,6 +482,21 @@ Item {
 
   readonly property var currentProposals: (currentRecord && currentRecord.proposals) ? currentRecord.proposals : []
   readonly property var taskRows: root.buildTaskRows()
+  // The dashboard's cursor stays on the same row when the list is drawn
+  // again — rows added above it (a plan, the agent's steps) must not move
+  // the next key onto another row. Only when its row is gone does the
+  // cursor keep its place in the list.
+  property string taskFocusKey: ""
+  onTaskFocusChanged: root.taskFocusKey = root.rowKey(root.taskRows[root.taskFocus])
+  onTaskRowsChanged: {
+    if (root.taskFocusKey === "") return
+    for (var i = 0; i < root.taskRows.length; i++) {
+      if (root.rowKey(root.taskRows[i]) === root.taskFocusKey) {
+        if (i !== root.taskFocus) root.taskFocus = i
+        return
+      }
+    }
+  }
   readonly property bool replyWaiting: root.hasUnreadInNote()
 
   readonly property string problem: svc.configError || svc.error
@@ -2171,8 +2186,12 @@ Item {
     return "the model said: " + e.slice(0, 80)
   }
 
+  // Asked for while one is under way: once more right after it, so what
+  // changed meanwhile (a document just downloaded) is not missed.
+  property bool proposalsAgain: false
   function refreshProposals() {
-    if (proposalsProc.running || !svc.configured) return
+    if (!svc.configured) return
+    if (proposalsProc.running) { root.proposalsAgain = true; return }
     proposalsProc.command = [svc.runner, "proposals"]
     proposalsProc.running = true
   }
@@ -3888,6 +3907,7 @@ Item {
         try {
           var p = JSON.parse(text)
           root.proposals = p.open || []
+          if (root.proposalsAgain) { root.proposalsAgain = false; Qt.callLater(root.refreshProposals) }
           var d = {}
           for (var i = 0; i < (p.accepted || []).length; i++) d[p.accepted[i].key] = p.accepted[i].date
           root.agentDates = d
