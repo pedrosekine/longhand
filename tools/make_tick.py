@@ -7,7 +7,8 @@ dying away in a few tens of milliseconds, with a gentle onset so it never
 clicks harshly. Quiet on purpose (about -12 dBFS at its peak): it answers a
 tick, it does not announce one.
 
-Run: python3 tools/make_tick.py   (writes plugin-page/tick.wav)
+Run: python3 tools/make_tick.py   (writes plugin-page/tick.wav, and the deadline
+     popup's copy, plugin-deadline/tick.wav: the same sound)
 """
 import math
 import pathlib
@@ -52,6 +53,9 @@ def main() -> None:
         w.setframerate(RATE)
         w.writeframes(data)
     print(f"wrote {OUT.relative_to(OUT.parent.parent)} ({len(data) // 2} samples, {LENGTH * 1000:.0f} ms)")
+    popup = OUT.parent.parent / "plugin-deadline" / "tick.wav"
+    popup.write_bytes(OUT.read_bytes())
+    print(f"wrote {popup.relative_to(OUT.parent.parent)} (the same)")
 
 
 if __name__ == "__main__":

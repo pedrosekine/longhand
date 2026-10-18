@@ -3,6 +3,9 @@ import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
 import qs.Commons
+// Qt 6.12's QtQuick has a `Color` of its own that shadows the shell's
+// (2026-10-18): the shell's palette is named through the module.
+import qs.Commons as Commons
 import qs.Ui
 
 // Deadline bar widget: countdown to the next open deadline + list popup.
@@ -41,10 +44,10 @@ Panel {
   moduleName: "longhand.deadline"
   ipcTarget: "longhand.deadline"
 
-  readonly property color foreground: bar ? bar.foreground : Color.foreground
+  readonly property color foreground: bar ? bar.foreground : Commons.Color.foreground
   readonly property color dim: Qt.darker(foreground, 1.55)
   readonly property color faint: Qt.darker(foreground, 2.2)
-  readonly property color urgent: bar ? bar.urgent : Color.urgent
+  readonly property color urgent: bar ? bar.urgent : Commons.Color.urgent
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
 
   // Match the pomodoro widget: underline the painted label, not the slot.
@@ -120,7 +123,36 @@ Panel {
 
   function toggleSelected() {
     var item = root.selectedItem()
-    if (item) svc.toggleDone(item)
+    if (item) root.tickItem(item)
+  }
+
+  // The tick, as the page's (2026-10-18): a short, soft sound when a
+  // deadline is marked done — never on reopening it, never while
+  // notifications are silenced, never when the page's Settings turned the
+  // sound off — and the row's mark pops, the strike is drawn left to right,
+  // the row glows and settles. The day it was done is the check's to write.
+  property int justTicked: 0
+  property int ticksHeard: 0
+  readonly property string tickFile: String(Qt.resolvedUrl("tick.wav")).replace(/^file:\/\//, "")
+  readonly property string settingsPath: (Quickshell.env("XDG_CONFIG_HOME") || (Quickshell.env("HOME") + "/.config")) + "/longhand/settings.json"
+  FileView { id: pageSettings; path: root.settingsPath; watchChanges: true; onFileChanged: reload(); printErrors: false }
+  function tickSoundOn() {
+    try { return (JSON.parse(pageSettings.text()) || {}).tickSound !== false } catch (e) { return true }
+  }
+  Process { id: tickSoundProc }
+  function tickItem(item) {
+    if (item.status === "open") {
+      root.justTicked = item.id
+      if (root.tickSoundOn()) {
+        root.ticksHeard++
+        if (!tickSoundProc.running && Quickshell.env("LONGHAND_SILENT") === "") {
+          tickSoundProc.command = ["sh", "-c", '[ "$(omarchy-shell notifications isDnd 2>/dev/null)" = on ] && exit 0; '
+            + 'if command -v pw-play >/dev/null; then exec pw-play --volume=0.6 "$0"; else exec paplay "$0"; fi', root.tickFile]
+          tickSoundProc.running = true
+        }
+      }
+    }
+    svc.toggleDone(item)
   }
 
   function gradeSelected() {
@@ -198,8 +230,8 @@ Panel {
     // The bar label is the whole point of the widget, so it earns the theme's
     // urgent color once the next deadline is inside a day.
     foreground: svc.nextItem && svc.isUrgent(svc.nextItem.due)
-      ? (bar ? bar.urgent : Color.urgent)
-      : (bar ? bar.barForeground : Color.foreground)
+      ? (bar ? bar.urgent : Commons.Color.urgent)
+      : (bar ? bar.barForeground : Commons.Color.foreground)
     tooltipText: svc.tooltipText
     onPressed: root.toggle()
   }
@@ -274,6 +306,27 @@ Panel {
             required property int index
 
             readonly property bool isDone: modelData.status !== "open"
+            // Only the row just ticked plays the tick; one already done is
+            // simply drawn done.
+            // (The strike is set here, not bound: the animation writes it.)
+            onIsDoneChanged: {
+              if (isDone && root.justTicked === modelData.id) { root.justTicked = 0; tickAnim.restart() }
+              else { tickAnim.stop(); strike.progress = isDone ? 1 : 0; markText.scale = 1 }
+            }
+            Component.onCompleted: strike.progress = isDone ? 1 : 0
+            SequentialAnimation {
+              id: tickAnim
+              ParallelAnimation {
+                NumberAnimation { target: markText; property: "scale"; from: 1; to: 1.45; duration: 110; easing.type: Easing.OutQuad }
+                NumberAnimation { target: tickGlow; property: "opacity"; from: 0; to: 0.16; duration: 110 }
+                NumberAnimation { target: strike; property: "progress"; from: 0; to: 0.15; duration: 110 }
+              }
+              ParallelAnimation {
+                NumberAnimation { target: markText; property: "scale"; to: 1; duration: 300; easing.type: Easing.OutBack; easing.overshoot: 3 }
+                NumberAnimation { target: strike; property: "progress"; to: 1; duration: 260; easing.type: Easing.OutCubic }
+                NumberAnimation { target: tickGlow; property: "opacity"; to: 0; duration: 650; easing.type: Easing.OutQuad }
+              }
+            }
             readonly property bool grading: root.gradingId === modelData.id
             readonly property color textColor: isDone ? root.dim : root.foreground
 
@@ -282,12 +335,21 @@ Panel {
             hasCursor: root.cellHot(index, 0)
             foreground: root.foreground
 
+            // The glow a tick leaves for a moment.
+            Rectangle {
+              id: tickGlow
+              anchors.fill: parent
+              radius: Style.cornerRadius
+              color: root.foreground
+              opacity: 0
+            }
+
             MouseArea {
               anchors.fill: parent
               hoverEnabled: true
               cursorShape: Qt.PointingHandCursor
               onContainsMouseChanged: if (containsMouse) root.hoverCursor(row.index, 0)
-              onClicked: svc.toggleDone(row.modelData)
+              onClicked: root.tickItem(row.modelData)
             }
 
             ColumnLayout {
@@ -303,16 +365,38 @@ Panel {
                 Layout.fillWidth: true
                 spacing: Style.space(8)
 
+                // The mark on its own, so a tick can pop it.
                 Text {
-                  Layout.fillWidth: true
+                  id: markText
                   textFormat: Text.PlainText
-                  elide: Text.ElideRight
-                  text: (row.isDone ? "✓ " : "○ ") + row.modelData.title
+                  text: row.isDone ? "✓" : "○"
                   color: row.textColor
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.body
-                  font.strikeout: row.isDone
+                }
+
+                Text {
+                  id: titleText
+                  Layout.fillWidth: true
+                  textFormat: Text.PlainText
+                  elide: Text.ElideRight
+                  text: row.modelData.title
+                  color: row.textColor
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.body
                   font.underline: titleMouse.containsMouse && titleMouse.enabled
+
+                  // Struck through, drawn rather than the font's, so a tick
+                  // can draw it left to right.
+                  Rectangle {
+                    id: strike
+                    property real progress: 0
+                    visible: progress > 0
+                    y: Math.round(titleText.height / 2)
+                    height: Math.max(1, Math.round(titleText.font.pixelSize * 0.07))
+                    width: Math.min(titleText.implicitWidth, titleText.width) * progress
+                    color: root.dim
+                  }
 
                   // A deadline a note line stands for: its title opens it.
                   MouseArea {

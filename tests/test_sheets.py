@@ -24,11 +24,11 @@ for f in sorted((ROOT / "plugin-page").glob("*.qml")):
 # Qt 6.12's QtQuick has a `Color` of its own, which shadows the shell's
 # (2026-10-18: the page drew with black greys): the shell's palette is
 # named through its module, `Commons.Color`.
-for f in sorted((ROOT / "plugin-page").glob("*.qml")):
+for f in sorted(ROOT.glob("plugin-*/*.qml")):
     for n, line in enumerate(f.read_text().split("\n"), 1):
         code = re.sub(r'"(?:[^"\\]|\\.)*"', '""', line.split("//")[0])
         if re.search(r"(?<![\w.])Color\b", code):
-            print(f"FAIL {f.name}:{n}: a bare `Color` is Qt's, not the shell's — write Commons.Color: {line.strip()}")
+            print(f"FAIL {f.parent.name}/{f.name}:{n}: a bare `Color` is Qt's, not the shell's — write Commons.Color: {line.strip()}")
             failures += 1
 print("PASS" if failures == 0 else f"{failures} FAILED")
 sys.exit(1 if failures else 0)

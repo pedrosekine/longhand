@@ -400,7 +400,11 @@ section, word for word, and to the diary's decisions log.
    through every edit in the page), never a tag in the prose.
 7. **The deadline popup's tick** — the same sound and feel as the page's
    (its own plugin, `plugin-deadline`); its day is already written by the
-   check.
+   check. *Done 2026-10-18*: the page's sound (the same file, written by
+   `tools/make_tick.py` for both; off when the page's Settings turned it
+   off, never under Do Not Disturb, never on reopening), and the row's mark
+   pops, the strike is drawn left to right, the row glows. The popup's bar
+   colours had the Qt 6.12 `Color` problem too, fixed. `tests/test_popup.py`.
 8. **The logo follows the theme on the launcher** (the page's seal already
    does), and the live launcher looked at once. `docs/brand/README.md`
    tracks both.
