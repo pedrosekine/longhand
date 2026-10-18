@@ -47,7 +47,7 @@ process.stdout.write(JSON.stringify({
 """
 
 
-def read(mine=None):
+def read(mine=None, env=None):
     if mine is None:
         hypr = [{"does": does, "keys": [hyprkeys.from_hypr(key)], "changed": False} for _id, does, _cmd, key in hyprkeys.ACTIONS]
     else:
@@ -55,7 +55,7 @@ def read(mine=None):
         # them, bindings.lua before). Only read, never written.
         hypr = [{"does": a["does"], "keys": a["keys"], "changed": a["keys"] != a["own"]} for a in hyprkeys.state()["actions"]]
     out = subprocess.run(["node", "-e", JS, str(SHORTCUTS)], input=json.dumps({"mine": mine, "hypr": hypr}),
-                         capture_output=True, text=True, check=True)
+                         capture_output=True, text=True, check=True, env=env)
     return json.loads(out.stdout)
 
 

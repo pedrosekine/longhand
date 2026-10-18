@@ -1168,3 +1168,11 @@ only the window and the panels around it differ.
   key acted on that one. It now stays on its row by identity; a plan that
   proposes the same thing again keeps the row on screen (same id) instead
   of replacing it, and never proposes again what it already did and told.
+- **2026-10-18 — The agent knows what Longhand can do.** A manual written
+  by hand, short and true, with every key named by its action and filled in
+  with the student's own keys when a payload is built: a moved key reads as
+  theirs, and a key renamed in Shortcuts.js cannot leave the manual wrong
+  (`tests/test_manual.py` fails on a name that is not an action). It is
+  carried whole only when a block asks how to do something; otherwise it
+  is named and can be read on request, through the same path as a course
+  document, so the open pass and ordinary questions pay nothing for it.

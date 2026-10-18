@@ -361,7 +361,16 @@ section, word for word, and to the diary's decisions log.
 2. **The agent's cheap tiers** (2026-10-14, "the agent's tools" in the
    record). *Self-knowledge*: "how do I add a deadline?" answered from a
    payload section listing what the CLIs and the page can do — static,
-   auditable. *Observability*: `longhand-agent explain --date D`, answering
+   auditable. **Built 2026-10-18:** `agent/manual.md`, written by hand, its
+   keys named by action (`{key:deadline}`) and filled in by `manual.py`
+   with the student's own keys (Shortcuts.js with keys.json, and
+   Hyprland's as they are), so a moved key reads right. A block that asks
+   how to do something carries it whole; every other block run names it,
+   and the agent can ask to read or search it like a course document. The
+   margin prompt answers from it only, the keys exactly as listed, and says
+   so when Longhand does not do something. First real answer: "How do I
+   move a task to another day?" → the dashboard, `t`, a day in words — a
+   do-date, not the deadline. *Observability*: `longhand-agent explain --date D`, answering
    what it saw, said, cost, and why it was silent, from logs, never notes.
    The third tier (internet, tools for the student's agent) cuts against
    principle 3 and stays a decision, not a build.

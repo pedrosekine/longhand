@@ -329,7 +329,8 @@ def fulfil(requests: list[dict], docs: list[dict], cache_dir: Path) -> tuple[lis
             done.append({"document": name, "words": words, "found": False})
             parts += [f"## {name}", "", "(not one of the documents in the index — nothing was read)", ""]
             continue
-        pgs = pages(Path(d["path"]), cache_dir)
+        # A document that brings its own pages (Longhand's manual), or a PDF.
+        pgs = d["text"] if "text" in d else pages(Path(d["path"]), cache_dir)
         if not any(pgs):
             done.append({"document": d["name"], "words": words, "found": False})
             parts += [f"## {d['name']}", "", "(this PDF has no text layer — it is scanned; nothing could be read)", ""]
