@@ -13,10 +13,10 @@ The files under `explorations/` are historical references.
 | Chosen design | **A2**, explicitly chosen by Pedro in round two |
 | Active refinement | **Open cuts**, selected by the agent for the authorised launcher trial; further optical tuning remains possible |
 | Canonical identity | `a2-open-cuts`; use the current assets below for new work |
-| Launcher | Installed through the existing hicolor symlink to `launcher/longhand.svg` |
+| Launcher | Since 2026-10-18 in the theme's colours: `tools/theme_icon.py` writes a copy of `launcher/longhand.svg` (tile = theme background, seal = accent, moved towards the foreground until it reads at 3:1) to `~/.local/state/longhand/icon/longhand-<hash>.svg`, and the desktop entry (written from `launcher/longhand.desktop`) points `Icon=` at it; an Omarchy `theme-set` hook runs it on every theme change. The hicolor symlink to the canonical file stays for anything that looks the name up |
 | Page header | **Placed 2026-10-17**: the seal hangs before the date and opens or closes the sidebar (calendar, projects, keys, settings); drawn from the master path by `plugin-page/LogoMark.qml` |
 | Other product placements | Planned: the seal as the "made together" mark on boxes and bullets (`docs/agent.md`), an experiment; nothing in the bar or agent UI yet |
-| Theme adaptation | In the page, yes: the seal takes the theme's colours (faint, the accent on hover, the foreground while the sidebar is open). The launcher still has fixed colours |
+| Theme adaptation | In the page, yes: the seal takes the theme's colours (faint, the accent on hover, the foreground while the sidebar is open). On the launcher, yes since 2026-10-18 (above); checked rendered in four themes, the live launcher after a real theme change still to be looked at |
 | Verification | SVGs rendered at 16, 24, 32, 48, 64, and 256 px; installed bytes match. Rechecked 2026-10-17 at 16–64 px on dark and light: clear from 24 px; at 16 px the five cuts nearly close into a plain flower. The live launcher itself is still unseen |
 
 The user chose the design; the agent selected its small refinement for trial.
@@ -84,8 +84,8 @@ theme-aware. A separately loaded SVG does not inherit its host's CSS colour;
 QML also needs an explicit rendering/tinting approach. Supply a concrete fill
 or render the vector through the product's colour mechanism.
 
-**Follow-up direction, not implemented:** derive a shared logo colour from the
-Omarchy accent. Check contrast against the actual surface, adjust lightness
+**Implemented for the launcher (2026-10-18), `tools/theme_icon.py`:** the
+logo colour is derived from the Omarchy accent. Check contrast against the actual surface, adjust lightness
 when necessary, and fall back to the theme's foreground. Neutral themes may
 intentionally yield a neutral mark. Window-frame highlights and the palette
 accent are different roles; do not assume they are interchangeable.
@@ -93,8 +93,13 @@ accent are different roles; do not assume they are interchangeable.
 Longhand watches the palette in [ThemeColors.qml](../../plugin-page/ThemeColors.qml).
 In the installed Omarchy version, palettes live under
 `~/.local/state/omarchy/current/theme/`, and changes invoke the user `theme-set`
-hook. Launcher adaptation needs a generated runtime icon plus verified cache
-invalidation. Keep generated theme colours in user runtime state and canonical
+hook (`python3 tools/theme_icon.py --install-hook` installs ours). The
+launcher draws app icons through an image cache keyed by the file's path
+(`AppLibrary.iconSource`), so the generated icon's name carries a hash of
+its colours: a theme change is a new path, never a stale cached image.
+Over every stock theme the seal reads at 3.1:1 or better (rose-pine is the
+lowest); on its own theme's surface the tile disappears and the seal stands
+alone, which the rules above allow (the surface follows the context). Keep generated theme colours in user runtime state and canonical
 geometry in the repo. Test live theme changes, light/dark surfaces, and caching
 before describing adaptation as complete. Recheck installed Omarchy interfaces
 when implementing it.

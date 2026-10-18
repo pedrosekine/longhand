@@ -407,7 +407,8 @@ section, word for word, and to the diary's decisions log.
    colours had the Qt 6.12 `Color` problem too, fixed. `tests/test_popup.py`.
 8. **The logo follows the theme on the launcher** (the page's seal already
    does), and the live launcher looked at once. `docs/brand/README.md`
-   tracks both.
+   tracks both. *Built 2026-10-18* (`tools/theme_icon.py`, a `theme-set`
+   hook); the live launcher after a real theme change is still to be seen.
 
 Small, when passing by:
 
