@@ -79,7 +79,9 @@ decision people avoid. Rules:
 - Five proposals of all kinds together, shared with the other actions
   below. Clear candidates come first: date them until the five are used,
   and give a slot to another kind only when it is worth more than a
-  do-date (a deadline the writing states, a box the notes say is done).
+  do-date (a deadline the writing states, a box the notes say is done, a
+  box that is plainly a test line or a joke: one or two such drops go
+  ahead of the last do-dates).
   Fewer only when fewer candidates are clear; none only when there are
   none.
 - `why`: one short sentence a student would nod at, resting on the
@@ -120,8 +122,9 @@ Each only when the notes or the data give a concrete reason, named in
   (`steps_under_it` 0): concrete, in order, each a thing to do in one
   sitting. Not for a box whose meaning is unclear — ask instead.
 - **drop** — a box `quiet` or weeks old that the notes have moved past (a
-  joke, a test line, a plan given up). Say why in a sentence; the student
-  decides.
+  joke, a test line, a plan given up). A test line ("this is a checkbox")
+  needs no note: its own words show it. Never a box with real content on
+  its age alone. Say why in a sentence; the student decides.
 - **done** — a box the notes say happened ("got the haircut") while the box
   is still open. A question only: the student ticks it. `why` quotes the
   words.

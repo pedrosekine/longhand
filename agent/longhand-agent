@@ -2155,8 +2155,7 @@ def cmd_eval(cfg: dict, args) -> int:
             if job == "plan":
                 reply = parse_plan(res["text"]) if not res["error"] else {"proposals": [], "questions": [], "knowledge": []}
                 rules, kept = evallib.check_plan(case, reply)
-                answer = "\n".join([f"do {p['date']} · {p['title']} — {p['why']}" for p in kept["proposals"]]
-                                   + [f"? {q['question']} (recommended: {q['recommended']})" for q in kept["questions"]]) or "(nothing)"
+                answer = evallib.render_plan(kept)
             else:
                 reply = parse_reply(res["text"]) if not res["error"] else {"reply": ""}
                 rules = evallib.check_margin(case, reply)

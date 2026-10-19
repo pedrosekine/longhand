@@ -1197,3 +1197,15 @@ only the window and the panels around it differ.
   before a weekday or a month, since it is the commonest word in a sentence.
   The first live run caught the list closing on its own first letter: the
   tag being typed was counted as a tag already written.
+- **2026-10-19 — The eval set learns the new kinds.** Two side sessions
+  worked on the planner's evals overnight. The runner crashed on any plan
+  that proposed something other than a do-date (it rendered every proposal
+  as one); it now renders each kind for the judge, and `check_plan` has
+  rules per kind — a stated deadline with its date and words from the
+  notes, done, drop and steps matched on the box, priorities counted. A
+  first case from today's real data (three test lines, a month old) showed
+  the planner never dropping anything: five clear boxes always filled the
+  five slots. A narrow change — a test line or a joke is worth a slot ahead
+  of the last do-dates — passes it 6 of 6 and keeps the old case at 5 of
+  6 (the miss a judge's reading of "a specific recommended answer"). Cases
+  for stated deadlines and "looks done" wait for notes that have them.

@@ -9,7 +9,9 @@ their notes — and what a good answer must do there:
 - `rules`, checked by code: for the margin, patterns the reply must or must
   not contain, whether silence is acceptable; for a plan, how many do-dates
   must survive plan.py's checks, which questions must be asked, which boxes
-  must or must not get a date.
+  must or must not get a date — and for the other kinds, which deadline
+  (with its date and source words), which boxes are asked about as done,
+  dropped or given steps, and how few priorities.
 - `criteria`, in plain words, graded by a judge model (its own agent, every
   tool denied): "engages with the substance, from something specific in the
   student's context".
@@ -57,7 +59,9 @@ def new_case(job: str, payload: str, source: str, note: str = "", answer: str = 
     (if any — a reply rated not helpful, a declined proposal), and empty
     rules and criteria for the person to write."""
     rules = ({"must_not_match": [], "must_match_any": [], "silence_ok": False} if job == "margin" else
-             {"min_dates": 0, "max_questions": planlib.MAX_QUESTIONS, "ask_about": [], "date_for": [], "no_date_for": []})
+             {"min_dates": 0, "max_questions": planlib.MAX_QUESTIONS, "ask_about": [], "date_for": [], "no_date_for": [],
+              "deadline_for": [], "done_for": [], "drop_for": [], "no_drop_for": [], "steps_for": [], "no_steps_for": [],
+              "max_priorities": planlib.MAX_PROPOSALS})
     return {"job": job, "created": dt.date.today().isoformat(), "source": source, "note": note,
             "answer_then": answer, "rules": rules, "criteria": [], "payload": payload}
 
@@ -111,7 +115,64 @@ def check_plan(case: dict, reply: dict) -> tuple[list[dict], dict]:
         out.append({"check": f"dates /{pat}/", "pass": bool(re.search(pat, dated, re.I)), "why": dated[:160]})
     for pat in r.get("no_date_for") or []:
         out.append({"check": f"no date for /{pat}/", "pass": not re.search(pat, dated, re.I), "why": dated[:160]})
+    out += _check_kinds(r, props, case["payload"])
     return out, {"proposals": props, "questions": qs}
+
+
+def _squash(text: str) -> str:
+    return re.sub(r"\s+", " ", text).strip().lower()
+
+
+def _check_kinds(r: dict, props: list[dict], payload: str) -> list[dict]:
+    """The rules for the actions that are not do-dates. A deadline must
+    carry the date the writing states and `source` words that are in the
+    payload; done, drop and steps are matched on the box's title; priorities
+    are counted (sparingly)."""
+    out = []
+    of = {k: [p for p in props if p["kind"] == k] for k in ("deadline", "done", "drop", "steps", "priority")}
+    text = _squash(payload)
+    found = " | ".join(f"{p['date']} {p['title']} «{p['source']}»" for p in of["deadline"])
+    for want in r.get("deadline_for") or []:
+        hit = [p for p in of["deadline"] if re.search(want["title"], p["title"], re.I)
+               and (not want.get("date") or p["date"] == want["date"])]
+        quoted = [p for p in hit if p["source"].strip() and _squash(p["source"]) in text]
+        out.append({"check": f"deadline /{want['title']}/ on {want.get('date') or 'its date'}, with words from the notes",
+                    "pass": bool(quoted), "why": found[:200] or "no deadline kept"})
+    for rule, kind, want in (("done_for", "done", True), ("drop_for", "drop", True), ("no_drop_for", "drop", False),
+                             ("steps_for", "steps", True), ("no_steps_for", "steps", False)):
+        titles = " | ".join(p["title"] for p in of[kind])
+        for pat in r.get(rule) or []:
+            hit = bool(re.search(pat, titles, re.I))
+            out.append({"check": f"{'' if want else 'no '}{kind} for /{pat}/", "pass": hit == want, "why": titles[:160]})
+    if "max_priorities" in r:
+        n = len(of["priority"])
+        out.append({"check": f"at most {r['max_priorities']} priorities", "pass": n <= r["max_priorities"],
+                    "why": " | ".join(f"{p['priority']} {p['title']}" for p in of["priority"])[:160] or "0"})
+    return out
+
+
+def render_plan(kept: dict) -> str:
+    """A plan's kept answer as the judge reads it: each kind with what makes
+    it that kind (a deadline's source words, the steps themselves)."""
+    lines = []
+    for p in kept["proposals"]:
+        k = p["kind"]
+        if k == "do-date":
+            lines.append(f"do {p['date']} · {p['title']} — {p['why']}")
+        elif k == "deadline":
+            tag = f" #{p['project']}" if p.get("project") else ""
+            lines.append(f"deadline {p['date']} · {p['title']}{tag} — source: “{p['source']}” — {p['why']}")
+        elif k == "priority":
+            lines.append(f"priority {p['was']} → {p['priority']} · {p['title']} — {p['why']}")
+        elif k == "steps":
+            steps = "; ".join(f"{i + 1}) {s}" for i, s in enumerate(p["steps"]))
+            lines.append(f"steps · {p['title']}: {steps} — {p['why']}")
+        elif k == "drop":
+            lines.append(f"drop · {p['title']} — {p['why']}")
+        elif k == "done":
+            lines.append(f"done? · {p['title']} — {p['why']}")
+    lines += [f"? {q['question']} (recommended: {q['recommended']})" for q in kept["questions"]]
+    return "\n".join(lines) or "(nothing)"
 
 
 def judge_payload(case: dict, answer: str) -> str:
@@ -119,7 +180,8 @@ def judge_payload(case: dict, answer: str) -> str:
     payload the answer was made from (so 'grounded in the context' can be
     judged against the context)."""
     crit = "\n".join(f"{i + 1}. {c}" for i, c in enumerate(case.get("criteria") or []))
-    limits = (f"\n\n# Limits\nA plan proposes at most {planlib.MAX_PROPOSALS} do-dates and asks at most "
+    limits = (f"\n\n# Limits\nA plan makes at most {planlib.MAX_PROPOSALS} proposals of every kind together "
+              f"(do-dates, deadlines, priorities, steps, drops, done-questions) and asks at most "
               f"{planlib.MAX_QUESTIONS} questions; with more candidates than that, the rest wait for a later plan."
               if case["job"] == "plan" else "")
     return (f"# Job\n{case['job']}{limits}\n\n# Criteria\n{crit}\n\n# The answer to grade\n\n{answer}\n\n"
