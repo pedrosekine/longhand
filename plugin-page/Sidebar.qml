@@ -23,6 +23,10 @@ BorderSurface {
   readonly property var sectionsProc: page.sectionsProcess
   readonly property var sheet: page.sheetItem
   readonly property var svc: page.noteService
+  // Today, as the calendar keys its days. Read again whenever the service's
+  // clock moves to another day, so a page left open overnight marks the
+  // new one (until 2026-10-19 it kept marking the day it was opened).
+  readonly property string todayKey: { svc.today; return Days.key(new Date()) }
   property alias sidebarKeysRef: sidebarKeys
 
   visible: page.sidebarOpen && page.problem === ""
@@ -216,7 +220,7 @@ BorderSurface {
           readonly property bool hasNote: k !== "" && !!page.dayIndex[k]
           readonly property bool isOpen: k !== "" && k === page.openKey
           readonly property bool isCursor: k !== "" && k === Days.key(page.calFocus)
-          readonly property bool isToday: k !== "" && k === Days.key(new Date())
+          readonly property bool isToday: k !== "" && k === sidebar.todayKey
           width: calendar.cell
           height: Math.round(calendar.cell * 0.92)
 
@@ -244,23 +248,29 @@ BorderSurface {
             border.color: page.dim
           }
           Text {
+            id: dayNum
             anchors.centerIn: parent
             textFormat: Text.PlainText
             text: modelData ? modelData.getDate() : ""
-            color: dayCell.hasNote ? page.foreground : page.faint
+            color: dayCell.isToday || dayCell.hasNote ? page.foreground : page.faint
             font.family: page.fontFamily
             font.pixelSize: page.fs(Style.font.body)
-            font.weight: dayCell.isOpen ? Font.DemiBold : Font.Normal
+            font.weight: dayCell.isOpen || dayCell.isToday ? Font.DemiBold : Font.Normal
           }
+          // Today: a short bar close under the number, in the text colour
+          // (2026-10-19). It marks the day without looking like a choice —
+          // the open day's outline and the keys' fill stay the only marks
+          // of what is selected — and, close to the digits, it never meets
+          // the outline's edge. It was a dot in the accent, lost in a theme
+          // whose accent is grey; a coloured disc read as a selection.
           Rectangle {
             visible: dayCell.isToday
             anchors.horizontalCenter: parent.horizontalCenter
-            anchors.bottom: parent.bottom
-            anchors.bottomMargin: Math.max(2, Math.round(calendar.cell * 0.1))
-            width: Math.max(3, Math.round(calendar.cell * 0.12))
-            height: width
-            radius: width / 2
-            color: page.accent
+            y: dayNum.y + dayNum.baselineOffset + page.sp(2)
+            width: Math.round(calendar.cell * 0.25)
+            height: Math.max(2, page.sp(2))
+            radius: height / 2
+            color: page.foreground
           }
           // Deadlines on this day: a corner mark — accent while one is
           // open, urgent when one is late, hollow when all are done.

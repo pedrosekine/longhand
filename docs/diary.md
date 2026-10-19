@@ -1227,3 +1227,13 @@ only the window and the panels around it differ.
   selection was fixed the same day: words and lines by double and triple
   click, a still page under a drag, wrapped lines painted whole; and Enter
   on an empty nested item now steps out one level, as in Notion.
+- **2026-10-19 — Today, marked without looking chosen.** Today in the
+  calendar was an accent dot under the number, lost in a theme whose accent
+  is grey; and it kept marking the day the page was opened, past midnight.
+  A disc in the theme's title colour was tried and dropped: plainly today,
+  but it read as the selected day and brought a colour the page did not
+  want. Eight marks were drawn side by side in the real theme, then twelve
+  underlines (four heights, three widths): a short bar close under the
+  number, in the text colour, won. It cannot be mistaken for the open day's
+  outline or the keys' fill, and close to the digits it never meets their
+  edge. Today follows the service's clock now.
