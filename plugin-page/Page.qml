@@ -411,8 +411,10 @@ Item {
   // `force`: asked for in Settings ("hear it"), so Do Not Disturb does not
   // apply.
   function playTick(force) {
-    // A test run counts the ticks and plays none (LONGHAND_SILENT).
-    if (tickSoundProc.running || Quickshell.env("LONGHAND_SILENT") !== "") return
+    // A test run may count the ticks and play none (LONGHAND_SILENT set).
+    // Unset, Quickshell hands back null, not "": compared with "", that
+    // read as set, and the page never played a tick (2026-10-17 to -19).
+    if (tickSoundProc.running || !!Quickshell.env("LONGHAND_SILENT")) return
     var play = 'if command -v pw-play >/dev/null; then exec pw-play --volume=0.6 "$0"; else exec paplay "$0"; fi'
     tickSoundProc.command = ["sh", "-c", force ? play
       : '[ "$(omarchy-shell notifications isDnd 2>/dev/null)" = on ] && exit 0; ' + play, root.tickFile]

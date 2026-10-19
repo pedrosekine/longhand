@@ -129,6 +129,16 @@ class Page:
         bindir = self.tmp / "bin"
         bindir.mkdir()
         (bindir / "pomo").symlink_to(ROOT / "cli" / "pomo")
+        # The tick's sound, heard by a stub: each play is logged, never
+        # sounded, and Do Not Disturb is off. Until 2026-10-19 the tests
+        # silenced the page instead, and so missed that it never played.
+        self.played = self.tmp / "played.log"
+        (bindir / "pw-play").write_text(f'#!/bin/sh\necho "$@" >> "{self.played}"\n')
+        (bindir / "pw-play").chmod(0o755)
+        real_shell = shutil.which("omarchy-shell") or "false"
+        (bindir / "omarchy-shell").write_text('#!/bin/sh\n[ "$1 $2" = "notifications isDnd" ] && { echo off; exit 0; }\n'
+                                              f'exec "{real_shell}" "$@"\n')
+        (bindir / "omarchy-shell").chmod(0o755)
         (bindir / "opencode").write_text(PLAN_STUB)
         (bindir / "opencode").chmod(0o755)
         self.stub = self.tmp / "stub"
@@ -166,11 +176,11 @@ case "$1" in
 esac
 """)
         self.runner.chmod(0o755)
-        # LONGHAND_SILENT: the tick's sound is counted, never played.
-        self.env = dict(os.environ, XDG_CONFIG_HOME=str(cfg), XDG_STATE_HOME=str(self.state), LONGHAND_SILENT="1",
+        self.env = dict(os.environ, XDG_CONFIG_HOME=str(cfg), XDG_STATE_HOME=str(self.state),
                         STUB_DIR=str(self.stub),
                         PATH=f"{bindir}:{os.environ['PATH']}", FAKE_HYPR_DIR=str(self.hypr),
                         FAKE_HYPR_REAL=shutil.which("hyprctl") or "")
+        self.env.pop("LONGHAND_SILENT", None)
         if fake_home:
             # A home of its own, holding a copy of the current theme, so a
             # theme switch can be replayed without touching the real one.
@@ -976,6 +986,8 @@ def main() -> int:
         row("draft the intro")
         check(p.call("dashKey", KEY_RETURN, CTRL) == "true", "Ctrl+Enter is the act that settles a row")
         check(int(p.call("ticksHeard")) == heard + 1, "…and the tick asks for its sound")
+        check(p.wait(lambda: p.played.exists() and "tick.wav" in p.played.read_text()),
+              "…and the sound is really played (pw-play, given tick.wav)")
         check(p.wait(lambda: "- [x] draft the intro" in (p.daily / f"{YDAY}.md").read_text()),
               "…and it ticks the line in the day it was written")
         done_on = dt.date.today().isoformat()

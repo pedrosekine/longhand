@@ -145,7 +145,9 @@ Panel {
       root.justTicked = item.id
       if (root.tickSoundOn()) {
         root.ticksHeard++
-        if (!tickSoundProc.running && Quickshell.env("LONGHAND_SILENT") === "") {
+        // LONGHAND_SILENT unset is null, not "" (the tick was never heard
+        // while this compared with "": 2026-10-19).
+        if (!tickSoundProc.running && !Quickshell.env("LONGHAND_SILENT")) {
           tickSoundProc.command = ["sh", "-c", '[ "$(omarchy-shell notifications isDnd 2>/dev/null)" = on ] && exit 0; '
             + 'if command -v pw-play >/dev/null; then exec pw-play --volume=0.6 "$0"; else exec paplay "$0"; fi', root.tickFile]
           tickSoundProc.running = true
