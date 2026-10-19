@@ -438,9 +438,69 @@ was closed with the pomodoro issues on 2026-10-17, reopen it when this
 starts), **phone capture**, external reading; and from the old parked
 list, analytics (`history`) and a daily counter.
 
-To watch in use, no work unless they bite: whether "ask" is the right word;
-whether "seen, nothing to say" wants a mark; the type's weight on a light
-theme; the trackpad's `gain`.
+### Not built, on purpose
+
+Kept here (2026-10-19) so "what could we build next?" has its answer:
+this list, with *Open, in order* above. Each says why it waits.
+
+- **By design, not a gap:** the agent never rewords the person's boxes,
+  never writes prose, and never raises its own autonomy (it may only
+  suggest it, at 9 of the last 10 accepted).
+- **How far does private go** (item 3 above) — a decision for the
+  student, not a build: a dated box in a private note still binds, so its
+  title and date reach the payload with the deadline store.
+- **The agent's third tier** — the internet, tools for the agent — cuts
+  against principle 3; a decision, not a build (item 2 above).
+- **A second model route** (`codex exec`, the APIs; `docs/agent.md`,
+  "Reaching a model") — when a second route is wanted.
+- **Autonomy per project** — per kind of action only, for now.
+- **The rest of the Page.qml split** (item 4): the note sheet, the logic
+  into tested `.js` libraries, one deadline-store parser for both plugins.
+  Install by symlink is out (Omarchy refuses symlinks).
+- **A project as one continuous page** (item 5).
+- **Later, by the student's word:** see the paragraph above (study mode,
+  phone capture, external reading, history, a daily counter).
+- **Small gaps noticed while building (2026-10-18):**
+  - dotted dates ("12.11") are not read, after "by" or "on" alike (`Dates.js`);
+  - scanned PDFs (9 of 67 in Downloads) have no text, so the agent cannot
+    read them — no OCR;
+  - the installed `longhand.pomo` plugin is not in this repo and still has
+    the bare `Color` fallback Qt 6.12 broke (only used without a bar).
+
+### Built — to evaluate in use
+
+No work unless they bite; each says what would tell. The first four came
+from 2026-09/10 and still stand.
+
+- Whether **"ask"** is the right word for sending a block.
+- Whether **"seen, nothing to say"** wants a mark.
+- The type's **weight on a light theme**; the trackpad's **`gain`**.
+- Whether the **seal as "made together"** reads as a status rather than
+  an identity (fallback ◈; `docs/brand/README.md`).
+- **The planner's new actions** (slice 5): whether proposals of each kind
+  are accepted — the record in Settings → what the agent may do — and
+  whether raising one to "do it and tell me" is ever wanted.
+- **The planner prompt's stability:** `abbe791621` passes the new drop case
+  6/6 and the old plan case 5/6 (the miss a judge's reading). Eval cases for
+  deadlines found in prose and "looks done" wait for notes that have them
+  (a side session watches for the payloads).
+- **The inbox's class-time match:** anything downloaded during a class
+  looks like that course's — watch for wrong filing proposals.
+- **The manual's how-to detection** (`manual.asks_how`) is generous on
+  purpose: watch for answers that should have used it, or the reverse.
+- **A conversation through word edits:** the trade is that a reworded
+  question no longer gets a fresh answer — is that right in use?
+- **"on" as a cue, and the `#` tag list:** does "on" bind what it should
+  not; does the list help or intrude?
+- **The notebook's corrections** are enforced by exact words: watch for a
+  forgotten line coming back paraphrased.
+- **Not yet seen by eye:** the launcher's icon after a real theme change
+  (its tile disappears on the theme's own surface); the deadline popup's
+  tick, its sound and feel.
+- **The improvement loop:** whether replies get rated, and whether the
+  weekly review earns its place.
+- **A live check that failed once** (2026-10-18, then passed four runs):
+  the "when?" box pushing the next line down (11j in `tests/page/run.py`).
 
 ### Decided against
 
