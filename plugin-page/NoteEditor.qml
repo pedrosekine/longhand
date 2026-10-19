@@ -143,6 +143,7 @@ Item {
   // the undo history starts over.
   function load(t) {
     ed.clearSelection()
+    pointer.clicks = 0
     ed.typedRaw = ""
     ed.freshCue = -1
     ed.undoStack = []
@@ -1136,7 +1137,11 @@ Item {
 
         width: column.width
         readonly property real room: index === ed.roomRow ? ed.roomHeight : 0
-        height: (blank && !field.activeFocus ? Math.round(space * ed.textSize) : gapTop + field.height) + room
+        // A blank line opens to a line's height when the cursor is on it —
+        // but not under a selection or a press: a drag passing over it
+        // would move every line below by that much and back (2026-10-19).
+        readonly property bool opened: !blank || field.activeFocus && !ed.spanning && !pointer.pressed
+        height: (opened ? gapTop + field.height : Math.round(space * ed.textSize)) + room
         Binding { when: row.index === ed.roomRow; target: ed; property: "roomTop"; value: row.y + row.height - row.room }
 
         // What the field holds, read and written as the body: with emphasis
@@ -1335,7 +1340,7 @@ Item {
 
         // Under the words: search matches (faint, the current one
         // stronger) and a selection across lines. A piece that wraps is
-        // drawn in two.
+        // drawn as its first line, the whole lines between, and its last.
         Repeater {
           model: ed.paintIn(row.index, ed.marks, ed.currentMark, ed.selAnchor, ed.selCursor, ed.rows)
             .concat(row.pending ? [{ a: row.cueAt, b: row.body.length, kind: "cue" }] : [])
@@ -1348,8 +1353,11 @@ Item {
               var r2 = field.positionToRectangle(modelData.b)
               if (modelData.sliver) return [{ x: r1.x, y: r1.y, w: Math.round(ed.textSize * 0.4), h: r1.height }]
               if (Math.abs(r1.y - r2.y) < 1) return [{ x: r1.x, y: r1.y, w: r2.x - r1.x, h: r1.height }]
-              return [{ x: r1.x, y: r1.y, w: field.width - r1.x, h: r1.height },
-                      { x: 0, y: r2.y, w: r2.x, h: r2.height }]
+              var out = [{ x: r1.x, y: r1.y, w: field.width - r1.x, h: r1.height }]
+              var mid = r1.y + r1.height
+              if (r2.y - mid >= 1) out.push({ x: 0, y: mid, w: field.width, h: r2.y - mid })
+              out.push({ x: 0, y: r2.y, w: r2.x, h: r2.height })
+              return out
             }
             Repeater {
               model: mark.pieces
@@ -1396,7 +1404,7 @@ Item {
           // Only the title is Bold — below it the page is one weight, so H2
           // reads as a section and not as a second title.
           font.weight: row.kind === "heading" ? (row.headingLevel === 1 ? Font.Bold : Font.DemiBold) : Font.Normal
-          cursorVisible: activeFocus
+          cursorVisible: activeFocus && row.opened
           tabStopDistance: ed.tabStop
 
           onTextChanged: {
@@ -1424,42 +1432,91 @@ Item {
 
   // The mouse, over every line at once, so a drag can cross from one
   // line's field into the next. A press on a checkbox goes through to it.
+  // A double-click takes the word and a triple-click the line; held and
+  // dragged after either, the selection grows a word or a line at a time,
+  // and Shift+click carries on from the far end of what is selected.
   MouseArea {
     id: pointer
     anchors.fill: column
     cursorShape: Qt.IBeamCursor
     preventStealing: true
     property int downAt: -1
+    // What a drag grows by (1 a character, 2 a word, 3 a line), and the
+    // word or line it began on, as text offsets.
+    property int unit: 1
+    property int unitA: -1
+    property int unitB: -1
+    // Presses in quick succession at one spot: 2 a double-click, 3 a
+    // triple. Counted here, so a press held after either is a drag of it.
+    property int clicks: 0
+    property double pressAt: 0
+    property point pressPt: Qt.point(0, 0)
+
+    // The word or the line under a hit, as text offsets.
+    function unitAt(h, unit) {
+      var r = ed.rows[h.i]
+      if (unit === 3) return { a: ed.absOf(h.i, 0), b: ed.absOf(h.i, r.body.length) }
+      var w = Rows.wordAt(r.body, h.col)
+      return { a: ed.absOf(h.i, ed.restCol(h.i, w.a, -1)), b: ed.absOf(h.i, ed.restCol(h.i, w.b, 1)) }
+    }
+
+    // The word or line the press began on, selected in its own line.
+    function selectFirst() {
+      ed.clearSelection()
+      var i = Rows.rowAt(ed.rows, pointer.unitA)
+      var r = ed.rows[i]
+      ed.setCursor(pointer.unitA, true)
+      var item = ed.rowItem(i)
+      if (item && pointer.unitB > pointer.unitA)
+        item.field.select(pointer.unitA - r.start - r.prefixLen, pointer.unitB - r.start - r.prefixLen)
+    }
+
+    function begin(h, unit) {
+      var u = pointer.unitAt(h, unit)
+      pointer.unit = unit
+      pointer.unitA = u.a
+      pointer.unitB = u.b
+      pointer.selectFirst()
+    }
 
     onPressed: function (mouse) {
       var h = ed.hitTest(mouse.x, mouse.y)
       if (h.box) { mouse.accepted = false; return }
       var pos = ed.absOf(h.i, h.col)
+      var now = Date.now()
+      var again = now - pointer.pressAt < Qt.styleHints.mouseDoubleClickInterval
+        && Math.abs(mouse.x - pointer.pressPt.x) < 8 && Math.abs(mouse.y - pointer.pressPt.y) < 8
+      pointer.clicks = again && pointer.clicks < 3 ? pointer.clicks + 1 : 1
+      pointer.pressAt = now
+      pointer.pressPt = Qt.point(mouse.x, mouse.y)
+      pointer.unit = 1
       if (mouse.modifiers & Qt.ShiftModifier) {
-        var anchor = ed.spanning ? ed.selAnchor : ed.cursorPosition
+        var item = ed.rowItem(ed.focusedRow)
+        var anchor = ed.spanning ? ed.selAnchor : item ? ed.nativeAnchor(item) : ed.cursorPosition
         pointer.downAt = anchor
         if (pos !== anchor) ed.selectSpan(anchor, pos)
+        else { ed.clearSelection(); ed.setCursor(pos, true) }
         return
       }
-      ed.clearSelection()
       pointer.downAt = pos
+      if (pointer.clicks > 1) { pointer.begin(h, pointer.clicks); return }
+      ed.clearSelection()
       ed.setCursor(pos, true)
     }
     onPositionChanged: function (mouse) {
       if (!pressed || pointer.downAt < 0) return
       var h = ed.hitTest(mouse.x, mouse.y)
+      if (pointer.unit > 1) {
+        var u = pointer.unitAt(h, pointer.unit)
+        if (u.a < pointer.unitA) ed.selectSpan(pointer.unitB, u.a)
+        else if (u.b > pointer.unitB) ed.selectSpan(pointer.unitA, u.b)
+        else if (ed.spanning) pointer.selectFirst()
+        return
+      }
       var pos = ed.absOf(h.i, h.col)
       if (pos !== pointer.downAt) ed.selectSpan(pointer.downAt, pos)
       else if (ed.spanning) { ed.clearSelection(); ed.setCursor(pos, true) }
     }
     onReleased: pointer.downAt = -1
-    onDoubleClicked: function (mouse) {
-      var h = ed.hitTest(mouse.x, mouse.y)
-      if (h.box) return
-      ed.clearSelection()
-      ed.placeAt(h.i, h.col)
-      var item = ed.rowItem(h.i)
-      if (item) item.field.selectWord()
-    }
   }
 }

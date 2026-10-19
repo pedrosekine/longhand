@@ -780,6 +780,111 @@ Item {
       compare(ed.text.slice(ed.selStart, ed.selEnd), "alpha\nbeta\ngamma")
     }
 
+    // Where column `col` of row i is drawn, in editor coordinates.
+    function spot(i, col) {
+      var it = ed.rowItem(i), f = it.field
+      var r = f.positionToRectangle(col)
+      return { x: f.x + r.x + 1, y: it.y + f.y + r.y + r.height / 2 }
+    }
+    function picked() {
+      if (ed.spanning) return ed.text.slice(ed.selStart, ed.selEnd)
+      var it = ed.rowItem(ed.focusedRow)
+      return it ? it.field.selectedText : ""
+    }
+
+    // A paragraph that wraps onto three lines, selected whole: its middle
+    // line is painted too, not only the first and the last.
+    function test_a_wrapped_selection_paints_every_line() {
+      var long = "a long paragraph that wraps across several lines on the page, the way prose does when a thought is written down by hand and goes on for longer than one line"
+      start("\nshort\n" + long + "\nafter", 1)
+      var f = ed.rowItem(2).field
+      var lineH = f.positionToRectangle(0).height
+      verify(f.contentHeight > lineH * 2.5, "the paragraph wraps onto three lines or more")
+      mousePress(ed, spot(1, 0).x, spot(1, 0).y)
+      mouseMove(ed, spot(3, 3).x, spot(3, 3).y)
+      mouseRelease(ed, spot(3, 3).x, spot(3, 3).y)
+      compare(picked(), "short\n" + long + "\naft")
+      var it = ed.rowItem(2)
+      var img = grabImage(ed)
+      // The middle line's right edge, past where its words stop.
+      verify(Qt.colorEqual(img.pixel(f.x + f.width - 1, it.y + f.y + lineH * 1.5), ed.selectionColor),
+             "the middle line is painted")
+    }
+
+    // A drag passing over blank lines never moves the lines below: a blank
+    // line opens to a full line only for a cursor, not for a selection.
+    function test_a_drag_over_blank_lines_holds_the_page_still() {
+      start("\nalpha one\n\nbeta two\n\n\ngamma three", 1)
+      var x = spot(1, 3).x, y0 = spot(1, 3).y, y1 = spot(6, 3).y
+      var gammaY = ed.rowItem(6).y
+      mousePress(ed, x, y0)
+      for (var y = y0; y <= y1; y++) {
+        mouseMove(ed, x, y)
+        compare(ed.rowItem(6).y, gammaY, "still at y " + y)
+      }
+      mouseRelease(ed, x, y1)
+      compare(picked(), "ha one\n\nbeta two\n\n\ngam")
+      compare(ed.rowItem(6).y, gammaY)
+    }
+
+    function test_a_click_on_a_blank_line_still_opens_it() {
+      start("\nalpha\n\nbeta", 1)
+      var it = ed.rowItem(2)
+      var h = it.height
+      mouseClick(ed, 20, it.y + it.height / 2)
+      compare(ed.focusedRow, 2)
+      verify(ed.rowItem(2).height > h, "opened to a line's height")
+    }
+
+    function test_triple_click_selects_the_line() {
+      start("\n- [ ] one two three\nfour five six", 1)
+      var p = spot(1, 5)
+      mouseDoubleClickSequence(ed, p.x, p.y)
+      compare(picked(), "two")
+      mouseClick(ed, p.x, p.y)
+      compare(picked(), "one two three")
+      keyClick("X")
+      compare(ed.text, "\n- [ ] X\nfour five six")
+    }
+
+    // Held after a double-click, the selection grows a word at a time,
+    // keeping the first word whichever way it goes.
+    function test_double_click_drag_grows_by_words() {
+      start("\none two three\nfour five six", 1)
+      var p = spot(1, 5)
+      // Pressed twice, quickly: the second press is a double-click, held.
+      mousePress(ed, p.x, p.y); mouseRelease(ed, p.x, p.y, Qt.LeftButton, Qt.NoModifier, 1)
+      mousePress(ed, p.x, p.y, Qt.LeftButton, Qt.NoModifier, 1)
+      compare(picked(), "two")
+      mouseMove(ed, spot(2, 6).x, spot(2, 6).y)
+      compare(picked(), "two three\nfour five")
+      mouseMove(ed, spot(1, 1).x, spot(1, 1).y)
+      compare(picked(), "one two")
+      mouseMove(ed, p.x + 3, p.y)
+      compare(picked(), "two")
+      mouseRelease(ed, p.x + 3, p.y)
+    }
+
+    function test_triple_click_drag_grows_by_lines() {
+      start("\nalpha one\nbeta two\ngamma three", 1)
+      var p = spot(2, 2)
+      mouseDoubleClickSequence(ed, p.x, p.y)
+      mousePress(ed, p.x, p.y)
+      compare(picked(), "beta two")
+      mouseMove(ed, spot(3, 1).x, spot(3, 1).y)
+      compare(picked(), "beta two\ngamma three")
+      mouseMove(ed, spot(1, 4).x, spot(1, 4).y)
+      compare(picked(), "alpha one\nbeta two")
+      mouseRelease(ed, spot(1, 4).x, spot(1, 4).y)
+    }
+
+    function test_shift_click_carries_on_from_a_double_clicked_word() {
+      start("\none two three\nfour five six", 1)
+      mouseDoubleClickSequence(ed, spot(1, 5).x, spot(1, 5).y)
+      mouseClick(ed, spot(2, 9).x, spot(2, 9).y, Qt.LeftButton, Qt.ShiftModifier)
+      compare(picked(), "two three\nfour five")
+    }
+
     function test_click_still_ticks_through_pointer() {
       start("\n- [ ] read\nother")
       var r = ed.rowItem(1)

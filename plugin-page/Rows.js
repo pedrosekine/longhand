@@ -319,3 +319,12 @@ function wordStep(text, col, dir) {
   }
   return i
 }
+
+// The word at `col` (or the one just before it), as [a, b): what a drag
+// after a double-click grows by. Between words, nothing: { a: col, b: col }.
+function wordAt(text, col) {
+  var a = col, b = col
+  while (a > 0 && !SEP_RE.test(text.charAt(a - 1))) a--
+  while (b < text.length && !SEP_RE.test(text.charAt(b))) b++
+  return { a: a, b: b }
+}

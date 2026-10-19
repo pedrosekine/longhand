@@ -223,6 +223,11 @@
             does placing, dragging and double-click words; presses on a
             checkbox pass through. `tests/test_agent.py` now dates its
             fixtures from today (recency is judged against the clock).
+            2026-10-19, tested by simulated mouse: a triple-click takes the
+            line, a drag held after a double or triple click grows by words
+            or lines, Shift+click carries on from a double-clicked word, a
+            wrapped line is painted on every visual line, and a blank line
+            no longer opens under a drag (it moved the lines below).
       - [x] 14.6h deadlines and notes, one thing (decided 2026-10-10, see
             diary.md). Subjects became projects (`--project`, `--subject`
             kept as an alias; `knowledge/projects/`). A checkbox line can
