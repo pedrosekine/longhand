@@ -146,6 +146,10 @@ BorderSurface {
             }
             readonly property bool late: !!deadline && deadline.status === "open" && deadline.due * 1000 < Date.now()
             readonly property bool hot: page.taskFocus === index && !isHead
+            // A click on it does something (activateTask): a hand, and a
+            // faint fill while the mouse is over it (2026-10-19).
+            readonly property bool acts: ["task", "deadline", "shelf", "grading", "raised", "proposal", "question", "told"].indexOf(kind) >= 0
+            HoverHandler { id: rowHover; enabled: dashRow.acts }
             width: dashColumn.width
             // The space above a row comes from what it is and what came
             // before it, the way the note's own rhythm works (Rows.js).
@@ -160,7 +164,7 @@ BorderSurface {
               anchors.leftMargin: -page.sp(8)
               anchors.rightMargin: -page.sp(8)
               radius: Style.cornerRadius
-              color: dashRow.hot ? Style.selectedFill : "transparent"
+              color: dashRow.hot ? Style.selectedFill : rowHover.hovered ? Style.hoverFill : "transparent"
             }
 
             // The glow a tick leaves for a moment.
@@ -251,7 +255,8 @@ BorderSurface {
                 radius: Math.max(2, Math.round(size * 0.22))
                 color: dashRow.done && dashRow.author === "" ? pal.green : "transparent"
                 border.width: dashRow.done || dashRow.author !== "" ? 0 : Math.max(1, Math.round(page.textSize * 0.08))
-                border.color: dashRow.late ? page.urgent : page.dim
+                readonly property color edge: boxArea.containsMouse ? page.accent : dashRow.late ? page.urgent : page.dim
+                border.color: edge
 
                 // The agent's: a diamond. Made together: the seal.
                 Rectangle {
@@ -263,7 +268,7 @@ BorderSurface {
                   radius: Math.max(1, Math.round(width * 0.12))
                   color: dashRow.done ? pal.green : "transparent"
                   border.width: dashRow.done ? 0 : Math.max(1, Math.round(page.textSize * 0.08))
-                  border.color: dashRow.late ? page.urgent : page.dim
+                  border.color: box.edge
                 }
                 LogoMark {
                   visible: dashRow.author === "together"
@@ -272,7 +277,7 @@ BorderSurface {
                   height: width
                   outline: !dashRow.done
                   strokePx: Math.max(1, Math.round(page.textSize * 0.08))
-                  color: dashRow.done ? pal.green : dashRow.late ? page.urgent : page.dim
+                  color: dashRow.done ? pal.green : box.edge
                 }
                 // The outline gives way as the fill comes in, never
                 // before: the box is never empty mid-tick.
@@ -294,6 +299,7 @@ BorderSurface {
                 }
 
                 MouseArea {
+                  id: boxArea
                   anchors.fill: parent
                   anchors.margins: -page.sp(6)
                   cursorShape: Qt.PointingHandCursor
@@ -425,6 +431,7 @@ BorderSurface {
               enabled: !dashRow.isHead
               acceptedButtons: Qt.LeftButton
               hoverEnabled: true
+              cursorShape: dashRow.acts ? Qt.PointingHandCursor : Qt.ArrowCursor
               onClicked: { page.taskFocus = index; page.activateTask() }
               PanelToolTip {
                 readonly property string kind: dashRow.modelData.kind

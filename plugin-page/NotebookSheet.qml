@@ -104,12 +104,14 @@ BorderSurface {
             visible: !nbRow.head
             anchors.fill: parent
             radius: Style.cornerRadius
-            color: nbRow.picked ? Style.selectedFill : "transparent"
+            color: nbRow.picked ? Style.selectedFill : nbHover.hovered ? Style.hoverFill : "transparent"
           }
+          HoverHandler { id: nbHover; enabled: !nbRow.head && !nbRow.picked }
 
           MouseArea {
             anchors.fill: parent
             enabled: !nbRow.head
+            cursorShape: nbRow.picked ? Qt.ArrowCursor : Qt.PointingHandCursor
             onClicked: page.pickNotebook(nbRow.index)
           }
 

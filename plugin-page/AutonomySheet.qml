@@ -93,10 +93,12 @@ BorderSurface {
               anchors.leftMargin: -page.sp(10)
               anchors.rightMargin: -page.sp(10)
               radius: Style.cornerRadius
-              color: kindRow.picked ? Style.selectedFill : "transparent"
+              color: kindRow.picked ? Style.selectedFill : kindHover.hovered ? Style.hoverFill : "transparent"
             }
+            HoverHandler { id: kindHover; enabled: !kindRow.picked }
             MouseArea {
               anchors.fill: parent
+              cursorShape: kindRow.picked ? Qt.ArrowCursor : Qt.PointingHandCursor
               onClicked: { page.autonomyFocus = kindRow.index; autonomyKeys.forceActiveFocus() }
             }
 

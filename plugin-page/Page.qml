@@ -4551,11 +4551,12 @@ Item {
             anchors.verticalCenter: dateText.verticalCenter
             textFormat: Text.PlainText
             text: root.agentDay ? "back to today" : "back to today · agent off for this note"
-            color: root.faint
+            color: todayArea.containsMouse ? root.accent : root.faint
             font.family: root.fontFamily
             font.styleName: root.fontStyle
             font.pixelSize: root.fs(Style.font.bodySmall)
             MouseArea {
+              id: todayArea
               anchors.fill: parent
               cursorShape: Qt.PointingHandCursor
               hoverEnabled: true
@@ -4614,12 +4615,13 @@ Item {
               anchors.verticalCenter: parent.verticalCenter
               textFormat: Text.PlainText
               text: "pin"
-              color: root.alongside ? root.foreground : root.faint
+              color: pinArea.containsMouse ? root.accent : root.alongside ? root.foreground : root.faint
               font.family: root.fontFamily
               font.styleName: root.fontStyle
               font.pixelSize: root.fs(Style.font.bodySmall)
               Behavior on color { ColorAnimation { duration: 240 } }
               MouseArea {
+                id: pinArea
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
@@ -4638,7 +4640,7 @@ Item {
               anchors.verticalCenter: parent.verticalCenter
               textFormat: Text.PlainText
               text: svc.notePrivate ? "private · the agent sees nothing here" : "private"
-              color: svc.notePrivate ? root.foreground : (privateArea.containsMouse ? root.accent : root.faint)
+              color: privateArea.containsMouse ? root.accent : svc.notePrivate ? root.foreground : root.faint
               font.family: root.fontFamily
               font.styleName: root.fontStyle
               font.pixelSize: root.fs(Style.font.bodySmall)
@@ -4932,8 +4934,10 @@ Item {
             }
           }
 
-          // Below the last line: a click goes to the end of the note.
+          // Below the last line: a click goes to the end of the note, so it
+          // is still the page to write on — a text cursor, as over the lines.
           MouseArea {
+            cursorShape: Qt.IBeamCursor
             y: editor.height
             width: flick.width
             height: Math.max(0, flick.contentHeight - editor.height)
@@ -4969,7 +4973,7 @@ Item {
                   width: mentionCol.width
                   height: mentionRow.implicitHeight + root.sp(4)
                   radius: Style.cornerRadius
-                  color: root.mentionFocus === index ? Style.selectedFill : "transparent"
+                  color: root.mentionFocus === index ? Style.selectedFill : mentionArea.containsMouse ? Style.hoverFill : "transparent"
                   Text {
                     id: mentionRow
                     anchors.left: parent.left
@@ -4985,6 +4989,7 @@ Item {
                     font.pixelSize: root.fs(Style.font.bodySmall)
                   }
                   MouseArea {
+                    id: mentionArea
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
                     hoverEnabled: true

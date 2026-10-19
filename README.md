@@ -251,6 +251,7 @@ python3 tests/test_check.py                                   # one copy of a ta
 python3 tests/test_keys_guide.py                              # docs/keys.md is the keys as they are (needs node)
 python3 tests/test_hyprkeys.py                                # Hyprland's six keys, against a fake hyprctl
 python3 tests/test_migrate.py                                 # the move from omarchy-student, in a throwaway $HOME
+python3 tests/test_cursors.py                                 # the mouse cursor over the note: text, hand on a box (needs PyQt6)
 python3 tests/page/run.py                                     # the page itself, live: a window that never takes focus, a throwaway vault
 ```
 

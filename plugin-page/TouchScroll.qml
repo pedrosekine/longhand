@@ -11,7 +11,11 @@ import QtQuick
 // Flickable's own flick) from the speed they had when they lifted. A mouse
 // wheel is left to the Flickable.
 //
-// Put it inside the Flickable, over the content; it takes no clicks.
+// Put it inside the Flickable; it takes no clicks. It lies *under* the
+// content (z -1): wheel events still reach it, since nothing in the content
+// takes them, while the content's own cursors show. Laid over the content,
+// it hid them — the note showed an arrow instead of a text cursor, the
+// sidebar's rows no hand (2026-10-19).
 MouseArea {
   id: ts
   required property Flickable flickable
@@ -22,7 +26,7 @@ MouseArea {
 
   width: flickable.contentWidth
   height: flickable.contentHeight
-  z: 100
+  z: -1
   acceptedButtons: Qt.NoButton
 
   onWheel: function (wheel) {

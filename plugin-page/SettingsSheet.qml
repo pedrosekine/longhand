@@ -121,11 +121,13 @@ BorderSurface {
               anchors.leftMargin: -page.sp(10)
               anchors.rightMargin: -page.sp(10)
               radius: Style.cornerRadius
-              color: calRow.picked ? Style.selectedFill : "transparent"
+              color: calRow.picked ? Style.selectedFill : calHover.hovered ? Style.hoverFill : "transparent"
             }
+            HoverHandler { id: calHover; enabled: !calRow.picked }
 
             MouseArea {
               anchors.fill: parent
+              cursorShape: calRow.picked ? Qt.ArrowCursor : Qt.PointingHandCursor
               onClicked: { page.settingsFocus = calRow.index; settingsField.forceActiveFocus() }
             }
 

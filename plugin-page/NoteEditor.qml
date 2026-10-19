@@ -108,6 +108,11 @@ Item {
   property real roomHeight: 0
   property real roomTop: 0
 
+  // The row whose checkbox the mouse is over (-1: none): the box answers
+  // in the accent, and the pointer over the lines shows a hand there
+  // instead of a text cursor (2026-10-19).
+  property int boxHover: -1
+
   // Search matches to paint, as text offsets ({ start, end }), and which of
   // them is the current one. Painting only: they never touch the text.
   property var marks: []
@@ -1231,9 +1236,10 @@ Item {
           radius: Math.max(2, Math.round(size * 0.22))
           // The person's box is this square; the agent's and the shared one
           // draw their own shape inside it, and the square gives way.
-          color: row.checked && row.author === "" ? ed.checkColor : "transparent"
+          readonly property color edge: boxArea.containsMouse ? ed.accent : ed.boxColor
+          color: row.checked && row.author === "" ? (boxArea.containsMouse ? ed.accent : ed.checkColor) : "transparent"
           border.width: row.checked || row.author !== "" ? 0 : Math.max(1, Math.round(ed.textSize * 0.08))
-          border.color: ed.boxColor
+          border.color: box.edge
 
           // The agent's: a diamond, outlined while open, filled when done.
           Rectangle {
@@ -1243,9 +1249,9 @@ Item {
             height: width
             rotation: 45
             radius: Math.max(1, Math.round(width * 0.12))
-            color: row.checked ? ed.checkColor : "transparent"
+            color: row.checked ? (boxArea.containsMouse ? ed.accent : ed.checkColor) : "transparent"
             border.width: row.checked ? 0 : Math.max(1, Math.round(ed.textSize * 0.08))
-            border.color: ed.boxColor
+            border.color: box.edge
           }
 
           // Made together: the seal, quiet while open, the tick's colour
@@ -1257,7 +1263,7 @@ Item {
             height: width
             outline: !row.checked
             strokePx: Math.max(1, Math.round(ed.textSize * 0.08))
-            color: row.checked ? ed.checkColor : ed.boxColor
+            color: row.checked ? (boxArea.containsMouse ? ed.accent : ed.checkColor) : box.edge
           }
 
           Text {
@@ -1274,10 +1280,17 @@ Item {
           }
 
           MouseArea {
+            id: boxArea
             anchors.fill: parent
             anchors.margins: -Math.round(ed.textSize * 0.25)
+            enabled: box.visible
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
+            onContainsMouseChanged: {
+              if (containsMouse) ed.boxHover = row.index
+              else if (ed.boxHover === row.index) ed.boxHover = -1
+            }
+            Component.onDestruction: if (ed.boxHover === row.index) ed.boxHover = -1
             onClicked: ed.clickCheckbox(row.index)
             Loader { anchors.fill: parent; active: !!ed.boxTip && parent.containsMouse; sourceComponent: ed.boxTip }
           }
@@ -1452,7 +1465,9 @@ Item {
   MouseArea {
     id: pointer
     anchors.fill: column
-    cursorShape: Qt.IBeamCursor
+    // Over the lines it is on top, so its cursor is the one shown: a
+    // hand on a checkbox (which takes the click), a text cursor elsewhere.
+    cursorShape: ed.boxHover >= 0 ? Qt.PointingHandCursor : Qt.IBeamCursor
     preventStealing: true
     property int downAt: -1
     // What a drag grows by (1 a character, 2 a word, 3 a line), and the

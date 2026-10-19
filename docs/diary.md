@@ -1209,3 +1209,21 @@ only the window and the panels around it differ.
   of the last do-dates — passes it 6 of 6 and keeps the old case at 5 of
   6 (the miss a judge's reading of "a specific recommended answer"). Cases
   for stated deadlines and "looks done" wait for notes that have them.
+- **2026-10-19 — The mouse says what a click will do.** A day of writing
+  with the mouse showed the note never gave a text cursor: the touchpad
+  scroller lay over every list as an invisible mouse area, and in Qt 6
+  that hides the cursors beneath it (the sidebar's lower rows and the
+  dashboard lost their hands the same way). It now lies under the content,
+  where wheel events still reach it. With that, one small vocabulary,
+  everywhere: a text cursor where you write (the lines, and the space
+  below them); a hand on anything a click acts on, and an arrow on what
+  only explains itself (the "agent" mark, the status line); a word that is
+  a button turns accent under the mouse, as "ask" always did; a row that
+  opens or does something takes a faint fill (the shell's `hoverFill`),
+  lighter than the keyboard's `selectedFill`, so mouse and keys never read
+  as the same thing; a checkbox's outline turns accent, and the note shows
+  a hand over it rather than the text cursor. Selection rows already
+  picked keep the arrow: clicking them again does nothing new. Mouse
+  selection was fixed the same day: words and lines by double and triple
+  click, a still page under a drag, wrapped lines painted whole; and Enter
+  on an empty nested item now steps out one level, as in Notion.

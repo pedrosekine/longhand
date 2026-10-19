@@ -145,8 +145,9 @@ BorderSurface {
                 anchors.leftMargin: -page.sp(8)
                 anchors.rightMargin: -page.sp(8)
                 radius: Style.cornerRadius
-                color: keyRow.hot ? Style.selectedFill : "transparent"
+                color: keyRow.hot ? Style.selectedFill : keyHover.hovered ? Style.hoverFill : "transparent"
               }
+              HoverHandler { id: keyHover; enabled: !keyRow.isHead }
 
               Item {
                 id: keyInner
@@ -216,6 +217,7 @@ BorderSurface {
                 anchors.fill: parent
                 enabled: !keyRow.isHead
                 z: -1
+                cursorShape: Qt.PointingHandCursor
                 onClicked: {
                   page.keysFocus = keyRow.index
                   page.listenFor(keyRow.modelData, false)

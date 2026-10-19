@@ -143,9 +143,10 @@ BorderSurface {
           width: marginColumn.width
           height: propText.implicitHeight + page.sp(10)
           radius: Style.cornerRadius
-          color: hot ? Style.selectedFill : "transparent"
+          color: hot ? Style.selectedFill : propHover.hovered && !done ? Style.hoverFill : "transparent"
           border.width: hot ? 1 : 0
           border.color: page.accent
+          HoverHandler { id: propHover }
           Text {
             id: propText
             anchors.fill: parent
@@ -165,6 +166,7 @@ BorderSurface {
           MouseArea {
             anchors.fill: parent
             hoverEnabled: true
+            cursorShape: parent.done ? Qt.ArrowCursor : Qt.PointingHandCursor
             onClicked: { page.marginFocus = index; page.acceptProposal(index) }
             PanelToolTip { visible: parent.containsMouse; text: page.tip("Do what it says", "marginAccept") }
           }

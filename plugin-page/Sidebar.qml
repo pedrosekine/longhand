@@ -142,11 +142,12 @@ BorderSurface {
         anchors.verticalCenter: parent.verticalCenter
         textFormat: Text.PlainText
         text: "‹"
-        color: page.dim
+        color: prevArea.containsMouse ? page.accent : page.dim
         font.family: page.fontFamily
         font.styleName: page.fontStyle
         font.pixelSize: page.fs(Style.font.title)
         MouseArea {
+          id: prevArea
           anchors.fill: parent
           anchors.margins: -page.sp(6)
           hoverEnabled: true
@@ -170,11 +171,12 @@ BorderSurface {
         anchors.verticalCenter: parent.verticalCenter
         textFormat: Text.PlainText
         text: "›"
-        color: page.dim
+        color: nextArea.containsMouse ? page.accent : page.dim
         font.family: page.fontFamily
         font.styleName: page.fontStyle
         font.pixelSize: page.fs(Style.font.title)
         MouseArea {
+          id: nextArea
           anchors.fill: parent
           anchors.margins: -page.sp(6)
           hoverEnabled: true
@@ -229,6 +231,13 @@ BorderSurface {
             anchors.fill: parent
             anchors.margins: 1
             radius: Style.cornerRadius
+            visible: dayArea.containsMouse && !(dayCell.isCursor && sidebarKeys.activeFocus)
+            color: Style.hoverFill
+          }
+          Rectangle {
+            anchors.fill: parent
+            anchors.margins: 1
+            radius: Style.cornerRadius
             visible: dayCell.isOpen
             color: "transparent"
             border.width: 1
@@ -272,6 +281,7 @@ BorderSurface {
             border.color: page.dim
           }
           MouseArea {
+            id: dayArea
             anchors.fill: parent
             enabled: !!modelData
             hoverEnabled: true
@@ -309,7 +319,7 @@ BorderSurface {
         width: calendar.width
         height: dueRow.implicitHeight + page.sp(6)
         radius: Style.cornerRadius
-        color: page.dueFocus === index && sidebarKeys.activeFocus ? Style.selectedFill : "transparent"
+        color: page.dueFocus === index && sidebarKeys.activeFocus ? Style.selectedFill : dueArea.containsMouse ? Style.hoverFill : "transparent"
         Text {
           id: dueRow
           anchors.left: parent.left
@@ -328,6 +338,7 @@ BorderSurface {
           font.pixelSize: page.fs(Style.font.bodySmall)
         }
         MouseArea {
+          id: dueArea
           anchors.fill: parent
           hoverEnabled: true
           cursorShape: Qt.PointingHandCursor
@@ -356,7 +367,7 @@ BorderSurface {
         width: calendar.width
         height: projCol.implicitHeight + page.sp(6)
         radius: Style.cornerRadius
-        color: page.projFocus === index && sidebarKeys.activeFocus ? Style.selectedFill : "transparent"
+        color: page.projFocus === index && sidebarKeys.activeFocus ? Style.selectedFill : projArea.containsMouse ? Style.hoverFill : "transparent"
         Column {
           id: projCol
           anchors.left: parent.left
@@ -386,6 +397,7 @@ BorderSurface {
           }
         }
         MouseArea {
+          id: projArea
           anchors.fill: parent
           hoverEnabled: true
           cursorShape: Qt.PointingHandCursor
@@ -498,11 +510,12 @@ BorderSurface {
         textFormat: Text.PlainText
         elide: Text.ElideRight
         text: "← #" + page.projectTag
-        color: page.dim
+        color: backArea.containsMouse ? page.accent : page.dim
         font.family: page.fontFamily
         font.styleName: page.fontStyle
         font.pixelSize: page.fs(Style.font.caption)
         MouseArea {
+          id: backArea
           anchors.fill: parent
           hoverEnabled: true
           cursorShape: Qt.PointingHandCursor
@@ -542,7 +555,7 @@ BorderSurface {
           width: projectColumn.width
           height: docText.implicitHeight + page.sp(6)
           radius: Style.cornerRadius
-          color: hot ? Style.selectedFill : "transparent"
+          color: hot ? Style.selectedFill : docArea.containsMouse ? Style.hoverFill : "transparent"
           Text {
             id: docText
             anchors.left: parent.left
@@ -559,6 +572,7 @@ BorderSurface {
             font.pixelSize: page.fs(Style.font.caption)
           }
           MouseArea {
+            id: docArea
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
@@ -590,7 +604,7 @@ BorderSurface {
           width: projectColumn.width
           height: secCol.implicitHeight + page.sp(8)
           radius: Style.cornerRadius
-          color: hot ? Style.selectedFill : "transparent"
+          color: hot ? Style.selectedFill : secArea.containsMouse ? Style.hoverFill : "transparent"
           Column {
             id: secCol
             anchors.left: parent.left
@@ -625,6 +639,7 @@ BorderSurface {
             }
           }
           MouseArea {
+            id: secArea
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
