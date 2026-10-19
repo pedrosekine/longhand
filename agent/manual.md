@@ -26,7 +26,8 @@ quote; Backspace at its start turns it back. {key:bold}, {key:italic},
 in. {key:checkbox} ticks or unticks a checkbox (a click works too); a tick
 writes the day it was done (`✅`) and makes a short sound, which Settings can
 turn off. {key:lineUp} and {key:lineDown} move lines. Tab nests a line,
-Shift+Tab un-nests it; Shift+Enter is a new line in the same block.
+Shift+Tab un-nests it, and so does Enter on an empty nested item (at the
+outermost level Enter leaves the list); Shift+Enter is a new line in the same block.
 
 ## Deadlines
 

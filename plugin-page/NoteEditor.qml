@@ -785,7 +785,15 @@ Item {
       return
     }
     if (carry !== "" && r.body === "" && r.suffix === "" && pos >= lineEnd && r.kind !== "calloutHead") {
-      // Enter on an empty item leaves the list (or the quote).
+      // Enter on an empty item steps out one level, as Shift+Tab does
+      // (and Notion); at the outermost level it leaves the list (or the
+      // quote). 2026-10-19.
+      if (r.kind !== "quote" && r.indent !== "") {
+        ed.outdent(i)
+        ed.relist([i])
+        ed.placeCursor(true)
+        return
+      }
       ed.remove(r.start, lineEnd)
       if (r.kind !== "quote") ed.listLeft(i)
       return
@@ -795,7 +803,7 @@ Item {
   }
 
   // Backspace at the start of a line: first the kind goes, then the
-  // indentation, then the line joins the one above.
+  // indentation a level at a time, then the line joins the one above.
   // A bound line that stops being a checkbox stops being a deadline: its
   // date goes with the box (and the page asks about the deadline). Joining
   // onto a bound line slips the words in before that line's date.
@@ -806,7 +814,7 @@ Item {
       if (r.suffix !== "") ed.remove(r.bodyEnd, r.start + r.raw.length)
       ed.remove(r.start + r.indent.length, r.start + r.prefixLen)
     } else if (r.indent !== "") {
-      ed.remove(r.start, r.start + r.indent.length)
+      ed.outdent(i)
     } else if (i > 0) {
       var p = ed.rows[i - 1]
       if (p.suffix !== "") {
@@ -837,14 +845,20 @@ Item {
     ed.placeCursor(true)
   }
 
+  // One level of indentation off line i: a tab, or two spaces.
+  function outdent(i) {
+    var r = ed.rows[i]
+    if (r.indent.charAt(0) === "\t") ed.remove(r.start, r.start + 1)
+    else if (r.indent !== "") ed.remove(r.start, r.start + Math.min(2, r.indent.length))
+  }
+
   function indent(i, out) {
     var r = ed.rows[i]
     var listy = r.kind === "task" || r.kind === "bullet" || r.kind === "ordered"
     var was = ed.text
     ed.snapshot(true)
     if (out) {
-      if (r.indent.charAt(0) === "\t") ed.remove(r.start, r.start + 1)
-      else if (r.indent !== "") ed.remove(r.start, r.start + Math.min(2, r.indent.length))
+      ed.outdent(i)
     } else if (listy || r.indent !== "") {
       ed.insert(r.start, "\t")
     } else {

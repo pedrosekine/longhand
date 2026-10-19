@@ -400,6 +400,71 @@ Item {
       verify(ed.rowItem(2).height > 0 && ed.rowItem(2).height < ed.rowItem(3).height)
     }
 
+    // Enter on an empty nested item steps out a level, as Shift+Tab does;
+    // only at the outermost level does it leave the list.
+    function test_enter_on_an_empty_nested_item_steps_out_a_level() {
+      var left = -1
+      var conn = function (i) { left = i }
+      ed.listLeft.connect(conn)
+      start("\n- a\n\t- b\n\t\t- ")
+      keyClick(Qt.Key_Return)
+      compare(ed.text, "\n- a\n\t- b\n\t- ")
+      compare(ed.focusedRow, 3)
+      compare(left, -1)
+      keyClick(Qt.Key_Return)
+      compare(ed.text, "\n- a\n\t- b\n- ")
+      compare(left, -1)
+      keyClick(Qt.Key_Return)
+      compare(ed.text, "\n- a\n\t- b\n")
+      compare(left, 3)
+      ed.listLeft.disconnect(conn)
+    }
+
+    function test_stepping_out_keeps_the_kind_and_the_writing_goes_on() {
+      start("\n- [ ] a\n\t- [ ] ")
+      keyClick(Qt.Key_Return)
+      compare(ed.text, "\n- [ ] a\n- [ ] ")
+      type("b")
+      compare(ed.text, "\n- [ ] a\n- [ ] b")
+      start("\n- a\n    - ")
+      keyClick(Qt.Key_Return)
+      compare(ed.text, "\n- a\n  - ")
+    }
+
+    function test_stepping_out_of_a_numbered_level_numbers_on() {
+      start("\n1. a\n\t1. ")
+      keyClick(Qt.Key_Return)
+      compare(ed.text, "\n1. a\n2. ")
+    }
+
+    // In the middle of a list, the list stays one block: no blank line.
+    function test_stepping_out_mid_list_keeps_the_list_whole() {
+      start("\n- a\n\t- \n- c", 8)
+      keyClick(Qt.Key_Return)
+      compare(ed.text, "\n- a\n- \n- c")
+      compare(ed.focusedRow, 2)
+    }
+
+    function test_stepping_out_is_one_undo() {
+      start("\n- a\n\t- ")
+      keyClick(Qt.Key_Return)
+      keyClick(Qt.Key_Z, Qt.ControlModifier)
+      compare(ed.text, "\n- a\n\t- ")
+    }
+
+    // Backspace: the kind first, then the indentation a level at a time.
+    function test_backspace_takes_the_indent_a_level_at_a_time() {
+      start("\n- a\n\t\t- b", 9)   // start of "b"
+      keyClick(Qt.Key_Backspace)
+      compare(ed.text, "\n- a\n\t\tb")
+      keyClick(Qt.Key_Backspace)
+      compare(ed.text, "\n- a\n\tb")
+      keyClick(Qt.Key_Backspace)
+      compare(ed.text, "\n- a\nb")
+      keyClick(Qt.Key_Backspace)
+      compare(ed.text, "\n- ab")
+    }
+
     function test_backspace_takes_kind_then_joins() {
       start("\npara\n- [ ] item", 9)   // start of "item"
       compare(focused().cursorPosition, 0)

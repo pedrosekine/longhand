@@ -161,7 +161,7 @@ Where a row has two keys, either works: the second is usually the one another ap
 
 | | Keys | Works |
 |---|---|---|
-| New line; on an empty list item, leave the list | `Enter` | |
+| New line; on an empty list item, step out a level, then leave the list | `Enter` | |
 | New line in the same block | `Shift+Enter` | |
 | Nest or un-nest the line (or every line selected) | `Tab` · `Shift+Tab` | |
 | Move; by word with Ctrl | `←` · `→` · `↑` · `↓` · `Ctrl+←` · `Ctrl+→` | |

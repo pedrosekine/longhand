@@ -165,6 +165,9 @@
             when a block starts with no blank line), and arrows skip them.
             Enter carries list and quote markers, Backspace at a line's
             start drops its kind, then its indent, then joins; Ctrl+L ticks;
+            (2026-10-19: Enter on an empty nested item steps out one level,
+            as Shift+Tab and Notion do, and leaves the list only at the
+            outermost; Backspace takes the indent a level at a time);
             undo is the editor's own (cross-field). Page logic (staging,
             send prompt, panel) is unchanged and talks to the editor through
             the same `text`/`cursorPosition`/`insert`/`remove`. Not yet:
