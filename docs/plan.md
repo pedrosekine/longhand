@@ -488,10 +488,16 @@ from 2026-09/10 and still stand.
 - **The planner's new actions** (slice 5): whether proposals of each kind
   are accepted — the record in Settings → what the agent may do — and
   whether raising one to "do it and tell me" is ever wanted.
-- **The planner prompt's stability:** `abbe791621` passes the new drop case
-  6/6 and the old plan case 5/6 (the miss a judge's reading). Eval cases for
-  deadlines found in prose and "looks done" wait for notes that have them
-  (a side session watches for the payloads).
+- **The planner prompt's stability:** `e11303c0f1` (2026-10-20: steps take
+  a slot beside a big, clear box's do-date) passes all six cases in 3 of 4
+  full runs; before it, the planner never proposed steps at all. Still
+  wanted: an eval case for a deadline *stated in prose* (the 10-19 case
+  turned out to be a box already in the store) and one for "looks done" —
+  both wait for notes that have them.
+- **Deadlines #d10 "author response" and #d25 "Proposal of version 1"**
+  were ticked done on 2026-10-16, a second apart, two months early: a slip
+  or a test? If a slip, reopen them in the store — since 2026-10-20 the
+  planner never proposes a deadline the store already has, open or closed.
 - **The inbox's class-time match:** anything downloaded during a class
   looks like that course's — watch for wrong filing proposals.
 - **The manual's how-to detection** (`manual.asks_how`) is generous on

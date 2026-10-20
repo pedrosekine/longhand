@@ -82,6 +82,11 @@ decision people avoid. Rules:
   do-date (a deadline the writing states, a box the notes say is done, a
   box that is plainly a test line or a joke: one or two such drops go
   ahead of the last do-dates).
+  Steps take one slot too, ahead of the last do-date: when a box you date
+  is a big piece of work (a paper, a proposal, a presentation), the notes
+  make plain what it is, and it has no steps under it (`steps_under_it`
+  0), also give it its first steps. A do-date says when to start; the
+  steps say how.
   Fewer only when fewer candidates are clear; none only when there are
   none.
 - `why`: one short sentence a student would nod at, resting on the
@@ -120,7 +125,8 @@ Each only when the notes or the data give a concrete reason, named in
   nothing.
 - **steps** — up to five short steps under a box that is big and has none
   (`steps_under_it` 0): concrete, in order, each a thing to do in one
-  sitting. Not for a box whose meaning is unclear — ask instead.
+  sitting, drawn from what the notes say about it. Not for a box whose
+  meaning is unclear — ask instead.
 - **drop** — a box `quiet` or weeks old that the notes have moved past (a
   joke, a test line, a plan given up). A test line ("this is a checkbox")
   needs no note: its own words show it. Never a box with real content on

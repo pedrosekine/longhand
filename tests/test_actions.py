@@ -76,6 +76,21 @@ def units() -> None:
     check([p["kind"] for p in props] == ["drop", "done", "priority", "priority", "priority"],
           f"a quiet box may be proposed for dropping; 'looks done' must say why; five at most ({[p['kind'] for p in props]})")
 
+    # A ticked box must not come back as a new deadline (2026-10-20): the
+    # store's closed deadlines are checked too, reworded or not.
+    dec18 = dt.datetime.combine(TODAY + dt.timedelta(days=60), dt.time(23, 59))
+    closed = [{"title": "Proposal of version 1 read by supervisor and 2 fellow students", "due": dec18, "status": "done"}]
+    reply = {"proposals": [
+        {"kind": "deadline", "title": "Proposal v1 read by supervisor", "date": dec18.date().isoformat(), "why": "the notes"},
+        {"kind": "deadline", "title": "Supervisor proposal v1 reading", "date": day(90), "why": "reworded, another day"},
+        {"kind": "deadline", "title": "Poster printed", "date": dec18.date().isoformat(), "why": "same day, other thing"},
+        {"kind": "deadline", "title": "initial paper draft", "date": day(40), "why": "the open one, reworded"},
+    ], "questions": []}
+    props, _ = plan.validate(reply, cands, days, {"next": 1, "items": []}, TODAY, boxes, deadlines,
+                             plan.autonomy({}), closed)
+    check([p["title"] for p in props] == ["Poster printed"],
+          f"a deadline the store has — ticked, reworded, or open — is not proposed again ({[p['title'] for p in props]})")
+
     # The person's word on each kind.
     level = plan.autonomy({"autonomy": {"priority": "do", "steps": "never", "done": "do", "drop": "sometimes"}})
     check(level["priority"] == "do" and level["steps"] == "never" and level["done"] == "ask" and level["drop"] == "ask",

@@ -99,9 +99,21 @@ def check_plan(case: dict, reply: dict) -> tuple[list[dict], dict]:
     today = dt.date.fromisoformat(data.get("today") or dt.date.today().isoformat())
     may = data.get("you_may")
     allowed = {k: ("ask" if may is None or k in may else "never") for k in planlib.KINDS}
+    # The store's deadlines, as plan.py checks them: the open ones, and the
+    # closed ones (from the payload since 2026-10-20, else the case's own
+    # `closed`), so a ticked box proposed again is refused here as it is live.
+    def store(rows):
+        out = []
+        for x in rows or []:
+            try:
+                out.append(dict(x, due=dt.datetime.strptime(str(x["due"])[:16], "%Y-%m-%d %H:%M")))
+            except (KeyError, ValueError):
+                continue
+        return out
     props, qs = planlib.validate(reply, data.get("candidates") or [], data.get("fortnight") or [],
                                  {"next": 1, "items": []}, today, data.get("open_boxes") or [],
-                                 data.get("deadlines") or [], allowed)
+                                 store(data.get("deadlines")), allowed,
+                                 store(data.get("closed_deadlines") or case.get("closed")))
     dates = [p for p in props if p["kind"] == "do-date"]
     out = [{"check": f"at least {r.get('min_dates', 0)} do-dates kept", "pass": len(dates) >= r.get("min_dates", 0),
             "why": f"{len(dates)} kept of {sum(1 for p in reply.get('proposals') or [] if p.get('kind') == 'do-date')}"},

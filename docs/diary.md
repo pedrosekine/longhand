@@ -1237,3 +1237,13 @@ only the window and the panels around it differ.
   number, in the text colour, won. It cannot be mistaken for the open day's
   outline or the keys' fill, and close to the digits it never meets their
   edge. Today follows the service's clock now.
+- **2026-10-20 — Steps get a slot; a ticked box stays ticked.** Real
+  payloads showed the planner never proposing steps: do-dates filled the
+  five slots every time. A rule found by a side session — a big, clear box
+  gets its first steps beside its do-date — takes the steps case from 0/3
+  to 3/3 without breaking the others. The same session found a gap: the
+  data shows only open deadlines and open boxes, so a box ticked done (here
+  #d25, maybe by mistake) could come back as a "new" deadline. The store's
+  closed deadlines are now checked as well — same words, or the same day
+  and a word in common, or most words in common — and travel in the data,
+  so the eval refuses what the live run refuses.

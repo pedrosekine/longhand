@@ -1850,6 +1850,11 @@ def cmd_plan(cfg: dict, args) -> int:
         # Every open box, for the actions that are not about a day, and what
         # the student allows: a kind at "never" is not to be proposed.
         "open_boxes": boxes,
+        # What the store has closed (done or cancelled) — a ticked box is in
+        # neither list above, and must not come back as a new deadline.
+        "closed_deadlines": [{"title": x["title"], "due": x["due"].strftime("%Y-%m-%d %H:%M"), "status": x["status"]}
+                             for x in planlib.store_deadlines(STATE_HOME / "deadlines.tsv", ("done", "cancelled"))
+                             if abs((x["due"].date() - today).days) <= 183],
         "you_may": sorted(k for k, v in allowed.items() if v != "never" and k != "file"),
     }
     payload = plan_payload(cfg, paths, today, data, notes)
@@ -1866,7 +1871,9 @@ def cmd_plan(cfg: dict, args) -> int:
         plan_cfg["model"], plan_cfg["variant"] = cfg["planModel"], cfg.get("planVariant", "")
     result = run_model(plan_cfg, paths, payload, message="Plan the fortnight. The context follows on stdin.")
     reply = parse_plan(result["text"]) if not result["error"] else {"proposals": [], "questions": [], "knowledge": []}
-    props, qs = planlib.validate(reply, cands, days, ledger, today, boxes, deadlines, allowed)
+    # What the store has closed, too: a ticked box must not return as a new deadline.
+    closed = planlib.store_deadlines(STATE_HOME / "deadlines.tsv", ("done", "cancelled"))
+    props, qs = planlib.validate(reply, cands, days, ledger, today, boxes, deadlines, allowed, closed)
     for item in props + qs:
         item.update({"prompt": result.get("prompt", ""), "model": result.get("model", ""), "payload": str(payload_file)})
     new = planlib.record(ledger, props, qs, at)

@@ -58,9 +58,10 @@ RAISE_ACCEPTED = 9          # …of which accepted
 
 # ------------------------------------------------------------------ inputs
 
-def store_deadlines(store: Path) -> list[dict]:
-    """The open deadlines of the store: id, due (local datetime), title,
-    project, and whether a note holds its line."""
+def store_deadlines(store: Path, statuses: tuple = ("open",)) -> list[dict]:
+    """The store's deadlines with those statuses (open, by default): id, due
+    (local datetime), title, project, status, and whether a note holds its
+    line."""
     out = []
     try:
         lines = store.read_text().splitlines()
@@ -70,9 +71,9 @@ def store_deadlines(store: Path) -> list[dict]:
         f = line.split("\t")
         if len(f) < 4 or not f[0].isdigit() or not f[1].lstrip("-").isdigit():
             continue
-        if f[3] != "open":
+        if f[3] not in statuses:
             continue
-        out.append({"id": int(f[0]), "due": dt.datetime.fromtimestamp(int(f[1])), "title": f[2],
+        out.append({"id": int(f[0]), "due": dt.datetime.fromtimestamp(int(f[1])), "title": f[2], "status": f[3],
                     "project": f[6] if len(f) > 6 else "", "linked": len(f) > 7 and "#^d" in f[7]})
     return out
 
@@ -227,6 +228,29 @@ def norm(text: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[^\w\s]", " ", text or "")).strip().casefold()
 
 
+STOPWORDS = {"the", "and", "for", "with", "from", "into", "your", "this", "that", "draft", "read", "have", "will"}
+
+
+def _words(title: str) -> set[str]:
+    return {w for w in norm(title).split() if len(w) >= 4 and w not in STOPWORDS}
+
+
+def same_deadline(title: str, date: str, d: dict) -> bool:
+    """Whether a proposed deadline is one the store already has, open or
+    closed: the same words; or the same day and a word in common; or most of
+    the shorter title's words in common. A model rewording a ticked box
+    ("Proposal of version 1 …" → "Proposal v1") must not bring it back."""
+    if norm(title) == norm(d["title"]):
+        return True
+    a, b = _words(title), _words(d["title"])
+    if not a or not b:
+        return False
+    common = a & b
+    if d.get("due") and d["due"].date().isoformat() == date and common:
+        return True
+    return len(common) >= max(1, round(0.6 * min(len(a), len(b))))
+
+
 def ident(x: dict) -> tuple[str, str]:
     """What one proposal is about: its kind and its box, or, for a deadline
     (which has no box yet), its words."""
@@ -270,7 +294,7 @@ def record_of(ledger: dict, kind: str) -> dict:
 
 def validate(reply: dict, cands: list[dict], days: list[dict], ledger: dict, today: dt.date,
              boxes: list[dict] | None = None, deadlines: list[dict] | None = None,
-             allowed: dict[str, str] | None = None) -> tuple[list[dict], list[dict]]:
+             allowed: dict[str, str] | None = None, closed: list[dict] | None = None) -> tuple[list[dict], list[dict]]:
     """What the model said, kept only where it holds: every kind checked
     against what it was shown, against what the person already refused, and
     against what the person allows ("never" drops it). At most
@@ -310,6 +334,12 @@ def validate(reply: dict, cands: list[dict], days: list[dict], ledger: dict, tod
             except ValueError:
                 continue
             if not title or not (today <= when <= today + dt.timedelta(days=366)) or norm(title) in known:
+                continue
+            # Already in the store — open, done or cancelled: a ticked box
+            # (deadlines and open boxes show only what is open) must not
+            # come back as a new deadline.
+            if any(same_deadline(title, date, d) for d in list(deadlines or []) + list(closed or [])
+                   if isinstance(d.get("due"), dt.datetime)):
                 continue
             project = str(p.get("project") or "").lstrip("#")
             project = project if re.fullmatch(r"[\w/-]{1,40}", project) else ""
