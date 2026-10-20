@@ -927,11 +927,26 @@ def cmd_chat(cfg: dict, args) -> int:
     paths.payloads.mkdir(parents=True, exist_ok=True)
     stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
     payload_file = paths.payloads / f"{stamp}-chat-{args.hash}.md"
+    # A box's one conversation (2026-10-20): what the student said with the
+    # planner about it, and its open proposals, travel with the message —
+    # whatever the margin has not seen yet.
+    about_block = block or now
+    box_key, planned, open_props = box_thread(cfg, paths, about_block) if about_block else ("", [], [])
+    seen = int(rec.get("planner_seen") or 0) if session else 0
+    planner_part = ""
+    if planned[seen:]:
+        planner_part += ("Meanwhile, about this box, the student talked with Longhand's planner (read-only):\n\n"
+                         + "\n".join(planner_lines(planned[seen:][-planlib.TALK_TURNS:])) + "\n\n")
+    if open_props:
+        planner_part += ("The planner's open proposals about this box (the student settles them in the dashboard):\n\n"
+                         + "\n".join(f"- {x['kind']}" + (f" {x['date']}" if x.get("date") else "")
+                                      + (f": {x['question']}" if x.get("question") else "") + f" — {x.get('why', '')}"
+                                      for x in open_props) + "\n\n")
     if session:
         # The session already holds the context and the first reply; only the
         # student's words travel. Logged all the same.
         since = f"The block now reads:\n\n{now['text']}\n\n" if now else ""
-        payload = (f"{language_line(cfg, message)}\n\n{since}The student replies about block {args.hash}:\n\n{message}\n\n"
+        payload = (f"{language_line(cfg, message)}\n\n{since}{planner_part}The student replies about block {args.hash}:\n\n{message}\n\n"
                    "Answer with the same JSON contract.\n")
         payload_file.write_text(payload)
         result = run_model(cfg, paths, "", session=session, message=payload)
@@ -940,6 +955,8 @@ def cmd_chat(cfg: dict, args) -> int:
         if block is None:
             raise Fail(f"block {args.hash} has no session and is not in the visible note")
         payload = build_payload(paths, "mention", [block], visible, cfg)
+        if planner_part:
+            payload += f"\n# This box with the planner\n\n{planner_part}"
         payload += f"\n# The student says\n\n{message}\n"
         payload_file.write_text(payload)
         result = run_model(cfg, paths, payload)
@@ -949,7 +966,11 @@ def cmd_chat(cfg: dict, args) -> int:
     about = block or now
     tag = project_of_block(visible, about) if about else ""
     result, reply = follow_reads(cfg, paths, tag, result, reply, payload_file)
-    apply(cfg, paths, "chat", [], visible, result, reply, payload_file, hash_=args.hash, message=message)
+    state = apply(cfg, paths, "chat", [], visible, result, reply, payload_file, hash_=args.hash, message=message)
+    if planned and not result["error"]:
+        for h in group_of(state, args.hash):
+            state["blocks"][h]["planner_seen"] = len(planned)
+        write_atomic(paths, paths.state, json.dumps(state, indent=2, ensure_ascii=False) + "\n")
     if result["error"]:
         print(f"error: {result['error']}", file=sys.stderr)
         return 1
@@ -1807,6 +1828,28 @@ def parse_plan(text: str) -> dict:
     return empty
 
 
+def plan_inputs(cfg: dict, today: dt.date) -> tuple:
+    """What a plan is made from, and a proposal is checked against: the
+    open boxes, the store's deadlines, the fortnight, the candidates for a
+    do-date, the boxes for the other actions, the week's notes, and what
+    the student allows."""
+    tasks = plan_tasks(cfg)
+    deadlines = planlib.store_deadlines(STATE_HOME / "deadlines.tsv")
+    days = planlib.fortnight(today, plan_events(cfg, today), deadlines, tasks)
+    return (tasks, deadlines, days, planlib.candidates(tasks, deadlines, today),
+            planlib.open_boxes(tasks, deadlines, today), plan_notes(cfg, today), planlib.autonomy(cfg))
+
+
+def plan_cfg_of(cfg: dict) -> dict:
+    """The planner may reach a model of its own (docs/agent.md, "Reaching a
+    model"): `planModel` in the config, with `planVariant` if that model
+    names one; otherwise the same model as the margin."""
+    out = dict(cfg, agent=cfg.get("planAgent", "longhand-plan"))
+    if cfg.get("planModel"):
+        out["model"], out["variant"] = cfg["planModel"], cfg.get("planVariant", "")
+    return out
+
+
 def cmd_plan(cfg: dict, args) -> int:
     """The planning job (docs/agent.md): at most once a day, again when what
     it plans around changed, and whenever asked (--force). The arithmetic is
@@ -1815,13 +1858,7 @@ def cmd_plan(cfg: dict, args) -> int:
     page writes a do-date when the person accepts it."""
     today = dt.date.today()
     paths = Paths(cfg, today)
-    tasks = plan_tasks(cfg)
-    deadlines = planlib.store_deadlines(STATE_HOME / "deadlines.tsv")
-    days = planlib.fortnight(today, plan_events(cfg, today), deadlines, tasks)
-    cands = planlib.candidates(tasks, deadlines, today)
-    boxes = planlib.open_boxes(tasks, deadlines, today)
-    notes = plan_notes(cfg, today)
-    allowed = planlib.autonomy(cfg)
+    tasks, deadlines, days, cands, boxes, notes, allowed = plan_inputs(cfg, today)
     digest = planlib.inputs_hash(cands, days) + hashlib.sha256(
         json.dumps([boxes, notes, allowed], sort_keys=True, default=str).encode()).hexdigest()[:8]
     try:
@@ -1856,6 +1893,10 @@ def cmd_plan(cfg: dict, args) -> int:
                              for x in planlib.store_deadlines(STATE_HOME / "deadlines.tsv", ("done", "cancelled"))
                              if abs((x["due"].date() - today).days) <= 183],
         "you_may": sorted(k for k, v in allowed.items() if v != "never" and k != "file"),
+        # What the student said when they talked with you about a box's
+        # proposals (`talk`): still true for that box and the boxes under it.
+        "conversations": planlib.plan_talks(ledger, {planlib.root_key(b["key"], tasks) for b in boxes}
+                                            | {planlib.root_key(c["key"], tasks) for c in cands}),
     }
     payload = plan_payload(cfg, paths, today, data, notes)
     paths.payloads.mkdir(parents=True, exist_ok=True)
@@ -1863,13 +1904,7 @@ def cmd_plan(cfg: dict, args) -> int:
     payload_file = paths.payloads / f"{stamp}-plan.md"
     payload_file.write_text(payload)          # logged before inference
 
-    # The planner may reach a model of its own (docs/agent.md, "Reaching a
-    # model"): `planModel` in the config, with `planVariant` if that model
-    # names one; otherwise the same model as the margin.
-    plan_cfg = dict(cfg, agent=cfg.get("planAgent", "longhand-plan"))
-    if cfg.get("planModel"):
-        plan_cfg["model"], plan_cfg["variant"] = cfg["planModel"], cfg.get("planVariant", "")
-    result = run_model(plan_cfg, paths, payload, message="Plan the fortnight. The context follows on stdin.")
+    result = run_model(plan_cfg_of(cfg), paths, payload, message="Plan the fortnight. The context follows on stdin.")
     reply = parse_plan(result["text"]) if not result["error"] else {"proposals": [], "questions": [], "knowledge": []}
     # What the store has closed, too: a ticked box must not return as a new deadline.
     closed = planlib.store_deadlines(STATE_HOME / "deadlines.tsv", ("done", "cancelled"))
@@ -1977,12 +2012,19 @@ def cmd_proposals(cfg: dict, args) -> int:
     out = []
     for x in planlib.open_items(ledger):
         t = by_key.get(x["key"]) if x["key"] else None
-        out.append(dict(x, where={"date": t["date"], "line": t["line"], "text": t["text"]} if t else None))
+        out.append(dict(x, thread=planlib.thread_key(x, tasks),
+                        where={"date": t["date"], "line": t["line"], "text": t["text"]} if t else None))
+    # Every box's conversation with the planner, settled or not: the note's
+    # margin shows it with the box's own (one conversation per task).
+    threads = {k: [{"role": u["role"], "text": u["text"], "at": u.get("at", ""), "about": u.get("about"),
+                    "revised": u.get("revised", ""), "settled": u.get("settled", "")} for u in th.get("turns") or []]
+               for k, th in (ledger.get("threads") or {}).items()}
     since = (dt.date.today() - dt.timedelta(days=planlib.DAYS)).isoformat()
     accepted = [{"key": x["key"], "date": x["date"]} for x in ledger["items"]
                 if x["kind"] == "do-date" and x["status"] == "accepted" and x.get("resolved", "") >= since]
     told = [dict(x, where=None) for x in planlib.told(ledger)]
-    print(json.dumps({"open": out, "told": told, "accepted": accepted, "count": len(out) + len(told)}, ensure_ascii=False))
+    print(json.dumps({"open": out, "told": told, "accepted": accepted, "threads": threads,
+                      "count": len(out) + len(told)}, ensure_ascii=False))
     return 0
 
 
@@ -2028,12 +2070,7 @@ def cmd_proposal(cfg: dict, args) -> int:
         if item["kind"] != "question" or not answer:
             raise Fail("only a question takes an answer")
         planlib.resolve(ledger, args.id, "answered", at, answer)
-        paths = Paths(cfg, dt.date.today())
-        f = paths.knowledge / "answers.md"
-        head = "" if f.exists() else "# The student's answers\n\nWhat the student told the agent when it asked. True; never to be asked again.\n\n"
-        about = f"{item['title']}: " if item.get("title") else ""
-        line = f"- {dt.date.today().isoformat()} · {about}{item['question']} → {answer}\n"
-        write_atomic(paths, f, head + (f.read_text() if f.exists() else "") + line)
+        keep_answer(cfg, item, answer)
     elif args.how == "accept" and item["kind"] == "file":
         paths = Paths(cfg, dt.date.today())
         try:
@@ -2044,10 +2081,341 @@ def cmd_proposal(cfg: dict, args) -> int:
             planlib.resolve(ledger, args.id, "moot", at)
     else:
         planlib.resolve(ledger, args.id, "accepted" if args.how == "accept" else "declined", at)
+    # Talked about first: what the person last said is the reason kept with
+    # the answer — more for the review and the evals than a silent key.
+    words = planlib.last_words(ledger, item)
+    if words and item["kind"] != "question":
+        item["reason"] = words
     planlib.save_ledger(PROPOSALS, ledger)
     print(json.dumps({"id": args.id, "status": next(x for x in ledger["items"] if x["id"] == args.id)["status"],
                       "changed": True}))
     return 0
+
+
+def keep_answer(cfg: dict, item: dict, answer: str) -> None:
+    """An answered question, kept in the agent's knowledge as answers.md,
+    which it reads every time and never writes, so it does not ask again."""
+    paths = Paths(cfg, dt.date.today())
+    f = paths.knowledge / "answers.md"
+    head = "" if f.exists() else "# The student's answers\n\nWhat the student told the agent when it asked. True; never to be asked again.\n\n"
+    about = f"{item['title']}: " if item.get("title") else ""
+    line = f"- {dt.date.today().isoformat()} · {about}{item['question']} → {answer}\n"
+    write_atomic(paths, f, head + (f.read_text() if f.exists() else "") + line)
+
+
+TALK_MESSAGE = """The student wants to talk with you about one of your proposals. On stdin: the plan as you made it, \
+then the proposal, what came of your others about the same box, the box as it stands, and your conversation so far \
+about it — the last message is theirs.
+
+Answer them as the planner who made the proposal: in a few plain sentences, from the specifics in the data and \
+their notes. When they push back or tell you something you did not know, take it seriously: change the proposal if \
+it should change, or say plainly why it should not. Do not ask again what they already answered.
+
+Reply with exactly one fenced JSON block and nothing else:
+
+```json
+{"reply": "what you say to them", "revise": null, "settle": null, "knowledge": []}
+```
+
+- `revise`: null, or the proposal changed — one object in exactly the shape your plan uses for its kind, the same \
+kind and the same box (`key`); it goes through the same checks as a plan. Never to something they refused.
+- `settle`: null, "accept" or "decline" — only when their last message and you agree. "accept" when they agree to the \
+proposal as it stands, or when your revision gives exactly what they asked for; "decline" when they say they do not \
+want it and you accept that. Never on your own judgement alone; when unsure, null — they still have their keys.
+- `knowledge`: as in a plan, only for something durable they told you."""
+
+# The same conversation about one of the planner's questions, or about
+# something it did on its own (do it and tell me): what differs is what
+# settling means.
+TALK_QUESTION = """
+This time it is one of your questions, not a proposal: they wrote back instead of taking your recommended answer, \
+so they want to talk it through. Answer what they ask; help them decide. `revise` does not apply — leave it null.
+
+Add `"answer"` to the JSON: null, or — when they have answered your question, in their words or by agreeing to an \
+answer — that answer as one short factual sentence in their terms, with `settle` "accept". It is kept as true and \
+you will never ask it again, so only what they actually said or agreed to. `settle` "decline" when they say the \
+question does not apply or they would rather not answer."""
+
+TALK_TOLD = """
+This time it is something you already did on your own (the student lets you do this kind of action and be told): \
+it is done, not proposed. `revise` does not apply — leave it null. `settle` "accept" when they agree it stands, \
+"decline" when they want it undone and you accept that."""
+
+
+def talk_message(item: dict) -> str:
+    return TALK_MESSAGE + (TALK_QUESTION if item["kind"] == "question" else TALK_TOLD if item["status"] == "told" else "")
+
+
+def box_block(cfg: dict, task: dict) -> tuple[Paths, list[dict], dict] | None:
+    """The block a box is in, in its own day's note — None when the note or
+    the block is private."""
+    try:
+        day = dt.datetime.strptime(task["date"], moment_to_strftime(cfg["daily"].get("format", "YYYY-MM-DD"))).date()
+        paths = Paths(cfg, day)
+        blks = blocklib.split(paths.note.read_text())
+    except (KeyError, ValueError, OSError):
+        return None
+    k = blocklib.block_at(blks, task["line"])
+    if k < 0 or blks[k]["private"] or note_is_private(blks):
+        return None
+    return paths, visible_blocks(blks), blks[k]
+
+
+def block_record(paths: Paths, visible: list[dict], block: dict, blocks: dict) -> tuple[str, dict | None]:
+    """A block's conversation in the margin, found as the page finds it: by
+    its hash, by its words (ticked or dated since), or carried through a
+    rewording. Returns the hash it is filed under (the block's own when it
+    has none yet) and the record."""
+    def talked(r):
+        return bool(r and (r.get("reply") or r.get("chat")))
+    if talked(blocks.get(block["hash"])):
+        return block["hash"], blocks[block["hash"]]
+    k = block_key(block["text"])
+    for h, r in blocks.items():
+        if r.get("key") == k and talked(r):
+            return h, r
+    carried = carried_threads(paths, visible).get(block["hash"])
+    if carried and talked(blocks.get(carried)):
+        return carried, blocks[carried]
+    return block["hash"], None
+
+
+def margin_turns(rec: dict | None) -> list[dict]:
+    """A margin record as turns: its first reply, then its conversation."""
+    if not rec:
+        return []
+    out = [{"role": "agent", "text": rec["reply"], "at": rec.get("at", ""), "who": "margin"}] if rec.get("reply") else []
+    out += [{"role": t["role"], "text": t["text"], "at": t.get("at", ""), "who": "margin"} for t in rec.get("chat") or []]
+    return out
+
+
+def merged_turns(margin: list[dict], planner: list[dict]) -> list[dict]:
+    """A task's one conversation (2026-10-20): what was said in the margin
+    of its note and what was said with the planner, in the order it was
+    said. A turn with no time keeps its place after the one before it."""
+    rows = []
+    for src, who in ((margin, "margin"), (planner, "planner")):
+        last = ""
+        for i, t in enumerate(src):
+            last = t.get("at") or last
+            rows.append((last, who == "planner", i, dict(t, who=who)))
+    rows.sort(key=lambda r: (r[0], r[1], r[2]))
+    return [r[3] for r in rows]
+
+
+def margin_talk(cfg: dict, task: dict | None) -> list[str]:
+    """What was said about this box in the margin of its note, if anything,
+    for the planner to read."""
+    found = box_block(cfg, task) if task else None
+    if not found:
+        return []
+    paths, visible, block = found
+    _, rec = block_record(paths, visible, block, load_state(paths)["blocks"])
+    return [f"{'the margin' if t['role'] == 'agent' else 'student'}: {t['text']}" for t in margin_turns(rec)]
+
+
+def planner_lines(turns: list[dict]) -> list[str]:
+    return [f"{'the planner' if t['role'] == 'agent' else 'student'}: {t['text']}" for t in turns]
+
+
+def box_thread(cfg: dict, paths: Paths, block: dict) -> tuple[str, list[dict], list[dict]]:
+    """For a block in the margin: the key of the box it is (its first line),
+    what the student said with the planner about it, and the planner's open
+    proposals about it."""
+    try:
+        boxes = tasklib.scan(paths.note.read_text())
+    except OSError:
+        return "", [], []
+    box = next((b for b in boxes if b["line"] == block["start"]), None)
+    if box is None:
+        return "", [], []
+    key = lifespan.key_of(box)
+    ledger = planlib.load_ledger(PROPOSALS)
+    open_ = [x for x in planlib.open_items(ledger) if x.get("key") == key]
+    return key, planlib.thread(ledger, key)["turns"], open_
+
+
+def cmd_thread(cfg: dict, args) -> int:
+    """A task's one conversation, for the dashboard: the margin's turns
+    about its box and the planner's, merged by time, and where a message
+    about the task itself goes (the margin's `chat`, on its block)."""
+    tasks = plan_tasks(cfg)
+    ledger = planlib.load_ledger(PROPOSALS)
+    item = None
+    if args.id >= 0:
+        item = next((x for x in ledger["items"] if x["id"] == args.id), None)
+        if item is None:
+            raise Fail(f"no proposal #{args.id}")
+        key = planlib.thread_key(item, tasks)
+    else:
+        key = planlib.root_key(args.key, tasks)
+    task = next((t for t in tasks if t["key"] == key), None)
+    title = (task or {}).get("title") or planlib.thread(ledger, key).get("title") or (item or {}).get("title", "") \
+        or (item or {}).get("question", "")
+    margin, chat = [], None
+    found = box_block(cfg, task) if task else None
+    if found:
+        paths, visible, block = found
+        h, rec = block_record(paths, visible, block, load_state(paths)["blocks"])
+        margin, chat = margin_turns(rec), {"date": task["date"], "hash": h}
+    turns = merged_turns(margin, planlib.thread(ledger, key)["turns"])
+    print(json.dumps({"thread": key, "title": title, "chat": chat,
+                      "turns": [{k: t.get(k, "") for k in ("role", "text", "at", "who", "about", "revised", "settled")}
+                                for t in turns]}, ensure_ascii=False))
+    return 0
+
+
+def talk_payload(cfg: dict, item: dict, ledger: dict, key: str, tasks: list[dict], fresh: str, message: str) -> str:
+    """The plan the proposal came from (its logged payload; today's inputs
+    when that is gone), then the conversation about it."""
+    try:
+        base = Path(item.get("payload") or "").read_text() if item.get("payload") else fresh
+    except OSError:
+        base = fresh
+    show = {k: v for k, v in item.items() if k in ("id", "kind", "key", "date", "title", "project", "why", "priority",
+                                                   "steps", "source", "was", "question", "recommended")}
+    if item["status"] == "told":
+        show["done_already"] = True
+    parts = [base.rstrip(), "", "# The proposal the student wants to talk about", "", "```json",
+             json.dumps(show, indent=1, ensure_ascii=False), "```"]
+    others = [x for x in ledger["items"] if x["id"] != item["id"] and x["kind"] != "question"
+              and planlib.thread_key(x, tasks) == key][-10:]
+    if others:
+        parts += ["", "# Your other proposals about this box, and what came of them", ""]
+        parts += [f"- #{x['id']} {x['kind']}" + (f" {x['date']}" if x.get("date") else "")
+                  + f": {x['status']}" + (f" — they said: {x['reason']}" if x.get("reason") else "") for x in others]
+    task = next((t for t in tasks if t["key"] == item.get("key")), None) if item.get("key") else None
+    parts += ["", "# The box as it stands", ""]
+    parts.append(f"{task['text']} (in the note of {task['date']})" if task
+                 else "(a question about no box in particular)" if item["kind"] == "question"
+                 else "(no box yet: a deadline found in the writing)")
+    margin = margin_talk(cfg, task)
+    if margin:
+        parts += ["", "# What was said about this box in the margin of its note (read-only)", ""] + margin
+    turns = planlib.thread(ledger, key)["turns"][-planlib.TALK_TURNS:]
+    if turns:
+        parts += ["", "# Your conversation about this box so far", ""]
+        parts += [f"{'you' if t['role'] == 'agent' else 'student'}: {t['text']}" for t in turns]
+    parts += ["", "# The student says now", "", message]
+    return "\n".join(parts) + "\n"
+
+
+def cmd_talk(cfg: dict, args) -> int:
+    """The student talks with the planner about one of its proposals, its
+    questions, or what it did on its own (2026-10-20). The box's one
+    conversation grows by two turns; a revision is checked like any plan and
+    replaces the proposal; an agreement is settled — here when nothing in a
+    note changes (a decline; an answered question; a done thing let stand),
+    else by the page (an accept it writes, an undo it makes). Prints what
+    happened, for the page: `resolved` says whether it is settled already."""
+    message = (args.message or "").strip()
+    if not message:
+        raise Fail("--message is empty")
+    ledger = planlib.load_ledger(PROPOSALS)
+    item = next((x for x in ledger["items"] if x["id"] == args.id), None)
+    if item is None:
+        raise Fail(f"no proposal #{args.id}")
+    if item["status"] not in ("open", "told") or item["kind"] == "file":
+        raise Fail(f"#{args.id} is not open, nor the planner's ({item['kind']}, {item['status']})")
+    today = dt.date.today()
+    paths = Paths(cfg, today)
+    tasks, deadlines, days, cands, boxes, notes, allowed = plan_inputs(cfg, today)
+    key = planlib.thread_key(item, tasks)
+    title = (next((t["title"] for t in tasks if t["key"] == key), "") if item.get("key") else item.get("title", "")) \
+        or item.get("title", "")
+    fresh = plan_payload(cfg, paths, today, {"today": today.isoformat(), "fortnight": days, "candidates": cands,
+                                              "open_boxes": boxes}, notes)
+    payload = talk_payload(cfg, item, ledger, key, tasks, fresh, message)
+    paths.payloads.mkdir(parents=True, exist_ok=True)
+    stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+    payload_file = paths.payloads / f"{stamp}-talk-{item['id']}.md"
+    payload_file.write_text(payload)          # logged before inference
+    result = run_model(plan_cfg_of(cfg), paths, payload, message=talk_message(item))
+    payload_file.with_suffix(".events.jsonl").write_text(result["events"])
+    reply = parse_talk(result["text"]) if not result["error"] else \
+        {"reply": "", "revise": None, "settle": None, "answer": "", "knowledge": []}
+
+    at = dt.datetime.now().isoformat(timespec="seconds")
+    ledger = planlib.load_ledger(PROPOSALS)   # the page may have answered something meanwhile
+    item = next(x for x in ledger["items"] if x["id"] == args.id)
+    current, revised, settled, resolved = item, None, "", False
+    if item["status"] == "open" and item["kind"] != "question" and reply["revise"] is not None:
+        closed = planlib.store_deadlines(STATE_HOME / "deadlines.tsv", ("done", "cancelled"))
+        kept, _ = planlib.validate({"proposals": [reply["revise"]]}, cands, days, ledger, today, boxes, deadlines,
+                                   allowed, closed)
+        new = planlib.check_revision(item, reply["revise"], kept)
+        if new is not None:
+            new.pop("auto", None)             # a revision waits for the person, whatever the level
+            current = revised = planlib.revise(ledger, item, dict(new, prompt=result.get("prompt", ""),
+                                                                  model=result.get("model", ""), payload=str(payload_file)), at)
+    if current["status"] in ("open", "told") and reply["settle"] in planlib.SETTLE:
+        settled = reply["settle"]
+        current["agreed"] = {"how": settled, "at": at}
+        current["settled_by"] = "conversation"
+        if current["kind"] == "question":
+            # Answered (with what was agreed, else the recommended answer),
+            # or not wanted: nothing in a note changes, so settled here.
+            answer = (reply["answer"] or current.get("recommended", "")) if settled == "accept" else ""
+            planlib.resolve(ledger, current["id"], "answered" if settled == "accept" else "declined", at, answer)
+            if answer:
+                keep_answer(cfg, current, answer)
+            resolved = True
+        elif current["status"] == "told":
+            if settled == "accept":            # let stand; an undo is the page's to make
+                current["status"], current["resolved"] = "accepted", at
+                resolved = True
+        elif settled == "decline":
+            planlib.resolve(ledger, current["id"], "declined", at)
+            resolved = True
+        if not (current["kind"] == "question" and settled == "accept"):
+            current["reason"] = message       # an answered question keeps its answer instead
+    th = planlib.add_turns(ledger, key, title, [
+        {"role": "student", "text": message, "at": at, "about": item["id"]},
+        {"role": "agent", "text": reply["reply"] or ("(the planner could not answer: " + result["error"][:120] + ")"
+                                                     if result["error"] else "(nothing to add)"),
+         "at": at, "about": current["id"], "revised": str(revised["id"]) if revised else "", "settled": settled,
+         "cost": result["cost"], "prompt": result.get("prompt", ""), "model": result.get("model", ""),
+         "payload": str(payload_file)}])
+    planlib.save_ledger(PROPOSALS, ledger)
+    written = []
+    if not result["error"]:
+        write_knowledge(paths, reply["knowledge"], written)
+    tk = result["tokens"]
+    paths.ledger.parent.mkdir(parents=True, exist_ok=True)
+    if not paths.ledger.exists():
+        paths.ledger.write_text("at\tdate\ttrigger\tblock\tcost\tinput\toutput\treasoning\tsession\tprompt\tmodel\n")
+    with open(paths.ledger, "a") as f:
+        f.write(f"{at}\t{paths.stamp}\ttalk\t{item['id']}\t{result['cost']:.6f}\t{tk['input']}\t{tk['output']}\t{tk['reasoning']}\t{result['session']}\t{result.get('prompt', '')}\t{result.get('model', '')}\n")
+    print(json.dumps({"id": item["id"], "current": current["id"], "thread": key, "reply": reply["reply"],
+                      "revised": bool(revised), "settle": settled, "kind": current["kind"], "resolved": resolved,
+                      # The conversation as it stands, for the margin: once settled, the
+                      # proposal leaves the list, and its turns with it.
+                      "turns": [{"role": u["role"], "text": u["text"], "about": u.get("about"), "revised": u.get("revised", ""),
+                                 "settled": u.get("settled", "")} for u in th["turns"]],
+                      "error": result["error"]}, ensure_ascii=False))
+    return 0 if not result["error"] else 1
+
+
+def parse_talk(text: str) -> dict:
+    out = {"reply": "", "revise": None, "settle": None, "answer": "", "knowledge": []}
+    m = None
+    for m in re.finditer(r"```(?:json)?\s*\n(.*?)\n```", text, re.S):
+        pass
+    for c in ([m.group(1)] if m else []) + [text.strip()]:
+        try:
+            obj = json.loads(c)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(obj, dict):
+            out["reply"] = str(obj.get("reply") or "").strip()
+            out["revise"] = obj.get("revise") if isinstance(obj.get("revise"), dict) else None
+            out["settle"] = obj.get("settle") if obj.get("settle") in planlib.SETTLE else None
+            out["answer"] = re.sub(r"\s+", " ", str(obj.get("answer") or "")).strip()[:300]
+            out["knowledge"] = [x for x in obj.get("knowledge") or [] if isinstance(x, dict)] \
+                if isinstance(obj.get("knowledge"), list) else []
+            return out
+    out["reply"] = text.strip()
+    return out
 
 
 # --------------------------------------------------------------- notebook
@@ -2268,6 +2636,8 @@ def review_text(cfg: dict, since: dt.date, until: dt.date) -> str:
     for x in items:
         if x["kind"] == "do-date" and x["status"] == "declined":
             lines += ["", f"**Declined** — do {x['date']} for “{x['title']}” ({x.get('model', '?')}): {x.get('why', '')}"]
+            if x.get("reason"):
+                lines += ["", f"> they said: {x['reason']}"]
             if x.get("payload"):
                 lines += ["", f"Make it a case: `longhand-agent eval add {x['payload']} --job plan`"]
     answered = [x for x in items if x["kind"] == "question" and x["status"] == "answered"]
@@ -2393,6 +2763,12 @@ def main(argv: list[str]) -> int:
     p.add_argument("how", choices=("accept", "decline", "answer", "applied", "undo"))
     p.add_argument("--id", type=int, required=True)
     p.add_argument("--answer", default="")
+    p = sub.add_parser("thread")
+    p.add_argument("--id", type=int, default=-1, help="a proposal's or question's conversation")
+    p.add_argument("--key", default="", help="a task's conversation, by its key")
+    p = sub.add_parser("talk")
+    p.add_argument("--id", type=int, required=True)
+    p.add_argument("--message", required=True)
     p = sub.add_parser("box")
     p.add_argument("how", choices=("keep", "shelve"))
     p.add_argument("--key", required=True)
@@ -2438,7 +2814,7 @@ def main(argv: list[str]) -> int:
     try:
         cfg = load_config()
         return {"run": cmd_run, "chat": cmd_chat, "ack": cmd_ack, "accept": cmd_accept, "tasks": cmd_tasks, "sections": cmd_sections,
-                "next": cmd_next, "box": cmd_box, "rate": cmd_rate, "eval": cmd_eval, "review": cmd_review, "plan": cmd_plan, "proposals": cmd_proposals, "proposal": cmd_proposal, "timetable": cmd_timetable, "notebook": cmd_notebook, "documents": cmd_documents, "autonomy": cmd_autonomy, "dismiss": cmd_dismiss, "curriculum": cmd_curriculum,
+                "next": cmd_next, "box": cmd_box, "rate": cmd_rate, "eval": cmd_eval, "review": cmd_review, "plan": cmd_plan, "proposals": cmd_proposals, "proposal": cmd_proposal, "talk": cmd_talk, "thread": cmd_thread, "timetable": cmd_timetable, "notebook": cmd_notebook, "documents": cmd_documents, "autonomy": cmd_autonomy, "dismiss": cmd_dismiss, "curriculum": cmd_curriculum,
                 "context": cmd_context, "state": cmd_state, "install": cmd_install, "stats": cmd_stats,
                 "projects": cmd_projects}[args.cmd](cfg, args)
     except Fail as e:

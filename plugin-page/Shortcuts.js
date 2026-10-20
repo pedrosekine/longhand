@@ -122,7 +122,7 @@ var actions = [
   { id: "dashDown", group: "dash", places: ["dash"], does: "Move down", keys: ["Down", "J"] },
   { id: "dashFirst", group: "dash", places: ["dash"], does: "First row", keys: ["Home"] },
   { id: "dashLast", group: "dash", places: ["dash"], does: "Last row", keys: ["End"] },
-  { id: "dashOpen", group: "dash", places: ["dash"], does: "Go to the line", keys: ["Enter"] },
+  { id: "dashOpen", group: "dash", places: ["dash"], does: "Go to the line; on what the agent proposes, asks or did, talk with it (the margin opens beside)", keys: ["Enter"] },
   { id: "dashDone", group: "dash", places: ["dash"], does: "Done (again: not done); on the agent's proposal, accept", keys: ["Ctrl+Enter", "Space", "E", "Ctrl+L"] },
   { id: "dashWhen", group: "dash", places: ["dash"], does: "When: reschedule it", keys: ["T", "Ctrl+D"] },
   { id: "dashPriority", group: "dash", places: ["dash"], does: "Cycle its priority", keys: ["P"] },
@@ -141,6 +141,9 @@ var actions = [
   { id: "settingsAutonomy", group: "settings", places: ["settings"], does: "What the agent may do: each kind of action, ask me · do it and tell me · never", keys: ["Ctrl+M"] },
   { id: "notebookCorrect", group: "settings", places: ["notebook"], does: "Correct the picked note in your words (Enter too)", keys: ["Ctrl+E"] },
   { id: "notebookForget", group: "settings", places: ["notebook"], does: "Forget the picked note, or take a correction back", keys: ["Ctrl+Shift+Backspace"] },
+  // The note's key for a block's margin, on a row (2026-10-20): the agent
+  // summoned to think the task through.
+  { id: "dashTalk", group: "dash", places: ["dash"], does: "Talk with the agent about it (the margin opens beside)", keys: ["Alt+Right"] },
   { id: "dashUndo", group: "dash", places: ["dash"], does: "Take the last tick back", keys: ["Ctrl+Z"] },
   { id: "dashBack", group: "dash", places: ["dash"], does: "Back to the note", keys: ["Esc"] },
 
@@ -169,10 +172,11 @@ var actions = [
   { id: "marginUp", group: "margin", places: ["margin", "chat"], does: "Previous proposal (from an empty box: into the proposals)", keys: ["Up"] },
   { id: "marginDown", group: "margin", places: ["margin"], does: "Next proposal, then the box", keys: ["Down"] },
   { id: "marginAccept", group: "margin", places: ["margin"], does: "Do what the proposal says", keys: ["Enter", "Space"] },
+  { id: "marginDecline", group: "margin", places: ["margin"], does: "Decline what you are talking about (a question: set it aside; a thing done: undo it)", keys: ["Del"] },
   { id: "marginHelpful", group: "margin", places: ["margin"], does: "The reply was helpful (again: take it back)", keys: ["Plus", "="] },
   { id: "marginNotHelpful", group: "margin", places: ["margin"], does: "The reply was not helpful (again: take it back)", keys: ["-"] },
   { id: "chatSend", group: "margin", places: ["chat"], does: "Send what you wrote", keys: ["Enter"] },
-  { id: "marginBack", group: "margin", places: ["margin", "chat"], does: "Back to the note", keys: ["Esc", "Alt+Left"] }
+  { id: "marginBack", group: "margin", places: ["margin", "chat"], does: "Back to the note (beside the dashboard: to the list)", keys: ["Esc", "Alt+Left"] }
 ]
 
 // The text field's own keys: shown, never moved, and never taken. `keys`

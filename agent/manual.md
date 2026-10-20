@@ -71,9 +71,15 @@ stays, as cancelled); {key:dashShelve} puts it aside for now; {key:dashKeep}
 keeps it when it has gone quiet; {key:dashGrade} grades a deadline;
 {key:dashUndo} takes the last tick back. A box left untouched goes quiet
 after a while instead of nagging. The agent's proposals and questions are
-rows here too: {key:dashDone} accepts, {key:dashDrop} declines,
-{key:dashOpen} answers a question in your own words; {key:dashPlan} asks it
-to plan now.
+rows here too: {key:dashDone} accepts, {key:dashDrop} declines;
+{key:dashPlan} asks it to plan now. {key:dashOpen} on a proposal, a
+question, or something it did on its own opens the margin beside the
+dashboard, to talk with the planner about it: why that day, what you would
+rather, or your own answer to its question. It can change its proposal, and
+when the two of you agree, that settles it. {key:dashTalk} on any task's
+row summons the agent to think the task through, in the same margin. Each
+task keeps one conversation — what was said in the margin of its note and
+with the planner, shown together — shared by the boxes under it.
 
 ## The agent
 

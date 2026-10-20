@@ -73,6 +73,17 @@ if os.path.exists(os.path.join(d, "plan-reply.json")) and payload.startswith("# 
         if "key_of" in p:
             want = p.pop("key_of")
             p["key"] = next((b["key"] for b in data["open_boxes"] if b["title"] == want), "")
+# Talking about a proposal (2026-10-20): the reply is talk-reply.json's;
+# "revise": "another day" moves a do-date to another day it may have.
+if "talk with you about one of your proposals" in sys.argv[-1]:
+    path = os.path.join(d, "talk-reply.json")
+    reply = json.load(open(path)) if os.path.exists(path) else {"reply": "stub talk"}
+    if reply.get("revise") == "another day":
+        prop = json.loads(re.search(r"# The proposal the student wants to talk about\\n\\n```json\\n(.*?)\\n```", payload, re.S).group(1))
+        data = json.loads(re.search(r"```json\\n(.*?)\\n```", payload, re.S).group(1))
+        c = next(x for x in data["candidates"] if x["key"] == prop["key"])
+        day = next(f["date"] for f in data["fortnight"] if f["date"] != prop["date"] and (not c["due"] or f["date"] <= c["due"][:10]))
+        reply["revise"] = {"kind": "do-date", "key": prop["key"], "date": day, "why": "the day you asked for"}
 ev = lambda t, part: print(json.dumps({"type": t, "sessionID": "ses_page", "part": part}))
 ev("text", {"type": "text", "text": "```json\\n" + json.dumps(reply) + "\\n```"})
 ev("step_finish", {"type": "step-finish", "cost": 0.0001, "tokens": {"input": 1, "output": 1, "reasoning": 0, "total": 2}})
@@ -170,7 +181,7 @@ if [ "$1" = projects ]; then
   exit $rc
 fi
 case "$1" in
-  accept|projects|sections|next|tasks|box|timetable|plan|proposals|proposal|rate|notebook|autonomy) exec "{ROOT}/agent/longhand-agent" "$@" ;;
+  accept|projects|sections|next|tasks|box|timetable|plan|proposals|proposal|talk|thread|rate|notebook|autonomy) exec "{ROOT}/agent/longhand-agent" "$@" ;;
   run) sleep 2; exit 0 ;;
   chat) sleep 2; exec python3 "{chatstub}" "{self.vault}/agents/longhand/daily" "$@" ;;
 esac
@@ -1414,10 +1425,18 @@ def main() -> int:
         qi = next(n for n, r in asks() if r["kind"] == "question")
         p.call("dashFocus", qi)
         p.call("dashKey", KEY_RETURN, 0)
-        p.call("dashWhen", "Sometimes, on Sundays")
+        t = json.loads(p.call("talk"))
+        check(t["open"] and t["item"] == "Do you work on weekends?", f"Enter on a question opens a conversation on it ({t})")
+        (p.stub / "talk-reply.json").write_text(json.dumps({"reply": "Sundays it is.", "settle": "accept", "answer": "Sometimes, on Sundays"}))
+        p.call("talkSend", "sometimes, on sundays")
         answers = p.vault / "agents" / "longhand" / "knowledge" / "answers.md"
-        check(p.wait(lambda: answers.exists() and "Do you work on weekends? → Sometimes, on Sundays" in answers.read_text()),
-              "Enter on a question takes the person's own answer, kept for the agent")
+        check(p.wait(lambda: answers.exists() and "Do you work on weekends? → Sometimes, on Sundays" in answers.read_text(), 10),
+              "…and answering it there, agreed, keeps the answer for the agent")
+        check(p.wait(lambda: json.loads(p.call("talk"))["settled"] == "answered" and not any(r["kind"] == "question" for _, r in asks())),
+              f"…the question settled, its row gone ({p.call('talk')})")
+        check(p.wait(lambda: json.loads(p.call("talk"))["turns"][-1:] == ["agent: Sundays it is."]), "…the planner's last word still in the margin")
+        (p.stub / "talk-reply.json").unlink()
+        p.call("talkKey", KEY_ESC, 0)
         p.call("plan", "true")
         check(p.wait(lambda: any(r["kind"] == "proposal" for _, r in asks()), timeout=15), "planning again proposes for the next box")
         i2 = next(n for n, r in asks() if r["kind"] == "proposal")
@@ -1425,6 +1444,100 @@ def main() -> int:
         check(p.call("dashKey", KEY_DELETE, 0) == "true", "Delete on the proposal declines it")
         check(p.wait(lambda: any(x["kind"] == "do-date" and x["status"] == "declined"
                                  for x in json.loads(ledger_file.read_text())["items"])), "…recorded as declined")
+
+        # 12g'. talking with the planner about a proposal (2026-10-20): Enter
+        # on its row opens the margin beside the dashboard, on the box's one
+        # conversation; the planner answers, revises, and an agreement
+        # settles it — written by the page like any accept.
+        p.call("cursor", len(p.call("text")))
+        p.call("type", "\n- [ ] talk it over ⏫\n- [ ] talk it over again ⏫")
+        p.wait(lambda: "talk it over again" in p.note())
+        p.call("dash")                            # the dashboard opened again reads the new boxes
+        p.call("dash")
+        p.wait(lambda: any(r.get("text") == "talk it over again" for r in json.loads(p.call("dashRows"))))
+        p.call("plan", "true")
+        check(p.wait(lambda: any(r["kind"] == "proposal" for _, r in asks()), timeout=15), "a proposal to talk about")
+        wide = json.loads(p.call("talk"))["dashWidth"]
+        ti = next(n for n, r in asks() if r["kind"] == "proposal")
+        p.call("dashFocus", ti)
+        check(p.call("dashKey", KEY_RETURN, 0) == "true", "Enter on the proposal")
+        t = json.loads(p.call("talk"))
+        check(t["open"] and t["visible"] and t["item"].startswith("do ") and t["thread"] != "",
+              f"…opens the margin on it, the proposal pinned ({t})")
+        check(t["dashWidth"] < wide and t["marginX"] >= t["dashX"] + t["dashWidth"],
+              f"…beside the dashboard, which gives up the room ({wide} → {t['dashWidth']}, margin at {t['marginX']})")
+        check(p.call("dashOpen") == "true" and p.wait(lambda: json.loads(p.call("talk"))["chatFocus"]),
+              "…the dashboard still open, the conversation box ready")
+        first = t["id"]
+        (p.stub / "talk-reply.json").write_text(json.dumps({"reply": "Tomorrow is free and nothing is due."}))
+        p.call("talkSend", "why that day?")
+        check(p.wait(lambda: json.loads(p.call("talk"))["turns"] == ["student: why that day?", "agent: Tomorrow is free and nothing is due."], 10),
+              f"the planner answers in the margin ({json.loads(p.call('talk'))['turns']})")
+        (p.stub / "talk-reply.json").write_text(json.dumps({"reply": "Another day, then.", "revise": "another day"}))
+        p.call("talkSend", "I can't, another day please")
+        check(p.wait(lambda: json.loads(p.call("talk"))["id"] not in (first, -1), 10),
+              f"a revision takes the proposal's place, the conversation following it ({p.call('talk')})")
+        revised = next(x for x in json.loads(ledger_file.read_text())["items"] if x["id"] == json.loads(p.call("talk"))["id"])
+        check(p.wait(lambda: json.loads(p.call("talk"))["item"].startswith("do " + p.call("sayDate", revised["date"]) + " · ")),
+              f"…pinned with its new day ({json.loads(p.call('talk'))['item']})")
+        check(any(r["kind"] == "proposal" and r.get("date") == revised["date"] for _, r in asks()),
+              "…and its row in the dashboard says so too")
+        (p.stub / "talk-reply.json").write_text(json.dumps({"reply": "Good, it is on its line.", "settle": "accept"}))
+        p.call("talkSend", "ok, that works")
+        check(p.wait(lambda: any(f"⏳ {revised['date']}" in f.read_text() for f in p.daily.glob("*.md")), 10),
+              f"agreeing settles it: the page writes the do-date on the box's line (⏳ {revised['date']}; status {p.call('status')!r}; "
+              f"calls: {p.calls.read_text().splitlines()[-6:]}; talk: {p.call('talk')})")
+        got = next(x for x in json.loads(ledger_file.read_text())["items"] if x["id"] == revised["id"])
+        check(p.wait(lambda: next(x for x in json.loads(ledger_file.read_text())["items"] if x["id"] == revised["id"])["status"] == "accepted")
+              and next(x for x in json.loads(ledger_file.read_text())["items"] if x["id"] == revised["id"]).get("reason") == "ok, that works",
+              f"…accepted, the student's words kept as the reason ({got.get('status')}, {got.get('reason')!r})")
+        check(json.loads(p.call("talk"))["settled"] == "accepted" and "Good, it is on its line." in json.loads(p.call("talk"))["turns"][-1],
+              "…and the margin says how it ended, after the planner's last word")
+        check(p.call("talkKey", KEY_ESC, 0) == "true" and not json.loads(p.call("talk"))["open"]
+              and json.loads(p.call("talk"))["dashWidth"] == wide and p.call("dashOpen") == "true",
+              "Esc: back to the list, the dashboard whole again")
+        settled = {first, revised["id"]}
+        # Alt+→ on the task's own row: the agent summoned to think it through,
+        # on the task's one conversation — the planner's turns in it — and a
+        # message there goes to the margin, about the task's block.
+        ALT, KEY_RIGHT_ = 0x08000000, 0x01000014
+        talked = revised["title"]
+        def task_row():
+            # A task's row, or — bound to the store by now — its deadline's.
+            return next((n for n, r in enumerate(json.loads(p.call("dashRows")))
+                         if r.get("kind") in ("task", "deadline") and r.get("text") == talked), -1)
+        check(p.wait(lambda: task_row() >= 0),
+              f"the task talked about has its row ({talked!r} in {[r.get('text') for r in json.loads(p.call('dashRows')) if r.get('kind') in ('task', 'deadline')]})")
+        p.call("dashFocus", task_row())
+        check(p.call("dashKey", KEY_RIGHT_, ALT) == "true", "Alt+→ on a task's row")
+        check(p.wait(lambda: "student: why that day?" in json.loads(p.call("talk"))["turns"]),
+              f"…opens the task's conversation beside the dashboard, what was said with the planner in it ({p.call('talk')})")
+        check(json.loads(p.call("talk"))["item"] == "", "…nothing pinned to accept: it is the task itself")
+        p.call("talkSend", "help me think it through")
+        check(p.wait(lambda: "agent: stub answer to: help me think it through" in json.loads(p.call("talk"))["turns"], 10),
+              f"…a message there is answered by the margin agent, in the same conversation ({json.loads(p.call('talk'))['turns'][-3:]})")
+        p.call("talkKey", KEY_ESC, 0)
+        p.call("dash")
+        p.call("cursor", p.offset_of_line(next(i for i, l in enumerate(p.lines()) if re.match(r"- \[.\] " + re.escape(talked) + r"( |$)", l))) + 8)
+        check(p.wait(lambda: "planner agent: Another day, then." in p.call("noteTurns")
+                     and "agent: stub answer to: help me think it through" in p.call("noteTurns")),
+              f"the note's margin on the box shows the same one conversation ({p.call('noteTurns')}; chat {p.call('chat')}; line {p.call('cursorLine')})")
+        p.call("dash")
+        p.call("plan", "true")
+        check(p.wait(lambda: any(r["kind"] == "proposal" and r["id"] not in settled for _, r in asks()), timeout=15), "another proposal")
+        p.call("dashFocus", next(n for n, r in asks() if r["kind"] == "proposal" and r["id"] not in settled))
+        p.call("dashKey", KEY_RETURN, 0)
+        other = json.loads(p.call("talk"))["id"]
+        check(p.call("talkKey", KEY_DELETE, 0) == "true"
+              and p.wait(lambda: next(x for x in json.loads(ledger_file.read_text())["items"] if x["id"] == other)["status"] == "declined"),
+              f"Delete on the pinned proposal declines it, as on its row ({p.call('talk')}; calls: {p.calls.read_text().splitlines()[-6:]}; "
+              f"ledger: {[(x['id'], x['status']) for x in json.loads(ledger_file.read_text())['items']][-4:]})")
+        check(json.loads(p.call("talk"))["settled"] == "declined", "…and the margin says so")
+        p.call("dash")
+        check(not json.loads(p.call("talk"))["open"] and json.loads(p.call("talk"))["thread"] == "", "closing the dashboard closes the conversation")
+        p.call("dash")
+        (p.stub / "talk-reply.json").unlink()
+
         (p.stub / "plan-on").unlink()
         for n, r in asks():
             p.call("dashFocus", n)
@@ -1524,6 +1637,10 @@ def main() -> int:
               f"note tail: {p.note()[-160:]!r}; ledger: {[(x['kind'], x['status']) for x in json.loads(ledger_file.read_text())['items'][-4:]]})")
         check(p.wait(lambda: p.call("authorOf", p.line_of("Poster 📅")) == "agent"), "…the agent's too")
         p.wait(lambda: not any(r.get("ask") == "deadline" for _, r in acts()))
+        check(p.call("dashKeyOn", "told", "priority", KEY_RETURN, 0) == "true"
+              and json.loads(p.call("talk"))["item"].startswith("done: priority"),
+              f"Enter on what it did on its own opens a conversation too ({json.loads(p.call('talk'))['item']!r})")
+        p.call("talkKey", KEY_ESC, 0)
         check(p.call("dashKeyOn", "told", "priority", KEY_DELETE, 0) == "true", "Delete on what it did undoes it")
         check(p.wait(lambda: re.search(r"- \[ \] write the essay(?! ⏫)[^\n⏫]*\n  - \[ \] outline it", p.note())),
               f"…the priority comes off the line ({p.note()[-200:]!r})")

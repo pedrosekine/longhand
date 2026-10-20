@@ -178,6 +178,18 @@ ShellRoot {
     // The dashboard
     function editQueue(): string { return JSON.stringify(page.editQueueState) }
     function checkState(): string { return JSON.stringify({ wanted: page.checkWanted, checking: page.checking, hint: page.hint }) }
+    // Talking with the planner about a proposal, beside the dashboard.
+    function talk(): string {
+      var m = page.marginItem
+      return JSON.stringify({ open: page.talkOpen, id: page.talkId, thread: page.talkThread, settled: page.talkSettled,
+        item: !page.talkItem ? "" : page.talkItem.kind === "question" ? page.talkItem.question : page.sayAsk(page.talkItem, false), talking: page.talking, visible: m.visible,
+        turns: page.talkTurns.map(function (t) { return t.role + ": " + t.text }),
+        marginX: m.x, marginWidth: m.width, dashX: page.dashItem.x, dashWidth: page.dashItem.width, chatFocus: m.chatFieldRef.activeFocus })
+    }
+    function sayDate(d: string): string { return page.sayDate(d) }
+    function noteTurns(): string { return JSON.stringify(page.noteTurns.map(function (t) { return (t.who === "planner" ? "planner " : "") + t.role + ": " + t.text })) }
+    function talkSend(text: string): void { page.marginItem.chatFieldRef.text = text; page.sendTalk() }
+    function talkKey(key: int, mods: int): bool { return page.talkKey({ key: key, text: "", modifiers: mods }) }
     function dash(): void { page.toggleDash() }
     function dashOpen(): bool { return page.dashOpen }
     function dashFocus(i: int): void { page.taskFocus = i }

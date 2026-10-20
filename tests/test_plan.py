@@ -225,6 +225,163 @@ def main() -> int:
     check((agents / "longhand.md").exists() and '"*": deny' in plan_def and "read: false" in plan_def,
           "install writes the planner's definition beside the margin's, every tool denied")
 
+    # Talking about a proposal (2026-10-20): the planner answers, given the
+    # plan it made; each box has one conversation, which the boxes under it
+    # share; a revision is checked like a plan; an agreement settles it.
+    note.write_text(note.read_text() + "\n# Poster #intsem\n\n- [ ] make the poster ⏫\n  - [ ] find images 🔽\n")
+    (stub / "reply.json").write_text(json.dumps({"proposals": [], "questions": [], "knowledge": []}))
+    agent("plan", "--force")
+    data = json.loads(re.search(r"```json\n(.*?)\n```", (stub / "payload.md").read_text(), re.S).group(1))
+    poster = next(c["key"] for c in data["candidates"] if c["title"] == "make the poster")
+    images = next(b["key"] for b in data["open_boxes"] if b["title"] == "find images")
+    (stub / "reply.json").write_text(json.dumps({"proposals": [
+        {"kind": "do-date", "key": poster, "date": day(3), "why": "the day after the seminar"},
+        {"kind": "priority", "key": images, "priority": 1, "why": "the poster needs them"}],
+        "questions": [{"key": "", "question": "Is the poster A1?", "recommended": "Yes"}], "knowledge": []}))
+    agent("plan", "--force")
+    plan_payload = (stub / "payload.md").read_text()
+    got = json.loads(agent("proposals").stdout)
+    dd = next(x for x in got["open"] if x["kind"] == "do-date" and x["key"] == poster)
+    pr = next(x for x in got["open"] if x["kind"] == "priority")
+    qq = next(x for x in got["open"] if x["kind"] == "question")
+    check(dd["thread"] == pr["thread"] == poster, f"a box and the box under it share one conversation ({pr['thread']!r})")
+
+    def talk(pid, words, **reply):
+        (stub / "reply.json").write_text(json.dumps(dict({"reply": "", "revise": None, "settle": None, "knowledge": []}, **reply)))
+        return agent("talk", "--id", str(pid), "--message", words, ok=False)
+
+    r = talk(dd["id"], "why Wednesday?", reply="It is the day after the seminar, while it is fresh.")
+    out = json.loads(r.stdout)
+    check(r.returncode == 0 and out["reply"].startswith("It is the day after") and not out["revised"] and out["settle"] == "",
+          f"the planner answers, and nothing changes on its own ({out})")
+    argv = json.loads((stub / "argv.json").read_text())
+    talked = (stub / "payload.md").read_text()
+    check(argv[argv.index("--agent") + 1] == "longhand-plan" and "talk with you about one of your proposals" in argv[-1],
+          "…as the planner, told it is a conversation")
+    check(talked.startswith(plan_payload.rstrip()) and "# The student says now\n\nwhy Wednesday?" in talked,
+          "…given the very plan it made, then what the student says")
+    check(sorted((state / "longhand" / "payloads").glob(f"*-talk-{dd['id']}.md"))[-1].read_text() == talked,
+          "…the payload logged, whole")
+    turns = json.loads(agent("proposals").stdout)["threads"][poster]
+    check([t["role"] for t in turns] == ["student", "agent"] and turns[0]["text"] == "why Wednesday?",
+          "the conversation is kept on the box, both turns")
+
+    r = talk(dd["id"], "I have lab on Wednesday, Thursday instead",
+             reply="Thursday then.", revise={"kind": "do-date", "key": poster, "date": day(4), "why": "Wednesday is lab"})
+    out = json.loads(r.stdout)
+    old, new = (next(x for x in ledger() if x["id"] == i) for i in (dd["id"], out["current"]))
+    check(out["revised"] and old["status"] == "revised" and new["status"] == "open" and new["date"] == day(4)
+          and new["revises"] == dd["id"], f"a revision replaces the proposal: the old revised, the new open ({out})")
+    r = talk(pr["id"], "they are already found", reply="Fine.",
+             revise={"kind": "priority", "key": images, "priority": 9, "why": "x"})
+    check(not json.loads(r.stdout)["revised"], "a revision that fails the plan's checks is not kept")
+    check("why Wednesday?" in (stub / "payload.md").read_text() and "Thursday then." in (stub / "payload.md").read_text(),
+          "talking about the box under it carries the same conversation")
+    r = talk(pr["id"], "no need for a priority, drop it", reply="Agreed, no priority.", settle="decline")
+    out = json.loads(r.stdout)
+    p2 = next(x for x in ledger() if x["id"] == pr["id"])
+    check(out["settle"] == "decline" and p2["status"] == "declined" and p2["reason"] == "no need for a priority, drop it",
+          f"agreeing to drop it declines it, the student's words kept as the reason ({p2.get('reason')!r})")
+    r = talk(new["id"], "ok, Thursday works", reply="Good.", settle="accept")
+    out = json.loads(r.stdout)
+    n2 = next(x for x in ledger() if x["id"] == new["id"])
+    check(out["settle"] == "accept" and n2["status"] == "open" and n2["agreed"]["how"] == "accept",
+          "agreeing to it is told to the page, which writes it as any accept does")
+    agent("proposal", "accept", "--id", str(new["id"]))
+    n2 = next(x for x in ledger() if x["id"] == new["id"])
+    check(n2["status"] == "accepted" and n2["reason"] == "ok, Thursday works", "…and the acceptance keeps the words")
+    (stub / "reply.json").write_text(json.dumps({"proposals": [
+        {"kind": "do-date", "key": images, "date": day(3), "why": "before the poster"}], "questions": [], "knowledge": []}))
+    agent("plan", "--force")
+    im = next(x for x in ledger() if x["kind"] == "do-date" and x["key"] == images and x["status"] == "open")
+    out = json.loads(talk(im["id"], "Friday please", reply="Friday it is.", settle="accept",
+                          revise={"kind": "do-date", "key": images, "date": day(5), "why": "you asked for Friday"}).stdout)
+    check(out["revised"] and out["settle"] == "accept" and out["current"] != im["id"],
+          "revised to what they asked, and agreed, in one answer")
+    agent("proposal", "accept", "--id", str(out["current"]))
+    check(next(x for x in ledger() if x["id"] == out["current"]).get("reason") == "Friday please",
+          "…the words said about the proposal it revised are its reason")
+    # A question, talked through: the agreed answer is what is kept.
+    out = json.loads(talk(qq["id"], "what sizes are there?", reply="A1 or A0; the brief says A1.").stdout)
+    check(out["kind"] == "question" and not out["resolved"] and out["thread"] == "?is the poster a1",
+          f"a question is talked about too, in a conversation of its own ({out['thread']!r})")
+    check("one of your questions" in json.loads((stub / "argv.json").read_text())[-1], "…the planner told it is its question")
+    out = json.loads(talk(qq["id"], "then A1, but landscape", reply="Noted.", settle="accept",
+                          answer="A1, landscape").stdout)
+    q2 = next(x for x in ledger() if x["id"] == qq["id"])
+    check(out["resolved"] and q2["status"] == "answered" and q2["answer"] == "A1, landscape"
+          and "Is the poster A1? → A1, landscape" in (know / "answers.md").read_text(),
+          "agreeing answers it, settled at once, the agreed answer kept for the agent")
+    check([u["text"] for u in out["turns"]][-2:] == ["then A1, but landscape", "Noted."], "…the conversation handed back, for the margin")
+    # Something it did on its own, talked about: let stand here, undone by the page.
+    c = json.loads(cfg.read_text())
+    cfg.write_text(json.dumps(dict(c, autonomy={"priority": "do"})))
+    (stub / "reply.json").write_text(json.dumps({"proposals": [
+        {"kind": "priority", "key": key["essay draft"], "priority": 2, "why": "due in five days"}], "questions": [], "knowledge": []}))
+    agent("plan", "--force")
+    auto = next(x for x in ledger() if x["kind"] == "priority" and x.get("auto") and x["status"] == "open")
+    agent("proposal", "applied", "--id", str(auto["id"]))
+    out = json.loads(talk(auto["id"], "why high?", reply="It is due in five days.").stdout)
+    check(out["kind"] == "priority" and "already did on your own" in json.loads((stub / "argv.json").read_text())[-1],
+          "what it did on its own is talked about too, as done")
+    out = json.loads(talk(auto["id"], "please take it off", reply="Taking it off.", settle="decline").stdout)
+    check(out["settle"] == "decline" and not out["resolved"] and next(x for x in ledger() if x["id"] == auto["id"])["status"] == "told",
+          "…agreeing to undo it leaves the undo to the page")
+    agent("proposal", "undo", "--id", str(auto["id"]))
+    check(next(x for x in ledger() if x["id"] == auto["id"])["status"] == "undone", "…which records it as any undo")
+    cfg.write_text(json.dumps(c))
+    check(agent("talk", "--id", str(pr["id"]), "--message", "hm", ok=False).returncode == 2, "…nor a settled proposal")
+    (stub / "reply.json").write_text(json.dumps({"proposals": [], "questions": [], "knowledge": []}))
+    agent("plan", "--force")
+    data = json.loads(re.search(r"```json\n(.*?)\n```", (stub / "payload.md").read_text(), re.S).group(1))
+    conv = next((c for c in data.get("conversations", []) if c["key"] == poster), None)
+    check(conv is not None and {"who": "student", "said": "ok, Thursday works"} in conv["turns"],
+          f"the next plan knows what was said about the box ({conv})")
+    agent("proposal", "decline", "--id", str(qq["id"]))
+
+    # A task's one conversation (2026-10-20): the margin's turns about its
+    # box and the planner's, merged by time, summoned from the dashboard;
+    # and the margin agent, answering there, knows what the planner heard.
+    sys.path.insert(0, str(ROOT / "agent"))
+    import blocks as blocklib
+    blk = next(b for b in blocklib.split(note.read_text()) if b["text"].startswith("- [ ] make the poster"))
+    day_state = vault / "agents/longhand/daily" / f"{TODAY.isoformat()}.json"
+    day_state.parent.mkdir(parents=True, exist_ok=True)
+    st = json.loads(day_state.read_text()) if day_state.exists() else {"date": TODAY.isoformat(), "blocks": {}, "suggestions": [], "runs": []}
+    st.setdefault("blocks", {})[blk["hash"]] = {
+        "state": "reply", "reply": "A poster wants its argument first.", "at": "2000-01-01T09:00:00", "session": "",
+        "chat": [{"role": "student", "text": "where do I start?", "at": "2000-01-01T09:05:00"},
+                 {"role": "agent", "text": "With the one sentence it argues.", "at": "2000-01-01T09:05:00"}]}
+    day_state.write_text(json.dumps(st))
+    th = json.loads(agent("thread", "--key", images).stdout)
+    texts = [t["text"] for t in th["turns"]]
+    check(th["thread"] == poster and th["chat"] == {"date": TODAY.isoformat(), "hash": blk["hash"]},
+          f"a box under another summons the conversation of the box it is under, which takes messages in the margin ({th['chat']})")
+    check(texts[:3] == ["A poster wants its argument first.", "where do I start?", "With the one sentence it argues."]
+          and "why Wednesday?" in texts and [t["who"] for t in th["turns"]][:3] == ["margin"] * 3,
+          "…the margin's turns and the planner's, one conversation, in the order said")
+    th2 = json.loads(agent("thread", "--id", str(dd["id"])).stdout)
+    check(th2["turns"] == th["turns"], "a proposal's conversation is the same one")
+    (stub / "reply.json").write_text(json.dumps({"reply": "Start with the sentence, then the images."}))
+    agent("chat", "--hash", blk["hash"], "--message", "and the images?", "--date", TODAY.isoformat())
+    told_margin = (stub / "payload.md").read_text()
+    check("# This box with the planner" in told_margin and "student: I have lab on Wednesday" in told_margin,
+          "the margin agent, answering about the box, reads what was said with the planner")
+    th = json.loads(agent("thread", "--key", poster).stdout)
+    check([t["text"] for t in th["turns"]][-2:] == ["and the images?", "Start with the sentence, then the images."],
+          "…and its answer joins the one conversation")
+    (stub / "reply.json").write_text(json.dumps({"proposals": [
+        {"kind": "do-date", "key": poster, "date": day(6), "why": "after the lab"}], "questions": [], "knowledge": []}))
+    agent("plan", "--force")
+    later = next(x for x in ledger() if x["kind"] == "do-date" and x["key"] == poster and x["status"] == "open")
+    talk(later["id"], "could it be the weekend?", reply="Saturday works too.")
+    (stub / "reply.json").write_text(json.dumps({"reply": "Then Saturday for the images."}))
+    agent("chat", "--hash", blk["hash"], "--message", "ok", "--date", TODAY.isoformat())
+    sent = json.loads((stub / "argv.json").read_text())[-1]
+    check("--session" in json.loads((stub / "argv.json").read_text()) and "Meanwhile" in sent
+          and "could it be the weekend?" in sent and "I have lab on Wednesday" not in sent and "after the lab" in sent,
+          "…continuing its session, it is told only what it has not seen, and the open proposals")
+
     # A plan that fails (an expired key) is not today's plan: the next
     # opening tries again, rather than waiting for tomorrow.
     (stub / "reply.json").write_text("not json")

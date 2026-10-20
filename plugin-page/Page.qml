@@ -131,6 +131,7 @@ Item {
   readonly property alias sectionsProcess: sectionsProc
   readonly property alias notebookSheetItem: notebookSheet
   readonly property alias dashItem: dash
+  readonly property alias marginItem: margin
   property bool overlayOpen: false
   property bool windowOpen: false
   readonly property bool opened: overlayOpen          // what the shell's toggle asks
@@ -233,6 +234,11 @@ Item {
   readonly property int marginWidth: alongside
     ? Math.max(0, Math.min(root.sp(300), Math.round(content.width * 0.45)))
     : Math.max(0, Math.min(root.sp(300), content.width - (content.width + sheetWidth) / 2 - marginGap - sheetMargin))
+
+  // The margin beside the dashboard, while a proposal is talked about: the
+  // dashboard gives up the room, since a list has more width than it needs.
+  readonly property int talkWidth: Math.max(0, Math.min(root.sp(360), Math.round(root.wideWidth * 0.42)))
+  readonly property int dashWidth: root.wideWidth - (root.talkOpen ? root.talkWidth + root.marginGap : 0)
 
   readonly property string dateLabel: svc.noteDate !== "" && svc.configured
     ? Days.longLabel(svc.noteDate, svc.dailyFormat()) : ""
@@ -352,6 +358,79 @@ Item {
   // pills carry its tint. docs/agent.md, slice 2.
   property var proposals: []
   property var agentDates: ({})
+  // Talking with the agent about a task, or with the planner about one of
+  // its proposals (2026-10-20): the margin opens beside the dashboard. Each
+  // box has one conversation — what was said in the margin of its note and
+  // what was said with the planner, merged by time (`talkData`, from
+  // `longhand-agent thread`) — shared by the boxes under it. `threads` is
+  // every box's conversation with the planner (thread key -> turns), for
+  // the note's margin to show beside its own.
+  property var threads: ({})
+  property int talkId: -1             // the proposal talked about; follows a revision
+  property string talkTask: ""        // or the task's key, summoned on its row (Alt+→)
+  property string talkThread: ""
+  property var talkData: null         // { thread, title, chat: { date, hash } | null, turns }
+  property bool talkFetchAgain: false
+  property var pendingTalk: null      // { thread, text }: sent, its answer not back yet
+  property string talkSettled: ""     // "accepted" / "declined": how the conversation ended it
+  property int acceptAfterRefresh: -1 // agreed in the conversation: accepted once its row is read again
+  readonly property var talkItem: {
+    for (var i = 0; i < root.proposals.length; i++) if (root.proposals[i].id === root.talkId) return root.proposals[i]
+    return null
+  }
+  readonly property bool talkOpen: root.dashOpen && root.talkThread !== "" && !root.keysOpen && !root.settingsOpen
+  readonly property var talkTurns: {
+    var t = root.talkData ? root.talkData.turns.slice() : []
+    if (root.pendingTalk && root.pendingTalk.thread === root.talkThread) t.push({ role: "student", text: root.pendingTalk.text })
+    return t
+  }
+  // Where a message goes: to the planner while the conversation is about
+  // one of its proposals not yet settled — also in the moment after a
+  // revision, before the list is read again; else to the margin, about the
+  // task's block.
+  readonly property bool talkToPlanner: root.talkId >= 0 && root.talkSettled === ""
+  readonly property bool talkCanSend: root.talkToPlanner || !!(root.talkData && root.talkData.chat)
+
+  // The note's margin shows the box's one conversation too: its own turns
+  // and, merged by time, what was said about the box with the planner.
+  readonly property var noteTurns: {
+    var own = root.chatTurns
+    var b = root.blockBounds(root.currentHash)
+    var key = b ? root.rootKeyOf(svc.noteDate, b.text.split("\n")[0]) : ""
+    var planned = key !== "" ? (root.threads[key] || []) : []
+    if (planned.length === 0) return own
+    var rows = [], last = ""
+    for (var i = 0; i < own.length; i++) { last = own[i].at || last; rows.push({ at: last, p: 0, i: i, t: own[i] }) }
+    last = ""
+    for (var j = 0; j < planned.length; j++) {
+      last = planned[j].at || last
+      rows.push({ at: last, p: 1, i: j, t: Object.assign({ who: "planner" }, planned[j]) })
+    }
+    // A turn not yet answered (no time) stays last, where it was typed.
+    rows.sort(function (x, y) {
+      var xa = x.at || "9999", ya = y.at || "9999"
+      return xa < ya ? -1 : xa > ya ? 1 : x.p !== y.p ? x.p - y.p : x.i - y.i
+    })
+    return rows.map(function (r) { return r.t })
+  }
+
+  // The key of the box a line is (found by its words, as the page finds
+  // a task: the note's lines and the editor's are not numbered alike), all
+  // the way up to the box it is under in its note (the runner's
+  // plan.root_key): whose conversation it shares.
+  function rootKeyOf(date, line) {
+    var byLine = {}, t = null
+    for (var i = 0; i < root.tasks.length; i++) {
+      var x = root.tasks[i]
+      if (x.date !== date) continue
+      byLine[x.line] = x
+      if (!t && Task.sameWords(line, x.text)) t = x
+    }
+    var guard = 0
+    while (t && t.parent >= 0 && byLine[t.parent] && guard++ < 50) t = byLine[t.parent]
+    return t && t.key ? t.key : ""
+  }
+  readonly property bool talking: talkProc.running
   property bool planning: false
   property var proposalQueue: []      // answers waiting for the runner, in order
   property var doneNow: ({})
@@ -1865,6 +1944,7 @@ Item {
   // list is part of what made the list easy to ignore.
   function toggleDash() {
     root.dashOpen = !root.dashOpen
+    root.closeTalk(false)
     root.dashWhenFor = null
     root.dashWhenText = ""
     root.showShelf = false
@@ -2358,6 +2438,131 @@ Item {
     proposalProc.running = true
   }
 
+  // Enter on one of the planner's proposals, questions, or things it did:
+  // the margin opens beside the dashboard, on the box's conversation, with
+  // it pinned at the top — the way a block's conversation opens beside the
+  // note.
+  function openTalk(item) {
+    if (!item || item.kind === "file") return
+    root.talkId = item.id
+    root.talkTask = ""
+    root.talkThread = item.thread || ("#" + item.id)
+    root.startTalk("open")
+  }
+
+  // Alt+→ on a task's row (the note's key for its margin): the agent,
+  // summoned to think the task through, on the task's one conversation.
+  function openTaskTalk(t) {
+    if (!t || !t.key) return
+    root.talkId = -1
+    root.talkTask = t.key
+    root.talkThread = "task:" + t.key
+    root.startTalk("task")
+  }
+
+  function startTalk(how) {
+    root.talkSettled = ""
+    root.talkData = null
+    root.used("talk", how)
+    root.fetchTalk()
+    root.marginFocus = 1
+    Qt.callLater(function () { margin.chatFieldRef.forceActiveFocus() })
+  }
+
+  function talkFocused() {
+    var row = root.taskRows[root.taskFocus]
+    if (!row) return
+    if (row.kind === "proposal" || row.kind === "question" || row.kind === "told") root.openTalk(row.item)
+    else if (row.kind === "task") root.openTaskTalk(row.task)
+    else if (row.kind === "deadline") root.openTaskTalk(root.taskOfAnchor(row.deadline.id))
+  }
+
+  function fetchTalk() {
+    if (root.talkThread === "") return
+    if (threadProc.running) { root.talkFetchAgain = true; return }
+    threadProc.command = [svc.runner, "thread"].concat(root.talkId >= 0 ? ["--id", String(root.talkId)] : ["--key", root.talkTask])
+    threadProc.running = true
+  }
+
+  // Back to the rows (Esc), or the dashboard closed with it.
+  function closeTalk(focusRows) {
+    if (root.talkThread === "") return
+    root.talkId = -1
+    root.talkTask = ""
+    root.talkThread = ""
+    root.talkData = null
+    root.talkSettled = ""
+    root.marginFocus = -1
+    if (focusRows !== false) dash.dashKeysRef.forceActiveFocus()
+  }
+
+  function sendTalk() {
+    var msg = margin.chatFieldRef.text.trim()
+    if (msg === "" || root.talking || !root.talkCanSend) return
+    root.pendingTalk = { thread: root.talkThread, text: msg }
+    margin.chatFieldRef.text = ""
+    var c = root.talkData ? root.talkData.chat : null
+    talkProc.command = root.talkToPlanner ? [svc.runner, "talk", "--id", String(root.talkId), "--message", msg]
+      : [svc.runner, "chat", "--hash", c.hash, "--message", msg, "--date", c.date]
+    talkProc.running = true
+    root.used("talk", root.talkToPlanner ? "send" : "chat")
+  }
+
+  // What the planner answered: a revision takes the proposal's place (the
+  // conversation follows it); an agreement settles it — a decline is
+  // recorded by the runner, an accept written by the page like any accept.
+  function talkAnswered(out) {
+    if (out.current !== undefined && out.current !== root.talkId && root.talkId === out.id) root.talkId = out.current
+    var item = root.proposals.filter(function (x) { return x.id === out.current })[0]
+    if (out.kind === "question" && out.resolved) {
+      root.proposals = root.proposals.filter(function (x) { return x.id !== out.current })
+      root.talkSettled = out.settle === "accept" ? "answered" : "declined"
+      root.showHint(out.settle === "accept" ? "answered, as you agreed" : "set aside, as you agreed")
+    } else if (item && item.told) {
+      // What it did on its own: let stand by the runner, undone by the page.
+      if (out.settle === "decline") { root.undoProposal(item); root.talkSettled = "undone"; root.showHint("undone, as you agreed") }
+      else if (out.settle === "accept") {
+        root.proposals = root.proposals.filter(function (x) { return x.id !== out.current })
+        root.talkSettled = "kept"
+      }
+    } else if (out.settle === "decline") {
+      root.proposals = root.proposals.filter(function (x) { return x.id !== out.current })
+      root.talkSettled = "declined"
+      root.showHint("declined, as you agreed")
+    } else if (out.settle === "accept") {
+      root.acceptAfterRefresh = out.current
+      root.talkSettled = "accepted"
+    }
+    root.refreshProposals()
+  }
+
+  // Space / Ctrl+Enter in the margin, on the proposal pinned there; Del
+  // declines it. The same verbs as on its row.
+  function acceptTalked() {
+    var p = root.talkItem
+    if (!p) return
+    root.acceptPlanned({ kind: root.askKind(p), item: p, task: root.taskOfKey(p.key) })
+    root.talkSettled = p.kind === "question" ? "answered" : p.told ? "kept" : "accepted"
+  }
+
+  // The keys on the pinned proposal, in one function so they can be
+  // driven without a keyboard (tests/page/run.py).
+  function talkKey(e) {
+    if (Sc.hit(e, "marginBack")) { root.closeTalk(); return true }
+    if (Sc.hit(e, "marginAccept")) { root.acceptTalked(); return true }
+    if (Sc.hit(e, "marginDecline")) { root.declineTalked(); return true }
+    if (Sc.hit(e, "marginDown")) { root.marginFocus = 1; margin.chatFieldRef.forceActiveFocus(); return true }
+    return Sc.hit(e, "marginUp")
+  }
+
+  function declineTalked() {
+    var p = root.talkItem
+    if (!p) return
+    if (p.told) { root.undoProposal(p); root.talkSettled = "undone"; return }
+    root.resolveProposal(p, "decline", "")
+    root.talkSettled = "declined"
+  }
+
   // Space / Ctrl+Enter on a proposal: the do-date is written on the box's
   // line — by the page, the one writer of notes — and the acceptance
   // recorded. On a question: the recommended answer.
@@ -2679,14 +2884,13 @@ Item {
   function activateTask() {
     var row = root.taskRows[root.taskFocus]
     if (!row) return
-    // Enter on a question: the person's own answer, typed; on a proposal:
-    // its box's line.
-    if (row.kind === "question") { root.startDashAnswer(row.item); return }
+    // Enter on anything the agent offers — a proposal, a question, what it
+    // did on its own — is a conversation with it (2026-10-20: writing back
+    // means there is something to talk about). A document to file opens.
     if ((row.kind === "proposal" || row.kind === "told") && row.item.kind === "file") {
       Qt.openUrlExternally("file://" + (row.item.filed || row.item.src)); root.used("document", "open"); return
     }
-    if (row.kind === "told" || (row.kind === "proposal" && row.item.kind === "deadline")) { if (row.task) root.goToTask(row.task); return }
-    if (row.kind === "proposal") { if (row.task) root.goToTask(row.task); return }
+    if (row.kind === "proposal" || row.kind === "question" || row.kind === "told") { root.openTalk(row.item); return }
     if (row.kind === "shelf") { root.showShelf = true; return }
     if (row.kind === "grading") { root.showGrading = true; return }
     if (row.kind === "task") root.goToTask(row.task)
@@ -2774,13 +2978,6 @@ Item {
 
   // `g`: the grade, typed on a deadline's row, as in the popup. A grade on
   // one still open hands it in (pomo); empty clears it.
-  // Enter on the agent's question: the person's own answer, in words.
-  function startDashAnswer(q) {
-    root.dashFieldKind = "answer"
-    root.dashFieldStart = ""
-    root.dashWhenText = ""
-    root.dashWhenFor = { question: q }
-  }
 
   function startDashGrade() {
     var row = root.taskRows[root.taskFocus]
@@ -2840,14 +3037,6 @@ Item {
 
   function commitDashWhen() {
     if (root.dashFieldKind === "rename") { root.commitDashRename(); return }
-    if (root.dashFieldKind === "answer") {
-      var q = root.dashWhenFor
-      var said = root.dashWhenText.replace(/\s+/g, " ").trim()
-      root.dashWhenFor = null
-      root.dashWhenText = ""
-      if (q && q.question && said !== "") root.resolveProposal(q.question, "answer", said)
-      return
-    }
     if (root.dashFieldKind === "grade") {
       var g = root.dashWhenFor
       var mark = root.dashWhenText.replace(/\s+/g, " ").trim()
@@ -2945,6 +3134,7 @@ Item {
     if (Sc.hit(e, "dashKeep")) { root.keepFocused(); return true }
     if (Sc.hit(e, "dashGrade")) { root.startDashGrade(); return true }
     if (Sc.hit(e, "dashPlan")) { root.runPlan(true); return true }
+    if (Sc.hit(e, "dashTalk")) { root.talkFocused(); return true }
     return false
   }
 
@@ -4274,11 +4464,56 @@ Item {
           root.proposals = (p.open || []).filter(function (x) { return !x.auto }).concat(
             (p.told || []).map(function (x) { return Object.assign({ told: true }, x) }))
           root.applyAuto(p.open || [])
+          // Kept, not replaced: a conversation whose proposal was just
+          // settled stays in the margin until it is closed.
+          root.threads = p.threads || {}
+          if (root.acceptAfterRefresh >= 0) {
+            var agreed = root.proposals.filter(function (x) { return x.id === root.acceptAfterRefresh })[0]
+            // A list read before the conversation's answer was written does
+            // not have it yet: wait for the one asked for after it.
+            if (agreed || !root.proposalsAgain) root.acceptAfterRefresh = -1
+            if (agreed) {
+              root.acceptPlanned({ kind: root.askKind(agreed), item: agreed, task: root.taskOfKey(agreed.key) })
+              root.showHint("accepted, as you agreed")
+            }
+          }
           if (root.proposalsAgain) { root.proposalsAgain = false; Qt.callLater(root.refreshProposals) }
           var d = {}
           for (var i = 0; i < (p.accepted || []).length; i++) d[p.accepted[i].key] = p.accepted[i].date
           root.agentDates = d
         } catch (e) {}
+      }
+    }
+  }
+
+  Process {
+    id: talkProc
+    stdout: StdioCollector {
+      // The planner's answer is JSON (`talk`); the margin's is a line
+      // (`chat`). Either way the conversation is read again.
+      onStreamFinished: {
+        try { root.talkAnswered(JSON.parse(text)) } catch (e) { root.refreshProposals() }
+        root.fetchTalk()
+      }
+    }
+    stderr: StdioCollector {
+      onStreamFinished: if (text.trim() !== "") { console.warn("longhand.page talk: " + text.trim()); root.pendingTalk = null; root.refreshProposals() }
+    }
+  }
+
+  Process {
+    id: threadProc
+    stdout: StdioCollector {
+      onStreamFinished: {
+        try {
+          var d = JSON.parse(text)
+          if (root.talkThread !== "") {
+            root.talkData = d
+            root.talkThread = d.thread
+            if (!root.talking) root.pendingTalk = null
+          }
+        } catch (e) {}
+        if (root.talkFetchAgain) { root.talkFetchAgain = false; Qt.callLater(root.fetchTalk) }
       }
     }
   }

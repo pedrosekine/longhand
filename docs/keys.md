@@ -89,7 +89,7 @@ Where a row has two keys, either works: the second is usually the one another ap
 | Move down | `↓` · `j` | in the dashboard |
 | First row | `Home` | in the dashboard |
 | Last row | `End` | in the dashboard |
-| Go to the line | `Enter` | in the dashboard |
+| Go to the line; on what the agent proposes, asks or did, talk with it (the margin opens beside) | `Enter` | in the dashboard |
 | Done (again: not done); on the agent's proposal, accept | `Ctrl+Enter` · `Space` · `e` · `Ctrl+L` | in the dashboard |
 | When: reschedule it | `t` · `Ctrl+D` | in the dashboard |
 | Cycle its priority | `p` | in the dashboard |
@@ -99,6 +99,7 @@ Where a row has two keys, either works: the second is usually the one another ap
 | Keep it: its clock starts again | `r` | in the dashboard |
 | Grade a deadline | `g` | in the dashboard |
 | Ask the agent to plan now | `Ctrl+R` | in the dashboard |
+| Talk with the agent about it (the margin opens beside) | `Alt+→` | in the dashboard |
 | Take the last tick back | `Ctrl+Z` | in the dashboard |
 | Back to the note | `Esc` | in the dashboard |
 
@@ -138,10 +139,11 @@ Where a row has two keys, either works: the second is usually the one another ap
 | Previous proposal (from an empty box: into the proposals) | `↑` | in the margin, in the conversation box |
 | Next proposal, then the box | `↓` | in the margin |
 | Do what the proposal says | `Enter` · `Space` | in the margin |
+| Decline what you are talking about (a question: set it aside; a thing done: undo it) | `Del` | in the margin |
 | The reply was helpful (again: take it back) | `+` · `=` | in the margin |
 | The reply was not helpful (again: take it back) | `-` | in the margin |
 | Send what you wrote | `Enter` | in the conversation box |
-| Back to the note | `Esc` · `Alt+←` | in the margin, in the conversation box |
+| Back to the note (beside the dashboard: to the list) | `Esc` · `Alt+←` | in the margin, in the conversation box |
 
 ## Settings
 

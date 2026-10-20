@@ -27,7 +27,7 @@ BorderSurface {
   visible: page.dashOpen && !page.keysOpen && !page.settingsOpen
   x: page.wideX
   y: page.alongside ? 0 : page.sheetMargin
-  width: page.wideWidth
+  width: page.dashWidth
   height: page.alongside ? content.height : content.height - page.sheetMargin * 2
   radius: page.alongside ? 0 : Style.cornerRadius
   color: page.background
@@ -440,11 +440,11 @@ BorderSurface {
                 text: kind === "task" ? page.tips([["Go to the line", "dashOpen"], ["Done", "dashDone"], ["Reschedule", "dashWhen"], ["Cycle its priority", "dashPriority"],
                                                    [dashRow.task && dashRow.task.away ? "Back" : "Not now", "dashShelve"], ["Keep it", "dashKeep"], ["Drop it", "dashDrop"]])
                   : kind === "deadline" ? page.tips([["Go to its line", "dashOpen"], ["Done", "dashDone"], ["Grade", "dashGrade"]])
-                  : kind === "told" ? page.tips([["Let it stand", "dashDone"], ["Undo it", "dashDrop"]])
+                  : kind === "told" ? page.tips([["Let it stand", "dashDone"], ["Undo it", "dashDrop"], ["Talk with the planner about it", "dashOpen"]])
                   : kind === "proposal" && dashRow.modelData.item.kind === "file"
                     ? page.tips([["File it: moved from Downloads into the course's documents", "dashDone"], ["Decline", "dashDrop"], ["Open it first", "dashOpen"]])
-                  : kind === "proposal" ? page.tips([["Accept: the do-date goes on its line", "dashDone"], ["Decline", "dashDrop"], ["Go to its line", "dashOpen"]])
-                  : kind === "question" ? page.tips([["Accept the recommended answer", "dashDone"], ["Answer in your own words", "dashOpen"], ["Decline", "dashDrop"]])
+                  : kind === "proposal" ? page.tips([["Accept", "dashDone"], ["Decline", "dashDrop"], ["Talk with the planner about it", "dashOpen"]])
+                  : kind === "question" ? page.tips([["Accept the recommended answer", "dashDone"], ["Talk it through: answer in your words, or ask back", "dashOpen"], ["Decline", "dashDrop"]])
                   : kind === "shelf" ? page.tip("Show what is not now", "dashOpen")
                   : kind === "grading" ? page.tip("Show what waits for a grade", "dashOpen")
                   : page.tip("Dismiss it", "dashOpen")
@@ -496,7 +496,6 @@ BorderSurface {
           text: !page.dashWhenFor ? ""
             : page.dashFieldKind === "rename" ? "rename"
             : page.dashFieldKind === "grade" ? "grade · " + page.dashWhenFor.deadline.title
-            : page.dashFieldKind === "answer" ? "your answer"
             : "when · " + page.taskTitle(page.dashWhenFor)
           color: page.dim
           font.family: page.fontFamily
@@ -506,10 +505,9 @@ BorderSurface {
 
         TextField {
           id: dashWhenField
-          width: page.dashFieldKind === "rename" || page.dashFieldKind === "answer" ? page.sp(460) : page.sp(220)
+          width: page.dashFieldKind === "rename" ? page.sp(460) : page.sp(220)
           placeholderText: page.dashFieldKind === "rename" ? "its words"
             : page.dashFieldKind === "grade" ? "7.5, A-… · empty clears"
-            : page.dashFieldKind === "answer" ? (page.dashWhenFor && page.dashWhenFor.question ? page.dashWhenFor.question.question : "")
             : "friday, tomorrow, 20 oct…"
           font.family: page.fontFamily
           font.styleName: page.fontStyle

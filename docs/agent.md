@@ -145,11 +145,65 @@ a question are all settled the same way — no new keys:
 
 - **Space / Ctrl+Enter** accept (on a question: the recommended answer).
 - **Del** declines; it asks nothing back, and the record notes it.
-- **Enter** goes to the line it concerns; on a question, it lets the person
-  write their own answer.
+- **Enter** on anything the agent offers — a proposal, a question, what it
+  did on its own — opens a conversation about it (below): writing back
+  means there is something to talk about. A document to file opens
+  instead; on anything else, Enter goes to the line.
 - A proposed do-date is a **◇ row under its task**, not a pill on the task's
   row, so Space on the task still ticks the task.
 - New boxes and deadlines are ◇ rows in the band they would belong to.
+
+## Talking about a proposal
+
+Decided with the student on 2026-10-20: a proposal is something to talk
+about, not only to take or leave, as any block is in the note.
+
+- **Enter on a proposal, a question, or what the agent did on its own**
+  opens the margin beside the dashboard, which gives up the room (a list
+  has more width than it needs). It is pinned at the top — a proposal with
+  its reason, a question with its recommended answer; the conversation box
+  is ready. Space / Enter on the pinned item accepts (a question: the
+  recommended answer; a thing done: let it stand), Del declines (a
+  question: set aside; a thing done: undone), Esc goes back to the list.
+  Widened the same day, from proposals only, when a typed answer to a
+  question went one way: the student answered with a question of their own
+  and got no reply.
+- **One conversation per task,** shared by every proposal about the box
+  or a box under it, and by the margin of its note: what was said in the
+  margin (the block's record, in the day's state) and what was said with
+  the planner (the ledger's `threads`) are shown as one, merged by time —
+  in the margin beside the dashboard and in the note's margin alike — and
+  each agent reads the other's part before it answers. A deadline found in
+  the writing has no box yet: its conversation is filed under its words; a
+  question about no box, under its own.
+- **Summoned on any task** (Alt+→ on its row, the note's key for a block's
+  margin): the margin opens beside the dashboard on the task's one
+  conversation, to think it through. Nothing is pinned to accept; a message
+  goes to the margin agent, about the task's block, as Ctrl+Enter in the
+  note would — it knows the notes, the course's documents and what the
+  planner said. Once a pinned proposal is settled, the conversation goes on
+  the same way.
+- **The planner answers,** given back the very payload it planned from (it
+  is logged), then the proposal, what came of its others about the box, the
+  box as it stands, and the conversation. Its instructions for the
+  conversation travel with the message (`TALK_MESSAGE`); the planner's own
+  prompt is unchanged.
+- **It may revise** its proposal: the same kind, the same box, through the
+  plan's own checks. The revision takes the old one's place (the old is
+  settled as `revised`) and waits for the person, whatever the action's
+  autonomy.
+- **An agreement settles it,** either way — the person agreeing to the
+  proposal, or the planner to what the person asked (a revision giving
+  exactly that). A decline is recorded by the runner; an accept is written
+  by the page, as any accept is. A question is settled by the runner: the
+  answer kept in `answers.md` is the one the two agreed on, in the
+  person's terms (the recommended one when they simply agreed). A thing
+  done is let stand by the runner, undone by the page. The planner is told never to settle on its
+  own judgement; when unsure, the person still has their keys.
+- **The person's words are the reason** kept with the answer, however it
+  is given — by agreement, by key in the margin, or by key on the row after
+  talking — so the review and the evals have more than a silent Del. The
+  next plan carries each box's last few turns (`conversations`).
 
 ## The record, and what it learns
 

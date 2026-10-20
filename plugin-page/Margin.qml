@@ -23,11 +23,15 @@ BorderSurface {
   property alias chatFieldRef: chatField
   property alias marginKeysRef: marginKeys
 
-  visible: page.marginWidth > 0 && page.problem === "" && page.marginOpen && !page.wideOpen
-  x: sheet.x + sheet.width + page.marginGap
-  y: sheet.y
-  height: sheet.height
-  width: page.marginWidth
+  // Beside the note, on the block the cursor is in; or beside the
+  // dashboard, on a proposal the person is talking with the planner about
+  // (`talk`, 2026-10-20) — the same margin, the same keys.
+  readonly property bool talk: page.talkOpen
+  visible: talk || (page.marginWidth > 0 && page.problem === "" && page.marginOpen && !page.wideOpen)
+  x: talk ? page.wideX + page.dashWidth + page.marginGap : sheet.x + sheet.width + page.marginGap
+  y: talk ? (page.alongside ? 0 : page.sheetMargin) : sheet.y
+  height: talk ? (page.alongside ? page.contentItem.height : page.contentItem.height - page.sheetMargin * 2) : sheet.height
+  width: talk ? page.talkWidth : page.marginWidth
   radius: page.alongside ? 0 : Style.cornerRadius
   color: page.background
   borderSpec: page.alongside ? Border.none() : page.borderSpec
@@ -42,6 +46,7 @@ BorderSurface {
     anchors.fill: parent
     Keys.onPressed: function (event) {
       if (page.anywhereKey(event)) { event.accepted = true; return }
+      if (margin.talk) { if (page.talkKey(event)) event.accepted = true; return }
       if (Sc.hit(event, "marginBack")) page.backToNote()
       else if (Sc.hit(event, "marginUp")) page.moveMarginFocus(-1)
       else if (Sc.hit(event, "marginDown")) page.moveMarginFocus(1)
@@ -75,9 +80,126 @@ BorderSurface {
       width: parent.width
       spacing: page.sp(12)
 
+      // The proposal talked about, pinned at the top: what it is, and why.
+      Rectangle {
+        id: pinned
+        readonly property bool hot: page.marginFocus === 0 && marginKeys.activeFocus
+        visible: margin.talk
+        width: marginColumn.width
+        height: pinnedCol.implicitHeight + page.sp(12)
+        radius: Style.cornerRadius
+        color: hot ? Style.selectedFill : "transparent"
+        border.width: 1
+        border.color: hot ? page.accent : page.faint
+        Column {
+          id: pinnedCol
+          anchors.left: parent.left
+          anchors.right: parent.right
+          anchors.top: parent.top
+          anchors.margins: page.sp(6)
+          spacing: page.sp(4)
+          Text {
+            width: parent.width
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
+            text: !page.talkItem ? (page.talkSettled !== "" ? "◇ " + page.talkSettled
+                : page.talkData ? "☐ " + page.talkData.title : "…")
+              : page.talkItem.kind === "question" ? "◇ " + page.talkItem.question
+              : "◇ " + page.sayAsk(page.talkItem, false)
+            color: page.talkItem ? page.foreground : page.dim
+            font.family: page.fontFamily
+            font.styleName: page.fontStyle
+            font.pixelSize: page.fs(Style.font.body)
+          }
+          Text {
+            width: parent.width
+            visible: text !== ""
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
+            text: !page.talkItem ? ""
+              : page.talkItem.kind === "question" ? "recommended: " + (page.talkItem.recommended || "")
+              : (page.talkItem.why || "")
+            color: page.dim
+            font.family: page.fontFamily
+            font.styleName: page.fontStyle
+            font.pixelSize: page.fs(Style.font.bodySmall)
+          }
+          Text {
+            width: parent.width
+            visible: !!page.talkItem || page.talkSettled === ""
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
+            text: !page.talkItem ? page.tip("Back to the list", "marginBack")
+              : page.talkItem.kind === "question"
+              ? page.tips([["Accept the recommended answer", "marginAccept"], ["Set it aside", "marginDecline"], ["Back to the list", "marginBack"]])
+              : page.talkItem && page.talkItem.told
+              ? page.tips([["Let it stand", "marginAccept"], ["Undo it", "marginDecline"], ["Back to the list", "marginBack"]])
+              : page.tips([["Accept", "marginAccept"], ["Decline", "marginDecline"], ["Back to the list", "marginBack"]])
+            color: page.faint
+            font.family: page.fontFamily
+            font.styleName: page.fontStyle
+            font.pixelSize: page.fs(Style.font.caption)
+          }
+        }
+        MouseArea {
+          anchors.fill: parent
+          enabled: !!page.talkItem
+          cursorShape: Qt.PointingHandCursor
+          onClicked: { page.marginFocus = 0; marginKeys.forceActiveFocus() }
+        }
+      }
+
+      // The box's one conversation with the planner, every proposal's turns.
+      Repeater {
+        model: margin.talk ? page.talkTurns : []
+        Column {
+          required property var modelData
+          width: marginColumn.width
+          spacing: page.sp(2)
+          Text {
+            width: parent.width
+            textFormat: modelData.role === "agent" ? Text.MarkdownText : Text.PlainText
+            wrapMode: Text.WordWrap
+            text: modelData.text
+            color: modelData.role === "agent" ? page.foreground : page.dim
+            font.family: page.fontFamily
+            font.styleName: page.fontStyle
+            font.pixelSize: page.fs(Style.font.title)
+          }
+          Text {
+            visible: text !== ""
+            textFormat: Text.PlainText
+            text: modelData.role !== "agent" ? ""
+              : [modelData.who === "planner" ? "the planner" : "",
+                 modelData.settled === "accept" ? "◇ settled: accepted" : modelData.settled === "decline" ? "◇ settled: declined"
+                 : modelData.revised ? "◇ revised the proposal" : ""].filter(function (x) { return x !== "" }).join(" · ")
+            color: page.faint
+            font.family: page.fontFamily
+            font.styleName: page.fontStyle
+            font.pixelSize: page.fs(Style.font.caption)
+          }
+        }
+      }
+
       Text {
         width: parent.width
-        visible: !!(page.currentRecord && page.currentRecord.reply)
+        visible: margin.talk && page.talkTurns.length === 0 && !page.talking
+        textFormat: Text.PlainText
+        wrapMode: Text.WordWrap
+        text: !page.talkItem ? "Think it through with the agent below — it knows your notes, this course's documents and "
+          + "what the planner said about it. The conversation stays with the task."
+          : (page.talkItem.kind === "question"
+          ? "Answer in your words below, or ask back. " : "Ask the planner about it below — why this, or what you would rather. ")
+          + "If you two agree, that settles it."
+        color: page.faint
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.bodySmall)
+      }
+
+      Text {
+        width: parent.width
+        visible: !margin.talk && !!(page.currentRecord && page.currentRecord.reply)
         textFormat: Text.MarkdownText
         wrapMode: Text.WordWrap
         text: page.currentRecord && page.currentRecord.reply ? page.currentRecord.reply : ""
@@ -91,7 +213,7 @@ BorderSurface {
       // documents it asked for, and the pages, so a citation can be checked.
       Text {
         width: parent.width
-        visible: text !== ""
+        visible: !margin.talk && text !== ""
         textFormat: Text.PlainText
         wrapMode: Text.WordWrap
         text: page.sayReads(page.currentRecord)
@@ -105,7 +227,7 @@ BorderSurface {
       // the student says here is what the weekly review and the eval set
       // learn from.
       Row {
-        visible: !!(page.currentRecord && page.currentRecord.reply)
+        visible: !margin.talk && !!(page.currentRecord && page.currentRecord.reply)
         spacing: page.sp(14)
         Repeater {
           model: [{ text: "helpful", value: "up", act: "marginHelpful" }, { text: "not helpful", value: "down", act: "marginNotHelpful" }]
@@ -134,7 +256,7 @@ BorderSurface {
       // Proposals: what the agent would like to do, done only when the
       // student says so. Enter on a row runs it through the CLI.
       Repeater {
-        model: page.currentProposals
+        model: margin.talk ? [] : page.currentProposals
         Rectangle {
           required property var modelData
           required property int index
@@ -173,18 +295,33 @@ BorderSurface {
         }
       }
 
+      // The block's conversation, with what was said about its box with
+      // the planner merged in by time (one conversation per task).
       Repeater {
-        model: page.chatTurns
-        Text {
+        model: margin.talk ? [] : page.noteTurns
+        Column {
           required property var modelData
           width: marginColumn.width
-          textFormat: modelData.role === "agent" ? Text.MarkdownText : Text.PlainText
-          wrapMode: Text.WordWrap
-          text: modelData.text
-          color: modelData.role === "agent" ? page.foreground : page.dim
-          font.family: page.fontFamily
-          font.styleName: page.fontStyle
-          font.pixelSize: page.fs(Style.font.title)
+          spacing: page.sp(2)
+          Text {
+            width: parent.width
+            textFormat: modelData.role === "agent" ? Text.MarkdownText : Text.PlainText
+            wrapMode: Text.WordWrap
+            text: modelData.text
+            color: modelData.role === "agent" ? page.foreground : page.dim
+            font.family: page.fontFamily
+            font.styleName: page.fontStyle
+            font.pixelSize: page.fs(Style.font.title)
+          }
+          Text {
+            visible: modelData.who === "planner" && modelData.role === "agent"
+            textFormat: Text.PlainText
+            text: "the planner"
+            color: page.faint
+            font.family: page.fontFamily
+            font.styleName: page.fontStyle
+            font.pixelSize: page.fs(Style.font.caption)
+          }
         }
       }
 
@@ -197,7 +334,7 @@ BorderSurface {
         id: thinking
         property double since: 0
         width: parent.width
-        visible: page.answering
+        visible: margin.talk ? page.talking : page.answering
         textFormat: Text.PlainText
         text: "thinking" + (thinking.elapsed >= 4 ? " · " + thinking.elapsed + "s" : "")
         property int elapsed: 0
@@ -226,7 +363,7 @@ BorderSurface {
 
       Text {
         width: parent.width
-        visible: !page.answered(page.currentRecord) && !page.answering
+        visible: !margin.talk && !page.answered(page.currentRecord) && !page.answering && page.noteTurns.length === 0
         textFormat: Text.PlainText
         wrapMode: Text.WordWrap
         text: "Nothing from the agent on this block yet. " + page.keyName("ask") + " sends it, or ask below."
@@ -252,14 +389,23 @@ BorderSurface {
       id: chatField
       anchors.left: parent.left
       anchors.right: parent.right
-      visible: page.marginOpen
-      placeholderText: "…"
+      visible: page.marginOpen || margin.talk
+      readOnly: margin.talk && !page.talkCanSend
+      placeholderText: margin.talk && !page.talkCanSend ? "" : "…"
       font.family: page.fontFamily
       font.styleName: page.fontStyle
       font.pixelSize: page.fs(Style.font.body)
       foreground: page.foreground
       Keys.onPressed: function (event) {
         if (page.anywhereKey(event)) { event.accepted = true; return }
+        if (margin.talk) {
+          if (Sc.hit(event, "chatSend")) page.sendTalk()
+          else if (Sc.hit(event, "marginBack")) page.closeTalk()
+          else if (Sc.hit(event, "marginUp") && text === "" && page.talkItem) { page.marginFocus = 0; marginKeys.forceActiveFocus() }
+          else return
+          event.accepted = true
+          return
+        }
         if (Sc.hit(event, "chatSend")) page.sendChat()
         else if (Sc.hit(event, "marginBack")) page.backToNote()
         else if (Sc.hit(event, "marginUp") && text === "" && page.currentProposals.length > 0) page.moveMarginFocus(-1)

@@ -451,3 +451,113 @@ def resolve(ledger: dict, item_id: int, status: str, at: str, answer: str = "") 
                 x["answer"] = answer
             return x
     return None
+
+
+# ------------------------------------------------------------ conversations
+
+# Talking about a proposal (2026-10-20): each box has one conversation,
+# kept in the ledger beside its proposals, which every proposal about the
+# box or about any box under it shares — so what was said about a do-date
+# is still known when a priority is proposed for it next week. A deadline
+# found in the writing has no box yet: its conversation is filed under its
+# words. The planner answers in it, given the plan it made; what it may do
+# there is answer, revise its proposal (checked here like any other), and
+# settle it when the person's words and its own agree.
+TALK_TURNS = 24              # the turns of a conversation carried into a talk
+PLAN_TURNS = 6               # …and into the next plan, per box
+PLAN_TALKS = 8               # the boxes whose conversation the next plan sees
+SETTLE = ("accept", "decline")
+
+
+def root_key(key: str, tasks: list[dict]) -> str:
+    """The key of the box a box is under, all the way up in its note (its
+    own, when it is under none): the box whose conversation it shares."""
+    by_key = {(t.get("key") or lifespan.key_of(t)): t for t in tasks}
+    t = by_key.get(key)
+    if t is None:
+        return key
+    by_line = {(x.get("date"), x.get("line")): x for x in tasks}
+    seen = set()
+    while t.get("parent", -1) >= 0 and (t.get("date"), t["parent"]) in by_line and id(t) not in seen:
+        seen.add(id(t))
+        t = by_line[(t.get("date"), t["parent"])]
+    return t.get("key") or lifespan.key_of(t)
+
+
+def thread_key(x: dict, tasks: list[dict]) -> str:
+    """A box's conversation; for a question about no box, the question's
+    own; for a deadline with no box yet, its words'."""
+    if x.get("key"):
+        return root_key(x["key"], tasks)
+    if x["kind"] == "question":
+        return "?" + norm(x.get("question", ""))
+    return "~" + norm(x.get("title", ""))
+
+
+def thread(ledger: dict, key: str) -> dict:
+    return (ledger.get("threads") or {}).get(key) or {"turns": []}
+
+
+def add_turns(ledger: dict, key: str, title: str, turns: list[dict]) -> dict:
+    th = ledger.setdefault("threads", {}).setdefault(key, {"title": title, "turns": []})
+    th["title"] = title or th.get("title", "")
+    th["turns"].extend(turns)
+    return th
+
+
+def last_words(ledger: dict, x: dict) -> str:
+    """What the person last said about this proposal, or about the one it
+    revised, if they talked about it: the reason kept with their answer."""
+    by_id = {y["id"]: y for y in ledger["items"]}
+    ids, y = set(), x
+    while y is not None and y["id"] not in ids:
+        ids.add(y["id"])
+        y = by_id.get(y.get("revises"))
+    for th in (ledger.get("threads") or {}).values():
+        for turn in reversed(th.get("turns") or []):
+            if turn.get("role") == "student" and turn.get("about") in ids:
+                return turn.get("text", "")
+    return ""
+
+
+def revise(ledger: dict, old: dict, new: dict, at: str) -> dict:
+    """The proposal changed in a conversation: the old one is settled as
+    revised, and the new one takes its place, open, with a new id."""
+    old["status"], old["resolved"] = "revised", at
+    item = dict(new, id=ledger["next"], status="open", at=at, revises=old["id"])
+    for k in ("prompt", "model", "payload"):
+        if k in old and k not in item:
+            item[k] = old[k]
+    ledger["next"] += 1
+    old["revised_to"] = item["id"]
+    ledger["items"].append(item)
+    return item
+
+
+def check_revision(old: dict, rev: dict | None, kept: list[dict]) -> dict | None:
+    """A revision stands only if it is about the same thing — the same kind,
+    the same box — and survived the plan's own checks (`kept` is what
+    `validate` let through), and if it changes something."""
+    if not isinstance(rev, dict) or not kept:
+        return None
+    new = kept[0]
+    if new["kind"] != old["kind"] or (old.get("key") or "") != (new.get("key") or ""):
+        return None
+    if _same(old, new):
+        return None
+    return new
+
+
+def plan_talks(ledger: dict, keys: set[str]) -> list[dict]:
+    """The conversations the next plan should know of: the boxes it plans
+    over, newest conversation first, each with its last few turns."""
+    out = []
+    for k, th in (ledger.get("threads") or {}).items():
+        turns = th.get("turns") or []
+        if k not in keys or not turns:
+            continue
+        out.append({"key": k, "title": th.get("title", ""), "last": turns[-1].get("at", ""),
+                    "turns": [{"who": "you" if t["role"] == "agent" else "student", "said": t["text"][:400]}
+                              for t in turns[-PLAN_TURNS:]]})
+    out.sort(key=lambda x: x["last"], reverse=True)
+    return out[:PLAN_TALKS]
