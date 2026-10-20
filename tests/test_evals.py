@@ -93,6 +93,22 @@ def main() -> int:
     check({"deadline_for", "done_for", "drop_for", "no_drop_for", "steps_for", "no_steps_for", "max_priorities"} <= set(new),
           "a new plan case lists the per-kind rules to fill in")
 
+    # A deadline the store has closed is refused here as it is live
+    # (2026-10-20): from the payload's closed_deadlines, or the case's own
+    # `closed` for payloads written before that.
+    ticked = [{"kind": "deadline", "title": "Proposal v1 reviewed", "date": "2026-12-18", "source": "Proposal v1",
+               "why": "w"}]
+    closed = [{"title": "Proposal of version 1, read by supervisor and 2 fellow students",
+               "due": "2026-12-18 23:59", "status": "done"}]
+    with_closed = PAYLOAD.replace(json.dumps(DATA), json.dumps(dict(DATA, closed_deadlines=closed)))
+    _, kept = evals.check_plan({"job": "plan", "payload": with_closed, "rules": {}}, {"proposals": ticked, "questions": []})
+    check(kept["proposals"] == [], "a ticked deadline proposed again is refused, from the payload's closed_deadlines")
+    _, kept = evals.check_plan({"job": "plan", "payload": PAYLOAD, "rules": {}, "closed": closed},
+                               {"proposals": ticked, "questions": []})
+    check(kept["proposals"] == [], "…or from the case's own `closed`, for older payloads")
+    _, kept = evals.check_plan({"job": "plan", "payload": PAYLOAD, "rules": {}}, {"proposals": ticked, "questions": []})
+    check(len(kept["proposals"]) == 1, "…and kept when nothing says it was closed")
+
     print("PASS" if failures == 0 else f"{failures} FAILED")
     return 1 if failures else 0
 
