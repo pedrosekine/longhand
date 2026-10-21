@@ -378,7 +378,14 @@ section, word for word, and to the diary's decisions log.
    `days/<date>.md` (once a day, never for a private day, the student's
    corrections applied); every payload carries the last three; Settings →
    what the agent knows lists them, correctable line by line;
-   `tests/test_day.py`; (5) its eval cases.
+   `tests/test_day.py`; (5) its eval cases — *built 2026-10-21*: the eval
+   runner knows the day job (said or silent, asking to search or read,
+   proposals kept or refused by plan.py's checks, a brief's lines); `eval
+   add` joins a later message to its day's first message and the turns
+   between; answers are rated helpful or not in the pane (Alt+= / Alt+-, or
+   a click), and the weekly review lists the misses with the command that
+   makes each a case; six seed cases pass, and the install gate now checks
+   `longhand-day.md`; `tests/test_day_evals.py`.
 1. **The agent that does things, while the person drives** — designed
    2026-10-17 in a grilling; the whole design is `docs/agent.md`. Checkboxes
    are its environment (structured work, not authored words); who made each
@@ -559,7 +566,13 @@ from 2026-09/10 and still stand.
   `day` and `seal` counts in the usage log), and for what? Is the pane's
   width enough beside the note, and is the morning line welcome or noise?
   Does a whole day in one session stay fast, and are its answers grounded?
-  Its prompt has no eval cases yet (slice 5: from real conversations).
+- **The day's eval cases are seeds** (2026-10-21): six, from a throwaway
+  vault with made-up notes — a do-date grounded in the note, a date past
+  its due refused, a brief, a search, a "how do I" read from the manual,
+  "the one thing" without proposals. All pass. Replace them with real
+  conversations: rate an answer "not helpful" in the pane (Alt+-), and the
+  weekly review names the `eval add` command for it. Are the cards proposed
+  only when the conversation calls for them, and do the briefs read right?
 - **The day's search:** is it used, and does it find what you meant (its
   queries are in the turn: `searched`)? Is keyword search enough, or do
   you miss notes that say the thing in other words? Are the defaults —
@@ -568,6 +581,9 @@ from 2026-09/10 and still stand.
   and one whole note, and cited both lines it used.
 - **The talk feature's live check "the question settled, its row gone"**
   failed once (2026-10-21) and passed the next run: watch it.
+- **The calendar's live checks "…is fetched at once"** failed together
+  once (2026-10-21, the calendar saying it had none yet) and passed the
+  next run: watch them.
 - **A live check that failed once** (2026-10-18, then passed four runs):
   the "when?" box pushing the next line down (11j in `tests/page/run.py`).
 

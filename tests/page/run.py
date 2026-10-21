@@ -1791,6 +1791,13 @@ def main() -> int:
               f"Enter does what the card says, written by the page ({p.note()[-120:]!r})")
         check(p.wait(lambda: [c["state"] for c in json.loads(p.call("dayCards"))] == ["accepted", "declined"])
               and p.call("dayCardFocus") == "-1", f"…the cards stay, faint, saying how; the keys back in the box ({p.call('dayCards')})")
+        # Helpful or not (slice 5): Alt+= on the last answer, kept on its turn.
+        day_state = p.vault / "agents" / "longhand" / "daily" / f"{TODAY}.json"
+        check(p.call("dayKey", 0x3d, 0x08000000) == "true"
+              and p.wait(lambda: (json.loads(day_state.read_text())["day"]["turns"][-1].get("rating") or {}).get("value") == "up"),
+              "Alt+= says the day's last answer was helpful, kept on its turn")
+        p.call("dayKey", 0x3d, 0x08000000)
+        check(p.wait(lambda: "rating" not in json.loads(day_state.read_text())["day"]["turns"][-1]), "…and again takes it back")
         p.call("dayKey", 0x01000000, 0)
 
         # 12b. the keys sheet: every key the page answers to, listed; one

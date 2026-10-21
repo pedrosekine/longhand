@@ -59,6 +59,8 @@ Where a row has two keys, either works: the second is usually the one another ap
 | | Keys | Works |
 |---|---|---|
 | Ask about this block, or open its conversation | `Ctrl+Enter` | in the note |
+| In the day's conversation: its last answer was helpful (again: take it back) | `Alt+=` | in the conversation box |
+| In the day's conversation: its last answer was not helpful (again: take it back) | `Alt+-` | in the conversation box |
 | The day's conversation: talk to the day, not a line (again: close it) | `Ctrl+J` | anywhere in the page |
 | The day's conversation, pointing at this block | `Ctrl+Shift+Enter` | in the note |
 | Open the margin for this block | `Alt+→` | in the note |

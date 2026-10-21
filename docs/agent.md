@@ -294,6 +294,20 @@ marked private gets none: what was said there does not travel. Every
 payload carries the last three briefs, after the knowledge files; Settings
 → what the agent knows lists them after its other notes, newest first.
 
+**How it is checked (slice 5, built 2026-10-21).** Its answers are rated
+helpful or not in the pane, like the margin's replies (a click under the
+answer, or Alt+= / Alt+- on the last one); the weekly review counts them,
+the cards and the briefs, and names `longhand-agent eval add <payload>
+--job day` for each miss. A day case is one payload: a later message is
+joined to its day's first message and the turns between, since the
+session that held them is gone. Its rules: what the reply must or must not
+say, whether it asks to search or read (and with which words) instead of
+answering, which proposals must survive plan.py's checks and which must
+not, and for a brief, three to six lines; criteria go to the judge. With
+cases in the vault, `install` refuses a changed `longhand-day.md` that has
+not passed them. The first six are seeds from a throwaway vault, to be
+replaced by real conversations.
+
 ## The record, and what it learns
 
 - **The proposal ledger** (in the layer): every proposal and question, what

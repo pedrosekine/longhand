@@ -99,7 +99,9 @@ BorderSurface {
       Repeater {
         model: page.dayTurns
         Column {
+          id: turn
           required property var modelData
+          required property int index
           width: dayColumn.width
           spacing: page.sp(2)
           // The block a message pointed at.
@@ -236,6 +238,31 @@ BorderSurface {
                   font.family: page.fontFamily
                   font.styleName: page.fontStyle
                   font.pixelSize: page.fs(Style.font.caption)
+                }
+              }
+            }
+          }
+
+          // Helpful or not: the student's word on the answer, for the
+          // weekly review and the eval cases. A word again takes it back.
+          Row {
+            visible: modelData.role === "agent" && !modelData.error && !!modelData.text
+            spacing: page.sp(10)
+            Repeater {
+              model: [{ value: "up", text: "helpful", act: "dayHelpful" }, { value: "down", text: "not helpful", act: "dayNotHelpful" }]
+              Text {
+                required property var modelData
+                readonly property bool chosen: page.dayRatingOf(turn.index) === modelData.value
+                textFormat: Text.PlainText
+                text: (chosen ? "✓ " : "") + modelData.text
+                color: chosen ? page.accent : page.faint
+                font.family: page.fontFamily
+                font.styleName: page.fontStyle
+                font.pixelSize: page.fs(Style.font.caption)
+                MouseArea {
+                  anchors.fill: parent
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: page.rateDay(turn.index, parent.modelData.value)
                 }
               }
             }

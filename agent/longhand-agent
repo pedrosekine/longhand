@@ -20,7 +20,7 @@
     longhand-agent stats [--days 14 | --since YYYY-MM-DD] [--json]   # how the tool is used
     longhand-agent projects                                     # the tags that exist, with their next session
     longhand-agent timetable [--fetch [--index n]]              # each calendar's state, for the Settings sheet, JSON
-    longhand-agent eval add <payload> [--job margin|plan]       # a real run made into an eval case (in the vault)
+    longhand-agent eval add <payload> [--job margin|plan|day]   # a real run made into an eval case (in the vault)
     longhand-agent eval run [--model M] [--case ID]             # the cases against the repo's prompts; kept as history
     longhand-agent eval status                                  # which prompt and model have passed
     longhand-agent review [--write | --if-due]                  # the week of the agent, for the student to read
@@ -1347,8 +1347,9 @@ def cmd_ack(cfg: dict, args) -> int:
 
 
 def cmd_rate(cfg: dict, args) -> int:
-    """The student's word on a reply in the margin: helpful, not helpful, or
-    taken back (none). Kept on the block and in feedback.tsv, with the
+    """The student's word on a reply in the margin, or an answer in the
+    day's conversation (`--day`, its turn): helpful, not helpful, or taken
+    back (none). Kept on the block or the turn and in feedback.tsv, with the
     prompt and model that made the reply, for the weekly review and for
     turning a reply that missed into an eval case."""
     date = dt.datetime.strptime(args.date, moment_to_strftime(cfg["daily"].get("format", "YYYY-MM-DD"))).date() \
@@ -1357,7 +1358,20 @@ def cmd_rate(cfg: dict, args) -> int:
     state = load_state(paths)
     at = dt.datetime.now().isoformat(timespec="seconds")
     rec = None
-    for h in group_of(state, args.hash):
+    if args.day is not None:
+        # An answer in the day's conversation, by its place among the turns.
+        turns = (state.get("day") or {}).get("turns") or []
+        if not (0 <= args.day < len(turns)) or turns[args.day]["role"] != "agent" or turns[args.day].get("error"):
+            raise Fail(f"no answer at turn {args.day} of {paths.stamp}'s conversation")
+        rec = dict(turns[args.day], trigger="day")
+        if args.value == "none":
+            turns[args.day].pop("rating", None)
+        else:
+            turns[args.day]["rating"] = {"value": args.value, "at": at}
+        args.hash = f"day:{args.day}"
+    elif not args.hash:
+        raise Fail("--hash or --day is required")
+    for h in group_of(state, args.hash) if args.day is None else []:
         r = state["blocks"].get(h)
         if r is None:
             continue
@@ -2923,14 +2937,41 @@ def eval_env(prompts: Path) -> tuple[dict, Path]:
     return dict(os.environ, XDG_CONFIG_HOME=str(home)), home
 
 
+def day_case_payload(cfg: dict, src: Path) -> str:
+    """A day payload as one message an eval can send: the day's first
+    message carries all the context and is used as it is; a later one went
+    to a session that held the rest, so it is joined to the first message of
+    its day and the turns between them, from the day's state."""
+    text = src.read_text()
+    if text.startswith("# Brief") or "# Your knowledge files" in text:
+        return text
+    firsts = [f for f in sorted(src.parent.glob(src.name[:8] + "-*-day.md"))
+              if f.name < src.name and "# Your knowledge files" in f.read_text()]
+    if not firsts:
+        raise Fail(f"{src.name} continues a conversation whose first message is not in {src.parent}")
+    first = firsts[-1].read_text()
+    said = lambda t: (re.findall(r"# The student says\n\n(.*?)(?:\n\nAnswer with|\n*$)", t, re.S) or [""])[-1].strip()  # noqa: E731
+    turns = (load_state(Paths(cfg, dt.datetime.strptime(src.name[:8], "%Y%m%d").date())).get("day") or {}).get("turns") or []
+    begin = next((i for i, t in enumerate(turns) if t["role"] == "student" and t["text"] == said(first)), None)
+    end = next((i for i in range(len(turns) - 1, -1, -1) if turns[i]["role"] == "student" and turns[i]["text"] == said(text)), None)
+    if begin is None or end is None or end <= begin:
+        raise Fail(f"cannot find the turns between {firsts[-1].name} and {src.name} in the day's state")
+    between = [f"{'Longhand' if t['role'] == 'agent' else 'student'}: {t.get('text') or '(no answer)'}"
+               for t in turns[begin + 1:end]]
+    return (first.rstrip() + "\n\n# The conversation since (the same session)\n\n" + "\n".join(between)
+            + "\n\n# The next message\n\n" + text)
+
+
 def cmd_eval(cfg: dict, args) -> int:
     paths = Paths(cfg, dt.date.today())
     if args.what == "add":
         src = Path(args.source)
         if not src.exists():
             raise Fail(f"no payload at {src}")
-        job = args.job or ("plan" if src.name.endswith("-plan.md") else "margin")
-        case = evallib.new_case(job, src.read_text(), src.name, args.note, args.answer)
+        job = args.job or ("plan" if src.name.endswith("-plan.md") else
+                           "day" if src.name.endswith("-day.md") or "-brief-" in src.name else "margin")
+        payload = day_case_payload(cfg, src) if job == "day" else src.read_text()
+        case = evallib.new_case(job, payload, src.name, args.note, args.answer)
         folder = evallib.cases_dir(paths.agent_dir)
         folder.mkdir(parents=True, exist_ok=True)
         cid = args.id or src.stem
@@ -2957,13 +2998,13 @@ def cmd_eval(cfg: dict, args) -> int:
         else:
             for r in rows:
                 print(f"{r['job']:7} {r['prompts']:9} prompt {r['prompt']} · {r['model']:28} · {r['checked']}")
-            print(f"cases: {n['margin']} margin, {n['plan']} plan")
+            print(f"cases: {n['margin']} margin, {n['plan']} plan, {n['day']} day")
         return 0
 
     # run
     cases = evallib.load_cases(paths.agent_dir, args.case or None)
     if not cases:
-        raise Fail("no eval cases yet: add one with `longhand-agent eval add <payload> --job margin|plan`")
+        raise Fail("no eval cases yet: add one with `longhand-agent eval add <payload> --job margin|plan|day`")
     prompts = Path(args.prompts) if args.prompts else REPO_PROMPTS
     env, home = eval_env(prompts)
     judge_model = args.judge_model or cfg.get("evalJudgeModel") or job_model(cfg, "plan")[0]
@@ -2976,12 +3017,17 @@ def cmd_eval(cfg: dict, args) -> int:
             c = dict(cfg, agent=agent, model=model, variant=variant, _prompts=prompts)
             t0 = dt.datetime.now()
             res = run_model(c, paths, case["payload"], env=env,
-                            message="Plan the fortnight. The context follows on stdin." if job == "plan" else "Context follows on stdin.")
+                            message="Plan the fortnight. The context follows on stdin." if job == "plan" else
+                            "Write the day's brief. The context follows on stdin." if case["payload"].startswith("# Brief")
+                            else "Context follows on stdin.")
             secs = round((dt.datetime.now() - t0).total_seconds(), 1)
             if job == "plan":
                 reply = parse_plan(res["text"]) if not res["error"] else {"proposals": [], "questions": [], "knowledge": []}
                 rules, kept = evallib.check_plan(case, reply)
                 answer = evallib.render_plan(kept)
+            elif job == "day":
+                reply = parse_reply(res["text"]) if not res["error"] else {"reply": ""}
+                rules, answer = evallib.check_day(case, reply)
             else:
                 reply = parse_reply(res["text"]) if not res["error"] else {"reply": ""}
                 rules = evallib.check_margin(case, reply)
@@ -3032,14 +3078,24 @@ def review_text(cfg: dict, since: dt.date, until: dt.date) -> str:
     eval case — and whether what runs now has passed its evals. Local
     arithmetic over the records; no model."""
     paths = Paths(cfg, until)
-    runs, replies = [], []
+    runs, replies, answers, briefs = [], [], [], []
     d = since
     while d <= until:
         p = Paths(cfg, d)
         if p.state.exists():
             st = load_state(p)
             for r in st.get("runs", []):
+                if r.get("trigger") == "day":
+                    continue                       # the day's conversation has its own section
                 runs.append(dict(r, date=p.stamp))
+            day = st.get("day") or {}
+            turns = day.get("turns") or []
+            for i, t in enumerate(turns):
+                if t["role"] == "agent" and not t.get("error"):
+                    asked = next((u["text"] for u in reversed(turns[:i]) if u["role"] == "student"), "")
+                    answers.append(dict(t, date=p.stamp, asked=asked))
+            if (day.get("brief") or {}).get("file"):
+                briefs.append(dict(day["brief"], date=p.stamp))
             for h, rec in st.get("blocks", {}).items():
                 if rec.get("reply"):
                     replies.append(dict(rec, hash=h, date=p.stamp))
@@ -3073,6 +3129,25 @@ def review_text(cfg: dict, since: dt.date, until: dt.date) -> str:
                   "", "> " + " ".join((r.get("reply") or "").split())[:400]]
         if r.get("payload"):
             lines += ["", f"Make it a case: `longhand-agent eval add {r['payload']} --job margin --answer \"…\"`"]
+
+    up = [a for a in answers if (a.get("rating") or {}).get("value") == "up"]
+    down = [a for a in answers if (a.get("rating") or {}).get("value") == "down"]
+    cards = [x for x in items if x.get("from") == "day"]
+    lines += ["", "## The day's conversations", "",
+              f"- {len(answers)} answers · {len(up)} helpful · {len(down)} not helpful · {len(answers) - len(up) - len(down)} not rated",
+              f"- {len(cards)} cards proposed: " + (", ".join(f"{n} {k}" for k, n in sorted(
+                  {s: sum(1 for x in cards if x['status'] == s) for s in {x['status'] for x in cards}}.items())) or "none"),
+              f"- {len(briefs)} briefs written"]
+    for a in down:
+        lines += ["", f"**Not helpful** — {a['date']}, asked “{' '.join(a['asked'].split())[:80]}” "
+                      f"(prompt `{a.get('prompt', '?')}`, {a.get('model', '?')})",
+                  "", "> " + " ".join((a.get("text") or "").split())[:400]]
+        if a.get("payload"):
+            lines += ["", f"Make it a case: `longhand-agent eval add {a['payload']} --job day --answer \"…\"`"]
+    for b in briefs:
+        if b.get("payload"):
+            lines += ["", f"The brief of {b['date']}, if it reads wrong in Settings: "
+                          f"`longhand-agent eval add {b['payload']} --job day`"]
 
     lines += ["", "## Proposals and questions", ""]
     summ = {}
@@ -3205,7 +3280,8 @@ def main(argv: list[str]) -> int:
     p.add_argument("--forget", action="store_true", help="kept for the first version; copies are pruned anyway")
     p = sub.add_parser("rate")
     p.add_argument("value", choices=("up", "down", "none"))
-    p.add_argument("--hash", required=True)
+    p.add_argument("--hash", default="")
+    p.add_argument("--day", type=int, default=None, help="an answer in the day's conversation, by its turn")
     p.add_argument("--date", default="")
     p = sub.add_parser("plan")
     p.add_argument("--force", action="store_true", help="plan now, whatever today's plan was")
@@ -3253,7 +3329,7 @@ def main(argv: list[str]) -> int:
     p = sub.add_parser("eval")
     p.add_argument("what", choices=("run", "add", "status"))
     p.add_argument("source", nargs="?", default="", help="add: the payload file to make a case of")
-    p.add_argument("--job", choices=("margin", "plan"), default="")
+    p.add_argument("--job", choices=("margin", "plan", "day"), default="")
     p.add_argument("--id", default="")
     p.add_argument("--note", default="")
     p.add_argument("--answer", default="", help="add: the answer that prompted the case")

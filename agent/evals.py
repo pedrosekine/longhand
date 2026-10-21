@@ -7,7 +7,10 @@ A case is a real run's payload — kept in the student's vault
 their notes — and what a good answer must do there:
 
 - `rules`, checked by code: for the margin, patterns the reply must or must
-  not contain, whether silence is acceptable; for a plan, how many do-dates
+  not contain, whether silence is acceptable; for the day's conversation,
+  the same, and whether it asks to search or read rather than answer, with
+  which words, which proposals must survive plan.py's checks and which must
+  not, and for a brief how many lines; for a plan, how many do-dates
   must survive plan.py's checks, which questions must be asked, which boxes
   must or must not get a date — and for the other kinds, which deadline
   (with its date and source words), which boxes are asked about as done,
@@ -58,6 +61,14 @@ def new_case(job: str, payload: str, source: str, note: str = "", answer: str = 
     """A case to fill in: the payload as it was, the answer that prompted it
     (if any — a reply rated not helpful, a declined proposal), and empty
     rules and criteria for the person to write."""
+    if job == "day":
+        brief = payload.startswith("# Brief")
+        rules = {"must_not_match": [], "must_match_any": [], "silence_ok": False,
+                 "search": None, "search_words": [], "read": None,
+                 "propose": [], "no_propose": [], "max_proposals": planlib.MAX_PROPOSALS,
+                 "brief_lines": [3, 6] if brief else None}
+        return {"job": job, "created": dt.date.today().isoformat(), "source": source, "note": note,
+                "answer_then": answer, "rules": rules, "criteria": [], "payload": payload}
     rules = ({"must_not_match": [], "must_match_any": [], "silence_ok": False} if job == "margin" else
              {"min_dates": 0, "max_questions": planlib.MAX_QUESTIONS, "ask_about": [], "date_for": [], "no_date_for": [],
               "deadline_for": [], "done_for": [], "drop_for": [], "no_drop_for": [], "steps_for": [], "no_steps_for": [],
@@ -129,6 +140,85 @@ def check_plan(case: dict, reply: dict) -> tuple[list[dict], dict]:
         out.append({"check": f"no date for /{pat}/", "pass": not re.search(pat, dated, re.I), "why": dated[:160]})
     out += _check_kinds(r, props, case["payload"])
     return out, {"proposals": props, "questions": qs}
+
+
+def _day_data(payload: str) -> dict:
+    """What the day's payload gave it to propose about — the last time it
+    was given (a later message carries it again only when it changed)."""
+    found = re.findall(r"# What you may propose[^\n]*\n\n[^\n]*\n\n```json\n(.*?)\n```", payload, re.S)
+    try:
+        return json.loads(found[-1]) if found else {}
+    except ValueError:
+        return {}
+
+
+def _matches(spec: str, props: list[dict]) -> bool:
+    """`kind` or `kind:pattern` (the pattern on the box's title)."""
+    kind, _, pat = spec.partition(":")
+    return any(p["kind"] == kind and (not pat or re.search(pat, p.get("title") or "", re.I)) for p in props)
+
+
+def check_day(case: dict, reply: dict) -> tuple[list[dict], str]:
+    """The day's conversation: what it said, whether it asked to search or
+    read instead of answering, and what it proposed — after plan.py's own
+    checks, against the data the payload gave it. A brief: its lines.
+    Returns the checks and the answer as the judge reads it."""
+    r = case.get("rules") or {}
+    text = reply.get("reply") or ""
+    asked = [str(q.get("words") or "") for q in reply.get("search") or []]
+    reads = [str(q.get("file") or q.get("document") or "") for q in reply.get("read") or []]
+    data = _day_data(case["payload"])
+    props = []
+    if data and reply.get("proposals"):
+        days = data.get("fortnight") or []
+        today = dt.date.fromisoformat(days[0]["date"]) if days else dt.date.today()
+        may = data.get("you_may")
+        allowed = {k: ("ask" if may is None or k in may else "never") for k in planlib.KINDS}
+        props, _ = planlib.validate({"proposals": reply["proposals"], "questions": []}, data.get("candidates") or [],
+                                    days, {"next": 1, "items": []}, today, data.get("open_boxes") or [], [], allowed)
+    out = []
+    fetching = bool(asked or reads)
+    if r.get("search") is not None:
+        out.append({"check": "asks to search" if r["search"] else "answers without searching",
+                    "pass": bool(asked) == bool(r["search"]), "why": " | ".join(asked) or "no search"})
+    for pat in r.get("search_words") or []:
+        out.append({"check": f"searches for /{pat}/", "pass": any(re.search(pat, w, re.I) for w in asked),
+                    "why": " | ".join(asked)[:160] or "no search"})
+    if r.get("read") is not None:
+        out.append({"check": "asks to read" if r["read"] else "reads nothing", "pass": bool(reads) == bool(r["read"]),
+                    "why": " | ".join(reads) or "nothing"})
+    if not fetching:
+        if not text:
+            out.append({"check": "says something", "pass": bool(r.get("silence_ok")), "why": "silent"})
+        else:
+            for pat in r.get("must_not_match") or []:
+                hit = re.search(pat, text, re.I)
+                out.append({"check": f"never /{pat}/", "pass": not hit, "why": hit.group(0) if hit else ""})
+            anyof = r.get("must_match_any") or []
+            if anyof:
+                hit = next((p for p in anyof if re.search(p, text, re.I)), None)
+                out.append({"check": "names one of: " + ", ".join(anyof), "pass": bool(hit), "why": hit or "none found"})
+    kept = " | ".join(f"{p['kind']}: {p.get('title', '')}" for p in props)
+    for spec in r.get("propose") or []:
+        out.append({"check": f"proposes {spec}", "pass": _matches(spec, props), "why": kept or "nothing kept"})
+    for spec in r.get("no_propose") or []:
+        out.append({"check": f"does not propose {spec}", "pass": not _matches(spec, props), "why": kept or "nothing kept"})
+    if len(props) > r.get("max_proposals", planlib.MAX_PROPOSALS):
+        out.append({"check": f"at most {r['max_proposals']} proposals", "pass": False, "why": f"{len(props)}"})
+    if r.get("brief_lines"):
+        lo, hi = r["brief_lines"]
+        lines = [l for l in text.split("\n") if l.strip()]
+        out.append({"check": f"a brief of {lo}–{hi} lines, each `- `",
+                    "pass": lo <= len(lines) <= hi and all(l.lstrip().startswith("- ") for l in lines),
+                    "why": f"{len(lines)} lines" + ("" if all(l.lstrip().startswith("- ") for l in lines) else ", not all `- `")})
+    answer = text or "(silence)"
+    if fetching:
+        answer = "(asks first: " + " | ".join([f"search “{w}”" for w in asked] + [f"read {x}" for x in reads]) + ")"
+    if props:
+        answer += "\n\nCards (what it proposed, as the student sees them after the checks):\n" + "\n".join(
+            f"◇ {p['kind']}: {p.get('title', '')} {p.get('date') or p.get('priority') or ' · '.join(p.get('steps') or [])} — {p.get('why', '')}"
+            for p in props)
+    return out, answer
 
 
 def _squash(text: str) -> str:

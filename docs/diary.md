@@ -1289,3 +1289,12 @@ only the window and the panels around it differ.
   three lines: the email proposed for Wednesday and still open, the reading
   not moved past its due date, and the open question of whether that date
   itself changes. A private day gets no brief.
+- **2026-10-21 — The day's evals (slice 5).** The design wanted cases from
+  real conversations, and there were none yet — the pane is a day old. So
+  the machinery came first: answers rated helpful or not in the pane, the
+  weekly review naming the command for each miss, `eval add` joining a later
+  message to the start of its session, and rules for what the day does —
+  ask to search rather than guess, keep its proposals within the planner's
+  checks, write a brief in lines. Six seed cases from a throwaway vault pass
+  on the real model, and a changed day prompt is now gated like the others.
+  The seeds are placeholders; real ones replace them as misses are rated.

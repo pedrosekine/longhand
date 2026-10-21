@@ -550,7 +550,33 @@ Item {
     })
   }
 
+  // The student's word on an answer in the day's conversation, as on a
+  // reply in the margin: shown at once, kept on the turn by the runner with
+  // the prompt and model that made it, read by the weekly review.
+  property var dayRatingNow: ({})       // "<note date>#<turn>" -> "up" | "down" | "none", until the state says so
+  function dayRatingOf(i) {
+    var now = root.dayRatingNow[svc.noteDate + "#" + i]
+    if (now !== undefined) return now === "none" ? "" : now
+    var t = root.dayState && root.dayState.turns ? root.dayState.turns[i] : null
+    return t && t.rating ? t.rating.value : ""
+  }
+  function rateDay(i, value) {
+    var turns = root.dayState && root.dayState.turns ? root.dayState.turns : []
+    if (i < 0) for (var k = turns.length - 1; k >= 0 && i < 0; k--) if (turns[k].role === "agent" && !turns[k].error) i = k
+    if (i < 0 || !turns[i] || turns[i].role !== "agent" || turns[i].error) return
+    var v = root.dayRatingOf(i) === value ? "none" : value
+    var m = {}
+    for (var j in root.dayRatingNow) m[j] = root.dayRatingNow[j]
+    m[svc.noteDate + "#" + i] = v
+    root.dayRatingNow = m
+    rateProc.command = [svc.runner, "rate", v, "--day", String(i), "--date", svc.noteDate]
+    rateProc.running = true
+    root.used("rate", "day-" + v)
+  }
+
   function dayKey(event) {
+    if (Sc.hit(event, "dayHelpful")) { root.rateDay(-1, "up"); return true }
+    if (Sc.hit(event, "dayNotHelpful")) { root.rateDay(-1, "down"); return true }
     // On the cards: ↑↓ between them, Enter or Space does what one says, Del
     // declines it (a thing done by itself: undoes it), Esc or ↓ past the
     // last goes back to the box; typing goes back too.
