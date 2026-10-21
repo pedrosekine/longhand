@@ -186,7 +186,7 @@ if [ "$1" = projects ]; then
   exit $rc
 fi
 case "$1" in
-  accept|projects|sections|next|tasks|box|timetable|plan|proposals|proposal|talk|thread|rate|notebook|autonomy|day) exec "{ROOT}/agent/longhand-agent" "$@" ;;
+  accept|projects|sections|next|tasks|box|timetable|plan|proposals|proposal|talk|thread|rate|notebook|autonomy|day|search) exec "{ROOT}/agent/longhand-agent" "$@" ;;
   run) sleep 2; exit 0 ;;
   chat) sleep 2; exec python3 "{chatstub}" "{self.vault}/agents/longhand/daily" "$@" ;;
 esac
@@ -1236,6 +1236,34 @@ def main() -> int:
         # The note as the sections after this one expect it.
         (p.daily / f"{TODAY}.md").write_text(note_before)
         p.open_fresh()
+
+        # 12c''. what the day may search (slice 2): Settings → Ctrl+F lists the
+        # vault's folders, the daily notes' own on; a switch is kept in
+        # settings.json; a citation in an answer opens the note at its line.
+        KEY_F, KEY_SPACE = 0x46, 0x20
+        p.call("settings")
+        check(p.call("settingsKey", KEY_F, CTRL) == "true" and p.call("settingsView") == "search",
+              "Ctrl+F in settings: what the agent may search")
+        check(p.wait(lambda: "Daily=on" in json.loads(p.call("searchFolders"))),
+              f"…every folder of the vault, the daily notes' own on ({p.call('searchFolders')})")
+        i = json.loads(p.call("searchFolders")).index("Daily=on")
+        p.call("searchFocus", i)
+        p.call("searchKey", KEY_SPACE, 0)
+        settings_json = p.tmp / "config" / "longhand" / "settings.json"
+        check(p.wait(lambda: settings_json.exists() and json.loads(settings_json.read_text()).get("searchFolders", {}).get("Daily") is False),
+              "Space switches a folder off, kept in settings.json")
+        p.call("searchKey", KEY_SPACE, 0)
+        check(p.wait(lambda: json.loads(settings_json.read_text())["searchFolders"]["Daily"] is True), "…and on again")
+        p.call("searchKey", 0x01000000, 0)
+        p.call("settingsKey", 0x01000000, 0)
+        link = p.call("linkCitations", f"You wrote it in `Daily/{YDAY}.md` line 3.")
+        check(f"(cite:Daily%2F{YDAY}.md#3)" in link and f"[{YDAY} · line 3]" in link,
+              f"a citation in an answer becomes a link ({link!r})")
+        p.call("openCitation", f"cite:Daily%2F{YDAY}.md#3")
+        check(p.wait(lambda: p.call("header") != "" and not p.call("header").startswith(dt.date.today().strftime("%A")))
+              and p.wait(lambda: p.call("cursorLine") == "2"), f"…which opens that day's note at its line ({p.call('cursorLine')})")
+        p.call("openDay", TODAY)
+        p.wait(lambda: p.call("header").startswith(dt.date.today().strftime("%A")))
 
         # 12d. Settings → Calendar (2026-10-17): the timetable's address
         # pasted in the page, saved to settings.json, fetched at once, and

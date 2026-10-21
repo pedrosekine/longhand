@@ -1257,3 +1257,14 @@ only the window and the panels around it differ.
   so a click lands on the side where the thing appears. First real answer,
   in a throwaway vault: email Frauenberger first, the Friday decision not
   yet in the deadline list — and the follow-up kept the thread.
+- **2026-10-21 — The day can search (slice 2).** The agent still has no
+  tools: it asks for words or a file, local code searches the folders the
+  student switched on and answers in the same conversation, at most twice.
+  What must never be shared is decided in code before the model sees
+  anything — private notes and blocks, `_Secrets`, every type but notes,
+  text and PDFs, names of identity, money, health, contracts and secrets in
+  two languages, and whatever gitleaks flags line by line — and counted in
+  the log, never named. Citations come back as `path` line N, which the
+  pane turns into links that open the note there. First real question,
+  in a throwaway vault: four searches, one whole note, both lines cited,
+  and the switched-off Personal folder never touched.

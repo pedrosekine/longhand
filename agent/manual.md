@@ -90,7 +90,12 @@ cursor is in. The seal at the centre of the header opens and closes it; the
 date at the left opens the sidebar. One conversation a day: the morning's
 observation waits at the top, it sees today's other conversations, and a
 past day's note shows that day's conversation, read-only — talking happens
-in today's. A private day still has it, seeing nothing of the note.
+in today's. A private day still has it, seeing nothing of the note. It can
+search your files — the folders switched on in Settings → what the agent
+may search ({key:settingsSearch} in Settings) — and cites where it found
+things as links that open the note at that line. Never private notes or
+blocks, `_Secrets`, or documents of identity, money, health, contracts or
+secrets.
 
 ## The agent
 

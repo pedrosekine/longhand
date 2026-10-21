@@ -360,7 +360,14 @@ section, word for word, and to the diary's decisions log.
    Ctrl+J, Ctrl+Shift+Enter, the seal at the centre, the date opening the
    sidebar; the morning line; past days read-only; a private day talks
    blind; cross-visibility both ways; `tests/test_day.py` and live checks;
-   (2) search; (3) `@` references and proposal cards; (4) the day's brief;
+   (2) search — *built 2026-10-21*: `agent/search.py` (folders on or off,
+   the daily notes' own always on by default; never private notes or
+   blocks, `_Secrets`, other types, identity/money/health/contract/secret
+   names, nor what gitleaks flags; IBANs and card numbers masked; withheld
+   counted, never named), the agent's `search` and `read` of a file in two
+   rounds, Settings → what the agent may search (Ctrl+F), citations as
+   links that open a note at its line; `tests/test_search.py`;
+   (3) `@` references and proposal cards; (4) the day's brief;
    (5) its eval cases.
 1. **The agent that does things, while the person drives** — designed
    2026-10-17 in a grilling; the whole design is `docs/agent.md`. Checkboxes
@@ -543,6 +550,14 @@ from 2026-09/10 and still stand.
   width enough beside the note, and is the morning line welcome or noise?
   Does a whole day in one session stay fast, and are its answers grounded?
   Its prompt has no eval cases yet (slice 5: from real conversations).
+- **The day's search:** is it used, and does it find what you meant (its
+  queries are in the turn: `searched`)? Is keyword search enough, or do
+  you miss notes that say the thing in other words? Are the defaults —
+  Daily, Studies, projects, Reference, Career, Archive on — right? The
+  first real question (2026-10-21, a throwaway vault) took four searches
+  and one whole note, and cited both lines it used.
+- **The talk feature's live check "the question settled, its row gone"**
+  failed once (2026-10-21) and passed the next run: watch it.
 - **A live check that failed once** (2026-10-18, then passed four runs):
   the "when?" box pushing the next line down (11j in `tests/page/run.py`).
 

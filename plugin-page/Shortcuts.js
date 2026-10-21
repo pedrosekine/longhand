@@ -140,6 +140,7 @@ var actions = [
   { id: "settingsForget", group: "settings", places: ["settings"], does: "Remove the picked calendar", keys: ["Ctrl+Shift+Backspace"] },
   { id: "settingsSound", group: "settings", places: ["settings"], does: "The tick's sound: on or off", keys: ["Ctrl+Shift+S"] },
   { id: "settingsNotebook", group: "settings", places: ["settings"], does: "What the agent knows: its notes, to correct or forget", keys: ["Ctrl+K"] },
+  { id: "settingsSearch", group: "settings", places: ["settings"], does: "What the agent may search: each folder of the vault, on or off", keys: ["Ctrl+F"] },
   { id: "settingsAutonomy", group: "settings", places: ["settings"], does: "What the agent may do: each kind of action, ask me · do it and tell me · never", keys: ["Ctrl+M"] },
   { id: "notebookCorrect", group: "settings", places: ["notebook"], does: "Correct the picked note in your words (Enter too)", keys: ["Ctrl+E"] },
   { id: "notebookForget", group: "settings", places: ["notebook"], does: "Forget the picked note, or take a correction back", keys: ["Ctrl+Shift+Backspace"] },

@@ -349,6 +349,33 @@ BorderSurface {
             }
           }
         }
+        Row {
+          spacing: page.sp(16)
+          Text {
+            textFormat: Text.PlainText
+            text: page.saySearchFolders()
+            color: page.dim
+            font.family: page.fontFamily
+            font.styleName: page.fontStyle
+            font.pixelSize: page.fs(Style.font.bodySmall)
+          }
+          Text {
+            textFormat: Text.PlainText
+            text: "what it may search"
+            color: searchArea.containsMouse ? page.accent : page.faint
+            font.family: page.fontFamily
+            font.styleName: page.fontStyle
+            font.pixelSize: page.fs(Style.font.bodySmall)
+            MouseArea {
+              id: searchArea
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: page.openSearchFolders()
+              PanelToolTip { visible: parent.containsMouse; text: page.tip("what it may search", "settingsSearch") }
+            }
+          }
+        }
         Text {
           visible: !!page.agentChecks && page.agentChecks.latest_review !== ""
           textFormat: Text.PlainText
@@ -445,7 +472,7 @@ BorderSurface {
           : "Enter adds a calendar · ↑↓ pick one · " + page.keyName("settingsShare") + " what the agent sees · "
           + page.keyName("settingsFetch") + " fetches it · " + page.keyName("settingsRename") + " renames · "
           + page.keyName("settingsForget") + " removes it · " + page.keyName("settingsSound") + " tick sound · "
-          + page.keyName("settingsNotebook") + " what the agent knows · " + page.keyName("settingsAutonomy") + " what it may do · Esc back"
+          + page.keyName("settingsNotebook") + " what the agent knows · " + page.keyName("settingsAutonomy") + " what it may do · " + page.keyName("settingsSearch") + " what it may search · Esc back"
         color: page.faint
         font.family: page.fontFamily
         font.styleName: page.fontStyle

@@ -1384,6 +1384,7 @@ Item {
       root.runTimetable([])
       root.loadNotebook()
       root.loadAutonomy()
+      root.loadSearchFolders()
       if (!agentChecksProc.running) {
         agentChecksProc.command = [svc.runner, "eval", "status", "--json"]
         agentChecksProc.running = true
@@ -1419,6 +1420,7 @@ Item {
     if (Sc.hit(event, "settingsSound")) { root.toggleTickSound(); return true }
     if (Sc.hit(event, "settingsNotebook")) { root.openNotebook(); return true }
     if (Sc.hit(event, "settingsAutonomy")) { root.openAutonomy(); return true }
+    if (Sc.hit(event, "settingsSearch")) { root.openSearchFolders(); return true }
     return false
   }
 
@@ -1523,6 +1525,109 @@ Item {
       })
     }
     return out
+  }
+
+  // What the agent may search (Settings, Ctrl+F; docs/agent.md, "The day
+  // conversation"): each folder of the vault, on or off, the student's to
+  // set in settings.json (`searchFolders`). Private notes and blocks,
+  // `_Secrets`, other types and documents of identity, money, health,
+  // contracts or secrets are never searched, whatever is switched on.
+  property var searchData: null         // `longhand-agent search --folders`
+  property int searchFocus: 0
+
+  function loadSearchFolders() {
+    if (searchFoldersProc.running || !svc.configured) return
+    searchFoldersProc.command = [svc.runner, "search", "--folders"]
+    searchFoldersProc.running = true
+  }
+
+  function openSearchFolders() {
+    root.settingsView = "search"
+    root.used("search-folders")
+    root.loadSearchFolders()
+    Qt.callLater(searchSheet.searchKeysRef.forceActiveFocus)
+  }
+
+  function saySearchFolders() {
+    var d = root.searchData
+    if (!d) return ""
+    var on = d.folders.filter(function (f) { return f.on })
+    return "It may search " + on.length + " of " + d.folders.length + " folders."
+  }
+
+  function toggleSearchFolder(i) {
+    var f = root.searchData ? root.searchData.folders[i] : null
+    if (!f) return
+    var cur = root.readSettings()
+    var s = {}
+    var was = cur.searchFolders || {}
+    for (var k in was) s[k] = was[k]
+    s[f.folder] = !f.on
+    cur.searchFolders = s
+    root.settingsData = cur
+    settingsFile.setText(JSON.stringify(cur, null, 2) + "\n")
+    root.used("search-folders", f.folder + "=" + (!f.on ? "on" : "off"))
+    var d = JSON.parse(JSON.stringify(root.searchData))
+    d.folders[i].on = !f.on
+    root.searchData = d
+    Qt.callLater(root.loadSearchFolders)
+  }
+
+  function searchFoldersKey(event) {
+    if (root.anywhereKey(event)) return true
+    var seq = Sc.fromEvent(event)
+    var n = root.searchData ? root.searchData.folders.length : 0
+    if (seq === "Esc") { root.closeNotebook(); return true }
+    if (seq === "Up") { root.searchFocus = Math.max(0, root.searchFocus - 1); return true }
+    if (seq === "Down") { root.searchFocus = Math.max(0, Math.min(n - 1, root.searchFocus + 1)); return true }
+    if (seq === "Space" || seq === "Enter") { root.toggleSearchFolder(root.searchFocus); return true }
+    return false
+  }
+
+  // A reply's citations — `path` line N, or p. N — made links: a daily
+  // note opens at that line, any other file in its own application.
+  function linkCitations(text) {
+    return String(text || "").replace(/`([^`\n]+\.(?:md|txt|pdf))`(?:,?\s*(line|p\.)\s*(\d+))?/g, function (m, path, kind, n) {
+      var label = path.replace(/^.*\//, "").replace(/\.md$/, "") + (n ? (kind === "line" ? " · line " : " · p. ") + n : "")
+      return "[" + label + "](cite:" + encodeURIComponent(path) + (n ? "#" + n : "") + ")"
+    })
+  }
+
+  property int pendingLine: -1
+  function openCitation(link) {
+    var m = /^cite:([^#]+)(?:#(\d+))?$/.exec(String(link))
+    if (!m) return
+    var path = decodeURIComponent(m[1])
+    var line = m[2] ? parseInt(m[2]) : -1
+    var daily = svc.config && svc.config.daily ? svc.config.daily.dir : ""
+    root.used("citation")
+    if (daily !== "" && path.indexOf(daily + "/") === 0 && /\.md$/.test(path) && path.slice(daily.length + 1).indexOf("/") < 0) {
+      var stem = path.slice(daily.length + 1).replace(/\.md$/, "")
+      root.pendingLine = line
+      if (stem === svc.noteDate && svc.ready) root.landOnLine()
+      else root.openNote(stem)
+      return
+    }
+    Qt.openUrlExternally("file://" + svc.config.vault + "/" + path)
+  }
+
+  function landOnLine() {
+    if (root.pendingLine < 0 || !svc.ready) return
+    var i = Math.min(root.pendingLine - 1, editor.rows.length - 1)
+    root.pendingLine = -1
+    var r = editor.rows[Math.max(0, i)]
+    if (r) editor.setCursor(r.start, true)
+  }
+
+  // Under an answer of the day's: what it searched for and read.
+  function sayFetched(t) {
+    if (!t) return ""
+    var bits = []
+    ;(t.searched || []).forEach(function (s) { bits.push("searched “" + s.words + "”" + (s.hits && s.hits.length ? "" : " (nothing)")) })
+    ;(t.files || []).forEach(function (f) { bits.push("read " + f.path.replace(/^.*\//, "")) })
+    var docs = root.sayReads(t)
+    if (docs !== "") bits.push(docs)
+    return bits.join(" · ")
   }
 
   function sayAutonomy() {
@@ -3662,6 +3767,7 @@ Item {
     root.landOnGoto()
     root.landOnTask()
     root.landOnSection()
+    root.landOnLine()
     root.doPendingWrite()
     root.writeClass()
   }
@@ -4506,6 +4612,10 @@ Item {
   }
 
   Process {
+    id: searchFoldersProc
+    stdout: StdioCollector { onStreamFinished: { try { root.searchData = JSON.parse(text) } catch (e) {} } }
+  }
+  Process {
     id: autonomyProc
     stdout: StdioCollector { onStreamFinished: { try { root.autonomyData = JSON.parse(text) } catch (e) {} } }
   }
@@ -4811,6 +4921,9 @@ Item {
 
     // What the agent may do: Settings' third view. (AutonomySheet.qml)
     AutonomySheet { id: autonomySheet; page: root }
+
+    // What the agent may search: Settings' fourth view. (SearchSheet.qml)
+    SearchSheet { id: searchSheet; page: root }
 
     // The keys sheet (Ctrl+/, or "keys" at the sidebar's foot): every key the page
     // answers to, under where it works, each one movable. A list, so it

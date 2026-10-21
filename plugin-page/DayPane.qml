@@ -118,8 +118,11 @@ BorderSurface {
             width: parent.width
             textFormat: modelData.role === "agent" ? Text.MarkdownText : Text.PlainText
             wrapMode: Text.WordWrap
-            text: modelData.error ? "could not answer: " + page.sayPlanError(modelData.error) : modelData.text
+            text: modelData.error ? "could not answer: " + page.sayPlanError(modelData.error)
+              : modelData.role === "agent" ? page.linkCitations(modelData.text) : modelData.text
             color: modelData.error ? page.urgent : modelData.role === "agent" ? page.foreground : page.dim
+            linkColor: page.accent
+            onLinkActivated: function (link) { page.openCitation(link) }
             font.family: page.fontFamily
             font.styleName: page.fontStyle
             font.pixelSize: page.fs(Style.font.title)
@@ -129,7 +132,7 @@ BorderSurface {
             width: parent.width
             textFormat: Text.PlainText
             wrapMode: Text.WordWrap
-            text: modelData.role === "agent" ? page.sayReads(modelData) : ""
+            text: modelData.role === "agent" ? page.sayFetched(modelData) : ""
             color: page.faint
             font.family: page.fontFamily
             font.styleName: page.fontStyle
