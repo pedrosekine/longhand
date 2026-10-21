@@ -217,7 +217,7 @@ Item {
   // In the window the sheet is centred in the room beside the sidebar; an
   // open margin moves it left only as far as it has to, so opening one
   // where there is room does not shift the text.
-  readonly property int sheetRoom: content.width - root.sideSpace - (root.marginOpen ? root.marginWidth + root.marginGap : 0)
+  readonly property int sheetRoom: content.width - root.sideSpace - (root.marginOpen || root.dayBesideNote ? root.marginWidth + root.marginGap : 0)
   readonly property int windowSheetWidth: Math.max(0, Math.min(root.sheetFor, root.sheetRoom))
   readonly property int windowSheetX: root.sideSpace + Math.max(0, Math.min(
     Math.round((content.width - root.sideSpace - root.windowSheetWidth) / 2), root.sheetRoom - root.windowSheetWidth))
@@ -238,7 +238,7 @@ Item {
   // The margin beside the dashboard, while a proposal is talked about: the
   // dashboard gives up the room, since a list has more width than it needs.
   readonly property int talkWidth: Math.max(0, Math.min(root.sp(360), Math.round(root.wideWidth * 0.42)))
-  readonly property int dashWidth: root.wideWidth - (root.talkOpen ? root.talkWidth + root.marginGap : 0)
+  readonly property int dashWidth: root.wideWidth - (root.talkOpen || root.dayBesideDash ? root.talkWidth + root.marginGap : 0)
 
   readonly property string dateLabel: svc.noteDate !== "" && svc.configured
     ? Days.longLabel(svc.noteDate, svc.dailyFormat()) : ""
@@ -358,6 +358,106 @@ Item {
   // pills carry its tint. docs/agent.md, slice 2.
   property var proposals: []
   property var agentDates: ({})
+
+  // The day conversation (docs/agent.md, "The day conversation",
+  // 2026-10-21): the student talks to the day, not to a line, in the right
+  // pane — from anywhere (Ctrl+J), from a block pointing at it
+  // (Ctrl+Shift+Enter), or by the seal. The day is the pane's home: a
+  // block's or a task's conversation is a room stepped into on purpose, and
+  // leaving it comes back here. The open note's day is shown (a past day's,
+  // read-only); only today's is talked in.
+  property bool dayOpen: false
+  property string dayBlock: ""          // a block pointed at, going with the next message
+  property string dayBlockText: ""
+  property var dayPending: null         // { text, block }: sent, its turn not written yet
+  readonly property var dayState: agent.state && agent.state.day ? agent.state.day : null
+  readonly property var dayTurns: {
+    var t = root.dayState && root.dayState.turns ? root.dayState.turns.slice() : []
+    if (root.dayPending && svc.isToday) t.push({ role: "student", text: root.dayPending.text, block: root.dayPending.block })
+    return t
+  }
+  // The morning's observation is the conversation's opening line, waiting.
+  readonly property var dayOpening: {
+    var obs = agent.state && agent.state.observations ? agent.state.observations : []
+    return obs.filter(function (o) { return o && o.text && o.trigger === "open" }).map(function (o) { return o.text })
+  }
+  readonly property bool dayThinking: root.runningHash === "day"
+    || root.queued.some(function (q) { return q.hash === "day" })
+  readonly property bool dayCanSend: svc.isToday && root.agentDay
+  readonly property bool dayShown: root.dayOpen && !root.marginOpen && !root.talkOpen && !root.keysOpen && !root.settingsOpen
+  readonly property bool dayBesideNote: root.dayShown && !root.dashOpen
+  readonly property bool dayBesideDash: root.dayShown && root.dashOpen
+
+  function toggleDay(block) {
+    if (root.dayShown && block === "") { root.closeDay(); return }
+    root.openDay(block)
+  }
+
+  function openDay(block) {
+    if (root.keysOpen) root.toggleKeys()
+    if (root.settingsOpen) root.toggleSettings()
+    root.marginOpen = false
+    root.marginFocus = -1
+    root.talkThread = ""
+    root.dayOpen = true
+    if (block) {
+      var b = root.blockBounds(block)
+      root.dayBlock = b ? block : ""
+      root.dayBlockText = b ? b.text.split("\n")[0].replace(/^\s*([-*+] (\[.\] )?|#+ )/, "").slice(0, 80) : ""
+    }
+    root.used("day", block ? "block" : "")
+    Qt.callLater(function () { dayPane.dayFieldRef.forceActiveFocus() })
+  }
+
+  // A block's first words, for the "↳" a message carries; "a block" when
+  // the note no longer has it as it was.
+  function blockHead(hash) {
+    var b = root.blockBounds(hash)
+    return b ? b.text.split("\n")[0].replace(/^\s*([-*+] (\[.\] )?|#+ )/, "").slice(0, 80) : "a block"
+  }
+
+  function closeDay() {
+    root.dayOpen = false
+    root.dayBlock = ""
+    root.dayBlockText = ""
+    if (root.dashOpen) dash.dashKeysRef.forceActiveFocus()
+    else editor.focusNote()
+  }
+
+  function sendDay(text) {
+    var msg = String(text || "").trim()
+    if (msg === "" || !root.dayCanSend) return false
+    var cmd = [svc.runner, "day", "--message", msg]
+    if (root.dayBlock !== "") cmd = cmd.concat(["--block", root.dayBlock])
+    root.dayPending = { text: msg, block: root.dayBlock }
+    root.dayBlock = ""
+    root.dayBlockText = ""
+    root.flush()
+    root.enqueue(cmd, "day")
+    root.used("day", "send")
+    return true
+  }
+
+  // The runner has written the turn the page was holding.
+  function settleDay() {
+    var p = root.dayPending
+    if (!p || !root.dayState) return
+    var turns = root.dayState.turns || []
+    for (var i = turns.length - 1; i >= 0; i--)
+      if (turns[i].role === "student" && turns[i].text === p.text) { root.dayPending = null; return }
+  }
+
+  function dayKey(event) {
+    if (root.anywhereKey(event)) return true
+    if (Sc.hit(event, "marginBack")) { root.closeDay(); return true }
+    if (Sc.hit(event, "chatSend")) { if (root.sendDay(dayPane.dayFieldRef.text)) dayPane.dayFieldRef.text = ""; return true }
+    // Backspace in an empty box lets go of the block pointed at.
+    if (event.key === Qt.Key_Backspace && dayPane.dayFieldRef.text === "" && root.dayBlock !== "") {
+      root.dayBlock = ""; root.dayBlockText = ""; return true
+    }
+    return false
+  }
+
   // Talking with the agent about a task, or with the planner about one of
   // its proposals (2026-10-20): the margin opens beside the dashboard. Each
   // box has one conversation — what was said in the margin of its note and
@@ -707,6 +807,7 @@ Item {
     if (Sc.hit(event, "zoomReset")) { root.setZoom(1); return true }
     if (Sc.hit(event, "keys")) { root.toggleKeys(); return true }
     if (Sc.hit(event, "settings")) { root.toggleSettings(); return true }
+    if (Sc.hit(event, "day")) { root.toggleDay(""); return true }
     return false
   }
 
@@ -1175,6 +1276,7 @@ Item {
     if (Sc.hit(event, "private")) { root.togglePrivate(); return true }
     if (Sc.hit(event, "pin")) { root.togglePin(); return true }
     if (Sc.hit(event, "ask")) { root.sendCurrent(); return true }
+    if (Sc.hit(event, "dayHere")) { root.openDay(root.currentHash); return true }
     // Selecting to the same edges is the editor's (selectToBlockEdge).
     if (Sc.hit(event, "blockStart")) { root.walkBlocks(-1); return true }
     if (Sc.hit(event, "blockEnd")) { root.walkBlocks(1); return true }
@@ -1213,10 +1315,13 @@ Item {
   }
 
   function backToNote() {
+    var fromMargin = root.marginOpen
     root.marginFocus = -1
     root.marginOpen = false
     root.dashOpen = false
-    editor.focusNote()
+    // The day is the pane's home: out of a block's room, back to the day.
+    if (fromMargin && root.dayOpen) Qt.callLater(function () { dayPane.dayFieldRef.forceActiveFocus() })
+    else editor.focusNote()
   }
 
   function moveMarginFocus(d) {
@@ -3838,6 +3943,13 @@ Item {
   // stats can say whether the mark is found.
   function sealClicked() {
     root.used("seal")
+    root.toggleDay("")
+  }
+
+  // The date, at the left, is the door to the left sidebar (2026-10-21):
+  // a click lands on the side where the thing appears.
+  function dateClicked() {
+    root.used("date")
     root.toggleSidebar()
   }
 
@@ -4127,7 +4239,7 @@ Item {
     id: agent
     config: svc.config
     date: svc.noteDate
-    onStateChanged: { root.scheduleRepaint(); root.checkAccept(); root.settleChat() }
+    onStateChanged: { root.scheduleRepaint(); root.checkAccept(); root.settleChat(); root.settleDay() }
   }
 
   Process {
@@ -4736,21 +4848,19 @@ Item {
           anchors.right: parent.right
           height: dateText.implicitHeight
 
-          // The seal: Longhand's own mark, and the door to the sidebar — the
-          // calendar, the projects, the keys and the settings (2026-10-17).
-          // It hangs in the margin so the date stays in line with the
-          // writing; quiet until pointed at, lit while the sidebar is open.
-          // It identifies Longhand and opens the sidebar, nothing else: never
-          // a sign that the agent answered or that something is due
-          // (docs/brand/README.md).
+          // The seal: Longhand's own mark, at the header's centre, and the
+          // door to the day conversation in the right pane (2026-10-21; it
+          // was the sidebar's before, from the left). Quiet until pointed
+          // at, lit while the conversation is open. It identifies Longhand
+          // and opens the conversation, nothing else: never a sign that the
+          // agent answered or that something waits (docs/brand/README.md).
           LogoMark {
             id: seal
-            anchors.right: dateText.left
-            anchors.rightMargin: root.sp(12)
+            anchors.horizontalCenter: parent.horizontalCenter
             anchors.verticalCenter: dateText.verticalCenter
             width: Math.round(dateText.implicitHeight * 1.05)
             height: width
-            color: sealArea.containsMouse ? root.accent : root.sidebarOpen ? root.foreground : root.faint
+            color: sealArea.containsMouse ? root.accent : root.dayShown ? root.foreground : root.faint
             Behavior on color { ColorAnimation { duration: 240 } }
             MouseArea {
               id: sealArea
@@ -4761,7 +4871,7 @@ Item {
               onClicked: root.sealClicked()
               PanelToolTip {
                 visible: parent.containsMouse
-                text: root.tip(root.sidebarOpen ? "Close the sidebar" : "The sidebar: calendar, projects, keys and settings", "sidebar")
+                text: root.tip(root.dayShown ? "Close the day's conversation" : "The day's conversation: talk to the day", "day")
               }
             }
           }
@@ -4773,10 +4883,23 @@ Item {
             anchors.left: parent.left
             textFormat: Text.PlainText
             text: root.dateLabel
-            color: svc.isToday ? root.dim : root.foreground
+            color: dateArea.containsMouse ? root.accent : root.sidebarOpen ? root.foreground : svc.isToday ? root.dim : root.foreground
             font.family: root.fontFamily
             font.styleName: root.fontStyle
             font.pixelSize: root.fs(Style.font.bodySmall)
+            // The door to the sidebar: the calendar, the projects, keys and settings.
+            MouseArea {
+              id: dateArea
+              anchors.fill: parent
+              enabled: root.status === ""
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.dateClicked()
+              PanelToolTip {
+                visible: parent.containsMouse
+                text: root.tip(root.sidebarOpen ? "Close the sidebar" : "The sidebar: calendar, projects, keys and settings", "sidebar")
+              }
+            }
           }
 
           // On another day: the way back to today.
@@ -4812,7 +4935,7 @@ Item {
             id: statusText
             visible: root.status !== ""
             anchors.left: parent.left
-            anchors.right: headerRight.left
+            anchors.right: seal.left
             anchors.rightMargin: root.sp(16)
             anchors.verticalCenter: dateText.verticalCenter
             textFormat: Text.PlainText
@@ -5298,5 +5421,8 @@ Item {
     // note. Shows whatever it has to say about the block under the cursor,
     // and the field to talk back. (Margin.qml)
     Margin { id: margin; page: root }
+
+    // The day conversation: the right pane's home. (DayPane.qml)
+    DayPane { id: dayPane; page: root }
   }
 }

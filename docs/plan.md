@@ -347,6 +347,21 @@ section, word for word, and to the diary's decisions log.
 
 ### Open, in order
 
+0. **The day conversation** (grilled 2026-10-20/21; `docs/agent.md`, "The
+   day conversation"): an agent to talk to about the day — the tasks, the
+   context, what was written, searchable — in the right pane from anywhere
+   (Ctrl+J; Ctrl+Shift+Enter with the block referenced; the seal, moved to
+   the header's centre), one conversation a day with a brief carried to the
+   next, cross-visible with the block and task conversations, searching
+   every folder switched on in Settings and never what is private,
+   proposing as the planner does. Slices: (1) the conversation in the pane
+   — *built 2026-10-21*: `longhand-agent day`, its own agent
+   (`longhand-day.md`), one session a day in the day's state; `DayPane.qml`;
+   Ctrl+J, Ctrl+Shift+Enter, the seal at the centre, the date opening the
+   sidebar; the morning line; past days read-only; a private day talks
+   blind; cross-visibility both ways; `tests/test_day.py` and live checks;
+   (2) search; (3) `@` references and proposal cards; (4) the day's brief;
+   (5) its eval cases.
 1. **The agent that does things, while the person drives** — designed
    2026-10-17 in a grilling; the whole design is `docs/agent.md`. Checkboxes
    are its environment (structured work, not authored words); who made each
@@ -523,6 +538,11 @@ from 2026-09/10 and still stand.
   too much — and does a long one want trimming? The conversation
   instructions are in code (`TALK_MESSAGE`), not in a prompt file, so they
   have no eval cases yet: add `talk` cases once there are payloads.
+- **The day's conversation (slice 1, 2026-10-21):** is it opened (the
+  `day` and `seal` counts in the usage log), and for what? Is the pane's
+  width enough beside the note, and is the morning line welcome or noise?
+  Does a whole day in one session stay fast, and are its answers grounded?
+  Its prompt has no eval cases yet (slice 5: from real conversations).
 - **A live check that failed once** (2026-10-18, then passed four runs):
   the "when?" box pushing the next line down (11j in `tests/page/run.py`).
 

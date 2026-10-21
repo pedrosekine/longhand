@@ -99,6 +99,8 @@ var actions = [
   { id: "find", group: "move", places: ["note", "search"], does: "Find in the note (in find: select the words)", keys: ["Ctrl+F"] },
 
   { id: "ask", group: "agent", places: ["note"], does: "Ask about this block, or open its conversation", keys: ["Ctrl+Enter"] },
+  { id: "day", group: "agent", places: ["any"], does: "The day's conversation: talk to the day, not a line (again: close it)", keys: ["Ctrl+J"] },
+  { id: "dayHere", group: "agent", places: ["note"], does: "The day's conversation, pointing at this block", keys: ["Ctrl+Shift+Enter"] },
   { id: "margin", group: "agent", places: ["note"], does: "Open the margin for this block", keys: ["Alt+Right"] },
 
   { id: "mentionUp", group: "mention", places: ["mention"], does: "Previous project", keys: ["Up"] },

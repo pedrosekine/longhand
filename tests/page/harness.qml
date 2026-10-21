@@ -116,6 +116,14 @@ ShellRoot {
     // Panels
     function sidebar(): void { page.toggleSidebar() }
     function seal(): void { page.sealClicked() }
+    function dateClick(): void { page.dateClicked() }
+    function dive(): void { page.diveIn(true) }
+    function back(): void { page.backToNote() }
+    function dayShown(): bool { return page.dayShown }
+    function daySend(text: string): void { page.sendDay(text) }
+    function dayKey(key: int, mods: int): bool { return page.dayKey({ key: key, text: "", modifiers: mods }) }
+    function dayTurns(): string { return JSON.stringify(page.dayTurns.map(function (t) { return t.role + ": " + t.text })) }
+    function dayBlockText(): string { return page.dayBlockText }
     function sidebarOpen(): bool { return page.sidebarOpen }
     function surfaces(): string { return JSON.stringify(page.surfaces()) }
     function marginOpen(on: bool): void { page.marginOpen = on }

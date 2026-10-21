@@ -81,6 +81,17 @@ row summons the agent to think the task through, in the same margin. Each
 task keeps one conversation — what was said in the margin of its note and
 with the planner, shown together — shared by the boxes under it.
 
+## The day's conversation
+
+{key:day} opens the day's conversation in the right pane, from anywhere in
+the page — talk to the day, not one line: the tasks, the courses, what was
+written. In the note, {key:dayHere} opens it pointing at the block the
+cursor is in. The seal at the centre of the header opens and closes it; the
+date at the left opens the sidebar. One conversation a day: the morning's
+observation waits at the top, it sees today's other conversations, and a
+past day's note shows that day's conversation, read-only — talking happens
+in today's. A private day still has it, seeing nothing of the note.
+
 ## The agent
 
 The agent answers in the margin, beside the note. Nothing interrupts the

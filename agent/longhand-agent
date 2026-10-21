@@ -27,6 +27,7 @@
     longhand-agent documents [--tag T]                          # filed course documents (projects/<tag>/docs/), JSON
     longhand-agent notebook [forget|correct|take-back] [--file F --text T [--to N] | --n K]
                                                                 # what the agent knows, and the student's corrections
+    longhand-agent day --message M [--block HASH]               # the day's conversation: talk to the day, not a line
     longhand-agent install [--force]                            # opencode agent defs (checked by their evals) + dirs
 
 One pass, then exit. Nothing is resident. The model gets no tools: everything
@@ -480,6 +481,11 @@ def build_payload(paths: Paths, trigger: str, fired: list[dict], visible: list[d
                       f"\"{manual.NAME}\" (whole, or for a few words) rather than guess."]
 
     parts += knowledge_parts(paths)
+
+    # The day conversation's last turns (cross-visibility, 2026-10-21): what
+    # the student was just talking about with the day, beside this block.
+    if trigger != "day":
+        parts += day_tail(paths)
 
     sessions = timetable_section(cfg, dt.datetime.now()) if cfg else []
     if sessions:
@@ -2265,6 +2271,174 @@ def cmd_thread(cfg: dict, args) -> int:
     return 0
 
 
+# ------------------------------------------------------------ the day
+
+DAY_TAIL = 6          # the day conversation's turns the other conversations see
+
+
+def day_of(state: dict) -> dict:
+    return state.setdefault("day", {"session": "", "turns": []})
+
+
+def day_tail(paths: Paths) -> list[str]:
+    """The day conversation's last turns, for the other conversations
+    (cross-visibility, docs/agent.md "The day conversation")."""
+    turns = (load_state(paths).get("day") or {}).get("turns") or []
+    if not turns:
+        return []
+    out = ["", f"# The day conversation, its last turns (the student talks with Longhand about the day there; read-only)", ""]
+    for t in turns[-DAY_TAIL:]:
+        out.append(f"{'Longhand' if t['role'] == 'agent' else 'student'}: {t['text']}")
+    return out
+
+
+def today_conversations(cfg: dict, paths: Paths, since: str = "") -> list[str]:
+    """Today's other conversations — about blocks in the note's margin, and
+    with the planner about tasks — for the day conversation to see in full;
+    only what came after `since` when it is given."""
+    out = []
+    state = load_state(paths)
+    for rec in state.get("blocks", {}).values():
+        lines = []
+        if rec.get("reply") and str(rec.get("at", "")) > since:
+            lines.append(f"Longhand: {rec['reply']}")
+        for t in rec.get("chat") or []:
+            if str(t.get("at", "")) > since:
+                lines.append(f"{'Longhand' if t['role'] == 'agent' else 'student'}: {t['text']}")
+        if lines:
+            out += [f"## About the block “{(rec.get('head') or '').strip()[:120]}”", ""] + lines + [""]
+    today = paths.stamp
+    ledger = planlib.load_ledger(PROPOSALS)
+    day_iso = dt.date.today().isoformat()
+    for th in (ledger.get("threads") or {}).values():
+        turns = [t for t in th.get("turns") or [] if str(t.get("at", ""))[:10] == day_iso and str(t.get("at", "")) > since]
+        if turns:
+            out += [f"## With the planner, about the task “{th.get('title', '')[:120]}”", ""]
+            out += [f"{'planner' if t['role'] == 'agent' else 'student'}: {t['text']}" for t in turns] + [""]
+    return out
+
+
+def block_reference(paths: Paths, visible: list[dict], hash_: str) -> list[str]:
+    """A block the student points the day conversation at: its words, and
+    its own conversation if it has one."""
+    b = next((x for x in visible if x["hash"] == hash_), None)
+    if b is None:
+        return []
+    out = ["", "# The block the student points at", "", "\n".join("> " + l for l in b["text"].split("\n"))]
+    rec = load_state(paths).get("blocks", {}).get(hash_) or {}
+    turns = ([f"Longhand: {rec['reply']}"] if rec.get("reply") else []) + \
+        [f"{'Longhand' if t['role'] == 'agent' else 'student'}: {t['text']}" for t in rec.get("chat") or []]
+    if turns:
+        out += ["", "Its conversation in the margin:", ""] + turns
+    return out
+
+
+def day_payload(cfg: dict, paths: Paths, visible: list[dict], private: bool, message: str, block: str) -> str:
+    """The day conversation's first message of the day: what the margin
+    sees (the note, the notebook, the calendar, deadlines, intentions and
+    outcomes), today's other conversations in full, and what the student
+    says. A private day: nothing of the note, and the agent is told so."""
+    base = build_payload(paths, "day", [], visible, cfg)
+    if private:
+        base = base.replace("(empty)", "(today's note is marked private: you see nothing of it — say so if it matters)", 1)
+    parts = [base.rstrip()]
+    other = today_conversations(cfg, paths)
+    if other:
+        parts += ["", "# Today's other conversations (in the note's margin, and with the planner)", ""] + other
+    parts += block_reference(paths, visible, block) if block else []
+    parts += ["", "# The student says", "", message]
+    return "\n".join(parts) + "\n"
+
+
+def day_followup(cfg: dict, paths: Paths, visible: list[dict], last: str, message: str, block: str) -> str:
+    """A later message: the session already holds the day's context; only
+    what is new travels — the note as it reads now when it changed, the
+    other conversations since the last answer, a block pointed at."""
+    parts = [language_line(cfg, message), ""]
+    other = today_conversations(cfg, paths, since=last)
+    if other:
+        parts += ["# Since your last answer, in today's other conversations", ""] + other
+    parts += block_reference(paths, visible, block) if block else []
+    parts += ["", "# The student says", "", message, "", "Answer with the same JSON contract."]
+    return "\n".join(parts) + "\n"
+
+
+def cmd_day(cfg: dict, args) -> int:
+    """The day conversation (docs/agent.md, "The day conversation",
+    2026-10-21): the student talks to the day, not to a line. One model
+    session a day, kept in the day's state (`day`); the first message
+    carries the day's context, the later ones only what is new. A private
+    day still talks — it sees nothing of the note. Only today's is talked
+    in; a past day's is read in the page."""
+    message = (args.message or "").strip()
+    if not message:
+        raise Fail("--message is empty")
+    today = dt.date.today()
+    paths = Paths(cfg, today)
+    try:
+        blks = blocklib.split(paths.note.read_text())
+    except FileNotFoundError:
+        blks = []
+    private = note_is_private(blks)
+    visible = [] if private else visible_blocks(blks)
+    state = load_state(paths)
+    day = day_of(state)
+    at = dt.datetime.now().isoformat(timespec="seconds")
+    paths.payloads.mkdir(parents=True, exist_ok=True)
+    stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+    payload_file = paths.payloads / f"{stamp}-day.md"
+    day_cfg = dict(cfg, agent=cfg.get("dayAgent", "longhand-day"))
+    if day.get("session"):
+        last = next((t["at"] for t in reversed(day["turns"]) if t["role"] == "agent"), "")
+        payload = day_followup(cfg, paths, visible, last, message, args.block)
+        payload_file.write_text(payload)                 # logged before inference
+        result = run_model(day_cfg, paths, "", session=day["session"], message=payload)
+    else:
+        payload = day_payload(cfg, paths, visible, private, message, args.block)
+        payload_file.write_text(payload)
+        result = run_model(day_cfg, paths, payload, message="Context follows on stdin.")
+    payload_file.with_suffix(".events.jsonl").write_text(result["events"])
+    reply = parse_reply(result["text"]) if not result["error"] else \
+        {"reply": "", "proposals": [], "suggestions": [], "knowledge": [], "read": []}
+    if not result["error"]:
+        tag = project_of_block(visible, next((b for b in visible if b["hash"] == args.block), None)) \
+            if args.block and any(b["hash"] == args.block for b in visible) else ""
+        result, reply = follow_reads(cfg, paths, tag, result, reply, payload_file)
+
+    state = load_state(paths)                            # the page or a margin run may have written meanwhile
+    day = day_of(state)
+    day["session"] = result["session"] or day.get("session", "")
+    turn = {"role": "student", "text": message, "at": at}
+    if args.block:
+        turn["block"] = args.block
+    day["turns"].append(turn)
+    if result["error"]:
+        day["turns"].append({"role": "agent", "text": "", "error": result["error"], "at": at})
+    else:
+        day["turns"].append({"role": "agent", "text": reply["reply"], "at": dt.datetime.now().isoformat(timespec="seconds"),
+                             "cost": result["cost"], "prompt": result.get("prompt", ""), "model": result.get("model", ""),
+                             "payload": str(payload_file), "documents": result.get("reads", []), "read": False})
+    written = []
+    write_knowledge(paths, reply.get("knowledge") or [], written)
+    state.setdefault("runs", []).append({"at": at, "trigger": "day", "block": args.block or "", "session": result["session"],
+                                         "cost": result["cost"], "tokens": result["tokens"], "payload": str(payload_file),
+                                         "prompt": result.get("prompt", ""), "model": result.get("model", ""),
+                                         "knowledge": written, "error": result["error"]})
+    write_atomic(paths, paths.state, json.dumps(state, indent=2, ensure_ascii=False) + "\n")
+    tk = result["tokens"]
+    paths.ledger.parent.mkdir(parents=True, exist_ok=True)
+    if not paths.ledger.exists():
+        paths.ledger.write_text("at\tdate\ttrigger\tblock\tcost\tinput\toutput\treasoning\tsession\tprompt\tmodel\n")
+    with open(paths.ledger, "a") as f:
+        f.write(f"{at}\t{paths.stamp}\tday\t{args.block or ''}\t{result['cost']:.6f}\t{tk.get('input', 0)}\t{tk.get('output', 0)}"
+                f"\t{tk.get('reasoning', 0)}\t{result['session']}\t{result.get('prompt', '')}\t{result.get('model', '')}\n")
+    if result["error"]:
+        print(f"error: {result['error']}", file=sys.stderr)
+        return 1
+    print(f"day: {'reply' if reply['reply'] else 'silent'} · ${result['cost']:.4f} · {tk.get('total', 0)} tokens")
+    return 0
+
+
 def talk_payload(cfg: dict, item: dict, ledger: dict, key: str, tasks: list[dict], fresh: str, message: str) -> str:
     """The plan the proposal came from (its logged payload; today's inputs
     when that is gone), then the conversation about it."""
@@ -2292,6 +2466,7 @@ def talk_payload(cfg: dict, item: dict, ledger: dict, key: str, tasks: list[dict
     margin = margin_talk(cfg, task)
     if margin:
         parts += ["", "# What was said about this box in the margin of its note (read-only)", ""] + margin
+    parts += day_tail(Paths(cfg, dt.date.today()))
     turns = planlib.thread(ledger, key)["turns"][-planlib.TALK_TURNS:]
     if turns:
         parts += ["", "# Your conversation about this box so far", ""]
@@ -2443,7 +2618,7 @@ def cmd_notebook(cfg: dict, args) -> int:
 # ------------------------------------------------------------------ evals
 
 REPO_PROMPTS = Path(__file__).resolve().parent / "opencode"
-JOB_AGENT = {"margin": "longhand", "plan": "longhand-plan"}
+JOB_AGENT = {"margin": "longhand", "plan": "longhand-plan", "day": "longhand-day"}
 
 
 def job_model(cfg: dict, job: str, override: str = "") -> tuple[str, str]:
@@ -2711,7 +2886,7 @@ def cmd_install(cfg: dict, args) -> int:
                    "model it runs on. Run `longhand-agent eval run`, or install anyway with --force.")
     # The agent that answers in the margin, and the one that plans; both
     # with every tool denied.
-    for name in ("longhand.md", "longhand-plan.md", "longhand-judge.md"):
+    for name in ("longhand.md", "longhand-plan.md", "longhand-judge.md", "longhand-day.md"):
         (agents / name).write_text((here / "opencode" / name).read_text())
     dst = agents / "longhand.md"
     paths = Paths(cfg, dt.date.today())
@@ -2777,6 +2952,9 @@ def main(argv: list[str]) -> int:
     p.add_argument("--kind", required=True, choices=("suggestion", "observation"))
     p.add_argument("--index", type=int, required=True)
     sub.add_parser("documents").add_argument("--tag", default="")
+    p = sub.add_parser("day")
+    p.add_argument("--message", required=True)
+    p.add_argument("--block", default="", help="a block of today's note the student points at")
     sub.add_parser("autonomy")
     p = sub.add_parser("notebook")
     p.add_argument("how", nargs="?", default="show", choices=("show", "forget", "correct", "take-back"))
@@ -2814,7 +2992,7 @@ def main(argv: list[str]) -> int:
     try:
         cfg = load_config()
         return {"run": cmd_run, "chat": cmd_chat, "ack": cmd_ack, "accept": cmd_accept, "tasks": cmd_tasks, "sections": cmd_sections,
-                "next": cmd_next, "box": cmd_box, "rate": cmd_rate, "eval": cmd_eval, "review": cmd_review, "plan": cmd_plan, "proposals": cmd_proposals, "proposal": cmd_proposal, "talk": cmd_talk, "thread": cmd_thread, "timetable": cmd_timetable, "notebook": cmd_notebook, "documents": cmd_documents, "autonomy": cmd_autonomy, "dismiss": cmd_dismiss, "curriculum": cmd_curriculum,
+                "next": cmd_next, "box": cmd_box, "rate": cmd_rate, "eval": cmd_eval, "review": cmd_review, "plan": cmd_plan, "proposals": cmd_proposals, "proposal": cmd_proposal, "talk": cmd_talk, "thread": cmd_thread, "timetable": cmd_timetable, "notebook": cmd_notebook, "documents": cmd_documents, "day": cmd_day, "autonomy": cmd_autonomy, "dismiss": cmd_dismiss, "curriculum": cmd_curriculum,
                 "context": cmd_context, "state": cmd_state, "install": cmd_install, "stats": cmd_stats,
                 "projects": cmd_projects}[args.cmd](cfg, args)
     except Fail as e:

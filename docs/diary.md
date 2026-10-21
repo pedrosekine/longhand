@@ -1247,3 +1247,13 @@ only the window and the panels around it differ.
   closed deadlines are now checked as well — same words, or the same day
   and a word in common, or most words in common — and travel in the data,
   so the eval refuses what the live run refuses.
+- **2026-10-21 — The day's conversation, slice 1.** Grilled over two days:
+  the student wanted an agent to talk to about the day, not only about one
+  line. It lives in the right pane from anywhere (Ctrl+J), one model session
+  a day kept with the day's state; the first message carries what the
+  margin sees and today's other conversations, later ones only what is
+  new; the margin and the planner see its last turns in turn. The seal moved
+  to the header's centre and became its door; the date took the sidebar,
+  so a click lands on the side where the thing appears. First real answer,
+  in a throwaway vault: email Frauenberger first, the Friday decision not
+  yet in the deadline list — and the follow-up kept the thread.

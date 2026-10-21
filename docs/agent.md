@@ -205,6 +205,67 @@ about, not only to take or leave, as any block is in the note.
   talking — so the review and the evals have more than a silent Del. The
   next plan carries each box's last few turns (`conversations`).
 
+## The day conversation — talking to the day, not to a line
+
+Decided with the student in a grilling on 2026-10-20/21: an agent to talk to
+about the tasks and the context itself — what was written, searchable —
+not only about one block. A conversation attached to **the day**.
+
+**Where it lives.** The right pane, from anywhere in the page: **Ctrl+J**
+everywhere, **Ctrl+Shift+Enter** in the note (the shifted twin of Ctrl+Enter:
+"this, but to the day", opening with the cursor's block referenced). The
+**seal**, moved to the centre of the header, opens and closes it; it never
+carries a badge (the brand rule stands). The **date**, at the left, opens
+the left sidebar — the click lands on the side the thing appears. The day is
+the pane's home: a block's or a task's conversation is a room stepped into
+on purpose (Alt+→ on a block, Enter on a proposal), one key back to the day.
+
+**One per day.** One model session a day; within it nothing is compressed
+(a fresh session seeded with a brief only if a day ever grows very long).
+The next morning a small run writes the day's **brief** into the notebook
+(`days/<date>.md`), correctable and forgettable in Settings → what the agent
+knows; each new day reads the last few. A past day's note shows its own
+conversation, read-only; talking happens in today's, which can search the
+old ones. A day marked private still has its conversation — it sees nothing
+of the note and says so.
+
+**What it knows.** At its first message: today's note, the notebook, the
+calendar, deadlines and tasks (the margin's context). **Cross-visibility:**
+it sees today's block and task conversations in full; they see its last
+~6 turns. **`@`** in its box references a block (a chip); the agent gets
+the block and its conversation. It speaks first only by setting the morning
+observation at the top of the conversation, waiting — no sound, no
+notification.
+
+**What it searches.** It asks; local code searches and logs it, and the
+same conversation runs once more (the documents' tiers): passages first,
+then a whole file on request, two follow-ups at most; it answers with
+clickable file:line links, and "searched / read" under the reply.
+**Settings → what the agent may search:** each vault folder on or off by
+click or key — on by default Daily, Studies, projects, Reference, Career,
+Archive; off Personal, Health, _Attachments; `_Secrets` never listed.
+**Never shared, whatever the switches:** private notes and blocks; any type
+but `.md`, `.txt` and `.pdf` with text; names of identity, money, health,
+contract or secret documents (English and German); what gitleaks flags;
+IBAN- and card-shaped strings masked. The payload log counts what was
+withheld, never what. (Measured 2026-10-21: gitleaks finds nothing but a
+known false positive in the default folders; `Personal` holds 72 money and
+10 identity names, hence off; `.gitignore` is not the rule — course
+documents are ignored by git on purpose.)
+
+**What it does.** Talks, searches, writes its notebook; proposes through the
+same kinds and autonomy as the planner, each proposal a **structured card**
+under its reply — ◇ and the kind in small caps, the facts with a date pill,
+the reason faint, the keys — the same item as its dashboard row. Never
+writes the student's notes. Conversational, short by default, citing lines.
+Its own prompt (`longhand-day.md`), rated helpful or not, with eval cases
+from real conversations and the install gate; the margin's model.
+
+**Slices:** (1) the conversation in the pane — keys, seal and date, the
+morning line, past days, cross-visibility, the private day; (2) search —
+the switches, the never-list, citations; (3) `@` references and the
+proposal cards; (4) the day's brief; (5) the prompt's eval cases.
+
 ## The record, and what it learns
 
 - **The proposal ledger** (in the layer): every proposal and question, what

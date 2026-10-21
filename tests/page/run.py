@@ -84,6 +84,11 @@ if "talk with you about one of your proposals" in sys.argv[-1]:
         c = next(x for x in data["candidates"] if x["key"] == prop["key"])
         day = next(f["date"] for f in data["fortnight"] if f["date"] != prop["date"] and (not c["due"] or f["date"] <= c["due"][:10]))
         reply["revise"] = {"kind": "do-date", "key": prop["key"], "date": day, "why": "the day you asked for"}
+# The day conversation (2026-10-21): the day agent says back what it was told.
+args = sys.argv[1:]
+if "--agent" in args and args[args.index("--agent") + 1] == "longhand-day":
+    said = re.findall(r"# The student says\\n\\n(.*?)(?:\\n\\nAnswer|\\n*$)", payload if payload.strip() else args[-1], re.S)
+    reply = {"reply": "day: " + (said[-1].strip() if said else ""), "knowledge": [], "read": []}
 ev = lambda t, part: print(json.dumps({"type": t, "sessionID": "ses_page", "part": part}))
 ev("text", {"type": "text", "text": "```json\\n" + json.dumps(reply) + "\\n```"})
 ev("step_finish", {"type": "step-finish", "cost": 0.0001, "tokens": {"input": 1, "output": 1, "reasoning": 0, "total": 2}})
@@ -181,7 +186,7 @@ if [ "$1" = projects ]; then
   exit $rc
 fi
 case "$1" in
-  accept|projects|sections|next|tasks|box|timetable|plan|proposals|proposal|talk|thread|rate|notebook|autonomy) exec "{ROOT}/agent/longhand-agent" "$@" ;;
+  accept|projects|sections|next|tasks|box|timetable|plan|proposals|proposal|talk|thread|rate|notebook|autonomy|day) exec "{ROOT}/agent/longhand-agent" "$@" ;;
   run) sleep 2; exit 0 ;;
   chat) sleep 2; exec python3 "{chatstub}" "{self.vault}/agents/longhand/daily" "$@" ;;
 esac
@@ -1182,13 +1187,55 @@ def main() -> int:
         p.pomo("hide", str(late))
         p.call("dash")
 
-        # 12c'. the seal in the header opens and closes the sidebar, and
-        # nothing else (docs/brand/README.md).
+        # 12c'. the day conversation (2026-10-21): the seal, at the header's
+        # centre, opens and closes it; the date opens the sidebar; Ctrl+J
+        # from anywhere; Ctrl+Shift+Enter points at the block; a block's
+        # room returns to the day.
+        if p.call("dashOpen") == "true":
+            p.call("dash")
+        p.call("openDay", TODAY)
+        p.wait(lambda: p.call("header").startswith(dt.date.today().strftime("%A")))
         was = p.call("sidebarOpen")
         p.call("seal")
-        check(p.wait(lambda: p.call("sidebarOpen") != was), "the seal opens or closes the sidebar")
+        check(p.wait(lambda: p.call("dayShown") == "true") and p.call("sidebarOpen") == was,
+              "the seal opens the day's conversation, and nothing else")
         p.call("seal")
+        check(p.wait(lambda: p.call("dayShown") == "false"), "…and closes it")
+        p.call("dateClick")
+        check(p.wait(lambda: p.call("sidebarOpen") != was), "the date opens or closes the sidebar")
+        p.call("dateClick")
         check(p.wait(lambda: p.call("sidebarOpen") == was), "…and again, back as it was")
+        KEY_J, KEY_ENTER = 0x4a, 0x01000004
+        check(p.call("pageKey", KEY_J, CTRL) == "true" and p.wait(lambda: p.call("dayShown") == "true"),
+              "Ctrl+J opens the day's conversation from the note")
+        p.call("daySend", "what comes first today?")
+        check(p.wait(lambda: json.loads(p.call("dayTurns"))[-2:] == ["student: what comes first today?",
+                                                                    "agent: day: what comes first today?"], timeout=12),
+              f"a message to the day is answered, and kept in the day's state ({p.call('dayTurns')})")
+        p.call("dayKey", 0x01000000, 0)
+        check(p.wait(lambda: p.call("dayShown") == "false"), "Esc closes it")
+        note_before = p.note()
+        p.call("cursorEnd")
+        p.call("type", "\n\nShould I ask the dean about the shortlist")
+        p.wait(lambda: "ask the dean" in p.note())
+        p.call("cursor", p.offset_of_line(p.line_of("ask the dean")) + 6)
+        check(p.call("pageKey", KEY_ENTER, CTRL | SHIFT) == "true" and p.wait(lambda: p.call("dayShown") == "true")
+              and "ask the dean" in p.call("dayBlockText"),
+              f"Ctrl+Shift+Enter in a block opens the day pointing at it ({p.call('dayBlockText')!r})")
+        p.call("daySend", "and this one?")
+        check(p.wait(lambda: json.loads(p.call("dayTurns"))[-1] == "agent: day: and this one?", timeout=12)
+              and p.call("dayBlockText") == "", "…the block goes with the message, and the box lets go of it")
+        st = json.loads((p.vault / "agents" / "longhand" / "daily" / f"{TODAY}.json").read_text())
+        check(st["day"]["turns"][-2].get("block", "") != "", "…and the message keeps which block it pointed at")
+        p.call("dive")
+        check(p.wait(lambda: p.call("dayShown") == "false") and json.loads(p.call("panel"))["margin"],
+              "a block's own conversation is a room stepped into from the day")
+        p.call("back")
+        check(p.wait(lambda: p.call("dayShown") == "true"), "…and leaving it comes back to the day")
+        p.call("dayKey", 0x01000000, 0)
+        # The note as the sections after this one expect it.
+        (p.daily / f"{TODAY}.md").write_text(note_before)
+        p.open_fresh()
 
         # 12d. Settings → Calendar (2026-10-17): the timetable's address
         # pasted in the page, saved to settings.json, fetched at once, and

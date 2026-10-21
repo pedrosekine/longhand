@@ -14,7 +14,7 @@ The files under `explorations/` are historical references.
 | Active refinement | **Open cuts**, selected by the agent for the authorised launcher trial; further optical tuning remains possible |
 | Canonical identity | `a2-open-cuts`; use the current assets below for new work |
 | Launcher | Since 2026-10-18 in the theme's colours: `tools/theme_icon.py` writes a copy of `launcher/longhand.svg` (tile = theme background, seal = accent, moved towards the foreground until it reads at 3:1) to `~/.local/state/longhand/icon/longhand-<hash>.svg`, and the desktop entry (written from `launcher/longhand.desktop`) points `Icon=` at it; an Omarchy `theme-set` hook runs it on every theme change. The hicolor symlink to the canonical file stays for anything that looks the name up |
-| Page header | **Placed 2026-10-17**: the seal hangs before the date and opens or closes the sidebar (calendar, projects, keys, settings); drawn from the master path by `plugin-page/LogoMark.qml` |
+| Page header | **Placed 2026-10-17**: the seal hung before the date and opened the sidebar. **Moved 2026-10-21** (Pedro's call, the day-conversation grilling): the seal sits at the header's centre and opens or closes the day conversation in the right pane; the date, at the left, opens the left sidebar — the click lands on the side the thing appears. Still drawn from the master path by `plugin-page/LogoMark.qml`, still never a badge |
 | Other product placements | Planned: the seal as the "made together" mark on boxes and bullets (`docs/agent.md`), an experiment; nothing in the bar or agent UI yet |
 | Theme adaptation | In the page, yes: the seal takes the theme's colours (faint, the accent on hover, the foreground while the sidebar is open). On the launcher, yes since 2026-10-18 (above); checked rendered in four themes, the live launcher after a real theme change still to be looked at |
 | Verification | SVGs rendered at 16, 24, 32, 48, 64, and 256 px; installed bytes match. Rechecked 2026-10-17 at 16–64 px on dark and light: clear from 24 px; at 16 px the five cuts nearly close into a plain flower. The live launcher itself is still unseen |
@@ -75,6 +75,15 @@ the way to today. It is drawn from the master's path (`LogoMark.qml`,
 multisampled; `tests/test_brand.py` fails if the path drifts) and coloured
 by the page from the Omarchy theme. Clicks are counted as `seal` in the
 usage log, so the stats can say whether the mark is found.
+
+**Moved (2026-10-21):** the seal now sits at the centre of the header and
+is the door to the **day conversation** in the right pane (`docs/agent.md`):
+the place where the person and Longhand's agent talk — identity, still,
+"a person and an agent writing in one hand". It opens and closes it,
+nothing else, and never carries a badge, even when the morning's
+observation waits there; the header's "agent" word says that. The sidebar's
+door is the date, at the left, so a click lands on the side where the thing
+appears.
 
 ## Colour and theme adaptation
 
