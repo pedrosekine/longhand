@@ -129,6 +129,15 @@ ShellRoot {
     function dayKey(key: int, mods: int): bool { return page.dayKey({ key: key, text: "", modifiers: mods }) }
     function dayTurns(): string { return JSON.stringify(page.dayTurns.map(function (t) { return t.role + ": " + t.text })) }
     function dayBlockText(): string { return page.dayBlockText }
+    function dayType(text: string): void { var f = page.dayFieldItem(); f.text = text; f.cursorPosition = text.length }
+    function dayFieldText(): string { return page.dayFieldItem().text }
+    function dayMention(): string { return JSON.stringify(page.dayMention ? page.dayMention.items.map(function (m) { return m.head }) : []) }
+    function dayCardFocus(): int { return page.dayCardFocus }
+    function dayCards(): string {
+      var out = []
+      page.dayTurns.forEach(function (t) { (t.proposals || []).forEach(function (c) { out.push({ kind: c.kind, state: page.dayCardState(c, t.at) }) }) })
+      return JSON.stringify(out)
+    }
     function sidebarOpen(): bool { return page.sidebarOpen }
     function surfaces(): string { return JSON.stringify(page.surfaces()) }
     function marginOpen(on: bool): void { page.marginOpen = on }

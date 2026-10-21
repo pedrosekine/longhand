@@ -266,6 +266,20 @@ morning line, past days, cross-visibility, the private day; (2) search —
 the switches, the never-list, citations; (3) `@` references and the
 proposal cards; (4) the day's brief; (5) the prompt's eval cases.
 
+**How the cards work (slice 3, built 2026-10-21).** The day's first message
+carries what the planner plans from — the fortnight, the boxes without a
+day, every open box, the kinds the student allows — and a later message
+carries it again only when it changed. What the agent proposes goes
+through the planner's own `validate` (against what is open, what the store
+has closed, what was declined or undone, and the autonomy levels) and into
+the one ledger, marked `from: day`; a proposal the same as one still open
+is that one, not a new item. The turn keeps each card's words, so a card
+settled since — on its row, by a later plan — still reads, faint, saying
+how. ↑ from the empty box goes onto the cards; Enter or Space does what
+one says (written by the page, as from its row), Del declines it or, for
+what it did on its own, undoes it. A card made after the page last read
+the ledger is "arriving", never "settled".
+
 ## The record, and what it learns
 
 - **The proposal ledger** (in the layer): every proposal and question, what

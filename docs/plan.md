@@ -367,8 +367,13 @@ section, word for word, and to the diary's decisions log.
    counted, never named), the agent's `search` and `read` of a file in two
    rounds, Settings → what the agent may search (Ctrl+F), citations as
    links that open a note at its line; `tests/test_search.py`;
-   (3) `@` references and proposal cards; (4) the day's brief;
-   (5) its eval cases.
+   (3) `@` references and proposal cards — *built 2026-10-21*: `@` in the
+   day's box lists the note's blocks, narrowing as you type, and points at
+   one; the day proposes through the planner's checks into the one ledger
+   (`from: day`), each proposal a ◇ card under the answer — kind in small
+   caps, the box, the day as a pill, the reason faint — with ↑ onto the
+   cards, Enter/Space to do, Del to decline or undo; `tests/test_day.py`
+   and live checks; (4) the day's brief; (5) its eval cases.
 1. **The agent that does things, while the person drives** — designed
    2026-10-17 in a grilling; the whole design is `docs/agent.md`. Checkboxes
    are its environment (structured work, not authored words); who made each

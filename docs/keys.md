@@ -67,11 +67,11 @@ Where a row has two keys, either works: the second is usually the one another ap
 
 | | Keys | Works |
 |---|---|---|
-| Previous project | `↑` | while @ or # lists tags |
-| Next project | `↓` | while @ or # lists tags |
-| Write its #tag | `Enter` · `Tab` | while @ or # lists tags |
-| Start the class (# Course #tag) | `Shift+Enter` | while @ or # lists tags |
-| Close the list | `Esc` | while @ or # lists tags |
+| Previous project | `↑` | while @ or # lists tags, or @ blocks in the day's box |
+| Next project | `↓` | while @ or # lists tags, or @ blocks in the day's box |
+| Write its #tag | `Enter` · `Tab` | while @ or # lists tags, or @ blocks in the day's box |
+| Start the class (# Course #tag) | `Shift+Enter` | while @ or # lists tags, or @ blocks in the day's box |
+| Close the list | `Esc` | while @ or # lists tags, or @ blocks in the day's box |
 
 ## Find
 

@@ -1,8 +1,9 @@
 """The day conversation, the runner's side (docs/agent.md, "The day
 conversation", 2026-10-21): one session a day, the day's context on the
 first message and only what is new after, today's other conversations seen
-in full, a block pointed at, a private day, and the margin seeing the day's
-last turns — against a stub model, a throwaway vault and state.
+in full, a block pointed at, a private day, the margin seeing the day's
+last turns, and proposals checked and recorded as the planner's are —
+against a stub model, a throwaway vault and state.
 
 Run: python3 tests/test_day.py
 """
@@ -30,14 +31,24 @@ def check(cond, what):
 
 
 STUB = """#!/usr/bin/env python3
-import json, os, sys
+import json, os, re, sys
 d = os.environ["STUB_DIR"]
 args = sys.argv[1:]
 if args[:1] != ["run"]:
     sys.exit(0)
 n = len([f for f in os.listdir(d) if f.startswith("call-")])
-json.dump({"argv": args, "stdin": sys.stdin.read()}, open(os.path.join(d, f"call-{n}.json"), "w"))
+stdin = sys.stdin.read()
+json.dump({"argv": args, "stdin": stdin}, open(os.path.join(d, f"call-{n}.json"), "w"))
 reply = {"reply": f"answer {n}", "knowledge": [], "read": []}
+if "PROPOSE" in args[-1] + stdin:
+    # The candidates as the first message gave them; a day in the fortnight.
+    seen = "".join(json.load(open(os.path.join(d, f)))["stdin"] for f in sorted(os.listdir(d)) if f.startswith("call-"))
+    data = json.loads(re.search(r"# What you may propose.*?```json\\n(.*?)\\n```", seen, re.S).group(1))
+    c = data["candidates"][0]
+    reply["proposals"] = [{"kind": "do-date", "key": c["key"], "date": data["fortnight"][1]["date"], "why": "the day after"},
+                          {"kind": "do-date", "key": "no such box", "date": data["fortnight"][1]["date"], "why": "made up"},
+                          {"kind": "deadline", "title": "Supervisor email", "date": data["fortnight"][3]["date"],
+                           "source": "the note", "why": "said"}]
 print(json.dumps({"type": "text", "sessionID": "ses_day", "part": {"type": "text", "text": "```json\\n" + json.dumps(reply) + "\\n```"}}))
 """
 
@@ -48,7 +59,8 @@ def main() -> int:
     (vault / "Daily").mkdir(parents=True)
     day = dt.date.today().isoformat()
     note = vault / "Daily" / f"{day}.md"
-    note.write_text("# Research Proficiency #respro\n\nShortlist: Frauenberger or Neffke.\n\n- [ ] email the supervisor\n")
+    due = (dt.date.today() + dt.timedelta(days=10)).isoformat()
+    note.write_text(f"# Research Proficiency #respro\n\nShortlist: Frauenberger or Neffke.\n\n- [ ] email the supervisor 📅 {due}\n")
     q = "Should I buy an e-scooter?"
     qh = blocks.split(q)[0]["hash"]
     daily = vault / "agents/longhand/daily"
@@ -121,6 +133,35 @@ def main() -> int:
     ctx = agent("context", "--trigger", "question", "--hash", box["hash"]).stdout
     check("# The day conversation, its last turns" in ctx and "Longhand: answer 1" in ctx and "student: and this one?" in ctx,
           "a block's payload carries the day conversation's last turns")
+
+    # Proposing: checked as the planner's are, recorded in the one ledger,
+    # the turn keeps their ids; a second time, the same card, not a new one.
+    check("# What you may propose" in first["stdin"] and '"candidates"' in first["stdin"],
+          "the first message carries what the day may propose about")
+    agent("day", "--message", "PROPOSE a day for the supervisor email")
+    check("# What you may propose" not in calls()[-1]["argv"][-1], "…a later message, only when it changed")
+    ledger = json.loads((tmp / "state" / "longhand" / "proposals.json").read_text())
+    mine = [x for x in ledger["items"] if x.get("from") == "day"]
+    check(len(mine) == 2 and {x["kind"] for x in mine} == {"do-date", "deadline"} and all(x["status"] == "open" for x in mine),
+          f"a proposal that holds is recorded with the dashboard's, one that names no box is not ({[x['kind'] for x in mine]})")
+    turn = state()["day"]["turns"][-1]
+    check(sorted(x["id"] for x in turn.get("proposals") or []) == sorted(x["id"] for x in mine)
+          and any(x.get("date") and x.get("why") for x in turn["proposals"]), "the answer keeps its proposals, for the cards")
+    agent("day", "--message", "PROPOSE it again")
+    again = json.loads((tmp / "state" / "longhand" / "proposals.json").read_text())
+    check(len(again["items"]) == len(ledger["items"]) and sorted(x["id"] for x in state()["day"]["turns"][-1]["proposals"]) == sorted(x["id"] for x in mine),
+          "the same proposal again is the same card: no new item")
+    st = json.loads((cfgdir / "longhand" / "settings.json").read_text()) if (cfgdir / "longhand" / "settings.json").exists() else {}
+    st["autonomy"] = {"do-date": "never"}
+    (cfgdir / "longhand" / "settings.json").write_text(json.dumps(st))
+    for x in again["items"]:
+        x["status"] = "declined"
+    (tmp / "state" / "longhand" / "proposals.json").write_text(json.dumps(again))
+    agent("day", "--message", "PROPOSE a day once more")
+    third = json.loads((tmp / "state" / "longhand" / "proposals.json").read_text())
+    check(len(third["items"]) == len(again["items"]) and '"you_may"' in calls()[-1]["argv"][-1]
+          and "do-date" not in calls()[-1]["argv"][-1].split('"you_may"')[1][:120],
+          "a kind the student set to never is not proposed; a declined one does not return; what changed travels again")
 
     # A private day still talks, and sees nothing of the note.
     note.write_text("---\nagent: false\n---\nA private worry.\n")

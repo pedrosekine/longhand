@@ -89,6 +89,18 @@ args = sys.argv[1:]
 if "--agent" in args and args[args.index("--agent") + 1] == "longhand-day":
     said = re.findall(r"# The student says\\n\\n(.*?)(?:\\n\\nAnswer|\\n*$)", payload if payload.strip() else args[-1], re.S)
     reply = {"reply": "day: " + (said[-1].strip() if said else ""), "knowledge": [], "read": []}
+    # What it may propose about, as last given (slice 3); a scripted
+    # day-reply.json proposes, its "key_of" naming a box by its words.
+    seen = re.search(r"# What you may propose[^\\n]*\\n\\n[^\\n]*\\n\\n```json\\n(.*?)\\n```", payload + args[-1], re.S)
+    if seen:
+        open(os.path.join(d, "day-data.json"), "w").write(seen.group(1))
+    if os.path.exists(os.path.join(d, "day-reply.json")):
+        data = json.load(open(os.path.join(d, "day-data.json")))
+        reply["proposals"] = json.load(open(os.path.join(d, "day-reply.json")))
+        for p in reply["proposals"]:
+            if "key_of" in p:
+                want = p.pop("key_of")
+                p["key"] = next((b["key"] for b in data["open_boxes"] if b["title"] == want), "")
 ev = lambda t, part: print(json.dumps({"type": t, "sessionID": "ses_page", "part": part}))
 ev("text", {"type": "text", "text": "```json\\n" + json.dumps(reply) + "\\n```"})
 ev("step_finish", {"type": "step-finish", "cost": 0.0001, "tokens": {"input": 1, "output": 1, "reasoning": 0, "total": 2}})
@@ -1740,6 +1752,46 @@ def main() -> int:
         p.call("autonomyKey", 0x01000000, 0)
         p.call("settingsKey", 0x01000000, 0)
         settings_json.write_text(json.dumps({k: v for k, v in json.loads(settings_json.read_text()).items() if k != "autonomy"}))
+
+        # 12i'. the day conversation's @ and its cards (slice 3): `@` lists
+        # the note's blocks and points at one; what the day proposes is
+        # checked as the planner's are and shows as a card under the answer,
+        # the same item as the dashboard's row: ↑ from the empty box onto
+        # the cards, Enter does it, Del declines.
+        if p.call("dashOpen") == "true":
+            p.call("dash")
+        (p.daily / f"{TODAY}.md").write_text(p.note().rstrip("\n") + "\n\n- [ ] read the ethics chapter\n")
+        p.open_fresh()
+        p.wait(lambda: "read the ethics chapter" in p.call("text"))
+        p.call("seal")
+        p.wait(lambda: p.call("dayShown") == "true")
+        p.call("dayType", "about @ethics")
+        check(p.wait(lambda: json.loads(p.call("dayMention")) and "read the ethics chapter" in json.loads(p.call("dayMention"))[0]),
+              f"@ in the day's box lists the note's blocks, narrowed as you type ({p.call('dayMention')})")
+        check(p.call("dayKey", KEY_RETURN, 0) == "true" and p.call("dayBlockText").startswith("read the ethics chapter")
+              and p.call("dayFieldText") == "about ", f"Enter points at it, and the @words leave the box ({p.call('dayFieldText')!r})")
+        exam_day = (dt.date.today() + dt.timedelta(days=9)).isoformat()
+        (p.stub / "day-reply.json").write_text(json.dumps([
+            {"kind": "priority", "key_of": "read the ethics chapter", "priority": 1, "why": "the exam is close"},
+            {"kind": "deadline", "title": "Ethics exam", "date": exam_day, "project": "", "source": "the note", "why": "said so"},
+            {"kind": "do-date", "key": "no such box", "date": exam_day, "why": "made up"}]))
+        p.call("dayType", "about PROPOSE what to do with it")
+        p.call("dayKey", KEY_RETURN, 0)
+        check(p.wait(lambda: json.loads(p.call("dayCards")) == [{"kind": "priority", "state": "open"}, {"kind": "deadline", "state": "open"}], timeout=15),
+              f"what it proposes, checked, shows as cards under the answer ({p.call('dayCards')})")
+        (p.stub / "day-reply.json").unlink()
+        check(p.call("dayKey", 0x01000013, 0) == "true" and p.call("dayCardFocus") == "1", "↑ from the empty box: onto the last card")
+        check(p.call("dayKey", 0x01000007, 0) == "true"
+              and p.wait(lambda: [c["state"] for c in json.loads(p.call("dayCards"))] == ["open", "declined"]),
+              f"Del declines it ({p.call('dayCards')})")
+        check(p.wait(lambda: any(x["kind"] == "deadline" and x.get("from") == "day" and x["status"] == "declined"
+                                 for x in json.loads(ledger_file.read_text())["items"])), "…in the one ledger")
+        check(p.call("dayCardFocus") == "0" and p.call("dayKey", KEY_RETURN, 0) == "true"
+              and p.wait(lambda: re.search(r"- \[ \] read the ethics chapter 🔼", p.note())),
+              f"Enter does what the card says, written by the page ({p.note()[-120:]!r})")
+        check(p.wait(lambda: [c["state"] for c in json.loads(p.call("dayCards"))] == ["accepted", "declined"])
+              and p.call("dayCardFocus") == "-1", f"…the cards stay, faint, saying how; the keys back in the box ({p.call('dayCards')})")
+        p.call("dayKey", 0x01000000, 0)
 
         # 12b. the keys sheet: every key the page answers to, listed; one
         # moved through the sheet, kept in keys.json, and working in the note

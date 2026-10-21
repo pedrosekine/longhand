@@ -409,6 +409,8 @@ Item {
     Qt.callLater(function () { dayPane.dayFieldRef.forceActiveFocus() })
   }
 
+  function dayFieldItem() { return dayPane.dayFieldRef }
+
   // A block's first words, for the "↳" a message carries; "a block" when
   // the note no longer has it as it was.
   function blockHead(hash) {
@@ -447,7 +449,132 @@ Item {
       if (turns[i].role === "student" && turns[i].text === p.text) { root.dayPending = null; return }
   }
 
+  // `@` in the day's box points at a block of the open note, as `@` in the
+  // note calls a project: the list narrows as you type, newest writing
+  // first, never a private block; Enter or Tab makes it the "↳" the next
+  // message carries.
+  property var dayMention: null         // { start, query, items: [{ hash, head }] }
+  property int dayMentionFocus: 0
+  function updateDayMention() {
+    var f = dayPane.dayFieldRef
+    var m = f.text.substring(0, f.cursorPosition).match(/(^|\s)@([^\s@]*)$/)
+    if (!m || !root.dayCanSend) { root.dayMention = null; return }
+    var q = m[2].toLowerCase()
+    var items = Blocks.split(editor.text).filter(function (b) {
+      return !b.private && b.kind !== "frontmatter" && b.text.trim() !== "" && (q === "" || b.text.toLowerCase().indexOf(q) >= 0)
+    }).reverse().slice(0, 8).map(function (b) { return { hash: b.hash, head: root.blockHead(b.hash) } })
+    root.dayMention = { start: f.cursorPosition - m[2].length - 1, query: m[2], items: items }
+    if (root.dayMentionFocus > items.length - 1) root.dayMentionFocus = Math.max(0, items.length - 1)
+  }
+  function pickDayMention(i) {
+    var m = root.dayMention
+    var it = m && m.items[i]
+    if (!it) return
+    var f = dayPane.dayFieldRef
+    f.remove(m.start, f.cursorPosition)
+    root.dayBlock = it.hash
+    root.dayBlockText = it.head
+    root.dayMention = null
+    root.used("day", "at")
+  }
+
+  // The cards under the day's answers (slice 3): what it proposed, the
+  // same items as the dashboard's rows, checked and recorded by the runner.
+  // A card is open while the dashboard still has its item; once settled —
+  // here, on its row, or by a plan since — it stays, faint, saying how.
+  property var dayCardSettled: ({})     // id -> "accepted" | "declined" | "undone" | "kept"
+  property int dayCardFocus: -1         // which open card the keys act on; -1: the box
+  function dayCardLive(c) {
+    for (var i = 0; i < root.proposals.length; i++) if (root.proposals[i].id === c.id) return root.proposals[i]
+    return null
+  }
+  function dayCardState(c, at) {
+    var live = root.dayCardLive(c)
+    if (live) return live.told ? "done by itself" : "open"
+    if (root.dayCardSettled[c.id]) return root.dayCardSettled[c.id]
+    // Made after the list on screen was read: not settled, just not seen yet.
+    return at && String(at) >= root.proposalsReadAt ? "arriving" : "settled"
+  }
+  readonly property var dayOpenCards: {
+    var out = [], seen = {}
+    var turns = root.dayTurns
+    for (var t = 0; t < turns.length; t++) {
+      var cards = turns[t].proposals || []
+      for (var c = 0; c < cards.length; c++) {
+        var live = root.dayCardLive(cards[c])
+        if (live && !seen[live.id]) { seen[live.id] = true; out.push(live) }
+      }
+    }
+    return out
+  }
+  function dayCardKind(x) {
+    return ({ "do-date": "a day for it", "deadline": "a deadline", "priority": "priority", "steps": "first steps",
+              "drop": "drop it", "done": "looks done" })[x.kind] || x.kind
+  }
+  // What a card says beside its pill: the box, and what changes in it.
+  function dayCardFacts(x) {
+    if (x.kind === "priority") return (x.priority === 2 ? "▲ high" : x.priority === 1 ? "medium" : "▽ low") + " · " + (x.title || "")
+    if (x.kind === "steps") return (x.title || "") + (x.steps || []).map(function (s, i) { return "\n" + (i + 1) + ". " + s }).join("")
+    return x.title || ""
+  }
+  function dayCardPill(x) {
+    return x.kind === "do-date" && x.date ? "do " + root.sayDate(x.date)
+      : x.kind === "deadline" && x.date ? "📅 " + root.sayDate(x.date) : ""
+  }
+  function settleDayCard(i, how) {
+    var p = root.dayOpenCards[i]
+    if (!p) return
+    var s = {}
+    for (var k in root.dayCardSettled) s[k] = root.dayCardSettled[k]
+    if (how === "accept" && p.told) {
+      root.resolveProposal(p, "accept", "")              // what it did on its own: let it stand
+      s[p.id] = "kept"
+    } else if (how === "accept") {
+      // Written by the page, the one writer of notes, as from its row; a
+      // box no longer on the list leaves the card open, and says so.
+      if (!root.applyProposal(p, root.taskOfKey(p.key))) return
+      root.resolveProposal(p, "accept", "")
+      s[p.id] = "accepted"
+    } else if (p.told) {
+      root.undoProposal(p)
+      s[p.id] = "undone"
+    } else {
+      root.resolveProposal(p, "decline", "")
+      s[p.id] = "declined"
+    }
+    root.dayCardSettled = s
+    root.used("day", "card-" + how)
+    Qt.callLater(function () {
+      var n = root.dayOpenCards.length
+      root.dayCardFocus = n === 0 ? -1 : Math.min(root.dayCardFocus, n - 1)
+    })
+  }
+
   function dayKey(event) {
+    // On the cards: ↑↓ between them, Enter or Space does what one says, Del
+    // declines it (a thing done by itself: undoes it), Esc or ↓ past the
+    // last goes back to the box; typing goes back too.
+    if (root.dayCardFocus >= 0) {
+      var n = root.dayOpenCards.length
+      if (n === 0) root.dayCardFocus = -1
+      else {
+        if (Sc.hit(event, "marginUp")) { root.dayCardFocus = Math.max(0, root.dayCardFocus - 1); return true }
+        if (Sc.hit(event, "marginDown")) { root.dayCardFocus = root.dayCardFocus >= n - 1 ? -1 : root.dayCardFocus + 1; return true }
+        if (Sc.hit(event, "marginAccept")) { root.settleDayCard(root.dayCardFocus, "accept"); return true }
+        if (Sc.hit(event, "marginDecline")) { root.settleDayCard(root.dayCardFocus, "decline"); return true }
+        if (Sc.hit(event, "marginBack")) { root.dayCardFocus = -1; return true }
+        root.dayCardFocus = -1
+      }
+    } else if (Sc.hit(event, "marginUp") && dayPane.dayFieldRef.text === "" && !root.dayMention && root.dayOpenCards.length > 0) {
+      root.dayCardFocus = root.dayOpenCards.length - 1
+      return true
+    }
+    if (root.dayMention && root.dayMention.items.length > 0) {
+      if (Sc.hit(event, "mentionUp")) { root.dayMentionFocus = Math.max(0, root.dayMentionFocus - 1); return true }
+      if (Sc.hit(event, "mentionDown")) { root.dayMentionFocus = Math.min(root.dayMention.items.length - 1, root.dayMentionFocus + 1); return true }
+      if (Sc.hit(event, "mentionPick") || Sc.hit(event, "mentionClass")) { root.pickDayMention(root.dayMentionFocus); return true }
+      if (Sc.hit(event, "mentionClose")) { root.dayMention = null; return true }
+    }
     if (root.anywhereKey(event)) return true
     if (Sc.hit(event, "marginBack")) { root.closeDay(); return true }
     if (Sc.hit(event, "chatSend")) { if (root.sendDay(dayPane.dayFieldRef.text)) dayPane.dayFieldRef.text = ""; return true }
@@ -2623,9 +2750,14 @@ Item {
   // Asked for while one is under way: once more right after it, so what
   // changed meanwhile (a document just downloaded) is not missed.
   property bool proposalsAgain: false
+  // When the list on screen was read (local time, as the runner writes
+  // `at`): a day's card made after it is not known to be settled yet.
+  property string proposalsAsked: ""
+  property string proposalsReadAt: ""
   function refreshProposals() {
     if (!svc.configured) return
     if (proposalsProc.running) { root.proposalsAgain = true; return }
+    root.proposalsAsked = Qt.formatDateTime(new Date(), "yyyy-MM-ddTHH:mm:ss")
     proposalsProc.command = [svc.runner, "proposals"]
     proposalsProc.running = true
   }
@@ -4366,6 +4498,8 @@ Item {
     // nothing to say. Silence is now only ever an answer, never a fault.
     onExited: function (code, status) {
       root.running = false
+      // The day's answer may have proposed: its cards are the dashboard's items.
+      if (root.runningHash === "day") { Qt.callLater(root.refreshProposals); Qt.callLater(root.refreshTasks) }
       root.runningHash = ""
       if (code !== 0) Qt.callLater(root.runnerFailed)
       agent.reload()
@@ -4685,6 +4819,7 @@ Item {
           var p = JSON.parse(text)
           root.proposals = (p.open || []).filter(function (x) { return !x.auto }).concat(
             (p.told || []).map(function (x) { return Object.assign({ told: true }, x) }))
+          root.proposalsReadAt = root.proposalsAsked
           root.applyAuto(p.open || [])
           // Kept, not replaced: a conversation whose proposal was just
           // settled stays in the margin until it is closed.

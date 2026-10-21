@@ -1268,3 +1268,15 @@ only the window and the panels around it differ.
   pane turns into links that open the note there. First real question,
   in a throwaway vault: four searches, one whole note, both lines cited,
   and the switched-off Personal folder never touched.
+- **2026-10-21 — The day proposes, as cards (slice 3).** `@` in the day's
+  box points at a block; and when the conversation lands on a change to
+  the tasks, the agent proposes it — through the planner's own checks, into
+  the same ledger as the dashboard's rows — and the pane shows it as a ◇
+  card under the answer, acted on with the margin's keys. Two flaws found
+  on the way: a card drew itself "settled" for the moment before the page
+  re-read the ledger (now "arriving"), and a card could say "accepted" when
+  its box was not yet on the page's list and nothing was written (now it
+  stays open and says why). First real turns, in a throwaway vault: asked
+  when to write the supervision email, it proposed today, resting on the
+  note's "before Thursday's session"; asked to put a reading after its due
+  date, it said it could not and asked whether the deadline itself moved.

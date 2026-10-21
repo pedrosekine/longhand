@@ -95,7 +95,13 @@ search your files — the folders switched on in Settings → what the agent
 may search ({key:settingsSearch} in Settings) — and cites where it found
 things as links that open the note at that line. Never private notes or
 blocks, `_Secrets`, or documents of identity, money, health, contracts or
-secrets.
+secrets. Typing `@` in its box lists the note's blocks; Enter points the
+next message at one. When the conversation comes to a change in the tasks
+(a day for a box, a deadline, a priority, steps, dropping a box, "looks
+done"), it proposes it as a card under its answer — the same item as the
+dashboard's row, under the same "what the agent may do" levels.
+{key:marginUp} from the empty box goes onto the cards; {key:marginAccept}
+does what one says, {key:marginDecline} declines it.
 
 ## The agent
 
