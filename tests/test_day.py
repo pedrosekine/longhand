@@ -2,8 +2,9 @@
 conversation", 2026-10-21): one session a day, the day's context on the
 first message and only what is new after, today's other conversations seen
 in full, a block pointed at, a private day, the margin seeing the day's
-last turns, and proposals checked and recorded as the planner's are —
-against a stub model, a throwaway vault and state.
+last turns, proposals checked and recorded as the planner's are, and the
+day's brief written the morning after — against a stub model, a throwaway
+vault and state.
 
 Run: python3 tests/test_day.py
 """
@@ -40,6 +41,8 @@ n = len([f for f in os.listdir(d) if f.startswith("call-")])
 stdin = sys.stdin.read()
 json.dump({"argv": args, "stdin": stdin}, open(os.path.join(d, f"call-{n}.json"), "w"))
 reply = {"reply": f"answer {n}", "knowledge": [], "read": []}
+if stdin.startswith("# Brief"):
+    reply["reply"] = "" if "just hello" in stdin else "- Decided to email Frauenberger first.\\n- The scooter can wait.\\n- The supervisor is Neffke now."
 if "PROPOSE" in args[-1] + stdin:
     # The candidates as the first message gave them; a day in the fortnight.
     seen = "".join(json.load(open(os.path.join(d, f)))["stdin"] for f in sorted(os.listdir(d)) if f.startswith("call-"))
@@ -173,8 +176,83 @@ def main() -> int:
     check("A private worry." not in pay and "today's note is marked private" in pay,
           "a private day: the conversation works, sees nothing of the note, and is told so")
 
+    briefs(tmp, env, bindir)
     print("PASS" if failures == 0 else f"{failures} FAILED")
     return 1 if failures else 0
+
+
+def briefs(tmp: pathlib.Path, env: dict, bindir: pathlib.Path) -> None:
+    """The morning after: the day's first run writes the brief of each day
+    before it that had a conversation, once; every payload carries the last
+    few; a private day gets none; the student's corrections hold."""
+    vault = tmp / "vault2"
+    (vault / "Daily").mkdir(parents=True)
+    cfgdir = tmp / "config2"
+    (cfgdir / "longhand").mkdir(parents=True)
+    cfg = cfgdir / "longhand" / "config.json"
+    cfg.write_text(json.dumps({"vault": str(vault), "daily": {"dir": "Daily", "format": "YYYY-MM-DD"},
+                               "agentDir": "agents/longhand", "model": "stub/m"}))
+    stub = tmp / "stub2"
+    stub.mkdir()
+    env = dict(env, LONGHAND_CONFIG=str(cfg), XDG_CONFIG_HOME=str(cfgdir), XDG_STATE_HOME=str(tmp / "state2"), STUB_DIR=str(stub))
+    today = dt.date.today()
+    daily = vault / "agents/longhand/daily"
+    daily.mkdir(parents=True)
+    knowledge = vault / "agents/longhand/knowledge"
+    knowledge.mkdir(parents=True)
+    # A correction made before the brief is written still holds in it.
+    (knowledge / "corrections.md").write_text(f"# The student's corrections\n\n- {today} · correct · days/x.md: "
+                                              f"«The supervisor is Neffke now» → «The supervisor is not chosen yet»\n")
+
+    def day_of(back, turns, private=False):
+        d = (today - dt.timedelta(days=back)).isoformat()
+        (vault / "Daily" / f"{d}.md").write_text(("---\nagent: false\n---\n" if private else "") + "A day.\n")
+        (daily / f"{d}.json").write_text(json.dumps({"blocks": {}, "day": {"session": "s", "turns": [
+            {"role": "student", "text": t, "at": f"{d}T10:00:00"} if i % 2 == 0 else
+            {"role": "agent", "text": t, "at": f"{d}T10:00:05"} for i, t in enumerate(turns)]}}))
+        return d
+
+    one = day_of(1, ["who first?", "Frauenberger, then Neffke."])
+    two = day_of(2, ["just hello", "Hello."])
+    three = day_of(3, ["a private worry", "I hear you."], private=True)
+    four = day_of(4, [])
+    (vault / "Daily" / f"{today.isoformat()}.md").write_text("Today.\n")
+
+    def agent(*args):
+        r = subprocess.run([sys.executable, str(AGENT), *args], capture_output=True, text=True, env=env)
+        assert r.returncode == 0, r.stderr + r.stdout
+        return r
+
+    def calls():
+        return [json.loads(f.read_text()) for f in sorted(stub.glob("call-*.json"))]
+
+    agent("day", "--message", "where were we?")
+    asked = [c for c in calls() if c["stdin"].startswith("# Brief")]
+    check(len(asked) == 2 and all("--agent" in c["argv"] and "longhand-day" in c["argv"] for c in asked),
+          f"the day's first run asks for the briefs the days before are missing: two, not the private day nor the silent one ({len(asked)})")
+    check(any("student: who first?" in c["stdin"] and "Longhand: Frauenberger, then Neffke." in c["stdin"] for c in asked),
+          "…from that day's conversation")
+    brief = knowledge / "days" / f"{one}.md"
+    text = brief.read_text() if brief.exists() else ""
+    check(text.startswith("# ") and "the day in brief" in text and "- Decided to email Frauenberger first." in text,
+          "the brief is written into the notebook, days/<date>.md")
+    check("The supervisor is not chosen yet" in text and "Neffke now" not in text, "…with the student's corrections applied")
+    check(not (knowledge / "days" / f"{two}.md").exists() and json.loads((daily / f"{two}.json").read_text())["day"]["brief"]["file"] == "",
+          "a day with nothing worth carrying gets no brief, and is not asked again")
+    check(not (knowledge / "days" / f"{three}.md").exists()
+          and json.loads((daily / f"{three}.json").read_text())["day"]["brief"].get("skipped"), "a private day gets none")
+    check("brief" not in json.loads((daily / f"{four}.json").read_text())["day"], "a day without a conversation is left alone")
+    pay = calls()[-1]["stdin"]
+    check("# The last days, in brief" in pay and "Decided to email Frauenberger first." in pay
+          and f"## days/{one}.md" in pay and pay.count("## days/") == 1, "today's payload carries the briefs")
+    check(pay.find("# The last days, in brief") > pay.find("# Your knowledge files")
+          and f"## days/{one}.md" not in pay[:pay.find("# The last days, in brief")],
+          "…as the last days, not among its knowledge files")
+    n = len(calls())
+    agent("day", "--message", "and now?")
+    check(len(calls()) == n + 1, "once written, no brief is asked for again")
+    nbk = json.loads(agent("notebook").stdout)
+    check(nbk["files"] and nbk["files"][-1]["file"] == f"days/{one}.md", "Settings lists the brief, after the agent's own notes")
 
 
 if __name__ == "__main__":

@@ -45,6 +45,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import fcntl
 import hashlib
 import json
 import os
@@ -194,7 +195,8 @@ def knowledge_parts(paths: Paths) -> list[str]:
     """The notebook as every payload carries it: the agent's own files, the
     student's answers to its questions, and the student's corrections."""
     parts = ["", "# Your knowledge files", ""]
-    own = [(n, t) for n, t in read_tree(paths.knowledge) if Path(n).name not in nb.NOT_THE_MODELS]
+    own = [(n, t) for n, t in read_tree(paths.knowledge)
+           if Path(n).name not in nb.NOT_THE_MODELS and not n.startswith(BRIEFS_DIR + "/")]
     if own:
         for name, text in own:
             parts += [f"## {name}", "", text.rstrip(), ""]
@@ -204,7 +206,29 @@ def knowledge_parts(paths: Paths) -> list[str]:
     if answers.exists() and answers.read_text().strip():
         parts += ["", "# The student's answers to your questions (true; never ask them again)", "",
                   answers.read_text().rstrip()]
-    return parts + nb.payload_section(paths.knowledge)
+    return parts + brief_parts(paths) + nb.payload_section(paths.knowledge)
+
+
+# The day's brief (docs/agent.md, "The day conversation", slice 4): the
+# morning after, a small run writes what a day's conversation came to into
+# the notebook, `days/<date>.md`; every payload carries the last few.
+BRIEFS_DIR = "days"
+BRIEFS_SHOWN = 3      # the last few briefs a payload carries
+BRIEF_DAYS = 7        # how far back a missing brief is still written
+BRIEF_CHARS = 1500
+
+
+def brief_parts(paths: Paths) -> list[str]:
+    folder = paths.knowledge / BRIEFS_DIR
+    today = dt.date.today().isoformat()
+    files = sorted(f for f in folder.glob("????-??-??.md") if f.stem < today) if folder.is_dir() else []
+    if not files:
+        return []
+    parts = ["", "# The last days, in brief (what each day's conversation came to, written the morning after; "
+             "the student may have corrected them)", ""]
+    for f in files[-BRIEFS_SHOWN:]:
+        parts += [f"## {BRIEFS_DIR}/{f.name}", "", f.read_text(errors="replace").rstrip(), ""]
+    return parts
 
 
 def append_text(paths: Paths, target: Path, text: str) -> None:
@@ -844,6 +868,8 @@ def cmd_context(cfg: dict, args) -> int:
 
 
 def cmd_run(cfg: dict, args) -> int:
+    if args.trigger == "open":
+        ensure_briefs(cfg)                           # the day's first run writes yesterday's brief
     paths, visible, fired = prepare(cfg, args)
     if args.trigger == "open":
         known = load_state(paths)["blocks"]
@@ -1865,6 +1891,7 @@ def cmd_plan(cfg: dict, args) -> int:
     local (plan.py); the model brings judgement; what it says is checked
     before it reaches the ledger, and nothing is written into a note — the
     page writes a do-date when the person accepts it."""
+    ensure_briefs(cfg)
     today = dt.date.today()
     paths = Paths(cfg, today)
     tasks, deadlines, days, cands, boxes, notes, allowed = plan_inputs(cfg, today)
@@ -2528,6 +2555,7 @@ def cmd_day(cfg: dict, args) -> int:
     message = (args.message or "").strip()
     if not message:
         raise Fail("--message is empty")
+    ensure_briefs(cfg)
     today = dt.date.today()
     paths = Paths(cfg, today)
     try:
@@ -2602,6 +2630,89 @@ def cmd_day(cfg: dict, args) -> int:
     print(f"day: {'reply' if reply['reply'] else 'silent'}" + (f" · {len(proposed)} proposed" if proposed else "")
           + f" · ${result['cost']:.4f} · {tk.get('total', 0)} tokens")
     return 0
+
+
+def brief_payload(cfg: dict, date: dt.date, turns: list[dict]) -> str:
+    """What a day's brief is written from: that day's conversation and
+    what came of what it proposed — not the note, which stays the note."""
+    ledger = planlib.load_ledger(PROPOSALS)
+    status = {x["id"]: x["status"] for x in ledger["items"]}
+    parts = ["# Brief", f"date: {date.isoformat()} ({date:%A})", "",
+             "Write this day's brief, as \"Writing a day's brief\" in your instructions says: in `reply`, three to "
+             "six short lines, each its own line starting `- ` (never a paragraph: the student corrects or forgets "
+             "it line by line); `reply` empty if nothing is worth carrying.", "",
+             "# The day's conversation", ""]
+    for t in turns:
+        if t.get("error") or not t.get("text"):
+            continue
+        parts.append(f"{'Longhand' if t['role'] == 'agent' else 'student'}: {t['text']}")
+        for c in t.get("proposals") or []:
+            what = c.get("date") or c.get("priority") or " · ".join(c.get("steps") or []) or ""
+            parts.append(f"  (proposed {c.get('kind')}: {c.get('title', '')} {what} — {status.get(c.get('id'), 'unknown')})")
+    return "\n".join(parts) + "\n"
+
+
+def ensure_briefs(cfg: dict) -> list[str]:
+    """The first run of a day writes the briefs the days before it are
+    missing: each of the last BRIEF_DAYS days whose conversation the agent
+    answered in, and that has no brief yet. Once a day: its state says so,
+    so a brief the student forgot line by line is not written again. A
+    day whose note is marked private gets none — what was said there does
+    not travel into the days after. Runs that start together (the page's
+    plan and the morning pass) wait for each other."""
+    STATE_HOME.mkdir(parents=True, exist_ok=True)
+    written = []
+    today = dt.date.today()
+    with open(STATE_HOME / "briefs.lock", "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        for back in range(BRIEF_DAYS, 0, -1):
+            date = today - dt.timedelta(days=back)
+            paths = Paths(cfg, date)
+            if not paths.state.exists():
+                continue
+            state = load_state(paths)
+            day = state.get("day") or {}
+            if day.get("brief") or not any(t["role"] == "agent" and t.get("text") for t in day.get("turns") or []):
+                continue
+            at = dt.datetime.now().isoformat(timespec="seconds")
+            try:
+                private = note_is_private(blocklib.split(paths.note.read_text()))
+            except FileNotFoundError:
+                private = False
+            if private:
+                day["brief"] = {"at": at, "skipped": "the note is private"}
+                write_atomic(paths, paths.state, json.dumps(state, indent=2, ensure_ascii=False) + "\n")
+                continue
+            payload = brief_payload(cfg, date, day["turns"])
+            now = Paths(cfg, today)
+            now.payloads.mkdir(parents=True, exist_ok=True)
+            payload_file = now.payloads / f"{dt.datetime.now():%Y%m%d-%H%M%S}-brief-{date.isoformat()}.md"
+            payload_file.write_text(payload)               # logged before inference
+            result = run_model(dict(cfg, agent=cfg.get("dayAgent", "longhand-day")), now, payload,
+                               message="Write the day's brief. The context follows on stdin.")
+            payload_file.with_suffix(".events.jsonl").write_text(result["events"])
+            text = "" if result["error"] else parse_reply(result["text"])["reply"].strip()[:BRIEF_CHARS]
+            state = load_state(paths)                      # read again: the page may have written meanwhile
+            day = day_of(state)
+            if text:
+                target = paths.knowledge / BRIEFS_DIR / f"{date.isoformat()}.md"
+                body = nb.enforce(text, nb.corrections(paths.knowledge))
+                write_atomic(paths, target, f"# {date:%A} {date.day} {date:%B} — the day in brief\n\n{body.rstrip()}\n")
+                written.append(target.name)
+            # An error is tried again by the next run; an empty answer is the agent's word that
+            # nothing in the day is worth carrying.
+            if not result["error"]:
+                day["brief"] = {"at": at, "file": f"{BRIEFS_DIR}/{date.isoformat()}.md" if text else "",
+                                "cost": result["cost"], "payload": str(payload_file),
+                                "prompt": result.get("prompt", ""), "model": result.get("model", "")}
+                write_atomic(paths, paths.state, json.dumps(state, indent=2, ensure_ascii=False) + "\n")
+            tk = result["tokens"]
+            if not now.ledger.exists():
+                now.ledger.write_text("at\tdate\ttrigger\tblock\tcost\tinput\toutput\treasoning\tsession\tprompt\tmodel\n")
+            with open(now.ledger, "a") as f:
+                f.write(f"{at}\t{paths.stamp}\tbrief\t\t{result['cost']:.6f}\t{tk.get('input', 0)}\t{tk.get('output', 0)}"
+                        f"\t{tk.get('reasoning', 0)}\t{result['session']}\t{result.get('prompt', '')}\t{result.get('model', '')}\n")
+    return written
 
 
 def talk_payload(cfg: dict, item: dict, ledger: dict, key: str, tasks: list[dict], fresh: str, message: str) -> str:

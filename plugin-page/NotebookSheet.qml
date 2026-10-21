@@ -68,7 +68,8 @@ BorderSurface {
         width: parent.width
         textFormat: Text.PlainText
         wrapMode: Text.WordWrap
-        text: "What it has written down about you and your projects, read at every run. Correct a line in your words, "
+        text: "What it has written down about you and your projects, and — the morning after — what each day's "
+          + "conversation came to, read at every run. Correct a line in your words, "
           + "or forget it: either is kept in your corrections, which it reads every time and never writes, so it "
           + "stays made. " + page.sayNotebook()
         color: page.faint

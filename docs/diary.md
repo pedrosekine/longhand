@@ -1280,3 +1280,12 @@ only the window and the panels around it differ.
   when to write the supervision email, it proposed today, resting on the
   note's "before Thursday's session"; asked to put a reading after its due
   date, it said it could not and asked whether the deadline itself moved.
+- **2026-10-21 — The day's brief (slice 4).** A day's conversation now
+  carries into the next days: the morning after, the first run writes a
+  few lines of what it came to into the notebook, `days/<date>.md`, and
+  every payload carries the last three. The first real brief was right but
+  came back as one paragraph — which Settings could only forget whole — so
+  the brief's own payload now restates the format; the second came back as
+  three lines: the email proposed for Wednesday and still open, the reading
+  not moved past its due date, and the open question of whether that date
+  itself changes. A private day gets no brief.

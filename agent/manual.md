@@ -101,7 +101,11 @@ next message at one. When the conversation comes to a change in the tasks
 done"), it proposes it as a card under its answer — the same item as the
 dashboard's row, under the same "what the agent may do" levels.
 {key:marginUp} from the empty box goes onto the cards; {key:marginAccept}
-does what one says, {key:marginDecline} declines it.
+does what one says, {key:marginDecline} declines it. The morning after, it
+writes what the day's conversation came to — a few lines, the day's brief
+— into what the agent knows, where each line can be corrected or
+forgotten like any other; the next days read the last three. A private day
+gets no brief.
 
 ## The agent
 

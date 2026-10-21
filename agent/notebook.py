@@ -41,7 +41,11 @@ def _files(folder: Path) -> list[Path]:
         return []
     own = sorted(p for p in folder.rglob("*.md") if p.is_file() and p.name not in NOT_THE_MODELS)
     order = {"profile.md": 0, "patterns.md": 1}
-    return sorted(own, key=lambda p: (order.get(str(p.relative_to(folder)), 2), str(p.relative_to(folder))))
+    # The days' briefs (`days/<date>.md`) after the rest, the newest first.
+    days = sorted((p for p in own if p.parent.name == "days"), key=lambda p: p.name, reverse=True)
+    rest = sorted((p for p in own if p.parent.name != "days"),
+                  key=lambda p: (order.get(str(p.relative_to(folder)), 2), str(p.relative_to(folder))))
+    return rest + days
 
 
 def _entries_of(folder: Path, f: Path) -> tuple[str, list[dict]]:

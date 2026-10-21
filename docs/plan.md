@@ -373,7 +373,12 @@ section, word for word, and to the diary's decisions log.
    (`from: day`), each proposal a ◇ card under the answer — kind in small
    caps, the box, the day as a pill, the reason faint — with ↑ onto the
    cards, Enter/Space to do, Del to decline or undo; `tests/test_day.py`
-   and live checks; (4) the day's brief; (5) its eval cases.
+   and live checks; (4) the day's brief — *built 2026-10-21*: the day's
+   first run writes each missing brief of the last seven days into
+   `days/<date>.md` (once a day, never for a private day, the student's
+   corrections applied); every payload carries the last three; Settings →
+   what the agent knows lists them, correctable line by line;
+   `tests/test_day.py`; (5) its eval cases.
 1. **The agent that does things, while the person drives** — designed
    2026-10-17 in a grilling; the whole design is `docs/agent.md`. Checkboxes
    are its environment (structured work, not authored words); who made each

@@ -280,6 +280,20 @@ one says (written by the page, as from its row), Del declines it or, for
 what it did on its own, undoes it. A card made after the page last read
 the ledger is "arriving", never "settled".
 
+**How the brief works (slice 4, built 2026-10-21).** The day's first run —
+the morning pass, the plan, or the first message to the day, whichever
+comes first; runs that start together wait for each other — writes the
+brief of each of the last seven days that had a conversation the agent
+answered in and has none yet. The day agent writes it from that day's
+turns and what came of its proposals (not from the note), three to six
+lines, each its own line so Settings can correct or forget it; an empty
+answer means nothing was worth carrying. The student's corrections are
+applied as it is written. Each day is briefed once (its state says so), so
+a brief forgotten line by line does not come back. A day whose note is
+marked private gets none: what was said there does not travel. Every
+payload carries the last three briefs, after the knowledge files; Settings
+→ what the agent knows lists them after its other notes, newest first.
+
 ## The record, and what it learns
 
 - **The proposal ledger** (in the layer): every proposal and question, what
