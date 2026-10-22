@@ -198,7 +198,7 @@ if [ "$1" = projects ]; then
   exit $rc
 fi
 case "$1" in
-  accept|projects|sections|next|tasks|box|timetable|plan|proposals|proposal|talk|thread|rate|notebook|autonomy|day|search) exec "{ROOT}/agent/longhand-agent" "$@" ;;
+  accept|projects|project|sections|next|tasks|box|timetable|plan|proposals|proposal|talk|thread|rate|notebook|autonomy|day|search) exec "{ROOT}/agent/longhand-agent" "$@" ;;
   run) sleep 2; exit 0 ;;
   chat) sleep 2; exec python3 "{chatstub}" "{self.vault}/agents/longhand/daily" "$@" ;;
 esac
@@ -753,6 +753,50 @@ def main() -> int:
         p.call("type", "and #intsem")
         time.sleep(0.3)
         check(p.call("mention") == "null", "…and a tag written in full is left as it is: Enter stays a new line")
+
+        # 11d'. making a project (2026-10-22): when nothing matches, a tag
+        # nothing goes by yet. Under `@` Enter makes it; under `#` the row
+        # waits for ↓, so Enter stays a new line. The runner writes its file.
+        pd = p.vault / "agents" / "longhand" / "knowledge" / "projects"
+        KEY_DOWN, KEY_ENTER = 0x01000015, 0x01000004
+        p.call("enter")
+        p.call("type", "for the @thes")
+        check(p.wait(lambda: json.loads(p.call("mention")) == ["+thes"]) and int(p.call("mentionFocus")) == 0,
+              f"@ with nothing matching offers to make it, ready for Enter ({p.call('mention')})")
+        p.call("type", "is")
+        check(p.wait(lambda: json.loads(p.call("mention")) == ["+thesis"]), "…as you type on")
+        p.call("mentionPick", 0, "false")
+        check(p.wait(lambda: (json.loads(p.call("askingName")) or {}).get("tag") == "thesis"), "Enter asks its name")
+        check(p.wait(lambda: json.loads(p.call("room"))["row"] == p.line_of("for the @thesis")),
+              f"…under the line, in the room it opens ({p.call('room')})")
+        p.call("projectName", "Master Thesis")
+        check(p.wait(lambda: "for the #thesis " in p.call("text")), f"the tag is written where the @ was ({p.call('text')[-30:]!r})")
+        check(p.wait(lambda: (pd / "thesis.md").exists()) and (pd / "thesis.md").read_text() == "# Master Thesis\n\n- Tag: `#thesis`\n",
+              "…and the project made, its name as given")
+        check(p.wait(lambda: any(x.startswith("thesis|") for x in json.loads(p.call("projects")))), "…in the projects the sidebar lists")
+        check(p.wait(lambda: p.call("hint") == "#thesis is a project now"), f"…and says so ({p.call('hint')!r})")
+        p.call("enter")
+        p.call("type", "an idea #bikes")
+        check(p.wait(lambda: json.loads(p.call("mention")) == ["+bikes"]) and int(p.call("mentionFocus")) == -1,
+              f"a new # offers it too, waiting ({p.call('mention')}, {p.call('mentionFocus')})")
+        check(p.call("keyPage", KEY_ENTER, 0) == "false", "…Enter is still the note's")
+        check(p.call("keyPage", KEY_DOWN, 0) == "true" and int(p.call("mentionFocus")) == 0, "↓ chooses it")
+        p.call("keyPage", KEY_ENTER, 0)
+        check(p.wait(lambda: (json.loads(p.call("askingName")) or {}).get("tag") == "bikes"), "…then Enter asks its name")
+        p.call("closeProjectName")
+        time.sleep(0.4)
+        check(p.call("askingName") == "null" and "an idea #bikes" in p.call("text") and not (pd / "bikes.md").exists(),
+              "Esc leaves the tag as written, and makes nothing")
+        p.call("type", " #12")
+        time.sleep(0.3)
+        check(p.call("mention") == "null", "a tag that is a number is never offered as a project")
+        p.call("sidebarProject", "Bikeability in Linz #bikes")
+        check(p.wait(lambda: (pd / "bikes.md").exists()) and (pd / "bikes.md").read_text() == "# Bikeability in Linz\n\n- Tag: `#bikes`\n"
+              and p.call("addingProject") == "false", "the sidebar's field makes one: its name, and its #tag")
+        p.call("sidebarProject", "#DTM")
+        check(p.wait(lambda: p.call("hint") == "#DTM is a project already"), f"…never one that exists ({p.call('hint')!r})")
+        for f in ("thesis.md", "bikes.md"):
+            (pd / f).unlink()
 
         # 11e. emphasis: Ctrl+B writes the markers the file keeps, and the
         # sidebar moved to the shifted pair to make room for it.
@@ -1686,7 +1730,8 @@ def main() -> int:
         (p.stub / "plan-reply.json").write_text(json.dumps({"proposals": [
             {"kind": "priority", "key_of": "write the essay", "priority": 2, "why": "due soonest"},
             {"kind": "steps", "key_of": "write the essay", "steps": ["outline it", "draft the intro"], "why": "a big box"},
-            {"kind": "deadline", "title": "Poster", "date": poster_day, "project": "", "why": "the note says so"}],
+            {"kind": "deadline", "title": "Poster", "date": poster_day, "project": "", "why": "the note says so"},
+            {"kind": "project", "name": "Bikeability", "tag": "bikeability", "why": "the notes keep coming back to it"}],
             "questions": [], "knowledge": []}))
         p.call("setAutonomy", "priority", "do")
         settings_json = p.tmp / "config" / "longhand" / "settings.json"
@@ -1696,8 +1741,8 @@ def main() -> int:
         p.call("plan", "true")
         def acts():
             return [(n, r) for n, r in enumerate(json.loads(p.call("dashRows"))) if r["kind"] in ("proposal", "told")]
-        check(p.wait(lambda: {r.get("ask") for _, r in acts()} >= {"steps", "deadline", "priority"}, timeout=15),
-              f"three kinds arrive as rows ({[(r['kind'], r.get('ask')) for _, r in acts()]}; "
+        check(p.wait(lambda: {r.get("ask") for _, r in acts()} >= {"steps", "deadline", "priority", "project"}, timeout=15),
+              f"four kinds arrive as rows ({[(r['kind'], r.get('ask')) for _, r in acts()]}; "
               f"runner: {subprocess.run([str(p.runner), 'proposals'], capture_output=True, text=True, env=p.env).stdout[:600]!r}; "
               f"plan: {(p.state / 'longhand' / 'plan.json').read_text() if (p.state / 'longhand' / 'plan.json').exists() else ''!r}; "
               f"stub: {[f.name for f in p.stub.iterdir()]})")
@@ -1724,6 +1769,14 @@ def main() -> int:
               f"note tail: {p.note()[-160:]!r}; ledger: {[(x['kind'], x['status']) for x in json.loads(ledger_file.read_text())['items'][-4:]]})")
         check(p.wait(lambda: p.call("authorOf", p.line_of("Poster 📅")) == "agent"), "…the agent's too")
         p.wait(lambda: not any(r.get("ask") == "deadline" for _, r in acts()))
+        made = p.vault / "agents" / "longhand" / "knowledge" / "projects" / "bikeability.md"
+        check(next(r for _, r in acts() if r.get("ask") == "project")["say"] == "make it a project: Bikeability #bikeability"
+              and not made.exists(), "a new project is proposed, and nothing made until it is accepted")
+        check(p.call("acceptRow", "proposal", "project") == "true", "the project accepted")
+        check(p.wait(lambda: made.exists()) and made.read_text() == "# Bikeability\n\n- Tag: `#bikeability`\n",
+              "…makes it, by the runner")
+        check(p.wait(lambda: any(x.startswith("bikeability|") for x in json.loads(p.call("projects")))), "…and the page lists it")
+        made.unlink()
         check(p.call("dashKeyOn", "told", "priority", KEY_RETURN, 0) == "true"
               and json.loads(p.call("talk"))["item"].startswith("done: priority"),
               f"Enter on what it did on its own opens a conversation too ({json.loads(p.call('talk'))['item']!r})")
@@ -1738,7 +1791,7 @@ def main() -> int:
         p.call("settings")
         KEY_M, KEY_RIGHT = 0x4d, 0x01000014
         check(p.call("settingsKey", KEY_M, CTRL) == "true" and p.call("settingsView") == "autonomy", "Ctrl+M in settings: what the agent may do")
-        check(p.wait(lambda: "priority=do" in p.call("autonomyKinds") and len(json.loads(p.call("autonomyKinds"))) == 7),
+        check(p.wait(lambda: "priority=do" in p.call("autonomyKinds") and len(json.loads(p.call("autonomyKinds"))) == 8),
               f"…every kind with its level ({p.call('autonomyKinds')})")
         p.call("autonomyFocus", 0)
         p.call("autonomyKey", KEY_RIGHT, 0)

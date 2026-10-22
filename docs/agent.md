@@ -118,6 +118,11 @@ The first set:
 6. **File a document** from the inbox into a course (below).
 7. **"This looks done — tick it?"** — a question only. Ticking is the
    person's act; it is what the sound and the "done today" count are for.
+8. **Propose a new project** (2026-10-22) — a question only. Making a
+   project is the person's act (from the note's `@`/`#` or the sidebar);
+   accepting the card makes its file. The agent may add to an existing
+   project's file but never rename or re-tag it, and a file it writes for
+   a project that does not exist is not kept (`agent/projects.py`).
 
 Not in the first set: rewording the person's boxes; anything in prose.
 

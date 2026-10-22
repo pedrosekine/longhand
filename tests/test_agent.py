@@ -150,10 +150,14 @@ def main() -> int:
 
         # 3. run: note untouched, artifacts written, knowledge guarded
         before = (t.note.read_bytes(), t.note.stat().st_mtime_ns)
+        # DORO is a project already; NEW is not, and the agent cannot make it.
+        (t.vault / "agents/longhand/knowledge/projects").mkdir(parents=True, exist_ok=True)
+        (t.vault / "agents/longhand/knowledge/projects/DORO.md").write_text("# DORO\n")
         t.set_reply(reply="You said the brief was unclear.",
                     proposals=[{"kind": "deadline", "title": "one-pager", "when": "friday", "project": "DORO"}],
                     suggestions=[{"text": "book a slot", "evidence": "one-pager due friday"}],
                     knowledge=[{"file": "projects/DORO.md", "content": "one-pager due friday"},
+                               {"file": "projects/NEW.md", "content": "# A new one"},
                                {"file": "../../../escape.md", "content": "nope"},
                                {"file": "profile.md", "content": "student of IT-U"}])
         r = t.agent("run", "--trigger", "mention", "--hash", at_block["hash"], "--date", DAY)
@@ -172,8 +176,9 @@ def main() -> int:
               "every visible block marked seen")
         check(priv["hash"] not in s["blocks"], "private block not in state")
         check(s["blocks"][at_block["hash"]]["session"] == "ses_stub", "session id kept for dive-in")
-        check((t.vault / "agents/longhand/knowledge/projects/DORO.md").read_text() == "one-pager due friday\n",
-              "knowledge file written")
+        check((t.vault / "agents/longhand/knowledge/projects/DORO.md").read_text() == "# DORO\n\none-pager due friday\n",
+              "knowledge file written, the project's name kept")
+        check(not (t.vault / "agents/longhand/knowledge/projects/NEW.md").exists(), "…a new project's file not made")
         check((t.vault / "agents/longhand/knowledge/profile.md").exists(), "profile written")
         check(not (t.vault / "escape.md").exists() and not (t.tmp / "escape.md").exists(), "path escape ignored")
         ledger = (t.state_home / "longhand" / "cost.tsv").read_text().splitlines()

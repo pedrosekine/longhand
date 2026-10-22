@@ -12,6 +12,7 @@ import "Days.js" as Days
 import "Task.js" as Task
 import "Authorship.js" as Authorship
 import "Shortcuts.js" as Sc
+import "Tags.js" as Tags
 
 // The sidebar: the calendar, the day's deadlines, the projects, keys and settings at its foot
 // Moved out of Page.qml on 2026-10-18 (tools/extract_sheet.py); `page` is
@@ -28,6 +29,9 @@ BorderSurface {
   // new one (until 2026-10-19 it kept marking the day it was opened).
   readonly property string todayKey: { svc.today; return Days.key(new Date()) }
   property alias sidebarKeysRef: sidebarKeys
+  property alias projectFieldRef: projectField
+
+  onVisibleChanged: if (!visible) page.addingProject = false
 
   visible: page.sidebarOpen && page.problem === ""
   // Beside whichever sheet is showing: the note's moves to stay centred,
@@ -96,7 +100,8 @@ BorderSurface {
         if (page.projectsKey(event)) event.accepted = true
         return
       }
-      if (Sc.hit(event, "calLists") && (page.focusDue.length > 0 || page.projects.length > 0)) {
+      // (The projects' list always has a row: the one that makes a new one.)
+      if (Sc.hit(event, "calLists")) {
         if (page.focusDue.length > 0) page.dueFocus = 0
         else page.projFocus = 0
       } else if (Sc.hit(event, "calBack")) {
@@ -360,7 +365,6 @@ BorderSurface {
 
     // The projects that exist: the tags to write, soonest session first.
     Text {
-      visible: page.projects.length > 0
       topPadding: page.sp(8)
       textFormat: Text.PlainText
       text: "PROJECTS"
@@ -424,18 +428,81 @@ BorderSurface {
       }
     }
 
+    // A new project (2026-10-22): its name, and its #tag when it should not
+    // be the name's words. The runner makes its file; the list reads it.
+    Rectangle {
+      visible: !page.addingProject
+      width: calendar.width
+      height: newText.implicitHeight + page.sp(6)
+      radius: Style.cornerRadius
+      color: page.projFocus === page.projects.length && sidebarKeys.activeFocus ? Style.selectedFill : newArea.containsMouse ? Style.hoverFill : "transparent"
+      Text {
+        id: newText
+        anchors.left: parent.left
+        anchors.leftMargin: page.sp(4)
+        anchors.verticalCenter: parent.verticalCenter
+        textFormat: Text.PlainText
+        text: "+ new project"
+        color: newArea.containsMouse ? page.accent : page.dim
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.bodySmall)
+      }
+      MouseArea {
+        id: newArea
+        anchors.fill: parent
+        hoverEnabled: true
+        cursorShape: Qt.PointingHandCursor
+        onClicked: { page.projFocus = page.projects.length; page.openSidebarProject() }
+        PanelToolTip { visible: parent.containsMouse; text: page.tip("Make a project: in the sidebar, @ and #", "listOpen") }
+      }
+    }
+    Column {
+      visible: page.addingProject
+      width: calendar.width
+      spacing: page.sp(2)
+      readonly property var made: Tags.fromField(projectField.text, page.projects)
+      TextField {
+        id: projectField
+        width: parent.width
+        placeholderText: "Master Thesis #thesis"
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.bodySmall)
+        foreground: page.foreground
+        onVisibleChanged: if (visible) text = ""
+        Keys.onPressed: function (event) {
+          if (page.anywhereKey(event)) { event.accepted = true; return }
+          if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { page.submitSidebarProject(text); event.accepted = true }
+          else if (event.key === Qt.Key_Escape) { page.closeSidebarProject(); event.accepted = true }
+        }
+      }
+      Text {
+        width: parent.width
+        textFormat: Text.PlainText
+        wrapMode: Text.WordWrap
+        text: parent.made.tag === "" ? "its name, and its #tag when not the name's words · Esc leaves it"
+          : parent.made.taken ? "#" + parent.made.tag + " is a project already"
+          : "Enter makes #" + parent.made.tag + "  " + parent.made.name
+        color: parent.made.taken ? page.urgent : page.faint
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.caption)
+      }
+    }
+
     Text {
       width: parent.width
       visible: sidebarKeys.activeFocus
       textFormat: Text.PlainText
       wrapMode: Text.WordWrap
-      text: page.projFocus >= 0 ? page.keyName("listUp") + page.keyName("listDown") + " pick · " + page.keyName("listOpen") + " its notes · "
+      text: page.projFocus >= 0 && page.projFocus === page.projects.length ? page.keyName("listOpen") + " names a new project · " + page.keyName("listNext") + " back"
+        : page.projFocus >= 0 ? page.keyName("listUp") + page.keyName("listDown") + " pick · " + page.keyName("listOpen") + " its notes · "
           + page.keyName("listClass") + " starts a class · " + page.keyName("listTag") + " puts the tag · " + page.keyName("listNext") + " back"
         : page.dueFocus >= 0 ? page.keyName("listUp") + page.keyName("listDown") + " pick · " + page.keyName("listOpen") + " goes to its line · "
           + page.keyName("listDone") + " done · " + page.keyName("listNext") + " on to the projects"
         : "arrows move · " + page.keyName("calPrevMonth") + page.keyName("calNextMonth") + " month · " + page.keyName("calToday") + " today · "
-          + page.keyName("calOpen") + " opens" + (page.focusDue.length > 0 || page.projects.length > 0
-            ? " · " + page.keyName("calLists") + ": " + (page.focusDue.length > 0 ? "this day's deadlines" : "the projects") : "")
+          + page.keyName("calOpen") + " opens · " + page.keyName("calLists") + ": " + (page.focusDue.length > 0 ? "this day's deadlines" : "the projects")
       color: page.faint
       font.family: page.fontFamily
       font.styleName: page.fontStyle

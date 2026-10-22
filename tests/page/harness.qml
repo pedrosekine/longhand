@@ -91,7 +91,14 @@ ShellRoot {
     function isPrivate(): bool { return page.noteService.notePrivate }
     function agentOn(): bool { return page.agentOn }
     // `@` calling a project
-    function mention(): string { return JSON.stringify(page.mention ? page.mention.items.map(function (p) { return p.tag }) : null) }
+    function mention(): string { return JSON.stringify(page.mention ? page.mention.items.map(function (p) { return (p.make ? "+" : "") + p.tag }) : null) }
+    function mentionFocus(): int { return page.mentionFocus }
+    // Making a project: the note's "name?", and the sidebar's field.
+    function askingName(): string { return JSON.stringify(page.newProject) }
+    function projectName(s: string): void { page.projectNameInput.text = s; page.submitProjectName() }
+    function closeProjectName(): void { page.closeProjectName() }
+    function sidebarProject(s: string): void { page.openSidebarProject(); page.submitSidebarProject(s) }
+    function addingProject(): bool { return page.addingProject }
     // How a line is drawn: whether its emphasis is drawn rather than shown,
     // and the plain text the field holds under it — which must be the line.
     function drawn(line: int): string {

@@ -123,6 +123,7 @@ Item {
   readonly property alias contentItem: content    // what is drawn, for tests to photograph
   readonly property alias noteService: svc
   readonly property alias whenInput: whenField
+  readonly property alias projectNameInput: nameField
   readonly property alias searchInput: searchField
   readonly property alias palette: pal
   // For the sheets that live in files of their own (tools/extract_sheet.py).
@@ -509,12 +510,13 @@ Item {
   }
   function dayCardKind(x) {
     return ({ "do-date": "a day for it", "deadline": "a deadline", "priority": "priority", "steps": "first steps",
-              "drop": "drop it", "done": "looks done" })[x.kind] || x.kind
+              "drop": "drop it", "done": "looks done", "project": "a new project" })[x.kind] || x.kind
   }
   // What a card says beside its pill: the box, and what changes in it.
   function dayCardFacts(x) {
     if (x.kind === "priority") return (x.priority === 2 ? "▲ high" : x.priority === 1 ? "medium" : "▽ low") + " · " + (x.title || "")
     if (x.kind === "steps") return (x.title || "") + (x.steps || []).map(function (s, i) { return "\n" + (i + 1) + ". " + s }).join("")
+    if (x.kind === "project") return (x.title || "") + " #" + x.project
     return x.title || ""
   }
   function dayCardPill(x) {
@@ -1374,11 +1376,18 @@ Item {
     if (!m) { root.mention = null; return }
     var q = m[3].toLowerCase()
     var items = []
+    // Making a project (2026-10-22): when nothing matches, a tag nothing
+    // goes by yet may become one. Under `@`, a call, Enter makes it; under
+    // `#` only for a tag written nowhere yet — the moment a new tag is a
+    // choice — and it waits for ↓: Enter stays a new line.
+    var make = Tags.canMake(m[3]) && !Tags.isProject(root.projects, m[3]) ? { make: true, tag: m[3] } : null
     if (m[2] === "#") {
       // The note's tags, without the one being written (it would count as
       // written already, and close the list on its own first letter).
       var rest = text.substring(0, pos - m[3].length - 1) + text.substring(pos)
-      items = Tags.suggest(Tags.known(root.projects, root.tasks, rest), q)
+      var known = Tags.known(root.projects, root.tasks, rest)
+      items = Tags.suggest(known, q)
+      if (make && items.length === 0 && !known.some(function (t) { return t.tag.toLowerCase() === q })) items = [make]
       if (items.length === 0) { root.mention = null; return }
     } else {
       for (var i = 0; i < root.projects.length; i++) {
@@ -1386,10 +1395,15 @@ Item {
         if (q === "" || pr.tag.toLowerCase().indexOf(q) >= 0 || String(pr.name || "").toLowerCase().indexOf(q) >= 0)
           items.push(pr)
       }
+      if (make && items.length === 0) items.push(make)
     }
-    root.mention = { start: pos - m[3].length - 1, query: m[3], items: items, sign: m[2],
+    var start = pos - m[3].length - 1
+    var fresh = !root.mention || root.mention.start !== start
+    var waits = m[2] === "#" && items.length === 1 && !!items[0].make
+    root.mention = { start: start, query: m[3], items: items, sign: m[2],
                      atLineStart: m[1] === "" && m[2] === "@" }
-    if (root.mentionFocus > items.length - 1) root.mentionFocus = Math.max(0, items.length - 1)
+    if (fresh) root.mentionFocus = waits ? -1 : 0
+    else if (root.mentionFocus > items.length - 1) root.mentionFocus = waits ? Math.min(root.mentionFocus, 0) : Math.max(0, items.length - 1)
   }
 
   // Enter puts the project's tag where the `@` was. Shift+Enter starts the
@@ -1399,8 +1413,13 @@ Item {
     var m = root.mention
     if (!m || m.items.length === 0) return
     var pr = m.items[root.mentionFocus]
+    if (!pr) return
     var to = editor.cursorPosition
     root.mention = null
+    if (pr.make) {
+      root.askProjectName({ start: m.start, end: to, tag: pr.tag, heading: shift && m.atLineStart })
+      return
+    }
     editor.remove(m.start, to)
     if (shift && m.atLineStart) {
       editor.insert(m.start, "# " + (pr.name || pr.tag) + " #" + pr.tag)
@@ -1413,6 +1432,17 @@ Item {
 
   function mentionKey(event) {
     if (!root.mention || root.mention.items.length === 0) return false
+    // The one row offering a new `#tag` as a project, not yet chosen: ↓
+    // chooses it, Esc closes it, and every other key is the note's.
+    if (root.mentionFocus < 0) {
+      if (Sc.hit(event, "mentionDown")) { root.mentionFocus = 0; return true }
+      if (Sc.hit(event, "mentionClose")) { root.mention = null; return true }
+      return false
+    }
+    if (Sc.hit(event, "mentionUp") && root.mention.sign === "#" && root.mention.items.length === 1 && root.mention.items[0].make) {
+      root.mentionFocus = -1
+      return true
+    }
     if (Sc.hit(event, "mentionUp")) { root.mentionFocus = Math.max(0, root.mentionFocus - 1); return true }
     if (Sc.hit(event, "mentionDown")) { root.mentionFocus = Math.min(root.mention.items.length - 1, root.mentionFocus + 1); return true }
     if (Sc.hit(event, "mentionClass")) { root.acceptMention(true); return true }
@@ -2405,7 +2435,7 @@ Item {
       if (d && d.status === "open") root.tickSound()
       root.tickDeadline(d)
     }
-    else if (Sc.hit(event, "listNext")) { root.dueFocus = -1; if (root.projects.length > 0) root.projFocus = 0 }
+    else if (Sc.hit(event, "listNext")) { root.dueFocus = -1; root.projFocus = 0 }
     else if (Sc.hit(event, "listBack")) root.dueFocus = -1
     else return false
     return true
@@ -2417,13 +2447,14 @@ Item {
   // pair: Shift+Enter starts a class, Ctrl+Enter puts the tag at the
   // cursor. Inverted 2026-10-15; `@` in the note is the way to write one.
   function projectsKey(event) {
+    // The row after the last project makes a new one.
     var pr = root.projects[root.projFocus]
     if (Sc.hit(event, "listUp")) root.projFocus = Math.max(0, root.projFocus - 1)
-    else if (Sc.hit(event, "listDown")) root.projFocus = Math.min(root.projects.length - 1, root.projFocus + 1)
+    else if (Sc.hit(event, "listDown")) root.projFocus = Math.min(root.projects.length, root.projFocus + 1)
     else if (Sc.hit(event, "listTag")) { if (pr) root.insertTag(pr) }
     else if (Sc.hit(event, "listClass")) { if (pr) root.startClass(pr) }
-    else if (Sc.hit(event, "listOpen")) { if (pr) root.openProject(pr) }
-    else if (Sc.hit(event, "listInto")) root.openProject(pr)
+    else if (Sc.hit(event, "listOpen")) { if (pr) root.openProject(pr); else root.openSidebarProject() }
+    else if (Sc.hit(event, "listInto")) { if (pr) root.openProject(pr) }
     else if (Sc.hit(event, "listNext") || Sc.hit(event, "listBack")) root.projFocus = -1
     else if (!(event.modifiers & Qt.ControlModifier)) { root.projFocus = -1; return false }
     else return false
@@ -2727,6 +2758,7 @@ Item {
     var what = x.kind === "do-date" ? "do " + root.sayDate(x.date) + (under ? "" : " · " + (x.title || ""))
       : x.kind === "file" ? "file “" + x.name.replace(/\.pdf$/, "") + "” in " + (x.title || x.project)
       : x.kind === "deadline" ? "deadline: " + x.title + " · 📅 " + root.sayDate(x.date)
+      : x.kind === "project" ? "make it a project: " + x.title + " #" + x.project
       : x.kind === "priority" ? "priority " + (x.priority === 2 ? "▲ high" : x.priority === 1 ? "medium" : "▽ low")
         + (under ? "" : " · " + x.title)
       : x.kind === "steps" ? "steps: " + x.steps.join(" · ")
@@ -2941,6 +2973,7 @@ Item {
     if (row.kind === "told") { root.resolveProposal(p, "accept", ""); return }
     // A document: the runner moves it into the course's folder.
     if (p.kind === "file") { root.resolveProposal(p, "accept", ""); root.showHint("filed in " + (p.title || p.project)); return }
+    if (p.kind === "project") { root.resolveProposal(p, "accept", ""); root.showHint("#" + p.project + " is a project now"); return }
     if (!root.applyProposal(p, row.task)) return
     root.resolveProposal(p, "accept", "")
   }
@@ -2952,6 +2985,7 @@ Item {
   // tinted); new lines — steps, a deadline's box — are the agent's (◇).
   function applyProposal(p, task) {
     var t = task || (p.key ? root.taskOfKey(p.key) : null)
+    if (p.kind === "project") return true          // made by the runner, on accepting it
     if (p.kind !== "deadline" && !t) { root.showHint("its box is not on the list any more"); return false }
     if (p.kind === "do-date") {
       root.editTask(t, "when", p.date)
@@ -3853,6 +3887,67 @@ Item {
     editor.focusNote()
   }
 
+  // ------------------------------------------------------ making a project
+
+  // A new project (2026-10-22, agent/projects.py), made by the runner and
+  // only ever by the person: from the note, a `#tag` or `@name` nothing
+  // goes by yet — its name asked under the line, then the tag written where
+  // it was typed (Shift+Enter on `@` at a line's start writes its heading);
+  // from the sidebar, a field for the name and, when not the name's words,
+  // its #tag.
+  property var newProject: null       // the note's "name?": { start, end, tag, heading }
+  property bool addingProject: false  // the sidebar's field is open
+
+  function askProjectName(a) {
+    root.newProject = a
+    nameField.text = ""
+    nameField.forceActiveFocus()
+  }
+
+  function closeProjectName() {
+    root.newProject = null
+    editor.focusNote()
+  }
+
+  function submitProjectName() {
+    var a = root.newProject
+    if (!a) return
+    var name = nameField.text.replace(/\s+/g, " ").trim() || a.tag
+    root.newProject = null
+    var text = a.heading ? "# " + name + " #" + a.tag : "#" + a.tag + " "
+    editor.remove(a.start, a.end)
+    editor.insert(a.start, text)
+    editor.setCursor(a.start + text.length, true)
+    root.makeProject(name, a.tag)
+    root.used("project", "note")
+  }
+
+  function openSidebarProject() {
+    root.addingProject = true
+    Qt.callLater(function () { sidebar.projectFieldRef.forceActiveFocus() })
+  }
+
+  function closeSidebarProject() {
+    root.addingProject = false
+    if (root.sidebarOpen) sidebar.sidebarKeysRef.forceActiveFocus()
+  }
+
+  function submitSidebarProject(text) {
+    var f = Tags.fromField(text, root.projects)
+    if (f.tag === "") { root.showHint("a name, and its #tag when not the name's words"); return }
+    if (f.taken) { root.showHint("#" + f.tag + " is a project already"); return }
+    root.makeProject(f.name, f.tag)
+    root.used("project", "sidebar")
+    root.closeSidebarProject()
+  }
+
+  function makeProject(name, tag) {
+    if (newProjectProc.running) { root.showHint("still making the last one"); return }
+    newProjectProc.made = tag
+    newProjectProc.command = [svc.runner, "project", "--tag", tag, "--name", name]
+    newProjectProc.running = true
+  }
+
   function submitWhen() {
     var a = root.whenFor
     var text = whenField.text.trim()
@@ -4708,6 +4803,18 @@ Item {
   // The sessions move on while the sidebar stays open.
   Timer { interval: 300000; repeat: true; running: root.sidebarOpen && root.showing; onTriggered: root.refreshProjects() }
 
+  // The runner makes the project's file; the list is read again for it.
+  Process {
+    id: newProjectProc
+    property string made: ""
+    stdout: StdioCollector {
+      onStreamFinished: if (text.trim() !== "") { root.showHint("#" + newProjectProc.made + " is a project now"); root.refreshProjects() }
+    }
+    stderr: StdioCollector {
+      onStreamFinished: if (text.trim() !== "") { root.showHint(text.trim().replace(/^longhand-agent: /, "")); root.refreshProjects() }
+    }
+  }
+
   Process {
     id: projectsProc
     stdout: StdioCollector {
@@ -5501,8 +5608,8 @@ Item {
             id: editor
             // What the page shows under a line opens room there, so the
             // lines below move down rather than being drawn over.
-            roomRow: whenBox.visible || mentionBox.visible ? root.lineIndexAt(editor.cursorPosition) : -1
-            roomHeight: (whenBox.visible ? whenBox.height : mentionBox.visible ? mentionBox.height : 0) + root.sp(12)
+            roomRow: whenBox.visible || mentionBox.visible || nameBox.visible ? root.lineIndexAt(root.newProject ? root.newProject.end : editor.cursorPosition) : -1
+            roomHeight: (whenBox.visible ? whenBox.height : mentionBox.visible ? mentionBox.height : nameBox.visible ? nameBox.height : 0) + root.sp(12)
             boxTip: Component { Item { PanelToolTip { visible: true; text: root.tip("Tick or untick it", "checkbox") } } }
             onBoxTicked: function (lineIndex, done) { if (done) root.tickSound() }
             authors: root.shownAuthors
@@ -5616,8 +5723,9 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     textFormat: Text.PlainText
                     elide: Text.ElideRight
-                    text: "#" + modelData.tag + (modelData.name ? "  " + modelData.name : "")
-                    color: root.foreground
+                    text: modelData.make ? "+ make #" + modelData.tag + " a project"
+                      : "#" + modelData.tag + (modelData.name ? "  " + modelData.name : "")
+                    color: modelData.make ? root.dim : root.foreground
                     font.family: root.fontFamily
                     font.styleName: root.fontStyle
                     font.pixelSize: root.fs(Style.font.bodySmall)
@@ -5628,7 +5736,8 @@ Item {
                     cursorShape: Qt.PointingHandCursor
                     hoverEnabled: true
                     onClicked: { root.mentionFocus = index; root.acceptMention(false) }
-                    PanelToolTip { visible: parent.containsMouse; text: root.mention && root.mention.atLineStart
+                    PanelToolTip { visible: parent.containsMouse; text: modelData.make ? "Name it, and it is in the sidebar, @ and #"
+                      : root.mention && root.mention.atLineStart
                       ? root.tips([["Write its #tag", "mentionPick"], ["Start the class", "mentionClass"]]) : root.tip("Write its #tag", "mentionPick") }
                   }
                 }
@@ -5638,7 +5747,11 @@ Item {
                 topPadding: root.sp(4)
                 textFormat: Text.PlainText
                 wrapMode: Text.WordWrap
-                text: root.mention && root.mention.atLineStart
+                text: root.mentionFocus < 0
+                  ? root.keyName("mentionDown") + " then " + root.keyName("mentionPick") + " makes it a project · " + root.keyName("mentionClose") + " leaves it"
+                  : root.mention && root.mention.items[root.mentionFocus] && root.mention.items[root.mentionFocus].make
+                  ? root.keyName("mentionPick") + " names the new project · " + root.keyName("mentionClose") + " leaves it"
+                  : root.mention && root.mention.atLineStart
                   ? root.keyName("mentionPick") + " its tag · " + root.keyName("mentionClass") + " starts the class · " + root.keyName("mentionClose") + " leaves it"
                   : root.keyName("mentionPick") + " its tag · " + root.keyName("mentionClose") + " leaves it"
                 color: root.faint
@@ -5680,6 +5793,51 @@ Item {
                 if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { root.submitWhen(); event.accepted = true }
                 else if (event.key === Qt.Key_Escape) { root.closeWhen(); event.accepted = true }
               }
+            }
+          }
+
+          // A new project's name, asked the way Ctrl+D asks "when?": under
+          // the line, in the room it opens there.
+          Column {
+            id: nameBox
+            visible: !!root.newProject
+            x: root.gutter
+            y: editor.roomRow >= 0 ? editor.roomTop + root.sp(4) : editor.cursorRect.y + editor.cursorRect.height + root.sp(4)
+            spacing: root.sp(2)
+            z: 3
+            Row {
+              spacing: root.sp(8)
+              Text {
+                anchors.verticalCenter: parent.verticalCenter
+                textFormat: Text.PlainText
+                text: "name?"
+                color: root.dim
+                font.family: root.fontFamily
+                font.styleName: root.fontStyle
+                font.pixelSize: root.fs(Style.font.bodySmall)
+              }
+              TextField {
+                id: nameField
+                width: root.sp(260)
+                placeholderText: root.newProject ? "empty: " + root.newProject.tag : ""
+                font.family: root.fontFamily
+                font.styleName: root.fontStyle
+                font.pixelSize: root.fs(Style.font.body)
+                foreground: root.foreground
+                Keys.onPressed: function (event) {
+                  if (root.anywhereKey(event)) { event.accepted = true; return }
+                  if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { root.submitProjectName(); event.accepted = true }
+                  else if (event.key === Qt.Key_Escape) { root.closeProjectName(); event.accepted = true }
+                }
+              }
+            }
+            Text {
+              textFormat: Text.PlainText
+              text: root.newProject ? "Enter makes #" + root.newProject.tag + " a project · Esc leaves it as written" : ""
+              color: root.faint
+              font.family: root.fontFamily
+              font.styleName: root.fontStyle
+              font.pixelSize: root.fs(Style.font.caption)
             }
           }
 

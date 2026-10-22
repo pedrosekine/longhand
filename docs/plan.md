@@ -468,6 +468,20 @@ section, word for word, and to the diary's decisions log.
 
 Small, when passing by:
 
+- ~~**Making a project**~~ *built 2026-10-22* (a short grilling that day:
+  where it starts, what it asks, what the agent may change, the agent's
+  part). A project was a file in the agent's `knowledge/projects/` that
+  only the agent or a hand-written file could make. Now the person makes
+  one, the runner writes it (`longhand-agent project --tag T --name N`,
+  `agent/projects.py`): from the note, `@name` or a new `#tag` when nothing
+  matches offers "+ make #x a project" (`@`: Enter; `#`: ↓ then Enter, so
+  Enter stays a new line), then asks "name?" under the line; from the
+  sidebar, "+ new project" takes "Name #tag" (the name's words when no
+  tag). Never over one that exists. The agent may add to a project's file
+  but never rename or re-tag it (its H1 and `Tag:` put back by the runner),
+  and never makes one: a new `project` proposal, a question only, accepted
+  like any card. `tests/test_projects.py`, `tests/tst_tags.qml`, 11d' and
+  12i in `tests/page/run.py`.
 - ~~**Tag suggestions while typing**~~ *done 2026-10-18*: `#` and a letter
   offer the tags that exist — the projects', then those written in the
   notes, most used first (`Tags.js`) — in the `@` list; never for a lone
@@ -532,7 +546,12 @@ from 2026-09/10 and still stand.
   full runs; before it, the planner never proposed steps at all. Still
   wanted: an eval case for a deadline *stated in prose* (the 10-19 case
   turned out to be a box already in the store) and one for "looks done" —
-  both wait for notes that have them.
+  both wait for notes that have them. Its successor `c61d50c330`
+  (2026-10-22, the `project` proposal) passed its four cases in one run.
+  The day prompt `de82d8480d` (the same change) failed
+  `day-seed-email-date` once (it asked which date was meant instead of
+  proposing one), then passed it twice and all six together: watch it.
+  Still wanted: an eval case where a project proposal is the right answer.
 - **Deadlines #d10 "author response" and #d25 "Proposal of version 1"**
   were ticked done on 2026-10-16, a second apart, two months early: a slip
   or a test? If a slip, reopen them in the store — since 2026-10-20 the
@@ -584,6 +603,13 @@ from 2026-09/10 and still stand.
 - **The calendar's live checks "…is fetched at once"** failed together
   once (2026-10-21, the calendar saying it had none yet) and passed the
   next run: watch them.
+- **Making a project** (2026-10-22): whether the `#` row ("+ make #x a
+  project", only for a tag written nowhere yet) is noise while typing new
+  tags, or the right nudge — and whether the sidebar's name-derived tag
+  (`master-thesis`) is ever kept, or always replaced by a typed `#tag`.
+- **The agent's project proposals** (2026-10-22): whether it proposes
+  them at all, and whether the ones it does are accepted (Settings → what
+  the agent may do, "propose a new project").
 - **A live check that failed once** (2026-10-18, then passed four runs):
   the "when?" box pushing the next line down (11j in `tests/page/run.py`).
 

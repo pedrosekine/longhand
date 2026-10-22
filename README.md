@@ -123,6 +123,11 @@ the projects. A tagged heading claims everything under it until the next
 heading of the same or a higher level, so an `## H2` never ends a `# Course`.
 Writing a project into the note is the shifted pair: Shift+Enter starts a
 class (`# Course #tag`), Ctrl+Enter puts just the tag at the cursor.
+A new project is made from the note — `@` or `#` with a tag nothing goes by
+yet offers "+ make #tag a project" and asks its name — or from "+ new
+project" under the sidebar's list (`Name #tag`; without a tag, the name's
+words). The agent may add to a project's file, never rename it, re-tag it
+or make one; it proposes a new one as a card instead.
 The file stays plain
 markdown, changed only where you typed. What you wrote is always drawn at
 full strength; a block with a reply carries a gutter mark and its reply shows

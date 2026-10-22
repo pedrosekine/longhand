@@ -60,3 +60,34 @@ function suggest(tags, q) {
   }
   return starts.concat(within).slice(0, 8)
 }
+
+// ------------------------------------------------------- a new project
+
+// Making a project (2026-10-22, agent/projects.py): a tag the runner takes,
+// and whether `#q` may be offered as one — a word that starts with a
+// letter, so `#1` (an issue, a number) never asks to be a project.
+function isTag(t) {
+  return /^[\w\/-]{1,40}$/.test(String(t || ""))
+}
+
+function canMake(q) {
+  return isTag(q) && /^[A-Za-z]/.test(q)
+}
+
+// Whether a project goes by this tag already, whatever its case.
+function isProject(projects, tag) {
+  var low = String(tag || "").toLowerCase()
+  return (projects || []).some(function (p) { return p && String(p.tag).toLowerCase() === low })
+}
+
+// The sidebar's field: "Master Thesis #thesis" names both; without a #tag,
+// the name's words, lowercased and joined by `-`, are its tag. { name,
+// tag, taken } — tag "" while there is nothing to make.
+function fromField(text, projects) {
+  var s = String(text || "")
+  var m = s.match(/(^|\s)#([\w\/-]+)\s*$/)
+  var name = (m ? s.slice(0, m.index) : s).replace(/\s+/g, " ").trim().slice(0, 80)
+  var tag = m ? m[2] : (name.toLowerCase().match(/[a-z0-9]+/g) || []).join("-").slice(0, 40).replace(/-+$/, "")
+  if (!isTag(tag)) tag = ""
+  return { name: name || tag, tag: tag, taken: tag !== "" && isProject(projects, tag) }
+}

@@ -33,4 +33,20 @@ TestCase {
   function test_tags_in_text() {
     compare(Tags.inText("#a b #c/d e#f #g-h"), ["a", "c/d", "g-h"])
   }
+
+  // Making a project (2026-10-22).
+  function test_what_may_be_made() {
+    verify(Tags.canMake("thesis") && Tags.canMake("msc/thesis"))
+    verify(!Tags.canMake("1") && !Tags.canMake("") && !Tags.canMake("-x"))
+    verify(Tags.isProject(projects, "DTM") && !Tags.isProject(projects, "thesis"))
+  }
+
+  function test_the_sidebar_field() {
+    compare(Tags.fromField("Master Thesis #thesis", projects), { name: "Master Thesis", tag: "thesis", taken: false })
+    compare(Tags.fromField("  Master   Thesis ", projects), { name: "Master Thesis", tag: "master-thesis", taken: false })
+    compare(Tags.fromField("Design Theory & Methods", projects).tag, "design-theory-methods")
+    compare(Tags.fromField("#dtm", projects), { name: "dtm", tag: "dtm", taken: true })
+    compare(Tags.fromField("", projects).tag, "")
+    compare(Tags.fromField("Über", projects).tag, "ber")
+  }
 }

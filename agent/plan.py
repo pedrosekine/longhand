@@ -48,9 +48,12 @@ KINDS = {
     "drop": "propose dropping a stale box",
     "file": "file a document from the inbox",
     "done": "ask whether a box is done",
+    "project": "propose a new project",
 }
 LEVELS = ("ask", "do", "never")
-ASK_ONLY = {"done"}          # ticking is the person's act: a question only
+# Ticking is the person's act, and so is making a project (2026-10-22):
+# a question only.
+ASK_ONLY = {"done", "project"}
 PRIORITY_LEVELS = {2: "high", 1: "medium", -1: "low"}
 RAISE_AFTER = 10             # answered proposals of a kind before raising is suggested
 RAISE_ACCEPTED = 9          # …of which accepted
@@ -253,7 +256,9 @@ def same_deadline(title: str, date: str, d: dict) -> bool:
 
 def ident(x: dict) -> tuple[str, str]:
     """What one proposal is about: its kind and its box, or, for a deadline
-    (which has no box yet), its words."""
+    (which has no box yet), its words; for a project, its tag."""
+    if x["kind"] == "project":
+        return (x["kind"], str(x.get("project") or "").lower())
     return (x["kind"], x.get("key") or norm(x.get("title", "")))
 
 
@@ -294,7 +299,8 @@ def record_of(ledger: dict, kind: str) -> dict:
 
 def validate(reply: dict, cands: list[dict], days: list[dict], ledger: dict, today: dt.date,
              boxes: list[dict] | None = None, deadlines: list[dict] | None = None,
-             allowed: dict[str, str] | None = None, closed: list[dict] | None = None) -> tuple[list[dict], list[dict]]:
+             allowed: dict[str, str] | None = None, closed: list[dict] | None = None,
+             projects: list[str] | None = None) -> tuple[list[dict], list[dict]]:
     """What the model said, kept only where it holds: every kind checked
     against what it was shown, against what the person already refused, and
     against what the person allows ("never" drops it). At most
@@ -307,6 +313,7 @@ def validate(reply: dict, cands: list[dict], days: list[dict], ledger: dict, tod
     busy = {ident(x) for x in ledger["items"] if x["status"] == "told" or (x["status"] == "open" and x.get("auto"))}
     level = allowed or {}
     known = {norm(x["title"]) for x in deadlines or []} | {norm(b["title"]) for b in boxes or []}
+    tags = {t.lower() for t in projects or []}
     props, seen = [], set()
     for p in reply.get("proposals") or []:
         if len(props) >= MAX_PROPOSALS:
@@ -345,6 +352,14 @@ def validate(reply: dict, cands: list[dict], days: list[dict], ledger: dict, tod
             project = project if re.fullmatch(r"[\w/-]{1,40}", project) else ""
             item = {"kind": kind, "key": "", "title": title, "date": date, "project": project, "why": why,
                     "source": str(p.get("source") or "")[:200]}
+        elif kind == "project":
+            # A project the person keeps writing about but has not made:
+            # never one whose tag exists, and never without a reason.
+            tag = str(p.get("tag") or "").strip().lstrip("#")
+            name = re.sub(r"\s+", " ", str(p.get("name") or "")).strip()[:80]
+            if not re.fullmatch(r"[\w/-]{1,40}", tag) or tag.lower() in tags or not name or not why:
+                continue
+            item = {"kind": kind, "key": "", "title": name, "project": tag, "why": why}
         else:
             b = by_box.get(key)
             if not b:
@@ -433,6 +448,18 @@ def settle_moot(ledger: dict, tasks: list[dict], at: str) -> int:
         if gone or (x["kind"] == "do-date" and t.get("when")) \
                 or (x["kind"] == "priority" and (t.get("priority") or 0) == x.get("priority")) \
                 or (x["kind"] == "steps" and t.get("details")):
+            x["status"], x["resolved"] = "moot", at
+            n += 1
+    return n
+
+
+def settle_projects(ledger: dict, tags: list[str], at: str) -> int:
+    """A proposed project whose tag exists now — the person made it some
+    other way — no longer asks anything: moot."""
+    have = {t.lower() for t in tags}
+    n = 0
+    for x in open_items(ledger):
+        if x["kind"] == "project" and str(x.get("project") or "").lower() in have:
             x["status"], x["resolved"] = "moot", at
             n += 1
     return n

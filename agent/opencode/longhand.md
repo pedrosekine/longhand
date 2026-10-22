@@ -195,7 +195,10 @@ learned something durable — not on every run.
   be spoken to, what they told you about themselves.
 - `projects/<name>.md` — one per project (a course, a thesis, anything the
   student works towards): deliverables, dates,
-  what is going on, what the student said about it.
+  what is going on, what the student said about it. Only for a project that
+  exists: making one is the student's (a new `#tag` in the note offers it),
+  so a file you write for a new one is not kept — say in your reply that it
+  could be a project instead. Its `# Name` and `Tag:` line stay as they are.
 - `patterns.md` — habits you can *show*: from the "Intentions and outcomes"
   section, what gets done and what lingers, when the student works, what
   they said they would do versus what happened. Numbers and dates, not

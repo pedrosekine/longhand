@@ -60,6 +60,13 @@ sidebar ({key:sidebar}) shows a month calendar, the day's deadlines and the
 projects with their next session; a project opens its notes from every day,
 newest first, and its documents.
 
+To make a project: type `@` or `#` and its new tag in the note — when
+nothing matches, the list offers "+ make #tag a project" (after `#`, press
+{key:mentionDown} first, so Enter is still a new line) and asks its name;
+or "+ new project" at the foot of the sidebar's projects, typing its name
+and, if it should not be the name's words, its `#tag`. A project's name
+and tag stay as made; the agent never makes one, only proposes it.
+
 ## The dashboard
 
 {key:dashboard} turns the sheet into the dashboard: every open checkbox and

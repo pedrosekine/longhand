@@ -19,6 +19,7 @@
     longhand-agent state [--date YYYY.MM.DD]                    # today's state JSON
     longhand-agent stats [--days 14 | --since YYYY-MM-DD] [--json]   # how the tool is used
     longhand-agent projects                                     # the tags that exist, with their next session
+    longhand-agent project --tag T [--name N]                   # make a project: its file in knowledge/projects/
     longhand-agent timetable [--fetch [--index n]]              # each calendar's state, for the Settings sheet, JSON
     longhand-agent eval add <payload> [--job margin|plan|day]   # a real run made into an eval case (in the vault)
     longhand-agent eval run [--model M] [--case ID]             # the cases against the repo's prompts; kept as history
@@ -66,6 +67,7 @@ import manual  # noqa: E402
 import search as searchlib  # noqa: E402
 import timetable  # noqa: E402
 import task as tasklib  # noqa: E402
+import projects as projlib  # noqa: E402
 
 TRIGGERS = ("checkbox", "mention", "question", "tick", "open")
 LINK_LINE = re.compile(r"^\[\[[^\]\n]*\|agent\]\]$")
@@ -179,7 +181,9 @@ def write_atomic(paths: Paths, target: Path, text: str) -> None:
 def write_knowledge(paths: Paths, files: list, written: list) -> None:
     """The knowledge files the model rewrote, with the student's corrections
     applied again (notebook.py), so a correction made once stays made. Only
-    its own files: answers, dismissals and corrections are never the model's."""
+    its own files: answers, dismissals and corrections are never the model's.
+    A project's file it may add to but not make — a new project is the
+    person's, proposed to them (projects.py) — and its name and tag stay."""
     record = nb.corrections(paths.knowledge)
     for k in files:
         name = str((k or {}).get("file") or "")
@@ -187,7 +191,15 @@ def write_knowledge(paths: Paths, files: list, written: list) -> None:
             continue
         # The whole record, whichever file a correction was made in: a fact
         # forgotten in one file does not come back by moving to another.
-        write_atomic(paths, paths.knowledge / name, nb.enforce(str(k.get("content") or "").rstrip(), record) + "\n")
+        content = nb.enforce(str(k.get("content") or "").rstrip(), record)
+        target = paths.knowledge / name
+        if name.startswith("projects/"):
+            try:
+                old = target.read_text()
+            except FileNotFoundError:
+                continue
+            content = projlib.keep_identity(old, content, target.stem).rstrip()
+        write_atomic(paths, target, content + "\n")
         written.append(name)
 
 
@@ -1704,6 +1716,31 @@ def cmd_projects(cfg: dict, args) -> int:
     return 0
 
 
+def make_project(cfg: dict, tag: str, name: str) -> dict:
+    """A new project's file, `# Name` and its `Tag:` line — the person's
+    act, from the page or by accepting the agent's proposal. Never over
+    one that exists, by its file or by its tag."""
+    t, n = projlib.clean_tag(tag), projlib.clean_name(name)
+    if not t:
+        raise Fail(f"“{tag}” cannot be a tag: letters, digits, - and / only")
+    paths = Paths(cfg, dt.date.today())
+    folder = paths.knowledge / "projects"
+    if projlib.taken(folder, t):
+        raise Fail(f"#{t} is a project already")
+    target = folder / projlib.file_name(t)
+    write_atomic(paths, target, projlib.stub(n or t, t))
+    return {"tag": t, "name": n or t, "file": target.name}
+
+
+def project_tags(cfg: dict) -> list[str]:
+    return [p["tag"] for p in projlib.read(Paths(cfg, dt.date.today()).knowledge / "projects")]
+
+
+def cmd_project(cfg: dict, args) -> int:
+    print(json.dumps(make_project(cfg, args.tag, args.name), ensure_ascii=False))
+    return 0
+
+
 def course_codes(cfg: dict, today: dt.date) -> list[tuple[str, str, str]]:
     """(code, name, tag) for each project whose knowledge file names a
     course code; code "" for those that do not."""
@@ -1958,7 +1995,8 @@ def cmd_plan(cfg: dict, args) -> int:
     reply = parse_plan(result["text"]) if not result["error"] else {"proposals": [], "questions": [], "knowledge": []}
     # What the store has closed, too: a ticked box must not return as a new deadline.
     closed = planlib.store_deadlines(STATE_HOME / "deadlines.tsv", ("done", "cancelled"))
-    props, qs = planlib.validate(reply, cands, days, ledger, today, boxes, deadlines, allowed, closed)
+    props, qs = planlib.validate(reply, cands, days, ledger, today, boxes, deadlines, allowed, closed,
+                                 project_tags(cfg))
     for item in props + qs:
         item.update({"prompt": result.get("prompt", ""), "model": result.get("model", ""), "payload": str(payload_file)})
     new = planlib.record(ledger, props, qs, at)
@@ -2055,6 +2093,7 @@ def cmd_proposals(cfg: dict, args) -> int:
     ledger = planlib.load_ledger(PROPOSALS)
     at = dt.datetime.now().isoformat(timespec="seconds")
     changed = planlib.settle_moot(ledger, tasks, at)
+    changed += planlib.settle_projects(ledger, project_tags(cfg), at)
     changed += inbox_pass(cfg, ledger, at)
     if changed:
         planlib.save_ledger(PROPOSALS, ledger)
@@ -2121,6 +2160,14 @@ def cmd_proposal(cfg: dict, args) -> int:
             raise Fail("only a question takes an answer")
         planlib.resolve(ledger, args.id, "answered", at, answer)
         keep_answer(cfg, item, answer)
+    elif args.how == "accept" and item["kind"] == "project":
+        # Accepting makes it, as the person would from the page; one made
+        # meanwhile (by its tag) leaves nothing to accept.
+        try:
+            item["made"] = make_project(cfg, item["project"], item["title"])["file"]
+            planlib.resolve(ledger, args.id, "accepted", at)
+        except Fail:
+            planlib.resolve(ledger, args.id, "moot", at)
     elif args.how == "accept" and item["kind"] == "file":
         paths = Paths(cfg, dt.date.today())
         try:
@@ -2410,7 +2457,7 @@ def day_proposals(cfg: dict, reply: dict, result: dict, payload_file: Path, at: 
     ledger = planlib.load_ledger(PROPOSALS)
     closed = planlib.store_deadlines(STATE_HOME / "deadlines.tsv", ("done", "cancelled"))
     props, _ = planlib.validate({"proposals": reply["proposals"], "questions": []}, cands, days, ledger, today,
-                                boxes, deadlines, allowed, closed)
+                                boxes, deadlines, allowed, closed, project_tags(cfg))
     for item in props:
         item.update({"from": "day", "prompt": result.get("prompt", ""), "model": result.get("model", ""),
                      "payload": str(payload_file)})
@@ -2807,7 +2854,7 @@ def cmd_talk(cfg: dict, args) -> int:
     if item["status"] == "open" and item["kind"] != "question" and reply["revise"] is not None:
         closed = planlib.store_deadlines(STATE_HOME / "deadlines.tsv", ("done", "cancelled"))
         kept, _ = planlib.validate({"proposals": [reply["revise"]]}, cands, days, ledger, today, boxes, deadlines,
-                                   allowed, closed)
+                                   allowed, closed, project_tags(cfg))
         new = planlib.check_revision(item, reply["revise"], kept)
         if new is not None:
             new.pop("auto", None)             # a revision waits for the person, whatever the level
@@ -3341,6 +3388,9 @@ def main(argv: list[str]) -> int:
     p.add_argument("--verbose", action="store_true")
     p.add_argument("--json", action="store_true")
     sub.add_parser("projects").add_argument("--now", default="", help="YYYY-MM-DDTHH:MM (tests)")
+    p = sub.add_parser("project")
+    p.add_argument("--tag", required=True)
+    p.add_argument("--name", default="", help="its name; the tag when left out")
     p = sub.add_parser("stats")
     p.add_argument("--days", default="14")
     p.add_argument("--since", default="", help="YYYY-MM-DD; overrides --days")
@@ -3351,7 +3401,7 @@ def main(argv: list[str]) -> int:
         return {"run": cmd_run, "chat": cmd_chat, "ack": cmd_ack, "accept": cmd_accept, "tasks": cmd_tasks, "sections": cmd_sections,
                 "next": cmd_next, "box": cmd_box, "rate": cmd_rate, "eval": cmd_eval, "review": cmd_review, "plan": cmd_plan, "proposals": cmd_proposals, "proposal": cmd_proposal, "talk": cmd_talk, "thread": cmd_thread, "timetable": cmd_timetable, "notebook": cmd_notebook, "documents": cmd_documents, "day": cmd_day, "search": cmd_search, "autonomy": cmd_autonomy, "dismiss": cmd_dismiss, "curriculum": cmd_curriculum,
                 "context": cmd_context, "state": cmd_state, "install": cmd_install, "stats": cmd_stats,
-                "projects": cmd_projects}[args.cmd](cfg, args)
+                "projects": cmd_projects, "project": cmd_project}[args.cmd](cfg, args)
     except Fail as e:
         print(f"longhand-agent: {e}", file=sys.stderr)
         return 2
