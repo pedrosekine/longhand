@@ -173,7 +173,10 @@ Where a row has two keys, either works: the second is usually the one another ap
 | Nest or un-nest the line (or every line selected) | `Tab` · `Shift+Tab` | |
 | Move; by word with Ctrl | `←` · `→` · `↑` · `↓` · `Ctrl+←` · `Ctrl+→` | |
 | Select, across lines too; by word with Ctrl | `Shift+←` · `Shift+→` · `Shift+↑` · `Shift+↓` | |
-| Select all, copy, cut, paste | `Ctrl+A` · `Ctrl+C` · `Ctrl+X` · `Ctrl+V` | |
+| Select the line; again: its block; again: the note | `Ctrl+A` | |
+| Select all | `Ctrl+A` | |
+| Let go of a selection (Esc again: close the overlay) | `Esc` | |
+| Copy, cut, paste | `Ctrl+C` · `Ctrl+X` · `Ctrl+V` | |
 | Delete a letter; a word with Ctrl | `Backspace` · `Del` · `Ctrl+Backspace` | |
 | In a box that asks "when?": confirm, or leave it | `Enter` · `Esc` | |
 

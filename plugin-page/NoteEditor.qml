@@ -488,6 +488,56 @@ Item {
   function clearSelection() {
     ed.selAnchor = -1
     ed.selCursor = -1
+    ed.ladderFrom = -1
+  }
+
+  // Where the cursor was when Ctrl+A began to climb (-1: not climbing), so
+  // Esc can hand it back instead of leaving it at the end of what was taken.
+  property int ladderFrom: -1
+
+  // Ctrl+A climbs a step at a time: the line's words, then the block (the
+  // one the agent answers), then the whole note. Each press takes the
+  // nearest step that holds more than what is selected now, so a step that
+  // would change nothing (a one-line block, an empty line) is passed over,
+  // and a selection made by hand starts the climb from where it is.
+  function selectAllStep(item) {
+    var a = ed.cursorPosition, b = a
+    if (ed.spanning) { a = ed.selStart; b = ed.selEnd }
+    else if (item && item.field.selectedText !== "") {
+      var f = item.field
+      a = ed.absOf(item.index, Math.min(f.selectionStart, f.selectionEnd))
+      b = ed.absOf(item.index, Math.max(f.selectionStart, f.selectionEnd))
+    }
+    var i = Rows.rowAt(ed.rows, a)
+    var r = ed.rows[i]
+    var steps = [[r.start + r.prefixLen, r.bodyEnd]]
+    var blocks = Blocks.split(ed.text)
+    for (var x = 0; x < blocks.length; x++) {
+      if (i < blocks[x].start || i >= blocks[x].end) continue
+      var first = ed.rows[blocks[x].start]
+      var last = ed.rows[blocks[x].end - 1]
+      if (first && last) steps.push([first.start + first.prefixLen, last.bodyEnd])
+    }
+    steps.push([0, ed.text.length])
+    for (var s = 0; s < steps.length; s++) {
+      var lo = steps[s][0], hi = steps[s][1]
+      if (lo > a || hi < b || hi - lo <= b - a) continue
+      var from = ed.spanning ? ed.ladderFrom : ed.cursorPosition
+      ed.selectSpan(lo, hi)
+      ed.ladderFrom = from
+      return
+    }
+  }
+
+  // Esc with something selected lets go of it and nothing more; the next
+  // Esc is the page's. After a Ctrl+A climb the cursor goes back to where
+  // it was.
+  function letGo(item) {
+    if (!ed.spanning) { item.field.deselect(); return }
+    var back = ed.ladderFrom
+    ed.clearSelection()
+    if (back >= 0 && back <= ed.text.length) ed.cursorPosition = back
+    ed.placeCursor(true)
   }
 
   function absOf(i, col) {
@@ -659,7 +709,7 @@ Item {
       ed.cutting = false
       return true
     }
-    if (ctrl && k === Qt.Key_A) { ed.selectSpan(0, ed.text.length); return true }
+    if (ctrl && k === Qt.Key_A) { ed.selectAllStep(ed.rowItem(ed.focusedRow)); return true }
     if (ctrl && k === Qt.Key_V) {
       var at = ed.selStart
       ed.removeSpan()
@@ -996,7 +1046,7 @@ Item {
     var k = event.key
     var noSel = f.selectedText === ""
 
-    if (ed.spanning && k === Qt.Key_Escape) { ed.clearSelection(); ed.placeCursor(true); event.accepted = true; return }
+    if (k === Qt.Key_Escape && !ctrl && !alt && (ed.spanning || !noSel)) { ed.letGo(item); event.accepted = true; return }
     if (ed.keyFilter && ed.keyFilter(event)) { event.accepted = true; return }
     // Which keys do what comes from Shortcuts.js; the student can move them.
     var toStart = Sc.hit(event, "selectBlockStart")
@@ -1018,7 +1068,7 @@ Item {
     // Shift+arrows past the edge of a line: the selection carries on into
     // the next one (by word with Ctrl). Inside a line the field selects on
     // its own, Ctrl+Shift+arrows by word. Ctrl+Shift+Home/End reach the
-    // note's ends; Ctrl+A takes the whole note.
+    // note's ends; Ctrl+A climbs to the whole note (selectAllStep).
     if (shift && !alt && (k === Qt.Key_Down || k === Qt.Key_Up || k === Qt.Key_Left || k === Qt.Key_Right
         || ((k === Qt.Key_Home || k === Qt.Key_End) && ctrl))) {
       var edge = (k === Qt.Key_Down && ed.atLastLine(f)) || (k === Qt.Key_Up && ed.atFirstLine(f))
@@ -1033,7 +1083,7 @@ Item {
         return
       }
     }
-    if (ctrl && k === Qt.Key_A) { ed.selectSpan(0, ed.text.length); event.accepted = true; return }
+    if (ctrl && k === Qt.Key_A) { ed.selectAllStep(item); event.accepted = true; return }
     // Paste is the note's, not the field's: see `pasteText`.
     if (ctrl && !shift && !alt && k === Qt.Key_V) {
       var from = noSel ? ed.cursorPosition : ed.absOf(i, Math.min(f.selectionStart, f.selectionEnd))

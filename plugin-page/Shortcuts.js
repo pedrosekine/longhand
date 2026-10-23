@@ -197,7 +197,13 @@ var fixed = [
   { group: "typing", places: ["note"], does: "Move a line or a screen", show: [], keys: ["Up", "Down", "PgUp", "PgDn"] },
   { group: "typing", places: ["note", "search", "chat"], does: "Select, across lines too; by word with Ctrl", show: ["Shift+Left", "Shift+Right", "Shift+Up", "Shift+Down"],
     keys: ["Shift+Left", "Shift+Right", "Shift+Up", "Shift+Down", "Ctrl+Shift+Left", "Ctrl+Shift+Right", "Shift+Home", "Shift+End", "Ctrl+Shift+Home", "Ctrl+Shift+End"] },
-  { group: "typing", places: ["note", "search", "chat"], does: "Select all, copy, cut, paste", show: ["Ctrl+A", "Ctrl+C", "Ctrl+X", "Ctrl+V"], keys: ["Ctrl+A", "Ctrl+C", "Ctrl+X", "Ctrl+V"] },
+  // In the note Ctrl+A climbs (NoteEditor.selectAllStep); the one-line boxes
+  // take it as select all. Esc in the note lets go of a selection before it
+  // closes anything, so it is shown here and reserved by "close" above.
+  { group: "typing", places: ["note"], does: "Select the line; again: its block; again: the note", show: ["Ctrl+A"], keys: ["Ctrl+A"] },
+  { group: "typing", places: ["search", "chat"], does: "Select all", show: ["Ctrl+A"], keys: ["Ctrl+A"] },
+  { group: "typing", places: ["note"], does: "Let go of a selection (Esc again: close the overlay)", show: ["Esc"], keys: [] },
+  { group: "typing", places: ["note", "search", "chat"], does: "Copy, cut, paste", show: ["Ctrl+C", "Ctrl+X", "Ctrl+V"], keys: ["Ctrl+C", "Ctrl+X", "Ctrl+V"] },
   { group: "typing", places: ["note", "search", "chat"], does: "Delete a letter; a word with Ctrl", show: ["Backspace", "Del", "Ctrl+Backspace"],
     keys: ["Backspace", "Del", "Ctrl+Backspace", "Ctrl+Del"] },
   { group: "typing", places: [], does: "In a box that asks \"when?\": confirm, or leave it", show: ["Enter", "Esc"], keys: [] }

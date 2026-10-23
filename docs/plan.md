@@ -504,6 +504,11 @@ list, analytics (`history`) and a daily counter.
 Kept here (2026-10-19) so "what could we build next?" has its answer:
 this list, with *Open, in order* above. Each says why it waits.
 
+- **A block-selection mode on Esc** (Notion's: Esc selects the block,
+  arrows move between blocks, Enter edits again; 2026-10-23): Esc is the
+  only way out of the overlay, a mode would cost presses to leave, and
+  Ctrl+A's second press, Ctrl+Shift+Up/Down, Alt+Up/Down and Ctrl+Enter
+  already do what a block selection is for. Revisit if those prove short.
 - **By design, not a gap:** the agent never rewords the person's boxes,
   never writes prose, and never raises its own autonomy (it may only
   suggest it, at 9 of the last 10 accepted).
@@ -639,6 +644,10 @@ from 2026-09/10 and still stand.
 - **The agent's project proposals** (2026-10-22): whether it proposes
   them at all, and whether the ones it does are accepted (Settings → what
   the agent may do, "propose a new project").
+- **Ctrl+A as a ladder and Esc letting go** (2026-10-23, from Notion's
+  and Craft's select-all): line, then block, then the note; Esc drops a
+  selection before it closes the overlay. Watch whether the extra Esc to
+  leave after selecting is felt as a cost.
 - **A live check that failed once** (2026-10-18, then passed four runs):
   the "when?" box pushing the next line down (11j in `tests/page/run.py`).
 

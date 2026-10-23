@@ -832,6 +832,8 @@ Item {
     function test_ctrl_a_selects_everything() {
       start("\none\ntwo", 2)
       keyClick(Qt.Key_A, Qt.ControlModifier)
+      keyClick(Qt.Key_A, Qt.ControlModifier)
+      keyClick(Qt.Key_A, Qt.ControlModifier)             // line, block, then everything
       compare(ed.selStart, 0); compare(ed.selEnd, ed.text.length)
     }
 
@@ -1094,6 +1096,88 @@ Item {
       keyClick(Qt.Key_Up, Qt.AltModifier)
       compare(ed.text, "\nb\nc\na\nd")
       compare(ed.text.slice(ed.selStart, ed.selEnd), "b\nc")
+    }
+
+    function test_ctrl_a_climbs_line_block_note() {
+      var t = "\nfirst one\nfirst two\n\n- [ ] solo\n\nlast"
+      start(t, t.indexOf("irst two"))
+      keyClick(Qt.Key_A, Qt.ControlModifier)
+      compare(picked(), "first two")
+      keyClick(Qt.Key_A, Qt.ControlModifier)
+      compare(picked(), "first one\nfirst two")
+      keyClick(Qt.Key_A, Qt.ControlModifier)
+      compare(picked(), t)
+      keyClick(Qt.Key_A, Qt.ControlModifier)
+      compare(picked(), t)
+    }
+
+    function test_ctrl_a_passes_a_step_that_changes_nothing() {
+      var t = "\nfirst\n\n- [ ] solo\n\nlast"
+      start(t, t.indexOf("olo"))
+      keyClick(Qt.Key_A, Qt.ControlModifier)
+      compare(picked(), "solo")
+      keyClick(Qt.Key_A, Qt.ControlModifier)          // the block is the line: on to the note
+      compare(picked(), t)
+      start(t, t.indexOf("\n\n- ") + 1)               // a blank line holds nothing of its own
+      keyClick(Qt.Key_A, Qt.ControlModifier)
+      compare(picked(), t)
+    }
+
+    function test_ctrl_a_climbs_from_a_selection_made_by_hand() {
+      var t = "\nfirst one\nfirst two\n\nlast"
+      start(t, t.indexOf("first two"))
+      for (var i = 0; i < 5; i++) keyClick(Qt.Key_Right, Qt.ShiftModifier)
+      compare(picked(), "first")
+      keyClick(Qt.Key_A, Qt.ControlModifier)
+      compare(picked(), "first two")
+      ed.selectSpan(t.indexOf("first two"), t.length - 1)   // across the blank line: the block is not enough
+      keyClick(Qt.Key_A, Qt.ControlModifier)
+      compare(picked(), t)
+    }
+
+    function test_ctrl_a_then_typing_replaces_what_the_step_took() {
+      var t = "\nfirst one\nfirst two\n\nlast"
+      start(t, t.indexOf("irst two"))
+      keyClick(Qt.Key_A, Qt.ControlModifier)
+      keyClick(Qt.Key_A, Qt.ControlModifier)
+      type("x")
+      compare(ed.text, "\nx\n\nlast")
+    }
+
+    function test_escape_lets_go_and_the_cursor_comes_back() {
+      var t = "\nfirst one\nfirst two\n\nlast"
+      var at = t.indexOf("irst two")
+      start(t, at)
+      keyClick(Qt.Key_A, Qt.ControlModifier)
+      keyClick(Qt.Key_A, Qt.ControlModifier)
+      keyClick(Qt.Key_A, Qt.ControlModifier)
+      keyClick(Qt.Key_Escape)
+      verify(!ed.spanning)
+      compare(ed.cursorPosition, at)
+      compare(ed.text, t)
+      // by hand, the cursor stays at the end that moved
+      start(t, t.indexOf("first one"))
+      keyClick(Qt.Key_Down, Qt.ShiftModifier)
+      keyClick(Qt.Key_Escape)
+      verify(!ed.spanning)
+      compare(ed.cursorPosition, t.indexOf("first two"))
+    }
+
+    function test_escape_on_words_picked_in_a_line_only_lets_go() {
+      var filtered = []
+      ed.keyFilter = function (e) { if (e.key === Qt.Key_Escape) filtered.push(e.key); return e.key === Qt.Key_Escape }
+      start("\nfirst one", 1)
+      for (var i = 0; i < 5; i++) keyClick(Qt.Key_Right, Qt.ShiftModifier)
+      var seen = picked()
+      keyClick(Qt.Key_Escape)
+      var after = picked(), asked = filtered.length
+      keyClick(Qt.Key_Escape)
+      var next = filtered.length
+      ed.keyFilter = null
+      compare(seen, "first")
+      compare(after, "")
+      compare(asked, 0)                                  // the page was not asked
+      compare(next, 1)                                   // the next one is the page's
     }
 
     function test_block_rect() {
