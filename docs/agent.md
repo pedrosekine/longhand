@@ -522,7 +522,8 @@ Each is usable alone.
    and search, the project's documents in the sidebar. **First half built
    2026-10-18:** `agent/documents.py`; the inbox is opt-in (`"inbox":
    "~/Downloads"` in config.json), scanned when the dashboard asks for
-   proposals, PDFs of the last 60 days only; a match is a ◇ row in its
+   proposals, PDFs of the last 60 days only, at its top and one folder
+   down (an unpacked course export; 2026-10-23); a match is a ◇ row in its
    course's band ("file “2026-10-14 The Seven Deadly Myths of Autonomous
    Systems” in Human Factors…", why underneath), Space/Ctrl+Enter files
    it into `projects/<tag>/docs/` (named by the download's date and the

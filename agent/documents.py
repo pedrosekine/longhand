@@ -1,8 +1,8 @@
 """Course documents: the Downloads inbox, filing, and the index the agent
 consults (docs/agent.md, slice 4, 2026-10-18).
 
-The inbox is the Downloads folder, which also holds invoices and an ID
-certificate. So matching is local and quiet: a PDF belongs to a course when
+The inbox is the Downloads folder (and the folders directly in it, such as
+an unpacked export), which also holds invoices and an ID certificate. So matching is local and quiet: a PDF belongs to a course when
 its file name or its first two pages name the course (its code or its
 title), or when it was downloaded during one of the course's classes or in
 the two hours after. A PDF that matches nothing is never listed, named,
@@ -110,6 +110,18 @@ def class_at(when: dt.datetime, events: list[dict], courses: list[dict], matches
     return None
 
 
+def inbox_pdfs(inbox: Path) -> list[Path]:
+    """The inbox's PDFs: at its top and one folder down (an unpacked
+    course export), hidden folders skipped."""
+    out = []
+    for p in sorted(inbox.iterdir()):
+        if p.is_dir() and not p.name.startswith("."):
+            out += [q for q in sorted(p.iterdir()) if q.suffix.lower() == ".pdf" and q.is_file()]
+        elif p.suffix.lower() == ".pdf" and p.is_file():
+            out.append(p)
+    return out
+
+
 def scan(inbox: Path, courses: list[dict], events: list[dict], cache: dict, now: dt.datetime,
          matches=None) -> list[dict]:
     """The inbox's PDFs that belong to a course, each with why. `cache`
@@ -119,9 +131,7 @@ def scan(inbox: Path, courses: list[dict], events: list[dict], cache: dict, now:
     if not inbox.is_dir():
         return out
     since = now - dt.timedelta(days=WINDOW_DAYS)
-    for p in sorted(inbox.iterdir()):
-        if p.suffix.lower() != ".pdf" or not p.is_file():
-            continue
+    for p in inbox_pdfs(inbox):
         st = p.stat()
         got = dt.datetime.fromtimestamp(st.st_mtime)
         if got < since:

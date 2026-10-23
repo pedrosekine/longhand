@@ -16,6 +16,7 @@ import tempfile
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 AGENT = ROOT / "agent" / "longhand-agent"
 sys.path.insert(0, str(ROOT / "agent"))
+import documents as doclib  # noqa: E402
 import timetable  # noqa: E402
 
 failures = 0
@@ -219,6 +220,22 @@ def main() -> int:
     note.write_text("A quiet day.\n")
     agent("run", "--trigger", "open")
     check(len(list(stub.glob("call-*.json"))) == 1, "a run about no course follows no request")
+
+    # An unpacked export: its folder is read one level down, by the same rules.
+    deep = tmp / "Downloads-deep"
+    export = deep / "course_files_export"
+    (export / "week1").mkdir(parents=True)
+    (deep / ".cache").mkdir()
+    pdf(export / "DTM_syllabus.pdf", "Syllabus")
+    pdf(export / "Rechnung_2026_4712.pdf", "Invoice total 80 EUR")
+    pdf(export / "week1" / "DTM_week1.pdf", "Too deep")
+    pdf(deep / ".cache" / "DTM_cached.pdf", "Hidden")
+    courses = [{"code": "M_IC_DTM_Spe_W26", "name": "Design Theory & Methods", "tag": "dtm"}]
+    seen = {}
+    found = doclib.scan(deep, courses, [], seen, dt.datetime.now())
+    check([pathlib.Path(x["src"]).name for x in found] == ["DTM_syllabus.pdf"],
+          f"a PDF one folder down is proposed; two down, a hidden folder, or no match is not ({[x['src'] for x in found]})")
+    check(len(seen) == 2 and "Rechnung" not in json.dumps(seen), "…and the cache still keeps only hashes")
 
     print("PASS" if failures == 0 else f"{failures} FAILED")
     return 1 if failures else 0

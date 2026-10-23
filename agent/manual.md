@@ -145,9 +145,9 @@ review), and the tick's sound.
 
 ## Documents
 
-With `inbox` set in the config, PDFs in Downloads that belong to a course
-(named for it, or downloaded during one of its classes) are proposed in the
-dashboard for filing into the course's documents; nothing else in the
+With `inbox` set in the config, PDFs in Downloads (or one folder inside
+it) that belong to a course (named for it, or downloaded during one of its
+classes) are proposed in the dashboard for filing into the course's documents; nothing else in the
 folder is ever listed. A course's documents are in its project in the
 sidebar; the agent sees their titles and can ask to read one.
 
