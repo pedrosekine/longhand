@@ -217,8 +217,24 @@ def end_to_end() -> None:
           "…and not kept when the model proposes it anyway")
 
 
+def stale() -> None:
+    """A do-date or deadline proposed for a day that has passed asks
+    nothing any more (2026-10-23: one for the 20th was accepted on the
+    23rd and put a past day on the line); one still ahead stays."""
+    ledger = {"next": 5, "items": [
+        {"id": 1, "kind": "do-date", "key": "k", "date": day(-3), "status": "open"},
+        {"id": 2, "kind": "deadline", "key": "", "title": "poster", "date": day(-1), "status": "open"},
+        {"id": 3, "kind": "do-date", "key": "k", "date": day(0), "status": "open"},
+        {"id": 4, "kind": "do-date", "key": "k", "date": day(-2), "status": "open", "auto": True}]}
+    n = plan.settle_moot(ledger, [{"key": "k", "title": "watch the talk"}], dt.datetime.now().isoformat(timespec="seconds"))
+    st = {x["id"]: x["status"] for x in ledger["items"]}
+    check(n == 2 and st[1] == st[2] == "moot", f"a do-date and a deadline whose day passed are moot ({st})")
+    check(st[3] == "open" and st[4] == "open", "…today's stays, and one being done is the page's to settle")
+
+
 def main() -> int:
     units()
+    stale()
     end_to_end()
     print("PASS" if failures == 0 else f"{failures} FAILED")
     return 1 if failures else 0

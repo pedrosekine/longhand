@@ -109,6 +109,18 @@ def main() -> int:
     _, kept = evals.check_plan({"job": "plan", "payload": PAYLOAD, "rules": {}}, {"proposals": ticked, "questions": []})
     check(len(kept["proposals"]) == 1, "…and kept when nothing says it was closed")
 
+    # A talk (2026-10-23): answered in its own shape, never with a plan.
+    talk = dict(evals.new_case("talk", "# The proposal the student wants to talk about\n\n```json\n"
+                                       '{"kind": "question", "id": 4}\n```\n', "x-talk-4.md"),
+                rules={"must_not_match": [r"\bI (have|'ve) (moved|changed)"], "must_match_any": [r"\bT\b"], "settle": ""})
+    check(evals.talk_kind(talk["payload"]) == "question", "a talk case knows the kind of proposal it is about")
+    rules = evals.check_talk(talk, {"reply": "", "plan": True})
+    check(len(rules) == 1 and not rules[0]["pass"] and rules[0]["why"] == "a plan", "a plan for an answer fails, and says so")
+    rules = evals.check_talk(talk, {"reply": "Press T on its row to move it.", "settle": None})
+    check(all(r["pass"] for r in rules) and len(rules) == 4, f"a reply naming the key, settling nothing, passes ({rules})")
+    rules = evals.check_talk(talk, {"reply": "I have moved it to today.", "settle": "accept"})
+    check(sum(not r["pass"] for r in rules) == 3, "claiming the move, without the key, and settling, fails all three")
+
     print("PASS" if failures == 0 else f"{failures} FAILED")
     return 1 if failures else 0
 

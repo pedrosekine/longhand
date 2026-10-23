@@ -437,10 +437,16 @@ def _same(old: dict | None, new: dict) -> bool:
 
 def settle_moot(ledger: dict, tasks: list[dict], at: str) -> int:
     """An open do-date whose box has a date now, is done, or is gone, no
-    longer asks anything: moot."""
+    longer asks anything: moot. Nor does a do-date or a deadline whose day
+    has passed (2026-10-23: a do-date for the 20th was still there to
+    accept on the 23rd, and accepting it put a past day on the line)."""
     live = {(t.get("key") or lifespan.key_of(t)): t for t in tasks}
     n = 0
     for x in open_items(ledger):
+        if x["kind"] in ("do-date", "deadline") and not x.get("auto") and (x.get("date") or "9999") < at[:10]:
+            x["status"], x["resolved"] = "moot", at
+            n += 1
+            continue
         if x["kind"] in ("question", "deadline", "file") or not x.get("key") or x.get("auto"):
             continue
         t = live.get(x["key"])

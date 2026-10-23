@@ -69,6 +69,13 @@ def new_case(job: str, payload: str, source: str, note: str = "", answer: str = 
                  "brief_lines": [3, 6] if brief else None}
         return {"job": job, "created": dt.date.today().isoformat(), "source": source, "note": note,
                 "answer_then": answer, "rules": rules, "criteria": [], "payload": payload}
+    if job == "talk":
+        # A talk with the planner about one proposal (2026-10-23): it must
+        # answer in the talk's shape, never with a plan; `settle` is what it
+        # should agree to ("accept", "decline", "" for nothing), or "any".
+        rules = {"must_not_match": [], "must_match_any": [], "settle": "any"}
+        return {"job": job, "created": dt.date.today().isoformat(), "source": source, "note": note,
+                "answer_then": answer, "rules": rules, "criteria": [], "payload": payload}
     rules = ({"must_not_match": [], "must_match_any": [], "silence_ok": False} if job == "margin" else
              {"min_dates": 0, "max_questions": planlib.MAX_QUESTIONS, "ask_about": [], "date_for": [], "no_date_for": [],
               "deadline_for": [], "done_for": [], "drop_for": [], "no_drop_for": [], "steps_for": [], "no_steps_for": [],
@@ -99,6 +106,31 @@ def check_margin(case: dict, reply: dict) -> list[dict]:
     if anyof:
         hit = next((p for p in anyof if re.search(p, text, re.I)), None)
         out.append({"check": "names one of: " + ", ".join(anyof), "pass": bool(hit), "why": hit or "none found"})
+    return out
+
+
+def talk_kind(payload: str) -> str:
+    """The kind of the proposal a talk's payload is about, from its own block."""
+    m = re.search(r"# The proposal the student wants to talk about\n\n```json\n(.*?)\n```", payload, re.S)
+    try:
+        return str(json.loads(m.group(1)).get("kind") or "") if m else ""
+    except ValueError:
+        return ""
+
+
+def check_talk(case: dict, reply: dict) -> list[dict]:
+    """A talk answers: in its own shape, never empty, and agreeing only to
+    what the case says it should."""
+    r = case.get("rules") or {}
+    out = [{"check": "answers the student, not with a plan", "pass": bool(reply.get("reply")) and not reply.get("plan"),
+            "why": "a plan" if reply.get("plan") else "" if reply.get("reply") else "empty"}]
+    if not out[0]["pass"]:
+        return out
+    out += check_margin(dict(case, rules=dict(r, silence_ok=False)), reply)
+    want = r.get("settle", "any")
+    if want != "any":
+        got = reply.get("settle") or ""
+        out.append({"check": f"settles: {want or 'nothing'}", "pass": got == want, "why": got or "nothing"})
     return out
 
 

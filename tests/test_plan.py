@@ -38,7 +38,12 @@ n = int(open(os.path.join(d, "calls")).read()) if os.path.exists(os.path.join(d,
 open(os.path.join(d, "calls"), "w").write(str(n + 1))
 open(os.path.join(d, "argv.json"), "w").write(json.dumps(sys.argv[1:]))
 open(os.path.join(d, "payload.md"), "w").write(sys.stdin.read())
-reply = open(os.path.join(d, "reply.json")).read()
+queue = os.path.join(d, "replies.json")
+if os.path.exists(queue):
+    rs = json.load(open(queue)); reply = json.dumps(rs.pop(0))
+    json.dump(rs, open(queue, "w")) if rs else os.remove(queue)
+else:
+    reply = open(os.path.join(d, "reply.json")).read()
 ev = lambda t, part: print(json.dumps({"type": t, "sessionID": "ses_plan", "part": part}))
 ev("text", {"type": "text", "text": "```json\\n" + reply + "\\n```"})
 ev("step_finish", {"type": "step-finish", "cost": 0.0003, "tokens": {"input": 200, "output": 40, "reasoning": 0, "total": 240}})
@@ -265,6 +270,21 @@ def main() -> int:
     turns = json.loads(agent("proposals").stdout)["threads"][poster]
     check([t["role"] for t in turns] == ["student", "agent"] and turns[0]["text"] == "why Wednesday?",
           "the conversation is kept on the box, both turns")
+    check(talked.rstrip().endswith("`reply` is never empty."), "…the talk's own format said again, where it is read last")
+
+    # Answered with a plan (2026-10-20 and 10-23, both real talks): asked
+    # again once in the same session; still a plan, and the student is told.
+    plan_shaped = {"proposals": [], "questions": [], "knowledge": []}
+    (stub / "replies.json").write_text(json.dumps([plan_shaped, {"reply": "T moves it; I can only change the do-date.",
+                                                                 "revise": None, "settle": None, "knowledge": []}]))
+    out = json.loads(agent("talk", "--id", str(dd["id"]), "--message", "change its due date").stdout)
+    argv = json.loads((stub / "argv.json").read_text())
+    check(out["reply"].startswith("T moves it") and "--session" in argv and "answered with a plan" in argv[-1],
+          f"a plan for an answer is asked for again, once, in the same session ({out['reply']!r})")
+    (stub / "replies.json").write_text(json.dumps([plan_shaped, plan_shaped]))
+    out = json.loads(agent("talk", "--id", str(dd["id"]), "--message", "change its due date").stdout)
+    check(out["reply"] == "" and "answered with a plan" in out["turns"][-1]["text"],
+          f"…and twice a plan is said as that, never as nothing to add ({out['turns'][-1]['text']!r})")
 
     r = talk(dd["id"], "I have lab on Wednesday, Thursday instead",
              reply="Thursday then.", revise={"kind": "do-date", "key": poster, "date": day(4), "why": "Wednesday is lab"})

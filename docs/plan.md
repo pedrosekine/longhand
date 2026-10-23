@@ -558,6 +558,35 @@ from 2026-09/10 and still stand.
   planner never proposes a deadline the store already has, open or closed.
 - **The inbox's class-time match:** anything downloaded during a class
   looks like that course's — watch for wrong filing proposals.
+- **A deadline's date history** (2026-10-23, from the student trying to
+  reschedule the one overdue task through the agent): until then a moved
+  date overwrote the old one, so a deadline moved and then met counted as
+  on time. `longhand-check` now keeps each deadline's first date and every
+  move (from, to, when) in the ledger, once both the line and the store
+  hold the new date; the line keeps one `📅`, as docs/tasks.md requires.
+  The dashboard row says "moved twice, first due 20 Oct"; `stats` counts
+  on time by the first date, closed after a move, and moves later. History
+  starts 2026-10-23: every earlier date counts as its first. What would
+  tell: whether the postponements per course say anything the student acts
+  on. Not recorded, on purpose for now: who moved it (note, dashboard,
+  popup) and why — "the course moved it" and "I put it off" look the
+  same; tag a move only if the numbers turn out to need it. Whether the
+  agent may propose moving a `📅` (outside its reach, docs/agent.md) is
+  still the student's call; with this, such a move would at least be on
+  the record.
+- **Talking with the planner** (2026-10-23): both real talks until then
+  (10-20, 10-23) came back as a plan, `{"proposals": [], …}`, shown as
+  "(nothing to add)" — the planner's prompt ends in the plan's format and
+  the talk's payload opens with a whole plan. Now the talk's format is
+  said again at the payload's end, a plan for an answer is asked for once
+  more in the same session, and a second one is said as that; when asked
+  for what it cannot do (a `📅`, the box's words, a tick) it says whose
+  act it is and the key. Talks are an eval job of their own: the two
+  failures are cases (`talk-overdue-due-date`, `talk-test-mark-done`),
+  2/2 on `gpt-6.1-sol`. Its instructions live in code (`TALK_MESSAGE`),
+  so the prompt version does not change with them — watch the next
+  talks. Also since: a do-date or deadline proposed for a day now past is
+  moot, and the page will not accept one.
 - **The manual's how-to detection** (`manual.asks_how`) is generous on
   purpose: watch for answers that should have used it, or the reverse.
 - **A conversation through word edits:** the trade is that a reworded

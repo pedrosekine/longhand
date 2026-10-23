@@ -14,7 +14,9 @@ three in line with each other:
 - a deadline that never had a line waits ("not in a note yet") and counts
   as the agent's, with its first wording kept;
 - a deadline still open a fortnight past its date steps aside (hidden),
-  and comes back if its date moves on or its line is ticked.
+  and comes back if its date moves on or its line is ticked;
+- the ledger keeps a deadline's first date and every move since, so a
+  date moved is history, not lost: the line holds only the date it has now.
 
 It changes only a line's facts — its tick and its date — never its words.
 It is a program of its own, not the agent runner: `longhand-agent` refuses
@@ -173,6 +175,29 @@ def without_anchor(raw: str) -> str:
     return ANCHOR_TAIL_RE.sub("", raw)
 
 
+def track_due(rec: dict, due: int, now: int) -> None:
+    """A date agreed on: the first one is kept as the deadline's original,
+    and each one after that differs from the last is a move, from and to,
+    with when it was seen. History, never rewritten — the line and the
+    store hold only the date it has now."""
+    if not due:
+        return
+    moves = rec.get("moves") or []
+    last = moves[-1]["to"] if moves else rec.get("firstDue")
+    if last is None:
+        rec["firstDue"] = due
+    elif not same_minute(last, due):
+        rec["moves"] = moves + [{"from": last, "to": due, "at": now}]
+
+
+def history(rec: dict) -> dict:
+    """What the page and the stats read of a deadline's dates: the first,
+    how often it moved and how often later (a postponement)."""
+    moves = rec.get("moves") or []
+    return {"firstDue": rec.get("firstDue", 0), "moves": len(moves),
+            "later": sum(1 for m in moves if m["to"] > m["from"])}
+
+
 def notes(cfg: dict) -> list[Path]:
     daily = Path(cfg["vault"]) / cfg["daily"]["dir"]
     if not daily.is_dir():
@@ -258,6 +283,7 @@ def check(cfg: dict, open_stem: str = "", now: int | None = None) -> dict:
                 rec.setdefault("firstTitle", d["title"])
                 if d["title"] != rec["firstTitle"]:
                     rec["rewritten"] = True
+                track_due(rec, d["due"], now)    # no line: the store's date is the one
                 if step_aside(d, rec, status, d["due"]) == "open":
                     out["waiting"].append(d["id"])
             continue
@@ -351,6 +377,9 @@ def check(cfg: dict, open_stem: str = "", now: int | None = None) -> dict:
         new_seen["state"] = line_state if line_state == status else seen.get("state")
         new_seen["due"] = due if line_due and same_minute(line_due, due) else seen.get("due")
         rec["seen"] = new_seen
+        # Whichever side moved it, a move counts once both hold it.
+        if new_seen["due"] is not None:
+            track_due(rec, new_seen["due"], now)
 
     # Tags no deadline stands behind (removed outright from the store): the
     # line keeps its words and its date, and stops pointing at nothing.
@@ -380,6 +409,7 @@ def check(cfg: dict, open_stem: str = "", now: int | None = None) -> dict:
     write_atomic(LEDGER, json.dumps(led, indent=2, ensure_ascii=False) + "\n")
     out["origins"] = {k: {kk: v[kk] for kk in ("origin", "firstTitle", "rewritten") if kk in v}
                       for k, v in led["deadlines"].items() if v.get("origin") == "agent"}
+    out["dates"] = {k: history(v) for k, v in led["deadlines"].items() if v.get("moves")}
     return out
 
 

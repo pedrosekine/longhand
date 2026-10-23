@@ -2699,6 +2699,10 @@ Item {
     if (d.status === "done" && d.grade !== "") bits.push("graded " + d.grade)
     var o = root.origins[String(d.id)]
     if (o && o.origin === "agent") bits.push("from the agent" + (o.rewritten ? " · rewritten by you" : ""))
+    var h = root.dueDates[String(d.id)]
+    if (h && h.moves > 0)
+      bits.push("moved " + (h.moves === 1 ? "once" : h.moves === 2 ? "twice" : h.moves + " times")
+                + (h.firstDue ? ", first due " + Qt.formatDate(new Date(h.firstDue * 1000), "d MMM") : ""))
     if (t && t.details > 0) bits.push(t.details === 1 ? "1 line of detail" : t.details + " lines of detail")
     return bits.join("   ·   ")
   }
@@ -2987,6 +2991,12 @@ Item {
     var t = task || (p.key ? root.taskOfKey(p.key) : null)
     if (p.kind === "project") return true          // made by the runner, on accepting it
     if (p.kind !== "deadline" && !t) { root.showHint("its box is not on the list any more"); return false }
+    // A day already gone is not accepted (the runner settles it as moot on
+    // the next list): it would put a past date on the line.
+    if ((p.kind === "do-date" || p.kind === "deadline") && p.date && p.date < Qt.formatDate(new Date(), "yyyy-MM-dd")) {
+      root.showHint("its day has passed, so it is not written")
+      return false
+    }
     if (p.kind === "do-date") {
       root.editTask(t, "when", p.date)
       var d = {}
@@ -4228,6 +4238,7 @@ Item {
   }
 
   property var origins: ({})        // id -> { origin, firstTitle, rewritten }: the agent's deadlines
+  property var dueDates: ({})       // id -> { firstDue, moves, later }: deadlines whose date has moved
   readonly property string checkPath: (svc.config && svc.config.check) || (Quickshell.env("HOME") + "/.local/bin/longhand-check")
 
   function scheduleCheck() { checkTimer.restart() }
@@ -4256,6 +4267,7 @@ Item {
     try { out = JSON.parse(text) } catch (e) { out = null }
     if (out) {
       root.origins = out.origins || ({})
+      root.dueDates = out.dates || ({})
       root.sayChecked(out)
     }
     // The store as the check left it, then the open note in line with it

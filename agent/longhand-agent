@@ -21,7 +21,7 @@
     longhand-agent projects                                     # the tags that exist, with their next session
     longhand-agent project --tag T [--name N]                   # make a project: its file in knowledge/projects/
     longhand-agent timetable [--fetch [--index n]]              # each calendar's state, for the Settings sheet, JSON
-    longhand-agent eval add <payload> [--job margin|plan|day]   # a real run made into an eval case (in the vault)
+    longhand-agent eval add <payload> [--job margin|plan|day|talk]   # a real run made into an eval case (in the vault)
     longhand-agent eval run [--model M] [--case ID]             # the cases against the repo's prompts; kept as history
     longhand-agent eval status                                  # which prompt and model have passed
     longhand-agent review [--write | --if-due]                  # the week of the agent, for the student to read
@@ -1544,13 +1544,18 @@ def cmd_stats(cfg: dict, args) -> int:
     # Deadlines in the window: met on time or late, made from a note or not.
     # Cancelled is not closed (its line was dropped or deleted), and one
     # that stepped aside a fortnight late was missed, not marked done late.
+    # On time is by the first date (the ledger keeps it): a date moved and
+    # then met was still late, and how often dates move later is counted.
     store = STATE_HOME / "deadlines.tsv"
-    on_time = late = from_note = closed = missed = 0
+    on_time = late = from_note = closed = missed = moved = 0
     try:
-        aside = {k for k, v in json.loads((STATE_HOME / "ledger.json").read_text()).get("deadlines", {}).items()
-                 if (v.get("hidden") or {}).get("by") == "check"}
-    except (OSError, ValueError, AttributeError):
-        aside = set()
+        led = json.loads((STATE_HOME / "ledger.json").read_text()).get("deadlines", {})
+        aside = {k for k, v in led.items() if (v.get("hidden") or {}).get("by") == "check"}
+        first = {k: v["firstDue"] for k, v in led.items() if v.get("firstDue")}
+        postponed = sum(1 for v in led.values() for m in v.get("moves") or []
+                        if m["to"] > m["from"] and dt.date.fromtimestamp(m["at"]) >= start)
+    except (OSError, ValueError, AttributeError, KeyError, TypeError):
+        aside, first, postponed = set(), {}, 0
     if store.exists():
         for line in store.read_text().splitlines():
             f = line.split("\t")
@@ -1564,8 +1569,10 @@ def cmd_stats(cfg: dict, args) -> int:
                 missed += 1
                 continue
             closed += 1
-            on_time += done_at <= due
-            late += done_at > due
+            was = first.get(f[0], due)
+            on_time += done_at <= was
+            late += done_at > was
+            moved += was != due
             from_note += len(f) > 7 and "#^d" in f[7]
 
     rows = [{"date": d.isoformat(), **day[d]} for d in span]
@@ -1590,7 +1597,7 @@ def cmd_stats(cfg: dict, args) -> int:
         "focus_sessions": sum(r["focus"] for r in rows),
         "deadlines_added": sum(r["added"] for r in rows),
         "deadlines_closed": closed, "closed_on_time": on_time, "closed_late": late, "closed_from_a_note": from_note,
-        "deadlines_missed": missed,
+        "deadlines_missed": missed, "closed_after_a_move": moved, "dates_postponed": postponed,
         "proposals": proposals_since(start),
     }
     for r in rows:
@@ -1615,9 +1622,10 @@ def cmd_stats(cfg: dict, args) -> int:
     print(f"Checkboxes closed: {rate} — commitments (a date or a priority) {com}, "
           f"note boxes {t['note_boxes']} (thinking, not meant to close).")
     print(f"Bound lines: {t['bound_lines']}. Deadlines: {t['deadlines_added']} added, "
-          f"{t['deadlines_closed']} closed ({t['closed_on_time']} by their time, {t['closed_late']} marked done after it, "
-          f"{t['closed_from_a_note']} from a note line)"
-          + (f", {t['deadlines_missed']} missed (stepped aside a fortnight late)." if t["deadlines_missed"] else "."))
+          f"{t['deadlines_closed']} closed ({t['closed_on_time']} by their first date, {t['closed_late']} marked done after it, "
+          f"{t['closed_after_a_move']} after their date moved, {t['closed_from_a_note']} from a note line)"
+          + (f", {t['deadlines_missed']} missed (stepped aside a fortnight late)" if t["deadlines_missed"] else "")
+          + (f"; dates moved later {t['dates_postponed']} times." if t["dates_postponed"] else "."))
     print(f"Agent: {t['agent_runs']} runs, ${t['agent_cost']:.4f}. Focus sessions: {t['focus_sessions']}.")
     pr = t["proposals"]
     if pr:
@@ -2208,6 +2216,11 @@ Answer them as the planner who made the proposal: in a few plain sentences, from
 their notes. When they push back or tell you something you did not know, take it seriously: change the proposal if \
 it should change, or say plainly why it should not. Do not ask again what they already answered.
 
+When they ask for something you cannot do — another kind of action than this proposal's, moving a deadline's due \
+date (📅), changing the words of their box, adding to it, ticking it — never answer with silence. Say in a \
+sentence that it is theirs to do and how: in the dashboard T reschedules the row, Ctrl+E renames it, Space ticks \
+it; or they edit the line in its note. Then whatever you can do about the proposal itself.
+
 Reply with exactly one fenced JSON block and nothing else:
 
 ```json
@@ -2241,6 +2254,20 @@ it is done, not proposed. `revise` does not apply — leave it null. `settle` "a
 
 def talk_message(item: dict) -> str:
     return TALK_MESSAGE + (TALK_QUESTION if item["kind"] == "question" else TALK_TOLD if item["status"] == "told" else "")
+
+
+# The planner's own prompt ends in the plan's format, and a talk's payload
+# opens with a whole plan: twice of two (2026-10-20, 10-23) it answered a
+# talk with a plan, `{"proposals": [], …}`, and the student got nothing.
+# So the talk's format is said again where it is read last, and a plan for
+# an answer is asked for again once.
+TALK_TAIL = """# How to answer
+
+This is a conversation, not a plan: no `proposals` or `questions`. Reply with exactly one fenced JSON block, \
+`{"reply": "…", "revise": null, "settle": null, "knowledge": []}`, as the message says — and `reply` is never empty."""
+
+TALK_AGAIN = """You answered with a plan. This is a conversation: reply to the student's last message with exactly one \
+fenced JSON block, {"reply": "…", "revise": null, "settle": null, "knowledge": []}, as first asked — `reply` never empty."""
 
 
 def box_block(cfg: dict, task: dict) -> tuple[Paths, list[dict], dict] | None:
@@ -2808,7 +2835,7 @@ def talk_payload(cfg: dict, item: dict, ledger: dict, key: str, tasks: list[dict
     if turns:
         parts += ["", "# Your conversation about this box so far", ""]
         parts += [f"{'you' if t['role'] == 'agent' else 'student'}: {t['text']}" for t in turns]
-    parts += ["", "# The student says now", "", message]
+    parts += ["", "# The student says now", "", message, "", TALK_TAIL]
     return "\n".join(parts) + "\n"
 
 
@@ -2842,10 +2869,8 @@ def cmd_talk(cfg: dict, args) -> int:
     stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
     payload_file = paths.payloads / f"{stamp}-talk-{item['id']}.md"
     payload_file.write_text(payload)          # logged before inference
-    result = run_model(plan_cfg_of(cfg), paths, payload, message=talk_message(item))
+    result, reply = talk_run(plan_cfg_of(cfg), paths, payload, talk_message(item))
     payload_file.with_suffix(".events.jsonl").write_text(result["events"])
-    reply = parse_talk(result["text"]) if not result["error"] else \
-        {"reply": "", "revise": None, "settle": None, "answer": "", "knowledge": []}
 
     at = dt.datetime.now().isoformat(timespec="seconds")
     ledger = planlib.load_ledger(PROPOSALS)   # the page may have answered something meanwhile
@@ -2884,7 +2909,10 @@ def cmd_talk(cfg: dict, args) -> int:
     th = planlib.add_turns(ledger, key, title, [
         {"role": "student", "text": message, "at": at, "about": item["id"]},
         {"role": "agent", "text": reply["reply"] or ("(the planner could not answer: " + result["error"][:120] + ")"
-                                                     if result["error"] else "(nothing to add)"),
+                                                     if result["error"] else
+                                                     "(the planner answered with a plan, not a reply — it is logged; "
+                                                     "say it again, or use the keys)" if reply.get("plan") else
+                                                     "(nothing to add)"),
          "at": at, "about": current["id"], "revised": str(revised["id"]) if revised else "", "settled": settled,
          "cost": result["cost"], "prompt": result.get("prompt", ""), "model": result.get("model", ""),
          "payload": str(payload_file)}])
@@ -2908,8 +2936,26 @@ def cmd_talk(cfg: dict, args) -> int:
     return 0 if not result["error"] else 1
 
 
+def talk_run(cfg: dict, paths: Paths, payload: str, message: str, env: dict | None = None) -> tuple[dict, dict]:
+    """One talk with the planner: its answer, asked for once more in the
+    same session when it came back as a plan (TALK_TAIL says why). The
+    result adds up both passes."""
+    result = run_model(cfg, paths, payload, message=message, env=env)
+    reply = parse_talk(result["text"]) if not result["error"] else dict(parse_talk(""), reply="")
+    if reply.get("plan") and result["session"]:
+        again = run_model(cfg, paths, "", session=result["session"], message=TALK_AGAIN, env=env)
+        result = dict(again, events=result["events"] + again["events"], cost=result["cost"] + again["cost"],
+                      tokens={k: result["tokens"][k] + again["tokens"][k] for k in result["tokens"]})
+        if not again["error"]:
+            reply = parse_talk(again["text"])
+    return result, reply
+
+
 def parse_talk(text: str) -> dict:
-    out = {"reply": "", "revise": None, "settle": None, "answer": "", "knowledge": []}
+    """The talk's one JSON block. `plan` says it came back in the plan's
+    shape instead — no `reply`, but proposals or questions — which is a
+    failure to answer, not "nothing to add"."""
+    out = {"reply": "", "revise": None, "settle": None, "answer": "", "knowledge": [], "plan": False}
     m = None
     for m in re.finditer(r"```(?:json)?\s*\n(.*?)\n```", text, re.S):
         pass
@@ -2925,6 +2971,7 @@ def parse_talk(text: str) -> dict:
             out["answer"] = re.sub(r"\s+", " ", str(obj.get("answer") or "")).strip()[:300]
             out["knowledge"] = [x for x in obj.get("knowledge") or [] if isinstance(x, dict)] \
                 if isinstance(obj.get("knowledge"), list) else []
+            out["plan"] = "reply" not in obj and ("proposals" in obj or "questions" in obj)
             return out
     out["reply"] = text.strip()
     return out
@@ -2955,7 +3002,9 @@ def cmd_notebook(cfg: dict, args) -> int:
 # ------------------------------------------------------------------ evals
 
 REPO_PROMPTS = Path(__file__).resolve().parent / "opencode"
-JOB_AGENT = {"margin": "longhand", "plan": "longhand-plan", "day": "longhand-day"}
+# A talk is the planner's, about one of its proposals: its own job in the
+# evals (2026-10-23), since the planner's prompt was never checked at it.
+JOB_AGENT = {"margin": "longhand", "plan": "longhand-plan", "day": "longhand-day", "talk": "longhand-plan"}
 
 
 def job_model(cfg: dict, job: str, override: str = "") -> tuple[str, str]:
@@ -2963,7 +3012,7 @@ def job_model(cfg: dict, job: str, override: str = "") -> tuple[str, str]:
     the planner's own `planModel` for a plan."""
     if override:
         return override, ""
-    if job == "plan" and cfg.get("planModel"):
+    if job in ("plan", "talk") and cfg.get("planModel"):
         return cfg["planModel"], cfg.get("planVariant", "")
     return cfg.get("model", ""), cfg.get("variant", "")
 
@@ -3016,6 +3065,7 @@ def cmd_eval(cfg: dict, args) -> int:
         if not src.exists():
             raise Fail(f"no payload at {src}")
         job = args.job or ("plan" if src.name.endswith("-plan.md") else
+                           "talk" if "-talk-" in src.name else
                            "day" if src.name.endswith("-day.md") or "-brief-" in src.name else "margin")
         payload = day_case_payload(cfg, src) if job == "day" else src.read_text()
         case = evallib.new_case(job, payload, src.name, args.note, args.answer)
@@ -3045,13 +3095,13 @@ def cmd_eval(cfg: dict, args) -> int:
         else:
             for r in rows:
                 print(f"{r['job']:7} {r['prompts']:9} prompt {r['prompt']} · {r['model']:28} · {r['checked']}")
-            print(f"cases: {n['margin']} margin, {n['plan']} plan, {n['day']} day")
+            print(f"cases: {n['margin']} margin, {n['plan']} plan, {n['day']} day, {n['talk']} talk")
         return 0
 
     # run
     cases = evallib.load_cases(paths.agent_dir, args.case or None)
     if not cases:
-        raise Fail("no eval cases yet: add one with `longhand-agent eval add <payload> --job margin|plan|day`")
+        raise Fail("no eval cases yet: add one with `longhand-agent eval add <payload> --job margin|plan|day|talk`")
     prompts = Path(args.prompts) if args.prompts else REPO_PROMPTS
     env, home = eval_env(prompts)
     judge_model = args.judge_model or cfg.get("evalJudgeModel") or job_model(cfg, "plan")[0]
@@ -3063,12 +3113,23 @@ def cmd_eval(cfg: dict, args) -> int:
             model, variant = job_model(cfg, job, args.model)
             c = dict(cfg, agent=agent, model=model, variant=variant, _prompts=prompts)
             t0 = dt.datetime.now()
-            res = run_model(c, paths, case["payload"], env=env,
-                            message="Plan the fortnight. The context follows on stdin." if job == "plan" else
-                            "Write the day's brief. The context follows on stdin." if case["payload"].startswith("# Brief")
-                            else "Context follows on stdin.")
+            if job == "talk":
+                # As a talk runs now: its format said last (a case from before
+                # 2026-10-23 lacks it), asked again once if a plan comes back.
+                payload = case["payload"] if TALK_TAIL in case["payload"] else case["payload"].rstrip() + "\n\n" + TALK_TAIL + "\n"
+                res, reply = talk_run(c, paths, payload, TALK_MESSAGE + (TALK_QUESTION if evallib.talk_kind(payload) == "question" else ""),
+                                      env=env)
+            else:
+                res = run_model(c, paths, case["payload"], env=env,
+                                message="Plan the fortnight. The context follows on stdin." if job == "plan" else
+                                "Write the day's brief. The context follows on stdin." if case["payload"].startswith("# Brief")
+                                else "Context follows on stdin.")
             secs = round((dt.datetime.now() - t0).total_seconds(), 1)
-            if job == "plan":
+            if job == "talk":
+                rules = evallib.check_talk(case, reply)
+                answer = (reply.get("reply") or "(no reply)") + (f"\n(settle: {reply['settle']})" if reply.get("settle") else "") \
+                    + (f"\n(answer kept: {reply['answer']})" if reply.get("answer") else "")
+            elif job == "plan":
                 reply = parse_plan(res["text"]) if not res["error"] else {"proposals": [], "questions": [], "knowledge": []}
                 rules, kept = evallib.check_plan(case, reply)
                 answer = evallib.render_plan(kept)
@@ -3376,7 +3437,7 @@ def main(argv: list[str]) -> int:
     p = sub.add_parser("eval")
     p.add_argument("what", choices=("run", "add", "status"))
     p.add_argument("source", nargs="?", default="", help="add: the payload file to make a case of")
-    p.add_argument("--job", choices=("margin", "plan", "day"), default="")
+    p.add_argument("--job", choices=("margin", "plan", "day", "talk"), default="")
     p.add_argument("--id", default="")
     p.add_argument("--note", default="")
     p.add_argument("--answer", default="", help="add: the answer that prompted the case")

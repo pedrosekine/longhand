@@ -361,6 +361,21 @@ def main() -> int:
         check(st["totals"]["features"].get("find") == 1 and st["totals"]["features"].get("day:past") == 1, "stats reads features")
         check(st["totals"]["agent_runs"] >= 1, "stats reads the cost ledger")
         check(t.note.read_bytes() == before, "stats writes nothing")
+        # On time is by the first date: one moved later and then met was late.
+        sl = t.state_home / "longhand"
+        kept = {n: (sl / n).read_text() if (sl / n).exists() else None for n in ("deadlines.tsv", "ledger.json")}
+        first, moved_to = now - 3 * 86400, now + 86400
+        (sl / "deadlines.tsv").write_text(f"91\t{moved_to}\tMoved and met\tdone\t{now - 3600}\t\t\t\n"
+                                          f"92\t{now + 86400}\tMet\tdone\t{now - 1800}\t\t\t\n")
+        (sl / "ledger.json").write_text(json.dumps({"version": 1, "deadlines": {
+            "91": {"firstDue": first, "moves": [{"from": first, "to": moved_to, "at": now - 7200}]},
+            "92": {"firstDue": now + 86400}}}))
+        tt = json.loads(t.agent("stats", "--days", "2", "--json").stdout)["totals"]
+        check((tt["closed_on_time"], tt["closed_late"], tt["closed_after_a_move"], tt["dates_postponed"]) == (1, 1, 1, 1),
+              f"a deadline met only after its date moved later counts as late, and the move is counted "
+              f"({tt['closed_on_time']}, {tt['closed_late']}, {tt['closed_after_a_move']}, {tt['dates_postponed']})")
+        for n, text in kept.items():
+            (sl / n).write_text(text) if text is not None else (sl / n).unlink()
 
         # 14. projects: the tags that exist, soonest session first
         pd = t.vault / "agents/longhand/knowledge/projects"

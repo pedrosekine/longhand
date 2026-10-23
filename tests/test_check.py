@@ -107,6 +107,27 @@ def main() -> int:
     pomo("set", str(b), "2026-12-01", "09:00")
     run()
     check(f"Epistemology and research design 📅 2026-12-01 09:00 ^d{b}" in note.read_text(), "a date changed in the store rewrites the line's date only")
+    # …and each move is history in the ledger: the first date kept, every move since.
+    rec = ledger()[str(b)]
+    first = int(dt.datetime(2026, 11, 20, 23, 59).timestamp())
+    check(rec["firstDue"] == first and [(m["from"], m["to"]) for m in rec["moves"]]
+          == [(first, int(dt.datetime(2026, 11, 27, 23, 59).timestamp())),
+              (int(dt.datetime(2026, 11, 27, 23, 59).timestamp()), int(dt.datetime(2026, 12, 1, 9, 0).timestamp()))],
+          f"the first date is kept, and each move from either side is recorded ({rec.get('moves')})")
+    out = run()
+    check(out["dates"][str(b)] == {"firstDue": first, "moves": 2, "later": 2} and len(ledger()[str(b)]["moves"]) == 2,
+          f"…said to the page, and a check with nothing moved adds nothing ({out['dates'].get(str(b))})")
+    check(str(a) not in out["dates"], "a deadline never moved has no history to show")
+    note.write_text(note.read_text().replace(f"Ethics section 📅 2027-01-15 ^d", f"Ethics section 📅 2027-01-10 ^d"))
+    out = run()
+    check(out["dates"][str(d)]["moves"] == 1 and out["dates"][str(d)]["later"] == 0,
+          "a date brought forward is a move, not a postponement")
+    # Moved in the store while its note is open in the page: a move once the line holds it too.
+    pomo("set", str(c), "2027-01-20", "17:00")
+    run("--open", "2026-10-12")
+    check(not ledger()[str(c)].get("moves"), "a move the open note has not caught up with is not counted yet")
+    run()
+    check(len(ledger()[str(c)]["moves"]) == 1, "…and counted once the line holds it")
 
     # A block with several deadlines deleted: every one is cancelled, not the last only.
     kept = note.read_text()
