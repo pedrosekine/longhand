@@ -122,6 +122,7 @@ BorderSurface {
             readonly property bool boxed: kind === "task" || kind === "deadline" || asks
             // The agent's proposal or question, under the box it is about.
             readonly property bool asks: kind === "proposal" || kind === "question" || kind === "told"
+            readonly property bool fresh: asks && page.isNewAsk(modelData.item)
             readonly property string rowKey: page.rowKey(modelData)
             // Who made it (docs/agent.md): drawn in the box, as in the note.
             readonly property string author: page.rowAuthor(modelData)
@@ -407,21 +408,42 @@ BorderSurface {
                   }
                 }
 
-                Text {
-                  visible: text !== ""
+                // The reason line; what the agent proposed since the
+                // dashboard was last left says so first, in the accent.
+                Row {
+                  visible: freshMark.visible || caption.text !== ""
                   width: parent.width
-                  textFormat: Text.PlainText
-                  elide: Text.ElideRight
-                  text: dashRow.kind === "proposal" || dashRow.kind === "told" ? (modelData.item.why || "")
-                    : dashRow.kind === "question" ? "recommended: " + modelData.item.recommended
-                    : dashRow.kind === "task" ? page.taskWhere(modelData.task, modelData.under)
-                    : dashRow.kind === "deadline" ? page.deadlineWhere(modelData.deadline)
-                    : dashRow.kind === "raised" ? (modelData.item.evidence || "")
-                    : ""
-                  color: page.faint
-                  font.family: page.fontFamily
-                  font.styleName: page.fontStyle
-                  font.pixelSize: page.fs(Style.font.caption)
+                  spacing: page.sp(8)
+
+                  Text {
+                    id: freshMark
+                    visible: dashRow.fresh
+                    textFormat: Text.PlainText
+                    text: "new"
+                    color: page.accent
+                    font.family: page.fontFamily
+                    font.styleName: page.fontStyle
+                    font.pixelSize: page.fs(Style.font.caption)
+                    font.capitalization: Font.AllUppercase
+                    font.letterSpacing: page.sp(1)
+                  }
+
+                  Text {
+                    id: caption
+                    width: parent.width - (freshMark.visible ? freshMark.implicitWidth + parent.spacing : 0)
+                    textFormat: Text.PlainText
+                    elide: Text.ElideRight
+                    text: dashRow.kind === "proposal" || dashRow.kind === "told" ? (modelData.item.why || "")
+                      : dashRow.kind === "question" ? "recommended: " + modelData.item.recommended
+                      : dashRow.kind === "task" ? page.taskWhere(modelData.task, modelData.under)
+                      : dashRow.kind === "deadline" ? page.deadlineWhere(modelData.deadline)
+                      : dashRow.kind === "raised" ? (modelData.item.evidence || "")
+                      : ""
+                    color: page.faint
+                    font.family: page.fontFamily
+                    font.styleName: page.fontStyle
+                    font.pixelSize: page.fs(Style.font.caption)
+                  }
                 }
               }
             }

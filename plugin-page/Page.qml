@@ -338,6 +338,20 @@ Item {
   property bool marginOpen: false
   property int marginFocus: -1   // -1 note; 0..n-1 proposal rows; n = chat field
   property bool dashOpen: false
+  // Whose turn (2026-10-23): what the agent proposed since the dashboard was
+  // last left is new until it is left again. By the ledger's ids, which
+  // only grow — not by `at`, which is when a plan began, so a plan that
+  // ends after the dashboard was left would never be new.
+  property int dashSeenId: 0         // the highest id on the list when the dashboard was last left
+  property int newAfterId: 0         // …as it was when this visit began
+  onDashOpenChanged: {
+    if (root.dashOpen) { root.newAfterId = root.dashSeenId; return }
+    var top = root.dashSeenId
+    for (var i = 0; i < root.proposals.length; i++) top = Math.max(top, Number(root.proposals[i].id) || 0)
+    root.dashSeenId = top
+    root.savePageState()
+  }
+  function isNewAsk(x) { return !!x && (Number(x.id) || 0) > root.newAfterId }
   property bool projectOpen: false   // the margin is showing one project's notes
   property var sections: []          // [{ date, line, heading, title, sub, preview, open, done }]
   property string projectTag: ""
@@ -979,8 +993,12 @@ Item {
     root.zoom = z
     root.used("zoom", z)
     zoomHint.restart()
-    zoomFile.setText(JSON.stringify({ zoom: z }) + "\n")
+    root.savePageState()
     root.scheduleRepaint()
+  }
+
+  function savePageState() {
+    zoomFile.setText(JSON.stringify({ zoom: root.zoom, dashSeen: root.dashSeenId }) + "\n")
   }
 
   // Zoom and the keys sheet: wherever the keyboard is in the page. Every
@@ -3313,10 +3331,11 @@ Item {
       else if (rows[i].kind === "deadline" && rows[i].deadline.status === "done") done++
     }
     var asks = root.proposals.length
+    var fresh = root.proposals.filter(root.isNewAsk).length
     if (open === 0 && done === 0 && asks === 0) return root.planning ? "planning…" : root.planError !== "" ? "the agent could not plan" : ""
     return open + " open" + (due > 0 ? "   ·   " + due + " with a date to meet" : "")
       + (done > 0 ? "   ·   " + done + " done today" : "")
-      + (asks > 0 ? "   ·   " + asks + " from the agent" : "")
+      + (asks > 0 ? "   ·   " + asks + " from the agent" + (fresh > 0 ? ", " + fresh + " new" : "") : "")
       + (root.planning ? "   ·   planning…" : root.planError !== "" ? "   ·   the agent could not plan: " + root.planError : "")
   }
 
@@ -3577,7 +3596,21 @@ Item {
     if (Sc.hit(e, "dashGrade")) { root.startDashGrade(); return true }
     if (Sc.hit(e, "dashPlan")) { root.runPlan(true); return true }
     if (Sc.hit(e, "dashTalk")) { root.talkFocused(); return true }
+    if (Sc.hit(e, "dashNextAsk")) { root.focusAsk(1); return true }
+    if (Sc.hit(e, "dashPrevAsk")) { root.focusAsk(-1); return true }
     return false
+  }
+
+  // The next thing the agent asks of you, past the cursor and round again:
+  // processing the queue without walking to it (2026-10-23).
+  function focusAsk(dir) {
+    var rows = root.taskRows
+    for (var n = 1; n <= rows.length; n++) {
+      var i = ((root.taskFocus + dir * n) % rows.length + rows.length) % rows.length
+      var k = rows[i].kind
+      if (k === "proposal" || k === "question" || k === "told") { root.taskFocus = i; return }
+    }
+    root.showHint(root.planning ? "nothing from the agent yet — it is planning" : "nothing from the agent to settle")
   }
 
   function tickFocused() {
@@ -5129,8 +5162,8 @@ Item {
     onTriggered: if (root.keysListen && root.keysListen.hypr) { root.stopListening(); root.keysNote = "stopped waiting for a key — Enter to try again" }
   }
 
-  // The zoom step survives restarts. Machine state, not config, and never
-  // in the vault.
+  // The zoom step and the dashboard's last visit survive restarts. Machine
+  // state, not config, and never in the vault.
   FileView {
     id: zoomFile
     path: (Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state") + "/longhand/page.json"
@@ -5138,8 +5171,10 @@ Item {
     printErrors: false
     onLoaded: {
       try {
-        var z = Number(JSON.parse(text()).zoom)
+        var st = JSON.parse(text())
+        var z = Number(st.zoom)
         if (isFinite(z) && z >= 0.5 && z <= 3) root.zoom = z
+        if (typeof st.dashSeen === "number") root.dashSeenId = st.dashSeen
       } catch (e) {}
     }
   }

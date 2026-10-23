@@ -480,6 +480,14 @@ def earlier_today(paths: Paths, fired: list[dict]) -> list[str]:
     return out
 
 
+def filed_docs(cfg: dict, paths: Paths, tag: str) -> list[dict]:
+    return doclib.index(paths.vault, cfg.get("projectsDir", "projects"), tag, doclib.load_cache(DOCS_CACHE)) if tag else []
+
+
+def doc_lines(docs: list[dict]) -> list[str]:
+    return [f"- {d['name']} ({d['pages']} pages)" if d["pages"] else f"- {d['name']}" for d in docs]
+
+
 def build_payload(paths: Paths, trigger: str, fired: list[dict], visible: list[dict], cfg: dict | None = None) -> str:
     sample = "\n".join(b["text"] for b in fired) if fired else "\n".join(b["text"] for b in visible[-3:])
     parts = ["# Language", language_line(cfg or {}, sample), "", "# Trigger", f"kind: {trigger}"]
@@ -502,11 +510,11 @@ def build_payload(paths: Paths, trigger: str, fired: list[dict], visible: list[d
             parts += ["", f"# What you wrote before under #{tag} — this project's sections of"
                           " your earlier daily notes, and nothing else of those days", ""]
             parts += earlier_project
-        docs = doclib.index(paths.vault, cfg.get("projectsDir", "projects"), tag, doclib.load_cache(DOCS_CACHE))
+        docs = filed_docs(cfg, paths, tag)
         if docs:
             parts += ["", f"# Documents filed for #{tag} (an index only: their contents are not available to you;"
                           " name one if the student should open it)", ""]
-            parts += [f"- {d['name']} ({d['pages']} pages)" if d["pages"] else f"- {d['name']}" for d in docs]
+            parts += doc_lines(docs)
 
     # Longhand's manual (manual.py): whole when the block asks how to do
     # something in the page, else only named, to be asked for.
@@ -996,11 +1004,20 @@ def cmd_chat(cfg: dict, args) -> int:
                          + "\n".join(f"- {x['kind']}" + (f" {x['date']}" if x.get("date") else "")
                                       + (f": {x['question']}" if x.get("question") else "") + f" — {x.get('why', '')}"
                                       for x in open_props) + "\n\n")
+    # The project's filed documents (docs/agent.md, slice 4): a session saw
+    # the index as it was when it began, so a document filed since travels
+    # with the next message — the whole index again, once.
+    doc_tag = project_of_block(visible, about_block) if about_block else ""
+    docs = filed_docs(cfg, paths, doc_tag)
+    docs_part = ""
+    if session and {d["name"] for d in docs} - set(rec.get("docs_seen") or []):
+        docs_part = (f"Documents filed for #{doc_tag} since, the index as it is now (an index only: their contents are"
+                     " not available to you; name one if the student should open it):\n\n" + "\n".join(doc_lines(docs)) + "\n\n")
     if session:
         # The session already holds the context and the first reply; only the
         # student's words travel. Logged all the same.
         since = f"The block now reads:\n\n{now['text']}\n\n" if now else ""
-        payload = (f"{language_line(cfg, message)}\n\n{since}{planner_part}The student replies about block {args.hash}:\n\n{message}\n\n"
+        payload = (f"{language_line(cfg, message)}\n\n{since}{planner_part}{docs_part}The student replies about block {args.hash}:\n\n{message}\n\n"
                    "Answer with the same JSON contract.\n")
         payload_file.write_text(payload)
         result = run_model(cfg, paths, "", session=session, message=payload)
@@ -1021,9 +1038,12 @@ def cmd_chat(cfg: dict, args) -> int:
     tag = project_of_block(visible, about) if about else ""
     result, reply = follow_reads(cfg, paths, tag, result, reply, payload_file)
     state = apply(cfg, paths, "chat", [], visible, result, reply, payload_file, hash_=args.hash, message=message)
-    if planned and not result["error"]:
+    if (planned or docs) and not result["error"]:
         for h in group_of(state, args.hash):
-            state["blocks"][h]["planner_seen"] = len(planned)
+            if planned:
+                state["blocks"][h]["planner_seen"] = len(planned)
+            if docs:
+                state["blocks"][h]["docs_seen"] = sorted(d["name"] for d in docs)
         write_atomic(paths, paths.state, json.dumps(state, indent=2, ensure_ascii=False) + "\n")
     if result["error"]:
         print(f"error: {result['error']}", file=sys.stderr)

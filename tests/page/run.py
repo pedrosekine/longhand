@@ -1542,6 +1542,25 @@ def main() -> int:
         check(rows[i - 1]["kind"] in ("task", "deadline") and rows[i - 1]["text"] == prop["under"],
               f"the do-date sits right under the box it is about ({rows[i - 1].get('text')!r} / {prop['under']!r})")
         check(p.call("rowAuthor", i) == "agent", "…marked as the agent's")
+
+        # Whose turn (2026-10-23): what arrived since the dashboard was last
+        # left is new, counted in its line; N walks the queue, round again.
+        check(all(r["fresh"] for _, r in asks()) and ", 2 new" in p.call("dashCount"),
+              f"what arrived since the last visit is new, and counted ({p.call('dashCount')!r}; {p.call('newSince')})")
+        ask_rows = [n for n, _ in asks()]
+        p.call("dashFocus", 0)
+        p.call("dashType", "n")
+        check(int(p.call("dashAt")) == ask_rows[0], f"N goes to the first thing to settle ({p.call('dashAt')} / {ask_rows})")
+        p.call("dashType", "n")
+        check(int(p.call("dashAt")) == ask_rows[1], "…N again to the next")
+        p.call("dashType", "n")
+        check(int(p.call("dashAt")) == ask_rows[0], "…and round again at the end")
+        p.call("dashKey", 0x4e, SHIFT)
+        check(int(p.call("dashAt")) == ask_rows[1], "Shift+N goes back")
+        p.call("dash")
+        p.call("dash")
+        check(not any(r["fresh"] for _, r in asks()) and "new" not in p.call("dashCount"),
+              f"left and opened again: nothing is new ({p.call('dashCount')!r})")
         ledger_file = p.state / "longhand" / "proposals.json"
         notes_before = {f.name: f.read_text() for f in p.daily.glob("*.md")}
         check(all(f.read_text() == notes_before[f.name] for f in p.daily.glob("*.md")), "proposing wrote nothing into a note")

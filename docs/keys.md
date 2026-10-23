@@ -103,6 +103,8 @@ Where a row has two keys, either works: the second is usually the one another ap
 | Keep it: its clock starts again | `r` | in the dashboard |
 | Grade a deadline | `g` | in the dashboard |
 | Ask the agent to plan now | `Ctrl+R` | in the dashboard |
+| Next thing from the agent to settle (round again at the end) | `n` | in the dashboard |
+| The one before it | `Shift+N` | in the dashboard |
 | Talk with the agent about it (the margin opens beside) | `Alt+→` | in the dashboard |
 | Take the last tick back | `Ctrl+Z` | in the dashboard |
 | Back to the note | `Esc` | in the dashboard |

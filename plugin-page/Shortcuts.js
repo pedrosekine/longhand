@@ -148,6 +148,8 @@ var actions = [
   { id: "notebookForget", group: "settings", places: ["notebook"], does: "Forget the picked note, or take a correction back", keys: ["Ctrl+Shift+Backspace"] },
   // The note's key for a block's margin, on a row (2026-10-20): the agent
   // summoned to think the task through.
+  { id: "dashNextAsk", group: "dash", places: ["dash"], does: "Next thing from the agent to settle (round again at the end)", keys: ["N"] },
+  { id: "dashPrevAsk", group: "dash", places: ["dash"], does: "The one before it", keys: ["Shift+N"] },
   { id: "dashTalk", group: "dash", places: ["dash"], does: "Talk with the agent about it (the margin opens beside)", keys: ["Alt+Right"] },
   { id: "dashUndo", group: "dash", places: ["dash"], does: "Take the last tick back", keys: ["Ctrl+Z"] },
   { id: "dashBack", group: "dash", places: ["dash"], does: "Back to the note", keys: ["Esc"] },

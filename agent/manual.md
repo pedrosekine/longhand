@@ -79,6 +79,8 @@ keeps it when it has gone quiet; {key:dashGrade} grades a deadline;
 {key:dashUndo} takes the last tick back. A box left untouched goes quiet
 after a while instead of nagging. The agent's proposals and questions are
 rows here too: {key:dashDone} accepts, {key:dashDrop} declines;
+{key:dashNextAsk} goes to the next one to settle ({key:dashPrevAsk} the one
+before); one that arrived since you last left the dashboard says "new";
 {key:dashPlan} asks it to plan now. {key:dashOpen} on a proposal, a
 question, or something it did on its own opens the margin beside the
 dashboard, to talk with the planner about it: why that day, what you would

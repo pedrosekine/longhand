@@ -241,6 +241,7 @@ ShellRoot {
     }
     function dashAt(): int { return page.taskFocus }
     function dashCount(): string { return page.dashCount }
+    function newSince(): string { return page.newAfterId + " | " + page.proposals.map(function (x) { return x.id }).join(",") }
     function ticksHeard(): int { return page.ticksHeard }
     function plan(force: bool): void { page.runPlan(force) }
     function refreshProposals(): void { page.refreshProposals() }
@@ -270,8 +271,9 @@ ShellRoot {
           : r.kind === "raised" ? { kind: "raised", text: r.item.text }
           : r.kind === "proposal" || r.kind === "told" ? { kind: r.kind, id: r.item.id, date: r.item.date, why: r.item.why,
                                       under: r.task ? page.taskTitle(r.task) : "", file: r.item.kind === "file" ? r.item.name : "",
-                                      ask: r.item.kind, say: page.sayAsk(r.item, !!r.task) }
-          : r.kind === "question" ? { kind: "question", id: r.item.id, text: r.item.question, recommended: r.item.recommended }
+                                      ask: r.item.kind, say: page.sayAsk(r.item, !!r.task), fresh: page.isNewAsk(r.item) }
+          : r.kind === "question" ? { kind: "question", id: r.item.id, text: r.item.question, recommended: r.item.recommended,
+                                      fresh: page.isNewAsk(r.item) }
           : r.kind === "deadline" ? { kind: "deadline", text: r.deadline.title, due: r.deadline.due,
                                       where: page.deadlineWhere(r.deadline), grade: r.deadline.grade }
           : { kind: "task", text: page.taskTitle(r.task), where: page.taskWhere(r.task),

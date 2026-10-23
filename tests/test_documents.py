@@ -214,6 +214,23 @@ def main() -> int:
     message = json.loads(sorted(stub.glob("call-*.json"))[-1].read_text())["argv"][-1]
     check("— whole (1 pages)" in message and "[p. 1]" in message, "a document asked for whole comes with its page numbers")
 
+    # A conversation already under way: a document filed since travels with
+    # the next message, once.
+    (stub / "asks.json").write_text("[]")
+
+    def chat(words):
+        for f in stub.glob("call-*.json"):
+            f.unlink()
+        agent("chat", "--hash", h2, "--message", words)
+        return json.loads(sorted(stub.glob("call-*.json"))[-1].read_text())["argv"][-1]
+
+    first = chat("and the syllabus?")
+    check("Documents filed for #intsem since" in first and doc in first, "a follow-up carries the index the session has not seen")
+    check("Documents filed" not in chat("thanks"), "…and only once")
+    pdf(pathlib.Path(docs[0]["path"]).with_name("2026-10-23 Syllabus.pdf"), "Syllabus")
+    later = chat("now?")
+    check("2026-10-23 Syllabus" in later and doc in later, "a document filed mid-conversation reaches it, with the index as it is now")
+
     # A block about nothing in particular: nothing to read, no second run.
     for f in stub.glob("call-*.json"):
         f.unlink()

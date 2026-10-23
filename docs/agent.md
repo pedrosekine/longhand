@@ -148,6 +148,18 @@ about what is simple.
 Proposals follow the app's own verbs, so a task, a deadline, a proposal and
 a question are all settled the same way — no new keys:
 
+- **Whose turn** (2026-10-23, the student's call). While the planner runs,
+  the dashboard's line says "planning…" — the agent's turn. What it has
+  proposed is the student's turn: a row that arrived since the dashboard
+  was last left says **new** in the accent before its reason, and the line
+  counts them ("21 from the agent, 4 new"). New is by the ledger's ids,
+  not `at` (a plan's start), so a plan that ends after the dashboard was
+  left is new next time; the last id seen is machine state (`page.json`).
+  No "I'm on it" state to set: settling a row is the processing.
+- **N** goes to the next proposal, question or thing done to settle, past
+  the cursor and round again at the end; **Shift+N** the one before — the
+  queue worked through without walking to it. One new key, asked for by
+  the student on 2026-10-23.
 - **Space / Ctrl+Enter** accept (on a question: the recommended answer).
 - **Del** declines; it asks nothing back, and the record notes it.
 - **Enter** on anything the agent offers — a proposal, a question, what it
@@ -363,7 +375,10 @@ the PDF is better.
 - **The agent reads them in three tiers** (progressive disclosure, as agent
   skills load):
   1. *Index* — on a run about a course: title, date, pages of that course's
-     documents. A line each; nothing read.
+     documents. A line each; nothing read. A conversation already under
+     way gets the index again, once, when a document was filed since its
+     session last saw it (2026-10-23: a thread begun on 12 Oct never
+     learnt of the PDFs filed for it).
   2. *Whole* — when it asks for one by name: converted to Markdown on this
      machine, kept in the state folder (not the vault), carried in the next
      run. Fine for a syllabus or a handout.
