@@ -736,6 +736,7 @@ def apply(cfg: dict, paths: Paths, trigger: str, fired: list[dict], visible: lis
     if fired:
         hash_ = fired[0]["hash"]
     chat = trigger == "chat"
+    mark_moves(reply["proposals"])
 
     # Every block the model saw is now "seen"; the fired ones get the reply.
     for b in visible:
@@ -747,9 +748,13 @@ def apply(cfg: dict, paths: Paths, trigger: str, fired: list[dict], visible: lis
                 rec["key"] = keys[h]
             turns = rec.setdefault("chat", [])
             turns.append({"role": "student", "text": message, "at": at})
+            # Which of the block's proposals this answer made: the margin
+            # draws them under it, in the conversation, not at its top.
+            start = len(rec.get("proposals") or [])
             turns.append({"role": "agent", "text": reply["reply"], "at": at, "cost": result["cost"],
                           "prompt": result.get("prompt", ""), "model": result.get("model", ""),
-                          "documents": result.get("reads", [])})
+                          "documents": result.get("reads", []),
+                          "proposals": list(range(start, start + len(reply["proposals"])))})
             rec["session"] = result["session"] or rec.get("session", "")
             rec["read"] = False
             if rec.get("state") != "reply":
@@ -804,7 +809,9 @@ def apply(cfg: dict, paths: Paths, trigger: str, fired: list[dict], visible: lis
     else:
         sec.append(reply["reply"] if reply["reply"] else "_(nothing to add)_")
     for p in reply["proposals"]:
-        if p.get("kind") == "deadline":
+        if p.get("kind") == "deadline" and p.get("moves"):
+            sec.append(f"- [ ] move deadline #{p['moves']['id']}: {p['moves']['title']} — to {p.get('when', '')}")
+        elif p.get("kind") == "deadline":
             sec.append(f"- [ ] add deadline: {p.get('title', '')} — {p.get('when', '')}"
                        + (f" · {project_of(p)}" if project_of(p) else ""))
     for s in reply["suggestions"]:
@@ -1033,21 +1040,40 @@ def run_pomo(argv: list[str]) -> tuple[int, str]:
     return r.returncode, (r.stdout + r.stderr).strip()
 
 
-def twin_deadline(title: str, when: list[str]) -> dict | None:
-    """An open deadline in the store with the same words (or mostly) due
-    the same day: the one a proposal would duplicate."""
+def same_deadline(title: str, when: list[str]) -> tuple[dict | None, dict | None]:
+    """The open deadline in the store with the same words (or mostly) as a
+    proposal: (it, if due the day the proposal says — the one it would
+    duplicate; it, if due another day — the one it would move)."""
     try:
         code, out = run_pomo(["deadline", "when", *when])
         day = dt.datetime.fromtimestamp(int(out.split("\t")[0])).date() if code == 0 else None
         code, out = run_pomo(["deadline", "list", "--json"])
         items = json.loads(out)["deadlines"] if code == 0 and day else []
     except (ValueError, KeyError, TypeError):
-        return None
-    for d in items:
-        if d.get("status") == "open" and dt.datetime.fromtimestamp(d["due"]).date() == day \
-                and (norm(d["title"]) == norm(title) or similar(d["title"], title)):
-            return d
-    return None
+        return None, None
+    alike = [d for d in items if d.get("status") == "open" and (norm(d["title"]) == norm(title) or similar(d["title"], title))]
+    twin = next((d for d in alike if dt.datetime.fromtimestamp(d["due"]).date() == day), None)
+    # Only one candidate to move: with two alike, which one is meant is
+    # the student's to say, and the card stays a new deadline.
+    other = alike[0] if not twin and len(alike) == 1 else None
+    return twin, other
+
+
+def twin_deadline(title: str, when: list[str]) -> dict | None:
+    return same_deadline(title, when)[0]
+
+
+def mark_moves(proposals: list[dict]) -> None:
+    """A deadline proposed with the words of one already open, for another
+    day, is that deadline moved, not a second one (2026-10-23: "reschedule
+    to today" made a card that would have added a copy of #41). The card
+    says so, and accepting it moves the date."""
+    for p in proposals:
+        if p.get("kind") != "deadline" or p.get("moves"):
+            continue
+        _, other = same_deadline(str(p.get("title") or ""), str(p.get("when") or "").split() or ["today"])
+        if other:
+            p["moves"] = {"id": other["id"], "title": other["title"], "due": other["due"]}
 
 
 def cmd_accept(cfg: dict, args) -> int:
@@ -1068,8 +1094,24 @@ def cmd_accept(cfg: dict, args) -> int:
     at = dt.datetime.now().isoformat(timespec="seconds")
     if prop.get("kind") == "deadline":
         when = str(prop.get("when") or "").split() or ["today"]
-        twin = twin_deadline(str(prop.get("title") or ""), when)
-        if twin:
+        moves = prop.get("moves") or {}
+        twin = None if moves else twin_deadline(str(prop.get("title") or ""), when)
+        if moves:
+            # The deadline it is about, moved: still open, or the card is
+            # out of date and says so rather than adding a second one.
+            code, out = run_pomo(["deadline", "list", "--json"])
+            try:
+                live = next((d for d in json.loads(out)["deadlines"] if d["id"] == moves["id"]), None) if code == 0 else None
+            except (ValueError, KeyError, TypeError):
+                live = None
+            if not live or live.get("status") != "open":
+                prop["error"] = f"deadline #{moves['id']} is not open any more"
+                write_atomic(paths, paths.state, json.dumps(state, indent=2, ensure_ascii=False) + "\n")
+                raise Fail(prop["error"])
+            code, out = run_pomo(["deadline", "set", str(moves["id"]), *when])
+            if code == 0:
+                out = f"pomo: deadline #{moves['id']} moved · {live['title']}"
+        elif twin:
             # Already there (the page bound the line itself a moment ago):
             # this is the same deadline, not a second one.
             code, out = 0, f"pomo: deadline #{twin['id']} · already there · {twin['title']}"
@@ -1088,6 +1130,8 @@ def cmd_accept(cfg: dict, args) -> int:
             raise Fail(out or "pomo failed")
         m = re.search(r"#(\d+)", out)
         accepted = {"at": at, "id": int(m.group(1)) if m else 0, "result": out}
+        if moves:
+            accepted["moved"] = True
         # A list submission keeps a copy of the proposals on every item:
         # accepted on one is accepted on all, or the next item offers it again.
         for h in group_of(state, args.hash):

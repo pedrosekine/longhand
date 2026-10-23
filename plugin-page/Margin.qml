@@ -253,74 +253,144 @@ BorderSurface {
         }
       }
 
-      // Proposals: what the agent would like to do, done only when the
-      // student says so. Enter on a row runs it through the CLI.
-      Repeater {
-        model: margin.talk ? [] : page.currentProposals
-        Rectangle {
-          required property var modelData
-          required property int index
-          readonly property bool hot: page.marginFocus === index && marginKeys.activeFocus
-          readonly property bool done: !!modelData.accepted
-          width: marginColumn.width
-          height: propText.implicitHeight + page.sp(10)
-          radius: Style.cornerRadius
-          color: hot ? Style.selectedFill : propHover.hovered && !done ? Style.hoverFill : "transparent"
-          border.width: hot ? 1 : 0
-          border.color: page.accent
-          HoverHandler { id: propHover }
-          Text {
-            id: propText
-            anchors.fill: parent
-            anchors.margins: page.sp(5)
-            textFormat: Text.PlainText
-            wrapMode: Text.WordWrap
-            text: (done ? "✓ " : "○ ") + (modelData.kind === "deadline"
-              ? "deadline: " + modelData.title + " — " + modelData.when + ((modelData.project || modelData.subject) ? " · " + (modelData.project || modelData.subject) : "")
-                + (done && modelData.accepted.id ? "  #" + modelData.accepted.id : "")
-                + (modelData.error ? "  (failed: " + modelData.error + ")" : "")
-              : JSON.stringify(modelData))
-            color: done ? page.dim : page.foreground
-            font.family: page.fontFamily
-            font.styleName: page.fontStyle
-            font.pixelSize: page.fs(Style.font.bodySmall)
-          }
-          MouseArea {
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: parent.done ? Qt.ArrowCursor : Qt.PointingHandCursor
-            onClicked: { page.marginFocus = index; page.acceptProposal(index) }
-            PanelToolTip { visible: parent.containsMouse; text: page.tip("Do what it says", "marginAccept") }
-          }
-        }
-      }
-
       // The block's conversation, with what was said about its box with
-      // the planner merged in by time (one conversation per task).
+      // the planner merged in by time (one conversation per task), and
+      // what the agent proposed as cards in it, each under the answer that
+      // made it (page.marginRows) — the day pane's card: ◇ and its kind,
+      // what changes, the day as a pill. Done only when the student says
+      // so: Enter on a card runs it through the CLI.
       Repeater {
-        model: margin.talk ? [] : page.noteTurns
+        model: margin.talk ? [] : page.marginRows
         Column {
+          id: row
           required property var modelData
+          readonly property bool isCard: modelData.card !== undefined
+          readonly property var turn: modelData.turn || ({})
+          readonly property int ci: isCard ? modelData.card : -1
+          readonly property var p: isCard ? (page.currentProposals[ci] || ({})) : ({})
           width: marginColumn.width
           spacing: page.sp(2)
+
           Text {
+            visible: !row.isCard
             width: parent.width
-            textFormat: modelData.role === "agent" ? Text.MarkdownText : Text.PlainText
+            textFormat: row.turn.role === "agent" ? Text.MarkdownText : Text.PlainText
             wrapMode: Text.WordWrap
-            text: modelData.text
-            color: modelData.role === "agent" ? page.foreground : page.dim
+            text: row.turn.text || ""
+            color: row.turn.role === "agent" ? page.foreground : page.dim
             font.family: page.fontFamily
             font.styleName: page.fontStyle
             font.pixelSize: page.fs(Style.font.title)
           }
           Text {
-            visible: modelData.who === "planner" && modelData.role === "agent"
+            visible: !row.isCard && row.turn.who === "planner" && row.turn.role === "agent"
             textFormat: Text.PlainText
             text: "the planner"
             color: page.faint
             font.family: page.fontFamily
             font.styleName: page.fontStyle
             font.pixelSize: page.fs(Style.font.caption)
+          }
+
+          Rectangle {
+            id: card
+            visible: row.isCard
+            readonly property bool done: !!row.p.accepted
+            readonly property bool hot: page.marginFocus === row.ci && marginKeys.activeFocus
+            width: parent.width
+            height: cardColumn.implicitHeight + page.sp(14)
+            radius: Style.cornerRadius
+            color: hot ? Style.selectedFill : cardHover.hovered && !done ? Style.hoverFill : "transparent"
+            border.width: 1
+            border.color: hot ? page.accent : page.faint
+            opacity: done ? 0.55 : 1
+            HoverHandler { id: cardHover }
+
+            Column {
+              id: cardColumn
+              x: page.sp(10)
+              y: page.sp(7)
+              width: parent.width - page.sp(20)
+              spacing: page.sp(3)
+              Text {
+                width: parent.width
+                textFormat: Text.PlainText
+                text: "◇ " + (row.p.moves ? "move deadline #" + row.p.moves.id : row.p.kind === "deadline" ? "new deadline" : (row.p.kind || ""))
+                  + (card.done ? " · " + (row.p.accepted.moved ? "moved" : "added" + (row.p.accepted.id ? " #" + row.p.accepted.id : ""))
+                     : row.p.error ? " · failed" : "")
+                color: card.done ? page.faint : page.accent
+                font.family: page.fontFamily
+                font.styleName: page.fontStyle
+                font.capitalization: Font.SmallCaps
+                font.pixelSize: page.fs(Style.font.caption)
+              }
+              Item {
+                width: parent.width
+                height: Math.max(cardFacts.implicitHeight, cardPill.visible ? cardPill.height : 0)
+                Text {
+                  id: cardFacts
+                  anchors.left: parent.left
+                  anchors.right: cardPill.visible ? cardPill.left : parent.right
+                  anchors.rightMargin: cardPill.visible ? page.sp(8) : 0
+                  textFormat: Text.PlainText
+                  wrapMode: Text.WordWrap
+                  text: row.p.kind === "deadline" ? page.marginCardFacts(row.p) : JSON.stringify(row.p)
+                  color: page.foreground
+                  font.family: page.fontFamily
+                  font.styleName: page.fontStyle
+                  font.pixelSize: page.fs(Style.font.body)
+                }
+                Rectangle {
+                  id: cardPill
+                  readonly property string label: row.p.kind === "deadline" && row.p.when ? page.marginCardPill(row.p) : ""
+                  visible: label !== ""
+                  anchors.right: parent.right
+                  width: cardPillText.implicitWidth + Math.round(page.textSize * 0.9)
+                  height: cardPillText.implicitHeight + Math.round(page.textSize * 0.25)
+                  radius: height / 2
+                  color: "transparent"
+                  border.width: 1
+                  border.color: page.faint
+                  Text {
+                    id: cardPillText
+                    anchors.centerIn: parent
+                    textFormat: Text.PlainText
+                    text: cardPill.label
+                    color: page.dim
+                    font.family: page.fontFamily
+                    font.styleName: page.fontStyle
+                    font.pixelSize: Math.round(page.textSize * 0.78)
+                  }
+                }
+              }
+              Text {
+                visible: !!row.p.error
+                width: parent.width
+                textFormat: Text.PlainText
+                wrapMode: Text.WordWrap
+                text: row.p.error || ""
+                color: page.urgent
+                font.family: page.fontFamily
+                font.styleName: page.fontStyle
+                font.pixelSize: page.fs(Style.font.bodySmall)
+              }
+              Text {
+                visible: card.hot && !card.done
+                textFormat: Text.PlainText
+                text: page.keyName("marginAccept") + " does it · it waits for you until then"
+                color: page.faint
+                font.family: page.fontFamily
+                font.styleName: page.fontStyle
+                font.pixelSize: page.fs(Style.font.caption)
+              }
+            }
+            MouseArea {
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: card.done ? Qt.ArrowCursor : Qt.PointingHandCursor
+              onClicked: { page.marginFocus = row.ci; page.acceptProposal(row.ci) }
+              PanelToolTip { visible: parent.containsMouse && !card.done; text: page.tip("Do what it says", "marginAccept") }
+            }
           }
         }
       }

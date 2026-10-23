@@ -826,6 +826,36 @@ Item {
   }
 
   readonly property var currentProposals: (currentRecord && currentRecord.proposals) ? currentRecord.proposals : []
+  // The margin's conversation as it is drawn (2026-10-23): each proposal
+  // as a card right under the answer that made it — the turn says which
+  // (`proposals`, indexes into the block's) — so it reads as part of the
+  // conversation; the first answer's own, and any from before turns said
+  // so, under the first answer. `{ card: i }` or `{ turn: t }`, in order,
+  // which is also the order the keys go through the cards.
+  readonly property var marginRows: {
+    var props = root.currentProposals, turns = root.noteTurns, claimed = {}, rows = []
+    for (var a = 0; a < turns.length; a++)
+      if (turns[a].role === "agent" && turns[a].who !== "planner") (turns[a].proposals || []).forEach(function (i) { claimed[i] = true })
+    for (var i = 0; i < props.length; i++) if (!claimed[i]) rows.push({ card: i })
+    for (var t = 0; t < turns.length; t++) {
+      rows.push({ turn: turns[t] })
+      if (turns[t].role !== "agent" || turns[t].who === "planner") continue
+      var mine = turns[t].proposals || []
+      for (var k = 0; k < mine.length; k++) if (mine[k] < props.length) rows.push({ card: mine[k] })
+    }
+    return rows
+  }
+  // A card's words: a new deadline, or one already there moved.
+  function marginCardFacts(p) {
+    var m = p.moves
+    return (m ? m.title : p.title) + ((p.project || p.subject) && !m ? " · " + (p.project || p.subject) : "")
+  }
+  // The day as the page says days ("Fri 20 Nov", "tomorrow"); words the
+  // agent wrote that are not a date ("friday") as written.
+  function marginCardPill(p) {
+    var when = /^\d{4}-\d{2}-\d{2}( \d{1,2}:\d{2})?$/.test(p.when || "") ? root.sayDate(p.when) : p.when
+    return p.moves ? Qt.formatDate(new Date(p.moves.due * 1000), "ddd d MMM") + " → " + when : "📅 " + when
+  }
   readonly property var taskRows: root.buildTaskRows()
   // The dashboard's cursor stays on the same row when the list is drawn
   // again — rows added above it (a plan, the agent's steps) must not move
@@ -4644,7 +4674,9 @@ Item {
   Process {
     id: acceptProc
     stderr: StdioCollector { onStreamFinished: if (text.trim() !== "") console.warn("longhand.page accept: " + text.trim()) }
-    onExited: function (code, status) { agent.reload() }
+    // A deadline moved or added in the store: its line follows (the check),
+    // and so does the dashboard.
+    onExited: function (code, status) { agent.reload(); if (code === 0) root.startCheck() }
   }
 
   Process {

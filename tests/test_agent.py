@@ -82,8 +82,13 @@ class T:
         stub.write_text(STUB)
         stub.chmod(0o755)
         pomo = self.tmp / "bin" / "pomo"
+        # With a store given (pomo_store.json), `list` and `when` answer from
+        # it, as the real one would; without, every call says the same.
         pomo.write_text("#!/usr/bin/env python3\nimport sys, os, json\n"
-                        "open(os.environ['STUB_DIR'] + '/pomo_args.json', 'w').write(json.dumps(sys.argv[1:]))\n"
+                        "d = os.environ['STUB_DIR']\n"
+                        "open(d + '/pomo_args.json', 'w').write(json.dumps(sys.argv[1:]))\n"
+                        "if os.path.exists(d + '/pomo_store.json') and sys.argv[1:3] in (['deadline', 'list'], ['deadline', 'when']):\n"
+                        "    print(open(d + '/pomo_store.json').read() if sys.argv[2] == 'list' else open(d + '/pomo_when').read()); sys.exit(0)\n"
                         "print('report' in sys.argv and '{}' or 'pomo: deadline #7 · Fri 18 Sep 17:00 · one-pager · DORO')\n")
         pomo.chmod(0o755)
         self.stub_dir = self.tmp / "stub"
@@ -255,6 +260,37 @@ def main() -> int:
         r = t.agent("accept", "--hash", items[0], "--index", "0", "--date", DAY)
         check(r.returncode == 0 and not (t.stub_dir / "pomo_args.json").exists(), "…so the other item does not add it again")
         t.note.write_text(NOTE)
+
+        # 8a. "reschedule to today" (2026-10-23): a card with the words of an
+        # open deadline, for another day, moves that deadline — not a copy —
+        # and sits in the conversation under the answer that made it.
+        import time as _t
+        today_end = int(_t.mktime(dt.date.today().timetuple())) + 86340
+        (t.stub_dir / "pomo_when").write_text(f"{today_end}\tFri 23 Oct")
+        (t.stub_dir / "pomo_store.json").write_text(json.dumps({"deadlines": [
+            {"id": 41, "title": "Watch the talk by Green Lindley", "status": "open", "due": today_end - 3 * 86400}]}))
+        t.set_reply(reply="To today, then.", proposals=[{"kind": "deadline", "title": "Watch the talk by Green Lindley", "when": "today"}])
+        r = t.agent("chat", "--hash", at_block["hash"], "--message", "reschedule to today, please", "--date", DAY)
+        rec = json.loads(st.read_text())["blocks"][at_block["hash"]]
+        last = len(rec["proposals"]) - 1
+        check(r.returncode == 0 and rec["proposals"][last].get("moves", {}).get("id") == 41,
+              f"a card with an open deadline's words, for another day, is that deadline moved ({rec['proposals'][last]})")
+        check(rec["chat"][-1]["proposals"] == [last] and rec["chat"][-3].get("proposals") == [],
+              "…and the answer that made it says so, for the margin to draw it under it")
+        check("move deadline #41" in tr.read_text(), "…the transcript says move, not add")
+        r = t.agent("accept", "--hash", at_block["hash"], "--index", str(last), "--date", DAY)
+        acc = json.loads(st.read_text())["blocks"][at_block["hash"]]["proposals"][last].get("accepted") or {}
+        check(r.returncode == 0 and json.loads((t.stub_dir / "pomo_args.json").read_text()) == ["deadline", "set", "41", "today"]
+              and acc.get("moved") and acc.get("id") == 41, f"accepting it moves #41's date, adding nothing ({acc})")
+        r = t.agent("chat", "--hash", at_block["hash"], "--message", "and again", "--date", DAY)
+        (t.stub_dir / "pomo_store.json").write_text(json.dumps({"deadlines": [
+            {"id": 41, "title": "Watch the talk by Green Lindley", "status": "done", "due": today_end - 3 * 86400}]}))
+        last = len(json.loads(st.read_text())["blocks"][at_block["hash"]]["proposals"]) - 1
+        r = t.agent("accept", "--hash", at_block["hash"], "--index", str(last), "--date", DAY)
+        p41 = json.loads(st.read_text())["blocks"][at_block["hash"]]["proposals"][last]
+        check(r.returncode != 0 and "not open" in p41.get("error", "") and not p41.get("accepted"),
+              "ticked meanwhile: the card says so, and nothing is moved or added")
+        (t.stub_dir / "pomo_store.json").unlink()
 
         # 8b. a box answered, then ticked: the record keeps its words key, and
         # a chat on it (by the hash it was answered under) still runs and
