@@ -269,8 +269,9 @@ ShellRoot {
       var c = page.contentItem
       var sb = c.children.filter(function (k) { return k.sidebarKeysRef !== undefined })[0]
       var dp = c.children.filter(function (k) { return k.dayFieldRef !== undefined })[0]
-      return JSON.stringify({ x: page.sheetX, w: page.sheetWidth, gap: page.marginGap,
-                              left: sb && sb.visible ? sb.x + sb.width : null, right: dp && dp.visible ? dp.x : null })
+      return JSON.stringify({ x: page.sheetX, w: page.sheetWidth, gap: page.marginGap, width: c.width, edge: page.edge,
+                              left: sb && sb.visible ? sb.x : null, leftEnd: sb && sb.visible ? sb.x + sb.width : null,
+                              right: dp && dp.visible ? dp.x : null, rightEnd: dp && dp.visible ? dp.x + dp.width : null })
     }
     function closePanes(): void { if (page.sidebarOpen) page.toggleSidebar(); page.closeRight(); if (page.dashOpen) page.toggleDash() }
     function dashKey(key: int, mods: int): bool { return page.dashKey({ key: key, text: "", modifiers: mods }) }

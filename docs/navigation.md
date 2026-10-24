@@ -50,16 +50,21 @@ independent of both.
 ## Where the panes sit
 
 One rule for both sides and both shapes (`plugin-page/Layout.js`, 2026-10-24):
-the note is centred in the window, and a pane opening beside it, left or
-right, is drawn against the note's edge **without moving it**, as long as
-there is room for both. Only when there is not does the note step aside, as
-far as it has to (a slide, at the focus frame's pace), and it narrows last.
-Until then the window recentred the note in the room the sidebar left (so the
-sidebar pushed the note and the right pane did not), and the overlay shrank
-the right pane instead. Beside the dashboard, keys or settings, which are lists
-and take the room they are given, the sidebar sits at the window's edge and
-the list slides over for it. In the window shape a hairline separates each
-pane from the note, on both sides.
+the side panes stand **against the window's edges**, the sidebar at the left
+and the agent's pane at the right, like an app's sidebars, so there is no dead
+strip outside them. The overlay keeps its usual margin from the screen's
+edge. The note stays centred in the window, and a pane opening **does not
+move it** as long as the note fits between the panes. Only when it does not
+does the note step aside, as far as it has to (a slide, at the focus frame's
+pace), and it narrows last. Beside the dashboard, keys or settings, which are
+lists and take the room they are given, the list slides over for the sidebar.
+In the window shape, a hairline marks each pane's inner edge.
+
+Before 2026-10-24 the window recentred the note in the room the sidebar left,
+so the sidebar pushed the note and the right pane did not, and the overlay
+shrank the right pane instead. For a few hours after that the panes hugged the
+note's edges, which left dead space between each pane and the window's edge
+on a wide screen.
 
 ## Esc: back out one level
 

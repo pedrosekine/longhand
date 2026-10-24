@@ -19,7 +19,8 @@ BorderSurface {
 
   readonly property bool besideDash: page.dayBesideDash
   visible: page.dayShown && (besideDash || (page.marginWidth > 0 && page.problem === ""))
-  x: besideDash ? page.wideX + page.dashWidth + page.marginGap : sheet.x + sheet.width + page.marginGap
+  // Against the window's right edge, beside the note or the dashboard.
+  x: page.contentItem.width - page.edge - width
   y: besideDash ? (page.alongside ? 0 : page.sheetMargin) : sheet.y
   height: besideDash ? (page.alongside ? page.contentItem.height : page.contentItem.height - page.sheetMargin * 2) : sheet.height
   width: besideDash ? page.talkWidth : page.marginWidth

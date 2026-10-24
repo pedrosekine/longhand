@@ -218,14 +218,17 @@ Item {
   readonly property int measure: Math.round(root.chWidth * root.measureChars)
   readonly property int sheetFor: root.measure + 2 * root.sheetPadding
   // Where the note sits: one rule for both shapes and both sides
-  // (Layout.js, 2026-10-24) — centred, and a pane opening beside it does
-  // not move it while there is room for both. Until then the window
+  // (Layout.js, 2026-10-24) — centred, and a pane opening at the window's
+  // edge does not move it while there is room for both. Until then the window
   // recentred the note in the room the sidebar left (so the sidebar pushed
   // it and the right pane did not), and on the overlay the right pane
   // shrank instead. Stepping aside slides (`sheet`'s x).
   readonly property int sheetMargin: root.sp(28)
+  // What is kept clear at the window's edges: nothing in the window, the
+  // overlay's margin on the overlay. The side panes stand against it.
+  readonly property int edge: root.alongside ? 0 : root.sheetMargin
   readonly property int rightSpace: (root.marginOpen && !root.wideOpen) || root.dayBesideNote ? root.marginWidth + root.marginGap : 0
-  readonly property var notePlace: Layout.note(content.width, root.sheetFor, root.alongside ? 0 : root.sheetMargin, root.sideSpace, root.rightSpace)
+  readonly property var notePlace: Layout.note(content.width, root.sheetFor, root.edge, root.sideSpace, root.rightSpace)
   readonly property int sheetWidth: root.notePlace.width
   readonly property int sheetX: root.notePlace.x
   // The dashboard and the keys sheet are lists, so they take the width the

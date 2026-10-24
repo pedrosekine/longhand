@@ -28,7 +28,8 @@ BorderSurface {
   // (`talk`, 2026-10-20) — the same margin, the same keys.
   readonly property bool talk: page.talkOpen
   visible: talk || (page.marginWidth > 0 && page.problem === "" && page.marginOpen && !page.wideOpen)
-  x: talk ? page.wideX + page.dashWidth + page.marginGap : sheet.x + sheet.width + page.marginGap
+  // Against the window's right edge, beside the note or the dashboard.
+  x: page.contentItem.width - page.edge - width
   y: talk ? (page.alongside ? 0 : page.sheetMargin) : sheet.y
   height: talk ? (page.alongside ? page.contentItem.height : page.contentItem.height - page.sheetMargin * 2) : sheet.height
   width: talk ? page.talkWidth : page.marginWidth
