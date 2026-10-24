@@ -1934,6 +1934,11 @@ def main() -> int:
         check(p.call("pageKey", KEY_BL, CTRL) == "true" and panes()["panes"] == ["left", "center"], f"Ctrl+[ opens the sidebar ({panes()})")
         check(p.call("pageKey", KEY_BR, CTRL) == "true" and panes()["panes"] == ["left", "center", "right"] and panes()["right"] == "day",
               f"Ctrl+] opens the agent's pane, on the day ({panes()})")
+        def against():
+            sd = json.loads(p.call("sides"))
+            return sd["left"] is not None and sd["right"] is not None \
+                and sd["left"] + sd["gap"] == sd["x"] and sd["right"] == sd["x"] + sd["w"] + sd["gap"]
+        check(p.wait(against, 2), f"both panes are drawn against the note's edges, by one rule ({p.call('sides')})")
         check(p.call("pageKey", KEY_BS, CTRL) == "true" and panes()["here"] == "center" and panes()["center"] == "note",
               f"Ctrl+\\ from the agent's pane: the keys to the middle, nothing flipped ({panes()})")
         check(p.call("pageKey", KEY_BS, CTRL) == "true" and panes()["center"] == "dash" and panes()["right"] == "day",

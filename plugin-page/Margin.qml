@@ -40,6 +40,17 @@ BorderSurface {
   // A click in the pane is the keys into it, as everywhere (docs/navigation.md).
   MouseArea { anchors.fill: parent; onClicked: page.focusPane("right") }
 
+  // In the window the pane sits on the same ground as the note; a
+  // hairline keeps them apart, as the sidebar's does on its side.
+  Rectangle {
+    visible: page.alongside
+    anchors.left: parent.left
+    anchors.leftMargin: -Math.round(page.marginGap / 2)
+    width: 1
+    height: parent.height
+    color: page.faint
+  }
+
   // Keyboard focus while in the margin (proposal rows or the tasks
   // panel). The chat field has its own handling.
   Item {

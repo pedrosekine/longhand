@@ -264,6 +264,14 @@ ShellRoot {
       return JSON.stringify({ panes: page.panes, here: page.here, center: page.centerView, right: page.rightView,
                               pointer: page.pointerMode })
     }
+    // Where the note and the panes beside it are drawn (Layout.js).
+    function sides(): string {
+      var c = page.contentItem
+      var sb = c.children.filter(function (k) { return k.sidebarKeysRef !== undefined })[0]
+      var dp = c.children.filter(function (k) { return k.dayFieldRef !== undefined })[0]
+      return JSON.stringify({ x: page.sheetX, w: page.sheetWidth, gap: page.marginGap,
+                              left: sb && sb.visible ? sb.x + sb.width : null, right: dp && dp.visible ? dp.x : null })
+    }
     function closePanes(): void { if (page.sidebarOpen) page.toggleSidebar(); page.closeRight(); if (page.dashOpen) page.toggleDash() }
     function dashKey(key: int, mods: int): bool { return page.dashKey({ key: key, text: "", modifiers: mods }) }
     function dashType(ch: string): bool { return page.dashKey({ key: ch.toUpperCase().charCodeAt(0), text: ch, modifiers: 0 }) }
@@ -307,6 +315,6 @@ ShellRoot {
 
     // The measure
     function zoom(z: real): void { page.setZoom(z) }
-    function layout(): string { return JSON.stringify({ chars: page.editorItem.width / page.chWidth, x: page.windowSheetX, w: page.windowSheetWidth }) }
+    function layout(): string { return JSON.stringify({ chars: page.editorItem.width / page.chWidth, x: page.sheetX, w: page.sheetWidth }) }
   }
 }

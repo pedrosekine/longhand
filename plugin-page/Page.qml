@@ -17,6 +17,7 @@ import "Authorship.js" as Authorship
 import "Threads.js" as Threads
 import "Tags.js" as Tags
 import "Shortcuts.js" as Sc
+import "Layout.js" as Layout
 
 // The page: today's note as a blank sheet in the shell, with the agent in
 // the margin. Two shapes of the same sheet: the overlay (a layer over
@@ -216,27 +217,28 @@ Item {
   }
   readonly property int measure: Math.round(root.chWidth * root.measureChars)
   readonly property int sheetFor: root.measure + 2 * root.sheetPadding
-  readonly property int sheetWidth: Math.min(root.sheetFor, content.width - root.sp(48))
-  // In the window the sheet is centred in the room beside the sidebar; an
-  // open margin moves it left only as far as it has to, so opening one
-  // where there is room does not shift the text.
-  readonly property int sheetRoom: content.width - root.sideSpace - (root.marginOpen || root.dayBesideNote ? root.marginWidth + root.marginGap : 0)
-  readonly property int windowSheetWidth: Math.max(0, Math.min(root.sheetFor, root.sheetRoom))
-  readonly property int windowSheetX: root.sideSpace + Math.max(0, Math.min(
-    Math.round((content.width - root.sideSpace - root.windowSheetWidth) / 2), root.sheetRoom - root.windowSheetWidth))
+  // Where the note sits: one rule for both shapes and both sides
+  // (Layout.js, 2026-10-24) — centred, and a pane opening beside it does
+  // not move it while there is room for both. Until then the window
+  // recentred the note in the room the sidebar left (so the sidebar pushed
+  // it and the right pane did not), and on the overlay the right pane
+  // shrank instead. Stepping aside slides (`sheet`'s x).
   readonly property int sheetMargin: root.sp(28)
+  readonly property int rightSpace: (root.marginOpen && !root.wideOpen) || root.dayBesideNote ? root.marginWidth + root.marginGap : 0
+  readonly property var notePlace: Layout.note(content.width, root.sheetFor, root.alongside ? 0 : root.sheetMargin, root.sideSpace, root.rightSpace)
+  readonly property int sheetWidth: root.notePlace.width
+  readonly property int sheetX: root.notePlace.x
   // The dashboard and the keys sheet are lists, so they take the width the
-  // sheet does not use — but never the sidebar's: in the window it is
-  // drawn at the left edge, on the overlay beside them.
+  // sheet does not use — but never the sidebar's, drawn beside them.
   readonly property bool wideOpen: root.dashOpen || root.keysOpen || root.settingsOpen
   readonly property int wideX: root.sideSpace + (root.alongside ? 0 : root.sheetMargin)
   readonly property int wideWidth: (root.alongside ? content.width : content.width - root.sheetMargin * 2) - root.sideSpace
   readonly property int sheetPadding: alongside ? root.sp(28) : root.sp(44)
   readonly property int marginGap: root.sp(18)
   readonly property int gutter: root.sp(18)
-  readonly property int marginWidth: alongside
-    ? Math.max(0, Math.min(root.sp(300), Math.round(content.width * 0.45)))
-    : Math.max(0, Math.min(root.sp(300), content.width - (content.width + sheetWidth) / 2 - marginGap - sheetMargin))
+  // The right pane beside the note: the sidebar's kind of width, the same
+  // in both shapes; a narrow window narrows the note, not the pane.
+  readonly property int marginWidth: Math.max(0, Math.min(root.sp(300), Math.round(content.width * 0.45)))
 
   // The margin beside the dashboard, while a proposal is talked about: the
   // dashboard gives up the room, since a list has more width than it needs.
@@ -5564,9 +5566,13 @@ Item {
     BorderSurface {
       id: sheet
       visible: !root.dashOpen && !root.keysOpen && !root.settingsOpen
-      x: root.alongside ? root.windowSheetX : Math.max(Math.round((content.width - width) / 2), root.sideSpace > 0 ? root.sideSpace + root.sheetMargin : 0)
+      x: root.sheetX
       y: root.alongside ? 0 : root.sheetMargin
-      width: root.alongside ? root.windowSheetWidth : root.sheetWidth
+      width: root.sheetWidth
+      // Stepping aside for a pane slides, with the panes beside it (their
+      // x follows this one), at the focus frame's pace. The width snaps:
+      // text reflowing every frame reads as shaking.
+      Behavior on x { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
       height: root.alongside ? content.height : content.height - root.sheetMargin * 2
       radius: root.alongside ? 0 : Style.cornerRadius
       color: root.background

@@ -34,9 +34,10 @@ BorderSurface {
   onVisibleChanged: if (!visible) page.addingProject = false
 
   visible: page.sidebarOpen && page.problem === ""
-  // Beside whichever sheet is showing: the note's moves to stay centred,
-  // the dashboard's and the keys' leave room for this.
-  x: page.alongside ? 0 : (page.wideOpen ? page.wideX : sheet.x) - page.marginGap - page.sidebarWidth
+  // Against the note's left edge, as the right pane is against its right
+  // (the note moves only if the two do not fit, page.sheetX); beside the
+  // dashboard and the keys, which leave room for this, at the edge.
+  x: (page.wideOpen ? page.wideX : sheet.x) - page.marginGap - page.sidebarWidth
   y: sheet.y
   height: sheet.height
   width: page.sidebarWidth

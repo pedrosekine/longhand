@@ -26,6 +26,8 @@ BorderSurface {
 
   visible: page.dashOpen && !page.keysOpen && !page.settingsOpen
   x: page.wideX
+  // Making room for the sidebar slides, as the note does (Page.qml, `sheet`).
+  Behavior on x { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
   y: page.alongside ? 0 : page.sheetMargin
   width: page.dashWidth
   height: page.alongside ? content.height : content.height - page.sheetMargin * 2

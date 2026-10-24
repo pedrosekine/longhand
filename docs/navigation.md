@@ -47,6 +47,20 @@ to the note, and a task's belongs to the dashboard, so each comes back when
 its view does. The day's conversation goes with either. The sidebar is
 independent of both.
 
+## Where the panes sit
+
+One rule for both sides and both shapes (`plugin-page/Layout.js`, 2026-10-24):
+the note is centred in the window, and a pane opening beside it, left or
+right, is drawn against the note's edge **without moving it**, as long as
+there is room for both. Only when there is not does the note step aside, as
+far as it has to (a slide, at the focus frame's pace), and it narrows last.
+Until then the window recentred the note in the room the sidebar left (so the
+sidebar pushed the note and the right pane did not), and the overlay shrank
+the right pane instead. Beside the dashboard, keys or settings, which are lists
+and take the room they are given, the sidebar sits at the window's edge and
+the list slides over for it. In the window shape a hairline separates each
+pane from the note, on both sides.
+
 ## Esc: back out one level
 
 Esc always undoes the last step in. In order:

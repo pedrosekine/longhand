@@ -30,6 +30,17 @@ BorderSurface {
 
   MouseArea { anchors.fill: parent; onClicked: dayField.forceActiveFocus() }
 
+  // In the window the pane sits on the same ground as the note; a
+  // hairline keeps them apart, as the sidebar's does on its side.
+  Rectangle {
+    visible: page.alongside
+    anchors.left: parent.left
+    anchors.leftMargin: -Math.round(page.marginGap / 2)
+    width: 1
+    height: parent.height
+    color: page.faint
+  }
+
   Text {
     id: dayTitle
     anchors.top: parent.top
