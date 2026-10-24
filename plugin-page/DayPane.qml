@@ -144,6 +144,7 @@ BorderSurface {
               readonly property bool live: state_ === "open" || state_ === "done by itself"
               readonly property bool focused: live && page.dayCardFocus >= 0 && !!page.dayOpenCards[page.dayCardFocus]
                 && page.dayOpenCards[page.dayCardFocus].id === modelData.id
+              onFocusedChanged: page.selected(card, "right", focused)
               width: parent.width
               height: cardColumn.implicitHeight + page.sp(14)
               radius: Style.cornerRadius
@@ -373,7 +374,9 @@ BorderSurface {
     TextField {
       id: dayField
       width: parent.width
-      enabled: page.dayCanSend
+      // Read-only rather than disabled on a past day: the pane still takes
+      // the keys, so Esc and the panes' keys work in it.
+      readOnly: !page.dayCanSend
       placeholderText: page.dayCanSend ? "talk to the day…" : "a past day: today's is where you talk (" + page.keyName("today") + ")"
       font.family: page.fontFamily
       font.styleName: page.fontStyle

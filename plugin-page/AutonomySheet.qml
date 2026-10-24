@@ -85,6 +85,9 @@ BorderSurface {
             required property var modelData
             required property int index
             readonly property bool picked: page.autonomyFocus === index
+            readonly property bool lit: picked && page.here === "center"
+            onLitChanged: page.selected(kindRow, "center", lit)
+            Component.onCompleted: if (lit) page.selected(kindRow, "center", true)
             width: parent.width
             height: kindCol.implicitHeight + page.sp(12)
 

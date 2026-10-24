@@ -37,7 +37,8 @@ BorderSurface {
   borderSpec: page.alongside ? Border.none() : page.borderSpec
   padding: page.sp(22)
 
-  MouseArea { anchors.fill: parent; onClicked: {} }
+  // A click in the pane is the keys into it, as everywhere (docs/navigation.md).
+  MouseArea { anchors.fill: parent; onClicked: page.focusPane("right") }
 
   // Keyboard focus while in the margin (proposal rows or the tasks
   // panel). The chat field has its own handling.
@@ -84,6 +85,7 @@ BorderSurface {
       Rectangle {
         id: pinned
         readonly property bool hot: page.marginFocus === 0 && marginKeys.activeFocus
+        onHotChanged: page.selected(pinned, "right", hot)
         visible: margin.talk
         width: marginColumn.width
         height: pinnedCol.implicitHeight + page.sp(12)
@@ -297,6 +299,8 @@ BorderSurface {
             visible: row.isCard
             readonly property bool done: !!row.p.accepted
             readonly property bool hot: page.marginFocus === row.ci && marginKeys.activeFocus
+            onHotChanged: page.selected(card, "right", hot)
+            Component.onCompleted: if (hot) page.selected(card, "right", true)
             width: parent.width
             height: cardColumn.implicitHeight + page.sp(14)
             radius: Style.cornerRadius
@@ -470,7 +474,7 @@ BorderSurface {
         if (page.anywhereKey(event)) { event.accepted = true; return }
         if (margin.talk) {
           if (Sc.hit(event, "chatSend")) page.sendTalk()
-          else if (Sc.hit(event, "marginBack")) page.closeTalk()
+          else if (Sc.hit(event, "marginBack")) page.leaveTalk()
           else if (Sc.hit(event, "marginUp") && text === "" && page.talkItem) { page.marginFocus = 0; marginKeys.forceActiveFocus() }
           else return
           event.accepted = true

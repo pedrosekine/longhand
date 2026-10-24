@@ -28,7 +28,12 @@ TestCase {
     compare(Sc.fromEvent(ev(Qt.Key_Dead_Grave, Qt.ControlModifier)), "Ctrl+`")
     verify(Sc.hit(ev(Qt.Key_Dead_Grave, Qt.ControlModifier), "code"))
     verify(Sc.hit(ev(Qt.Key_E, Qt.ControlModifier), "code"))
-    verify(Sc.hit(ev(Qt.Key_Backslash, Qt.ControlModifier), "sidebar"))
+    // The panes, left to right, are the bracket keys (2026-10-23).
+    verify(Sc.hit(ev(Qt.Key_BracketLeft, Qt.ControlModifier), "sidebar"))
+    verify(Sc.hit(ev(Qt.Key_Backslash, Qt.ControlModifier), "home"))
+    verify(Sc.hit(ev(Qt.Key_BracketRight, Qt.ControlModifier), "day"))
+    verify(Sc.hit(ev(Qt.Key_Left, Qt.AltModifier), "paneLeft"))
+    verify(Sc.hit(ev(Qt.Key_BracketLeft, Qt.AltModifier), "dayPrev"))
   }
 
   function test_spellings() {

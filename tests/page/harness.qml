@@ -258,6 +258,13 @@ ShellRoot {
     function authorsStore(): string { return JSON.stringify(page.authorsStore) }
     function rowAuthor(i: int): string { return page.rowAuthor(page.taskRows[i]) }
     function tickSoundToggle(): void { page.toggleTickSound() }
+    // The panes (docs/navigation.md): which are open, what each shows,
+    // where the focus frame is drawn.
+    function panes(): string {
+      return JSON.stringify({ panes: page.panes, here: page.here, center: page.centerView, right: page.rightView,
+                              pointer: page.pointerMode })
+    }
+    function closePanes(): void { if (page.sidebarOpen) page.toggleSidebar(); page.closeRight(); if (page.dashOpen) page.toggleDash() }
     function dashKey(key: int, mods: int): bool { return page.dashKey({ key: key, text: "", modifiers: mods }) }
     function dashType(ch: string): bool { return page.dashKey({ key: ch.toUpperCase().charCodeAt(0), text: ch, modifiers: 0 }) }
     function dashWhen(phrase: string): void { page.dashWhenText = phrase; page.commitDashWhen() }

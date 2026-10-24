@@ -146,7 +146,12 @@ BorderSurface {
               }
             }
             readonly property bool late: !!deadline && deadline.status === "open" && deadline.due * 1000 < Date.now()
-            readonly property bool hot: page.taskFocus === index && !isHead
+            // Lit only while the dashboard has the keys: one place is lit
+            // at a time, in the pane the focus frame is around
+            // (docs/navigation.md). The pointer follows it (page.selected).
+            readonly property bool hot: page.taskFocus === index && !isHead && page.here === "center"
+            onHotChanged: page.selected(dashRow, "center", hot)
+            Component.onCompleted: if (hot) page.selected(dashRow, "center", true)
             // A click on it does something (activateTask): a hand, and a
             // faint fill while the mouse is over it (2026-10-19).
             readonly property bool acts: ["task", "deadline", "shelf", "grading", "raised", "proposal", "question", "told"].indexOf(kind) >= 0
@@ -165,7 +170,10 @@ BorderSurface {
               anchors.leftMargin: -page.sp(8)
               anchors.rightMargin: -page.sp(8)
               radius: Style.cornerRadius
-              color: dashRow.hot ? Style.selectedFill : rowHover.hovered ? Style.hoverFill : "transparent"
+              // The row talked about beside, while the keys are there: still
+              // marked, faintly, so the list says which one it is.
+              color: dashRow.hot ? Style.selectedFill
+                : rowHover.hovered || (page.taskFocus === index && !isHead && page.talkOpen) ? Style.hoverFill : "transparent"
             }
 
             // The glow a tick leaves for a moment.
@@ -536,6 +544,9 @@ BorderSurface {
           font.pixelSize: page.fs(Style.font.body)
           foreground: page.foreground
           onTextChanged: page.dashWhenText = text
+          // The global keys first, as in every box (it was the one box
+          // without them until 2026-10-23).
+          Keys.onPressed: function (event) { if (page.anywhereKey(event)) event.accepted = true }
           Keys.onReturnPressed: function (event) { event.accepted = true; page.commitDashWhen() }
           Keys.onEnterPressed: function (event) { event.accepted = true; page.commitDashWhen() }
           Keys.onEscapePressed: function (event) { event.accepted = true; page.dashWhenFor = null; page.dashWhenText = "" }

@@ -98,6 +98,9 @@ BorderSurface {
               required property var modelData
               required property int index
               readonly property bool picked: page.searchFocus === index
+              readonly property bool lit: picked && page.here === "center"
+              onLitChanged: page.selected(folderRow, "center", lit)
+              Component.onCompleted: if (lit) page.selected(folderRow, "center", true)
               width: searchColumn.width
               height: folderLine.implicitHeight + page.sp(10)
               onPickedChanged: if (picked) {

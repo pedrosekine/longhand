@@ -107,11 +107,11 @@ zoom the whole page like a browser, remembered across restarts. `Ctrl+F`
 finds in the note as you type: Enter next, Shift+Enter previous,
 `Ctrl+Enter` lands on the match selected and closes the search, Esc closes
 it with the cursor on the match (as browsers and editors do), Shift+Esc
-goes back to where you were. `Ctrl+Shift+B` shows a month calendar in a sidebar
+goes back to where you were. `Ctrl+[` shows a month calendar in a sidebar
 (only when asked): days with a note are full, days without are faded;
 arrows move by day and week, `Ctrl+←/→` by month, Enter opens the day in
 the same sheet, editable (a day without a note gets its file on the first
-word). `Alt+Left`/`Alt+Right` move between calendar and note; `weekStart`
+word). `Alt+Left`/`Alt+Right` move between the panes that are open; `weekStart`
 in the config picks the first column. Under it, your projects (one file each
 in the agent's `knowledge/projects/`) with their next session. Enter or a
 click **opens that project's notes** in the sidebar itself: every section you
@@ -170,10 +170,11 @@ go to a block's start or end and, pressed again, on through the blocks
 before or after, the way Word walks paragraphs (`Ctrl+Shift+Up/Down` select
 the same way); `Alt+Up/Down` move the line, or every line selected, up or
 down, as in VS Code;
-`Alt+Right` goes into the margin — proposals first (Enter accepts one and runs
-it through `pomo`), then the chat — `Alt+Left` or `Esc` comes back. Drop
+`Ctrl+Enter` on an answered block opens its margin — proposals first (Enter
+accepts one and runs it through `pomo`), then the chat — and `Esc` comes back
+with the cursor where it was. Drop
 course material into `agents/longhand/curriculum/` and run
-`longhand-agent curriculum` once for PDFs. Set `inbox` (e.g. `~/Downloads`) and the PDFs there that belong to a course — its code, title or tag in the file name or on the first two pages, or downloaded during or just after one of its classes — are proposed in the dashboard for filing into `<vault>/projects/<tag>/docs/`; nothing else in the folder is ever listed. A course's documents are in its project in the sidebar, and the agent sees their titles on a run about the course. The **day's conversation** — `Ctrl+J` from anywhere, `Ctrl+Shift+Enter` from a block, or the seal at the header's centre — is the agent to talk to about the day rather than one line: one conversation a day in the right pane, seeing today's note and today's other conversations, and able to search your files — the folders you switch on in Settings → what the agent may search, never private notes, `_Secrets` or documents of identity, money, health or contracts — citing what it found as links; the date at the left opens the sidebar. Ask the agent how to do something in Longhand ("how do I reschedule a deadline?") and it answers from its manual
+`longhand-agent curriculum` once for PDFs. Set `inbox` (e.g. `~/Downloads`) and the PDFs there that belong to a course — its code, title or tag in the file name or on the first two pages, or downloaded during or just after one of its classes — are proposed in the dashboard for filing into `<vault>/projects/<tag>/docs/`; nothing else in the folder is ever listed. A course's documents are in its project in the sidebar, and the agent sees their titles on a run about the course. The **day's conversation** — `Ctrl+]` (or `Ctrl+J`) from anywhere, `Ctrl+Shift+Enter` from a block, or the seal at the header's centre — is the agent to talk to about the day rather than one line: one conversation a day in the right pane, seeing today's note and today's other conversations, and able to search your files — the folders you switch on in Settings → what the agent may search, never private notes, `_Secrets` or documents of identity, money, health or contracts — citing what it found as links; the date at the left opens the sidebar. Ask the agent how to do something in Longhand ("how do I reschedule a deadline?") and it answers from its manual
 (`agent/manual.md`), naming your own keys. List your `languages` in the config; the agent answers in the one the
 block is written in. Add your calendars in **Settings → Calendar** (`Ctrl+,`, or **settings** at the foot of the
 sidebar): paste an `.ics` or `webcal://` address and each calendar is fetched at once and says whether it works. Classes are
@@ -184,16 +185,29 @@ makes a short, soft sound — never an untick, never while notifications are sil
 `config.example.json`) pointing at your vault; the note lives at
 `<vault>/<daily.dir>/<date>.md` exactly where Obsidian's daily notes would.
 
+### Where the keys are
+
+The page is three panes at most, and the bracket keys are the three, left to
+right: `Ctrl+[` the sidebar, `Ctrl+\` the middle (the note, or the
+dashboard in its place: there it flips the two), `Ctrl+]` the agent's pane.
+A pane's key takes you to it, opening it; pressed in it, it closes it.
+`Alt+←/→` move between the panes that are open and never open or close one.
+An accent frame, like Omarchy's active border, is drawn around the pane that
+has the keys; Esc backs out one level, and a pane that closes gives the keys
+back where they came from, at the very place you left (the note's cursor
+where it was). The mouse pointer follows the keys into each pane and onto
+the selected row, as Hyprland's follows windows (Settings → The pointer).
+The whole model: [docs/navigation.md](docs/navigation.md).
+
 ### Every key, and moving one
 
 Days have keys of their own, ones a laptop reaches without Fn: `Ctrl+H` is
-today's note from anywhere (the dashboard and the sidebar too), `Ctrl+[` /
-`Ctrl+]` the day before or after that has a note — as Obsidian steps its
-daily notes, on Notion's back and forward keys — and forward from the last
-one is today. `Alt+Home` and `Ctrl+PgUp/PgDn` do the same on a keyboard
+today's note from anywhere (the dashboard and the sidebar too), `Alt+[` /
+`Alt+]` the day before or after that has a note — as Obsidian steps its
+daily notes — and forward from the last one is today. `Alt+Home` and `Ctrl+PgUp/PgDn` do the same on a keyboard
 with those keys of their own. Where another app has taught a key, the page answers
-to it as well: `Ctrl+E` for inline code beside `` Ctrl+` `` (Notion), `Ctrl+\`
-for the sidebar beside `Ctrl+Shift+B`; in the dashboard `j`/`k` move, Space
+to it as well: `Ctrl+E` for inline code beside `` Ctrl+` `` (Notion), `Ctrl+T` for the
+dashboard and `Ctrl+J` for the agent's pane beside the brackets; in the dashboard `j`/`k` move, Space
 or `e` ticks (Todoist), and the note's own `Ctrl+L` and `Ctrl+D` tick and ask
 "when?" there too. `Ctrl+L` ticks a deadline wherever one is listed: the
 sidebar's list for a day, and the bar's deadline popup beside its `d`; `t` in the calendar is today. On a keyboard with dead keys

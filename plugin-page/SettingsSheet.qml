@@ -113,6 +113,9 @@ BorderSurface {
             required property var modelData
             required property int index
             readonly property bool picked: page.settingsFocus === index
+            readonly property bool lit: picked && page.here === "center"
+            onLitChanged: page.selected(calRow, "center", lit)
+            Component.onCompleted: if (lit) page.selected(calRow, "center", true)
             width: parent.width
             height: calCol.implicitHeight + page.sp(16)
 
@@ -449,6 +452,58 @@ BorderSurface {
           }
         }
 
+        Item { width: 1; height: page.sp(22) }
+
+        // The pointer follows the keys (docs/navigation.md), as Hyprland's
+        // follows the window.
+        Text {
+          textFormat: Text.PlainText
+          text: "The pointer"
+          color: pal.headings.length > 0 ? pal.headings[0] : page.accent
+          font.family: page.fontFamily
+          font.styleName: page.fontStyle
+          font.pixelSize: page.fs(Style.font.body)
+        }
+
+        Text {
+          width: parent.width
+          textFormat: Text.PlainText
+          wrapMode: Text.WordWrap
+          text: "The mouse pointer goes where the keys go, as Hyprland's goes to the window you move to: into the pane that has "
+            + "the keys, onto the row selected in it, beside the note's cursor. Never while your hand is on the mouse."
+          color: page.faint
+          font.family: page.fontFamily
+          font.styleName: page.fontStyle
+          font.pixelSize: page.fs(Style.font.bodySmall)
+        }
+
+        Row {
+          spacing: page.sp(16)
+          Repeater {
+            model: [{ mode: "every", text: "every selection" }, { mode: "panes", text: "pane changes only" }, { mode: "off", text: "off" }]
+            Text {
+              required property var modelData
+              textFormat: Text.PlainText
+              text: modelData.text
+              color: page.pointerMode === modelData.mode ? page.foreground : pointerArea.containsMouse ? page.accent : page.faint
+              font.family: page.fontFamily
+              font.styleName: page.fontStyle
+              font.pixelSize: page.fs(Style.font.bodySmall)
+              MouseArea {
+                id: pointerArea
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                  page.setPointer(modelData.mode)
+                  settingsField.forceActiveFocus()
+                }
+                PanelToolTip { visible: parent.containsMouse; text: page.tip("The pointer: " + modelData.text, "settingsPointer") }
+              }
+            }
+          }
+        }
+
         Text {
           visible: page.settingsNote !== ""
           width: parent.width
@@ -471,7 +526,7 @@ BorderSurface {
         text: page.settingsFieldKind === "rename" ? "Enter renames it · Esc keeps the old name"
           : "Enter adds a calendar · ↑↓ pick one · " + page.keyName("settingsShare") + " what the agent sees · "
           + page.keyName("settingsFetch") + " fetches it · " + page.keyName("settingsRename") + " renames · "
-          + page.keyName("settingsForget") + " removes it · " + page.keyName("settingsSound") + " tick sound · "
+          + page.keyName("settingsForget") + " removes it · " + page.keyName("settingsSound") + " tick sound · " + page.keyName("settingsPointer") + " the pointer · "
           + page.keyName("settingsNotebook") + " what the agent knows · " + page.keyName("settingsAutonomy") + " what it may do · " + page.keyName("settingsSearch") + " what it may search · Esc back"
         color: page.faint
         font.family: page.fontFamily

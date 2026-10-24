@@ -98,6 +98,9 @@ BorderSurface {
           required property int index
           readonly property bool picked: page.notebookFocus === index
           readonly property bool head: modelData.kind === "head"
+          readonly property bool lit: picked && !head && page.here === "center"
+          onLitChanged: page.selected(nbRow, "center", lit)
+          Component.onCompleted: if (lit) page.selected(nbRow, "center", true)
           width: notebookView.width
           height: nbCol.implicitHeight + (head ? page.sp(index === 0 ? 4 : 20) : page.sp(8))
 

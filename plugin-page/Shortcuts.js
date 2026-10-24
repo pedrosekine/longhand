@@ -22,7 +22,7 @@
 // Where an action works. "any" is everywhere in the page; the typing ones
 // are where a bare letter has to stay a letter.
 var places = {
-  any: "anywhere in the page",
+  any: "everywhere",
   note: "in the note",
   mention: "while @ or # lists tags, or @ blocks in the day's box",
   search: "in find",
@@ -53,22 +53,37 @@ var groups = [
   { id: "system", title: "Outside the page (Hyprland)" }
 ]
 
+// A key is global ("any") when it is about the page itself or where you
+// are in it, never about the thing you are on: the zoom, these lists, the
+// panes, the page's shape. Global keys are read before anything else,
+// wherever the keyboard is (Page.qml, anywhereKey), so none of them may be
+// a key a text field types or uses. Everything else works in its place.
+// docs/navigation.md has the whole model.
 var actions = [
   { id: "zoomIn", group: "page", places: ["any"], does: "Zoom in", keys: ["Ctrl+=", "Ctrl+Plus"] },
   { id: "zoomOut", group: "page", places: ["any"], does: "Zoom out", keys: ["Ctrl+-", "Ctrl+_"] },
   { id: "zoomReset", group: "page", places: ["any"], does: "Zoom back to 100%", keys: ["Ctrl+0"] },
   { id: "keys", group: "page", places: ["any"], does: "Show these keys", keys: ["Ctrl+/"] },
   { id: "settings", group: "page", places: ["any"], does: "Settings (calendars, sound)", keys: ["Ctrl+,"] },
-  { id: "close", group: "page", places: ["note"], does: "Close the overlay", keys: ["Esc"] },
+  // The three panes, left to right, are the three bracket keys (the
+  // student's idea, 2026-10-23): a pane's key takes you there, opening it
+  // if it is closed; pressed in it, it closes it. The middle has nothing
+  // to close, so there it flips the note and the dashboard. Alt+←/→ only
+  // move between the panes that are open, as Super+arrows do between
+  // Hyprland's windows: nothing opens or closes. Ctrl+J and Ctrl+Shift+B
+  // are the keys these had before.
+  { id: "sidebar", group: "page", places: ["any"], does: "The sidebar (calendar, projects): go there, opening it; in it, close it", keys: ["Ctrl+[", "Ctrl+Shift+B"] },
+  { id: "home", group: "page", places: ["any"], does: "The middle: go there; in it, flip the note and the dashboard", keys: ["Ctrl+\\"] },
+  { id: "day", group: "page", places: ["any"], does: "The agent's pane: go there, opening it on the day's conversation; in it, close it", keys: ["Ctrl+]", "Ctrl+J"] },
+  { id: "paneLeft", group: "page", places: ["any"], does: "The open pane to the left", keys: ["Alt+Left"] },
+  { id: "paneRight", group: "page", places: ["any"], does: "The open pane to the right", keys: ["Alt+Right"] },
+  { id: "dashboard", group: "page", places: ["any"], does: "Open or close the dashboard", keys: ["Ctrl+T"] },
   // F11 is every app's full-screen key, and the overlay is the full-screen
   // shape; Ctrl+Alt+P for keyboards whose F-row wants Fn. Ctrl+P is left
   // to what it means everywhere else (a switcher), off since 2026-10-16.
-  { id: "pin", group: "page", places: ["note"], does: "Flip between overlay and window", keys: ["F11", "Ctrl+Alt+P"] },
+  { id: "pin", group: "page", places: ["any"], does: "Flip between overlay and window", keys: ["F11", "Ctrl+Alt+P"] },
+  { id: "close", group: "page", places: ["note"], does: "Close the overlay", keys: ["Esc"] },
   { id: "private", group: "page", places: ["note"], does: "Make the note private (the agent sees nothing)", keys: ["Ctrl+Shift+P"] },
-  { id: "dashboard", group: "page", places: ["note", "dash"], does: "Open or close the dashboard", keys: ["Ctrl+T"] },
-  { id: "sidebar", group: "page", places: ["note", "calendar", "lists"], does: "Open or close the calendar sidebar", keys: ["Ctrl+Shift+B", "Ctrl+\\"] },
-  { id: "toSidebar", group: "page", places: ["note"], does: "Go to the sidebar (when open)", keys: ["Alt+Left"] },
-  { id: "toNote", group: "page", places: ["calendar", "lists"], does: "Back to the note from the sidebar", keys: ["Alt+Right"] },
 
   { id: "bold", group: "write", places: ["note"], does: "Bold", keys: ["Ctrl+B"] },
   { id: "italic", group: "write", places: ["note"], does: "Italic", keys: ["Ctrl+I"] },
@@ -92,18 +107,17 @@ var actions = [
   // Days, the way Obsidian's daily notes step them: the next day that has
   // a note, since a day without one has nothing to read. Keys a laptop
   // reaches without Fn first (Home and PgUp are Fn+arrows on many), then
-  // the ones a full keyboard knows. Ctrl+[ and ] are Notion's back and on.
+  // the ones a full keyboard knows. Ctrl+[ and ] were Notion's back and on
+  // until 2026-10-23, when they became the panes; Alt keeps the brackets.
   { id: "today", group: "move", places: ["note", "dash", "calendar", "lists"], does: "Go to today's note", keys: ["Ctrl+H", "Alt+Home"] },
-  { id: "dayPrev", group: "move", places: ["note", "dash"], does: "The day before, with a note", keys: ["Ctrl+[", "Ctrl+PgUp"] },
-  { id: "dayNext", group: "move", places: ["note", "dash"], does: "The day after, with a note (and then today)", keys: ["Ctrl+]", "Ctrl+PgDn"] },
+  { id: "dayPrev", group: "move", places: ["note", "dash"], does: "The day before, with a note", keys: ["Alt+[", "Ctrl+PgUp"] },
+  { id: "dayNext", group: "move", places: ["note", "dash"], does: "The day after, with a note (and then today)", keys: ["Alt+]", "Ctrl+PgDn"] },
   { id: "find", group: "move", places: ["note", "search"], does: "Find in the note (in find: select the words)", keys: ["Ctrl+F"] },
 
   { id: "ask", group: "agent", places: ["note"], does: "Ask about this block, or open its conversation", keys: ["Ctrl+Enter"] },
   { id: "dayHelpful", group: "agent", places: ["chat"], does: "In the day's conversation: its last answer was helpful (again: take it back)", keys: ["Alt+="] },
   { id: "dayNotHelpful", group: "agent", places: ["chat"], does: "In the day's conversation: its last answer was not helpful (again: take it back)", keys: ["Alt+-"] },
-  { id: "day", group: "agent", places: ["any"], does: "The day's conversation: talk to the day, not a line (again: close it)", keys: ["Ctrl+J"] },
   { id: "dayHere", group: "agent", places: ["note"], does: "The day's conversation, pointing at this block", keys: ["Ctrl+Shift+Enter"] },
-  { id: "margin", group: "agent", places: ["note"], does: "Open the margin for this block", keys: ["Alt+Right"] },
 
   { id: "mentionUp", group: "mention", places: ["mention"], does: "Previous project", keys: ["Up"] },
   { id: "mentionDown", group: "mention", places: ["mention"], does: "Next project", keys: ["Down"] },
@@ -141,16 +155,18 @@ var actions = [
   { id: "settingsRename", group: "settings", places: ["settings"], does: "Rename the picked calendar", keys: ["Ctrl+E"] },
   { id: "settingsForget", group: "settings", places: ["settings"], does: "Remove the picked calendar", keys: ["Ctrl+Shift+Backspace"] },
   { id: "settingsSound", group: "settings", places: ["settings"], does: "The tick's sound: on or off", keys: ["Ctrl+Shift+S"] },
+  { id: "settingsPointer", group: "settings", places: ["settings"], does: "The pointer follows the keys: every selection · pane changes · off", keys: ["Ctrl+Shift+M"] },
   { id: "settingsNotebook", group: "settings", places: ["settings"], does: "What the agent knows: its notes, to correct or forget", keys: ["Ctrl+K"] },
   { id: "settingsSearch", group: "settings", places: ["settings"], does: "What the agent may search: each folder of the vault, on or off", keys: ["Ctrl+F"] },
   { id: "settingsAutonomy", group: "settings", places: ["settings"], does: "What the agent may do: each kind of action, ask me · do it and tell me · never", keys: ["Ctrl+M"] },
   { id: "notebookCorrect", group: "settings", places: ["notebook"], does: "Correct the picked note in your words (Enter too)", keys: ["Ctrl+E"] },
   { id: "notebookForget", group: "settings", places: ["notebook"], does: "Forget the picked note, or take a correction back", keys: ["Ctrl+Shift+Backspace"] },
-  // The note's key for a block's margin, on a row (2026-10-20): the agent
-  // summoned to think the task through.
+  // The note's key for talking about a block, on a row (2026-10-20; Alt+→
+  // until 2026-10-23, now the panes'): the agent summoned to think the
+  // task through.
   { id: "dashNextAsk", group: "dash", places: ["dash"], does: "Next thing from the agent to settle (round again at the end)", keys: ["N"] },
   { id: "dashPrevAsk", group: "dash", places: ["dash"], does: "The one before it", keys: ["Shift+N"] },
-  { id: "dashTalk", group: "dash", places: ["dash"], does: "Talk with the agent about it (the margin opens beside)", keys: ["Alt+Right"] },
+  { id: "dashTalk", group: "dash", places: ["dash"], does: "Talk with the agent about it (the agent's pane opens on it)", keys: ["Ctrl+Shift+Enter"] },
   { id: "dashUndo", group: "dash", places: ["dash"], does: "Take the last tick back", keys: ["Ctrl+Z"] },
   { id: "dashBack", group: "dash", places: ["dash"], does: "Back to the note", keys: ["Esc"] },
 
@@ -163,7 +179,7 @@ var actions = [
   { id: "calToday", group: "calendar", places: ["calendar"], does: "Today", keys: ["Home", "T"] },
   { id: "calOpen", group: "calendar", places: ["calendar"], does: "Open the day in the sheet", keys: ["Enter"] },
   { id: "calLists", group: "calendar", places: ["calendar"], does: "On to the day's deadlines and the projects", keys: ["Tab"] },
-  { id: "calBack", group: "calendar", places: ["calendar"], does: "Back to the note", keys: ["Esc"] },
+  { id: "calBack", group: "calendar", places: ["calendar"], does: "Close the sidebar (back where you were)", keys: ["Esc"] },
 
   { id: "listUp", group: "lists", places: ["lists"], does: "Move up", keys: ["Up", "K"] },
   { id: "listDown", group: "lists", places: ["lists"], does: "Move down", keys: ["Down", "J"] },
@@ -183,7 +199,10 @@ var actions = [
   { id: "marginHelpful", group: "margin", places: ["margin"], does: "The reply was helpful (again: take it back)", keys: ["Plus", "="] },
   { id: "marginNotHelpful", group: "margin", places: ["margin"], does: "The reply was not helpful (again: take it back)", keys: ["-"] },
   { id: "chatSend", group: "margin", places: ["chat"], does: "Send what you wrote", keys: ["Enter"] },
-  { id: "marginBack", group: "margin", places: ["margin", "chat"], does: "Back to the note (beside the dashboard: to the list)", keys: ["Esc", "Alt+Left"] }
+  // Esc backs out one level: a block's or a task's conversation to the
+  // day's, when that is open (the pane's home); else the pane closes and
+  // the keys go back where they were.
+  { id: "marginBack", group: "margin", places: ["margin", "chat"], does: "Back out: to the day's conversation if it is open, else close the pane", keys: ["Esc"] }
 ]
 
 // The text field's own keys: shown, never moved, and never taken. `keys`

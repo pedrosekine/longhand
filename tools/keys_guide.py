@@ -80,6 +80,12 @@ def render(d, mine=False):
         "",
         "Where a row has two keys, either works: the second is usually the one another app "
         "taught (Notion, Todoist, vim) or one a laptop reaches without Fn.",
+        "",
+        "The keys that work **everywhere** (in a box you are typing in too) are the ones about the page "
+        "itself and where you are in it: the zoom, these lists, the three panes and the page's shape. "
+        "The panes are the bracket keys, left to right: `Ctrl+[` the sidebar, `Ctrl+\\` the middle, "
+        "`Ctrl+]` the agent's pane. How focus moves between them is in "
+        "[navigation.md](navigation.md).",
     ]
     for g in d["groups"]:
         acts = [a for a in d["actions"] if a["group"] == g["id"]]

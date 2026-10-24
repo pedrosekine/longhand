@@ -134,6 +134,10 @@ BorderSurface {
               required property int index
               readonly property bool isHead: modelData.kind === "head"
               readonly property bool hot: page.keysFocus === index && !isHead
+              // The pointer follows the keys (page.selected).
+              readonly property bool lit: hot && page.here === "center"
+              onLitChanged: page.selected(keyRow, "center", lit)
+              Component.onCompleted: if (lit) page.selected(keyRow, "center", true)
               readonly property bool listening: hot && !!page.keysListen && page.keysListen.id === modelData.id
               width: keysList.width
               height: keyInner.height + page.sp(14) + (isHead ? (index === 0 ? page.sp(4) : page.sp(26)) : 0)

@@ -648,6 +648,15 @@ from 2026-09/10 and still stand.
   and Craft's select-all): line, then block, then the note; Esc drops a
   selection before it closes the overlay. Watch whether the extra Esc to
   leave after selecting is felt as a cost.
+- **Three panes, the bracket keys, the pointer following** (2026-10-23,
+  docs/navigation.md; the bracket layout is the student's): `Ctrl+[ \ ]`
+  are the sidebar, the middle and the agent's pane, Alt+←/→ only move, Esc
+  backs out one level and gives the keys back where they were, an accent
+  frame is around the pane with the keys, and the pointer follows the
+  selection. Watch: whether the days on `Alt+[ ]` are found (they were
+  `Ctrl+[ ]`), whether anyone misses Alt+→ opening the margin, and whether
+  "every selection" for the pointer is felt as help or as the mouse being
+  taken (the `pointer` counts in the usage log).
 - **A live check that failed once** (2026-10-18, then passed four runs):
   the "when?" box pushing the next line down (11j in `tests/page/run.py`).
 

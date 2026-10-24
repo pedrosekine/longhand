@@ -45,7 +45,8 @@ BorderSurface {
   borderSpec: page.alongside ? Border.none() : page.borderSpec
   padding: page.sp(16)
 
-  MouseArea { anchors.fill: parent; onClicked: {} }
+  // A click in the pane is the keys into it, as everywhere (docs/navigation.md).
+  MouseArea { anchors.fill: parent; onClicked: page.focusPane("left") }
 
   // In the window the sidebar sits on the same ground as the sheet; a
   // hairline keeps them apart.
@@ -62,17 +63,10 @@ BorderSurface {
     id: sidebarKeys
     anchors.fill: parent
     Keys.onPressed: function (event) {
+      // The panes' keys are global (page.anywhereKey): Ctrl+[ closes the
+      // sidebar from here, Alt+→ moves on and leaves it open.
       if (page.anywhereKey(event)) { event.accepted = true; return }
-      // Wherever the sidebar's focus is: back to the note, or close it.
-      if (Sc.hit(event, "toNote")) { editor.focusNote(); event.accepted = true; return }
       if (Sc.hit(event, "today")) { page.goToday(); event.accepted = true; return }
-      if (Sc.hit(event, "sidebar")) {
-        page.sidebarOpen = false
-        page.projectOpen = false
-        editor.focusNote()
-        event.accepted = true
-        return
-      }
       // Inside a project: its sections, newest first. Enter opens one in
       // the sheet (the list stays), Left or Esc goes back to the list of
       // projects.
@@ -105,7 +99,7 @@ BorderSurface {
         if (page.focusDue.length > 0) page.dueFocus = 0
         else page.projFocus = 0
       } else if (Sc.hit(event, "calBack")) {
-        editor.focusNote()
+        page.toggleSidebar()
       } else if (Sc.hit(event, "calPrevDay")) {
         page.moveCalendar(-1, 0)
       } else if (Sc.hit(event, "calNextDay")) {
@@ -228,6 +222,10 @@ BorderSurface {
           readonly property bool isToday: k !== "" && k === sidebar.todayKey
           width: calendar.cell
           height: Math.round(calendar.cell * 0.92)
+          // The pointer follows the keys (page.selected).
+          readonly property bool lit: dayCell.isCursor && sidebarKeys.activeFocus
+          onLitChanged: page.selected(dayCell, "left", lit)
+          Component.onCompleted: if (lit) page.selected(dayCell, "left", true)
 
           Rectangle {
             anchors.fill: parent
@@ -328,9 +326,13 @@ BorderSurface {
     Repeater {
       model: page.focusDue
       Rectangle {
+        id: dueCell
         required property var modelData
         required property int index
         readonly property bool late: modelData.status === "open" && modelData.due * 1000 < Date.now()
+        readonly property bool lit: page.dueFocus === index && sidebarKeys.activeFocus
+        onLitChanged: page.selected(dueCell, "left", lit)
+        Component.onCompleted: if (lit) page.selected(dueCell, "left", true)
         width: calendar.width
         height: dueRow.implicitHeight + page.sp(6)
         radius: Style.cornerRadius
@@ -376,8 +378,12 @@ BorderSurface {
     Repeater {
       model: page.projects
       Rectangle {
+        id: projCell
         required property var modelData
         required property int index
+        readonly property bool lit: page.projFocus === index && sidebarKeys.activeFocus
+        onLitChanged: page.selected(projCell, "left", lit)
+        Component.onCompleted: if (lit) page.selected(projCell, "left", true)
         width: calendar.width
         height: projCol.implicitHeight + page.sp(6)
         radius: Style.cornerRadius
@@ -431,7 +437,10 @@ BorderSurface {
     // A new project (2026-10-22): its name, and its #tag when it should not
     // be the name's words. The runner makes its file; the list reads it.
     Rectangle {
+      id: newCell
       visible: !page.addingProject
+      readonly property bool lit: page.projFocus === page.projects.length && sidebarKeys.activeFocus
+      onLitChanged: page.selected(newCell, "left", lit)
       width: calendar.width
       height: newText.implicitHeight + page.sp(6)
       radius: Style.cornerRadius
@@ -626,9 +635,12 @@ BorderSurface {
       Repeater {
         model: page.projectDocs()
         Rectangle {
+          id: docCell
           required property var modelData
           required property int index
           readonly property bool hot: page.docFocus === index && sidebarKeys.activeFocus
+          onHotChanged: page.selected(docCell, "left", hot)
+          Component.onCompleted: if (hot) page.selected(docCell, "left", true)
           width: projectColumn.width
           height: docText.implicitHeight + page.sp(6)
           radius: Style.cornerRadius
@@ -675,9 +687,12 @@ BorderSurface {
       Repeater {
         model: page.sections
         Rectangle {
+          id: secCell
           required property var modelData
           required property int index
           readonly property bool hot: page.docFocus < 0 && page.sectionFocus === index && sidebarKeys.activeFocus
+          onHotChanged: page.selected(secCell, "left", hot)
+          Component.onCompleted: if (hot) page.selected(secCell, "left", true)
           width: projectColumn.width
           height: secCol.implicitHeight + page.sp(8)
           radius: Style.cornerRadius

@@ -7,22 +7,26 @@ Every key the page answers to, as it starts. Any of them can be moved in the pag
 
 Where a row has two keys, either works: the second is usually the one another app taught (Notion, Todoist, vim) or one a laptop reaches without Fn.
 
+The keys that work **everywhere** (in a box you are typing in too) are the ones about the page itself and where you are in it: the zoom, these lists, the three panes and the page's shape. The panes are the bracket keys, left to right: `Ctrl+[` the sidebar, `Ctrl+\` the middle, `Ctrl+]` the agent's pane. How focus moves between them is in [navigation.md](navigation.md).
+
 ## The page
 
 | | Keys | Works |
 |---|---|---|
-| Zoom in | `Ctrl+=` · `Ctrl++` | anywhere in the page |
-| Zoom out | `Ctrl+-` · `Ctrl+_` | anywhere in the page |
-| Zoom back to 100% | `Ctrl+0` | anywhere in the page |
-| Show these keys | `Ctrl+/` | anywhere in the page |
-| Settings (calendars, sound) | `Ctrl+,` | anywhere in the page |
+| Zoom in | `Ctrl+=` · `Ctrl++` | everywhere |
+| Zoom out | `Ctrl+-` · `Ctrl+_` | everywhere |
+| Zoom back to 100% | `Ctrl+0` | everywhere |
+| Show these keys | `Ctrl+/` | everywhere |
+| Settings (calendars, sound) | `Ctrl+,` | everywhere |
+| The sidebar (calendar, projects): go there, opening it; in it, close it | `Ctrl+[` · `Ctrl+Shift+B` | everywhere |
+| The middle: go there; in it, flip the note and the dashboard | `Ctrl+\` | everywhere |
+| The agent's pane: go there, opening it on the day's conversation; in it, close it | `Ctrl+]` · `Ctrl+J` | everywhere |
+| The open pane to the left | `Alt+←` | everywhere |
+| The open pane to the right | `Alt+→` | everywhere |
+| Open or close the dashboard | `Ctrl+T` | everywhere |
+| Flip between overlay and window | `F11` · `Ctrl+Alt+P` | everywhere |
 | Close the overlay | `Esc` | in the note |
-| Flip between overlay and window | `F11` · `Ctrl+Alt+P` | in the note |
 | Make the note private (the agent sees nothing) | `Ctrl+Shift+P` | in the note |
-| Open or close the dashboard | `Ctrl+T` | in the note, in the dashboard |
-| Open or close the calendar sidebar | `Ctrl+Shift+B` · `Ctrl+\` | in the note, in the calendar, in the sidebar's lists |
-| Go to the sidebar (when open) | `Alt+←` | in the note |
-| Back to the note from the sidebar | `Alt+→` | in the calendar, in the sidebar's lists |
 
 ## Writing
 
@@ -50,8 +54,8 @@ Where a row has two keys, either works: the second is usually the one another ap
 | Top of the note | `Ctrl+Home` | in the note |
 | End of the note | `Ctrl+End` | in the note |
 | Go to today's note | `Ctrl+H` · `Alt+Home` | in the note, in the dashboard, in the calendar, in the sidebar's lists |
-| The day before, with a note | `Ctrl+[` · `Ctrl+PgUp` | in the note, in the dashboard |
-| The day after, with a note (and then today) | `Ctrl+]` · `Ctrl+PgDn` | in the note, in the dashboard |
+| The day before, with a note | `Alt+[` · `Ctrl+PgUp` | in the note, in the dashboard |
+| The day after, with a note (and then today) | `Alt+]` · `Ctrl+PgDn` | in the note, in the dashboard |
 | Find in the note (in find: select the words) | `Ctrl+F` | in the note, in find |
 
 ## The agent
@@ -61,9 +65,7 @@ Where a row has two keys, either works: the second is usually the one another ap
 | Ask about this block, or open its conversation | `Ctrl+Enter` | in the note |
 | In the day's conversation: its last answer was helpful (again: take it back) | `Alt+=` | in the conversation box |
 | In the day's conversation: its last answer was not helpful (again: take it back) | `Alt+-` | in the conversation box |
-| The day's conversation: talk to the day, not a line (again: close it) | `Ctrl+J` | anywhere in the page |
 | The day's conversation, pointing at this block | `Ctrl+Shift+Enter` | in the note |
-| Open the margin for this block | `Alt+→` | in the note |
 
 ## @ a project
 
@@ -105,7 +107,7 @@ Where a row has two keys, either works: the second is usually the one another ap
 | Ask the agent to plan now | `Ctrl+R` | in the dashboard |
 | Next thing from the agent to settle (round again at the end) | `n` | in the dashboard |
 | The one before it | `Shift+N` | in the dashboard |
-| Talk with the agent about it (the margin opens beside) | `Alt+→` | in the dashboard |
+| Talk with the agent about it (the agent's pane opens on it) | `Ctrl+Shift+Enter` | in the dashboard |
 | Take the last tick back | `Ctrl+Z` | in the dashboard |
 | Back to the note | `Esc` | in the dashboard |
 
@@ -122,7 +124,7 @@ Where a row has two keys, either works: the second is usually the one another ap
 | Today | `Home` · `t` | in the calendar |
 | Open the day in the sheet | `Enter` | in the calendar |
 | On to the day's deadlines and the projects | `Tab` | in the calendar |
-| Back to the note | `Esc` | in the calendar |
+| Close the sidebar (back where you were) | `Esc` | in the calendar |
 
 ## Deadlines, projects and sections in the sidebar
 
@@ -149,7 +151,7 @@ Where a row has two keys, either works: the second is usually the one another ap
 | The reply was helpful (again: take it back) | `+` · `=` | in the margin |
 | The reply was not helpful (again: take it back) | `-` | in the margin |
 | Send what you wrote | `Enter` | in the conversation box |
-| Back to the note (beside the dashboard: to the list) | `Esc` · `Alt+←` | in the margin, in the conversation box |
+| Back out: to the day's conversation if it is open, else close the pane | `Esc` | in the margin, in the conversation box |
 
 ## Settings
 
@@ -160,6 +162,7 @@ Where a row has two keys, either works: the second is usually the one another ap
 | Rename the picked calendar | `Ctrl+E` | in settings |
 | Remove the picked calendar | `Ctrl+Shift+Backspace` | in settings |
 | The tick's sound: on or off | `Ctrl+Shift+S` | in settings |
+| The pointer follows the keys: every selection · pane changes · off | `Ctrl+Shift+M` | in settings |
 | What the agent knows: its notes, to correct or forget | `Ctrl+K` | in settings |
 | What the agent may search: each folder of the vault, on or off | `Ctrl+F` | in settings |
 | What the agent may do: each kind of action, ask me · do it and tell me · never | `Ctrl+M` | in settings |

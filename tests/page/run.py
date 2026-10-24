@@ -1659,7 +1659,7 @@ def main() -> int:
         check(p.wait(lambda: task_row() >= 0),
               f"the task talked about has its row ({talked!r} in {[r.get('text') for r in json.loads(p.call('dashRows')) if r.get('kind') in ('task', 'deadline')]})")
         p.call("dashFocus", task_row())
-        check(p.call("dashKey", KEY_RIGHT_, ALT) == "true", "Alt+→ on a task's row")
+        check(p.call("dashKey", KEY_RETURN, CTRL | SHIFT) == "true", "Ctrl+Shift+Enter on a task's row")
         check(p.wait(lambda: "student: why that day?" in json.loads(p.call("talk"))["turns"]),
               f"…opens the task's conversation beside the dashboard, what was said with the planner in it ({p.call('talk')})")
         check(json.loads(p.call("talk"))["item"] == "", "…nothing pinned to accept: it is the task itself")
@@ -1921,6 +1921,30 @@ def main() -> int:
         keysjson.write_text("{}\n")
         check(p.wait(lambda: keys_of("bold") == ["Ctrl+B"]), "an empty keys.json is every key its own")
 
+        # 12b. The panes (docs/navigation.md): the bracket keys are the
+        # sidebar, the middle and the agent's pane, from any box; a pane's
+        # key opens it; in the middle, Ctrl+\ flips the note and the
+        # dashboard; Esc closes what it is in. (This window never has the
+        # keyboard, so where the keys land is checked in the live page.)
+        KEY_BL, KEY_BR, KEY_BS = 0x5b, 0x5d, 0x5c
+        def panes():
+            return json.loads(p.call("panes"))
+        p.call("closePanes")
+        check(panes()["panes"] == ["center"] and panes()["center"] == "note", f"the note alone ({panes()})")
+        check(p.call("pageKey", KEY_BL, CTRL) == "true" and panes()["panes"] == ["left", "center"], f"Ctrl+[ opens the sidebar ({panes()})")
+        check(p.call("pageKey", KEY_BR, CTRL) == "true" and panes()["panes"] == ["left", "center", "right"] and panes()["right"] == "day",
+              f"Ctrl+] opens the agent's pane, on the day ({panes()})")
+        check(p.call("pageKey", KEY_BS, CTRL) == "true" and panes()["here"] == "center" and panes()["center"] == "note",
+              f"Ctrl+\\ from the agent's pane: the keys to the middle, nothing flipped ({panes()})")
+        check(p.call("pageKey", KEY_BS, CTRL) == "true" and panes()["center"] == "dash" and panes()["right"] == "day",
+              f"…and again in the middle: the dashboard, the day beside it ({panes()})")
+        check(p.call("dashKey", KEY_ESC, 0) == "true" and panes()["center"] == "note" and panes()["right"] == "day",
+              f"Esc on the dashboard: the note, the day still beside it ({panes()})")
+        check(p.call("dayKey", KEY_ESC, 0) == "true" and panes()["panes"] == ["left", "center"],
+              f"Esc in the day's conversation closes the pane ({panes()})")
+        check(panes()["pointer"] == "every", "the pointer follows every selection unless told otherwise")
+        p.call("closePanes")
+
         # 12c. Hyprland's six: listed as Hyprland's until the page is let
         # keep them (Enter twice on the row that offers), then moved like
         # the rest — into hypr/longhand.lua, never a line the student wrote —
@@ -1964,7 +1988,13 @@ def main() -> int:
         check(p.wait(lambda: hrow("pomoToggle") == ["Alt+Super+K"]), "Super+Alt+K: the timer moves to it")
         check('o.bind("SUPER + ALT + K", "Pomo toggle", "pomo toggle")' in ours.read_text() and "reload config-only" in calls.read_text(),
               "…written into longhand.lua, and Hyprland reloaded")
-        check(p.wait(lambda: p.call("keysListening") == "false" and last_call().startswith("eval if hl.get_current_submap()")),
+        # (Not the very last call: the pointer following the keys asks
+        # Hyprland too, docs/navigation.md.)
+        def left_submap():
+            ls = calls.read_text().splitlines()
+            enter = max((n for n, l in enumerate(ls) if 'hl.dsp.submap("longhand-keys"))' in l), default=-1)
+            return any(l.startswith("eval if hl.get_current_submap()") for l in ls[enter + 1:])
+        check(p.wait(lambda: p.call("keysListening") == "false" and left_submap()),
               "…and out of the submap")
         p.call("keysKey", KEY_RETURN, 0)
         p.call("keysKey", KEY_F, ALT | META)
@@ -2000,13 +2030,14 @@ def main() -> int:
         (p.daily / f"{TODAY}.md").write_text(header(TODAY) + "today's words\n")
         p.open_fresh()
         p.wait(lambda: "today's words" in p.call("text"))
-        p.call("pageKey", KEY_LBRACKET, CTRL)
-        check(p.wait(lambda: "three days ago" in p.call("text")), "Ctrl+[: the day before that has a note, days without one skipped")
+        ALT_ = 0x08000000
+        p.call("pageKey", KEY_LBRACKET, ALT_)
+        check(p.wait(lambda: "three days ago" in p.call("text")), "Alt+[: the day before that has a note, days without one skipped")
         p.call("pageKey", KEY_PGUP, CTRL)
         check(p.wait(lambda: "no note before" in p.call("hint")), f"…and at the first note Ctrl+PgUp says so ({p.call('hint')!r})")
-        p.call("pageKey", KEY_RBRACKET, CTRL)
-        check(p.wait(lambda: "today's words" in p.call("text")), "Ctrl+]: the next one")
-        p.call("pageKey", KEY_LBRACKET, CTRL)
+        p.call("pageKey", KEY_RBRACKET, ALT_)
+        check(p.wait(lambda: "today's words" in p.call("text")), "Alt+]: the next one")
+        p.call("pageKey", KEY_LBRACKET, ALT_)
         p.wait(lambda: "three days ago" in p.call("text"))
         p.call("dash")
         p.call("dashKey", KEY_H, CTRL)

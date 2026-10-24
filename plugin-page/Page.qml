@@ -21,8 +21,11 @@ import "Shortcuts.js" as Sc
 // The page: today's note as a blank sheet in the shell, with the agent in
 // the margin. Two shapes of the same sheet: the overlay (a layer over
 // everything, Esc leaves) and alongside (a normal Hyprland window you tile
-// next to slides or a PDF; Esc does nothing there). Ctrl+P pins the overlay
+// next to slides or a PDF; Esc does nothing there). F11 pins the overlay
 // into a window and back; the pin mark in the header says which you are in.
+//
+// Where the keys are, and how they move between the sidebar, the middle and
+// the agent's pane, is docs/navigation.md (and "panes", below).
 //
 // The two live side by side. With the window open somewhere, SUPER+ALT+=
 // still brings the overlay up where you are; the sheet moves into it (one
@@ -39,10 +42,9 @@ import "Shortcuts.js" as Sc
 // such, and more space between blocks than between the lines of one block.
 // Underneath it stays plain markdown, changed only where you typed. Enter
 // continues a list item (checkboxes reset to unticked), Enter on an empty
-// item leaves the list, Tab nests. Alt+Up/Down jump between blocks — the
+// item leaves the list, Tab nests. Ctrl+Up/Down walk the blocks — the
 // same block splitting the agent uses, so the navigation unit and the reply
-// unit are one thing; Ctrl+Up/Down go to the start and end of the current
-// block.
+// unit are one thing; Alt+Up/Down move a line.
 //
 // The page is also the trigger, but never by accident. A block reaches the
 // agent only when it carries a sign for it — a checkbox, an `@`, a `?` —
@@ -58,10 +60,10 @@ import "Shortcuts.js" as Sc
 // gutter — the student's words are always drawn at full strength (a veil
 // over seen blocks was tried and made the note hard to read): a block with
 // a reply carries a filled mark, accent until you have looked at it. Nothing else is on
-// screen until asked: Alt+Right opens the margin for the block under the
-// cursor — the reply, its proposals (Enter accepts one; local code runs the
-// CLI, the model never does), and the chat about that block; Alt+Left or
-// Esc closes it again. Ctrl+T opens the dashboard: every open checkbox
+// screen until asked: Ctrl+Enter on an answered block opens its margin —
+// the reply, its proposals (Enter accepts one; local code runs the CLI, the
+// model never does), and the chat about that block; Esc closes it again,
+// the cursor back where it was. Ctrl+T opens the dashboard: every open checkbox
 // across the daily notes, carried while it is alive (a box goes quiet after
 // 7 days of silence, a task after 30 — agent/lifespan.py — and waits under
 // "not now"; it is never rewritten, the page being the one program that
@@ -72,18 +74,18 @@ import "Shortcuts.js" as Sc
 // Ctrl+F finds in today's note, as you type, in the words you see (not
 // the markdown under them). Enter goes to the next match, Shift+Enter to
 // the previous, both wrapping; Ctrl+Enter puts the cursor on the match with
-// it selected and closes the search; Esc closes it and leaves the cursor
-// where it was.
+// it selected and closes the search; Esc closes it on the match, Shift+Esc
+// back where the cursor was.
 //
-// Ctrl+B opens the sidebar: a month calendar of the daily notes. It is
+// Ctrl+[ opens the sidebar: a month calendar of the daily notes. It is
 // never there unless asked — the page still opens blank on today. A day's
 // number is full where a note exists and faded where none does; a dot marks
 // today, an outline the day in the sheet. Arrows move a day (left/right) or
 // a week (up/down), Ctrl+Left/Right or PageUp/PageDown a month, Home goes
 // to today; Enter (or a click) opens the day in the same sheet, editable
 // like today. A day without a note opens empty and gets its file only when
-// something is written. Alt+Left goes back into the sidebar, Alt+Right or
-// Esc back to the note, Ctrl+B closes it. A note whose file name is not in
+// something is written. Alt+Left goes back into the sidebar, Alt+Right to
+// the note with the sidebar left open, Esc or Ctrl+[ closes it. A note whose file name is not in
 // the vault's own date format (older notes) is edited plainly: the runner
 // cannot read it, so the agent signs do nothing there.
 //
@@ -409,11 +411,12 @@ Item {
   }
 
   function openDay(block) {
+    if (root.here !== "right") root.noteFrom("right", root.keysOpen || root.settingsOpen ? "center" : root.here)
     if (root.keysOpen) root.toggleKeys()
     if (root.settingsOpen) root.toggleSettings()
     root.marginOpen = false
     root.marginFocus = -1
-    root.talkThread = ""
+    root.closeTalk(false)
     root.dayOpen = true
     if (block) {
       var b = root.blockBounds(block)
@@ -434,11 +437,11 @@ Item {
   }
 
   function closeDay() {
+    var was = root.here
     root.dayOpen = false
     root.dayBlock = ""
     root.dayBlockText = ""
-    if (root.dashOpen) dash.dashKeysRef.forceActiveFocus()
-    else editor.focusNote()
+    root.giveBack("right", was, "right")
   }
 
   function sendDay(text) {
@@ -1001,17 +1004,261 @@ Item {
     zoomFile.setText(JSON.stringify({ zoom: root.zoom, dashSeen: root.dashSeenId }) + "\n")
   }
 
-  // Zoom and the keys sheet: wherever the keyboard is in the page. Every
-  // key the page answers to is named in Shortcuts.js, where the student can
-  // move it (the keys sheet, below).
+  // The global keys: the page itself and where you are in it, wherever the
+  // keyboard is — every place's handler asks this first, a box you type in
+  // too. Every key the page answers to is named in Shortcuts.js, where the
+  // student can move it (the keys sheet, below); the ones read here are
+  // its "any" place.
   function anywhereKey(event) {
     if (Sc.hit(event, "zoomIn")) { root.zoomBy(1); return true }
     if (Sc.hit(event, "zoomOut")) { root.zoomBy(-1); return true }
     if (Sc.hit(event, "zoomReset")) { root.setZoom(1); return true }
     if (Sc.hit(event, "keys")) { root.toggleKeys(); return true }
     if (Sc.hit(event, "settings")) { root.toggleSettings(); return true }
-    if (Sc.hit(event, "day")) { root.toggleDay(""); return true }
+    if (Sc.hit(event, "sidebar")) { root.paneKey("left"); return true }
+    if (Sc.hit(event, "home")) { root.paneKey("center"); return true }
+    if (Sc.hit(event, "day")) { root.paneKey("right"); return true }
+    if (Sc.hit(event, "paneLeft")) { root.movePane(-1); return true }
+    if (Sc.hit(event, "paneRight")) { root.movePane(1); return true }
+    if (Sc.hit(event, "dashboard")) { root.toggleDash(); return true }
+    if (Sc.hit(event, "pin")) { root.togglePin(); return true }
     return false
+  }
+
+  // ------------------------------------------------------------ panes
+  //
+  // docs/navigation.md. The page is at most three panes side by side: the
+  // sidebar ("left"); the middle ("center": the note, or the dashboard,
+  // the keys or settings in its place); and the agent's pane ("right": a
+  // block's conversation beside the note, a task's beside the dashboard,
+  // the day's beside either). The keyboard is in exactly one, `here`, and
+  // the focus frame says which. Each pane keeps where its keys were (the
+  // note its cursor, a list its row), so coming back lands there; a pane
+  // closing gives the keys back to the pane they came from (`openedFrom`).
+  // Moving between panes never opens or closes one.
+  readonly property string centerView: root.keysOpen ? "keys" : root.settingsOpen ? "settings" : root.dashOpen ? "dash" : "note"
+  readonly property string rightView: margin.visible ? (root.talkOpen ? "talk" : "margin") : dayPane.visible ? "day" : ""
+  readonly property bool leftShown: sidebar.visible
+  readonly property var panes: (root.leftShown ? ["left"] : []).concat(["center"], root.rightView !== "" ? ["right"] : [])
+  readonly property string here: sidebar.sidebarKeysRef.activeFocus || sidebar.projectFieldRef.activeFocus ? "left"
+    : margin.marginKeysRef.activeFocus || margin.chatFieldRef.activeFocus || dayPane.dayFieldRef.activeFocus ? "right"
+    : "center"
+  // Where the keys were when a pane ("left", "right") or a view of the
+  // middle ("dash", "keys", "settings") opened.
+  property var openedFrom: ({})
+
+  function noteFrom(what, from) {
+    var m = root.openedFrom
+    m[what] = from !== undefined ? from : root.here
+    root.openedFrom = m
+  }
+
+  // The keys into a pane, where they were in it. False when it is closed.
+  function focusPane(p) {
+    if (p === "left") {
+      if (!root.leftShown) return false
+      if (root.addingProject) sidebar.projectFieldRef.forceActiveFocus()
+      else sidebar.sidebarKeysRef.forceActiveFocus()
+      return true
+    }
+    if (p === "right") {
+      var v = root.rightView
+      if (v === "") return false
+      if (v === "day") dayPane.dayFieldRef.forceActiveFocus()
+      else if (v === "talk") {
+        if (root.marginFocus === 0 && root.talkItem) margin.marginKeysRef.forceActiveFocus()
+        else { root.marginFocus = 1; margin.chatFieldRef.forceActiveFocus() }
+      } else {
+        var n = root.currentProposals.length
+        if (root.marginFocus < 0 || root.marginFocus > n) root.marginFocus = n
+        if (root.marginFocus === n) margin.chatFieldRef.forceActiveFocus()
+        else margin.marginKeysRef.forceActiveFocus()
+      }
+      return true
+    }
+    root.focusCenter()
+    return true
+  }
+
+  // The middle, with whatever box was open in it: find, "when?", a name.
+  function focusCenter() {
+    var v = root.centerView
+    if (v === "keys") keysSheet.keysFieldRef.forceActiveFocus()
+    else if (v === "settings") {
+      var sv = root.settingsView
+      if (sv === "notebook") (root.notebookCorrecting ? notebookSheet.notebookFieldRef : notebookSheet.notebookKeysRef).forceActiveFocus()
+      else if (sv === "autonomy") autonomySheet.autonomyKeysRef.forceActiveFocus()
+      else if (sv === "search") searchSheet.searchKeysRef.forceActiveFocus()
+      else settingsSheet.settingsFieldRef.forceActiveFocus()
+    } else if (v === "dash") (root.dashWhenFor ? dash.dashWhenFieldRef : dash.dashKeysRef).forceActiveFocus()
+    else if (root.searchOpen) searchField.forceActiveFocus()
+    else if (root.whenFor) whenField.forceActiveFocus()
+    else if (root.newProject) nameField.forceActiveFocus()
+    else editor.focusNote()
+  }
+
+  // A pane or view closing: if the keys were in it (`was`, read before it
+  // closed), they go back where they came from — the pane, and in it the
+  // place, the student left (the note's cursor is where it was).
+  function giveBack(what, was, pane) {
+    if (was !== pane) return
+    var from = root.openedFrom[what] || "center"
+    if (!root.focusPane(from)) root.focusCenter()
+  }
+
+  // A pane's own key (the brackets): there, opening it; in it, closing it.
+  // The middle has nothing to close, so there it flips the note and the
+  // dashboard (a sheet in its place closes instead).
+  function paneKey(p) {
+    if (p === "left") {
+      if (!root.sidebarOpen) root.toggleSidebar()
+      else if (root.here !== "left") root.focusPane("left")
+      else root.toggleSidebar()
+      return
+    }
+    if (p === "right") {
+      if (root.rightView === "") {
+        root.openDay("")
+        if (root.rightView === "") root.showHint("the window is too narrow for the agent's pane")
+      } else if (root.here !== "right") root.focusPane("right")
+      else root.closeRight()
+      return
+    }
+    if (root.here !== "center") root.focusCenter()
+    else if (root.keysOpen) root.toggleKeys()
+    else if (root.settingsOpen) root.toggleSettings()
+    else root.toggleDash()
+  }
+
+  // Alt+←/→: the next open pane that way, as Hyprland moves between
+  // windows. At the edge, nothing — a hint says what would open there.
+  function movePane(d) {
+    var i = root.panes.indexOf(root.here) + d
+    if (i >= 0 && i < root.panes.length) { root.focusPane(root.panes[i]); return }
+    root.showHint(d < 0 ? "nothing to the left · " + root.keyName("sidebar") + " opens the sidebar"
+                        : "nothing to the right · " + root.keyName("day") + " opens the agent's pane")
+  }
+
+  // ------------------------------------------------------------ the pointer
+  //
+  // The pointer follows the keys, as Hyprland's does between windows
+  // (2026-10-23): when the keys change pane it lands in the pane, on what
+  // is selected there (the note: beside its cursor); with "every", also on
+  // each row the keys move to. So where the pointer is, is where the keys
+  // are, and a click never lands somewhere unexpected. Never while the
+  // student's own hand is on the mouse (moved in the last moment), never
+  // while typing in the note, and only while the page's window is the
+  // active one. `pointer` in settings.json: "every" (the default), "panes",
+  // "off".
+  readonly property string pointerMode: ["every", "panes", "off"].indexOf(root.settingsData.pointer) >= 0 ? root.settingsData.pointer : "every"
+  property var marks: ({})          // pane -> the item selected in it, as rows say (`selected`)
+  property real handMovedAt: 0      // the student's own pointer, last moved
+  property real warpedAt: 0
+
+  // A row the keys come to says so (`on`), and again when they leave it;
+  // the pointer goes to it while its pane has the keys.
+  function selected(item, pane, on) {
+    if (on) root.marks[pane] = item
+    else if (root.marks[pane] === item) delete root.marks[pane]
+    else return
+    if (root.pointerMode === "every" && pane === root.here) warpTimer.restart()
+  }
+
+  onHereChanged: if (root.pointerMode !== "off") warpTimer.restart()
+  onCenterViewChanged: if (root.pointerMode !== "off") warpTimer.restart()
+  onRightViewChanged: if (root.pointerMode !== "off" && root.here === "right") warpTimer.restart()
+
+  // What the pointer goes to in the pane with the keys: the row selected,
+  // the note's cursor, the box typed in; at worst the pane itself.
+  function pointerTarget() {
+    var pane = root.here
+    if (pane === "center" && root.centerView === "note" && !root.searchOpen && !root.whenFor && !root.newProject) {
+      var r = editor.cursorRect
+      var at = editor.mapToItem(content, r.x + root.sp(14), r.y + r.height / 2)
+      return { x: at.x, y: at.y, w: root.sp(28), h: r.height }
+    }
+    var it = root.marks[pane]
+    var ok = false
+    try { ok = !!it && it.visible && it.width > 0 && root.paneOf(it) === pane } catch (e) { ok = false }
+    // No row: the box being typed in, else the pane itself (its middle,
+    // as Hyprland's warp goes to a window's).
+    if (!ok) it = root.boxes().filter(function (b) { return b.activeFocus })[0] || root.paneItem(pane)
+    if (!it) return null
+    var c = it.mapToItem(content, Math.min(it.width / 2, root.sp(160)), it.height / 2)
+    return { x: c.x, y: c.y, w: Math.min(it.width, root.sp(320)), h: it.height }
+  }
+
+  function boxes() {
+    return [searchField, whenField, nameField, sidebar.projectFieldRef, margin.chatFieldRef, dayPane.dayFieldRef,
+            keysSheet.keysFieldRef, settingsSheet.settingsFieldRef, notebookSheet.notebookFieldRef, dash.dashWhenFieldRef]
+  }
+
+  // Which pane an item is drawn in.
+  function paneOf(item) {
+    for (var p = item; p; p = p.parent) {
+      if (p === sidebar) return "left"
+      if (p === margin || p === dayPane) return "right"
+      if (p === content) return "center"
+    }
+    return ""
+  }
+
+  function paneItem(pane) {
+    if (pane === "left") return root.leftShown ? sidebar : null
+    if (pane === "right") return root.rightView === "day" ? dayPane : root.rightView !== "" ? margin : null
+    var v = root.centerView
+    if (v === "dash") return dash
+    if (v === "keys") return keysSheet
+    if (v === "settings") return root.settingsView === "notebook" ? notebookSheet : root.settingsView === "autonomy" ? autonomySheet
+      : root.settingsView === "search" ? searchSheet : settingsSheet
+    return sheet
+  }
+
+  function warpNow() {
+    if (!root.showing || root.pointerMode === "off") return
+    if (Date.now() - root.handMovedAt < 700) return
+    var t = root.pointerTarget()
+    if (!t) return
+    // Already there: nothing to move.
+    if (handHover.hovered) {
+      var h = handHover.point.position
+      if (Math.abs(h.x - t.x) <= t.w / 2 && Math.abs(h.y - t.y) <= t.h / 2) return
+    }
+    var x = Math.round(t.x), y = Math.round(t.y)
+    var lua = root.overlayOpen
+      ? 'local m = hl.get_monitor("' + String(panel.screen ? panel.screen.name : "").replace(/[^A-Za-z0-9_.-]/g, "") + '"); '
+        + 'if m then hl.dispatch(hl.dsp.cursor.move({ x = m.position.x + ' + x + ', y = m.position.y + ' + y + ' })) end'
+      : 'local w = hl.get_window("title:^' + root.windowTitle + '$"); '
+        + 'if w and w.active then hl.dispatch(hl.dsp.cursor.move({ x = w.at.x + ' + x + ', y = w.at.y + ' + y + ' })) end'
+    root.warpedAt = Date.now()
+    warpProc.running = false
+    warpProc.command = ["hyprctl", "eval", lua]
+    warpProc.running = true
+  }
+
+  function cyclePointer() {
+    var order = ["every", "panes", "off"]
+    root.setPointer(order[(order.indexOf(root.pointerMode) + 1) % order.length])
+  }
+
+  function setPointer(mode) {
+    var cur = root.readSettings()
+    cur.pointer = mode
+    root.settingsData = cur
+    settingsFile.setText(JSON.stringify(cur, null, 2) + "\n")
+    root.used("pointer", cur.pointer)
+  }
+
+  // The agent's pane, all of it: the room it was in and the day's.
+  function closeRight() {
+    var was = root.here
+    root.marginOpen = false
+    root.marginFocus = -1
+    root.closeTalk(false)
+    root.dayOpen = false
+    root.dayBlock = ""
+    root.dayBlockText = ""
+    root.giveBack("right", was, "right")
   }
 
   // What reads the calendars waits for the fetch the same opening started
@@ -1505,19 +1752,15 @@ Item {
     if (root.anywhereKey(event)) return true
     if (Sc.hit(event, "close")) { if (!root.alongside) root.dismiss(); return true }
     if (Sc.hit(event, "private")) { root.togglePrivate(); return true }
-    if (Sc.hit(event, "pin")) { root.togglePin(); return true }
     if (Sc.hit(event, "ask")) { root.sendCurrent(); return true }
     if (Sc.hit(event, "dayHere")) { root.openDay(root.currentHash); return true }
     // Selecting to the same edges is the editor's (selectToBlockEdge).
     if (Sc.hit(event, "blockStart")) { root.walkBlocks(-1); return true }
     if (Sc.hit(event, "blockEnd")) { root.walkBlocks(1); return true }
-    if (Sc.hit(event, "margin")) { root.diveIn(); return true }
-    if (Sc.hit(event, "dashboard")) { root.toggleDash(); return true }
     if (Sc.hit(event, "today")) { root.goToday(); return true }
     if (Sc.hit(event, "dayPrev")) { root.stepDay(-1); return true }
     if (Sc.hit(event, "dayNext")) { root.stepDay(1); return true }
     if (Sc.hit(event, "find")) { root.openSearch(); return true }
-    if (Sc.hit(event, "sidebar")) { root.toggleSidebar(); return true }
     // Emphasis, where every editor puts it. The sidebar moved to the
     // shifted pair on 2026-10-15 so that Ctrl+B could be bold.
     if (Sc.hit(event, "bold")) { editor.emphasise("**"); return true }
@@ -1525,7 +1768,6 @@ Item {
     if (Sc.hit(event, "code")) { editor.emphasise("`"); return true }
     if (Sc.hit(event, "strike")) { editor.emphasise("~~"); return true }
     if (Sc.hit(event, "deadline")) { root.deadlineKey(); return true }
-    if (Sc.hit(event, "toSidebar") && root.sidebarOpen) { root.focusSidebar(); return true }
     return false
   }
 
@@ -1535,6 +1777,7 @@ Item {
   function diveIn(toChat) {
     root.used("margin")
     if (root.marginWidth <= 0 || root.currentHash === "") return
+    if (root.here !== "right") root.noteFrom("right")
     root.marginOpen = true
     if (root.currentProposals.length > 0 && toChat !== true) {
       root.marginFocus = 0
@@ -1545,14 +1788,33 @@ Item {
     }
   }
 
-  function backToNote() {
-    var fromMargin = root.marginOpen
+  // To the note, from wherever the keys are: what stands in the middle in
+  // its place closes (the dashboard, the keys, settings), and the keys go
+  // to the note — going to a line, a day or a section ends here. The
+  // block's margin closes too with `toNote`, the cursor being on its way
+  // to another block.
+  function showNote() {
+    if (root.keysOpen) root.toggleKeys()
+    if (root.settingsOpen) root.toggleSettings()
+    if (root.dashOpen) root.toggleDash()
+    editor.focusNote()
+  }
+
+  function toNote() {
     root.marginFocus = -1
     root.marginOpen = false
-    root.dashOpen = false
-    // The day is the pane's home: out of a block's room, back to the day.
-    if (fromMargin && root.dayOpen) Qt.callLater(function () { dayPane.dayFieldRef.forceActiveFocus() })
-    else editor.focusNote()
+    root.showNote()
+  }
+
+  // Esc in a block's conversation. The day is the pane's home: out of a
+  // block's room, back to the day; with no day open, the pane closes and
+  // the keys go back where they were (the note's cursor where it was).
+  function backToNote() {
+    var was = root.here
+    root.marginFocus = -1
+    root.marginOpen = false
+    if (was === "right" && root.rightView === "day") dayPane.dayFieldRef.forceActiveFocus()
+    else root.giveBack("right", was, "right")
   }
 
   function moveMarginFocus(d) {
@@ -1581,6 +1843,8 @@ Item {
   // deadlines are listed too; once the student lets the page keep them
   // (one row, Enter twice), they move like the rest, through hyprkeys.py.
   function toggleKeys() {
+    var was = root.here
+    if (!root.keysOpen) root.noteFrom("keys", root.settingsOpen ? root.openedFrom.settings : was)
     if (!root.keysOpen && root.settingsOpen) root.toggleSettings()
     root.keysOpen = !root.keysOpen
     root.stopListening()
@@ -1591,10 +1855,8 @@ Item {
       root.keysFocus = root.nextKeyRow(-1, 1)
       root.hypr(["state"])
       Qt.callLater(keysSheet.keysFieldRef.forceActiveFocus)
-    } else if (root.dashOpen) {
-      dash.dashKeysRef.forceActiveFocus()
     } else {
-      editor.focusNote()
+      root.giveBack("keys", was, "center")
     }
   }
 
@@ -1602,6 +1864,8 @@ Item {
   // timetable's state (no fetch); Enter in the field saves an address and
   // fetches at once, so whether it worked is seen, not hoped for.
   function toggleSettings() {
+    var was = root.here
+    if (!root.settingsOpen) root.noteFrom("settings", root.keysOpen ? root.openedFrom.keys : was)
     if (!root.settingsOpen && root.keysOpen) root.toggleKeys()
     root.settingsOpen = !root.settingsOpen
     root.settingsNote = ""
@@ -1621,10 +1885,8 @@ Item {
         agentChecksProc.running = true
       }
       Qt.callLater(settingsSheet.settingsFieldRef.forceActiveFocus)
-    } else if (root.dashOpen) {
-      dash.dashKeysRef.forceActiveFocus()
     } else {
-      editor.focusNote()
+      root.giveBack("settings", was, "center")
     }
   }
 
@@ -1649,6 +1911,7 @@ Item {
     if (Sc.hit(event, "settingsShare")) { root.toggleShare(root.settingsFocus); return true }
     if (Sc.hit(event, "settingsRename")) { root.startRename(root.settingsFocus); return true }
     if (Sc.hit(event, "settingsSound")) { root.toggleTickSound(); return true }
+    if (Sc.hit(event, "settingsPointer")) { root.cyclePointer(); return true }
     if (Sc.hit(event, "settingsNotebook")) { root.openNotebook(); return true }
     if (Sc.hit(event, "settingsAutonomy")) { root.openAutonomy(); return true }
     if (Sc.hit(event, "settingsSearch")) { root.openSearchFolders(); return true }
@@ -2384,6 +2647,8 @@ Item {
   // what's-next panel the margin used to hold, because two surfaces for one
   // list is part of what made the list easy to ignore.
   function toggleDash() {
+    var was = root.here
+    if (!root.dashOpen) root.noteFrom("dash")
     root.dashOpen = !root.dashOpen
     root.closeTalk(false)
     root.dashWhenFor = null
@@ -2397,9 +2662,11 @@ Item {
       root.refreshTasks()
       root.refreshProposals()
       root.runPlan(false)
+      if (root.keysOpen) root.toggleKeys()
+      if (root.settingsOpen) root.toggleSettings()
       dash.dashKeysRef.forceActiveFocus()
     } else {
-      editor.focusNote()
+      root.giveBack("dash", was, "center")
     }
   }
 
@@ -2561,7 +2828,7 @@ Item {
     root.pendingSection = s
     if (s.date === svc.noteDate && svc.ready) root.landOnSection()
     else root.openNote(s.date)
-    editor.focusNote()
+    root.showNote()
   }
 
   // By its words, not its line number: the note may have been written in
@@ -2913,6 +3180,7 @@ Item {
   }
 
   function startTalk(how) {
+    if (root.here !== "right") root.noteFrom("right")
     root.talkSettled = ""
     root.talkData = null
     root.used("talk", how)
@@ -2946,6 +3214,15 @@ Item {
     root.talkSettled = ""
     root.marginFocus = -1
     if (focusRows !== false) dash.dashKeysRef.forceActiveFocus()
+  }
+
+  // Esc in a task's conversation: to the day's, when it is open beside
+  // the dashboard (the pane's home), else back where the keys came from.
+  function leaveTalk() {
+    var was = root.here
+    root.closeTalk(false)
+    if (was === "right" && root.rightView === "day") dayPane.dayFieldRef.forceActiveFocus()
+    else root.giveBack("right", was, "right")
   }
 
   function sendTalk() {
@@ -3000,7 +3277,7 @@ Item {
   // The keys on the pinned proposal, in one function so they can be
   // driven without a keyboard (tests/page/run.py).
   function talkKey(e) {
-    if (Sc.hit(e, "marginBack")) { root.closeTalk(); return true }
+    if (Sc.hit(e, "marginBack")) { root.leaveTalk(); return true }
     if (Sc.hit(e, "marginAccept")) { root.acceptTalked(); return true }
     if (Sc.hit(e, "marginDecline")) { root.declineTalked(); return true }
     if (Sc.hit(e, "marginDown")) { root.marginFocus = 1; margin.chatFieldRef.forceActiveFocus(); return true }
@@ -3357,7 +3634,7 @@ Item {
     if (row.kind === "task") root.goToTask(row.task)
     if (row.kind === "deadline") {
       var d = row.deadline
-      if (Bound.parseLink(d.link)) { root.backToNote(); root.goToDeadline(d); return }
+      if (Bound.parseLink(d.link)) { root.toNote(); root.goToDeadline(d); return }
       root.writeIntoToday(d)
     }
     if (row.kind === "raised") {
@@ -3573,7 +3850,7 @@ Item {
       if (k === Qt.Key_Return || k === Qt.Key_Enter) { root.commitDashWhen(); return true }
       return false
     }
-    if (Sc.hit(e, "dashBack") || Sc.hit(e, "dashboard")) { root.toggleDash(); return true }
+    if (Sc.hit(e, "dashBack")) { root.toggleDash(); return true }
     if (Sc.hit(e, "today")) { root.goToday(); return true }
     if (Sc.hit(e, "dayPrev")) { root.stepDay(-1); return true }
     if (Sc.hit(e, "dayNext")) { root.stepDay(1); return true }
@@ -3668,7 +3945,7 @@ Item {
   property var pendingWrite: null
   function writeIntoToday(d) {
     root.pendingWrite = d
-    root.backToNote()
+    root.toNote()
     if (svc.isToday && svc.ready) root.doPendingWrite()
     else root.openNote(svc.todayStamp())
   }
@@ -3697,10 +3974,10 @@ Item {
   // reached; see docs/tasks.md.)
   function goToTask(t) {
     root.pendingTask = { text: t.text, line: t.line }
-    root.backToNote()
+    root.toNote()
     if (t.date === svc.noteDate && svc.ready) root.landOnTask()
     else root.openNote(t.date)
-    editor.focusNote()
+    root.showNote()
   }
 
   function landOnTask() {
@@ -4388,10 +4665,12 @@ Item {
   }
 
   function toggleSidebar() {
+    var was = root.here
+    if (!root.sidebarOpen && was !== "left") root.noteFrom("left")
     root.sidebarOpen = !root.sidebarOpen
     if (root.sidebarOpen) root.used("calendar")
     if (root.sidebarOpen) root.focusSidebar()
-    else editor.focusNote()
+    else root.giveBack("left", was, "left")
   }
 
   // To a deadline's line: its note opened if need be, the cursor at the end
@@ -4399,11 +4678,11 @@ Item {
   function goToDeadline(d) {
     root.used("goto-deadline")
     var l = d ? Bound.parseLink(d.link) : null
-    if (!l) { root.showHint("“" + (d ? d.title : "") + "” is not written in a note yet"); editor.focusNote(); return }
+    if (!l) { root.showHint("“" + (d ? d.title : "") + "” is not written in a note yet"); root.showNote(); return }
     root.pendingGoto = l.id
     if (l.stem === svc.noteDate && svc.ready) root.landOnGoto()
     else root.openNote(l.stem)
-    editor.focusNote()
+    root.showNote()
   }
 
   function landOnGoto() {
@@ -4463,7 +4742,7 @@ Item {
     root.projFocus = -1
     if (svc.isToday && svc.ready) root.writeClass()
     else root.openNote(svc.todayStamp())
-    editor.focusNote()
+    root.showNote()
   }
 
   function writeClass() {
@@ -4481,7 +4760,7 @@ Item {
   function insertTag(p) {
     root.used("tag", p.tag)
     root.projFocus = -1
-    editor.focusNote()
+    root.showNote()
     var pos = editor.cursorPosition
     var before = pos > 0 ? editor.text.charAt(pos - 1) : "\n"
     editor.insert(pos, (/\s/.test(before) ? "" : " ") + "#" + p.tag + " ")
@@ -4493,7 +4772,7 @@ Item {
     root.used("today")
     root.calFocus = new Date()
     root.openNote(svc.todayStamp())
-    root.backToNote()
+    root.toNote()
   }
 
   // The day before or after the open one that has a note, as Obsidian's
@@ -4519,13 +4798,13 @@ Item {
     if (!best) { root.showHint(d < 0 ? "no note before this day" : "this is the last day"); return }
     root.calFocus = best.date
     root.openNote(best.stem)
-    root.backToNote()
+    root.toNote()
   }
 
   function openCalendarDay(d) {
     root.calFocus = d
     root.openNote(Days.stemFor(d, svc.dailyFormat(), root.dayIndex))
-    editor.focusNote()
+    root.showNote()
   }
 
   function collectDays() {
@@ -4550,6 +4829,7 @@ Item {
     today.setHours(0, 0, 0, 0)
     root.used("day", p ? Math.round((today - p.date) / 86400000) : "")
     root.marginOpen = false
+    root.closeTalk(false)
     root.dashOpen = false
     root.marginFocus = -1
     if (svc.saving) { root.pendingStamp = stamp; return }
@@ -4940,6 +5220,10 @@ Item {
   }
 
   Process { id: tickSoundProc }
+  Process { id: warpProc }
+  // A moment for the keys to settle (a pane opening, the row it lands on)
+  // before the pointer follows, so it moves once.
+  Timer { id: warpTimer; interval: 40; onTriggered: root.warpNow() }
 
   // The weekly review of the agent (docs/agent.md, the improvement loop):
   // written when the page opens and a week has passed, said once.
@@ -5251,7 +5535,7 @@ Item {
     // beside the column, it goes back to writing.
     MouseArea {
       anchors.fill: parent
-      onClicked: root.alongside ? editor.focusNote() : root.dismiss()
+      onClicked: root.alongside ? root.focusCenter() : root.dismiss()
     }
 
     // The dashboard. It takes the sheet's place rather than sitting beside
@@ -5331,7 +5615,7 @@ Item {
               onClicked: root.sealClicked()
               PanelToolTip {
                 visible: parent.containsMouse
-                text: root.tip(root.dayShown ? "Close the day's conversation" : "The day's conversation: talk to the day", "day")
+                text: root.tip(root.dayShown ? "Close the agent's pane" : "The agent's pane: talk to the day", "day")
               }
             }
           }
@@ -5530,7 +5814,7 @@ Item {
                 PanelToolTip {
                   visible: parent.containsMouse
                   text: root.tips([[root.replyWaiting ? "A reply is waiting in this note" : root.working ? "The agent is thinking" : "The agent reads what you ask it", ""],
-                                   ["The margin for this block", "margin"]])
+                                   ["This block's conversation, when it has an answer", "ask"], ["The agent's pane", "day"]])
                 }
               }
               Behavior on color { ColorAnimation { duration: 240 } }
@@ -5935,5 +6219,36 @@ Item {
 
     // The day conversation: the right pane's home. (DayPane.qml)
     DayPane { id: dayPane; page: root }
+
+    // Where the keys are (docs/navigation.md): Omarchy's active border, on
+    // the page's panes. Drawn around the pane that has the keys while there
+    // is more than one pane to choose from, and slides to the next one as
+    // the keys move — the way Hyprland's border follows the window.
+    Rectangle {
+      id: focusFrame
+      readonly property Item target: root.paneItem(root.here)
+      readonly property real inset: root.alongside ? 1 : 0
+      visible: opacity > 0
+      opacity: target && root.panes.length > 1 ? 1 : 0
+      x: target ? target.x + inset : 0
+      y: target ? target.y + inset : 0
+      width: target ? target.width - 2 * inset : 0
+      height: target ? target.height - 2 * inset : 0
+      z: 50
+      radius: root.alongside ? 0 : Style.cornerRadius
+      color: "transparent"
+      border.color: root.accent
+      border.width: Math.max(2, Style.space(2))
+      Behavior on opacity { NumberAnimation { duration: 140 } }
+      Behavior on x { enabled: focusFrame.opacity > 0; NumberAnimation { duration: 170; easing.type: Easing.OutCubic } }
+      Behavior on width { enabled: focusFrame.opacity > 0; NumberAnimation { duration: 170; easing.type: Easing.OutCubic } }
+    }
+
+    // The student's own hand on the mouse: the pointer is left alone while
+    // it moves (a warp's own motion is not the hand).
+    HoverHandler {
+      id: handHover
+      onPointChanged: if (Date.now() - root.warpedAt > 250) root.handMovedAt = Date.now()
+    }
   }
 }
