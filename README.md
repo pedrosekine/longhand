@@ -192,8 +192,8 @@ right: `Ctrl+[` the sidebar, `Ctrl+\` the middle (the note, or the
 dashboard in its place: there it flips the two), `Ctrl+]` the agent's pane.
 A pane's key takes you to it, opening it; pressed in it, it closes it.
 `Alt+←/→` move between the panes that are open and never open or close one.
-An accent frame, like Omarchy's active border, is drawn around the pane that
-has the keys; Esc backs out one level, and a pane that closes gives the keys
+An accent frame, like Omarchy's active border, is drawn around a side pane
+while it has the keys (none around the middle: there the cursor says so); Esc backs out one level, and a pane that closes gives the keys
 back where they came from, at the very place you left (the note's cursor
 where it was). The mouse pointer follows the keys into each pane and onto
 the selected row, as Hyprland's follows windows (Settings → The pointer).

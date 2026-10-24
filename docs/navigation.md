@@ -20,10 +20,13 @@ The page is at most three panes side by side:
 | **center**: the middle | the note, or in its place the dashboard, the keys or settings | `Ctrl+\` |
 | **right**: the agent's pane | the day's conversation (its home), a block's conversation beside the note, a task's beside the dashboard | `Ctrl+]` |
 
-The keyboard is always in exactly one pane. While more than one is open, the
+The keyboard is always in exactly one pane. When it is in a side pane, the
 **focus frame** (an outline in the theme's accent, like Omarchy's active
-border) is drawn around that pane, and it slides to the next pane as the keys
-move. Only the pane with the keys draws its selection (the row, the day, the
+border) is drawn on that pane's own edges, over its hairline, and slides to
+the other side pane as the keys move. The middle never gets a frame
+(2026-10-24): there the note's blinking cursor, or the dashboard's lit row,
+already says where the keys are. So no frame on screen means the keys are in
+the middle. Only the pane with the keys draws its selection (the row, the day, the
 card), so one place is lit at a time; the one exception is the dashboard row
 being talked about beside it, which stays faintly marked.
 
@@ -98,8 +101,9 @@ middle.
 
 A key is global ("everywhere", the `any` place in `Shortcuts.js`) when it is
 **about the page itself or where you are in it, never about the thing you are
-on**: the zoom, the keys sheet, settings, the five pane keys, the dashboard
-and the page's shape (F11). Global keys are read first by every place's
+on**: the zoom, the keys sheet, settings, the five pane keys, the dashboard,
+home (`Ctrl+H`: today's note in the middle with the keys in it, the side
+panes left open) and the page's shape (F11). Global keys are read first by every place's
 handler (`anywhereKey`), including the boxes you type in, so none of them may
 be a key a text field types or uses. That is why they all carry Ctrl or Alt,
 or are F-keys.

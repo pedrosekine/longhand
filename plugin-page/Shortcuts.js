@@ -109,7 +109,9 @@ var actions = [
   // reaches without Fn first (Home and PgUp are Fn+arrows on many), then
   // the ones a full keyboard knows. Ctrl+[ and ] were Notion's back and on
   // until 2026-10-23, when they became the panes; Alt keeps the brackets.
-  { id: "today", group: "move", places: ["note", "dash", "calendar", "lists"], does: "Go to today's note", keys: ["Ctrl+H", "Alt+Home"] },
+  // Home, from anywhere (2026-10-24, the student's): today's note in the
+  // middle, the keys in it; the side panes stay open.
+  { id: "today", group: "move", places: ["any"], does: "Home: today's note, the keys in it (the side panes stay open)", keys: ["Ctrl+H", "Alt+Home"] },
   { id: "dayPrev", group: "move", places: ["note", "dash"], does: "The day before, with a note", keys: ["Alt+[", "Ctrl+PgUp"] },
   { id: "dayNext", group: "move", places: ["note", "dash"], does: "The day after, with a note (and then today)", keys: ["Alt+]", "Ctrl+PgDn"] },
   { id: "find", group: "move", places: ["note", "search"], does: "Find in the note (in find: select the words)", keys: ["Ctrl+F"] },

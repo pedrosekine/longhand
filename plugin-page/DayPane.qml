@@ -35,8 +35,8 @@ BorderSurface {
   // hairline keeps them apart, as the sidebar's does on its side.
   Rectangle {
     visible: page.alongside
+    // On the pane's own edge, where the focus frame is drawn too.
     anchors.left: parent.left
-    anchors.leftMargin: -Math.round(page.marginGap / 2)
     width: 1
     height: parent.height
     color: page.faint

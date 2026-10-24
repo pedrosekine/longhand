@@ -53,7 +53,7 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | Select to the block's end (again: a block more) | `Ctrl+Shift+↓` | in the note |
 | Top of the note | `Ctrl+Home` | in the note |
 | End of the note | `Ctrl+End` | in the note |
-| Go to today's note | `Ctrl+H` · `Alt+Home` | in the note, in the dashboard, in the calendar, in the sidebar's lists |
+| Home: today's note, the keys in it (the side panes stay open) | `Ctrl+H` · `Alt+Home` | everywhere |
 | The day before, with a note | `Alt+[` · `Ctrl+PgUp` | in the note, in the dashboard |
 | The day after, with a note (and then today) | `Alt+]` · `Ctrl+PgDn` | in the note, in the dashboard |
 | Find in the note (in find: select the words) | `Ctrl+F` | in the note, in find |

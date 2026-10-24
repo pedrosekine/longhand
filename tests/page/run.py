@@ -1946,6 +1946,9 @@ def main() -> int:
               f"…and again in the middle: the dashboard, the day beside it ({panes()})")
         check(p.call("dashKey", KEY_ESC, 0) == "true" and panes()["center"] == "note" and panes()["right"] == "day",
               f"Esc on the dashboard: the note, the day still beside it ({panes()})")
+        check(p.call("pageKey", KEY_BR, CTRL) == "true" and panes()["here"] == "right", f"Ctrl+] from the note: the keys to the day ({panes()})")
+        check(p.call("dayKey", 0x48, CTRL) == "true" and panes()["here"] == "center" and panes()["center"] == "note"
+              and panes()["right"] == "day", f"Ctrl+H from the agent's pane: home, today's note with the keys, the pane left open ({panes()})")
         check(p.call("dayKey", KEY_ESC, 0) == "true" and panes()["panes"] == ["left", "center"],
               f"Esc in the day's conversation closes the pane ({panes()})")
         check(panes()["pointer"] == "every", "the pointer follows every selection unless told otherwise")

@@ -54,8 +54,10 @@ BorderSurface {
   // hairline keeps them apart.
   Rectangle {
     visible: page.alongside
+    // On the pane's own edge, where the focus frame is drawn too: one line
+    // (it sat half a gap outside until 2026-10-24, from when the pane
+    // hugged the note, and the frame ran inside it).
     anchors.right: parent.right
-    anchors.rightMargin: -Math.round(page.marginGap / 2)
     width: 1
     height: parent.height
     color: page.faint
@@ -68,7 +70,6 @@ BorderSurface {
       // The panes' keys are global (page.anywhereKey): Ctrl+[ closes the
       // sidebar from here, Alt+→ moves on and leaves it open.
       if (page.anywhereKey(event)) { event.accepted = true; return }
-      if (Sc.hit(event, "today")) { page.goToday(); event.accepted = true; return }
       // Inside a project: its sections, newest first. Enter opens one in
       // the sheet (the list stays), Left or Esc goes back to the list of
       // projects.

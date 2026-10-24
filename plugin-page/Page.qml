@@ -1026,6 +1026,7 @@ Item {
     if (Sc.hit(event, "paneLeft")) { root.movePane(-1); return true }
     if (Sc.hit(event, "paneRight")) { root.movePane(1); return true }
     if (Sc.hit(event, "dashboard")) { root.toggleDash(); return true }
+    if (Sc.hit(event, "today")) { root.goToday(); return true }
     if (Sc.hit(event, "pin")) { root.togglePin(); return true }
     return false
   }
@@ -1762,7 +1763,6 @@ Item {
     // Selecting to the same edges is the editor's (selectToBlockEdge).
     if (Sc.hit(event, "blockStart")) { root.walkBlocks(-1); return true }
     if (Sc.hit(event, "blockEnd")) { root.walkBlocks(1); return true }
-    if (Sc.hit(event, "today")) { root.goToday(); return true }
     if (Sc.hit(event, "dayPrev")) { root.stepDay(-1); return true }
     if (Sc.hit(event, "dayNext")) { root.stepDay(1); return true }
     if (Sc.hit(event, "find")) { root.openSearch(); return true }
@@ -3856,7 +3856,6 @@ Item {
       return false
     }
     if (Sc.hit(e, "dashBack")) { root.toggleDash(); return true }
-    if (Sc.hit(e, "today")) { root.goToday(); return true }
     if (Sc.hit(e, "dayPrev")) { root.stepDay(-1); return true }
     if (Sc.hit(e, "dayNext")) { root.stepDay(1); return true }
     if (Sc.hit(e, "dashUp")) { root.moveTaskFocus(-1); return true }
@@ -6230,19 +6229,25 @@ Item {
     DayPane { id: dayPane; page: root }
 
     // Where the keys are (docs/navigation.md): Omarchy's active border, on
-    // the page's panes. Drawn around the pane that has the keys while there
-    // is more than one pane to choose from, and slides to the next one as
-    // the keys move — the way Hyprland's border follows the window.
+    // the side panes. Drawn around the sidebar or the agent's pane while it
+    // has the keys, on the pane's own edges (its hairline under it), and
+    // slides from one to the other as the keys move — the way Hyprland's
+    // border follows the window. Never around the middle (the student,
+    // 2026-10-24): there the note's cursor, or the dashboard's lit row, says
+    // so already, so no frame on screen means the keys are in the middle.
     Rectangle {
       id: focusFrame
-      readonly property Item target: root.paneItem(root.here)
-      readonly property real inset: root.alongside ? 1 : 0
+      readonly property Item side: root.here !== "center" ? root.paneItem(root.here) : null
+      // The last side pane it was around: going to the middle, it fades
+      // where it was rather than sliding over the note.
+      property Item around: null
+      onSideChanged: if (side) around = side
       visible: opacity > 0
-      opacity: target && root.panes.length > 1 ? 1 : 0
-      x: target ? target.x + inset : 0
-      y: target ? target.y + inset : 0
-      width: target ? target.width - 2 * inset : 0
-      height: target ? target.height - 2 * inset : 0
+      opacity: side ? 1 : 0
+      x: around ? around.x : 0
+      y: around ? around.y : 0
+      width: around ? around.width : 0
+      height: around ? around.height : 0
       z: 50
       radius: root.alongside ? 0 : Style.cornerRadius
       color: "transparent"

@@ -274,7 +274,8 @@ ShellRoot {
                               right: dp && dp.visible ? dp.x : null, rightEnd: dp && dp.visible ? dp.x + dp.width : null })
     }
     function closePanes(): void { if (page.sidebarOpen) page.toggleSidebar(); page.closeRight(); if (page.dashOpen) page.toggleDash() }
-    function dashKey(key: int, mods: int): bool { return page.dashKey({ key: key, text: "", modifiers: mods }) }
+    // As the dashboard's own handler does: the global keys first.
+    function dashKey(key: int, mods: int): bool { var e = { key: key, text: "", modifiers: mods }; return page.anywhereKey(e) || page.dashKey(e) }
     function dashType(ch: string): bool { return page.dashKey({ key: ch.toUpperCase().charCodeAt(0), text: ch, modifiers: 0 }) }
     function dashWhen(phrase: string): void { page.dashWhenText = phrase; page.commitDashWhen() }
     function dashWhenStart(): void { page.startDashWhen() }
