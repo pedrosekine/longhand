@@ -12,6 +12,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 AGENT = ROOT / "agent" / "longhand-agent"
@@ -36,6 +37,8 @@ if sys.argv[1:2] == ["session"]:
     print(json.dumps({"info": {"cost": 0.001, "tokens": {"input": 9, "output": 3, "reasoning": 0}}})); sys.exit(0)
 n = int(open(os.path.join(d, "calls")).read()) if os.path.exists(os.path.join(d, "calls")) else 0
 open(os.path.join(d, "calls"), "w").write(str(n + 1))
+if os.path.exists(os.path.join(d, "sleep")):
+    import time; time.sleep(float(open(os.path.join(d, "sleep")).read()))
 open(os.path.join(d, "argv.json"), "w").write(json.dumps(sys.argv[1:]))
 open(os.path.join(d, "payload.md"), "w").write(sys.stdin.read())
 queue = os.path.join(d, "replies.json")
@@ -411,6 +414,31 @@ def main() -> int:
     st = json.loads((state / "longhand" / "plan.json").read_text())
     check("hash" not in st and "expired" in st["error"], "…and is not counted as today's plan")
     (bindir / "opencode").write_text(STUB)
+
+    # An answer given while a plan is thinking is kept: the plan reads the
+    # ledger again before it writes (it wrote back what it read before the
+    # model, and the answer was lost, 2026-10-25).
+    (stub / "reply.json").write_text(json.dumps({"proposals": [],
+        "questions": [{"key": "", "question": "Is the hall free on Friday?", "recommended": "Yes"}], "knowledge": []}))
+    agent("plan", "--force")
+    hall = next(x for x in ledger() if x.get("question") == "Is the hall free on Friday?")
+    agent("plan", "--force")
+    check([x["status"] for x in ledger() if x.get("question") == "Is the hall free on Friday?"] == ["open"],
+          "a question asked again in the same words, while still open, is not recorded twice")
+    (stub / "reply.json").write_text(json.dumps({"proposals": [], "questions": [], "knowledge": []}))
+    (stub / "sleep").write_text("1.5")
+    n = calls()
+    slow = subprocess.Popen([sys.executable, str(AGENT), "plan", "--force"], stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL, env=env)
+    for _ in range(50):
+        if calls() > n:
+            break
+        time.sleep(0.05)
+    agent("proposal", "accept", "--id", str(hall["id"]))
+    slow.wait()
+    (stub / "sleep").unlink()
+    check(next(x for x in ledger() if x["id"] == hall["id"])["status"] == "answered",
+          f"an answer given while a plan runs is kept ({next(x for x in ledger() if x['id'] == hall['id'])['status']})")
 
     # A model of its own for planning.
     c = json.loads(cfg.read_text())

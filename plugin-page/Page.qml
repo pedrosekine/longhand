@@ -593,8 +593,7 @@ Item {
     for (var j in root.dayRatingNow) m[j] = root.dayRatingNow[j]
     m[svc.noteDate + "#" + i] = v
     root.dayRatingNow = m
-    rateProc.command = [svc.runner, "rate", v, "--day", String(i), "--date", svc.noteDate]
-    rateProc.running = true
+    root.runInTurn(rateProc, [svc.runner, "rate", v, "--day", String(i), "--date", svc.noteDate])
     root.used("rate", "day-" + v)
   }
 
@@ -746,6 +745,7 @@ Item {
   property bool settingsBusy: false    // the runner is asking the university
   property string settingsNote: ""     // what just happened, or why not
   property var settingsPending: null   // the runner's flags, once the file is written
+  property var timetableAgain: null    // { flags, index } asked for while the runner was busy
   property int settingsFocus: 0        // the calendar ↑↓ picks
   property int settingsBusyIndex: -1   // the calendar being fetched; -1 all
   property string settingsFieldKind: "add"   // the field adds a calendar, or renames the picked one
@@ -1041,7 +1041,8 @@ Item {
   // the focus frame says which. Each pane keeps where its keys were (the
   // note its cursor, a list its row), so coming back lands there; a pane
   // closing gives the keys back to the pane they came from (`openedFrom`).
-  // Moving between panes never opens or closes one.
+  // Moving between panes never closes one, and opens one only: Alt+→ in
+  // the note with nothing to its right, the block's conversation.
   readonly property string centerView: root.keysOpen ? "keys" : root.settingsOpen ? "settings" : root.dashOpen ? "dash" : "note"
   readonly property string rightView: margin.visible ? (root.talkOpen ? "talk" : "margin") : dayPane.visible ? "day" : ""
   readonly property bool leftShown: sidebar.visible
@@ -2355,7 +2356,14 @@ Item {
   }
 
   function runTimetable(flags) {
-    if (settingsProc.running) return
+    // Asked while the state is still being read (opening settings reads
+    // it): after, not instead. A calendar added at once was never fetched
+    // (2026-10-25). A fetch wins over a plain read.
+    if (settingsProc.running) {
+      if (root.timetableAgain === null || flags.indexOf("--fetch") >= 0)
+        root.timetableAgain = { flags: flags, index: root.settingsBusyIndex }
+      return
+    }
     root.settingsBusy = flags.indexOf("--fetch") >= 0
     settingsProc.command = [svc.runner, "timetable"].concat(flags)
     settingsProc.running = true
@@ -2686,9 +2694,20 @@ Item {
     // every row, which would cut the tick short.
     var wait = root.holdTasksUntil - Date.now()
     if (wait > 0) { tasksHold.interval = Math.ceil(wait); tasksHold.restart(); return }
+    // The list is read from the files, so today's note is written first:
+    // read before its save landed, the newest line was missing until
+    // something else asked again (2026-10-25). A save that cannot happen,
+    // or finds nothing to write, waits for nothing.
+    if (svc.ready && svc.error === "" && svc.pending && !svc.saving) root.flush()
+    if (svc.saving) { root.tasksAfterSave = true; return }
+    // Asked again while a read is under way: once more when it ends, or
+    // the later question is lost and the earlier answer stands.
+    if (tasksProc.running) { root.tasksAgain = true; return }
     tasksProc.command = [svc.runner, "next", "--days", "7"]
     tasksProc.running = true
   }
+  property bool tasksAfterSave: false
+  property bool tasksAgain: false
 
   Timer { id: tasksHold; onTriggered: root.refreshTasks() }
 
@@ -3659,8 +3678,7 @@ Item {
       root.writeIntoToday(d)
     }
     if (row.kind === "raised") {
-      dismissProc.command = [svc.runner, "dismiss", "--date", row.item.date, "--kind", row.item.kind, "--index", String(row.item.index)]
-      dismissProc.running = true
+      root.runInTurn(dismissProc, [svc.runner, "dismiss", "--date", row.item.date, "--kind", row.item.kind, "--index", String(row.item.index)])
     }
   }
 
@@ -3739,8 +3757,22 @@ Item {
 
   function touchBox(t, how) {
     if (!t || !t.key || t.life === 0) return
-    boxProc.command = [svc.runner, "box", how, "--key", t.key]
-    boxProc.running = true
+    root.runInTurn(boxProc, [svc.runner, "box", how, "--key", t.key])
+  }
+
+  // A write to the runner, in the order asked. Setting `running` on a
+  // process already running does nothing, so a second press while the
+  // first was being written was lost (2026-10-25): two boxes put aside in
+  // a row kept only the first. Each process here keeps its own `queue`.
+  function runInTurn(proc, args) {
+    proc.queue = proc.queue.concat([args])
+    root.nextInTurn(proc)
+  }
+  function nextInTurn(proc) {
+    if (proc.running || proc.queue.length === 0) return
+    proc.command = proc.queue[0]
+    proc.queue = proc.queue.slice(1)
+    proc.running = true
   }
 
   // `g`: the grade, typed on a deadline's row, as in the popup. A grade on
@@ -4954,6 +4986,7 @@ Item {
     onLoaded: { root.applyText(svc.body); root.reconcilePending = true; root.startCheck(); root.reconcile(); root.openPass() }
     onExternalChange: { root.applyText(svc.body, true); root.reconcilePending = true; root.startCheck(); root.reconcile() }
     onSavedNow: {
+      if (root.tasksAfterSave) { root.tasksAfterSave = false; root.refreshTasks() }
       root.runCheck()
       if (root.pendingStamp !== "") {
         var s = root.pendingStamp
@@ -5033,6 +5066,7 @@ Item {
         root.doneNow = ({})
         root.justTicked = ""
         root.taskFocus = Math.min(root.taskFocus, Math.max(0, root.taskRows.length - 1))
+        if (root.tasksAgain) { root.tasksAgain = false; Qt.callLater(root.refreshTasks) }
       }
     }
   }
@@ -5050,14 +5084,16 @@ Item {
 
   Process {
     id: dismissProc
-    onExited: function (code, status) { root.refreshTasks(); agent.reload() }
+    property var queue: []
+    onExited: function (code, status) { root.refreshTasks(); agent.reload(); Qt.callLater(root.nextInTurn, dismissProc) }
   }
 
   // A box kept or put aside: the clock is written, then the list read again.
   Process {
     id: boxProc
+    property var queue: []
     stderr: StdioCollector { onStreamFinished: if (text.trim() !== "") console.warn("longhand.page box: " + text.trim()) }
-    onExited: function (code, status) { root.refreshTasks() }
+    onExited: function (code, status) { root.refreshTasks(); Qt.callLater(root.nextInTurn, boxProc) }
   }
 
   // One-line rewrite of another day's note when a task is ticked from
@@ -5133,8 +5169,7 @@ Item {
     for (var k in root.ratingNow) m[k] = root.ratingNow[k]
     m[root.currentRec] = v
     root.ratingNow = m
-    rateProc.command = [svc.runner, "rate", v, "--hash", root.currentRec, "--date", svc.noteDate]
-    rateProc.running = true
+    root.runInTurn(rateProc, [svc.runner, "rate", v, "--hash", root.currentRec, "--date", svc.noteDate])
     root.used("rate", v)
   }
   function ratingOf(hash) {
@@ -5142,7 +5177,11 @@ Item {
     var rec = agent.record(hash)
     return rec && rec.rating ? rec.rating.value : ""
   }
-  Process { id: rateProc; onExited: function (code, status) { agent.reload() } }
+  Process {
+    id: rateProc
+    property var queue: []
+    onExited: function (code, status) { agent.reload(); Qt.callLater(root.nextInTurn, rateProc) }
+  }
 
   // Looking at a reply for a moment marks it read — nothing else needs to.
   Process { id: ackProc }
@@ -5448,6 +5487,12 @@ Item {
         root.settingsBusy = false
         root.settingsBusyIndex = -1
         root.refreshProjects()
+        if (root.timetableAgain !== null) {
+          var again = root.timetableAgain
+          root.timetableAgain = null
+          root.settingsBusyIndex = again.index
+          root.runTimetable(again.flags)
+        }
       }
     }
     stderr: StdioCollector { onStreamFinished: if (text.trim() !== "") console.warn("longhand.page timetable: " + text.trim()) }

@@ -143,6 +143,9 @@ only while the page's window is the active one. It uses Hyprland
   (Esc/Enter/arrows in keys, settings, the notebook, the agent's permissions
   and the search folders; Enter/Esc in the "when?" and name boxes).
   They behave by the Esc rule above but are not listed per place.
-- The test window never has the keyboard, so `tests/page/run.py` checks which
-  panes open and close. Where the keys land, and the frame and the pointer,
-  are checked in the live page.
+- The test window never has the keyboard, but the page's own focus is real
+  in it, so `tests/page/run.py` checks which panes open and close and where
+  the keys land (`here`: Alt+←/→, the bracket keys, a sheet giving the keys
+  back to the pane it was opened from). The frame and the pointer are checked
+  in the live page. The overlay takes the screen and the keyboard, so its
+  checks run only with `--overlay`.

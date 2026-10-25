@@ -8,7 +8,8 @@ page as a window titled "Page scratch" that never takes keyboard focus (a
 Hyprland rule for that title only), and talks to it over IPC — no key is
 ever pressed. Your notes, store and running shell are not touched.
 
-Run: python3 tests/page/run.py
+Run: python3 tests/page/run.py              # the window shape, as used most
+     python3 tests/page/run.py --overlay    # also the overlay: it covers the screen for a few seconds
 """
 import datetime as dt
 import json
@@ -1025,8 +1026,19 @@ def main() -> int:
             + "# Interdisciplinary Seminar #intsem\n\n- [ ] slides ⏳ 2030-01-02\n"
               "- [ ] read the paper ⏫\n- [ ] loose thought\n")
         p.open_fresh()
+        # A line written and the dashboard opened at once: the list waits
+        # for the note to be saved (it was read before, and the line was
+        # missing until something else asked again, 2026-10-25).
+        p.call("cursorEnd")
+        p.call("insert", "\n- [ ] just written ⏫")
         p.call("dash")
         check(p.call("dashOpen") == "true", "Ctrl+T opens the dashboard")
+        check(p.wait(lambda: any(r.get("text") == "just written" for r in json.loads(p.call("dashRows")))),
+              "a line written a moment before is on it")
+        p.call("dash")
+        p.call("removeLine", p.line_of("just written"))
+        p.wait(lambda: "just written" not in p.note())
+        p.call("dash")
 
         def heads():
             return [r["text"] for r in json.loads(p.call("dashRows")) if r["kind"] == "head"]
@@ -1156,26 +1168,26 @@ def main() -> int:
         # A deadline's row shows what its line holds, as a task's does
         # (2026-10-25): the day to work on it, the priority, the estimate;
         # and t and p write them on its line.
-        out = p.pomo("add", "the poster", "2030-01-08")
+        out = p.pomo("add", "the lab notes", "2030-01-08")
         pid = int(re.search(r"#(\d+)", out).group(1))
         p.call("cursorEnd")
-        p.call("insert", f"\n- [ ] the poster [est:: 2h] 🔽 ⏳ 2030-01-03 📅 2030-01-08 ^d{pid}")
+        p.call("insert", f"\n- [ ] the lab notes [est:: 2h] 🔽 ⏳ 2030-01-03 📅 2030-01-08 ^d{pid}")
         p.call("cursor", 1)
         p.wait(lambda: p.deadline(pid)["link"] != "")
         # Opened afresh, the list is read again with the new line in it.
         if p.call("dashOpen") == "true":
             p.call("dash")
         p.call("dash")
-        def poster():
-            return next((r for r in json.loads(p.call("dashRows")) if r.get("text") == "the poster"), {})
-        check(p.wait(lambda: poster().get("kind") == "deadline" and poster()["mark"] == "▽"
-                     and poster()["pills"][0].startswith("do ") and poster()["pills"][-1] == "2h"),
-              f"a deadline's row draws its do-date, priority and estimate ({poster()})")
-        row("the poster")
+        def labnotes():
+            return next((r for r in json.loads(p.call("dashRows")) if r.get("text") == "the lab notes"), {})
+        check(p.wait(lambda: labnotes().get("kind") == "deadline" and labnotes()["mark"] == "▽"
+                     and labnotes()["pills"][0].startswith("do ") and labnotes()["pills"][-1] == "2h"),
+              f"a deadline's row draws its do-date, priority and estimate ({labnotes()})")
+        row("the lab notes")
         check(p.call("dashType", "p") == "true", "p on a deadline row is taken")
-        check(p.wait(lambda: f"- [ ] the poster [est:: 2h] ⏳ 2030-01-03 📅 2030-01-08 ^d{pid}" in p.call("text")),
+        check(p.wait(lambda: f"- [ ] the lab notes [est:: 2h] ⏳ 2030-01-03 📅 2030-01-08 ^d{pid}" in p.call("text")),
               f"…and walks its line's priority ({p.call('text')[-80:]!r})")
-        row("the poster")
+        row("the lab notes")
         check(p.call("dashType", "t") == "true", "t on a deadline row asks when")
         p.call("dashWhen", "2030-01-04")
         check(p.wait(lambda: f"⏳ 2030-01-04 📅 2030-01-08 ^d{pid}" in p.call("text")),
@@ -1262,6 +1274,20 @@ def main() -> int:
         check(p.wait(lambda: row("a fading thought").get("away") == ""
                      and "goes quiet" not in row("a fading thought").get("where", "")),
               "r keeps it: back, its clock started again")
+        # Two boxes put aside in a row, faster than the first is written:
+        # both are (the second was lost, 2026-10-25).
+        rows_now = json.loads(p.call("dashRows"))
+        i1, i2 = (next(n for n, r in enumerate(rows_now) if r.get("text") == w) for w in ("a fading thought", "an old aside"))
+        p.call("dashFocus", i1)
+        p.call("dashKey", KEY_S, 0)
+        p.call("dashFocus", i2)
+        p.call("dashKey", KEY_S, 0)
+        check(p.wait(lambda: row("a fading thought").get("away") == "shelved" and row("an old aside").get("away") == "shelved"),
+              f"s on two boxes in a row puts both aside ({row('a fading thought').get('away')!r}, {row('an old aside').get('away')!r})")
+        for w in ("a fading thought", "an old aside"):
+            row(w)
+            p.call("dashKey", KEY_R, 0)
+            p.wait(lambda: row(w).get("away") == "")
         check(oldnote.read_text() == before, "the decay is in the view: the note is never touched")
 
         late = int(re.search(r"#(\d+)", p.pomo("add", "Late essay",
@@ -1965,8 +1991,9 @@ def main() -> int:
         # 12b. The panes (docs/navigation.md): the bracket keys are the
         # sidebar, the middle and the agent's pane, from any box; a pane's
         # key opens it; in the middle, Ctrl+\ flips the note and the
-        # dashboard; Esc closes what it is in. (This window never has the
-        # keyboard, so where the keys land is checked in the live page.)
+        # dashboard; Esc closes what it is in. The window never has the
+        # keyboard, but the page's own focus is real in it, so where the
+        # keys land (`here`) is checked; the frame and the pointer are not.
         KEY_BL, KEY_BR, KEY_BS = 0x5b, 0x5d, 0x5c
         def panes():
             return json.loads(p.call("panes"))
@@ -2137,6 +2164,68 @@ def main() -> int:
         p.call("dash")
         p.call("marginOpen", "false")
         p.call("sidebar")
+
+        # 14. the window's own, the shape the student uses most (2026-10-25):
+        # Esc in the note leaves it open; Alt+←/→ walk the open panes and
+        # stop at the edges; a sheet opened from a pane gives the keys back
+        # to that pane when it closes (openedFrom, docs/navigation.md).
+        ALT, KEY_LEFT, KEY_RIGHT_A, KEY_SLASH, KEY_F11 = 0x08000000, 0x01000012, 0x01000014, 0x2f, 0x0100003a
+        def shape():
+            return json.loads(p.call("state"))
+        p.open_fresh()
+        p.call("closePanes")
+        check(p.call("pageKey", KEY_ESC, 0) == "true" and shape()["window"] and not shape()["overlay"],
+              f"Esc in the note leaves the window open ({shape()})")
+        p.call("pageKey", KEY_BL, CTRL)
+        p.call("pageKey", KEY_BR, CTRL)
+        check(panes()["panes"] == ["left", "center", "right"] and panes()["here"] == "right", f"three panes, the keys on the right ({panes()})")
+        p.call("pageKey", KEY_LEFT, ALT)
+        check(panes()["here"] == "center", f"Alt+←: the middle ({panes()})")
+        p.call("pageKey", KEY_LEFT, ALT)
+        check(panes()["here"] == "left", f"…Alt+← again: the sidebar ({panes()})")
+        p.call("pageKey", KEY_LEFT, ALT)
+        check(panes()["here"] == "left" and panes()["panes"] == ["left", "center", "right"],
+              f"…and at the edge nothing opens or closes ({panes()})")
+        p.call("pageKey", KEY_RIGHT_A, ALT)
+        p.call("pageKey", KEY_RIGHT_A, ALT)
+        check(panes()["here"] == "right", f"Alt+→ twice: back on the right ({panes()})")
+        p.call("pageKey", KEY_RIGHT_A, ALT)
+        check(panes()["here"] == "right" and panes()["panes"] == ["left", "center", "right"],
+              f"…and at the right edge, from a pane, nothing opens ({panes()})")
+        check(p.call("pageKey", KEY_SLASH, CTRL) == "true" and panes()["center"] == "keys", f"Ctrl+/ from the agent's pane: the keys ({panes()})")
+        p.call("pageKey", KEY_SLASH, CTRL)
+        check(p.wait(lambda: panes()["center"] == "note" and panes()["here"] == "right", 2),
+              f"…closed, the keys go back to the pane they came from ({panes()})")
+        p.call("closePanes")
+
+        # 14b. the overlay, on purpose only: it covers the screen and takes
+        # the keyboard while it is up, so it runs with --overlay (a few
+        # seconds). Its geometry is also checked offscreen (tst_layout).
+        if "--overlay" in sys.argv:
+            p.call("closeAll")
+            p.call("summon", "{}")
+            check(p.wait(lambda: shape()["overlay"] and shape()["ready"]), f"{{}} brings the overlay up ({shape()})")
+            time.sleep(0.5)
+            lay = json.loads(p.call("layout"))
+            check(71.5 <= lay["chars"] <= 72.5 and lay["x"] > 0, f"the overlay's note holds 72 characters, centred ({lay})")
+            p.call("pageKey", KEY_BL, CTRL)
+            p.call("pageKey", KEY_BR, CTRL)
+            check(p.wait(against, 2), f"…the panes inside its margin, the note between them ({p.call('sides')})")
+            p.call("closePanes")
+            check(p.call("pageKey", KEY_F11, 0) == "true" and p.wait(lambda: shape()["window"] and not shape()["overlay"], 3),
+                  f"F11: from the overlay to the window ({shape()})")
+            p.call("pageKey", KEY_F11, 0)
+            check(p.wait(lambda: shape()["overlay"] and not shape()["window"], 3), f"…F11 again: the overlay, the window closed ({shape()})")
+            p.call("summon", '{"shape":"alongside"}')
+            check(p.wait(lambda: shape()["window"] and not shape()["overlay"], 3),
+                  f"the window asked for takes the sheet back from the overlay ({shape()})")
+            p.call("summon", "{}")
+            p.wait(lambda: shape()["overlay"], 3)
+            check(p.call("pageKey", KEY_ESC, 0) == "true" and p.wait(lambda: not shape()["overlay"], 3),
+                  f"Esc in the note closes the overlay ({shape()})")
+            check(shape()["window"], "…and the window under it stays")
+        else:
+            print("skip the overlay (it takes the screen): python3 tests/page/run.py --overlay")
 
         # 13. the usage log: written on close, event names only
         p.call("closeAll")

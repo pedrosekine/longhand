@@ -20,6 +20,8 @@ sys.path.insert(0, str(ROOT / "agent"))
 sys.path.insert(0, str(ROOT / "plugin-page"))
 import hyprkeys  # noqa: E402
 import manual  # noqa: E402
+sys.path.insert(0, str(ROOT / "tests"))
+import fakes  # noqa: E402
 
 failures = 0
 
@@ -55,6 +57,7 @@ def main() -> int:
     tmp = pathlib.Path(tempfile.mkdtemp(prefix="manual-test-"))
     cfgdir = tmp / "config"
     (cfgdir / "longhand").mkdir(parents=True)
+    os.environ.update(fakes.machine(tmp, cfgdir))   # Hyprland's keys from a throwaway hypr folder
     k = manual.keys(cfgdir)
     check(k.get("deadline") == ["Ctrl+D"] and k.get("sys:page"), "the keys, from Shortcuts.js and Hyprland's")
     (cfgdir / "longhand" / "keys.json").write_text(json.dumps({"deadline": ["Ctrl+Shift+D"]}))

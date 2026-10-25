@@ -27,7 +27,10 @@ def check(cond, what):
 def main() -> int:
     themes = sorted(pathlib.Path("/usr/share/omarchy/themes").glob("*/colors.toml"))
     worst = min((ti.contrast(*reversed(ti.colours(ti.theme(t)))), t.parent.name) for t in themes) if themes else (9, "")
-    check(not themes or worst[0] >= ti.TARGET, f"the seal reads against its tile in every stock theme (lowest {worst[0]:.1f}:1, {worst[1]})")
+    if themes:
+        check(worst[0] >= ti.TARGET, f"the seal reads against its tile in every stock theme (lowest {worst[0]:.1f}:1, {worst[1]})")
+    else:
+        print("skip the stock themes: /usr/share/omarchy/themes is not here")
     check(ti.colours({"background": "#ffffff", "accent": "#fafafa", "foreground": "#111111"})[1] != "#fafafa",
           "an accent too close to the background is moved towards the foreground")
 

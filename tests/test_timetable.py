@@ -22,6 +22,8 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 AGENT = ROOT / "agent" / "longhand-agent"
 sys.path.insert(0, str(ROOT / "agent"))
 import timetable  # noqa: E402
+sys.path.insert(0, str(ROOT / "tests"))
+import fakes  # noqa: E402
 
 failures = 0
 
@@ -235,7 +237,7 @@ def main() -> int:
                                   f"  - {today + dt.timedelta(days=3):%a %d %b}: 10:00–11:00 (Lab)\n")
     cfg = tmp / "config.json"
     base = {"vault": str(vault), "daily": {"dir": "Daily", "format": "YYYY-MM-DD"}}
-    env = dict(os.environ, LONGHAND_CONFIG=str(cfg), XDG_STATE_HOME=str(tmp / "xdg"))
+    env = dict(os.environ, LONGHAND_CONFIG=str(cfg), XDG_STATE_HOME=str(tmp / "xdg"), **fakes.machine(tmp))
 
     def agent(*args):
         r = subprocess.run([sys.executable, str(AGENT), *args], capture_output=True, text=True, env=env)

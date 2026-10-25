@@ -607,7 +607,7 @@ from 2026-09/10 and still stand.
   weekly review earns its place.
 - **Talking about a proposal** (built 2026-10-20, `docs/agent.md`): Enter
   on a proposal, a question or a thing done opens the margin beside the
-  dashboard (Alt+→ on any task: the agent summoned to think it through); the planner answers
+  dashboard (Ctrl+Shift+Enter on any task, Alt+→ until 2026-10-23: the agent summoned to think it through); the planner answers
   on its own payload, may revise, and an agreement settles it. Watch: does
   the planner settle only when you both agree (it reads your words — the
   one place it decides an outcome)? Is one conversation per task (the margin's

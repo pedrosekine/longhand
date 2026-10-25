@@ -17,6 +17,9 @@ import sys
 import tempfile
 import datetime as dt
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import fakes  # noqa: E402
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 AGENT = ROOT / "agent" / "longhand-agent"
 
@@ -94,8 +97,10 @@ class T:
         self.stub_dir = self.tmp / "stub"
         self.stub_dir.mkdir()
         self.state_home = self.tmp / "state"
+        mine = fakes.machine(self.tmp)            # never the real ~/.config, nor the running Hyprland
         self.env = dict(os.environ, LONGHAND_CONFIG=str(self.cfg), XDG_STATE_HOME=str(self.state_home),
-                        STUB_DIR=str(self.stub_dir), PATH=str(self.tmp / "bin") + ":" + os.environ["PATH"])
+                        STUB_DIR=str(self.stub_dir), XDG_CONFIG_HOME=mine["XDG_CONFIG_HOME"],
+                        FAKE_HYPR_DIR=mine["FAKE_HYPR_DIR"], PATH=str(self.tmp / "bin") + ":" + mine["PATH"])
         # keep `pomo report` out of it: an empty PATH entry first means the real pomo is still found;
         # that is fine — its output is just another allowlisted source.
 

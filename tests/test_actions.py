@@ -232,9 +232,28 @@ def stale() -> None:
     check(st[3] == "open" and st[4] == "open", "…today's stays, and one being done is the page's to settle")
 
 
+def taken() -> None:
+    """A box that carries just what was proposed took it: accepted, with
+    what the person last said about it, never moot. The page writes the
+    line before it records the accept, and a list read in between made
+    accepted do-dates moot (2026-10-25). A different date is still moot."""
+    ledger = {"next": 4, "items": [
+        {"id": 1, "kind": "do-date", "key": "a", "date": day(2), "status": "open"},
+        {"id": 2, "kind": "priority", "key": "b", "priority": 2, "status": "open"},
+        {"id": 3, "kind": "do-date", "key": "c", "date": day(2), "status": "open"}],
+        "threads": {"a": {"turns": [{"role": "student", "text": "ok, that works", "about": 1}]}}}
+    tasks = [{"key": "a", "title": "x", "when": day(2)}, {"key": "b", "title": "y", "priority": 2},
+             {"key": "c", "title": "z", "when": day(5)}]
+    plan.settle_moot(ledger, tasks, dt.datetime.now().isoformat(timespec="seconds"))
+    st = {x["id"]: x["status"] for x in ledger["items"]}
+    check(st == {1: "accepted", 2: "accepted", 3: "moot"}, f"what the box now carries was taken; another date is moot ({st})")
+    check(ledger["items"][0].get("reason") == "ok, that works", "…with the person's last words as the reason")
+
+
 def main() -> int:
     units()
     stale()
+    taken()
     end_to_end()
     print("PASS" if failures == 0 else f"{failures} FAILED")
     return 1 if failures else 0

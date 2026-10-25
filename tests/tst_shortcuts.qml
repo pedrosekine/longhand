@@ -121,9 +121,12 @@ TestCase {
   }
 
   function test_hand_written_file() {
-    Sc.load({ bold: "ctrl+k", italic: ["Ctrl+J", "nonsense"], nothing: ["Ctrl+Q"], code: 3 })
+    // Ctrl+Shift+I: free. (Ctrl+J was, until it became the agent's pane,
+    // read before any key of the note's, 2026-10-21.)
+    verify(Sc.check("italic", "Ctrl+Shift+I").ok)
+    Sc.load({ bold: "ctrl+k", italic: ["Ctrl+Shift+I", "nonsense"], nothing: ["Ctrl+Q"], code: 3 })
     compare(Sc.keysOf("bold").join(), "Ctrl+K")
-    compare(Sc.keysOf("italic").join(), "Ctrl+J")
+    compare(Sc.keysOf("italic").join(), "Ctrl+Shift+I")
     compare(Sc.keysOf("code").join(), "Ctrl+`,Ctrl+E")
     compare(Sc.save().nothing, undefined)
   }

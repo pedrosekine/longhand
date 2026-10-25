@@ -2067,12 +2067,17 @@ def cmd_plan(cfg: dict, args) -> int:
     reply = parse_plan(result["text"]) if not result["error"] else {"proposals": [], "questions": [], "knowledge": []}
     # What the store has closed, too: a ticked box must not return as a new deadline.
     closed = planlib.store_deadlines(STATE_HOME / "deadlines.tsv", ("done", "cancelled"))
+    # Read again once the model has answered: what the page settled while it
+    # thought is kept, and checked against.
+    lock = planlib.hold(PROPOSALS)
+    ledger = planlib.load_ledger(PROPOSALS)
     props, qs = planlib.validate(reply, cands, days, ledger, today, boxes, deadlines, allowed, closed,
                                  project_tags(cfg))
     for item in props + qs:
         item.update({"prompt": result.get("prompt", ""), "model": result.get("model", ""), "payload": str(payload_file)})
     new = planlib.record(ledger, props, qs, at)
     planlib.save_ledger(PROPOSALS, ledger)
+    lock.close()
 
     written = []
     write_knowledge(paths, reply["knowledge"], written)
@@ -2162,6 +2167,7 @@ def cmd_proposals(cfg: dict, args) -> int:
     the agent's tint). A do-date whose box got a date some other way, is
     done, or is gone, is settled as moot first."""
     tasks = plan_tasks(cfg)
+    lock = planlib.hold(PROPOSALS)
     ledger = planlib.load_ledger(PROPOSALS)
     at = dt.datetime.now().isoformat(timespec="seconds")
     changed = planlib.settle_moot(ledger, tasks, at)
@@ -2169,6 +2175,7 @@ def cmd_proposals(cfg: dict, args) -> int:
     changed += inbox_pass(cfg, ledger, at)
     if changed:
         planlib.save_ledger(PROPOSALS, ledger)
+    lock.close()
     by_key = {t["key"]: t for t in tasks}
     out = []
     for x in planlib.open_items(ledger):
@@ -2190,6 +2197,11 @@ def cmd_proposals(cfg: dict, args) -> int:
 
 
 def cmd_proposal(cfg: dict, args) -> int:
+    with planlib.hold(PROPOSALS):
+        return answer_proposal(cfg, args)
+
+
+def answer_proposal(cfg: dict, args) -> int:
     """The person's answer to one proposal or question. Accepting a do-date
     is recorded here; the do-date itself is written into the note by the
     page, the one writer of notes. An answered question is kept in the
@@ -2545,6 +2557,7 @@ def day_proposals(cfg: dict, reply: dict, result: dict, payload_file: Path, at: 
         return []
     today = dt.date.today()
     tasks, deadlines, days, cands, boxes, notes, allowed = plan_inputs(cfg, today)
+    lock = planlib.hold(PROPOSALS)
     ledger = planlib.load_ledger(PROPOSALS)
     closed = planlib.store_deadlines(STATE_HOME / "deadlines.tsv", ("done", "cancelled"))
     props, _ = planlib.validate({"proposals": reply["proposals"], "questions": []}, cands, days, ledger, today,
@@ -2557,6 +2570,7 @@ def day_proposals(cfg: dict, reply: dict, result: dict, payload_file: Path, at: 
     same = [x for p in props for x in planlib.open_items(ledger)
             if x["kind"] != "question" and planlib.ident(x) == planlib.ident(p) and x not in new]
     planlib.save_ledger(PROPOSALS, ledger)
+    lock.close()
     keep = ("id", "kind", "key", "title", "project", "date", "priority", "steps", "why", "auto")
     return [{k: x[k] for k in keep if k in x} for x in new + same]
 
@@ -2937,6 +2951,7 @@ def cmd_talk(cfg: dict, args) -> int:
     payload_file.with_suffix(".events.jsonl").write_text(result["events"])
 
     at = dt.datetime.now().isoformat(timespec="seconds")
+    lock = planlib.hold(PROPOSALS)
     ledger = planlib.load_ledger(PROPOSALS)   # the page may have answered something meanwhile
     item = next(x for x in ledger["items"] if x["id"] == args.id)
     current, revised, settled, resolved = item, None, "", False
@@ -2981,6 +2996,7 @@ def cmd_talk(cfg: dict, args) -> int:
          "cost": result["cost"], "prompt": result.get("prompt", ""), "model": result.get("model", ""),
          "payload": str(payload_file)}])
     planlib.save_ledger(PROPOSALS, ledger)
+    lock.close()
     written = []
     if not result["error"]:
         write_knowledge(paths, reply["knowledge"], written)

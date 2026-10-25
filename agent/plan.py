@@ -17,6 +17,7 @@ is gone). Acceptance is counted from it; the next plan is told it.
 from __future__ import annotations
 
 import datetime as dt
+import fcntl
 import hashlib
 import json
 import os
@@ -207,6 +208,19 @@ def load_ledger(path: Path) -> dict:
 
 def save_ledger(path: Path, data: dict) -> None:
     _write(path, data)
+
+
+def hold(path: Path):
+    """The ledger to one writer at a time, from its reading to its writing.
+    The page asks the runner several things at once — the list, an answer,
+    a plan, a conversation — each reading the ledger, changing it and
+    writing it back, and the last to write won: an answer given while a
+    plan ran was lost (2026-10-25). Held until the returned file is closed,
+    or the process ends."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    f = open(path.parent / f".{path.name}.lock", "w")
+    fcntl.flock(f, fcntl.LOCK_EX)
+    return f
 
 
 def open_items(ledger: dict) -> list[dict]:
@@ -415,6 +429,10 @@ def record(ledger: dict, props: list[dict], qs: list[dict], at: str) -> list[dic
     # and id stay put); a different one about the same thing replaces it.
     standing = {ident(x): x for x in open_items(ledger) if x["kind"] != "question"}
     props = [p for p in props if not _same(standing.get(ident(p)), p)]
+    # The same goes for a question asked again in the same words: one with
+    # no box was recorded once a plan, and the dashboard asked it twice.
+    still = {norm(x.get("question", "")) for x in open_items(ledger) if x["kind"] == "question"}
+    qs = [q for q in qs if norm(q.get("question", "")) not in still]
     about = {ident(p) for p in props}
     asked = {q["key"] for q in qs if q["key"]}
     for x in open_items(ledger):
@@ -451,9 +469,19 @@ def settle_moot(ledger: dict, tasks: list[dict], at: str) -> int:
             continue
         t = live.get(x["key"])
         gone = t is None or t.get("done") or t.get("cancelled")
-        if gone or (x["kind"] == "do-date" and t.get("when")) \
-                or (x["kind"] == "priority" and (t.get("priority") or 0) == x.get("priority")) \
-                or (x["kind"] == "steps" and t.get("details")):
+        # The box carries just what was proposed: it was taken, not made
+        # moot. The page writes the line before it records the accept, and
+        # a list read in between settled accepted do-dates as moot
+        # (2026-10-25); so did a person typing the proposed day themselves.
+        taken = not gone and ((x["kind"] == "do-date" and t.get("when") == x.get("date"))
+                              or (x["kind"] == "priority" and (t.get("priority") or 0) == x.get("priority")))
+        if taken:
+            x["status"], x["resolved"] = "accepted", at
+            words = last_words(ledger, x)
+            if words:
+                x["reason"] = words
+            n += 1
+        elif gone or (x["kind"] == "do-date" and t.get("when")) or (x["kind"] == "steps" and t.get("details")):
             x["status"], x["resolved"] = "moot", at
             n += 1
     return n

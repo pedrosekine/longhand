@@ -263,17 +263,23 @@ Hyprland reports a new config error, the old file is put back.
 `plugin-page/hyprkeys.py` does the writing; you can edit the keys in
 `longhand.lua` by hand, and the sheet reads them back.
 
+### Tests
+
 ```bash
-python3 tests/test_blocks.py                                # block splitter, JS and Python must agree (needs node)
-QT_QPA_PLATFORM=offscreen /usr/lib/qt6/bin/qmltestrunner -input tests   # editor (driven by keys), keys, emphasis, calendar days, bound lines
-python3 tests/test_pomo.py                                    # the deadline CLI's contract with the page
-python3 tests/test_check.py                                   # one copy of a task: the notes, the store and the ledger agree
-python3 tests/test_keys_guide.py                              # docs/keys.md is the keys as they are (needs node)
-python3 tests/test_hyprkeys.py                                # Hyprland's six keys, against a fake hyprctl
-python3 tests/test_migrate.py                                 # the move from omarchy-student, in a throwaway $HOME
-python3 tests/test_cursors.py                                 # the mouse cursor over the note: text, hand on a box (needs PyQt6)
-python3 tests/page/run.py                                     # the page itself, live: a window that never takes focus, a throwaway vault
+python3 tests/run_all.py                    # every test file and the QML tests, offscreen (under a minute)
+python3 tests/run_all.py --page             # and the page itself, live, in the window shape
+python3 tests/run_all.py --page --overlay   # and the overlay, which takes the screen for a few seconds
 ```
+
+Each file also runs alone (`python3 tests/test_check.py`). The offscreen ones
+build a throwaway vault, state and config, and play Hyprland with
+`tests/fake_hyprctl.py`, so they never read or write yours. Some need node
+(the JS and Python halves of the block splitter and the checkbox grammar are
+compared), PyQt6 (`test_cursors`) or quickshell (`test_popup`).
+`tests/page/run.py` drives the real page over IPC in a window titled "Page
+scratch" that never takes focus; it runs in the window shape, the one used
+most, and the overlay only with `--overlay`, because the overlay covers the
+screen and holds the keyboard while it is up.
 
 ## Deadlines in the notes
 

@@ -181,14 +181,16 @@ def main() -> int:
     same = [task.identity(t) for t in texts] == other["identities"]
     check(same, f"{len(texts)} lines and notes have the same identity in both")
 
+    before = failures
     for line, got in zip(LINES, other["lines"]):
         mine = task.parse(line)
         if mine != got:
             failures += 1
             print(f"MISMATCH parse {line!r}\n  py={json.dumps(mine, ensure_ascii=False)}"
                   f"\n  js={json.dumps(got, ensure_ascii=False)}")
-    print(f"ok   {len(LINES)} lines parse the same in both")
+    print(("ok   " if failures == before else "FAIL ") + f"{len(LINES)} lines parse the same in both")
 
+    before = failures
     names = [f"note {i}" for i in range(len(NOTES))] + [f.name for f in fixtures]
     for name, text, got, wheres in zip(names, notes, other["notes"], other["wheres"]):
         mine = task.scan(text)
@@ -199,7 +201,7 @@ def main() -> int:
         if [task.where(t) for t in mine] != wheres:
             failures += 1
             print(f"MISMATCH where {name}")
-    print(f"ok   {len(notes)} notes scan the same in both ({len(fixtures)} of them fixtures)")
+    print(("ok   " if failures == before else "FAIL ") + f"{len(notes)} notes scan the same in both ({len(fixtures)} of them fixtures)")
 
     # The three kinds, which is the whole point of the grammar.
     kind = lambda line: task.parse(line)["kind"]
