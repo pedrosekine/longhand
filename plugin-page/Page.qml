@@ -228,6 +228,14 @@ Item {
   // it and the right pane did not), and on the overlay the right pane
   // shrank instead. Stepping aside slides (`sheet`'s x).
   readonly property int sheetMargin: root.sp(28)
+  // The focus frame's border: Hyprland's active border as the theme gives
+  // it, at the width of Hyprland's (2 px, or the shell's spacing).
+  readonly property var frameSpec: {
+    var g = Border.resolvedGradient(pal.activeBorder, root.accent, 1)
+    var spec = Border.flat(g.colors.length > 0 ? g.colors[0] : root.accent, Math.max(2, Style.space(2)))
+    if (g.enabled) spec.gradient = g
+    return spec
+  }
   // What is kept clear at the window's edges: nothing in the window, the
   // overlay's margin on the overlay. The side panes stand against it.
   readonly property int edge: root.alongside ? 0 : root.sheetMargin
@@ -6302,7 +6310,9 @@ Item {
     DayPane { id: dayPane; page: root }
 
     // Where the keys are (docs/navigation.md): Omarchy's active border, on
-    // the side panes. Each side pane has a frame of its own, as each window
+    // the side panes, in the theme's own colours for it (its gradient and
+    // angle, ThemeColors' activeBorder; the accent when it gives none). Each
+    // side pane has a frame of its own, as each window
     // has its border in Hyprland, and the keys moving fade one out while the
     // other fades in, at Hyprland's own pace (Omarchy's `border` animation:
     // speed 5.39, so 539 ms, on easeOutQuint). Nothing travels: until
@@ -6312,7 +6322,7 @@ Item {
     // frame on screen means the keys are in the middle.
     Repeater {
       model: ["left", "right"]
-      Rectangle {
+      BorderSurface {
         required property string modelData
         readonly property Item pane: root.paneItem(modelData)
         visible: !!pane && pane.visible && opacity > 0
@@ -6324,8 +6334,7 @@ Item {
         z: 50
         radius: root.alongside ? 0 : Style.cornerRadius
         color: "transparent"
-        border.color: root.accent
-        border.width: Math.max(2, Style.space(2))
+        borderSpec: root.frameSpec
         Behavior on opacity {
           NumberAnimation { duration: 539; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.23, 1, 0.32, 1, 1, 1] }
         }

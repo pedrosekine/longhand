@@ -5,6 +5,7 @@ import qs.Commons
 // Qt 6.12's QtQuick has a `Color` of its own that shadows the shell's
 // (2026-10-18): the shell's palette is named through the module.
 import qs.Commons as Commons
+import "Theme.js" as Theme
 
 // The current Omarchy theme's palette, read from its colors.toml (watched,
 // so `omarchy theme set` repaints the page at once), turned into the roles
@@ -189,13 +190,31 @@ Item {
     onFileChanged: reload()
   }
 
+  // Hyprland's active border, as the theme gives it (its hyprland.lua,
+  // shipped or made from Omarchy's template): its colours and angle in the
+  // shell's own words, "#D6C24A #EC9E3E #FF8D92 45deg", for Border to read.
+  // Empty when the theme says nothing, and the accent stands in. The focus
+  // frame is drawn with it (2026-10-25), so the page's active pane looks
+  // like the active window.
+  property string activeBorder: ""
+
+  FileView {
+    id: hyprFile
+    path: Quickshell.env("HOME") + "/.local/state/omarchy/current/theme/hyprland.lua"
+    watchChanges: true
+    printErrors: false
+    onLoaded: root.activeBorder = Theme.activeBorder(text())
+    onLoadFailed: root.activeBorder = ""
+    onFileChanged: reload()
+  }
+
   // A theme switch rewrites the theme folder (a file watch can miss that)
   // and pushes the new colours to the shell: when the shell's change, read
   // the palette again.
   Connections {
     target: Commons.Color
-    function onForegroundChanged() { file.reload() }
-    function onBackgroundChanged() { file.reload() }
-    function onAccentChanged() { file.reload() }
+    function onForegroundChanged() { file.reload(); hyprFile.reload() }
+    function onBackgroundChanged() { file.reload(); hyprFile.reload() }
+    function onAccentChanged() { file.reload(); hyprFile.reload() }
   }
 }

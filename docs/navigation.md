@@ -21,8 +21,9 @@ The page is at most three panes side by side:
 | **right**: the agent's pane | the day's conversation (its home), a block's conversation beside the note, a task's beside the dashboard | `Ctrl+]` |
 
 The keyboard is always in exactly one pane. When it is in a side pane, the
-**focus frame** (an outline in the theme's accent, like Omarchy's active
-border) is drawn on that pane's own edges, over its hairline. Each side pane
+**focus frame** (Omarchy's active border: the theme's own gradient for it,
+read from its `hyprland.lua`, or its accent when it gives none) is drawn on
+that pane's own edges, over its hairline. Each side pane
 has its own, as each window has its border in Hyprland: when the keys move,
 the one they leave fades out while the one they come to fades in, at
 Hyprland's own pace (Omarchy's `border` animation, about half a second,
