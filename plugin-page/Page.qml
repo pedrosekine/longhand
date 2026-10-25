@@ -5645,7 +5645,7 @@ Item {
       y: root.alongside ? 0 : root.sheetMargin
       width: root.sheetWidth
       // Stepping aside for a pane slides, with the panes beside it (their
-      // x follows this one), at the focus frame's pace. The width snaps:
+      // x follows this one), quickly. The width snaps:
       // text reflowing every frame reads as shaking.
       Behavior on x { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
       height: root.alongside ? content.height : content.height - root.sheetMargin * 2
@@ -6302,33 +6302,34 @@ Item {
     DayPane { id: dayPane; page: root }
 
     // Where the keys are (docs/navigation.md): Omarchy's active border, on
-    // the side panes. Drawn around the sidebar or the agent's pane while it
-    // has the keys, on the pane's own edges (its hairline under it), and
-    // slides from one to the other as the keys move — the way Hyprland's
-    // border follows the window. Never around the middle (the student,
-    // 2026-10-24): there the note's cursor, or the dashboard's lit row, says
-    // so already, so no frame on screen means the keys are in the middle.
-    Rectangle {
-      id: focusFrame
-      readonly property Item side: root.here !== "center" ? root.paneItem(root.here) : null
-      // The last side pane it was around: going to the middle, it fades
-      // where it was rather than sliding over the note.
-      property Item around: null
-      onSideChanged: if (side) around = side
-      visible: opacity > 0
-      opacity: side ? 1 : 0
-      x: around ? around.x : 0
-      y: around ? around.y : 0
-      width: around ? around.width : 0
-      height: around ? around.height : 0
-      z: 50
-      radius: root.alongside ? 0 : Style.cornerRadius
-      color: "transparent"
-      border.color: root.accent
-      border.width: Math.max(2, Style.space(2))
-      Behavior on opacity { NumberAnimation { duration: 140 } }
-      Behavior on x { enabled: focusFrame.opacity > 0; NumberAnimation { duration: 170; easing.type: Easing.OutCubic } }
-      Behavior on width { enabled: focusFrame.opacity > 0; NumberAnimation { duration: 170; easing.type: Easing.OutCubic } }
+    // the side panes. Each side pane has a frame of its own, as each window
+    // has its border in Hyprland, and the keys moving fade one out while the
+    // other fades in, at Hyprland's own pace (Omarchy's `border` animation:
+    // speed 5.39, so 539 ms, on easeOutQuint). Nothing travels: until
+    // 2026-10-25 one frame slid from pane to pane across the note, which the
+    // student did not like. Never around the middle (2026-10-24): there the
+    // note's cursor, or the dashboard's lit row, says so already, so no
+    // frame on screen means the keys are in the middle.
+    Repeater {
+      model: ["left", "right"]
+      Rectangle {
+        required property string modelData
+        readonly property Item pane: root.paneItem(modelData)
+        visible: !!pane && pane.visible && opacity > 0
+        opacity: root.here === modelData ? 1 : 0
+        x: pane ? pane.x : 0
+        y: pane ? pane.y : 0
+        width: pane ? pane.width : 0
+        height: pane ? pane.height : 0
+        z: 50
+        radius: root.alongside ? 0 : Style.cornerRadius
+        color: "transparent"
+        border.color: root.accent
+        border.width: Math.max(2, Style.space(2))
+        Behavior on opacity {
+          NumberAnimation { duration: 539; easing.type: Easing.BezierSpline; easing.bezierCurve: [0.23, 1, 0.32, 1, 1, 1] }
+        }
+      }
     }
 
     // The student's own hand on the mouse: the pointer is left alone while

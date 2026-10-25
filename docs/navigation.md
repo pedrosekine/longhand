@@ -22,8 +22,12 @@ The page is at most three panes side by side:
 
 The keyboard is always in exactly one pane. When it is in a side pane, the
 **focus frame** (an outline in the theme's accent, like Omarchy's active
-border) is drawn on that pane's own edges, over its hairline, and slides to
-the other side pane as the keys move. The middle never gets a frame
+border) is drawn on that pane's own edges, over its hairline. Each side pane
+has its own, as each window has its border in Hyprland: when the keys move,
+the one they leave fades out while the one they come to fades in, at
+Hyprland's own pace (Omarchy's `border` animation, about half a second,
+easing out). Nothing travels across the note (until 2026-10-25 one frame
+slid from pane to pane). The middle never gets a frame
 (2026-10-24): there the note's blinking cursor, or the dashboard's lit row,
 already says where the keys are. So no frame on screen means the keys are in
 the middle. Only the pane with the keys draws its selection (the row, the day, the
