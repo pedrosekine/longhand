@@ -151,6 +151,7 @@ only while the page's window is the active one. It uses Hyprland
 - The test window never has the keyboard, but the page's own focus is real
   in it, so `tests/page/run.py` checks which panes open and close and where
   the keys land (`here`: Alt+←/→, the bracket keys, a sheet giving the keys
-  back to the pane it was opened from). The frame and the pointer are checked
-  in the live page. The overlay takes the screen and the keyboard, so its
-  checks run only with `--overlay`.
+  back to the pane it was opened from, the note's cursor back at its letter,
+  the middle when the pane they came from has closed, the calendar's keys).
+  The frame and the pointer are checked in the live page. The overlay takes
+  the screen and the keyboard, so its checks run only with `--overlay`.

@@ -63,67 +63,67 @@ BorderSurface {
     color: page.faint
   }
 
+  // The sidebar's keys, in one function so the page can be driven without
+  // a keyboard (tests/page/run.py). True when the key was taken.
+  function keyPressed(event) {
+    // The panes' keys are global (page.anywhereKey): Ctrl+[ closes the
+    // sidebar from here, Alt+→ moves on and leaves it open.
+    if (page.anywhereKey(event)) return true
+    // Inside a project: its sections, newest first. Enter opens one in
+    // the sheet (the list stays), Left or Esc goes back to the list of
+    // projects.
+    if (page.projectOpen) {
+      if (Sc.hit(event, "listUp")) page.moveSectionFocus(-1)
+      else if (Sc.hit(event, "listDown")) page.moveSectionFocus(1)
+      else if (Sc.hit(event, "listOpen")) page.openInProject()
+      else if (Sc.hit(event, "listBack")) page.leaveProject()
+      else return false
+      return true
+    }
+    // Tab walks the sidebar: the days, the day's deadlines (when it
+    // has some), the projects, and back to the days.
+    // In the day's deadline list: up/down pick, Enter goes to the line,
+    // Ctrl+L marks it done (again: not done), as in the note.
+    // A key with Ctrl or Alt it does not use goes on to the calendar.
+    if (page.dueFocus >= 0) {
+      if (page.dueKey(event)) return true
+      // Any other key leaves the list, one with Ctrl or Alt for the
+      // calendar below.
+      if (!(event.modifiers & (Qt.ControlModifier | Qt.AltModifier))) { page.dueFocus = -1; return false }
+    }
+    if (page.projFocus >= 0) return page.projectsKey(event)
+    // (The projects' list always has a row: the one that makes a new one.)
+    if (Sc.hit(event, "calLists")) {
+      if (page.focusDue.length > 0) page.dueFocus = 0
+      else page.projFocus = 0
+    } else if (Sc.hit(event, "calBack")) {
+      page.toggleSidebar()
+    } else if (Sc.hit(event, "calPrevDay")) {
+      page.moveCalendar(-1, 0)
+    } else if (Sc.hit(event, "calNextDay")) {
+      page.moveCalendar(1, 0)
+    } else if (Sc.hit(event, "calPrevWeek")) {
+      page.moveCalendar(-7, 0)
+    } else if (Sc.hit(event, "calNextWeek")) {
+      page.moveCalendar(7, 0)
+    } else if (Sc.hit(event, "calPrevMonth")) {
+      page.moveCalendar(0, -1)
+    } else if (Sc.hit(event, "calNextMonth")) {
+      page.moveCalendar(0, 1)
+    } else if (Sc.hit(event, "calToday")) {
+      page.calFocus = new Date()
+    } else if (Sc.hit(event, "calOpen")) {
+      page.openCalendarDay(page.calFocus)
+    } else {
+      return false
+    }
+    return true
+  }
+
   Item {
     id: sidebarKeys
     anchors.fill: parent
-    Keys.onPressed: function (event) {
-      // The panes' keys are global (page.anywhereKey): Ctrl+[ closes the
-      // sidebar from here, Alt+→ moves on and leaves it open.
-      if (page.anywhereKey(event)) { event.accepted = true; return }
-      // Inside a project: its sections, newest first. Enter opens one in
-      // the sheet (the list stays), Left or Esc goes back to the list of
-      // projects.
-      if (page.projectOpen) {
-        if (Sc.hit(event, "listUp")) page.moveSectionFocus(-1)
-        else if (Sc.hit(event, "listDown")) page.moveSectionFocus(1)
-        else if (Sc.hit(event, "listOpen")) page.openInProject()
-        else if (Sc.hit(event, "listBack")) page.leaveProject()
-        else return
-        event.accepted = true
-        return
-      }
-      // Tab walks the sidebar: the days, the day's deadlines (when it
-      // has some), the projects, and back to the days.
-      // In the day's deadline list: up/down pick, Enter goes to the line,
-      // Ctrl+L marks it done (again: not done), as in the note.
-      // A key with Ctrl or Alt it does not use goes on to the calendar.
-      if (page.dueFocus >= 0) {
-        if (page.dueKey(event)) { event.accepted = true; return }
-        // Any other key leaves the list, one with Ctrl or Alt for the
-        // calendar below.
-        if (!(event.modifiers & (Qt.ControlModifier | Qt.AltModifier))) { page.dueFocus = -1; return }
-      }
-      if (page.projFocus >= 0) {
-        if (page.projectsKey(event)) event.accepted = true
-        return
-      }
-      // (The projects' list always has a row: the one that makes a new one.)
-      if (Sc.hit(event, "calLists")) {
-        if (page.focusDue.length > 0) page.dueFocus = 0
-        else page.projFocus = 0
-      } else if (Sc.hit(event, "calBack")) {
-        page.toggleSidebar()
-      } else if (Sc.hit(event, "calPrevDay")) {
-        page.moveCalendar(-1, 0)
-      } else if (Sc.hit(event, "calNextDay")) {
-        page.moveCalendar(1, 0)
-      } else if (Sc.hit(event, "calPrevWeek")) {
-        page.moveCalendar(-7, 0)
-      } else if (Sc.hit(event, "calNextWeek")) {
-        page.moveCalendar(7, 0)
-      } else if (Sc.hit(event, "calPrevMonth")) {
-        page.moveCalendar(0, -1)
-      } else if (Sc.hit(event, "calNextMonth")) {
-        page.moveCalendar(0, 1)
-      } else if (Sc.hit(event, "calToday")) {
-        page.calFocus = new Date()
-      } else if (Sc.hit(event, "calOpen")) {
-        page.openCalendarDay(page.calFocus)
-      } else {
-        return
-      }
-      event.accepted = true
-    }
+    Keys.onPressed: function (event) { if (sidebar.keyPressed(event)) event.accepted = true }
   }
 
   Column {

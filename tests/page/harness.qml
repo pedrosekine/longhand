@@ -107,6 +107,12 @@ ShellRoot {
     }
 
     function focusedRow(): string { var e = page.editorItem; return e.focusedRow + "/" + e.rows.length + " item=" + (!!e.rowItem(e.focusedRow)) }
+    // Whether the note has the keys (a line's field has them), and where
+    // its cursor is: the checkpoint a pane closing gives back.
+    function noteFocus(): string {
+      var e = page.editorItem, it = e.rowItem(e.focusedRow)
+      return JSON.stringify({ row: e.focusedRow, at: e.cursorPosition, active: !!it && it.field.activeFocus })
+    }
     function mentionPick(i: int, shift: bool): void { page.mentionFocus = i; page.acceptMention(shift) }
     function hint(): string { return page.hint }
     function yes(): void { page.acceptAsk() }
@@ -138,6 +144,7 @@ ShellRoot {
     function dayBlockText(): string { return page.dayBlockText }
     function dayType(text: string): void { var f = page.dayFieldItem(); f.text = text; f.cursorPosition = text.length }
     function dayFieldText(): string { return page.dayFieldItem().text }
+    function dayReadOnly(): bool { return page.dayFieldItem().readOnly }
     function dayMention(): string { return JSON.stringify(page.dayMention ? page.dayMention.items.map(function (m) { return m.head }) : []) }
     function dayCardFocus(): int { return page.dayCardFocus }
     function dayCards(): string {
@@ -149,6 +156,14 @@ ShellRoot {
     function surfaces(): string { return JSON.stringify(page.surfaces()) }
     function marginOpen(on: bool): void { page.marginOpen = on }
     function calDay(y: int, m: int, d: int): void { page.calFocus = new Date(y, m - 1, d) }
+    function calAt(): string { return Qt.formatDate(page.calFocus, "yyyy-MM-dd") }
+    // A key as the sidebar's own handler gets it: the calendar, the day's
+    // deadlines, the projects. Where it stands in them: -1 is not in it.
+    function sideKey(key: int, mods: int): bool {
+      var sb = page.contentItem.children.filter(function (k) { return k.sidebarKeysRef !== undefined })[0]
+      return sb.keyPressed({ key: key, text: "", modifiers: mods })
+    }
+    function sideFocus(): string { return JSON.stringify({ due: page.dueFocus, proj: page.projFocus }) }
     function goFirstDue(): void { page.goToDeadline(page.focusDue[0]) }
     // The day's deadline list as the keyboard drives it: focus a row, a key.
     function dueKey(i: int, key: int, mods: int): bool { page.dueFocus = i; return page.dueKey({ key: key, text: "", modifiers: mods }) }
@@ -221,6 +236,7 @@ ShellRoot {
     function talkKey(key: int, mods: int): bool { return page.talkKey({ key: key, text: "", modifiers: mods }) }
     function dash(): void { page.toggleDash() }
     function dashOpen(): bool { return page.dashOpen }
+    function dashFocused(): bool { return page.dashItem.dashKeysRef.activeFocus }
     function dashFocus(i: int): void { page.taskFocus = i }
     function focusedDashRow(): string { var r = page.taskRows[page.taskFocus]; return r ? r.kind + "/" + (r.item ? r.item.kind : (r.task ? page.taskTitle(r.task) : "")) : "" }
     function acceptRow(rowKind: string, ask: string): bool {
@@ -291,7 +307,7 @@ ShellRoot {
                                       ask: r.item.kind, say: page.sayAsk(r.item, !!r.task), fresh: page.isNewAsk(r.item) }
           : r.kind === "question" ? { kind: "question", id: r.item.id, text: r.item.question, recommended: r.item.recommended,
                                       fresh: page.isNewAsk(r.item) }
-          : r.kind === "deadline" ? { kind: "deadline", text: r.deadline.title, due: r.deadline.due,
+          : r.kind === "deadline" ? { kind: "deadline", text: r.deadline.title, due: r.deadline.due, status: r.deadline.status,
                                       where: page.deadlineWhere(r.deadline), grade: r.deadline.grade,
                                       mark: page.taskMark(page.taskOfAnchor(r.deadline.id)),
                                       pills: page.pillsFor(r).map(function (x) { return x.text }) }

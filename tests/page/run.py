@@ -955,11 +955,11 @@ def main() -> int:
         before = float(p.call("rowY", b))
         p.call("ctrlD")
         check(p.wait(lambda: json.loads(p.call("room"))["row"] == a), f"Ctrl+D opens room under its line ({p.call('room')})")
-        time.sleep(0.3)
-        rm = json.loads(p.call("room"))
-        after = float(p.call("rowY", b))
-        check(after >= before + rm["height"] - 1 and after >= rm["top"] + rm["height"] - 1,
-              f"…and the next line moves below the question ({before} → {after}, {rm})")
+        def below():
+            rm = json.loads(p.call("room"))
+            after = float(p.call("rowY", b))
+            return after >= before + rm["height"] - 1 and after >= rm["top"] + rm["height"] - 1
+        check(p.wait(below, 3), f"…and the next line moves below the question ({before} → {p.call('rowY', b)}, {p.call('room')})")
         p.call("closeWhen")
         check(p.wait(lambda: abs(float(p.call("rowY", b)) - before) < 1), "…and back when it is answered or left")
         (p.daily / f"{TODAY}.md").write_text(header(TODAY) + "just words\n")
@@ -2226,6 +2226,140 @@ def main() -> int:
             check(shape()["window"], "…and the window under it stays")
         else:
             print("skip the overlay (it takes the screen): python3 tests/page/run.py --overlay")
+
+        # 15. coming back where you left (docs/navigation.md, "Checkpoints"):
+        # a pane closing gives the keys back to the pane they came from, at
+        # its checkpoint — the note's cursor at the same letter — or to the
+        # middle when that pane has closed since; and Esc out of a task's
+        # conversation goes to the day's, when it is open (the Esc rule, 2).
+        KEY_TAB, KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_PGDN = 0x01000001, 0x01000013, 0x01000015, 0x01000012, 0x01000014, 0x01000017
+        def note_focus():
+            return json.loads(p.call("noteFocus"))
+        p.call("closeAll")
+        for old in p.daily.glob("*.md"):
+            old.unlink()
+        (p.daily / f"{TODAY}.md").write_text(header(TODAY) + "The morning, in long sentences.\n\n- [ ] write the intro ⏫\n")
+        (p.daily / f"{YDAY}.md").write_text(header(YDAY) + "yesterday's words\n")
+        p.open_fresh()
+        p.call("closePanes")
+        morning = p.line_of("The morning")
+        at = p.offset_of_line(morning) + len("The morn")
+        p.call("cursor", at)
+        check(p.wait(lambda: note_focus() == {"row": morning, "at": at, "active": True}, 2), f"the cursor in a line, mid-word ({note_focus()})")
+        p.call("dive")
+        check(p.wait(lambda: panes()["right"] == "margin" and panes()["here"] == "right", 2), f"the block's conversation, with the keys ({panes()})")
+        p.call("back")
+        check(p.wait(lambda: panes()["here"] == "center" and note_focus() == {"row": morning, "at": at, "active": True}, 2),
+              f"Esc there: the keys back in the note, the cursor at the same letter ({panes()}, {note_focus()})")
+        p.call("pageKey", KEY_BL, CTRL)
+        check(p.call("sideKey", KEY_BR, CTRL) == "true" and p.wait(lambda: panes()["here"] == "right" and panes()["right"] == "day", 2),
+              f"Ctrl+] from the sidebar: the day's conversation ({panes()})")
+        p.call("dayKey", KEY_ESC, 0)
+        check(p.wait(lambda: panes()["panes"] == ["left", "center"] and panes()["here"] == "left", 2),
+              f"…Esc: the keys back to the sidebar they came from ({panes()})")
+        p.call("sideKey", KEY_BR, CTRL)
+        p.wait(lambda: panes()["here"] == "right", 2)
+        p.call("sidebar")                          # closed under the keys, as a click on the date does
+        check(panes()["panes"] == ["center", "right"] and panes()["here"] == "right", f"the sidebar closed, the keys still on the right ({panes()})")
+        p.call("dayKey", KEY_ESC, 0)
+        check(p.wait(lambda: panes()["panes"] == ["center"] and panes()["here"] == "center"
+                     and note_focus() == {"row": morning, "at": at, "active": True}, 2),
+              f"…Esc: the pane they came from has gone, so the keys go to the middle, the cursor where it was ({panes()}, {note_focus()})")
+
+        p.call("dash")
+        p.call("dashKey", KEY_BR, CTRL)
+        p.call("dashKey", KEY_BS, CTRL)
+        check(p.wait(lambda: panes()["center"] == "dash" and panes()["right"] == "day" and panes()["here"] == "center", 2),
+              f"the dashboard, the day beside it, the keys on the rows ({panes()})")
+        p.call("dashFocus", next(n for n, r in enumerate(json.loads(p.call("dashRows"))) if r.get("text") == "write the intro"))
+        check(p.call("dashKey", KEY_RETURN, CTRL | SHIFT) == "true" and p.wait(lambda: panes()["right"] == "talk" and panes()["here"] == "right", 2),
+              f"Ctrl+Shift+Enter on a task: its conversation in the day's place ({panes()})")
+        check(p.call("talkKey", KEY_ESC, 0) == "true" and p.wait(lambda: panes()["right"] == "day" and panes()["here"] == "right", 2),
+              f"…Esc: back to the day's conversation, the pane's home, with the keys ({panes()})")
+        p.call("dayKey", KEY_ESC, 0)
+        check(p.wait(lambda: panes()["panes"] == ["center"] and panes()["center"] == "dash" and p.call("dashFocused") == "true", 2),
+              f"…and Esc again closes the pane, the keys back on the dashboard ({panes()})")
+
+        # Cancelled rows stay on the dashboard until tomorrow, as done ones
+        # do (docs/tasks.md, rule 5): one cancelled today is listed, one
+        # cancelled yesterday is not — and is still in the store, as history.
+        cid = int(re.search(r"#(\d+)", p.pomo("add", "cancelled this morning", "2030-02-01")).group(1))
+        yid = int(re.search(r"#(\d+)", p.pomo("add", "cancelled yesterday", "2030-02-02")).group(1))
+        p.pomo("cancel", str(cid))
+        p.pomo("cancel", str(yid))
+        noon = int(dt.datetime.combine(dt.date.today() - dt.timedelta(days=1), dt.time(12)).timestamp())
+        p.store.write_text("".join(
+            "\t".join(f[:4] + [str(noon)] + f[5:]) + "\n" if int(f[0]) == yid else "\t".join(f) + "\n"
+            for f in (l.split("\t") for l in p.store.read_text().splitlines())))
+        p.call("dash")
+        p.call("dash")
+        def deadline_rows():
+            return {r["text"]: r["status"] for r in json.loads(p.call("dashRows")) if r["kind"] == "deadline"}
+        check(p.wait(lambda: deadline_rows().get("cancelled this morning") == "cancelled"),
+              f"a deadline cancelled today keeps its row on the dashboard ({deadline_rows()})")
+        check("cancelled yesterday" not in deadline_rows() and p.deadline(yid)["status"] == "cancelled",
+              f"…one cancelled yesterday is gone from it, and kept in the store ({deadline_rows()}, {p.deadline(yid)})")
+        p.call("dash")
+
+        # A past day's conversation is read, not talked in (docs/plan.md,
+        # 0): the pane follows the note to yesterday, its turns shown, its
+        # box read-only, and nothing sent from it.
+        (p.vault / "agents" / "longhand" / "daily").mkdir(parents=True, exist_ok=True)
+        (p.vault / "agents" / "longhand" / "daily" / f"{YDAY}.json").write_text(json.dumps(
+            {"date": YDAY, "blocks": {}, "day": {"turns": [{"role": "student", "text": "what was yesterday for?"},
+                                                         {"role": "agent", "text": "the outline"}]}}))
+        p.call("openDay", YDAY)
+        p.wait(lambda: "yesterday's words" in p.call("text"))
+        p.call("pageKey", KEY_BR, CTRL)
+        check(p.wait(lambda: p.call("dayShown") == "true" and json.loads(p.call("dayTurns")) == ["student: what was yesterday for?", "agent: the outline"]),
+              f"yesterday's note: the agent's pane shows yesterday's conversation ({p.call('dayTurns')})")
+        check(p.call("dayReadOnly") == "true", "…its box read-only")
+        sent = p.calls.read_text().count("start day")
+        p.call("dayType", "can I still ask?")
+        p.call("dayKey", KEY_RETURN, 0)
+        time.sleep(1)
+        check(p.calls.read_text().count("start day") == sent and len(json.loads(p.call("dayTurns"))) == 2,
+              f"…and Enter there sends nothing ({p.call('dayTurns')})")
+        p.call("dayType", "")
+        p.call("openDay", TODAY)
+        check(p.wait(lambda: p.call("dayReadOnly") == "false"), "back on today's note, the box takes words again")
+        p.call("closePanes")
+
+        # The calendar's keys (the sidebar): the arrows walk the days and
+        # weeks, PgDn a month; Tab goes on to the day's deadlines, then the
+        # projects, and Esc backs a list out to the calendar; Enter opens
+        # the day; Esc on the calendar closes the sidebar.
+        def side():
+            return json.loads(p.call("sideFocus"))
+        p.pomo("add", "the calendar's deadline", "2030-03-13")
+        p.call("pageKey", KEY_BL, CTRL)
+        p.call("calDay", 2030, 3, 12)
+        steps = [(KEY_RIGHT, "2030-03-13"), (KEY_LEFT, "2030-03-12"), (KEY_DOWN, "2030-03-19"), (KEY_UP, "2030-03-12"), (KEY_PGDN, "2030-04-12")]
+        walked = [(p.call("sideKey", k, 0), p.call("calAt")) for k, _ in steps]
+        check(walked == [("true", d) for _, d in steps], f"→ ← ↓ ↑ and PgDn walk the calendar ({walked})")
+        p.call("calDay", 2030, 3, 13)
+        check(p.call("sideKey", KEY_TAB, 0) == "true" and side() == {"due": 0, "proj": -1} and panes()["here"] == "left",
+              f"Tab on a day with a deadline: into its list ({side()})")
+        check(p.call("sideKey", KEY_ESC, 0) == "true" and side() == {"due": -1, "proj": -1} and panes()["panes"] == ["left", "center"],
+              f"…Esc backs out to the calendar, the sidebar open ({side()}, {panes()})")
+        p.call("sideKey", KEY_TAB, 0)
+        check(p.call("sideKey", KEY_TAB, 0) == "true" and side() == {"due": -1, "proj": 0}, f"Tab, Tab: on to the projects ({side()})")
+        check(p.call("sideKey", KEY_ESC, 0) == "true" and side() == {"due": -1, "proj": -1} and panes()["panes"] == ["left", "center"],
+              f"…Esc backs out to the calendar too ({side()}, {panes()})")
+        p.call("calDay", 2030, 3, 14)
+        check(p.call("sideKey", KEY_TAB, 0) == "true" and side() == {"due": -1, "proj": 0}, f"Tab on a day with none: straight to the projects ({side()})")
+        p.call("sideKey", KEY_ESC, 0)
+        # (Not whether a line of the note has the keys: a note shorter than
+        # the line the cursor was on drops them, 2026-10-25, a bug of its own.)
+        y = dt.date.today() - dt.timedelta(days=1)
+        p.call("calDay", y.year, y.month, y.day)
+        check(p.call("sideKey", KEY_RETURN, 0) == "true" and p.wait(lambda: "yesterday's words" in p.call("text") and panes()["here"] == "center"),
+              f"Enter opens the day in the sheet, the keys in the middle ({panes()}, {note_focus()})")
+        p.call("pageKey", KEY_BL, CTRL)
+        check(panes()["here"] == "left", "Ctrl+[: back in the sidebar")
+        check(p.call("sideKey", KEY_ESC, 0) == "true" and p.wait(lambda: panes()["panes"] == ["center"] and panes()["here"] == "center", 2),
+              f"Esc on the calendar closes the sidebar, the keys back in the middle ({panes()})")
+        p.call("openDay", TODAY)
 
         # 13. the usage log: written on close, event names only
         p.call("closeAll")

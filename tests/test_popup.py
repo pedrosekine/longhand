@@ -1,12 +1,15 @@
 """The deadline popup (plugin-deadline): it loads under the installed shell,
 and its tick is the page's — a deadline marked done asks for the sound
 (never on reopening, never when Settings turned it off) and is done in the
-store. Runs quickshell against a throwaway state folder.
+store. It runs `longhand-check` when it opens and after each change, and
+never in the background (docs/tasks.md, rules 1 and 6). Runs quickshell
+against a throwaway state folder.
 
 Run: python3 tests/test_popup.py
 """
 import json
 import os
+import re
 import pathlib
 import subprocess
 import sys
@@ -24,21 +27,29 @@ def check(cond, what):
         failures += 1
 
 
-# Mark the first deadline done, then reopen it, then (sound off) done again;
-# say what the popup counted.
+# Open the popup, mark the first deadline done, then reopen it, then (sound
+# off) done again; say what the popup counted, and when it opened and
+# changed something (the check stub logs when it ran). Each step waits a
+# few beats for the store to say so, as a busy machine is slower.
 QML = """import QtQuick
 import Quickshell
 import "deadline"
 ShellRoot {
   Panel { id: p }
   property int step: 0
+  property int waited: 0
+  function at() { return (Date.now() / 1000).toFixed(3) }
   Timer {
     interval: 900; repeat: true; running: true
     onTriggered: {
       var it = p.listed[0]
-      if (step === 0) { console.log("LOADED items=" + p.listed.length); if (it) p.tickItem(it) }
-      else if (step === 1) { console.log("AFTER_DONE status=" + (it ? it.status : "") + " heard=" + p.ticksHeard); if (it) p.tickItem(it) }
-      else if (step === 2) { console.log("AFTER_REOPEN status=" + (it ? it.status : "") + " heard=" + p.ticksHeard) }
+      var want = step === 2 ? "done" : step === 3 ? "open" : ""
+      if (want && it && it.status !== want && waited < 8) { waited++; return }
+      waited = 0
+      if (step === 0) { console.log("LOADED items=" + p.listed.length + " at=" + at()); p.open(); console.log("OPENED at=" + at()) }
+      else if (step === 1) { console.log("TICK at=" + at()); if (it) p.tickItem(it) }
+      else if (step === 2) { console.log("AFTER_DONE status=" + (it ? it.status : "") + " heard=" + p.ticksHeard); if (it) p.tickItem(it) }
+      else if (step === 3) { console.log("AFTER_REOPEN status=" + (it ? it.status : "") + " heard=" + p.ticksHeard) }
       else Qt.quit()
       step++
     }
@@ -47,8 +58,13 @@ ShellRoot {
 """
 
 
+def stamp(out: str, name: str) -> float:
+    m = re.search(name + r"\S* at=([\d.]+)", out)
+    return float(m.group(1)) if m else -1.0
+
+
 def run(tmp: pathlib.Path, env: dict) -> str:
-    r = subprocess.run(["timeout", "15", "quickshell", "-p", str(tmp / "shell")], env=env,
+    r = subprocess.run(["timeout", "30", "quickshell", "-p", str(tmp / "shell")], env=env,
                        capture_output=True, text=True)
     return r.stdout + r.stderr
 
@@ -64,6 +80,11 @@ def main() -> int:
     bindir = tmp / "bin"
     bindir.mkdir()
     (bindir / "pomo").symlink_to(ROOT / "cli" / "pomo")
+    # The check, as a stub that says when it ran: whether it runs is the
+    # popup's to get right, what it does is tests/test_check.py's.
+    checks = tmp / "checks.log"
+    (bindir / "longhand-check").write_text(f'#!/bin/sh\necho "$(date +%s.%N) $*" >> "{checks}"\n')
+    (bindir / "longhand-check").chmod(0o755)
     state, cfg = tmp / "state", tmp / "config"
     (cfg / "longhand").mkdir(parents=True)
     env = dict(os.environ, XDG_STATE_HOME=str(state), XDG_CONFIG_HOME=str(cfg), LONGHAND_SILENT="1",
@@ -76,6 +97,13 @@ def main() -> int:
     check("AFTER_REOPEN status=open heard=1" in out, "reopening it is silent")
     check(not any(w in out for w in ("ReferenceError", "TypeError", "Unable to assign", "is not a type")),
           "…with no QML errors")
+    ran = [float(l.split()[0]) for l in checks.read_text().splitlines()] if checks.exists() else []
+    opened, ticked = stamp(out, "OPENED"), stamp(out, "TICK")
+    check(opened > 0 and not [t for t in ran if t < opened - 0.05],
+          f"nothing runs the check before the popup opens: no watcher (at {opened}: {ran})")
+    check(any(opened - 0.05 <= t < ticked for t in ran), f"opening the popup runs the check, catching edits made elsewhere ({ran})")
+    check(sum(t >= ticked for t in ran) >= 2, f"…and each change it makes runs it after (done, then reopened: {ran})")
+    check(checks.exists() and all(l.endswith(" --quiet") for l in checks.read_text().splitlines()), "…quietly")
 
     (cfg / "longhand" / "settings.json").write_text(json.dumps({"tickSound": False}))
     out = run(tmp, env)
