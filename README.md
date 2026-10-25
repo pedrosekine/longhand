@@ -191,7 +191,8 @@ The page is three panes at most, and the bracket keys are the three, left to
 right: `Ctrl+[` the sidebar, `Ctrl+\` the middle (the note, or the
 dashboard in its place: there it flips the two), `Ctrl+]` the agent's pane.
 A pane's key takes you to it, opening it; pressed in it, it closes it.
-`Alt+←/→` move between the panes that are open and never open or close one.
+`Alt+←/→` move between the panes that are open and never close one; in the
+note with nothing to its right, `Alt+→` opens the block's own conversation.
 An accent frame, like Omarchy's active border, is drawn around a side pane
 while it has the keys (none around the middle: there the cursor says so); Esc backs out one level, and a pane that closes gives the keys
 back where they came from, at the very place you left (the note's cursor
@@ -308,7 +309,9 @@ they ask of you — **due** (a date you owe), **doing** (a day you mean to work
 on it), **to schedule** (a priority and no day yet) — and then by course,
 never by the day the thought was written. Each row says where it was written
 and how long ago ("Design Theory › Essay 2 · yesterday"); dates are the same
-pills as in the note.
+pills as in the note. A deadline's row also shows what its line holds: the
+day you mean to work on it ("do tomorrow"), its priority (▲ or ▽ beside the
+box) and its estimate.
 
 Enter opens the line in its note, on any day, as it does everywhere.
 `Ctrl+Enter` ticks it — in the day it was written, so the note and the

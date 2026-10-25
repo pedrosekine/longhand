@@ -22,7 +22,7 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | The middle: go there; in it, flip the note and the dashboard | `Ctrl+\` | everywhere |
 | The agent's pane: go there, opening it on the day's conversation; in it, close it | `Ctrl+]` · `Ctrl+J` | everywhere |
 | The open pane to the left | `Alt+←` | everywhere |
-| The open pane to the right | `Alt+→` | everywhere |
+| The open pane to the right (in the note, with none: this block's conversation) | `Alt+→` | everywhere |
 | Open or close the dashboard | `Ctrl+T` | everywhere |
 | Flip between overlay and window | `F11` · `Ctrl+Alt+P` | everywhere |
 | Close the overlay | `Esc` | in the note |

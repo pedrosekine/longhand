@@ -37,7 +37,10 @@ being talked about beside it, which stays faintly marked.
   close, so there `Ctrl+\` flips the note and the dashboard (a keys or
   settings sheet in its place closes instead).
 - **`Alt+←` / `Alt+→`** move to the next open pane that way, as Super+arrows
-  move between Hyprland's windows. They never open or close anything; at the
+  move between Hyprland's windows. They never close anything, and open one
+  thing only: `Alt+→` in the note with nothing to its right opens the
+  block's own conversation, without sending anything, as it did before the
+  panes (brought back 2026-10-25: it was missed). Anywhere else, at the
   edge a hint says which key would open a pane there.
 - **A click** in a pane puts the keys there too.
 - `Ctrl+T` (the dashboard), `Ctrl+J` (the agent's pane) and `Ctrl+Shift+B`

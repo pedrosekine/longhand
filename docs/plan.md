@@ -654,7 +654,8 @@ from 2026-09/10 and still stand.
   backs out one level and gives the keys back where they were, an accent
   frame is around the pane with the keys, and the pointer follows the
   selection. Watch: whether the days on `Alt+[ ]` are found (they were
-  `Ctrl+[ ]`), whether anyone misses Alt+→ opening the margin, and whether
+  `Ctrl+[ ]`), whether anyone misses Alt+→ opening the margin (yes: back
+  on 2026-10-25, in the note at the right edge), and whether
   "every selection" for the pointer is felt as help or as the mouse being
   taken (the `pointer` counts in the usage log).
 - **A live check that failed once** (2026-10-18, then passed four runs):

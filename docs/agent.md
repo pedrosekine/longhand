@@ -193,8 +193,8 @@ about, not only to take or leave, as any block is in the note.
   each agent reads the other's part before it answers. A deadline found in
   the writing has no box yet: its conversation is filed under its words; a
   question about no box, under its own.
-- **Summoned on any task** (Alt+→ on its row, the note's key for a block's
-  margin): the margin opens beside the dashboard on the task's one
+- **Summoned on any task** (Ctrl+Shift+Enter on its row, the note's key for
+  talking about a block; Alt+→ until 2026-10-23): the margin opens beside the dashboard on the task's one
   conversation, to think it through. Nothing is pinned to accept; a message
   goes to the margin agent, about the task's block, as Ctrl+Enter in the
   note would — it knows the notes, the course's documents and what the

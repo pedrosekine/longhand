@@ -881,6 +881,16 @@ def main() -> int:
         check(after == before, f"asking an answered block runs nothing again ({before} → {after})")
         check(json.loads(p.call("panel"))["margin"] is True, "…it opens the conversation instead")
         check(p.call("chatFocused") == "true", "…with the cursor in the box")
+        # Alt+→ in the note with nothing to its right: the block's own
+        # conversation, as before the panes (brought back 2026-10-25), and
+        # nothing sent.
+        p.call("marginOpen", "false")
+        p.call("cursor", p.call("cursorAt"))
+        check(p.wait(lambda: json.loads(p.call("panel"))["margin"] is False), "the margin closed")
+        check(p.call("keyPage", 0x01000014, 0x08000000) == "true" and json.loads(p.call("panel"))["margin"] is True,
+              "Alt+→ in the note, nothing to its right: the block's conversation opens")
+        after2 = len(list((p.state / "longhand" / "payloads").glob("*")))
+        check(after2 == after, f"…without asking anything ({after} → {after2})")
 
         # 11i. a box answered, then ticked, is the same block to its
         # conversation: found by its words, whatever its box and facts
@@ -1142,6 +1152,36 @@ def main() -> int:
         p.call("dashWhen", "read the whole paper")
         check(p.wait(lambda: "- [ ] read the whole paper ⏫" in p.call("text")),
               f"…the line's words, its facts kept ({p.call('text')[-60:]!r})")
+
+        # A deadline's row shows what its line holds, as a task's does
+        # (2026-10-25): the day to work on it, the priority, the estimate;
+        # and t and p write them on its line.
+        out = p.pomo("add", "the poster", "2030-01-08")
+        pid = int(re.search(r"#(\d+)", out).group(1))
+        p.call("cursorEnd")
+        p.call("insert", f"\n- [ ] the poster [est:: 2h] 🔽 ⏳ 2030-01-03 📅 2030-01-08 ^d{pid}")
+        p.call("cursor", 1)
+        p.wait(lambda: p.deadline(pid)["link"] != "")
+        # Opened afresh, the list is read again with the new line in it.
+        if p.call("dashOpen") == "true":
+            p.call("dash")
+        p.call("dash")
+        def poster():
+            return next((r for r in json.loads(p.call("dashRows")) if r.get("text") == "the poster"), {})
+        check(p.wait(lambda: poster().get("kind") == "deadline" and poster()["mark"] == "▽"
+                     and poster()["pills"][0].startswith("do ") and poster()["pills"][-1] == "2h"),
+              f"a deadline's row draws its do-date, priority and estimate ({poster()})")
+        row("the poster")
+        check(p.call("dashType", "p") == "true", "p on a deadline row is taken")
+        check(p.wait(lambda: f"- [ ] the poster [est:: 2h] ⏳ 2030-01-03 📅 2030-01-08 ^d{pid}" in p.call("text")),
+              f"…and walks its line's priority ({p.call('text')[-80:]!r})")
+        row("the poster")
+        check(p.call("dashType", "t") == "true", "t on a deadline row asks when")
+        p.call("dashWhen", "2030-01-04")
+        check(p.wait(lambda: f"⏳ 2030-01-04 📅 2030-01-08 ^d{pid}" in p.call("text")),
+              f"…the day to work on it, its due date kept ({p.call('text')[-80:]!r})")
+        p.call("removeLine", p.line_of(f"^d{pid}"))
+        p.wait(lambda: p.deadline(pid)["status"] == "cancelled")
 
         out = p.pomo("add", "essay outline", "2030-01-05")
         eid = int(re.search(r"#(\d+)", out).group(1))
@@ -1647,9 +1687,10 @@ def main() -> int:
               and json.loads(p.call("talk"))["dashWidth"] == wide and p.call("dashOpen") == "true",
               "Esc: back to the list, the dashboard whole again")
         settled = {first, revised["id"]}
-        # Alt+→ on the task's own row: the agent summoned to think it through,
-        # on the task's one conversation — the planner's turns in it — and a
-        # message there goes to the margin, about the task's block.
+        # Ctrl+Shift+Enter on the task's own row (Alt+→ until 2026-10-23):
+        # the agent summoned to think it through, on the task's one
+        # conversation — the planner's turns in it — and a message there
+        # goes to the margin, about the task's block.
         ALT, KEY_RIGHT_ = 0x08000000, 0x01000014
         talked = revised["title"]
         def task_row():

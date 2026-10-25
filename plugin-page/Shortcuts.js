@@ -70,13 +70,15 @@ var actions = [
   // if it is closed; pressed in it, it closes it. The middle has nothing
   // to close, so there it flips the note and the dashboard. Alt+←/→ only
   // move between the panes that are open, as Super+arrows do between
-  // Hyprland's windows: nothing opens or closes. Ctrl+J and Ctrl+Shift+B
-  // are the keys these had before.
+  // Hyprland's windows: nothing opens or closes, save one (2026-10-25):
+  // Alt+→ in the note with nothing to its right opens the block's own
+  // conversation, its key before the panes. Ctrl+J and Ctrl+Shift+B are
+  // the keys these had before.
   { id: "sidebar", group: "page", places: ["any"], does: "The sidebar (calendar, projects): go there, opening it; in it, close it", keys: ["Ctrl+[", "Ctrl+Shift+B"] },
   { id: "home", group: "page", places: ["any"], does: "The middle: go there; in it, flip the note and the dashboard", keys: ["Ctrl+\\"] },
   { id: "day", group: "page", places: ["any"], does: "The agent's pane: go there, opening it on the day's conversation; in it, close it", keys: ["Ctrl+]", "Ctrl+J"] },
   { id: "paneLeft", group: "page", places: ["any"], does: "The open pane to the left", keys: ["Alt+Left"] },
-  { id: "paneRight", group: "page", places: ["any"], does: "The open pane to the right", keys: ["Alt+Right"] },
+  { id: "paneRight", group: "page", places: ["any"], does: "The open pane to the right (in the note, with none: this block's conversation)", keys: ["Alt+Right"] },
   { id: "dashboard", group: "page", places: ["any"], does: "Open or close the dashboard", keys: ["Ctrl+T"] },
   // F11 is every app's full-screen key, and the overlay is the full-screen
   // shape; Ctrl+Alt+P for keyboards whose F-row wants Fn. Ctrl+P is left

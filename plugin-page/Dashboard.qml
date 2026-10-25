@@ -121,6 +121,8 @@ BorderSurface {
             readonly property bool isHead: kind === "head" || kind === "month"
             readonly property var task: kind === "task" ? modelData.task : null
             readonly property var deadline: kind === "deadline" ? modelData.deadline : null
+            // The line a deadline stands for: its priority is drawn too.
+            readonly property var line: task || (deadline ? page.taskOfAnchor(deadline.id) : null)
             readonly property bool boxed: kind === "task" || kind === "deadline" || asks
             // The agent's proposal or question, under the box it is about.
             readonly property bool asks: kind === "proposal" || kind === "question" || kind === "told"
@@ -328,8 +330,8 @@ BorderSurface {
                 anchors.leftMargin: page.sp(5)
                 y: Math.round((inner.lineH - implicitHeight) / 2)
                 textFormat: Text.PlainText
-                text: page.taskMark(dashRow.task)
-                color: dashRow.task && dashRow.task.priority >= 1 ? page.accent : page.faint
+                text: page.taskMark(dashRow.line)
+                color: dashRow.line && dashRow.line.priority >= 1 ? page.accent : page.faint
                 font.family: page.fontFamily
                 font.pixelSize: page.fs(Style.font.caption)
               }
@@ -471,7 +473,7 @@ BorderSurface {
                                                   || kind === "proposal" || kind === "question" || kind === "told")
                 text: kind === "task" ? page.tips([["Go to the line", "dashOpen"], ["Done", "dashDone"], ["Reschedule", "dashWhen"], ["Cycle its priority", "dashPriority"],
                                                    [dashRow.task && dashRow.task.away ? "Back" : "Not now", "dashShelve"], ["Keep it", "dashKeep"], ["Drop it", "dashDrop"]])
-                  : kind === "deadline" ? page.tips([["Go to its line", "dashOpen"], ["Done", "dashDone"], ["Grade", "dashGrade"]])
+                  : kind === "deadline" ? page.tips([["Go to its line", "dashOpen"], ["Done", "dashDone"], ["The day to work on it", "dashWhen"], ["Cycle its priority", "dashPriority"], ["Grade", "dashGrade"]])
                   : kind === "told" ? page.tips([["Let it stand", "dashDone"], ["Undo it", "dashDrop"], ["Talk with the planner about it", "dashOpen"]])
                   : kind === "proposal" && dashRow.modelData.item.kind === "file"
                     ? page.tips([["File it: moved from Downloads into the course's documents", "dashDone"], ["Decline", "dashDrop"], ["Open it first", "dashOpen"]])

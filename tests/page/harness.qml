@@ -292,7 +292,9 @@ ShellRoot {
           : r.kind === "question" ? { kind: "question", id: r.item.id, text: r.item.question, recommended: r.item.recommended,
                                       fresh: page.isNewAsk(r.item) }
           : r.kind === "deadline" ? { kind: "deadline", text: r.deadline.title, due: r.deadline.due,
-                                      where: page.deadlineWhere(r.deadline), grade: r.deadline.grade }
+                                      where: page.deadlineWhere(r.deadline), grade: r.deadline.grade,
+                                      mark: page.taskMark(page.taskOfAnchor(r.deadline.id)),
+                                      pills: page.pillsFor(r).map(function (x) { return x.text }) }
           : { kind: "task", text: page.taskTitle(r.task), where: page.taskWhere(r.task),
               date: r.task.date, prio: r.task.priority, when: r.task.when, away: r.task.away || "", done: !!r.task.done }
       }))

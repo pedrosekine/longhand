@@ -1141,6 +1141,12 @@ Item {
   function movePane(d) {
     var i = root.panes.indexOf(root.here) + d
     if (i >= 0 && i < root.panes.length) { root.focusPane(root.panes[i]); return }
+    // The one opening: at the right edge, in the note, Alt+→ steps into the
+    // block's own conversation, as it did before the panes (the student
+    // missed it, 2026-10-25). It opens without sending, to be asked in
+    // your own words; Ctrl+Enter is the key that sends.
+    if (d > 0 && root.here === "center" && root.centerView === "note"
+        && root.currentHash !== "" && root.marginWidth > 0) { root.diveIn(); return }
     root.showHint(d < 0 ? "nothing to the left · " + root.keyName("sidebar") + " opens the sidebar"
                         : "nothing to the right · " + root.keyName("day") + " opens the agent's pane")
   }
@@ -3556,22 +3562,32 @@ Item {
   // The dates a row carries, drawn the way the note draws them: a bordered
   // date at the line's end. The day it is owed is bare, as in the note; the
   // day I mean to work on it says so and is filled rather than outlined.
+  // A deadline's row reads the rest from its line, as a task's does: the
+  // day agreed to work on it and the estimate were drawn for plain boxes
+  // only until 2026-10-25, and every ⏳ in use was on a dated line.
   function pillsFor(row) {
     var out = []
     if (row.kind === "deadline") {
       var d = row.deadline
+      var lt = root.taskOfAnchor(d.id)
+      if (lt && lt.when && d.status === "open") out.push(root.doPill(lt))
       var at = new Date(d.due * 1000)
       var timed = !(at.getHours() === 23 && at.getMinutes() === 59)
       out.push({ text: root.sayDate(Qt.formatDateTime(at, timed ? "yyyy-MM-dd HH:mm" : "yyyy-MM-dd")),
                  tone: d.status !== "open" ? "done" : (d.due * 1000 < Date.now() ? "late" : "due") })
+      if (lt && lt.est) out.push({ text: lt.est, tone: "est" })
       return out
     }
     if (row.kind !== "task") return out
     var t = row.task
-    if (t.when) out.push({ text: "do " + root.sayDate(t.when) + (root.agentDates[t.key] === t.when ? " ◇" : ""), tone: "do" })
+    if (t.when) out.push(root.doPill(t))
     if (t.due) out.push({ text: root.sayDate(t.due), tone: "due" })
     if (t.est) out.push({ text: t.est, tone: "est" })
     return out
+  }
+
+  function doPill(t) {
+    return { text: "do " + root.sayDate(t.when) + (root.agentDates[t.key] === t.when ? " ◇" : ""), tone: "do" }
   }
 
   function sayDate(iso) {
@@ -3653,6 +3669,14 @@ Item {
     return row && row.kind === "task" ? row.task : null
   }
 
+  // The line under the row for what a line holds (its priority, the day to
+  // work on it): a task's own, or the line an open deadline stands for.
+  function focusedLine() {
+    var row = root.taskRows[root.taskFocus]
+    if (row && row.kind === "deadline" && row.deadline.status === "open") return root.taskOfAnchor(row.deadline.id)
+    return root.focusedTask()
+  }
+
   // Delete: dropping something is an answer, and the only honest one for a
   // box that is never going to happen. The line keeps its words and becomes
   // `- [-] … ❌ <today>`, so the note still says what was decided. A
@@ -3687,7 +3711,7 @@ Item {
   // `p`: none → high → low → none. One key for the whole scale, because
   // three levels are offered where five are read.
   function cyclePriorityFocused() {
-    var t = root.focusedTask()
+    var t = root.focusedLine()
     if (!t) return
     root.editTask(t, "prio", Task.nextPriority(t.priority || 0))
     root.touchBox(t, "keep")
@@ -3735,10 +3759,10 @@ Item {
   // because a date is quicker said than picked — and it is read by the
   // note's own parser, so "friday" means here what it means there.
   function startDashWhen() {
-    if (!root.focusedTask()) return
+    if (!root.focusedLine()) return
     root.dashFieldKind = "when"
     root.dashFieldStart = ""
-    root.dashWhenFor = root.focusedTask()
+    root.dashWhenFor = root.focusedLine()
     root.dashWhenText = ""
   }
 
