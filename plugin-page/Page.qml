@@ -216,7 +216,11 @@ Item {
     return px > 0 && fam !== "" ? bodyMetrics.advanceWidth("abcdefghijklmnopqrstuvwxyz") / 26 : 1
   }
   readonly property int measure: Math.round(root.chWidth * root.measureChars)
+  // The overlay's sheet has a border, inside which the padding starts:
+  // without it the overlay held 71½ characters, and a line of 72 wrapped
+  // there and not in the window (found by run.py --overlay, 2026-10-25).
   readonly property int sheetFor: root.measure + 2 * root.sheetPadding
+    + (root.alongside ? 0 : Math.ceil(Border.left(root.borderSpec) + Border.right(root.borderSpec)))
   // Where the note sits: one rule for both shapes and both sides
   // (Layout.js, 2026-10-24) — centred, and a pane opening at the window's
   // edge does not move it while there is room for both. Until then the window
