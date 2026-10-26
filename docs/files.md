@@ -104,7 +104,7 @@ the note or the dashboard. There are two:
 
 ## Privacy
 
-### The horizon (first to build)
+### The horizon (built 2026-10-26)
 
 On 2026-10-26 the agent's search included `Daily` by default, and none of
 the 672 daily notes (2021-07-17 onwards) was marked `agent: false`, so
@@ -120,6 +120,31 @@ unless the person brings one into a conversation.
 - It is checkable in the payload log.
 - It covers `Daily` only, because `Personal` (where `Reflections` lives) and
   `Health` are already off for the agent's search.
+
+**How it is built.**
+
+The runner holds the rule:
+- `agent_horizon` takes the date from settings.json, else the first
+  `agents/longhand/daily/*.json`, else today. A vault the agent never ran in
+  shows it nothing from before.
+- `before_horizon` gates every reader of past days: a run on that day, a
+  project's earlier notes, the planner's week of notes, the outcomes, a
+  task's block and the briefs.
+- `search.py` holds such days back and counts them as `horizon`.
+- `longhand-agent horizon` reports the date, its default and how many daily
+  notes fall on each side of it.
+
+The page has two parts:
+- It reads the horizon when it opens and offers nothing on a day before it.
+  The header says "before the agent's horizon".
+- Settings → what the agent may search has a row above the folders: ←/→
+  moves it by a month, Shift+←/→ by a year, and Backspace sets the default
+  again.
+
+On this vault: 644 days held back, 28 left.
+
+Tests: `tests/test_search.py` (the horizon), `tests/test_agent.py` 16b, and
+`tests/page/run.py` 12c.
 
 ### How private looks (to explore)
 

@@ -278,7 +278,58 @@ Item {
   // private is simply not a day the agent has: no pass on opening it, no
   // send, nothing to click. `longhand-agent` refuses such a note too — this
   // is the page not even asking.
-  readonly property bool agentOn: root.agentDay && !svc.notePrivate
+  readonly property bool agentOn: root.agentDay && !svc.notePrivate && !root.beforeHorizon
+
+  // The agent's horizon (docs/files.md, 2026-10-26): a daily note from
+  // before it is private, whatever its frontmatter says, so years of
+  // journaling are not the agent's. The runner holds the rule and refuses
+  // such a day; this is the page not offering. Moved in Settings → what the
+  // agent may search, kept as `horizon` in settings.json.
+  property var horizonData: null       // `longhand-agent horizon`
+  readonly property bool beforeHorizon: {
+    if (!root.horizonData || svc.noteDate === "" || !svc.configured) return false
+    var p = Days.parse(svc.noteDate, svc.dailyFormat())
+    return !!p && Days.format(p.date, "YYYY-MM-DD") < root.horizonData.horizon
+  }
+
+  function loadHorizon() {
+    if (horizonProc.running || !svc.configured) return
+    horizonProc.command = [svc.runner, "horizon"]
+    horizonProc.running = true
+  }
+
+  // A date ("YYYY-MM-DD"), or "" for the default: the first day the agent
+  // kept. Never later than today.
+  function setHorizon(iso) {
+    var cur = root.readSettings()
+    if (iso === "") delete cur.horizon
+    else cur.horizon = iso
+    root.settingsData = cur
+    settingsFile.setText(JSON.stringify(cur, null, 2) + "\n")
+    root.used("horizon", iso === "" ? "default" : iso)
+    root.showHint(iso === "" ? "the horizon is back to the first day the agent kept"
+      : "the agent sees daily notes from " + root.sayHorizon(iso) + " on")
+    var d = JSON.parse(JSON.stringify(root.horizonData || {}))
+    d.horizon = iso === "" ? d["default"] : iso
+    d.set = iso !== ""
+    root.horizonData = d
+    Qt.callLater(root.loadHorizon)
+  }
+
+  function moveHorizon(months) {
+    if (!root.horizonData) return
+    var p = Days.parse(root.horizonData.horizon, "YYYY-MM-DD")
+    if (!p) return
+    var d = Days.addMonths(p.date, months)
+    var today = new Date()
+    if (d > today) d = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+    root.setHorizon(Days.format(d, "YYYY-MM-DD"))
+  }
+
+  function sayHorizon(iso) {
+    var p = Days.parse(String(iso || ""), "YYYY-MM-DD")
+    return p ? Qt.formatDate(p.date, "d MMMM yyyy") : ""
+  }
 
   // Ctrl+Shift+P, and the header's own word. Writes `agent: false` into the
   // note's frontmatter, which is what the runner reads; taking it off puts
@@ -421,7 +472,7 @@ Item {
   }
   readonly property bool dayThinking: root.runningHash === "day"
     || root.queued.some(function (q) { return q.hash === "day" })
-  readonly property bool dayCanSend: svc.isToday && root.agentDay
+  readonly property bool dayCanSend: svc.isToday && root.agentDay && !root.beforeHorizon
   readonly property bool dayShown: root.dayOpen && !root.marginOpen && !root.talkOpen && !root.keysOpen && !root.settingsOpen
   readonly property bool dayBesideNote: root.dayShown && !root.dashOpen
   readonly property bool dayBesideDash: root.dayShown && root.dashOpen
@@ -967,6 +1018,7 @@ Item {
       root.projectOpen = false
       // `@` can call a project without the sidebar ever being opened.
       root.refreshProjects()
+      root.loadHorizon()
       // The day's plan, at most once a day (the runner decides) — after the
       // calendars the opening fetches, so it plans around today's copy.
       root.afterFetch(function () { root.runPlan(false) })
@@ -1927,6 +1979,7 @@ Item {
       root.loadNotebook()
       root.loadAutonomy()
       root.loadSearchFolders()
+      root.loadHorizon()
       if (!agentChecksProc.running) {
         agentChecksProc.command = [svc.runner, "eval", "status", "--json"]
         agentChecksProc.running = true
@@ -2119,8 +2172,15 @@ Item {
     var seq = Sc.fromEvent(event)
     var n = root.searchData ? root.searchData.folders.length : 0
     if (seq === "Esc") { root.closeNotebook(); return true }
-    if (seq === "Up") { root.searchFocus = Math.max(0, root.searchFocus - 1); return true }
-    if (seq === "Down") { root.searchFocus = Math.max(0, Math.min(n - 1, root.searchFocus + 1)); return true }
+    // Row -1 is the horizon, above the folders.
+    if (seq === "Up") { root.searchFocus = Math.max(-1, root.searchFocus - 1); return true }
+    if (seq === "Down") { root.searchFocus = Math.max(-1, Math.min(n - 1, root.searchFocus + 1)); return true }
+    if (root.searchFocus < 0) {
+      if (seq === "Left" || seq === "Right") { root.moveHorizon(seq === "Left" ? -1 : 1); return true }
+      if (seq === "Shift+Left" || seq === "Shift+Right") { root.moveHorizon(seq === "Shift+Left" ? -12 : 12); return true }
+      if (seq === "Backspace" || seq === "Delete") { root.setHorizon(""); return true }
+      return seq === "Space" || seq === "Enter"
+    }
     if (seq === "Space" || seq === "Enter") { root.toggleSearchFolder(root.searchFocus); return true }
     return false
   }
@@ -5342,6 +5402,10 @@ Item {
   }
 
   Process {
+    id: horizonProc
+    stdout: StdioCollector { onStreamFinished: { try { root.horizonData = JSON.parse(text) } catch (e) {} } }
+  }
+  Process {
     id: searchFoldersProc
     stdout: StdioCollector { onStreamFinished: { try { root.searchData = JSON.parse(text) } catch (e) {} } }
   }
@@ -5766,7 +5830,8 @@ Item {
             anchors.leftMargin: root.sp(12)
             anchors.verticalCenter: dateText.verticalCenter
             textFormat: Text.PlainText
-            text: root.agentDay ? "back to today" : "back to today · agent off for this note"
+            text: root.beforeHorizon ? "back to today · before the agent's horizon"
+              : root.agentDay ? "back to today" : "back to today · agent off for this note"
             color: todayArea.containsMouse ? root.accent : root.faint
             font.family: root.fontFamily
             font.styleName: root.fontStyle
@@ -5852,7 +5917,7 @@ Item {
             // (2026-10-15). When it is on, "ask" and the agent mark are not
             // dimmed but gone — there is nothing to offer.
             Text {
-              visible: root.agentDay
+              visible: root.agentDay && !root.beforeHorizon
               anchors.verticalCenter: parent.verticalCenter
               textFormat: Text.PlainText
               text: svc.notePrivate ? "private · the agent sees nothing here" : "private"

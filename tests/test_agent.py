@@ -78,7 +78,7 @@ class T:
         self.note = self.daily / f"{DAY}.md"
         self.note.write_text(NOTE)
         self.cfg = self.tmp / "config.json"
-        self.cfg.write_text(json.dumps({"vault": str(self.vault), "daily": {"dir": "inbox/Daily", "format": "YYYY.MM.DD"},
+        self.cfg.write_text(json.dumps({"vault": str(self.vault), "daily": {"dir": "inbox/Daily", "format": "YYYY.MM.DD"}, "horizon": "2000-01-01",
                                         "agentDir": "agents/longhand", "opencode": str(self.tmp / "bin" / "opencode")}))
         (self.tmp / "bin").mkdir()
         stub = self.tmp / "bin" / "opencode"
@@ -510,6 +510,16 @@ def main() -> int:
         check("#intsem" in ctx and "earlier daily notes" in ctx, "the payload names what it is carrying")
         openctx = t.agent("context", "--trigger", "open").stdout
         check("reviews explained" not in openctx, "the automatic open pass is not widened")
+        # 16b. the agent's horizon (docs/files.md): a day before it is
+        # private, its project's sections included, and is never run on.
+        conf = json.loads(t.cfg.read_text())
+        t.cfg.write_text(json.dumps(dict(conf, horizon=(dt.date.today() - dt.timedelta(days=10)).isoformat())))
+        ctx = t.agent("context", "--trigger", "mention",
+                      "--hash", _hash_of(t, "@ what did I say about reviews?")).stdout
+        check("reviews explained" not in ctx, "a project's section from before the horizon is not carried")
+        r = t.agent("run", "--trigger", "open", "--date", OLD_DAY)
+        check(r.returncode != 0 and "horizon" in r.stderr, f"a day before the horizon is refused ({r.stderr.strip()[-80:]})")
+        t.cfg.write_text(json.dumps(conf))
         # 17. how opencode is called. The flags moved under it once and every
         # run failed for a day while the page said nothing — the invocation
         # is part of the contract now, not an implementation detail.

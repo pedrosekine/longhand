@@ -133,6 +133,8 @@ ShellRoot {
     function searchKey(key: int, mods: int): bool { return page.searchFoldersKey({ key: key, text: "", modifiers: mods }) }
     function searchFolders(): string { return JSON.stringify(page.searchData ? page.searchData.folders.map(function (f) { return f.folder + "=" + (f.on ? "on" : "off") }) : []) }
     function searchFocus(i: int): void { page.searchFocus = i }
+    function loadHorizon(): void { page.loadHorizon() }
+    function horizon(): string { return JSON.stringify({ data: page.horizonData, before: page.beforeHorizon, agentOn: page.agentOn }) }
     function linkCitations(text: string): string { return page.linkCitations(text) }
     function openCitation(link: string): void { page.openCitation(link) }
     function dive(): void { page.diveIn(true) }

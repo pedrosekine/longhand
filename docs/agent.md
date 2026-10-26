@@ -261,7 +261,8 @@ clickable file:line links, and "searched / read" under the reply.
 **Settings → what the agent may search:** each vault folder on or off by
 click or key — on by default Daily, Studies, projects, Reference, Career,
 Archive; off Personal, Health, _Attachments; `_Secrets` never listed.
-**Never shared, whatever the switches:** private notes and blocks; any type
+**Never shared, whatever the switches:** private notes and blocks; daily
+notes before the agent's horizon (2026-10-26, `docs/files.md`); any type
 but `.md`, `.txt` and `.pdf` with text; names of identity, money, health,
 contract or secret documents (English and German); what gitleaks flags;
 IBAN- and card-shaped strings masked. The payload log counts what was

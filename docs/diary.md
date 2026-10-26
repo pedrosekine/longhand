@@ -136,6 +136,7 @@ itself, so the note carries its own answer and nothing has to be looked up.
 |---|---|---|---|---|
 | **A private day** | the whole note | `agent: false` in the note's frontmatter | the page (`Service.setPrivate`, header word **private** / `Ctrl+Shift+P`) | the page refuses to run at all (`agentOn`); the runner refuses the note (`note_is_private` → `Fail`) |
 | **A private block** | one block | a `> [!private]` callout | the student, by typing it | `blocks.py` marks the block `private`; `visible_blocks()` drops it before the payload exists |
+| **A day before the horizon** (2026-10-26) | every daily note older than a date | `horizon` in settings.json; unset, the first day the agent kept | the page (Settings → what the agent may search, the row above the folders) | the page offers nothing on such a day (`beforeHorizon`); the runner refuses it (`before_horizon`), leaves it out of a project's earlier notes, the week's notes and the outcomes, and search holds it back (counted as `horizon`) |
 
 Both are enforced by local code *before* inference, and every payload is
 written to `~/.local/state/longhand/payloads/` first, so "it was not

@@ -7,7 +7,9 @@ never from what must not be shared. Four layers, applied here before
 anything reaches the model:
 
 1. **By place:** a note marked private (`agent: false`) and every
-   `[!private]` block; anything under `_Secrets`; folders switched off.
+   `[!private]` block; a daily note from before the agent's horizon
+   (docs/files.md, 2026-10-26); anything under `_Secrets`; folders
+   switched off.
 2. **By type:** only `.md`, `.txt`, and `.pdf` with a text layer.
 3. **By name**, English and German: identity, money, health, contract and
    secret documents (the inbox's rule, widened).
@@ -92,7 +94,9 @@ def _never(rel: str) -> str:
     return ""
 
 
-def files(vault: Path, on: dict[str, bool], withheld: dict) -> list[Path]:
+def files(vault: Path, on: dict[str, bool], withheld: dict, hide=None) -> list[Path]:
+    """`hide(rel)` is true for a file kept back by a rule of the runner's
+    (a day before the horizon); counted as `horizon`."""
     out = []
     for folder, yes in on.items():
         if not yes:
@@ -104,6 +108,9 @@ def files(vault: Path, on: dict[str, bool], withheld: dict) -> list[Path]:
             if why:
                 if why != "type" or p.suffix.lower() in (".docx", ".pptx", ".xlsx", ".odt", ".json", ".env", ".pem", ".key"):
                     withheld[why] = withheld.get(why, 0) + 1
+                continue
+            if hide and hide(str(p.relative_to(vault))):
+                withheld["horizon"] = withheld.get("horizon", 0) + 1
                 continue
             out.append(p)
     return out
@@ -207,7 +214,7 @@ def terms(words: str) -> list[str]:
     return out
 
 
-def search(vault: Path, on: dict[str, bool], words: str, cache: Path, folder: str = "") -> dict:
+def search(vault: Path, on: dict[str, bool], words: str, cache: Path, folder: str = "", hide=None) -> dict:
     """The passages that hold the most of the words, best first — newest
     note first among equals — each with its file and where in it; and what
     was withheld (counts)."""
@@ -218,7 +225,7 @@ def search(vault: Path, on: dict[str, bool], words: str, cache: Path, folder: st
     scope = {f: y for f, y in on.items() if not folder or f == folder or f.startswith(folder + "/")}
     budget = {"until": time.monotonic() + PDF_BUDGET}
     found = []
-    for p in files(vault, scope, withheld):
+    for p in files(vault, scope, withheld, hide):
         rel = str(p.relative_to(vault))
         for where, para in paragraphs(p, cache, budget, withheld):
             low = para.casefold()
@@ -238,7 +245,7 @@ def search(vault: Path, on: dict[str, bool], words: str, cache: Path, folder: st
     return {"hits": hits, "withheld": withheld}
 
 
-def read(vault: Path, on: dict[str, bool], rel: str, cache: Path) -> dict:
+def read(vault: Path, on: dict[str, bool], rel: str, cache: Path, hide=None) -> dict:
     """A file whole, under the same rules: its visible paragraphs with
     their lines (or its pages), up to WHOLE_MAX characters."""
     rel = rel.strip().lstrip("/")
@@ -250,6 +257,8 @@ def read(vault: Path, on: dict[str, bool], rel: str, cache: Path) -> dict:
         return {"error": "never shared"}
     if not any(y and (rel == f or rel.startswith(f + "/")) for f, y in on.items()):
         return {"error": "in a folder that is switched off"}
+    if hide and hide(rel):
+        return {"error": "a day before the agent's horizon"}
     withheld: dict = {}
     paras = paragraphs(p, cache, {"until": time.monotonic() + 30}, withheld)
     if not paras:
@@ -268,5 +277,6 @@ def read(vault: Path, on: dict[str, bool], rel: str, cache: Path) -> dict:
 
 def say_withheld(w: dict) -> str:
     names = {"private": "private notes", "name": "files by name", "type": "files by type", "place": "files by place",
-             "secret": "passages that looked like secrets", "unread_pdfs": "PDFs not read yet"}
+             "secret": "passages that looked like secrets", "unread_pdfs": "PDFs not read yet",
+             "horizon": "days before the horizon"}
     return ", ".join(f"{n} {names.get(k, k)}" for k, n in sorted(w.items()) if n)

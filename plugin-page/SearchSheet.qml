@@ -64,7 +64,8 @@ BorderSurface {
         textFormat: Text.PlainText
         wrapMode: Text.WordWrap
         text: "When you talk to the day, the agent can search your files: the folders switched on here. "
-          + "Never, whatever is on: a note marked private and every private block; _Secrets; anything but notes, "
+          + "Never, whatever is on: a note marked private and every private block; daily notes from before the "
+          + "horizon; _Secrets; anything but notes, "
           + "text and PDFs; documents named for identity, money, health, contracts or secrets; anything that looks "
           + "like a key or a password (checked by gitleaks before it is sent). What is held back is counted in the "
           + "log, never shown."
@@ -74,9 +75,65 @@ BorderSurface {
         font.pixelSize: page.fs(Style.font.bodySmall)
       }
 
+      // The horizon (docs/files.md, 2026-10-26): row -1, above the folders.
+      // Daily notes from before it are private, whatever is switched on.
+      Item {
+        id: horizonRow
+        readonly property var h: page.horizonData
+        readonly property bool picked: page.searchFocus === -1
+        readonly property bool lit: picked && page.here === "center"
+        onLitChanged: page.selected(horizonRow, "center", lit)
+        anchors.top: searchIntro.bottom
+        anchors.topMargin: page.sp(16)
+        width: parent.width
+        height: horizonCol.implicitHeight + page.sp(10)
+        visible: !!h
+
+        Rectangle {
+          anchors.fill: parent
+          anchors.leftMargin: -page.sp(10)
+          anchors.rightMargin: -page.sp(10)
+          radius: Style.cornerRadius
+          color: horizonRow.picked ? Style.selectedFill : "transparent"
+        }
+        MouseArea {
+          anchors.fill: parent
+          cursorShape: Qt.PointingHandCursor
+          onClicked: { page.searchFocus = -1; searchKeys.forceActiveFocus() }
+        }
+
+        Column {
+          id: horizonCol
+          anchors.verticalCenter: parent.verticalCenter
+          width: parent.width
+          spacing: page.sp(2)
+          Text {
+            textFormat: Text.PlainText
+            text: horizonRow.h ? "Daily notes from " + page.sayHorizon(horizonRow.h.horizon) + " on" : ""
+            color: page.foreground
+            font.family: page.fontFamily
+            font.styleName: page.fontStyle
+            font.pixelSize: page.fs(Style.font.body)
+          }
+          Text {
+            width: parent.width
+            wrapMode: Text.WordWrap
+            textFormat: Text.PlainText
+            text: !horizonRow.h ? "" : horizonRow.h.before + (horizonRow.h.before === 1 ? " day" : " days")
+              + " before it never searched or read, as if private"
+              + (horizonRow.h.set ? " · changed by you (Backspace: back to " + page.sayHorizon(horizonRow.h["default"]) + ")"
+                                  : " · the first day the agent kept")
+            color: page.faint
+            font.family: page.fontFamily
+            font.styleName: page.fontStyle
+            font.pixelSize: page.fs(Style.font.caption)
+          }
+        }
+      }
+
       Flickable {
         id: searchFlick
-        anchors.top: searchIntro.bottom
+        anchors.top: horizonRow.visible ? horizonRow.bottom : searchIntro.bottom
         anchors.topMargin: page.sp(16)
         anchors.bottom: searchFoot.top
         anchors.bottomMargin: page.sp(10)
@@ -164,7 +221,8 @@ BorderSurface {
         anchors.bottom: parent.bottom
         textFormat: Text.PlainText
         wrapMode: Text.WordWrap
-        text: "↑↓ pick a folder · Space or Enter (or a click) switches it · Esc back to settings"
+        text: "↑↓ pick a folder · Space or Enter (or a click) switches it · on the horizon, ←→ a month, "
+          + "Shift a year, Backspace the default · Esc back to settings"
         color: page.faint
         font.family: page.fontFamily
         font.styleName: page.fontStyle

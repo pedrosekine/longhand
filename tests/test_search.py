@@ -110,7 +110,7 @@ def end_to_end(tmp: pathlib.Path) -> None:
     cfgdir = tmp / "config"
     (cfgdir / "longhand").mkdir(parents=True)
     cfg = cfgdir / "longhand" / "config.json"
-    cfg.write_text(json.dumps({"vault": str(v), "daily": {"dir": "human/Daily", "format": "YYYY-MM-DD"},
+    cfg.write_text(json.dumps({"vault": str(v), "daily": {"dir": "human/Daily", "format": "YYYY-MM-DD"}, "horizon": "2000-01-01",
                                "agentDir": "agents/longhand", "model": "stub/m"}))
     (v / "human" / "Daily" / f"{dt.date.today().isoformat()}.md").write_text("A plain day.\n")
     bindir = tmp / "bin"
@@ -141,10 +141,61 @@ def end_to_end(tmp: pathlib.Path) -> None:
           and turn["files"][0]["path"] == "human/Daily/2026-10-12.md", "the answer keeps what was searched and read")
 
 
+def horizon(tmp: pathlib.Path) -> None:
+    """The agent's horizon (docs/files.md, 2026-10-26): daily notes from
+    before it are held back like private ones; unset, it is the first day
+    the agent kept, or today on a vault it never ran in."""
+    print("-- the horizon")
+    tmp = tmp / "horizon"
+    tmp.mkdir()
+    v = vault_at(tmp)
+    cache = tmp / "cache"
+    hide = lambda rel: rel.startswith("human/Daily/2026-10-12")
+    r = search.search(v, {"human/Daily": True}, "shortlist", cache, hide=hide)
+    check(all(h["path"] != "human/Daily/2026-10-12.md" for h in r["hits"]) and r["withheld"].get("horizon") == 1,
+          "a hidden day is not searched, and counted as held back")
+    check(search.read(v, {"human/Daily": True}, "human/Daily/2026-10-12.md", cache, hide=hide).get("error")
+          == "a day before the agent's horizon", "nor read whole")
+
+    cfgdir = tmp / "config"
+    cfg = cfgdir / "longhand" / "config.json"
+    cfg.parent.mkdir(parents=True)
+    cfg.write_text(json.dumps({"vault": str(v), "daily": {"dir": "human/Daily", "format": "YYYY-MM-DD"},
+                               "agentDir": "agents/longhand"}))
+    env = dict(os.environ, LONGHAND_CONFIG=str(cfg), XDG_STATE_HOME=str(tmp / "state"), XDG_CONFIG_HOME=str(cfgdir))
+
+    def agent(*args):
+        r = subprocess.run([sys.executable, str(AGENT), *args], capture_output=True, text=True, env=env)
+        assert r.returncode == 0, r.stderr
+        return json.loads(r.stdout)
+
+    today = dt.date.today().isoformat()
+    h = agent("horizon")
+    check(h["horizon"] == today and not h["set"] and h["before"] == 3,
+          f"a vault the agent never ran in: the horizon is today, every earlier day behind it ({h})")
+    check(agent("search", "--words", "shortlist")["withheld"].get("horizon") == 3, "and search holds them all back")
+    kept = v / "agents" / "longhand" / "daily"
+    kept.mkdir(parents=True)
+    (kept / "2026-10-13.json").write_text("{}")
+    (kept / "2026-10-20.json").write_text("{}")
+    h = agent("horizon")
+    check(h["horizon"] == "2026-10-13" == h["default"] and h["before"] == 1,
+          f"unset, it is the first day the agent kept ({h})")
+    hits = agent("search", "--words", "shortlist supervisors")["hits"]
+    check(not any(x["path"] == "human/Daily/2026-10-12.md" for x in hits), "the day before it is not found")
+    (cfg.parent / "settings.json").write_text(json.dumps({"horizon": "2026-10-01"}))
+    h = agent("horizon")
+    check(h["horizon"] == "2026-10-01" and h["set"] and h["default"] == "2026-10-13" and h["before"] == 0,
+          f"set in Settings, it wins ({h})")
+    check(any(x["path"] == "human/Daily/2026-10-12.md" for x in agent("search", "--words", "shortlist supervisors")["hits"]),
+          "and a day after it is found again")
+
+
 def main() -> int:
     tmp = pathlib.Path(tempfile.mkdtemp(prefix="search-test-"))
     units(tmp)
     end_to_end(tmp)
+    horizon(tmp)
     print("PASS" if failures == 0 else f"{failures} FAILED")
     return 1 if failures else 0
 

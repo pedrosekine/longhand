@@ -468,7 +468,8 @@ section, word for word, and to the diary's decisions log.
    hook); the live launcher after a real theme change is still to be seen.
 9. **Notes beyond the calendar** (grilled 2026-10-26; the design is in
    `docs/files.md`). Built in this order, each step shippable alone:
-   1. **The horizon.** The agent sees daily notes only from 2026-09-17
+   1. ~~**The horizon.**~~ *built 2026-10-26* (`docs/files.md`, "The
+      horizon"). The agent sees daily notes only from 2026-09-17
       onwards, set in Settings → what the agent may search. This closes a
       real exposure: every daily since 2021 was in the agent's search.
    2. **Spaces.**

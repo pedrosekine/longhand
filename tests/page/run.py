@@ -151,7 +151,7 @@ class Page:
         (cfg / "omarchy").symlink_to(pathlib.Path.home() / ".config" / "omarchy")   # the theme
         self.runner = self.tmp / "runner"
         (cfg / "longhand" / "config.json").write_text(json.dumps({
-            "vault": str(self.vault), "daily": {"dir": "Daily", "format": "YYYY.MM.DD"},
+            "vault": str(self.vault), "daily": {"dir": "Daily", "format": "YYYY.MM.DD"}, "horizon": "2000-01-01",
             "runner": str(self.runner), "check": str(ROOT / "cli" / "longhand-check"), "weekStart": "monday",
             "inbox": str(self.tmp / "Downloads")}))
         (self.tmp / "Downloads").mkdir()
@@ -199,7 +199,7 @@ if [ "$1" = projects ]; then
   exit $rc
 fi
 case "$1" in
-  accept|projects|project|sections|next|tasks|box|timetable|plan|proposals|proposal|talk|thread|rate|notebook|autonomy|day|search) exec "{ROOT}/agent/longhand-agent" "$@" ;;
+  accept|projects|project|sections|next|tasks|box|timetable|plan|proposals|proposal|talk|thread|rate|notebook|autonomy|day|search|horizon) exec "{ROOT}/agent/longhand-agent" "$@" ;;
   run) sleep 2; exit 0 ;;
   chat) sleep 2; exec python3 "{chatstub}" "{self.vault}/agents/longhand/daily" "$@" ;;
 esac
@@ -1376,8 +1376,30 @@ def main() -> int:
               "Space switches a folder off, kept in settings.json")
         p.call("searchKey", KEY_SPACE, 0)
         check(p.wait(lambda: json.loads(settings_json.read_text())["searchFolders"]["Daily"] is True), "…and on again")
+        # 12c, the horizon (docs/files.md, 2026-10-26): the row above the
+        # folders moves it by a month, Backspace puts it back; a day before
+        # it has no agent, and the header says why.
+        KEY_LEFT, KEY_BACKSPACE = 0x01000012, 0x01000003
+        check(p.wait(lambda: (json.loads(p.call("horizon"))["data"] or {}).get("horizon") == "2000-01-01"),
+              f"the horizon is read from the runner ({p.call('horizon')})")
+        p.call("searchFocus", -1)
+        p.call("searchKey", KEY_LEFT, 0)
+        check(p.wait(lambda: json.loads(settings_json.read_text()).get("horizon") == "1999-12-01"),
+              "← on the horizon moves it a month earlier, kept in settings.json")
+        p.call("searchKey", KEY_BACKSPACE, 0)
+        check(p.wait(lambda: "horizon" not in json.loads(settings_json.read_text())), "…and Backspace puts the default back")
         p.call("searchKey", 0x01000000, 0)
         p.call("settingsKey", 0x01000000, 0)
+        cur = json.loads(settings_json.read_text())
+        settings_json.write_text(json.dumps(dict(cur, horizon=dt.date.today().isoformat())))
+        p.call("loadHorizon")
+        p.call("openDay", YDAY)
+        check(p.wait(lambda: json.loads(p.call("horizon"))["before"] and not json.loads(p.call("horizon"))["agentOn"]),
+              f"a day before the horizon: the agent is off for it ({p.call('horizon')})")
+        settings_json.write_text(json.dumps(cur))
+        p.call("loadHorizon")
+        p.call("openDay", TODAY)
+        check(p.wait(lambda: not json.loads(p.call("horizon"))["before"]), "…and today is not")
         link = p.call("linkCitations", f"You wrote it in `Daily/{YDAY}.md` line 3.")
         check(f"(cite:Daily%2F{YDAY}.md#3)" in link and f"[{YDAY} · line 3]" in link,
               f"a citation in an answer becomes a link ({link!r})")

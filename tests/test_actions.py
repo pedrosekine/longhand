@@ -142,7 +142,7 @@ def end_to_end() -> None:
     cfgdir = tmp / "config"
     (cfgdir / "longhand").mkdir(parents=True)
     cfg = cfgdir / "longhand" / "config.json"
-    cfg.write_text(json.dumps({"vault": str(vault), "daily": {"dir": "Daily", "format": "YYYY-MM-DD"},
+    cfg.write_text(json.dumps({"vault": str(vault), "daily": {"dir": "Daily", "format": "YYYY-MM-DD"}, "horizon": "2000-01-01",
                                "agentDir": "agents/longhand", "model": "stub/plan"}))
     settings = cfgdir / "longhand" / "settings.json"
     state = tmp / "state"
