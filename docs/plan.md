@@ -425,7 +425,8 @@ section, word for word, and to the diary's decisions log.
    in a private note still binds, so its title, project and date are in the
    store, and every payload carries the store whole; calendars shared whole
    make the boundary matter more. Three ways out, in the record; plus a key
-   and a visible treatment for the block-level `[!private]` callout.
+   and a visible treatment for the block-level `[!private]` callout (the
+   treatment is now explored in item 9's step 6, for notes and blocks alike).
 4. **Structure** — split `Page.qml` (5,822 lines on 2026-10-17, 6,337 by
    the 18th). *First pass done 2026-10-18*: the five sheets beside the note
    — the dashboard, settings, keys, the sidebar, the margin — each in a file
@@ -465,6 +466,31 @@ section, word for word, and to the diary's decisions log.
    does), and the live launcher looked at once. `docs/brand/README.md`
    tracks both. *Built 2026-10-18* (`tools/theme_icon.py`, a `theme-set`
    hook); the live launcher after a real theme change is still to be seen.
+9. **Notes beyond the calendar** (grilled 2026-10-26; the design is in
+   `docs/files.md`). Built in this order, each step shippable alone:
+   1. **The horizon.** The agent sees daily notes only from 2026-09-17
+      onwards, set in Settings → what the agent may search. This closes a
+      real exposure: every daily since 2021 was in the agent's search.
+   2. **Spaces.**
+      - Time and Files in the sidebar, switched by `Ctrl+Shift+[`/`]`, a
+        swipe, Ctrl+scroll or the marks at its foot.
+      - Each space has its own tint, and the essentials stay at the foot.
+      - The Files tree shows `human/` (editable) and `agents/` (read-only).
+      - The runner's write guard widens to the whole notes root.
+   3. **Ask about this note** in the header, Ctrl+Shift+Enter on a file's
+      block, and the context blip when the keys move to the agent's pane.
+   4. **The read view, researched and prototyped:** images (source shown on
+      the cursor's line), wikilinks with a back history, tables, then
+      Mermaid through Pele.
+   5. **PDFs** through `QtQuick.Pdf`.
+   6. **How private looks.** Mockups in the theme, compared before any code.
+      Can run beside any step above.
+
+   Waiting inside it:
+   - the mixed folders (`projects/`, `reference/`, `inbox/`): whose are they,
+     and how do they show?
+   - tabs;
+   - a fuzzy switcher, if the tree's filter is not enough.
 
 Small, when passing by:
 

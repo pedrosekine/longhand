@@ -54,6 +54,16 @@ in code, and the vault path is never recorded in this public repo.
    Obsidian, and the agent alike.
 9. **The agent reads everything it is allowed, produces nothing submittable.**
    Questions, plans, observations, proposals. Never an essay.
+10. **Light, minimal, keyboard first, beautiful, and better each pass.**
+    (Added 2026-10-26.)
+    - **Light:** memory use is a design constraint, not an afterthought. The
+      page loads what is on screen and lets go of what is not, and never pulls
+      in a web engine.
+    - **Minimal:** only what is needed now.
+    - **Keyboard first:** every action has a key in `Shortcuts.js`, and the
+      mouse is a second way in.
+    - **Beautiful:** drawn in the theme, by role.
+    - **Better each pass:** a first version ships, is used, and improves.
 
 ## Files
 
@@ -1298,3 +1308,24 @@ only the window and the panels around it differ.
   checks, write a brief in lines. Six seed cases from a throwaway vault pass
   on the real model, and a changed day prompt is now gated like the others.
   The seeds are placeholders; real ones replace them as misses are rated.
+- **2026-10-26: notes beyond the calendar, in spaces.** (A grilling;
+  the whole design is in `files.md`.) This amends 2026-10-09: the sidebar is
+  no longer "daily notes only".
+  - **Spaces.** The sidebar holds spaces, after Zen's workspaces: Time
+    (the calendar, the day's deadlines, the projects), which is the default,
+    and Files, switched by key, swipe or the marks at its foot. Time-based
+    notes stay first.
+  - **Two roots, two rights.** Files shows the notes root (`human/`),
+    editable like a past day, and `agents/`, read-only. The folder is the
+    authorship rule, because nothing on disk records who wrote a note.
+  - **Opening is not sharing.** A file reaches the agent only when it is
+    talked about ("ask about this note", or Ctrl+Shift+Enter on a block),
+    and a blip shows what goes along.
+  - **The horizon.** Found on the way: every daily since 2021, years of
+    journaling, was in the agent's search. The agent now gets a horizon
+    (2026-09-17). How private looks is to be explored in mockups, because
+    today a private note differs only in its header word.
+  - **Rendering.** Images, wikilinks, tables, Mermaid through Pele, and
+    PDFs through QtQuick.Pdf, each researched before it is built.
+  - **Principle 10.** Added the same day: light on memory, minimal,
+    keyboard first, beautiful, better each pass.
