@@ -191,11 +191,43 @@ def horizon(tmp: pathlib.Path) -> None:
           "and a day after it is found again")
 
 
+def guard(tmp: pathlib.Path) -> None:
+    """The runner writes nothing under the notes root but in the agent's own
+    folder (docs/files.md, 2026-10-26); the notes root is `notes`, else the
+    daily notes' nesting folder."""
+    print("-- the write guard")
+    import importlib.machinery
+    import importlib.util
+    loader = importlib.machinery.SourceFileLoader("longhand_agent", str(AGENT))
+    spec = importlib.util.spec_from_loader("longhand_agent", loader)
+    la = importlib.util.module_from_spec(spec)
+    loader.exec_module(la)
+    v = tmp / "guard"
+    cfg = {"vault": str(v), "daily": {"dir": "human/Daily"}, "agentDir": "agents/longhand"}
+    paths = la.Paths(cfg, dt.date.today())
+
+    def refused(rel):
+        try:
+            la.guard_write(paths, v / rel)
+            return False
+        except la.Fail:
+            return True
+    check(la.notes_root(cfg) == "human" and la.notes_root(dict(cfg, notes="notes/")) == "notes"
+          and la.notes_root(dict(cfg, daily={"dir": "Daily"})) == "", "the notes root: nested daily folder, or `notes`")
+    check(refused("human/Daily/2026-10-26.md") and refused("human/Studies/x.md"), "nothing under the notes is written")
+    check(not refused("agents/longhand/daily/x.json") and not refused("projects/x/doc.pdf"), "the agent's places still are")
+    flat = la.Paths(dict(cfg, daily={"dir": "Daily"}), dt.date.today())
+    paths = flat
+    check(refused("Daily/x.md") and not refused("projects/x/doc.pdf"),
+          "notes that are the vault itself keep the daily folder's rule only")
+
+
 def main() -> int:
     tmp = pathlib.Path(tempfile.mkdtemp(prefix="search-test-"))
     units(tmp)
     end_to_end(tmp)
     horizon(tmp)
+    guard(tmp)
     print("PASS" if failures == 0 else f"{failures} FAILED")
     return 1 if failures else 0
 

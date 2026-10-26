@@ -86,6 +86,61 @@ the note or the dashboard. There are two:
   history. The keys get settled when building: Enter, Ctrl+Enter and
   Alt+←/→ are already taken in the note.
 
+### How it is built (2026-10-27)
+
+**Spaces.**
+- `page.sidebarSpace` holds the space, and a fresh open sets it back to
+  `time`.
+- `Ctrl+{` and `Ctrl+}` (the shifted brackets) call `switchSpace`. A
+  sideways swipe or Ctrl+wheel past a threshold does the same, once per
+  gesture (a `WheelHandler` on the sidebar; `TouchScroll` passes sideways
+  and Ctrl scrolls on).
+- The foot shows **time · files**, then **today**, **keys** and
+  **settings**.
+- The space slides in from the side it was called from, and Files sits on
+  the background tinted 6% towards the accent.
+
+**The tree.**
+- `FilesPane.qml` holds it as a flat list of rows drawn by a `ListView`, so
+  only the rows on screen exist.
+- A folder is read with `find -maxdepth 1` when it is opened, and read again
+  each time the space is shown, with the same folders open and the same row
+  picked. Nothing is watched.
+- `/` opens the filter. It reads every note's path once (`find -iname
+  '*.md'`), matches every word anywhere in the path, puts name matches
+  first and shows at most 200. The list is let go of when the filter closes.
+- Keys: ↑↓ (k/j), → (l) opens a folder or steps in, ← (h) folds it or goes
+  up, Enter opens, `/` filters, and Esc clears the filter or closes the
+  sidebar. All of them are in `Shortcuts.js` as the "files" place.
+
+**The notes root.** It is `notes` in the config, else the daily folder's
+parent when nested (`human/Daily` → `human`), else the vault. It is the same
+rule in `Service.qml` and the runner (`notes_root`). The agent's root is the
+first folder of `agentDir`.
+
+**A file in the sheet.**
+- `svc.openFile(rel, readOnly)` sets `noteDate` to "", and `page.dayNote`
+  then turns off what only a day has:
+  - binding a dated checkbox (the cue's light, leaving the line, Ctrl+D);
+  - the check;
+  - who made each line and the threads;
+  - the private mark;
+  - the agent's state and records (`AgentState.off`, which otherwise read
+    *today's* records onto the file's lines);
+  - sending, and the agent's pane, which closes with a hint.
+- The header names the file, cut short before the seal; the tree shows where
+  it is. The header's "back to today" goes home.
+- The agent's files open with `NoteEditor.readOnly`: nothing typed, pasted,
+  ticked, moved or undone reaches them, and `Service.save` refuses them.
+
+**The write guard.** It refuses anything under the notes root except the
+agent's own folder. When the notes are the vault itself it keeps the daily
+folder's rule only, because the projects' documents sit beside the notes.
+
+Tests: `tests/page/run.py` 12h (spaces, tree, a file edited, the filter,
+an agent file read only, home, a fresh open) and `tests/test_search.py`
+(the guard).
+
 ## Talking about a note
 
 - `Ctrl+Shift+Enter` keeps meaning "talk about *this thing*": the block in

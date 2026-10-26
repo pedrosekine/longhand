@@ -16,7 +16,7 @@ The page is at most three panes side by side:
 
 | Pane | What it shows | Its key |
 |---|---|---|
-| **left**: the sidebar | the calendar, the day's deadlines, the projects | `Ctrl+[` |
+| **left**: the sidebar | its space: Time (the calendar, the day's deadlines, the projects) or Files (2026-10-27, `Ctrl+{`/`Ctrl+}`; [files.md](files.md)) | `Ctrl+[` |
 | **center**: the middle | the note, or in its place the dashboard, the keys or settings | `Ctrl+\` |
 | **right**: the agent's pane | the day's conversation (its home), a block's conversation beside the note, a task's beside the dashboard | `Ctrl+]` |
 

@@ -30,6 +30,8 @@ BorderSurface {
   readonly property string todayKey: { svc.today; return Days.key(new Date()) }
   property alias sidebarKeysRef: sidebarKeys
   property alias projectFieldRef: projectField
+  property alias filesFilterRef: filesPane.filterFieldRef
+  property alias filesPaneRef: filesPane
 
   onVisibleChanged: if (!visible) page.addingProject = false
 
@@ -43,9 +45,47 @@ BorderSurface {
   height: sheet.height
   width: page.sidebarWidth
   radius: page.alongside ? 0 : Style.cornerRadius
-  color: page.background
+  // Each space has its own tint, so where you are is known before it is
+  // read (docs/files.md): Time on the sheet's own ground, Files a breath of
+  // the accent over it.
+  color: page.sidebarSpace === "files" ? Qt.tint(page.background, Qt.rgba(page.accent.r, page.accent.g, page.accent.b, 0.06)) : page.background
+  Behavior on color { ColorAnimation { duration: 240 } }
   borderSpec: page.alongside ? Border.none() : page.borderSpec
   padding: page.sp(16)
+
+  // A space slides in from the side it was called from, as Zen's do.
+  property real spaceShift: 0
+  NumberAnimation { id: spaceSlide; target: sidebar; property: "spaceShift"; to: 0; duration: 220; easing.type: Easing.OutCubic }
+  Connections {
+    target: page
+    function onSidebarSpaceChanged() {
+      sidebar.spaceShift = page.spaceStep * page.sp(28)
+      spaceSlide.restart()
+    }
+  }
+
+  // Swiping between the spaces: two fingers sideways on the sidebar, or
+  // Ctrl and the wheel, one space per gesture.
+  property real swipeTravel: 0
+  property bool swiped: false
+  Timer { id: swipeRest; interval: 280; onTriggered: { sidebar.swipeTravel = 0; sidebar.swiped = false } }
+  WheelHandler {
+    target: null
+    onWheel: function (e) {
+      var ctrl = (e.modifiers & Qt.ControlModifier) !== 0
+      var dx = e.pixelDelta.x !== 0 ? e.pixelDelta.x : e.angleDelta.x / 4
+      var dy = e.pixelDelta.y !== 0 ? e.pixelDelta.y : e.angleDelta.y / 4
+      var d = ctrl && Math.abs(dy) > Math.abs(dx) ? -dy : (Math.abs(dx) > Math.abs(dy) ? -dx : 0)
+      if (d === 0) return
+      swipeRest.restart()
+      if (sidebar.swiped) return
+      sidebar.swipeTravel += d
+      if (Math.abs(sidebar.swipeTravel) < page.sp(60)) return
+      sidebar.swiped = true
+      page.used("space-swipe")
+      page.switchSpace(sidebar.swipeTravel > 0 ? 1 : -1)
+    }
+  }
 
   // A click in the pane is the keys into it, as everywhere (docs/navigation.md).
   MouseArea { anchors.fill: parent; onClicked: page.focusPane("left") }
@@ -69,6 +109,7 @@ BorderSurface {
     // The panes' keys are global (page.anywhereKey): Ctrl+[ closes the
     // sidebar from here, Alt+→ moves on and leaves it open.
     if (page.anywhereKey(event)) return true
+    if (page.sidebarSpace === "files") return filesPane.keyPressed(event)
     // Inside a project: its sections, newest first. Enter opens one in
     // the sheet (the list stays), Left or Esc goes back to the list of
     // projects.
@@ -128,7 +169,8 @@ BorderSurface {
 
   Column {
     id: calendar
-    visible: !page.projectOpen
+    visible: page.sidebarSpace === "time" && !page.projectOpen
+    transform: Translate { x: sidebar.spaceShift }
     anchors.fill: parent
     anchors.topMargin: sidebar.contentTopInset
     anchors.leftMargin: sidebar.contentLeftInset
@@ -526,6 +568,23 @@ BorderSurface {
   // writing itself — the keys and the settings — so the header keeps
   // only what belongs to the note (2026-10-17). Quiet, like the pin; a
   // word is bright while its sheet is open.
+  // The Files space (docs/files.md): yours and the agent's notes, as
+  // folders. Laid where the calendar is, above the foot.
+  FilesPane {
+    id: filesPane
+    page: sidebar.page
+    sidebar: sidebar
+    visible: page.sidebarSpace === "files"
+    transform: Translate { x: sidebar.spaceShift }
+    anchors.fill: parent
+    anchors.topMargin: sidebar.contentTopInset
+    anchors.leftMargin: sidebar.contentLeftInset
+    anchors.rightMargin: sidebar.contentRightInset
+    anchors.bottomMargin: sidebar.contentBottomInset + sidebarFoot.height + page.sp(12)
+  }
+
+  // The foot, the same in every space (Zen's essentials): which space is
+  // open, then today, keys and settings.
   Row {
     id: sidebarFoot
     anchors.left: parent.left
@@ -534,12 +593,42 @@ BorderSurface {
     anchors.bottomMargin: sidebar.contentBottomInset
     spacing: page.sp(16)
 
+    Row {
+      spacing: page.sp(8)
+      Repeater {
+        model: [{ space: "time", tip: "Time: the calendar, the day's deadlines, the projects" },
+                { space: "files", tip: "Files: your notes and the agent's, as folders" }]
+        Text {
+          required property var modelData
+          readonly property bool here: page.sidebarSpace === modelData.space
+          textFormat: Text.PlainText
+          text: modelData.space
+          color: spaceArea.containsMouse ? page.accent : here ? page.foreground : page.faint
+          font.family: page.fontFamily
+          font.styleName: page.fontStyle
+          font.pixelSize: page.fs(Style.font.bodySmall)
+          font.underline: here
+          Behavior on color { ColorAnimation { duration: 240 } }
+          MouseArea {
+            id: spaceArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: page.setSpace(modelData.space, 0)
+            PanelToolTip { visible: parent.containsMouse; text: page.tip(modelData.tip, modelData.space === "time" ? "spacePrev" : "spaceNext") }
+          }
+        }
+      }
+    }
+
     Repeater {
-      model: [{ text: "keys", act: "keys", tip: "Every key the page answers to, and moving one" },
+      model: [{ text: "today", act: "today", tip: "Today's note" },
+              { text: "keys", act: "keys", tip: "Every key the page answers to, and moving one" },
               { text: "settings", act: "settings", tip: "Settings: your calendars" }]
       Text {
         required property var modelData
-        readonly property bool open: modelData.act === "keys" ? page.keysOpen : page.settingsOpen
+        readonly property bool open: modelData.act === "keys" ? page.keysOpen : modelData.act === "settings" ? page.settingsOpen
+          : page.noteService.isToday
         textFormat: Text.PlainText
         text: modelData.text
         color: footArea.containsMouse ? page.accent : open ? page.foreground : page.faint
@@ -552,7 +641,7 @@ BorderSurface {
           anchors.fill: parent
           hoverEnabled: true
           cursorShape: Qt.PointingHandCursor
-          onClicked: modelData.act === "keys" ? page.toggleKeys() : page.toggleSettings()
+          onClicked: modelData.act === "keys" ? page.toggleKeys() : modelData.act === "settings" ? page.toggleSettings() : page.goToday()
           PanelToolTip { visible: parent.containsMouse; text: page.tip(modelData.tip, modelData.act) }
         }
       }
@@ -564,7 +653,8 @@ BorderSurface {
   // the margin on the right is the agent's (decided 2026-10-15).
   Flickable {
     id: projectFlick
-    visible: page.projectOpen
+    visible: page.sidebarSpace === "time" && page.projectOpen
+    transform: Translate { x: sidebar.spaceShift }
     anchors.fill: parent
     anchors.topMargin: sidebar.contentTopInset
     anchors.leftMargin: sidebar.contentLeftInset

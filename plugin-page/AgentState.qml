@@ -29,7 +29,11 @@ Item {
   // The day whose state is read: today unless the page is showing another.
   property string date: ""
   readonly property string day: date !== "" ? date : stamp
-  readonly property string path: agentDir !== "" && day !== "" ? agentDir + "/daily/" + day + ".json" : ""
+  // Off while the page shows a file rather than a day (docs/files.md): a
+  // day's records belong on that day's lines and nowhere else.
+  property bool off: false
+  onPathChanged: if (path === "") { root.state = ({}); root.recount() }
+  readonly property string path: !off && agentDir !== "" && day !== "" ? agentDir + "/daily/" + day + ".json" : ""
 
   property var state: ({})
   readonly property var blocks: root.blocksOf(root.state)

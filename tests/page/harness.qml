@@ -134,6 +134,17 @@ ShellRoot {
     function searchFolders(): string { return JSON.stringify(page.searchData ? page.searchData.folders.map(function (f) { return f.folder + "=" + (f.on ? "on" : "off") }) : []) }
     function searchFocus(i: int): void { page.searchFocus = i }
     function loadHorizon(): void { page.loadHorizon() }
+    // The sidebar's spaces and the Files space (docs/files.md).
+    function files(): string {
+      var f = page.sidebarItem.filesPaneRef, s = page.noteService
+      return JSON.stringify({ space: page.sidebarSpace, open: page.sidebarOpen, here: page.here, pick: f.pick,
+        rows: f.shown.map(function (r) { return (r.dir ? (r.open ? "v " : "> ") : "") + r.name + (r.where ? " @" + r.where : "") }),
+        filePath: s.filePath, readOnly: s.readOnly, dayNote: page.dayNote, agentOn: page.agentOn, label: page.noteLabel })
+    }
+    function filesFocus(i: int): void { page.sidebarItem.filesPaneRef.pick = i }
+    function filesKey(key: int, mods: int): bool { return page.sidebarItem.keyPressed({ key: key, text: "", modifiers: mods }) }
+    function filesFilter(text: string): void { page.sidebarItem.filesPaneRef.filterFieldRef.text = text }
+    function openFile(rel: string, readOnly: bool): void { page.openFile(rel, readOnly) }
     function horizon(): string { return JSON.stringify({ data: page.horizonData, before: page.beforeHorizon, agentOn: page.agentOn }) }
     function linkCitations(text: string): string { return page.linkCitations(text) }
     function openCitation(link: string): void { page.openCitation(link) }

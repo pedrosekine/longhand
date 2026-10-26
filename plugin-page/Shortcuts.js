@@ -29,6 +29,7 @@ var places = {
   dash: "in the dashboard",
   calendar: "in the calendar",
   lists: "in the sidebar's lists",
+  files: "in the files",
   margin: "in the margin",
   chat: "in the conversation box",
   settings: "in settings",
@@ -47,6 +48,7 @@ var groups = [
   { id: "dash", title: "Dashboard" },
   { id: "calendar", title: "Calendar" },
   { id: "lists", title: "Deadlines, projects and sections in the sidebar" },
+  { id: "files", title: "Files in the sidebar" },
   { id: "margin", title: "The margin" },
   { id: "settings", title: "Settings" },
   { id: "typing", title: "Typing (the text field's own, not changeable)" },
@@ -75,6 +77,11 @@ var actions = [
   // conversation, its key before the panes. Ctrl+J and Ctrl+Shift+B are
   // the keys these had before.
   { id: "sidebar", group: "page", places: ["any"], does: "The sidebar (calendar, projects): go there, opening it; in it, close it", keys: ["Ctrl+[", "Ctrl+Shift+B"] },
+  // The sidebar's spaces, after Zen's workspaces (docs/files.md,
+  // 2026-10-26): Time and Files, the shifted brackets beside the sidebar's
+  // own, wrapping around. They open the sidebar when it is closed.
+  { id: "spacePrev", group: "page", places: ["any"], does: "The sidebar's space before (Time, Files), opening the sidebar", keys: ["Ctrl+{"] },
+  { id: "spaceNext", group: "page", places: ["any"], does: "The sidebar's space after (Time, Files), opening the sidebar", keys: ["Ctrl+}"] },
   { id: "home", group: "page", places: ["any"], does: "The middle: go there; in it, flip the note and the dashboard", keys: ["Ctrl+\\"] },
   { id: "day", group: "page", places: ["any"], does: "The agent's pane: go there, opening it on the day's conversation; in it, close it", keys: ["Ctrl+]", "Ctrl+J"] },
   { id: "paneLeft", group: "page", places: ["any"], does: "The open pane to the left", keys: ["Alt+Left"] },
@@ -195,6 +202,14 @@ var actions = [
   { id: "listTag", group: "lists", places: ["lists"], does: "A project: put its #tag at the cursor", keys: ["Ctrl+Enter"] },
   { id: "listNext", group: "lists", places: ["lists"], does: "On to the next list", keys: ["Tab"] },
   { id: "listBack", group: "lists", places: ["lists"], does: "Back out of the list", keys: ["Esc", "Shift+Tab", "Left"] },
+
+  { id: "filesUp", group: "files", places: ["files"], does: "Move up", keys: ["Up", "K"] },
+  { id: "filesDown", group: "files", places: ["files"], does: "Move down", keys: ["Down", "J"] },
+  { id: "filesOpen", group: "files", places: ["files"], does: "Open the file in the sheet (a folder: open or fold it)", keys: ["Enter"] },
+  { id: "filesInto", group: "files", places: ["files"], does: "Open the folder (open: into it)", keys: ["Right", "L"] },
+  { id: "filesOut", group: "files", places: ["files"], does: "Fold the folder (folded: up to the one it is in)", keys: ["Left", "H"] },
+  { id: "filesFilter", group: "files", places: ["files"], does: "Filter by name", keys: ["/"] },
+  { id: "filesBack", group: "files", places: ["files"], does: "Clear the filter; else close the sidebar", keys: ["Esc"] },
 
   { id: "marginUp", group: "margin", places: ["margin", "chat"], does: "Previous proposal (from an empty box: into the proposals)", keys: ["Up"] },
   { id: "marginDown", group: "margin", places: ["margin"], does: "Next proposal, then the box", keys: ["Down"] },

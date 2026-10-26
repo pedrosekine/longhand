@@ -19,6 +19,8 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | Show these keys | `Ctrl+/` | everywhere |
 | Settings (calendars, sound) | `Ctrl+,` | everywhere |
 | The sidebar (calendar, projects): go there, opening it; in it, close it | `Ctrl+[` · `Ctrl+Shift+B` | everywhere |
+| The sidebar's space before (Time, Files), opening the sidebar | `Ctrl+{` | everywhere |
+| The sidebar's space after (Time, Files), opening the sidebar | `Ctrl+}` | everywhere |
 | The middle: go there; in it, flip the note and the dashboard | `Ctrl+\` | everywhere |
 | The agent's pane: go there, opening it on the day's conversation; in it, close it | `Ctrl+]` · `Ctrl+J` | everywhere |
 | The open pane to the left | `Alt+←` | everywhere |
@@ -139,6 +141,18 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | A project: put its #tag at the cursor | `Ctrl+Enter` | in the sidebar's lists |
 | On to the next list | `Tab` | in the sidebar's lists |
 | Back out of the list | `Esc` · `Shift+Tab` · `←` | in the sidebar's lists |
+
+## Files in the sidebar
+
+| | Keys | Works |
+|---|---|---|
+| Move up | `↑` · `k` | in the files |
+| Move down | `↓` · `j` | in the files |
+| Open the file in the sheet (a folder: open or fold it) | `Enter` | in the files |
+| Open the folder (open: into it) | `→` · `l` | in the files |
+| Fold the folder (folded: up to the one it is in) | `←` · `h` | in the files |
+| Filter by name | `/` | in the files |
+| Clear the filter; else close the sidebar | `Esc` | in the files |
 
 ## The margin
 

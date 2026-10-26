@@ -37,7 +37,18 @@ Item {
   // the student sees and types. A note that does not start with the link has
   // an empty header and the body is the whole file.
   property string notePath: ""
-  property string noteDate: ""        // the note's file name: a date in daily.format
+  property string noteDate: ""        // the note's file name: a date in daily.format; "" for a file
+  // A file of the notes opened from the Files space (docs/files.md): its
+  // path in the vault, and whether it is the agent's (read, never written).
+  property string filePath: ""
+  property bool readOnly: false
+  // The person's notes (`notes` in the config, else the folder the daily
+  // notes sit in when nested, else the vault) and the agent's folder's root;
+  // the runner's notes_root is the same rule.
+  readonly property string notesRoot: !configured ? ""
+    : config.notes !== undefined ? String(config.notes).replace(/^\/+|\/+$/g, "")
+    : (function (d) { var p = d.split("/"); return p.length > 1 ? p[0] : "" })(String(config.daily.dir).replace(/^\/+|\/+$/g, ""))
+  readonly property string agentRoot: configured ? String(config.agentDir || "agents/longhand").replace(/^\/+|\/+$/g, "").split("/")[0] : ""
   // Whether the note in the page is today's — checked against the clock,
   // so a page left open past midnight knows its note became yesterday's.
   property string today: ""
@@ -153,6 +164,29 @@ Item {
     root.ready = false
     root.error = ""
     root.noteDate = stamp
+    root.filePath = ""
+    root.readOnly = false
+    root.notePath = p
+    root.lastWritten = ""
+    if (noteFile.path === p) noteFile.reload()
+    else noteFile.path = p
+  }
+
+  // Point at a file of the notes (vault-relative). It is never created: a
+  // file that is not there says so.
+  function openFile(rel, readOnly) {
+    if (!configured) return
+    var p = config.vault + "/" + rel
+    root.today = todayStamp()
+    root.readOnly = !!readOnly
+    if (p === notePath && ready) {
+      if (!saving && !pending) noteFile.reload()
+      return
+    }
+    root.ready = false
+    root.error = ""
+    root.noteDate = ""
+    root.filePath = rel
     root.notePath = p
     root.lastWritten = ""
     if (noteFile.path === p) noteFile.reload()
@@ -167,7 +201,7 @@ Item {
   // changed since the last write, so a save per keystroke never touches disk
   // twice.
   function save(bodyText) {
-    if (!ready || error !== "") return
+    if (!ready || error !== "" || root.readOnly) return
     // A day opened from the calendar has no file until something is
     // written in it; looking at it must not create one.
     if (!root.exists && bodyText.trim() === "") { root.pending = false; return }
@@ -238,7 +272,7 @@ Item {
       else root.loaded()
     }
     onLoadFailed: function (err) {
-      if (err === FileViewError.FileNotFound) {
+      if (err === FileViewError.FileNotFound && root.noteDate !== "") {
         // No note for this day. Today: seed it from the template now, the
         // one create path, as Obsidian would on its side. Any other day:
         // hold the template's header ready but write nothing until the

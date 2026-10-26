@@ -123,6 +123,7 @@ Item {
 
   // Handles for a test harness driving the page over IPC.
   readonly property alias editorItem: editor
+  readonly property alias sidebarItem: sidebar
   readonly property alias contentItem: content    // what is drawn, for tests to photograph
   readonly property alias noteService: svc
   readonly property alias whenInput: whenField
@@ -266,6 +267,14 @@ Item {
 
   readonly property string dateLabel: svc.noteDate !== "" && svc.configured
     ? Days.longLabel(svc.noteDate, svc.dailyFormat()) : ""
+  // A day in the sheet, or a file of the notes (docs/files.md). Everything
+  // a day has that a file does not — its deadlines bound to lines, who made
+  // each line, the agent's records and runs, the check — asks this first.
+  readonly property bool dayNote: svc.noteDate !== ""
+  // The header's name for what is in the sheet: the day, or the file's
+  // name (where it is, the Files tree shows).
+  readonly property string noteLabel: root.dayNote ? root.dateLabel
+    : svc.filePath === "" ? "" : svc.filePath.replace(/^.*\//, "").replace(/\.md$/i, "")
 
   // Which day is in the sheet, and whether the agent can work on it: the
   // runner reads only names in the vault's own format.
@@ -335,7 +344,7 @@ Item {
   // note's frontmatter, which is what the runner reads; taking it off puts
   // the day back as it was.
   function togglePrivate() {
-    if (!svc.ready) return
+    if (!svc.ready || !root.dayNote) return
     var on = !svc.notePrivate
     svc.setPrivate(on)
     root.flush()
@@ -343,9 +352,31 @@ Item {
     root.showHint(on ? "private — the agent sees nothing in this note" : "the agent can be asked about this note again")
   }
   property string pendingStamp: ""   // a day to open once the save in flight lands
+  property var pendingFile: null     // or a file: { rel, readOnly }
 
   // The sidebar: a month calendar.
   property bool sidebarOpen: false
+  // Its spaces (docs/files.md, 2026-10-26), after Zen's workspaces: "time"
+  // (the calendar, the day's deadlines, the projects) and "files" (the
+  // notes as folders). A page opened from nothing lands on time.
+  readonly property var spaces: ["time", "files"]
+  property string sidebarSpace: "time"
+  property int spaceStep: 0            // the way the last switch went, for the slide
+
+  // To the space before or after, wrapping around; the sidebar opens (and
+  // takes the keys) if it was closed.
+  function switchSpace(d) {
+    var i = (root.spaces.indexOf(root.sidebarSpace) + d + root.spaces.length) % root.spaces.length
+    root.setSpace(root.spaces[i], d)
+  }
+  function setSpace(name, d) {
+    if (!root.sidebarOpen) root.toggleSidebar()
+    else if (root.here !== "left") root.focusPane("left")
+    if (name === root.sidebarSpace) return
+    root.spaceStep = d || (root.spaces.indexOf(name) > root.spaces.indexOf(root.sidebarSpace) ? 1 : -1)
+    root.sidebarSpace = name
+    root.used("space", name)
+  }
   property var dayStems: []
   property var calFocus: new Date()   // the day the calendar's cursor is on
   readonly property var dayIndex: svc.configured ? Days.index(root.dayStems, svc.dailyFormat()) : ({})
@@ -483,6 +514,7 @@ Item {
   }
 
   function openDay(block) {
+    if (!root.dayNote) { root.showHint("a file has no day's conversation · " + root.keyName("today") + " for today"); return }
     if (root.here !== "right") root.noteFrom("right", root.keysOpen || root.settingsOpen ? "center" : root.here)
     if (root.keysOpen) root.toggleKeys()
     if (root.settingsOpen) root.toggleSettings()
@@ -1009,6 +1041,7 @@ Item {
     }
     if (fresh) {
       root.sidebarOpen = false
+      root.sidebarSpace = "time"
       // The margin is on-demand only, so a page opened from nothing shows
       // the note alone — not the panel the last session left open.
       root.marginOpen = false
@@ -1108,6 +1141,8 @@ Item {
     if (Sc.hit(event, "keys")) { root.toggleKeys(); return true }
     if (Sc.hit(event, "settings")) { root.toggleSettings(); return true }
     if (Sc.hit(event, "sidebar")) { root.paneKey("left"); return true }
+    if (Sc.hit(event, "spacePrev")) { root.switchSpace(-1); return true }
+    if (Sc.hit(event, "spaceNext")) { root.switchSpace(1); return true }
     if (Sc.hit(event, "home")) { root.paneKey("center"); return true }
     if (Sc.hit(event, "day")) { root.paneKey("right"); return true }
     if (Sc.hit(event, "paneLeft")) { root.movePane(-1); return true }
@@ -1134,7 +1169,7 @@ Item {
   readonly property string rightView: margin.visible ? (root.talkOpen ? "talk" : "margin") : dayPane.visible ? "day" : ""
   readonly property bool leftShown: sidebar.visible
   readonly property var panes: (root.leftShown ? ["left"] : []).concat(["center"], root.rightView !== "" ? ["right"] : [])
-  readonly property string here: sidebar.sidebarKeysRef.activeFocus || sidebar.projectFieldRef.activeFocus ? "left"
+  readonly property string here: sidebar.sidebarKeysRef.activeFocus || sidebar.projectFieldRef.activeFocus || sidebar.filesFilterRef.activeFocus ? "left"
     : margin.marginKeysRef.activeFocus || margin.chatFieldRef.activeFocus || dayPane.dayFieldRef.activeFocus ? "right"
     : "center"
   // Where the keys were when a pane ("left", "right") or a view of the
@@ -1516,7 +1551,7 @@ Item {
   }
 
   function sendCurrent() {
-    if (root.currentHash === "") return
+    if (root.currentHash === "" || !root.dayNote) return
     if (root.answered(root.currentRecord)) {
       if (root.marginWidth <= 0) { root.showHint("already answered — the window is too narrow to show it"); return }
       root.used("reopen")
@@ -1853,7 +1888,7 @@ Item {
     if (Sc.hit(event, "close")) { if (!root.alongside) root.dismiss(); return true }
     if (Sc.hit(event, "private")) { root.togglePrivate(); return true }
     if (Sc.hit(event, "ask")) { root.sendCurrent(); return true }
-    if (Sc.hit(event, "dayHere")) { root.openDay(root.currentHash); return true }
+    if (Sc.hit(event, "dayHere")) { root.openDay(root.dayNote ? root.currentHash : ""); return true }
     // Selecting to the same edges is the editor's (selectToBlockEdge).
     if (Sc.hit(event, "blockStart")) { root.walkBlocks(-1); return true }
     if (Sc.hit(event, "blockEnd")) { root.walkBlocks(1); return true }
@@ -1866,7 +1901,7 @@ Item {
     if (Sc.hit(event, "italic")) { editor.emphasise("*"); return true }
     if (Sc.hit(event, "code")) { editor.emphasise("`"); return true }
     if (Sc.hit(event, "strike")) { editor.emphasise("~~"); return true }
-    if (Sc.hit(event, "deadline")) { root.deadlineKey(); return true }
+    if (Sc.hit(event, "deadline")) { if (root.dayNote) root.deadlineKey(); return true }
     return false
   }
 
@@ -4322,7 +4357,7 @@ Item {
   function leftLine(i) {
     var typed = editor.typedRaw
     var r = editor.rows[i]
-    if (!r || r.kind !== "task" || !svc.ready || root.quiet) return
+    if (!r || r.kind !== "task" || !svc.ready || root.quiet || !root.dayNote) return
     if (r.deadline > 0) {
       // Spaces left at the end of its words would sit unseen before the
       // date, where the cursor wanders into them: a left line has none.
@@ -4500,7 +4535,7 @@ Item {
   function reconcile() {
     if (!root.reconcilePending || !dl.loaded || !svc.ready || root.checking || root.checkWanted) return
     root.reconcilePending = false
-    var a = Bound.anchors(editor.text)
+    var a = root.dayNote ? Bound.anchors(editor.text) : ({})
     for (var id in a) {
       var r = editor.rows[a[id].line]
       if (!r || r.deadline !== parseInt(id, 10)) continue
@@ -4612,7 +4647,7 @@ Item {
   // The note just read: its records laid on its lines.
   function restoreAuthors(text) {
     root.authorLines = String(text).split("\n")
-    root.authorMap = Authorship.restore(root.authorsStore[svc.noteDate] || [], root.authorLines)
+    root.authorMap = Authorship.restore(root.dayNote ? root.authorsStore[svc.noteDate] || [] : [], root.authorLines)
   }
 
   // An edit in the page: who made each line, carried.
@@ -4631,7 +4666,7 @@ Item {
   property var threadLines: []
   function restoreThreads(text) {
     root.threadLines = String(text).split("\n")
-    root.threadMap = Threads.restore(root.threadsStore[svc.noteDate] || [], root.threadLines)
+    root.threadMap = Threads.restore(root.dayNote ? root.threadsStore[svc.noteDate] || [] : [], root.threadLines)
     Qt.callLater(root.pinThreads)
   }
   function carryThreads(text) {
@@ -4641,7 +4676,7 @@ Item {
     root.keepThreads()
   }
   function pinThreads() {
-    if (!svc.ready) return
+    if (!svc.ready || !root.dayNote) return
     var blocks = Blocks.split(editor.text)
     var m = {}
     for (var k in root.threadMap) m[k] = root.threadMap[k]
@@ -4740,13 +4775,14 @@ Item {
 
   function startCheck() {
     checkTimer.stop()
+    if (!root.dayNote) return
     root.checkWanted = true
     root.flush()
     root.runCheck()
   }
 
   function runCheck() {
-    if (!root.checkWanted || root.checking || !svc.ready || svc.saving || svc.pending) return
+    if (!root.checkWanted || root.checking || !svc.ready || svc.saving || svc.pending || !root.dayNote) return
     root.checkWanted = false
     root.checking = true
     checkGuard.restart()
@@ -4987,8 +5023,28 @@ Item {
     root.closeTalk(false)
     root.dashOpen = false
     root.marginFocus = -1
-    if (svc.saving) { root.pendingStamp = stamp; return }
+    if (svc.saving) { root.pendingStamp = stamp; root.pendingFile = null; return }
     svc.openDate(stamp)
+  }
+
+  // Put a file of the notes in the sheet (the Files space, docs/files.md):
+  // yours to edit as a past day is, the agent's only to read. Whatever is
+  // typed is written first, as for a day; the agent's pane, which belongs
+  // to a day, closes.
+  function openFile(rel, readOnly) {
+    if (rel === "" || (rel === svc.filePath && svc.ready)) { root.showNote(); return }
+    if (root.searchOpen) root.closeSearch("back")
+    root.leftLine(root.lastLine)
+    root.flush()
+    root.used("file", readOnly ? "agent" : "mine")
+    root.marginOpen = false
+    root.closeTalk(false)
+    root.dayOpen = false
+    root.dashOpen = false
+    root.marginFocus = -1
+    if (svc.saving) { root.pendingFile = { rel: rel, readOnly: !!readOnly }; root.pendingStamp = ""; root.showNote(); return }
+    svc.openFile(rel, readOnly)
+    root.showNote()
   }
 
   // ------------------------------------------------------------ search
@@ -5087,6 +5143,10 @@ Item {
         var s = root.pendingStamp
         root.pendingStamp = ""
         svc.openDate(s)
+      } else if (root.pendingFile) {
+        var f = root.pendingFile
+        root.pendingFile = null
+        svc.openFile(f.rel, f.readOnly)
       }
       root.launchQueued()
     }
@@ -5109,6 +5169,7 @@ Item {
     id: agent
     config: svc.config
     date: svc.noteDate
+    off: !root.dayNote
     onStateChanged: { root.scheduleRepaint(); root.checkAccept(); root.settleChat(); root.settleDay() }
   }
 
@@ -5801,8 +5862,13 @@ Item {
             // The status line takes the date's place while it speaks.
             opacity: root.status === "" ? 1 : 0
             anchors.left: parent.left
+            // A file's name can be long: it stops short of the seal, leaving
+            // room for the way back (2026-10-27).
+            width: Math.min(implicitWidth, Math.max(root.sp(80),
+              seal.x - root.sp(36) - (backToday.visible ? backToday.implicitWidth : 0)))
+            elide: Text.ElideRight
             textFormat: Text.PlainText
-            text: root.dateLabel
+            text: root.noteLabel + (svc.readOnly ? " · the agent's, to read" : "")
             color: dateArea.containsMouse ? root.accent : root.sidebarOpen ? root.foreground : svc.isToday ? root.dim : root.foreground
             font.family: root.fontFamily
             font.styleName: root.fontStyle
@@ -5825,13 +5891,20 @@ Item {
           // On another day: the way back to today.
           Text {
             id: backToday
-            visible: !svc.isToday && svc.noteDate !== "" && root.status === ""
+            visible: !svc.isToday && (svc.noteDate !== "" || svc.filePath !== "") && root.status === ""
             anchors.left: dateText.right
             anchors.leftMargin: root.sp(12)
             anchors.verticalCenter: dateText.verticalCenter
+            width: Math.max(0, Math.min(implicitWidth, seal.x - root.sp(18) - x))
+            elide: Text.ElideRight
             textFormat: Text.PlainText
-            text: root.beforeHorizon ? "back to today · before the agent's horizon"
+            // Short of room (a long file name, a narrow window), the name
+            // keeps its room and the way back says only "today".
+            readonly property string full: !root.dayNote ? "back to today"
+              : root.beforeHorizon ? "back to today · before the agent's horizon"
               : root.agentDay ? "back to today" : "back to today · agent off for this note"
+            TextMetrics { id: backFull; font: backToday.font; text: backToday.full }
+            text: seal.x - root.sp(36) - dateText.implicitWidth >= backFull.width ? full : "today"
             color: todayArea.containsMouse ? root.accent : root.faint
             font.family: root.fontFamily
             font.styleName: root.fontStyle
@@ -6146,6 +6219,8 @@ Item {
 
           NoteEditor {
             id: editor
+            readOnly: svc.readOnly
+            cues: root.dayNote
             // What the page shows under a line opens room there, so the
             // lines below move down rather than being drawn over.
             roomRow: whenBox.visible || mentionBox.visible || nameBox.visible ? root.lineIndexAt(root.newProject ? root.newProject.end : editor.cursorPosition) : -1

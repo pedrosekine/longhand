@@ -2383,6 +2383,69 @@ def main() -> int:
               f"Esc on the calendar closes the sidebar, the keys back in the middle ({panes()})")
         p.call("openDay", TODAY)
 
+        # 12h. the sidebar's spaces and the Files space (docs/files.md,
+        # 2026-10-26): Ctrl+} goes to Files; folders open as they are asked
+        # for, hidden ones never listed; a file opens in the sheet, editable
+        # and with no day's machinery; the agent's files read only; Ctrl+H
+        # is home; a fresh open lands on Time.
+        print("-- spaces and files")
+        KEY_RIGHT, KEY_SLASH, KEY_BRACE_R = 0x01000014, 0x2f, 0x7d
+        course = p.vault / "Studies" / "Course A"
+        course.mkdir(parents=True)
+        (course / "Session 1.md").write_text("# Session 1\n\nNotes from the first session.\n")
+        (p.vault / "_Attachments").mkdir()
+        (p.vault / "_Attachments" / "hidden.md").write_text("never listed\n")
+        kept = p.vault / "agents" / "longhand" / "knowledge"
+        kept.mkdir(parents=True, exist_ok=True)
+        (kept / "about-you.md").write_text("What the agent keeps.\n")
+        fs = lambda: json.loads(p.call("files"))
+        p.call("pageKey", KEY_BRACE_R, CTRL)
+        check(p.wait(lambda: fs()["space"] == "files" and fs()["open"] and fs()["here"] == "left"),
+              f"Ctrl+}}: the sidebar opens on Files, the keys in it ({fs()})")
+        check(p.wait(lambda: "> Studies" in fs()["rows"]), f"…your notes' first level listed ({fs()['rows']})")
+        rows = fs()["rows"]
+        check(not any(r.endswith("Daily") or "_Attachments" in r or r.endswith("agents") for r in rows),
+              "the daily folder, _ folders and the agent's root are not among yours")
+        p.call("filesFocus", rows.index("> Studies"))
+        p.call("filesKey", KEY_RIGHT, 0)
+        check(p.wait(lambda: "> Course A" in fs()["rows"]), f"→ opens a folder in place ({fs()['rows']})")
+        p.call("filesFocus", fs()["rows"].index("> Course A"))
+        p.call("filesKey", KEY_RIGHT, 0)
+        check(p.wait(lambda: "Session 1" in fs()["rows"]), "…and the one inside it")
+        p.call("filesFocus", fs()["rows"].index("Session 1"))
+        p.call("filesKey", KEY_RETURN, 0)
+        check(p.wait(lambda: fs()["filePath"] == "Studies/Course A/Session 1.md" and fs()["here"] == "center"
+                     and "Notes from the first session." in p.call("text")),
+              f"Enter opens the file in the sheet, the keys in it ({fs()})")
+        f = fs()
+        check(not f["dayNote"] and not f["agentOn"] and not f["readOnly"] and f["label"] == "Session 1",
+              f"…a file, not a day: no agent, yours to edit, named in the header ({f})")
+        p.call("cursorEnd")
+        p.call("type", " More.")
+        check(p.wait(lambda: "Notes from the first session.\n More." in (course / "Session 1.md").read_text()),
+              "what is typed in it is saved to it")
+        check("More." not in p.note(), "…and not to the day")
+        p.call("pageKey", KEY_BL, CTRL)
+        p.call("filesKey", KEY_SLASH, 0)
+        p.call("filesFilter", "session")
+        check(p.wait(lambda: any(r.startswith("Session 1 @Studies/Course A") for r in fs()["rows"])),
+              f"/ filters every note by name, its folder beside it ({fs()['rows']})")
+        check(p.wait(lambda: not any("hidden" in r for r in fs()["rows"])) and (p.call("filesFilter", "hidden") or True)
+              and p.wait(lambda: fs()["rows"] == []), "…never a hidden one")
+        p.call("filesFilter", "")
+        p.call("filesKey", KEY_ESC, 0)
+        p.call("openFile", "agents/longhand/knowledge/about-you.md", "true")
+        check(p.wait(lambda: fs()["readOnly"] and "What the agent keeps." in p.call("text")), "the agent's file opens to read")
+        p.call("cursorEnd")
+        p.call("type", " typed")
+        time.sleep(0.8)
+        check((kept / "about-you.md").read_text() == "What the agent keeps.\n" and "typed" not in p.call("text"),
+              "…and nothing typed reaches it")
+        p.call("pageKey", 0x48, CTRL)                      # Ctrl+H
+        check(p.wait(lambda: fs()["dayNote"] and fs()["filePath"] == ""), f"Ctrl+H: home to today ({fs()})")
+        p.open_fresh()
+        check(fs()["space"] == "time" and not fs()["open"], "a fresh open lands on Time, the sidebar closed")
+
         # 13. the usage log: written on close, event names only
         p.call("closeAll")
         usage = p.state / "longhand" / "usage.tsv"

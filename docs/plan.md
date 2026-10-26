@@ -472,7 +472,8 @@ section, word for word, and to the diary's decisions log.
       horizon"). The agent sees daily notes only from 2026-09-17
       onwards, set in Settings → what the agent may search. This closes a
       real exposure: every daily since 2021 was in the agent's search.
-   2. **Spaces.**
+   2. ~~**Spaces.**~~ *built 2026-10-27* (`docs/files.md`, "How it is
+      built").
       - Time and Files in the sidebar, switched by `Ctrl+Shift+[`/`]`, a
         swipe, Ctrl+scroll or the marks at its foot.
       - Each space has its own tint, and the essentials stay at the foot.

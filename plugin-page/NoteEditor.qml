@@ -53,6 +53,12 @@ Item {
   // pending, as typed (Rows.readCue); the page binds it when the line is
   // left and clears this. `declined`: lines (raw) whose date stays words.
   property string typedRaw: ""
+  // The agent's files are opened to read (docs/files.md): nothing typed,
+  // pasted, ticked or moved changes them; selecting, copying and find still
+  // work. `cues`: a date at a checkbox's end is lit as typed only in a day,
+  // where it can become a deadline.
+  property bool readOnly: false
+  property bool cues: true
   property var declined: ({})
   // The row whose date lit up with the last keystroke: a Backspace right
   // then keeps the date as words (as Todoist does), instead of deleting.
@@ -160,6 +166,7 @@ Item {
   // Programmatic edits, with the cursor carried along the way TextEdit
   // carries it: text inserted at or before the cursor pushes it forward.
   function replace(a, b, s) {
+    if (ed.readOnly) return
     var cur = ed.cursorPosition
     if (cur >= b) cur += s.length - (b - a)
     else if (cur > a) cur = a + s.length
@@ -188,6 +195,7 @@ Item {
   // the file stays plain markdown and Obsidian reads the same ones; the row
   // draws them to nothing and the words emphasised (Emph.js).
   function emphasise(marker) {
+    if (ed.readOnly) return
     var t = ed.text
     var n = marker.length
     var a, b
@@ -224,6 +232,7 @@ Item {
   // VS Code; the cursor and the selection go with it. A bound line carries
   // its anchor along, so its deadline follows the words.
   function moveLines(dir) {
+    if (ed.readOnly) return
     var t = ed.text
     var spanning = ed.spanning
     var anchor = ed.selAnchor
@@ -292,7 +301,7 @@ Item {
   }
 
   function undo() {
-    if (ed.undoStack.length === 0) return
+    if (ed.undoStack.length === 0 || ed.readOnly) return
     var s = ed.undoStack[ed.undoStack.length - 1]
     ed.undoStack = ed.undoStack.slice(0, -1)
     ed.redoStack = ed.redoStack.concat([{ text: ed.text, cursor: ed.cursorPosition }])
@@ -327,7 +336,7 @@ Item {
   }
 
   function redo() {
-    if (ed.redoStack.length === 0) return
+    if (ed.redoStack.length === 0 || ed.readOnly) return
     var s = ed.redoStack[ed.redoStack.length - 1]
     ed.redoStack = ed.redoStack.slice(0, -1)
     ed.undoStack = ed.undoStack.concat([{ text: ed.text, cursor: ed.cursorPosition }])
@@ -613,6 +622,7 @@ Item {
   }
 
   function pasteAt(pos) {
+    if (ed.readOnly) return
     var t = ed.pasteText().replace(/\r/g, "")
     if (t === "") return
     ed.snapshot(true)
@@ -621,6 +631,7 @@ Item {
   }
 
   function removeSpan() {
+    if (ed.readOnly) return
     var a = ed.selStart, b = ed.selEnd
     ed.snapshot(true)
     ed.clearSelection()
@@ -782,6 +793,7 @@ Item {
 
   // A field changed under the student's fingers.
   function typed(i, body, col) {
+    if (ed.readOnly) return
     var r = ed.rows[i]
     if (!r) return
     ed.clearSelection()
@@ -926,6 +938,7 @@ Item {
   // Ctrl+L or a click: tick or untick a checkbox; on a bullet or a plain
   // line, make it a checkbox.
   function toggleCheckbox(i) {
+    if (ed.readOnly) return
     var r = ed.rows[i]
     if (!r) return
     ed.snapshot(true)
@@ -1197,7 +1210,7 @@ Item {
         readonly property bool quoted: kind === "quote" || kind === "calloutHead"
         // A date being written at the end of this checkbox: lit up, its
         // pill pending (accent) until the line is left and it is bound.
-        readonly property bool pending: kind === "task" && cueAt >= 0 && ed.typedRaw !== "" && raw === ed.typedRaw && !ed.declined[raw]
+        readonly property bool pending: ed.cues && kind === "task" && cueAt >= 0 && ed.typedRaw !== "" && raw === ed.typedRaw && !ed.declined[raw]
         readonly property int gapTop: blank ? 0 : Math.round(space * ed.textSize)
         readonly property real indentX: level * ed.markerWidth
         readonly property real labelWidth: kind === "calloutHead" ? label.implicitWidth + Math.round(ed.textSize * 0.4) : 0
@@ -1455,6 +1468,7 @@ Item {
 
         TextEdit {
           id: field
+          readOnly: ed.readOnly
           x: row.fieldX
           y: row.gapTop
           width: Math.max(0, row.width - row.fieldX - (due.visible ? due.width + Math.round(ed.textSize * 0.6) : 0))

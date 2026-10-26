@@ -38,7 +38,8 @@ blocks, the agent's own knowledge files, the curriculum folder, the timer and
 deadline report, the next two weeks of the timetable), logged verbatim to the payload log before inference, and
 everything it says back is applied here — transcript, state file, knowledge
 files, cost ledger. No code path in this file opens anything under the daily
-notes folder for writing; `guard_write` enforces that.
+notes folder for writing, nor anything under the notes root (`human/` here,
+docs/files.md); `guard_write` enforces that.
 
 Config: ~/.config/longhand/config.json (see config.example.json).
 """
@@ -139,6 +140,7 @@ class Paths:
         self.daily_dir = self.vault / cfg["daily"]["dir"]
         self.note = self.daily_dir / f"{self.stamp}.md"
         self.agent_dir = self.vault / cfg.get("agentDir", "agents/longhand")
+        self.notes_root = notes_root(cfg)
         self.transcript = self.agent_dir / "daily" / f"{self.stamp}.md"
         self.state = self.agent_dir / "daily" / f"{self.stamp}.json"
         self.knowledge = self.agent_dir / "knowledge"
@@ -154,12 +156,30 @@ class Paths:
 
 # ------------------------------------------------------------------ writes
 
+def notes_root(cfg: dict) -> str:
+    """The person's notes, vault-relative (docs/files.md, 2026-10-26):
+    `notes` in the config, else the folder the daily notes sit in when they
+    are nested (`human/Daily` → `human`), else the vault itself ("")."""
+    if cfg.get("notes") is not None:
+        return str(cfg["notes"]).strip("/")
+    parts = Path(str(cfg["daily"]["dir"]).strip("/")).parts
+    return parts[0] if len(parts) > 1 else ""
+
+
 def guard_write(paths: Paths, target: Path) -> None:
-    """The one rule that lets the agent say 'I never touched your prose'."""
+    """The one rule that lets the agent say 'I never touched your prose':
+    nothing under the daily folder, and nothing under the notes root unless
+    it is the agent's own folder. (A vault whose notes are the vault itself
+    keeps the daily folder's rule only: the agent's other places — the
+    projects' documents — sit beside the notes there.)"""
     t = target.resolve()
     d = paths.daily_dir.resolve()
     if t == d or d in t.parents:
         raise Fail(f"refusing to write under the daily folder: {target}")
+    if paths.notes_root:
+        n, a = (paths.vault / paths.notes_root).resolve(), paths.agent_dir.resolve()
+        if (t == n or n in t.parents) and not (t == a or a in t.parents):
+            raise Fail(f"refusing to write under the notes: {target}")
 
 
 def write_atomic(paths: Paths, target: Path, text: str) -> None:
