@@ -214,6 +214,9 @@ var actions = [
 var fixed = [
   { group: "typing", places: ["note"], does: "New line; on an empty list item, step out a level, then leave the list", show: ["Enter"], keys: ["Enter"] },
   { group: "typing", places: ["note"], does: "New line in the same block", show: ["Shift+Enter"], keys: ["Shift+Enter"] },
+  // The conversation box wraps and grows (ChatField, 2026-10-25): Enter
+  // sends, so a new line in a message is Shift+Enter.
+  { group: "typing", places: ["chat"], does: "New line in what you write", show: ["Shift+Enter"], keys: ["Shift+Enter"] },
   { group: "typing", places: ["note"], does: "Nest or un-nest the line (or every line selected)", show: ["Tab", "Shift+Tab"], keys: ["Tab", "Shift+Tab"] },
   { group: "typing", places: ["note", "search", "chat"], does: "Move; by word with Ctrl", show: ["Left", "Right", "Up", "Down", "Ctrl+Left", "Ctrl+Right"],
     keys: ["Left", "Right", "Ctrl+Left", "Ctrl+Right", "Home", "End"] },

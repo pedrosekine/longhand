@@ -253,11 +253,15 @@ Item {
   readonly property int gutter: root.sp(18)
   // The right pane beside the note: the sidebar's kind of width, the same
   // in both shapes; a narrow window narrows the note, not the pane.
-  readonly property int marginWidth: Math.max(0, Math.min(root.sp(300), Math.round(content.width * 0.45)))
+  // It takes the room the note leaves, up to a width a conversation reads
+  // well at (2026-10-25: at 300 it held five words a line); never less
+  // than before, so a narrow window still narrows the note first.
+  readonly property int marginWidth: Math.max(0, Math.min(Math.round(content.width * 0.45),
+    Math.max(root.sp(300), Math.min(root.sp(440), content.width - 2 * root.edge - root.sheetFor - root.marginGap - root.sideSpace))))
 
   // The margin beside the dashboard, while a proposal is talked about: the
   // dashboard gives up the room, since a list has more width than it needs.
-  readonly property int talkWidth: Math.max(0, Math.min(root.sp(360), Math.round(root.wideWidth * 0.42)))
+  readonly property int talkWidth: Math.max(0, Math.min(root.sp(440), Math.round(root.wideWidth * 0.42)))
   readonly property int dashWidth: root.wideWidth - (root.talkOpen || root.dayBesideDash ? root.talkWidth + root.marginGap : 0)
 
   readonly property string dateLabel: svc.noteDate !== "" && svc.configured
@@ -609,7 +613,26 @@ Item {
     root.used("rate", "day-" + v)
   }
 
+  // The words last selected in a conversation (ChatTurn): one selection
+  // across the panes at a time, copied with Ctrl+C from wherever the keys
+  // are in the pane — the turns never take them — unless the box has a
+  // selection of its own.
+  property Item chatSelection: null
+  function chatSelected(edit) {
+    if (root.chatSelection && root.chatSelection !== edit) root.chatSelection.deselect()
+    root.chatSelection = edit
+  }
+  function copyChatSelection(event, box) {
+    if (event.key !== Qt.Key_C || (event.modifiers & (Qt.ControlModifier | Qt.ShiftModifier | Qt.AltModifier)) !== Qt.ControlModifier) return false
+    if (box && box.selectedText !== "") return false
+    var s = root.chatSelection
+    if (!s || s.selectedText === "") return false
+    s.copy()
+    return true
+  }
+
   function dayKey(event) {
+    if (root.copyChatSelection(event, dayPane.dayFieldRef)) return true
     if (Sc.hit(event, "dayHelpful")) { root.rateDay(-1, "up"); return true }
     if (Sc.hit(event, "dayNotHelpful")) { root.rateDay(-1, "down"); return true }
     // On the cards: ↑↓ between them, Enter or Space does what one says, Del

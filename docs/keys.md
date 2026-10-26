@@ -175,6 +175,7 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 |---|---|---|
 | New line; on an empty list item, step out a level, then leave the list | `Enter` | |
 | New line in the same block | `Shift+Enter` | |
+| New line in what you write | `Shift+Enter` | |
 | Nest or un-nest the line (or every line selected) | `Tab` · `Shift+Tab` | |
 | Move; by word with Ctrl | `←` · `→` · `↑` · `↓` · `Ctrl+←` · `Ctrl+→` | |
 | Select, across lines too; by word with Ctrl | `Shift+←` · `Shift+→` · `Shift+↑` · `Shift+↓` | |

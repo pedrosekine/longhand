@@ -95,15 +95,10 @@ BorderSurface {
             font.styleName: page.fontStyle
             font.pixelSize: page.fs(Style.font.caption)
           }
-          Text {
-            width: parent.width
-            textFormat: Text.MarkdownText
-            wrapMode: Text.WordWrap
+          ChatTurn {
+            page: dayPane.page
             text: modelData
             color: page.dim
-            font.family: page.fontFamily
-            font.styleName: page.fontStyle
-            font.pixelSize: page.fs(Style.font.title)
           }
         }
       }
@@ -116,30 +111,26 @@ BorderSurface {
           required property int index
           width: dayColumn.width
           spacing: page.sp(2)
-          // The block a message pointed at.
+          // The block a message pointed at, over its bubble.
           Text {
             visible: modelData.role === "student" && !!modelData.block
             width: parent.width
             textFormat: Text.PlainText
             elide: Text.ElideRight
+            horizontalAlignment: Text.AlignRight
             text: "↳ " + page.blockHead(modelData.block)
             color: page.faint
             font.family: page.fontFamily
             font.styleName: page.fontStyle
             font.pixelSize: page.fs(Style.font.caption)
           }
-          Text {
-            width: parent.width
-            textFormat: modelData.role === "agent" ? Text.MarkdownText : Text.PlainText
-            wrapMode: Text.WordWrap
+          ChatTurn {
+            page: dayPane.page
+            mine: modelData.role !== "agent"
             text: modelData.error ? "could not answer: " + page.sayPlanError(modelData.error)
               : modelData.role === "agent" ? page.linkCitations(modelData.text) : modelData.text
-            color: modelData.error ? page.urgent : modelData.role === "agent" ? page.foreground : page.dim
-            linkColor: page.accent
+            color: modelData.error ? page.urgent : page.foreground
             onLinkActivated: function (link) { page.openCitation(link) }
-            font.family: page.fontFamily
-            font.styleName: page.fontStyle
-            font.pixelSize: page.fs(Style.font.title)
           }
           // What it proposed: a card each, the same item as the dashboard's
           // row — structured, not prose: ◇ and its kind, the box and what
@@ -383,19 +374,16 @@ BorderSurface {
       font.pixelSize: page.fs(Style.font.caption)
     }
 
-    TextField {
+    ChatField {
       id: dayField
+      page: dayPane.page
       width: parent.width
+      height: implicitHeight
       // Read-only rather than disabled on a past day: the pane still takes
       // the keys, so Esc and the panes' keys work in it.
       readOnly: !page.dayCanSend
       placeholderText: page.dayCanSend ? "talk to the day…" : "a past day: today's is where you talk (" + page.keyName("today") + ")"
-      font.family: page.fontFamily
-      font.styleName: page.fontStyle
-      font.pixelSize: page.fs(Style.font.body)
-      foreground: page.foreground
-      Keys.priority: Keys.BeforeItem
-      Keys.onPressed: function (event) { if (page.dayKey(event)) event.accepted = true }
+      onKeyPressed: function (event) { if (page.dayKey(event)) event.accepted = true }
       onTextChanged: Qt.callLater(page.updateDayMention)
       onCursorPositionChanged: Qt.callLater(page.updateDayMention)
     }
@@ -404,7 +392,7 @@ BorderSurface {
       width: parent.width
       textFormat: Text.PlainText
       wrapMode: Text.WordWrap
-      text: page.keyName("chatSend") + " sends · @ points at a block"
+      text: page.keyName("chatSend") + " sends · Shift+Enter a new line · @ points at a block"
         + (page.dayOpenCards.length > 0 ? " · " + page.keyName("marginUp") + " to its proposals" : "")
         + " · " + page.keyName("marginBack") + " closes · " + page.keyName("day") + " from anywhere"
       color: page.faint

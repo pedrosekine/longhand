@@ -58,6 +58,7 @@ BorderSurface {
     id: marginKeys
     anchors.fill: parent
     Keys.onPressed: function (event) {
+      if (page.copyChatSelection(event, null)) { event.accepted = true; return }
       if (page.anywhereKey(event)) { event.accepted = true; return }
       if (margin.talk) { if (page.talkKey(event)) event.accepted = true; return }
       if (Sc.hit(event, "marginBack")) page.backToNote()
@@ -170,15 +171,10 @@ BorderSurface {
           required property var modelData
           width: marginColumn.width
           spacing: page.sp(2)
-          Text {
-            width: parent.width
-            textFormat: modelData.role === "agent" ? Text.MarkdownText : Text.PlainText
-            wrapMode: Text.WordWrap
+          ChatTurn {
+            page: margin.page
+            mine: modelData.role !== "agent"
             text: modelData.text
-            color: modelData.role === "agent" ? page.foreground : page.dim
-            font.family: page.fontFamily
-            font.styleName: page.fontStyle
-            font.pixelSize: page.fs(Style.font.title)
           }
           Text {
             visible: text !== ""
@@ -211,16 +207,10 @@ BorderSurface {
         font.pixelSize: page.fs(Style.font.bodySmall)
       }
 
-      Text {
-        width: parent.width
+      ChatTurn {
         visible: !margin.talk && !!(page.currentRecord && page.currentRecord.reply)
-        textFormat: Text.MarkdownText
-        wrapMode: Text.WordWrap
+        page: margin.page
         text: page.currentRecord && page.currentRecord.reply ? page.currentRecord.reply : ""
-        color: page.foreground
-        font.family: page.fontFamily
-        font.styleName: page.fontStyle
-        font.pixelSize: page.fs(Style.font.title)
       }
 
       // What it read to answer (docs/agent.md, slice 4): the course
@@ -285,16 +275,11 @@ BorderSurface {
           width: marginColumn.width
           spacing: page.sp(2)
 
-          Text {
+          ChatTurn {
             visible: !row.isCard
-            width: parent.width
-            textFormat: row.turn.role === "agent" ? Text.MarkdownText : Text.PlainText
-            wrapMode: Text.WordWrap
+            page: margin.page
+            mine: row.turn.role !== "agent"
             text: row.turn.text || ""
-            color: row.turn.role === "agent" ? page.foreground : page.dim
-            font.family: page.fontFamily
-            font.styleName: page.fontStyle
-            font.pixelSize: page.fs(Style.font.title)
           }
           Text {
             visible: !row.isCard && row.turn.who === "planner" && row.turn.role === "agent"
@@ -471,18 +456,17 @@ BorderSurface {
     anchors.bottomMargin: margin.contentBottomInset
     height: chatField.visible ? chatField.implicitHeight : 0
 
-    TextField {
+    ChatField {
       id: chatField
+      page: margin.page
       anchors.left: parent.left
       anchors.right: parent.right
+      height: implicitHeight
       visible: page.marginOpen || margin.talk
       readOnly: margin.talk && !page.talkCanSend
       placeholderText: margin.talk && !page.talkCanSend ? "" : "…"
-      font.family: page.fontFamily
-      font.styleName: page.fontStyle
-      font.pixelSize: page.fs(Style.font.body)
-      foreground: page.foreground
-      Keys.onPressed: function (event) {
+      onKeyPressed: function (event) {
+        if (page.copyChatSelection(event, chatField)) { event.accepted = true; return }
         if (page.anywhereKey(event)) { event.accepted = true; return }
         if (margin.talk) {
           if (Sc.hit(event, "chatSend")) page.sendTalk()
