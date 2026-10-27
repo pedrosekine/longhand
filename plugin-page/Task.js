@@ -31,12 +31,17 @@
 // them are surrogate pairs in JS, and a class would split them.
 .pragma library
 
-var BOX_RE = /^(\s*)([-*+]) \[([ xX\/\-])\](?: (.*))?$/
+// A box may stand inside a quote or a callout (2026-10-27): its `> `
+// layers are part of its lead, never of its nesting.
+var BOX_RE = /^(\s*(?:>[ \t]?)*[ \t]*)([-*+]) \[([ xX\/\-])\](?: (.*))?$/
+var QUOTED_RE = /^(\s*)((?:>[ \t]?)*)([\s\S]*)$/
+var PRIVATE_HEAD_RE = /^\s*>\s*\[!private\]/i
+var CALLOUT_HEAD_RE = /^\s*>\s*\[![^\]]+\]/
 var ANCHOR_RE = /\s\^d(\d+)\s*$/
 var TAG_RE = /(^|\s)#([\w\/-]+)/g
 var FIELD_RE = /\[([a-z]+)::\s*([^\]]*)\]/g
 var DATE_RE = /^(\d{4}-\d{2}-\d{2})(?:\s+(\d{1,2}:\d{2}))?/
-var FENCE_RE = /^\s*(```|~~~)/
+var FENCE_RE = /^\s*(?:>[ \t]?)*[ \t]*(```|~~~)/
 var HEADING_RE = /^(#{1,6})\s+(\S.*?)\s*$/
 
 // marker → the field it fills. Order is the order they are written in.
@@ -66,8 +71,10 @@ function parse(line) {
   var m = line.match(BOX_RE)
   if (!m) return null
   var body = (m[4] === undefined ? "" : m[4]).replace(/\s+$/, "")
+  var q = m[1].match(QUOTED_RE)[2]
   var t = {
-    lead: m[1] + m[2] + " ", indent: m[1].length, marker: m[2], state: _state(m[3]),
+    lead: m[1] + m[2] + " ", indent: m[1].length - q.length, quoted: (q.match(/>/g) || []).length,
+    "private": false, marker: m[2], state: _state(m[3]),
     done: m[3] === "x" || m[3] === "X", started: m[3] === "/", cancelled: m[3] === "-",
     text: body, title: "", tags: [], project: "", due: "", when: "", start: "",
     created: "", doneAt: "", cancelledAt: "", recur: "", priority: 0, est: "",
@@ -119,12 +126,18 @@ function scan(text) {
   var lines = text.split("\n")
   var out = []
   var heads = []   // { level, title, tag }
-  var boxes = []   // { indent, line }
+  var boxes = []   // { indent, line, quoted }
   var fence = ""
+  var priv = false // inside a `> [!private]` callout
   var front = lines.length > 0 && lines[0].replace(/\s+$/, "") === "---" ? 1 : 0
   for (var i = 0; i < lines.length; i++) {
     var line = lines[i]
     if (front === 1) { if (line.replace(/\s+$/, "") === "---") front = 2; continue }
+    // Which callout the line is in: a private one's boxes are the
+    // person's alone (the dashboard shows them with a lock, the agent
+    // never sees them, they never bind).
+    if (/^\s*>/.test(line)) { if (PRIVATE_HEAD_RE.test(line)) priv = true; else if (CALLOUT_HEAD_RE.test(line)) priv = false }
+    else priv = false
     var f = line.match(FENCE_RE)
     if (f) { fence = fence === "" ? f[1] : (f[1] === fence ? "" : fence); continue }
     if (fence !== "") continue
@@ -147,6 +160,9 @@ function scan(text) {
     // A bound one keeps its place: its deadline must not be cancelled
     // because its words were cleared.
     if (!t || (t.title === "" && t.anchor === 0)) continue
+    t["private"] = priv && t.quoted > 0
+    // Nesting never crosses a quote's edge.
+    if (boxes.length > 0 && boxes[boxes.length - 1].quoted !== t.quoted) boxes = []
     while (boxes.length > 0 && boxes[boxes.length - 1].indent >= t.indent) boxes.pop()
     t.line = i
     t.depth = boxes.length
@@ -155,22 +171,25 @@ function scan(text) {
     t.claimed = ""
     for (var p = heads.length - 1; p >= 0; p--) if (heads[p].tag !== "") { t.claimed = heads[p].tag; break }
     if (t.project === "") t.project = t.claimed
-    boxes.push({ indent: t.indent, line: i })
+    boxes.push({ indent: t.indent, line: i, quoted: t.quoted })
     out.push(t)
   }
-  for (var k = 0; k < out.length; k++) out[k].details = details(lines, out[k].line, out[k].indent)
+  for (var k = 0; k < out.length; k++) out[k].details = details(lines, out[k].line, out[k].indent, out[k].quoted)
   return out
 }
 
 // How many lines of detail a box has: the lines under it indented deeper
 // than it, up to the first that is not (docs/tasks.md — details stay in the
 // note, under the task).
-function details(lines, at, indent) {
+function details(lines, at, indent, quoted) {
   var n = 0
   for (var i = at + 1; i < lines.length; i++) {
-    var line = lines[i]
-    if (line.trim() === "") continue
-    if (line.length - line.replace(/^\s+/, "").length <= indent || HEADING_RE.test(line)) break
+    var m = lines[i].match(QUOTED_RE)
+    var depth = (m[2].match(/>/g) || []).length
+    var rest = m[3]
+    if (rest.trim() === "") { if (depth === (quoted || 0) || depth === 0) continue; break }
+    if (depth !== (quoted || 0)) break
+    if (m[1].length + rest.length - rest.replace(/^\s+/, "").length <= indent || HEADING_RE.test(rest.replace(/^\s+/, ""))) break
     n++
   }
   return n
@@ -250,7 +269,7 @@ function _slot(fields, mark) {
 // `[ ]` → `[x]`, `[-]`, `[/]`. The line is otherwise untouched, which is why
 // this is a replace and not a render.
 function setState(line, state) {
-  return line.replace(/^(\s*[-*+] \[)[ xX\/\-](\])/, "$1" + state + "$2")
+  return line.replace(/^(\s*(?:>[ \t]?)*[ \t]*[-*+] \[)[ xX\/\-](\])/, "$1" + state + "$2")
 }
 
 // One field set, replaced or (with an empty value) taken out.

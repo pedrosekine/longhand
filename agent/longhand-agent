@@ -447,16 +447,19 @@ def outcomes(cfg: dict, days: int = 14, visible_only: bool = False) -> list[dict
         except OSError:
             continue
         hidden: set[int] = set()
+        # A whole note the agent may not see: its boxes are private too, on
+        # the dashboard (a lock, nothing of the agent's on them, 2026-10-27).
+        whole = before_horizon(cfg, d) or (text.startswith("---") and note_is_private(blocklib.split(text)))
         if visible_only:
-            blks = blocklib.split(text)
-            if note_is_private(blks) or before_horizon(cfg, d):
+            if whole:
                 continue
-            for b in blks:
+            for b in blocklib.split(text):
                 if b["private"]:
                     hidden.update(range(b["start"], b["end"]))
         for box in tasklib.scan(text):
-            if box["line"] in hidden:
+            if box["line"] in hidden or (visible_only and box["private"]):
                 continue
+            box["private"] = box["private"] or whole
             box.update({"date": f.stem, "file": str(f), "age": age})
             out.append(box)
     return out

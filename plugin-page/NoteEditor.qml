@@ -432,7 +432,7 @@ Item {
 
   // ------------------------------------------------------------ rows
 
-  readonly property var roles: ["kind", "body", "level", "checked", "cancelled", "ordinal", "headingLevel", "callout", "priv", "blank", "lead", "space", "deadline", "dueLabel", "dueAt", "raw", "cueAt", "cueLabel", "tableRow", "tableStart", "tableLen"]
+  readonly property var roles: ["kind", "body", "level", "checked", "cancelled", "ordinal", "headingLevel", "callout", "priv", "blank", "lead", "space", "deadline", "dueLabel", "dueAt", "raw", "cueAt", "cueLabel", "tableRow", "tableStart", "tableLen", "quoteDepth", "outerLevel"]
 
   function roleValues(r) {
     var o = {}
@@ -724,6 +724,11 @@ Item {
     ed.placeCursor(true)
   }
 
+  // A line's own indentation starts after its quote layers (Rows.js):
+  // Tab and Shift+Tab nest inside the quote, never move the quote itself.
+  function innerAt(r) { return r.start + (r.quoteLead || "").length }
+  function innerIndent(r) { return r.indent.substring((r.quoteLead || "").length) }
+
   // Tab / Shift+Tab on a selection: every line in it nests or un-nests,
   // and the selection stays on those lines.
   function indentSpan(out) {
@@ -734,9 +739,10 @@ Item {
     for (var k = j; k >= i; k--) {
       var r = ed.rows[k]
       if (r.blank) continue
-      if (!out) ed.replace(r.start, r.start, "\t")
-      else if (r.indent.charAt(0) === "\t") ed.replace(r.start, r.start + 1, "")
-      else if (r.indent !== "") ed.replace(r.start, r.start + Math.min(2, r.indent.length), "")
+      var at = ed.innerAt(r), own = ed.innerIndent(r)
+      if (!out) ed.replace(at, at, "\t")
+      else if (own.charAt(0) === "\t") ed.replace(at, at + 1, "")
+      else if (own !== "") ed.replace(at, at + Math.min(2, own.length), "")
     }
     var moved = []
     for (var m = i; m <= j; m++) if (!ed.rows[m].blank) moved.push(m)
@@ -927,22 +933,30 @@ Item {
     // At the end of a bound line's words, the new line starts after its
     // date, so the line keeps its deadline.
     if (r.suffix !== "" && pos >= r.bodyEnd) pos = lineEnd
-    var carry = (r.kind === "code" || r.kind === "front") ? "" : Rows.continuation(r)
+    // A fence inside a quote carries the quote; elsewhere code carries nothing.
+    var carry = r.kind === "code" ? (r.quoteLead || "") : r.kind === "front" ? "" : Rows.continuation(r)
     if (soft) {
       // A new line in the same block: under a list item, indented to stay
       // part of it; in a quote, still quoted.
       var under = (r.kind === "task" || r.kind === "bullet" || r.kind === "ordered") ? r.indent + "  "
-        : (carry === "> " ? "> " : r.indent)
+        : (r.kind === "quote" ? carry : r.indent)
       ed.insert(pos, "\n" + under)
       return
     }
-    if (carry !== "" && r.body === "" && r.suffix === "" && pos >= lineEnd && r.kind !== "calloutHead") {
+    if (carry !== "" && r.body === "" && r.suffix === "" && pos >= lineEnd && r.kind !== "calloutHead" && r.kind !== "code") {
       // Enter on an empty item steps out one level, as Shift+Tab does
       // (and Notion); at the outermost level it leaves the list (or the
       // quote). 2026-10-19.
-      if (r.kind !== "quote" && r.indent !== "") {
+      if (r.kind !== "quote" && ed.innerIndent(r) !== "") {
         ed.outdent(i)
         ed.relist([i])
+        ed.placeCursor(true)
+        return
+      }
+      // An empty item inside a quote leaves the list, not the quote: what
+      // is left is the quote's own line.
+      if (r.kind !== "quote" && (r.quoteLead || "") !== "") {
+        ed.remove(r.start + r.indent.length, r.start + r.prefixLen)
         ed.placeCursor(true)
         return
       }
@@ -964,7 +978,9 @@ Item {
     ed.snapshot(true)
     if (r.marker !== "") {
       if (r.suffix !== "") ed.remove(r.bodyEnd, r.start + r.raw.length)
-      ed.remove(r.start + r.indent.length, r.start + r.prefixLen)
+      // A quote's markers go one layer at a time: `> > x` becomes `> x`.
+      var from = r.kind === "quote" ? r.marker.lastIndexOf(">") : 0
+      ed.remove(r.start + r.indent.length + Math.max(0, from), r.start + r.prefixLen)
     } else if (r.indent !== "") {
       ed.outdent(i)
     } else if (i > 0) {
@@ -1000,8 +1016,9 @@ Item {
   // One level of indentation off line i: a tab, or two spaces.
   function outdent(i) {
     var r = ed.rows[i]
-    if (r.indent.charAt(0) === "\t") ed.remove(r.start, r.start + 1)
-    else if (r.indent !== "") ed.remove(r.start, r.start + Math.min(2, r.indent.length))
+    var at = ed.innerAt(r), own = ed.innerIndent(r)
+    if (own.charAt(0) === "\t") ed.remove(at, at + 1)
+    else if (own !== "") ed.remove(at, at + Math.min(2, own.length))
   }
 
   function indent(i, out) {
@@ -1011,8 +1028,8 @@ Item {
     ed.snapshot(true)
     if (out) {
       ed.outdent(i)
-    } else if (listy || r.indent !== "") {
-      ed.insert(r.start, "\t")
+    } else if (listy || ed.innerIndent(r) !== "") {
+      ed.insert(ed.innerAt(r), "\t")
     } else {
       ed.insert(ed.cursorPosition, "\t")
     }
@@ -1042,6 +1059,8 @@ Item {
       ed.insert(r.start + r.prefixLen, "[ ] ")
     } else if (r.kind === "plain" || r.kind === "blank") {
       ed.insert(r.start + r.indent.length, "- [ ] ")
+    } else if (r.kind === "quote") {
+      ed.insert(r.start + r.prefixLen, "- [ ] ")
     }
     ed.placeCursor(false)
   }
@@ -1290,6 +1309,8 @@ Item {
         required property int tableRow
         required property int tableStart
         required property int tableLen
+        required property int quoteDepth
+        required property int outerLevel
 
         property alias field: field
         property alias box: box
@@ -1299,16 +1320,22 @@ Item {
         // no bar, no label, its words aligned with the prose; the page sinks
         // it into a darker paper and puts a lock in the gutter.
         readonly property bool quoted: (kind === "quote" || kind === "calloutHead") && !priv
+        // Quote layers (Rows.js reads a line in layers, 2026-10-27): a bar
+        // for each, at the line's outer indentation; a checkbox, bullet or
+        // heading inside them is drawn after the bars as it is anywhere.
+        readonly property int bars: priv ? 0 : quoteDepth
+        readonly property real quoteSpace: bars * ed.quoteWidth
+        readonly property bool quoteRow: kind === "quote" || kind === "calloutHead"
         // Its `> [!private]` line, empty and not being written on, is only
         // the top of the sunk paper.
         readonly property bool sunkHead: kind === "calloutHead" && priv && body.trim() === "" && !field.activeFocus
         // A date being written at the end of this checkbox: lit up, its
         // pill pending (accent) until the line is left and it is bound.
-        readonly property bool pending: ed.cues && kind === "task" && cueAt >= 0 && ed.typedRaw !== "" && raw === ed.typedRaw && !ed.declined[raw]
+        readonly property bool pending: ed.cues && !priv && kind === "task" && cueAt >= 0 && ed.typedRaw !== "" && raw === ed.typedRaw && !ed.declined[raw]
         readonly property int gapTop: blank ? 0 : Math.round(space * ed.textSize)
-        readonly property real indentX: level * ed.markerWidth
+        readonly property real indentX: outerLevel * ed.markerWidth + (quoteRow ? 0 : quoteSpace) + (level - outerLevel) * ed.markerWidth
         readonly property real labelWidth: kind === "calloutHead" && !priv ? label.implicitWidth + Math.round(ed.textSize * 0.4) : 0
-        readonly property real fieldX: indentX + (listy ? ed.markerWidth : (quoted ? ed.quoteWidth : 0)) + labelWidth
+        readonly property real fieldX: indentX + (listy ? ed.markerWidth : (quoteRow ? quoteSpace : 0)) + labelWidth
         readonly property real firstLine: fm.height
 
         width: column.width
@@ -1477,13 +1504,16 @@ Item {
           }
         }
 
-        Rectangle {
-          visible: row.quoted
-          x: row.indentX + Math.round(ed.textSize * 0.15)
-          width: Math.max(2, Math.round(ed.textSize * 0.12))
-          height: row.height
-          radius: width / 2
-          color: row.priv ? ed.privateColor : ed.quoteColor
+        Repeater {
+          model: row.bars
+          Rectangle {
+            required property int index
+            x: row.outerLevel * ed.markerWidth + index * ed.quoteWidth + Math.round(ed.textSize * 0.15)
+            width: Math.max(2, Math.round(ed.textSize * 0.12))
+            height: row.height
+            radius: width / 2
+            color: ed.quoteColor
+          }
         }
 
         Text {

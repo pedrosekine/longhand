@@ -16,6 +16,19 @@ Item {
         .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&")
     }
 
+    // A link inside emphasis (2026-10-27): the bold holds the link, the
+    // link is drawn as one, and the plain text is still the body.
+    function test_a_link_inside_bold() {
+      var body = "**bold with [[Nesting|a link]] inside** and [[x]] `[[code]]`"
+      var style = { color: "#0000ff", missing: "#888888", source: "#999999", reveal: -1, known: function (l) { return true } }
+      var h = Emph.html(body, "monospace", style)
+      compare(strip(h), body, "the plain text is the body")
+      verify(/<b>bold with .*a link.* inside<\/b>/.test(h), "the bold holds the link: " + h)
+      verify(h.indexOf("**") < 0 || /color:transparent[^>]*>\*\*/.test(h), "no ** drawn: " + h)
+      verify(h.indexOf("color:#0000ff;text-decoration:underline\">a link") >= 0, "the link is drawn as one")
+      verify(h.indexOf("color:#0000ff;text-decoration:underline\">code") < 0, "a link inside code is code")
+    }
+
     function test_the_plain_text_is_the_body_data() {
       return [
         { body: "plain words" },

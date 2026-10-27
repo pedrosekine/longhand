@@ -37,7 +37,20 @@ function wordish(c) { return c !== "" && /[A-Za-z0-9\u00c0-\u024f]/.test(c) }
 // Where the marker opened at `i` closes, or -1. The content may not be
 // empty nor start or end in a space; a one-character marker is never half
 // of a two-character one; `_` only works at the edges of a word.
-function closerOf(s, m, i) {
+// The links of the line being drawn (absolute ranges), while `html`
+// draws it: emphasis is read over the whole line, but never inside a
+// link, so `**bold with a [[link]] inside**` is bold around a link
+// (2026-10-27; links used to cut the line first, and the `**` showed).
+var LINKS = []
+var SRC = ""
+var STYLE = null
+function linkAt(pos) {
+  for (var i = 0; i < LINKS.length; i++) if (pos >= LINKS[i].at && pos < LINKS[i].end) return LINKS[i]
+  return null
+}
+
+function closerOf(s, m, i, base) {
+  base = base || 0
   var one = m.length === 1 && m !== "`"
   if (one && (s.charAt(i - 1) === m || s.charAt(i + 1) === m)) return -1
   if (m.charAt(0) === "_" && i > 0 && wordish(s.charAt(i - 1))) return -1
@@ -46,6 +59,7 @@ function closerOf(s, m, i) {
   var c = m.charAt(0)
   for (var k = j + 1; k + m.length <= s.length; k++) {
     if (s.substr(k, m.length) !== m) continue
+    if (LINKS.length && linkAt(base + k)) continue
     // A closer takes the *end* of its run of markers, so in `***word***`
     // the outer `**` takes the last two stars and leaves the first for the
     // `*` inside it — bold and italic, the way the keys write it.
@@ -68,25 +82,32 @@ function closerOf(s, m, i) {
 function parse(s, base) {
   base = base || 0
   var out = []
-  var lit = ""
+  var lit = "", litAt = base
   var i = 0
   while (i < s.length) {
+    var L = LINKS.length ? linkAt(base + i) : null
+    if (L) {
+      if (lit === "") litAt = base + i
+      lit += s.substring(i, Math.min(s.length, L.end - base))
+      i = L.end - base
+      continue
+    }
     var marker = "", close = -1
     for (var m = 0; m < OPENERS.length; m++) {
       if (s.substr(i, OPENERS[m].length) !== OPENERS[m]) continue
-      close = closerOf(s, OPENERS[m], i)
+      close = closerOf(s, OPENERS[m], i, base)
       if (close >= 0) { marker = OPENERS[m]; break }
     }
-    if (marker === "") { lit += s.charAt(i); i++; continue }
-    if (lit !== "") { out.push({ text: lit }); lit = "" }
+    if (marker === "") { if (lit === "") litAt = base + i; lit += s.charAt(i); i++; continue }
+    if (lit !== "") { out.push({ text: lit, at: litAt }); lit = "" }
     var inner = s.substring(i + marker.length, close)
     out.push({ marker: marker, kind: KIND[marker],
                at: base + i, end: base + close + marker.length,
                inner: [base + i + marker.length, base + close],
-               children: marker === "`" ? [{ text: inner }] : parse(inner, base + i + marker.length) })
+               children: marker === "`" ? [{ text: inner, at: base + i + marker.length }] : parse(inner, base + i + marker.length) })
     i = close + marker.length
   }
-  if (lit !== "") out.push({ text: lit })
+  if (lit !== "") out.push({ text: lit, at: litAt })
   return out
 }
 
@@ -129,7 +150,7 @@ function render(nodes, codeFamily) {
   var out = ""
   for (var i = 0; i < nodes.length; i++) {
     var n = nodes[i]
-    if (!n.marker) { out += esc(n.text); continue }
+    if (!n.marker) { out += textWithLinks(n.text, n.at); continue }
     var mark = HIDDEN + esc(n.marker) + "</span>"
     var inner = render(n.children, codeFamily)
     var tags = n.kind === "code"
@@ -150,24 +171,37 @@ function render(nodes, codeFamily) {
 function html(s, codeFamily, links) {
   codeFamily = codeFamily || "monospace"
   var ls = links ? linksIn(s) : []
-  if (ls.length === 0) return "<span style=\"white-space:pre-wrap\">" + render(parse(s), codeFamily) + "</span>"
-  var out = "", pos = 0
-  for (var i = 0; i < ls.length; i++) {
-    var l = ls[i]
-    if (l.at > pos) out += render(parse(s.substring(pos, l.at), pos), codeFamily)
-    if (links.reveal === l.at) {
-      out += "<span style=\"color:" + links.source + "\">" + esc(s.substring(l.at, l.end)) + "</span>"
-    } else {
-      var shown = s.substring(l.inner[0], l.inner[1])
-      var colour = links.known(l) ? links.color : links.missing
-      out += HIDDEN + esc(s.substring(l.at, l.inner[0])) + "</span>"
-        + "<span style=\"color:" + colour + (links.known(l) ? ";text-decoration:underline" : "") + "\">" + esc(shown) + "</span>"
-        + HIDDEN + esc(s.substring(l.inner[1], l.end)) + "</span>"
-    }
+  LINKS = ls
+  SRC = s
+  STYLE = links
+  var out = render(parse(s, 0), codeFamily)
+  LINKS = []
+  SRC = ""
+  STYLE = null
+  return "<span style=\"white-space:pre-wrap\">" + out + "</span>"
+}
+
+// A run of words, with the links inside it drawn as links.
+function textWithLinks(t, at) {
+  if (!LINKS.length || at === undefined) return esc(t)
+  var out = "", pos = at, end = at + t.length
+  for (var i = 0; i < LINKS.length; i++) {
+    var l = LINKS[i]
+    if (l.at < pos || l.end > end) continue
+    out += esc(SRC.substring(pos, l.at)) + linkHtml(l)
     pos = l.end
   }
-  if (pos < s.length) out += render(parse(s.substring(pos), pos), codeFamily)
-  return "<span style=\"white-space:pre-wrap\">" + out + "</span>"
+  return out + esc(SRC.substring(pos, end))
+}
+
+function linkHtml(l) {
+  var links = STYLE
+  if (links.reveal === l.at) return "<span style=\"color:" + links.source + "\">" + esc(SRC.substring(l.at, l.end)) + "</span>"
+  var known = links.known(l)
+  return HIDDEN + esc(SRC.substring(l.at, l.inner[0])) + "</span>"
+    + "<span style=\"color:" + (known ? links.color : links.missing) + (known ? ";text-decoration:underline" : "") + "\">"
+    + esc(SRC.substring(l.inner[0], l.inner[1])) + "</span>"
+    + HIDDEN + esc(SRC.substring(l.inner[1], l.end)) + "</span>"
 }
 
 

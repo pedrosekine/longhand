@@ -28,11 +28,11 @@
 
 var HEADING_RE = /^(#{1,6} )(.*)$/
 var CALLOUT_RE = /^(>[ \t]?\[!([^\]]+)\][+-]?[ \t]?)(.*)$/
-var QUOTE_RE = /^(>[ \t]?)(.*)$/
+var QUOTE_RE = /^((?:>[ \t]?)+)(.*)$/
 var TASK_RE = /^([-*+] \[([ xX\-])\] )(.*)$/
 var BULLET_RE = /^([-*+] )(.*)$/
 var ORDERED_RE = /^((\d+)([.)]) )(.*)$/
-var FENCE_RE = /^[ \t]*(```|~~~)/
+var FENCE_RE = /^[ \t]*(?:>[ \t]?)*[ \t]*(```|~~~)/
 // The tail of a checkbox the page draws instead of showing: a due date
 // (and time), the day it was closed (❌ cancelled, ✅ done), then the anchor.
 var TAIL_RE = /^([\s\S]*?)((?:\s+📅\s*(\d{4}-\d{2}-\d{2})(?:\s+(\d{1,2}:\d{2}))?)?(?:\s+[❌✅]\s*(\d{4}-\d{2}-\d{2}))?(?:\s+\^d(\d+))?\s*)$/
@@ -56,11 +56,23 @@ function make(kind, indent, marker, body) {
     prefixLen: indent.length + marker.length, level: levelOf(indent),
     checked: false, cancelled: false, ordinal: "", headingLevel: 0, callout: "",
     suffix: "", deadline: 0, dueLabel: "", dueAt: 0, cueAt: -1, cueLabel: "",
-    tableRow: -1, tableStart: -1, tableLen: 0
+    tableRow: -1, tableStart: -1, tableLen: 0,
+    quoteLead: "", quoteDepth: 0, outerLevel: 0
   }
 }
 
+// How many quote layers a run of `>` markers is.
+function depthOf(quote) { return (quote.match(/>/g) || []).length }
+
 // One line, outside frontmatter and fences.
+//
+// A quote's or a callout's lines are read in layers (2026-10-27, the
+// student's ask: bullets and checkboxes in a private block): the
+// indentation, then the `>` markers, and what is left is read again as a
+// line of its own. `> - [ ] call mum` is a task, its `> ` the row's `quoteLead`
+// and part of its `indent`, so Enter carries `> - [ ] ` and Backspace takes
+// the box first and the quote after. A line inside a quote that is only
+// words stays a "quote" row, as before; so does a callout's first line.
 function parseLine(raw) {
   var m = raw.match(/^([ \t]*)([\s\S]*)$/)
   var indent = m[1], rest = m[2]
@@ -71,12 +83,32 @@ function parseLine(raw) {
       h.headingLevel = x[1].length - 1
       return h
     }
-    if ((x = rest.match(CALLOUT_RE))) {
-      var c = make("calloutHead", "", x[1], x[3])
-      c.callout = x[2].trim().toLowerCase()
-      return c
+  }
+  if ((x = rest.match(CALLOUT_RE))) {
+    var c = make("calloutHead", indent, x[1], x[3])
+    c.callout = x[2].trim().toLowerCase()
+    c.quoteDepth = 1
+    c.outerLevel = c.level
+    return c
+  }
+  if ((x = rest.match(QUOTE_RE))) {
+    var quote = x[1], inner = parseLine(x[2])
+    var depth = depthOf(quote)
+    if (inner.kind === "plain" || inner.kind === "blank" || inner.kind === "quote") {
+      // Words in a quote (or a quote in a quote, its markers one run).
+      var q = make("quote", indent, quote + (inner.kind === "quote" ? inner.marker : ""), inner.kind === "quote" ? inner.body : x[2])
+      q.quoteDepth = depth + (inner.kind === "quote" ? inner.quoteDepth : 0)
+      q.outerLevel = q.level
+      return q
     }
-    if ((x = rest.match(QUOTE_RE))) return make("quote", "", x[1], x[2])
+    var lead = indent + quote
+    inner.quoteLead = lead
+    inner.indent = lead + inner.indent
+    inner.prefixLen += lead.length
+    inner.quoteDepth = depth
+    inner.outerLevel = levelOf(indent)
+    inner.level = inner.outerLevel + inner.level
+    return inner
   }
   if ((x = rest.match(TASK_RE))) {
     var t = make("task", indent, x[1], x[3])
@@ -175,7 +207,17 @@ function derive(text) {
     if (front[i]) {
       r = make("front", "", "", raw)
     } else if (fence || FENCE_RE.test(raw)) {
-      r = make("code", "", "", raw)
+      // A fence inside a quote keeps its `>` as the row's lead, so the code
+      // is drawn without it and Enter carries it.
+      var qm = raw.match(/^([ \t]*)((?:>[ \t]?)+)([\s\S]*)$/)
+      if (qm) {
+        r = make("code", qm[1] + qm[2], "", qm[3])
+        r.quoteLead = qm[1] + qm[2]
+        r.quoteDepth = depthOf(qm[2])
+        r.level = r.outerLevel = levelOf(qm[1])
+      } else {
+        r = make("code", "", "", raw)
+      }
       if (FENCE_RE.test(raw)) fence = !fence
     } else {
       r = parseLine(raw)
@@ -267,6 +309,14 @@ function listy(r) { return r.kind === "task" || r.kind === "bullet" || r.kind ==
 // The space above row `r`, whose previous row with text is `p`, with
 // `blank` ems of blank lines between them already.
 function spaceAbove(p, r, blank) {
+  // Inside one quote or callout the lines keep together, as a block's do:
+  // a heading there is a change, not a section of the note.
+  if (r.quoteDepth > 0 && p.quoteDepth > 0 && blank === 0) {
+    if (r.kind === "heading") return SPACE.change
+    if (listy(r) && listy(p)) return SPACE.item
+    if (r.kind === "quote" && p.kind !== "heading") return 0
+    return p.kind === "calloutHead" ? 0 : SPACE.line
+  }
   if (r.kind === "heading") return Math.max(0, SPACE.heading[r.headingLevel] - blank)
   if (blank > 0) return 0
   if (p.kind === "heading") return SPACE.belowHeading
@@ -349,13 +399,14 @@ function nextTextRow(rows, i, dir) {
 // back unticked, a number counts up) or the quote marker. Empty when the
 // line is not a list item or a quote.
 function continuation(row) {
+  if (row.kind === "quote") return row.indent + row.marker
   if (row.kind === "task") return row.indent + row.marker.replace(/\[[xX]\]/, "[ ]")
   if (row.kind === "bullet") return row.indent + row.marker
   if (row.kind === "ordered") {
     var m = row.marker.match(/^(\d+)([.)])(\s*)$/)
     return row.indent + (parseInt(m[1], 10) + 1) + m[2] + m[3]
   }
-  if (row.kind === "quote" || row.kind === "calloutHead") return "> "
+  if (row.kind === "calloutHead") return row.indent + "> "
   return ""
 }
 

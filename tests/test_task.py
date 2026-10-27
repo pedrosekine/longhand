@@ -38,6 +38,10 @@ process.stdout.write(JSON.stringify({
 """
 
 LINES = [
+    # Inside a quote or a callout (2026-10-27): the `> ` is lead, not nesting.
+    "> - [ ] call mum",
+    "> > - [x] deeper done ✅ 2026-10-27",
+    ">\t- [ ] tab after the quote",
     "- [ ] plain",
     "- [ ]",
     "- [ ] ",
@@ -87,6 +91,10 @@ NOTES = [
     # Empty, and a note of nothing but a heading.
     "",
     "# Only a heading #dtm\n",
+    # Callouts (2026-10-27): a private one's boxes are private; nesting holds
+    # inside a quote and never crosses its edge; a quote's details stay in it.
+    "- [ ] plain box\n  its detail\n\n> [!private]\n> - [ ] private box\n> \t- [ ] nested private\n>   a detail\n"
+    "> - [ ] second private\n\n> [!note]\n> - [ ] box in a note callout\n- [ ] after the callout\n",
 ]
 
 
@@ -242,6 +250,17 @@ def main() -> int:
     check([x["line"] for x in t] == [3, 4], "an empty box is not a task; a bound one with its words cleared still is")
     check(task.scan(NOTES[2])[0]["path"] == ["Untitled", "Lab"], "a rule is not frontmatter")
     check(task.scan(NOTES[2])[0]["project"] == "intsem", "the innermost tagged heading claims")
+
+    # Boxes inside callouts.
+    c = task.scan(NOTES[-1])
+    check([x["title"] for x in c] == ["plain box", "private box", "nested private", "second private",
+                                       "box in a note callout", "after the callout"],
+          f"boxes inside callouts are found ({[x['title'] for x in c]})")
+    check([x["private"] for x in c] == [False, True, True, True, False, False], "a private callout's boxes are private, no other's")
+    check([x["depth"] for x in c] == [0, 0, 1, 0, 0, 0], "nesting holds inside a quote, and never crosses its edge")
+    check([x["details"] for x in c][:4] == [1, 2, 1, 0], "a quote's details stay inside it (a nested box is its parent's detail, as anywhere)")
+    check(task.parse("> - [ ] call mum")["lead"] == "> - " and task.parse("> - [ ] call mum")["indent"] == 0,
+          "the quote is lead, not nesting")
 
     # Nesting that goes out further than it came in.
     t = task.scan(NOTES[3])

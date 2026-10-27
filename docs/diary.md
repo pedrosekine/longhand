@@ -1347,3 +1347,16 @@ only the window and the panels around it differ.
   - The theme's darker ground is taken only when it is a shade darker than
     the page's own. Else the page darkens its own background, so a page
     caught between themes never sinks light paper under light words.
+- **2026-10-27: formatting inside a private block, and its boxes.** A line
+  is now read in layers: its indentation, its `>` markers, then the rest as
+  a line of its own. Bullets, boxes, numbers, headings, nested quotes and
+  fences all work inside quotes and callouts, and Enter, Backspace and Tab
+  work layer by layer. Bold that holds a link works too: emphasis is read
+  over the whole line, with links as solid pieces.
+  - **Where the boxes go** (the student's call): a box in a private block,
+    on a private day or before the horizon shows on the dashboard with a
+    lock. Nothing of the agent's is offered on it, and the agent never
+    reads it.
+  - **Deadlines:** a box in a private block never becomes one, however it
+    is dated. A whole private day still binds its dated boxes; that stays
+    open.

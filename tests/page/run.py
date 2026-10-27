@@ -2486,6 +2486,27 @@ def main() -> int:
         check(p.wait(lambda: journal.read_text() == before), "…and one undo puts it back")
         p.call("openFile", "Studies/Course A/Locked.md", "false")
         check(p.wait(lambda: look()["sunk"]), f"a note marked private: the whole sheet is sunk ({look()})")
+        # A box in a private block (2026-10-27): drawn as a box, never bound
+        # to a deadline however dated, on the dashboard with a lock, and the
+        # agent not offered on it.
+        p.call("openDay", TODAY)
+        p.wait(lambda: p.call("header").startswith(dt.date.today().strftime("%A")))
+        p.call("cursorEnd")
+        p.call("type", "\n\n> [!private]\n> - [ ] therapy appointment by friday 17:00")
+        line = p.line_of("therapy appointment")
+        check(json.loads(p.call("rowKinds"))[line] == "task", "a box in a private block is a box")
+        p.call("cursor", 1)
+        time.sleep(1.2)
+        check("^d" not in [l for l in p.note().split("\n") if "therapy" in l][0],
+              f"…left with a date at its end, it is not bound ({[l for l in p.note().split(chr(10)) if 'therapy' in l]})")
+        p.call("dash")
+        trow = lambda: next((r for r in json.loads(p.call("dashRows")) if r.get("text", "").startswith("therapy")), None)
+        check(p.wait(lambda: (trow() or {}).get("priv") is True, 8), f"…on the dashboard, marked private ({trow()})")
+        p.call("dashFocus", next(n for n, r in enumerate(json.loads(p.call("dashRows"))) if r.get("text", "").startswith("therapy")))
+        p.call("dashKey", KEY_RETURN, CTRL | SHIFT)
+        check(p.wait(lambda: "private" in p.call("hint")) and not json.loads(p.call("noteTalk"))["shown"],
+              f"…and talking about it with the agent is refused ({p.call('hint')!r})")
+        p.call("dash")
         # A PDF (step 5): listed with your notes, opened in the note's place,
         # found in, closed with Esc back to the note.
         sys.path.insert(0, str(ROOT / "tests"))
@@ -2500,7 +2521,8 @@ def main() -> int:
         p.call("pdfFind", "thematic")
         check(p.wait(lambda: pd()["finding"] and pd()["found"] >= 1), f"Ctrl+F finds in it ({pd()})")
         p.call("pdfKey", KEY_ESC, 0)
-        check(p.wait(lambda: not pd()["shown"] and "All of it mine." in p.call("text")),
+        check(p.wait(lambda: not pd()["shown"] and pd()["label"] != "Reading.pdf" and json.loads(p.call("files"))["filePath"] == ""
+                     and "therapy appointment" in p.call("text")),
               f"Esc closes it, back to the note under it ({pd()})")
         # The read view (step 4): a picture by name, a link followed to its
         # heading and back, a table drawn as one block.

@@ -373,11 +373,24 @@ BorderSurface {
                 anchors.left: parent.left
                 anchors.right: pills.left
                 anchors.rightMargin: page.sp(12)
-                anchors.leftMargin: dashRow.boxed
+                anchors.leftMargin: (dashRow.boxed
                   ? box.size + page.sp(10) + (prioMark.visible ? prioMark.implicitWidth + page.sp(5) : 0)
-                  : 0
+                  : 0) + (rowLock.visible ? rowLock.width + page.sp(7) : 0)
                 anchors.top: parent.top
                 spacing: page.sp(3)
+
+                // A private box (in a private block, on a private day, or
+                // before the horizon): yours on the dashboard, with a lock,
+                // and nothing of the agent's offered on it (2026-10-27).
+                LockMark {
+                  id: rowLock
+                  parent: texts.parent
+                  visible: !!(dashRow.task && dashRow.task.private)
+                  x: texts.x - width - page.sp(7)
+                  y: texts.y + Math.round((titleText.font.pixelSize * 1.3 - height) / 2)
+                  width: page.sp(9)
+                  color: page.magenta
+                }
 
                 Text {
                   id: titleText

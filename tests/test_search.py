@@ -222,12 +222,40 @@ def guard(tmp: pathlib.Path) -> None:
           "notes that are the vault itself keep the daily folder's rule only")
 
 
+def private_boxes(tmp: pathlib.Path) -> None:
+    """Boxes the agent may not see (2026-10-27): in a private block, on a
+    private day, before the horizon. The dashboard's list has them, marked;
+    what the agent is given never does."""
+    print("-- private boxes")
+    import importlib.machinery
+    import importlib.util
+    loader = importlib.machinery.SourceFileLoader("longhand_agent_b", str(AGENT))
+    spec = importlib.util.spec_from_loader("longhand_agent_b", loader)
+    la = importlib.util.module_from_spec(spec)
+    loader.exec_module(la)
+    v = tmp / "boxes"
+    day = v / "human" / "Daily"
+    day.mkdir(parents=True)
+    today = dt.date.today()
+    (day / f"{today.isoformat()}.md").write_text("- [ ] out loud\n\n> [!private]\n> - [ ] therapy on friday\n")
+    (day / f"{(today - dt.timedelta(days=1)).isoformat()}.md").write_text("---\nagent: false\n---\n- [ ] on a private day\n")
+    (day / f"{(today - dt.timedelta(days=2)).isoformat()}.md").write_text("- [ ] before the horizon\n")
+    cfg = {"vault": str(v), "daily": {"dir": "human/Daily", "format": "YYYY-MM-DD"}, "agentDir": "agents/longhand",
+           "horizon": (today - dt.timedelta(days=1)).isoformat()}
+    mine = {b["title"]: b["private"] for b in la.outcomes(cfg, days=30)}
+    check(mine == {"out loud": False, "therapy on friday": True, "on a private day": True, "before the horizon": True},
+          f"the dashboard's list has every box, the private ones marked ({mine})")
+    theirs = [b["title"] for b in la.outcomes(cfg, days=30, visible_only=True)]
+    check(theirs == ["out loud"], f"what the agent is given has none of them ({theirs})")
+
+
 def main() -> int:
     tmp = pathlib.Path(tempfile.mkdtemp(prefix="search-test-"))
     units(tmp)
     end_to_end(tmp)
     horizon(tmp)
     guard(tmp)
+    private_boxes(tmp)
     print("PASS" if failures == 0 else f"{failures} FAILED")
     return 1 if failures else 0
 

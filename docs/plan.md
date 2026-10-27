@@ -421,7 +421,9 @@ section, word for word, and to the diary's decisions log.
    what it saw, said, cost, and why it was silent, from logs, never notes.
    The third tier (internet, tools for the student's agent) cuts against
    principle 3 and stays a decision, not a build.
-3. **How far does private go?** — a decision, not a build. With Ctrl+P
+3. **How far does private go?** — *for blocks, decided 2026-10-27*: a box in
+   a private block never becomes a deadline. Still open for a whole private
+   day: a dated box there still binds. With Ctrl+P
    making a block private in one key (2026-10-27), this matters more. A dated checkbox
    in a private note still binds, so its title, project and date are in the
    store, and every payload carries the store whole; calendars shared whole
@@ -500,7 +502,10 @@ section, word for word, and to the diary's decisions log.
    - tabs;
    - a fuzzy switcher, if the tree's filter is not enough.
 
-   **Formatting inside quotes and callouts** (found 2026-10-27, the
+   ~~**Formatting inside quotes and callouts**~~ *built 2026-10-27*: the
+   layered reading in the editor, boxes inside callouts in both task
+   readers, private boxes on the dashboard with a lock, never to the agent,
+   never a deadline (`docs/tasks.md`, "Boxes inside quotes and callouts"). (found 2026-10-27, the
    student's ask: bullets and checkboxes in a private block). A line is read
    for one kind only, and `>` is checked first, so whatever follows it stays
    raw text: `- `, `- [ ]`, `1. `, `## `, a nested `> `, a fence, a table or

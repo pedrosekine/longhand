@@ -285,6 +285,7 @@ Item {
   readonly property color dim: pal.dim
   readonly property color faint: pal.faint
   readonly property color urgent: pal.red
+  readonly property color magenta: pal.magenta       // private things' lock
   readonly property var borderSpec: Border.surfaceSpec("menu", "border", border, Math.max(1, Style.space(2)))
   // The face the note is written in. The page drew in the shell's monospace
   // until 2026-10-15; prose reads better in a proportional face, and the
@@ -573,7 +574,13 @@ Item {
     editor.setCursor(pos, true)
     root.flush()
     root.used("private-block", unwrap ? "off" : "on")
-    root.showHint(unwrap ? "not private: the agent can be asked about it again" : "private: this block is never sent")
+    // A box that is already a deadline stays one: the deadline list keeps
+    // its title and date, which the agent reads. Said, not undone.
+    var bound = false
+    for (var bl = start; bl < end; bl++) if (/\s\^d\d+\s*$/.test(lines[bl])) bound = true
+    root.showHint(unwrap ? "not private: the agent can be asked about it again"
+      : bound ? "private, but its deadline stays a deadline: the agent still sees that"
+      : "private: this block is never sent")
   }
   property string pendingStamp: ""   // a day to open once the save in flight lands
   property var pendingFile: null     // or a file: { rel, readOnly }
@@ -2198,7 +2205,12 @@ Item {
     if (Sc.hit(event, "italic")) { editor.emphasise("*"); return true }
     if (Sc.hit(event, "code")) { editor.emphasise("`"); return true }
     if (Sc.hit(event, "strike")) { editor.emphasise("~~"); return true }
-    if (Sc.hit(event, "deadline")) { if (root.dayNote) root.deadlineKey(); return true }
+    if (Sc.hit(event, "deadline")) {
+      var dr = editor.rows[root.lineIndexAt(editor.cursorPosition)]
+      if (dr && dr.priv) root.showHint("private: a box here never becomes a deadline")
+      else if (root.dayNote) root.deadlineKey()
+      return true
+    }
     return false
   }
 
@@ -3631,6 +3643,7 @@ Item {
   // summoned to think the task through, on the task's one conversation.
   function openTaskTalk(t) {
     if (!t || !t.key) return
+    if (t.private) { root.showHint("private: the agent sees nothing of this box"); return }
     root.talkId = -1
     root.talkTask = t.key
     root.talkThread = "task:" + t.key
@@ -4655,7 +4668,9 @@ Item {
   function leftLine(i) {
     var typed = editor.typedRaw
     var r = editor.rows[i]
-    if (!r || r.kind !== "task" || !svc.ready || root.quiet || !root.dayNote) return
+    // A box in a private block never becomes a deadline: the deadline list is
+    // what the agent reads (2026-10-27, the student's call).
+    if (!r || r.kind !== "task" || !svc.ready || root.quiet || !root.dayNote || r.priv) return
     if (r.deadline > 0) {
       // Spaces left at the end of its words would sit unseen before the
       // date, where the cursor wanders into them: a left line has none.

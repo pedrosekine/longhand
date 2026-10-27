@@ -348,7 +348,8 @@ ShellRoot {
                                       mark: page.taskMark(page.taskOfAnchor(r.deadline.id)),
                                       pills: page.pillsFor(r).map(function (x) { return x.text }) }
           : { kind: "task", text: page.taskTitle(r.task), where: page.taskWhere(r.task),
-              date: r.task.date, prio: r.task.priority, when: r.task.when, away: r.task.away || "", done: !!r.task.done }
+              date: r.task.date, prio: r.task.priority, when: r.task.when, away: r.task.away || "", done: !!r.task.done,
+              priv: !!r.task["private"] }
       }))
     }
 

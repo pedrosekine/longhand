@@ -10,12 +10,17 @@ any difference, so neither side may drift.
 """
 import re
 
-BOX_RE = re.compile(r"^(\s*)([-*+]) \[([ xX/\-])\](?: (.*))?$")
+# A box may stand inside a quote or a callout (2026-10-27): its `> `
+# layers are part of its lead, never of its nesting.
+BOX_RE = re.compile(r"^(\s*(?:>[ \t]?)*[ \t]*)([-*+]) \[([ xX/\-])\](?: (.*))?$")
+QUOTED_RE = re.compile(r"^(\s*)((?:>[ \t]?)*)(.*)$")
+PRIVATE_HEAD_RE = re.compile(r"^\s*>\s*\[!private\]", re.I)
+CALLOUT_HEAD_RE = re.compile(r"^\s*>\s*\[![^\]]+\]")
 ANCHOR_RE = re.compile(r"\s\^d(\d+)\s*$")
 TAG_RE = re.compile(r"(^|\s)#([\w/-]+)")
 FIELD_RE = re.compile(r"\[([a-z]+)::\s*([^\]]*)\]")
 DATE_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})(?:\s+(\d{1,2}:\d{2}))?")
-FENCE_RE = re.compile(r"^\s*(```|~~~)")
+FENCE_RE = re.compile(r"^\s*(?:>[ \t]?)*[ \t]*(```|~~~)")
 HEADING_RE = re.compile(r"^(#{1,6})\s+(\S.*?)\s*$")
 
 MARKS = [("📅", "due"), ("⏳", "when"), ("🛫", "start"), ("➕", "created"),
@@ -37,8 +42,10 @@ def parse(line: str) -> dict | None:
     if not m:
         return None
     body = re.sub(r"\s+$", "", m.group(4) or "")
+    q = QUOTED_RE.match(m.group(1)).group(2)
     t = {
-        "lead": m.group(1) + m.group(2) + " ", "indent": len(m.group(1)), "marker": m.group(2),
+        "lead": m.group(1) + m.group(2) + " ", "indent": len(m.group(1)) - len(q), "quoted": q.count(">"),
+        "private": False, "marker": m.group(2),
         "state": "x" if m.group(3) in "xX" else m.group(3),
         "done": m.group(3) in "xX", "started": m.group(3) == "/", "cancelled": m.group(3) == "-",
         "text": body, "title": "", "tags": [], "project": "", "due": "", "when": "", "start": "",
@@ -86,12 +93,23 @@ def scan(text: str) -> list[dict]:
     heads: list[dict] = []
     boxes: list[dict] = []
     fence = ""
+    priv = False   # inside a `> [!private]` callout
     front = 1 if lines and re.sub(r"\s+$", "", lines[0]) == "---" else 0
     for i, line in enumerate(lines):
         if front == 1:
             if re.sub(r"\s+$", "", line) == "---":
                 front = 2
             continue
+        # Which callout the line is in: a private one's boxes are the
+        # person's alone (the dashboard shows them with a lock, the agent
+        # never sees them, they never bind).
+        if re.match(r"^\s*>", line):
+            if PRIVATE_HEAD_RE.match(line):
+                priv = True
+            elif CALLOUT_HEAD_RE.match(line):
+                priv = False
+        else:
+            priv = False
         f = FENCE_RE.match(line)
         if f:
             fence = f.group(1) if fence == "" else ("" if f.group(1) == fence else fence)
@@ -117,6 +135,10 @@ def scan(text: str) -> list[dict]:
         # cancelled because its words were cleared.
         if not t or (t["title"] == "" and t["anchor"] == 0):
             continue
+        t["private"] = priv and t["quoted"] > 0
+        # Nesting never crosses a quote's edge.
+        if boxes and boxes[-1]["quoted"] != t["quoted"]:
+            boxes = []
         while boxes and boxes[-1]["indent"] >= t["indent"]:
             boxes.pop()
         t["line"] = i
@@ -130,22 +152,29 @@ def scan(text: str) -> list[dict]:
                 break
         if not t["project"]:
             t["project"] = t["claimed"]
-        boxes.append({"indent": t["indent"], "line": i})
+        boxes.append({"indent": t["indent"], "line": i, "quoted": t["quoted"]})
         out.append(t)
     for t in out:
-        t["details"] = details(lines, t["line"], t["indent"])
+        t["details"] = details(lines, t["line"], t["indent"], t["quoted"])
     return out
 
 
-def details(lines: list[str], at: int, indent: int) -> int:
+def details(lines: list[str], at: int, indent: int, quoted: int = 0) -> int:
     """How many lines of detail a box has: the lines under it indented
     deeper than it, up to the first that is not (docs/tasks.md — details
-    stay in the note, under the task)."""
+    stay in the note, under the task). A box in a quote counts only the
+    quote's lines, its indentation inside the quote."""
     n = 0
     for line in lines[at + 1:]:
-        if line.strip() == "":
-            continue
-        if len(line) - len(line.lstrip()) <= indent or HEADING_RE.match(line):
+        m = QUOTED_RE.match(line)
+        depth, rest = m.group(2).count(">"), m.group(3)
+        if rest.strip() == "":
+            if depth in (quoted, 0):
+                continue
+            break
+        if depth != quoted:
+            break
+        if len(m.group(1)) + len(rest) - len(rest.lstrip()) <= indent or HEADING_RE.match(rest.lstrip()):
             break
         n += 1
     return n

@@ -144,6 +144,26 @@ person inside Longhand.
 | An agent proposal accepted, no checkbox matches | "not in a note yet", origin agent | written into today's note (then as above), or cancelled |
 | `pomo deadline add` | "not in a note yet" | as above |
 
+## Boxes inside quotes and callouts (2026-10-27)
+
+A box can stand inside a quote or a callout (`> - [ ] call mum`). Its `> `
+layers are part of its lead and never of its nesting: nesting holds inside
+the quote and never crosses its edge, and a box's details stay inside its
+quote. `task.py` and `Task.js` read it the same way, as twins, and
+`test_task.py` holds them to it.
+
+A box inside a `> [!private]` callout is **private**. So is a box on a day
+marked private, or on a day before the agent's horizon.
+- **The dashboard** lists it, with a lock.
+- **Nothing of the agent's** is offered on it: Alt+→ and Ctrl+Shift+Enter
+  say so instead.
+- **The agent's readers** (`visible_only`) never carry it.
+- **Deadlines** (the student's call): a box in a private block never
+  becomes one, however it is dated. The date stays words on the line, so
+  nothing of it reaches the deadline list the agent reads.
+- **A box that was already a deadline** when its block became private stays
+  one. Ctrl+P says so rather than quietly unbinding it.
+
 ## How it is built
 
 - **`longhand-check`** (`cli/longhand-check`, Python) is the line-writer and

@@ -353,14 +353,15 @@ def main() -> int:
         check("a visible intention" in r.stdout, "a box from an earlier day is an intention")
         check("HIDDEN-DAY-BOX" not in r.stdout, "but not one from a day marked agent: false")
         nx = json.loads(t.agent("next").stdout)
-        # A box inside a callout is a quoted line, so neither the payload nor
-        # the dashboard reads it as a box at all. Pinned here because that is
-        # what makes the private case safe today: teach the grammar to read
-        # quoted boxes and this check fails, which is the point — the payload
-        # filter above would then be the only thing standing in the way.
-        check("SECRET-BOX" not in r.stdout
-              and not any("SECRET-BOX" in x["text"] for x in nx["tasks"]),
-              "a box inside a callout is a quote, not a task, on either side")
+        # A box inside a callout is a box since 2026-10-27 (the grammar reads
+        # quoted boxes). Until then this pinned that neither side read it at
+        # all; now the private callout's box is the person's: on the
+        # dashboard, marked private, and never in what the agent reads — the
+        # payload's filter drops private blocks and private boxes both.
+        secret = [x for x in nx["tasks"] if "SECRET-BOX" in x["text"]]
+        check("SECRET-BOX" not in r.stdout, "a box inside a private callout is never in the payload")
+        check(len(secret) == 1 and secret[0]["private"] is True,
+              f"…and is on the dashboard, marked private ({secret})")
         check("dismissed (do not raise again" in r.stdout and "book a slot" in r.stdout, "dismissed list in payload")
         t.set_reply(reply="", suggestions=[{"text": "Book a slot!", "evidence": "x"}, {"text": "new idea", "evidence": "y"}])
         r = t.agent("run", "--trigger", "mention", "--hash", at_block["hash"], "--date", DAY)

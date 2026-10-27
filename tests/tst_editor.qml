@@ -370,6 +370,54 @@ Item {
       ed.listLeft.disconnect(conn)
     }
 
+    // Formatting inside a quote or a callout (2026-10-27): a line read in
+    // layers — the quote's `> `, then a line of its own.
+    function test_a_box_inside_a_callout_is_a_box() {
+      start("> [!private]\n> - [ ] call mum\n> - a bullet\n> ## Tonight\n> > deeper")
+      compare(ed.rows[1].kind, "task")
+      compare(ed.rows[1].body, "call mum")
+      compare(ed.rows[2].kind, "bullet")
+      compare(ed.rows[3].kind, "heading")
+      compare(ed.rows[4].kind, "quote")
+      compare(ed.rows[4].quoteDepth, 2)
+      compare(ed.rows[4].body, "deeper")
+    }
+
+    function test_enter_inside_a_callout_carries_the_quote_and_the_box() {
+      start("> [!private]\n> - [ ] one")
+      keyClick(Qt.Key_Return)
+      compare(ed.text, "> [!private]\n> - [ ] one\n> - [ ] ")
+      keyClick(Qt.Key_Return)
+      compare(ed.text, "> [!private]\n> - [ ] one\n> ", "an empty item leaves the list, not the quote")
+      keyClick(Qt.Key_Return)
+      compare(ed.text, "> [!private]\n> - [ ] one\n", "then an empty quote line leaves the quote")
+    }
+
+    function test_backspace_inside_a_quote_peels_a_layer_at_a_time() {
+      start("> > - [ ] x", 6)          // before "x"
+      keyClick(Qt.Key_Backspace)
+      compare(ed.text, "> > x", "the box first")
+      keyClick(Qt.Key_Backspace)
+      compare(ed.text, "> x", "then one quote")
+      keyClick(Qt.Key_Backspace)
+      compare(ed.text, "x", "then the other")
+    }
+
+    function test_tab_inside_a_callout_nests_inside_it() {
+      start("> - a\n> - b")
+      keyClick(Qt.Key_Tab)
+      compare(JSON.stringify(ed.text), JSON.stringify("> - a\n> \t- b"))
+      compare(ed.rows[1].level, 1)
+      keyClick(Qt.Key_Backtab)              // what Shift+Tab arrives as
+      compare(ed.text, "> - a\n> - b")
+    }
+
+    function test_a_box_inside_a_callout_ticks() {
+      start("> - [ ] call mum")
+      ed.toggleCheckbox(0)
+      verify(/^> - \[x\] call mum ✅ \d{4}-\d{2}-\d{2}$/.test(ed.text), ed.text)
+    }
+
     function test_enter_reports_finished_line() {
       var got = null
       var conn = function (i, t) { got = [i, t] }
