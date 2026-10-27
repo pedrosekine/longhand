@@ -421,7 +421,8 @@ section, word for word, and to the diary's decisions log.
    what it saw, said, cost, and why it was silent, from logs, never notes.
    The third tier (internet, tools for the student's agent) cuts against
    principle 3 and stays a decision, not a build.
-3. **How far does private go?** — a decision, not a build. A dated checkbox
+3. **How far does private go?** — a decision, not a build. With Ctrl+P
+   making a block private in one key (2026-10-27), this matters more. A dated checkbox
    in a private note still binds, so its title, project and date are in the
    store, and every payload carries the store whole; calendars shared whole
    make the boundary matter more. Three ways out, in the record; plus a key
@@ -498,6 +499,23 @@ section, word for word, and to the diary's decisions log.
      and how do they show?
    - tabs;
    - a fuzzy switcher, if the tree's filter is not enough.
+
+   Left by the build (2026-10-27), roughly in the order worth doing:
+   - **Asking about a PDF.** Mostly wiring: the runner already reads PDFs,
+     through pdftotext.
+   - **The read view's keys** (from the research):
+     - `Space` on a picture's line for a lightbox, and arrows between the
+       pictures;
+     - Tab between links, with `Space` to preview one.
+   - **A table too wide** even at its narrowest scrolls sideways in its
+     block.
+   - **`@` in the agent's box** points at other files, not only at blocks of
+     the open note.
+   - **Helpful / not helpful** on a note's answers.
+   - **The blip on a dashboard row.**
+   - **PDFs:** remember the place between openings, and a dark reading mode.
+   - **Embedded notes and blocks** (`![[Note#^id]]`) drawn inline; footnote
+     previews.
 
 Small, when passing by:
 
@@ -576,6 +594,27 @@ this list, with *Open, in order* above. Each says why it waits.
 
 No work unless they bite; each says what would tell. The first four came
 from 2026-09/10 and still stand.
+
+- **Notes beyond the calendar** (built 2026-10-26/27, `docs/files.md`):
+  - Is the Files space opened at all, and from where (`space`,
+    `space-swipe` and `file` in the usage log)?
+  - Does the swipe work on the real trackpad? The tests cannot fake one.
+  - Do files get edited, or only read (the case for having made them
+    editable)?
+  - Does "ask about this note" get used (`note-talk`)?
+  - Do followed links (`link`) and PDFs (`pdf`) get used?
+  - Has a picture or a table looked wrong in a real note (the vault has
+    1,160 pictures and 77 tables)?
+- **The horizon** (2026-10-26): does anything you wanted the agent to know
+  sit before it? The date moves in Settings.
+- **B · Paper and Ctrl+P** (2026-10-27): is private used more now that it
+  is visible and one key away (`private-block` in the usage log)? Does the
+  darker paper read well in a light theme? It has not been seen in one.
+- **Two flaky checks:**
+  - `test_day.py` "…only what is new in the other conversations" fails
+    between midnight and 09:05: a fixture turn is stamped 09:05 today.
+  - The live check "…the block goes with the message" waits 12 s for the
+    day's answer, and failed 3 times in about 12 runs.
 
 - Whether **"ask"** is the right word for sending a block.
 - Whether **"seen, nothing to say"** wants a mark.
