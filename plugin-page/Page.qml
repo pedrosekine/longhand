@@ -490,20 +490,38 @@ Item {
   property string dayBlock: ""          // a block pointed at, going with the next message
   property string dayBlockText: ""
   property var dayPending: null         // { text, block }: sent, its turn not written yet
-  readonly property var dayState: agent.state && agent.state.day ? agent.state.day : null
+  // A note's own conversation (docs/files.md, "Talking about a note",
+  // 2026-10-27): the same pane and view, another room. What the agent does
+  // not otherwise see — a file, a day before the horizon, a day marked
+  // private — it may be asked about, and asking is the consent. The runner
+  // keeps it in the agent's folder by the md5 of the note's path; the page
+  // only reads it, and the note is never written.
+  property bool noteRoom: false
+  readonly property string noteRel: svc.filePath !== "" ? svc.filePath
+    : svc.noteDate !== "" && svc.configured ? String(svc.config.daily.dir).replace(/^\/+|\/+$/g, "") + "/" + svc.noteDate + ".md" : ""
+  readonly property bool noteAskable: svc.ready && root.noteRel !== "" && (!root.dayNote || root.beforeHorizon || svc.notePrivate)
+  readonly property string noteTalkPath: svc.agentDir !== "" && root.noteRel !== ""
+    ? svc.agentDir + "/notes/" + Qt.md5(root.noteRel).slice(0, 16) + ".json" : ""
+  property var noteTalk: null
+  onNoteTalkPathChanged: if (root.noteTalkPath === "") root.noteTalk = null
+  readonly property int noteTalkTurns: root.noteTalk && root.noteTalk.turns ? root.noteTalk.turns.length : 0
+
+  readonly property var dayState: root.noteRoom ? root.noteTalk : agent.state && agent.state.day ? agent.state.day : null
   readonly property var dayTurns: {
     var t = root.dayState && root.dayState.turns ? root.dayState.turns.slice() : []
-    if (root.dayPending && svc.isToday) t.push({ role: "student", text: root.dayPending.text, block: root.dayPending.block })
+    if (root.dayPending && (svc.isToday || root.noteRoom)) t.push({ role: "student", text: root.dayPending.text, block: root.dayPending.block })
     return t
   }
   // The morning's observation is the conversation's opening line, waiting.
   readonly property var dayOpening: {
+    if (root.noteRoom) return []
     var obs = agent.state && agent.state.observations ? agent.state.observations : []
     return obs.filter(function (o) { return o && o.text && o.trigger === "open" }).map(function (o) { return o.text })
   }
-  readonly property bool dayThinking: root.runningHash === "day"
-    || root.queued.some(function (q) { return q.hash === "day" })
-  readonly property bool dayCanSend: svc.isToday && root.agentDay && !root.beforeHorizon
+  readonly property string roomHash: root.noteRoom ? "note" : "day"
+  readonly property bool dayThinking: root.runningHash === root.roomHash
+    || root.queued.some(function (q) { return q.hash === root.roomHash })
+  readonly property bool dayCanSend: root.noteRoom ? root.noteAskable : svc.isToday && root.agentDay && !root.beforeHorizon
   readonly property bool dayShown: root.dayOpen && !root.marginOpen && !root.talkOpen && !root.keysOpen && !root.settingsOpen
   readonly property bool dayBesideNote: root.dayShown && !root.dashOpen
   readonly property bool dayBesideDash: root.dayShown && root.dashOpen
@@ -513,21 +531,30 @@ Item {
     root.openDay(block)
   }
 
+  // A file has no day: its pane is its own conversation.
   function openDay(block) {
-    if (!root.dayNote) { root.showHint("a file has no day's conversation · " + root.keyName("today") + " for today"); return }
+    root.openRoom(block, !root.dayNote)
+  }
+
+  // "ask about this note" in the header, and the agent's pane on a file.
+  function openRoom(block, note) {
+    note = !!note
+    if (note && !root.noteAskable) return
     if (root.here !== "right") root.noteFrom("right", root.keysOpen || root.settingsOpen ? "center" : root.here)
     if (root.keysOpen) root.toggleKeys()
     if (root.settingsOpen) root.toggleSettings()
     root.marginOpen = false
     root.marginFocus = -1
     root.closeTalk(false)
+    if (note !== root.noteRoom) { root.dayPending = null; root.dayBlock = ""; root.dayBlockText = "" }
+    root.noteRoom = !!note
     root.dayOpen = true
     if (block) {
       var b = root.blockBounds(block)
       root.dayBlock = b ? block : ""
       root.dayBlockText = b ? b.text.split("\n")[0].replace(/^\s*([-*+] (\[.\] )?|#+ )/, "").slice(0, 80) : ""
     }
-    root.used("day", block ? "block" : "")
+    root.used(note ? "note-talk" : "day", block ? "block" : "")
     Qt.callLater(function () { dayPane.dayFieldRef.forceActiveFocus() })
   }
 
@@ -543,6 +570,7 @@ Item {
   function closeDay() {
     var was = root.here
     root.dayOpen = false
+    root.noteRoom = false
     root.dayBlock = ""
     root.dayBlockText = ""
     root.giveBack("right", was, "right")
@@ -551,14 +579,14 @@ Item {
   function sendDay(text) {
     var msg = String(text || "").trim()
     if (msg === "" || !root.dayCanSend) return false
-    var cmd = [svc.runner, "day", "--message", msg]
+    var cmd = root.noteRoom ? [svc.runner, "note", "--file", root.noteRel, "--message", msg] : [svc.runner, "day", "--message", msg]
     if (root.dayBlock !== "") cmd = cmd.concat(["--block", root.dayBlock])
     root.dayPending = { text: msg, block: root.dayBlock }
     root.dayBlock = ""
     root.dayBlockText = ""
     root.flush()
-    root.enqueue(cmd, "day")
-    root.used("day", "send")
+    root.enqueue(cmd, root.roomHash)
+    root.used(root.noteRoom ? "note-talk" : "day", "send")
     return true
   }
 
@@ -684,6 +712,7 @@ Item {
     return t && t.rating ? t.rating.value : ""
   }
   function rateDay(i, value) {
+    if (root.noteRoom) return
     var turns = root.dayState && root.dayState.turns ? root.dayState.turns : []
     if (i < 0) for (var k = turns.length - 1; k >= 0 && i < 0; k--) if (turns[k].role === "agent" && !turns[k].error) i = k
     if (i < 0 || !turns[i] || turns[i].role !== "agent" || turns[i].error) return
@@ -1169,6 +1198,31 @@ Item {
   readonly property string rightView: margin.visible ? (root.talkOpen ? "talk" : "margin") : dayPane.visible ? "day" : ""
   readonly property bool leftShown: sidebar.visible
   readonly property var panes: (root.leftShown ? ["left"] : []).concat(["center"], root.rightView !== "" ? ["right"] : [])
+  // The keys' last pane, for the blip: from the middle into the agent's.
+  property string hereWas: "center"
+  property var blipRect: null
+  property string blipWhat: ""          // what lit last: "sheet" or a block's hash (the tests read it)
+  // What the agent's pane is about to be given, lit once in the note: the
+  // block pointed at, else the block a margin conversation is on, else the
+  // whole note when the room is the note's own (or today's, which the day
+  // conversation reads). Nothing over the dashboard, keys or settings.
+  function blipContext() {
+    if (root.centerView !== "note" || !svc.ready) return
+    var what = ""
+    if (root.dayShown) what = root.dayBlock !== "" ? root.dayBlock : (root.noteRoom || (svc.isToday && root.agentOn)) ? "sheet" : ""
+    else if (root.rightView === "margin" || root.rightView === "talk") what = root.currentRec || root.currentHash
+    if (what === "") return
+    var r = null
+    if (what === "sheet") r = { y: Math.max(0, flick.contentY - editor.y), h: Math.min(editor.height, flick.height) }
+    else {
+      var b = root.blockBounds(what)
+      if (b) r = editor.blockRect(b.start, b.end)
+    }
+    if (!r) return
+    root.blipRect = r
+    root.blipWhat = what
+    blipAnim.restart()
+  }
   readonly property string here: sidebar.sidebarKeysRef.activeFocus || sidebar.projectFieldRef.activeFocus || sidebar.filesFilterRef.activeFocus ? "left"
     : margin.marginKeysRef.activeFocus || margin.chatFieldRef.activeFocus || dayPane.dayFieldRef.activeFocus ? "right"
     : "center"
@@ -1299,7 +1353,11 @@ Item {
     if (root.pointerMode === "every" && pane === root.here) warpTimer.restart()
   }
 
-  onHereChanged: if (root.pointerMode !== "off") warpTimer.restart()
+  onHereChanged: {
+    if (root.pointerMode !== "off") warpTimer.restart()
+    if (root.hereWas === "center" && root.here === "right") Qt.callLater(root.blipContext)
+    root.hereWas = root.here
+  }
   onCenterViewChanged: if (root.pointerMode !== "off") warpTimer.restart()
   onRightViewChanged: if (root.pointerMode !== "off" && root.here === "right") warpTimer.restart()
 
@@ -1391,6 +1449,7 @@ Item {
     root.marginFocus = -1
     root.closeTalk(false)
     root.dayOpen = false
+    root.noteRoom = false
     root.dayBlock = ""
     root.dayBlockText = ""
     root.giveBack("right", was, "right")
@@ -1888,7 +1947,7 @@ Item {
     if (Sc.hit(event, "close")) { if (!root.alongside) root.dismiss(); return true }
     if (Sc.hit(event, "private")) { root.togglePrivate(); return true }
     if (Sc.hit(event, "ask")) { root.sendCurrent(); return true }
-    if (Sc.hit(event, "dayHere")) { root.openDay(root.dayNote ? root.currentHash : ""); return true }
+    if (Sc.hit(event, "dayHere")) { root.openDay(root.currentHash); return true }
     // Selecting to the same edges is the editor's (selectToBlockEdge).
     if (Sc.hit(event, "blockStart")) { root.walkBlocks(-1); return true }
     if (Sc.hit(event, "blockEnd")) { root.walkBlocks(1); return true }
@@ -5023,6 +5082,7 @@ Item {
     root.closeTalk(false)
     root.dashOpen = false
     root.marginFocus = -1
+    if (root.noteRoom) { root.noteRoom = false; root.dayOpen = false }
     if (svc.saving) { root.pendingStamp = stamp; root.pendingFile = null; return }
     svc.openDate(stamp)
   }
@@ -5040,6 +5100,7 @@ Item {
     root.marginOpen = false
     root.closeTalk(false)
     root.dayOpen = false
+    root.noteRoom = false
     root.dashOpen = false
     root.marginFocus = -1
     if (svc.saving) { root.pendingFile = { rel: rel, readOnly: !!readOnly }; root.pendingStamp = ""; root.showNote(); return }
@@ -5193,6 +5254,7 @@ Item {
       root.running = false
       // The day's answer may have proposed: its cards are the dashboard's items.
       if (root.runningHash === "day") { Qt.callLater(root.refreshProposals); Qt.callLater(root.refreshTasks) }
+      if (root.runningHash === "note") noteTalkFile.reload()
       root.runningHash = ""
       if (code !== 0) Qt.callLater(root.runnerFailed)
       agent.reload()
@@ -5462,6 +5524,15 @@ Item {
     }
   }
 
+  FileView {
+    id: noteTalkFile
+    path: root.noteTalkPath
+    watchChanges: true
+    printErrors: false
+    onLoaded: { try { root.noteTalk = JSON.parse(text()) } catch (e) { root.noteTalk = null } ; root.settleDay() }
+    onLoadFailed: root.noteTalk = null
+    onFileChanged: reload()
+  }
   Process {
     id: horizonProc
     stdout: StdioCollector { onStreamFinished: { try { root.horizonData = JSON.parse(text) } catch (e) {} } }
@@ -6012,6 +6083,41 @@ Item {
               }
             }
 
+            // Ask about this note (docs/files.md): for what the agent does
+            // not otherwise see — a file, a day before the horizon, a day
+            // marked private. Asking is the consent; the note's own
+            // conversation opens beside it, and the word says one exists.
+            Text {
+              id: noteAsk
+              // Hidden where even the short word has no room (a sheet squeezed
+              // between both panes): the pane's key and the seal still open it.
+              visible: root.noteAskable && headerRight.parent.width / 2 - root.sp(120) >= root.sp(60)
+              anchors.verticalCenter: parent.verticalCenter
+              textFormat: Text.PlainText
+              // Its full words while the right half of the header has room
+              // for them beside the pin; else the short ones.
+              readonly property string full: root.noteTalkTurns > 0 ? "about this note · " + Math.ceil(root.noteTalkTurns / 2) : "ask about this note"
+              TextMetrics { id: noteAskFull; font: noteAsk.font; text: noteAsk.full }
+              text: headerRight.parent.width / 2 - root.sp(120) >= noteAskFull.width ? full
+                : root.noteTalkTurns > 0 ? "about · " + Math.ceil(root.noteTalkTurns / 2) : "ask"
+              color: noteAskArea.containsMouse ? root.accent : root.noteRoom && root.dayShown ? root.foreground : root.faint
+              font.family: root.fontFamily
+              font.styleName: root.fontStyle
+              font.pixelSize: root.fs(Style.font.bodySmall)
+              Behavior on color { ColorAnimation { duration: 240 } }
+              MouseArea {
+                id: noteAskArea
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.noteRoom && root.dayShown ? root.closeDay() : root.openRoom("", true)
+                PanelToolTip {
+                  visible: parent.containsMouse
+                  text: root.tip(root.noteTalkTurns > 0 ? "This note's conversation" : "Talk to the agent about this note: asking shares it, for this conversation only", "day")
+                }
+              }
+            }
+
             // Ask: the agent's visible way in, and the reason the "send to
             // agent?" prompt could go (2026-10-15). It sends the block the
             // cursor is in — the same path as Ctrl+Enter — and sits in the
@@ -6214,6 +6320,27 @@ Item {
                                     duration: 1500; easing.type: Easing.InOutSine }
                 }
               }
+            }
+          }
+
+          // The blip (docs/files.md, 2026-10-27): as the keys go from the
+          // note into the agent's pane, what goes with them — a block, or the
+          // whole note — lights once under the words, so what is shared is
+          // never a guess.
+          Rectangle {
+            id: blipMark
+            x: root.gutter - root.sp(10)
+            width: editor.width + root.sp(20)
+            y: root.blipRect ? root.blipRect.y - root.sp(6) : 0
+            height: root.blipRect ? root.blipRect.h + root.sp(12) : 0
+            radius: Style.cornerRadius
+            color: root.accent
+            opacity: 0
+            visible: opacity > 0
+            SequentialAnimation {
+              id: blipAnim
+              NumberAnimation { target: blipMark; property: "opacity"; to: 0.16; duration: 160; easing.type: Easing.OutCubic }
+              NumberAnimation { target: blipMark; property: "opacity"; to: 0; duration: 620; easing.type: Easing.InOutSine }
             }
           }
 

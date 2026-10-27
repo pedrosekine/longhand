@@ -199,7 +199,7 @@ if [ "$1" = projects ]; then
   exit $rc
 fi
 case "$1" in
-  accept|projects|project|sections|next|tasks|box|timetable|plan|proposals|proposal|talk|thread|rate|notebook|autonomy|day|search|horizon) exec "{ROOT}/agent/longhand-agent" "$@" ;;
+  accept|projects|project|sections|next|tasks|box|timetable|plan|proposals|proposal|talk|thread|rate|notebook|autonomy|day|search|horizon|note) exec "{ROOT}/agent/longhand-agent" "$@" ;;
   run) sleep 2; exit 0 ;;
   chat) sleep 2; exec python3 "{chatstub}" "{self.vault}/agents/longhand/daily" "$@" ;;
 esac
@@ -2425,6 +2425,30 @@ def main() -> int:
         check(p.wait(lambda: "Notes from the first session.\n More." in (course / "Session 1.md").read_text()),
               "what is typed in it is saved to it")
         check("More." not in p.note(), "…and not to the day")
+        # A note's own conversation (step 3): asked about in the header, the
+        # file lit as the keys go to the pane, answered beside it, never
+        # written; Ctrl+Shift+Enter points at a part of it.
+        nt = lambda: json.loads(p.call("noteTalk"))
+        check(nt()["askable"] and not nt()["room"], f"a file can be asked about ({nt()})")
+        p.call("blipReset")
+        p.call("askNote")
+        check(p.wait(lambda: nt()["room"] and nt()["shown"] and nt()["here"] == "right"),
+              f"ask about this note: its own conversation opens beside it, the keys in it ({nt()})")
+        check(p.wait(lambda: nt()["blip"] == "sheet"), f"…and the whole note lights as they go ({nt()})")
+        before = (course / "Session 1.md").read_text()
+        p.call("daySend", "what was the first session about?")
+        check(p.wait(lambda: nt()["turns"] == 2 and any(t.startswith("agent: ") for t in json.loads(p.call("dayTurns"))), 15),
+              f"…answered there, kept by the note's path ({nt()}, {p.call('dayTurns')})")
+        check((course / "Session 1.md").read_text() == before, "…and the note is not written")
+        p.call("dayKey", KEY_ESC, 0)
+        check(p.wait(lambda: not nt()["shown"] and nt()["here"] == "center"), f"Esc closes it, the keys back in the note ({nt()})")
+        p.call("cursor", p.call("text").index("Notes from") + 3)
+        p.call("blipReset")
+        p.call("pageKey", KEY_RETURN, CTRL | SHIFT)
+        check(p.wait(lambda: nt()["room"] and "Notes from the first session." in p.call("dayBlockText")),
+              f"Ctrl+Shift+Enter in a file: its conversation, pointing at the block ({p.call('dayBlockText')!r})")
+        check(p.wait(lambda: nt()["blip"] not in ("", "sheet")), f"…and only that block lights ({nt()})")
+        p.call("dayKey", KEY_ESC, 0)
         p.call("pageKey", KEY_BL, CTRL)
         p.call("filesKey", KEY_SLASH, 0)
         p.call("filesFilter", "session")
@@ -2443,6 +2467,7 @@ def main() -> int:
               "…and nothing typed reaches it")
         p.call("pageKey", 0x48, CTRL)                      # Ctrl+H
         check(p.wait(lambda: fs()["dayNote"] and fs()["filePath"] == ""), f"Ctrl+H: home to today ({fs()})")
+        check(not nt()["askable"], "today has no \"ask about this note\": the day conversation reads it already")
         p.open_fresh()
         check(fs()["space"] == "time" and not fs()["open"], "a fresh open lands on Time, the sidebar closed")
 

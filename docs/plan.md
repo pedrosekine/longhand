@@ -479,7 +479,8 @@ section, word for word, and to the diary's decisions log.
       - Each space has its own tint, and the essentials stay at the foot.
       - The Files tree shows `human/` (editable) and `agents/` (read-only).
       - The runner's write guard widens to the whole notes root.
-   3. **Ask about this note** in the header, Ctrl+Shift+Enter on a file's
+   3. ~~**Ask about this note**~~ *built 2026-10-27* (`docs/files.md`,
+      "Talking about a note"). In the header, Ctrl+Shift+Enter on a file's
       block, and the context blip when the keys move to the agent's pane.
    4. **The read view, researched and prototyped:** images (source shown on
       the cursor's line), wikilinks with a back history, tables, then

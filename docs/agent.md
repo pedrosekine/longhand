@@ -224,6 +224,10 @@ about, not only to take or leave, as any block is in the note.
 
 ## The day conversation — talking to the day, not to a line
 
+(A note's own conversation, for a file or a day the agent does not
+otherwise see, borrows this agent and pane: `docs/files.md`, "Talking about
+a note", 2026-10-27.)
+
 Decided with the student in a grilling on 2026-10-20/21: an agent to talk to
 about the tasks and the context itself — what was written, searchable —
 not only about one block. A conversation attached to **the day**.

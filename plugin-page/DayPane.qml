@@ -49,7 +49,8 @@ BorderSurface {
     anchors.left: parent.left
     anchors.leftMargin: dayPane.contentLeftInset
     textFormat: Text.PlainText
-    text: page.noteService.isToday ? "TODAY" : (page.dateLabel || "").toUpperCase()
+    text: page.noteRoom ? "ABOUT " + (page.noteLabel || "").toUpperCase()
+      : page.noteService.isToday ? "TODAY" : (page.dateLabel || "").toUpperCase()
     color: page.dim
     font.family: page.fontFamily
     font.styleName: page.fontStyle
@@ -250,7 +251,7 @@ BorderSurface {
           // Helpful or not: the student's word on the answer, for the
           // weekly review and the eval cases. A word again takes it back.
           Row {
-            visible: modelData.role === "agent" && !modelData.error && !!modelData.text
+            visible: modelData.role === "agent" && !modelData.error && !!modelData.text && !page.noteRoom
             spacing: page.sp(10)
             Repeater {
               model: [{ value: "up", text: "helpful", act: "dayHelpful" }, { value: "down", text: "not helpful", act: "dayNotHelpful" }]
@@ -308,7 +309,9 @@ BorderSurface {
         width: parent.width
         textFormat: Text.PlainText
         wrapMode: Text.WordWrap
-        text: page.dayCanSend
+        text: page.noteRoom
+          ? "Ask about this note. Asking shares it with the agent, for this conversation only; the note itself is never written. Point at a part with " + page.keyName("dayHere") + "."
+          : page.dayCanSend
           ? "Talk to the day: your tasks, your courses, what you wrote. Point at a block with " + page.keyName("dayHere") + " from the note."
           : "Nothing was said on this day."
         color: page.faint
@@ -382,7 +385,8 @@ BorderSurface {
       // Read-only rather than disabled on a past day: the pane still takes
       // the keys, so Esc and the panes' keys work in it.
       readOnly: !page.dayCanSend
-      placeholderText: page.dayCanSend ? "talk to the day…" : "a past day: today's is where you talk (" + page.keyName("today") + ")"
+      placeholderText: page.noteRoom ? "ask about this note…"
+        : page.dayCanSend ? "talk to the day…" : "a past day: today's is where you talk (" + page.keyName("today") + ")"
       onKeyPressed: function (event) { if (page.dayKey(event)) event.accepted = true }
       onTextChanged: Qt.callLater(page.updateDayMention)
       onCursorPositionChanged: Qt.callLater(page.updateDayMention)

@@ -145,6 +145,13 @@ ShellRoot {
     function filesKey(key: int, mods: int): bool { return page.sidebarItem.keyPressed({ key: key, text: "", modifiers: mods }) }
     function filesFilter(text: string): void { page.sidebarItem.filesPaneRef.filterFieldRef.text = text }
     function openFile(rel: string, readOnly: bool): void { page.openFile(rel, readOnly) }
+    // A note's own conversation, and the blip (docs/files.md).
+    function noteTalk(): string {
+      return JSON.stringify({ room: page.noteRoom, shown: page.dayShown, askable: page.noteAskable, turns: page.noteTalkTurns,
+        blip: page.blipWhat, here: page.here, path: page.noteTalkPath })
+    }
+    function askNote(): void { page.openRoom("", true) }
+    function blipReset(): void { page.blipWhat = "" }
     function horizon(): string { return JSON.stringify({ data: page.horizonData, before: page.beforeHorizon, agentOn: page.agentOn }) }
     function linkCitations(text: string): string { return page.linkCitations(text) }
     function openCitation(link: string): void { page.openCitation(link) }

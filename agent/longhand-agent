@@ -2904,6 +2904,142 @@ def cmd_day(cfg: dict, args) -> int:
     return 0
 
 
+# A note's own conversation (docs/files.md, "Talking about a note",
+# 2026-10-27): the student opens a file of their notes (or a day the agent
+# does not otherwise see) and asks about it. One conversation per note, kept
+# in the agent's folder by the note's path; the note is never written.
+# Asking is the consent: a note marked private, or a day before the
+# horizon, is shown for this conversation only. Never what is never shared
+# (search.py's rules), never a `[!private]` block, and what gitleaks flags
+# is withheld. The day agent answers, told in the payload what this is.
+NOTES_DIR = "notes"
+
+
+def note_key(rel: str) -> str:
+    """The conversation's file name: the md5 of the note's path (the page
+    computes the same with Qt.md5)."""
+    return hashlib.md5(rel.encode("utf-8")).hexdigest()[:16]
+
+
+def note_talk(paths: Paths, rel: str) -> tuple[str, list[dict], str]:
+    """(the path as the vault has it, the note's blocks as they may be
+    shown, a hash of what was shown)."""
+    rel = rel.strip().lstrip("/")
+    root = paths.vault.resolve()
+    p = (root / rel).resolve()
+    if root not in p.parents or not p.is_file() or p.suffix.lower() != ".md":
+        raise Fail(f"not a note in the vault: {rel}")
+    rel = str(p.relative_to(root))
+    if searchlib._never(rel):
+        raise Fail(f"never shared: {rel}")
+    shown = [b for b in visible_blocks(blocklib.split(p.read_text(errors="replace"))) if b["kind"] != "frontmatter"]
+    bad = searchlib.leaks([b["text"] for b in shown])
+    shown = [dict(b, text="[withheld: looked like a secret]" if i in bad else searchlib.mask(b["text"]))
+             for i, b in enumerate(shown)]
+    seen = hashlib.sha1("\n\n".join(b["text"] for b in shown).encode()).hexdigest()[:16]
+    return rel, shown, seen
+
+
+def note_payload(cfg: dict, paths: Paths, rel: str, shown: list[dict], message: str, block: str, first: bool,
+                 changed: bool = False) -> str:
+    """The first message: what this conversation is, the note whole, the
+    notebook, what may be searched. A later one: the note again only when
+    it `changed`. Either way the block pointed at, and the message."""
+    parts = [language_line(cfg, message), ""]
+    if first:
+        on = [f for f, y in searchlib.switched(paths.vault, cfg).items() if y]
+        parts += ["# This conversation", "",
+                  "The student opened a note of theirs and asks you about it. It is not today's note and this is not "
+                  "the day's conversation: answer about this note, with it as your evidence, and say where in it. "
+                  "Propose nothing: `proposals` stays empty. You may search and read as the day does.", "",
+                  f"# The note: `{rel}`", "", "(its private callouts are left out)", ""]
+        parts += ["\n\n".join(b["text"] for b in shown) or "(empty)"]
+        parts += knowledge_parts(paths)
+        parts += ["", "# What you may search", "",
+                  "The folders the student switched on: " + (", ".join(f"`{f}`" for f in on) or "none") + ". "
+                  "Private notes and blocks, and documents of identity, money, health, contracts or secrets, are never "
+                  "shown to you, whatever you ask."]
+    elif changed:
+        parts += [f"# The note as it reads now: `{rel}`", "", "\n\n".join(b["text"] for b in shown) or "(empty)"]
+    b = next((x for x in shown if x["hash"] == block), None) if block else None
+    if b:
+        parts += ["", "# The part the student points at", "", "\n".join("> " + l for l in b["text"].split("\n"))]
+    parts += ["", "# The student says", "", message]
+    if not first:
+        parts += ["", "Answer with the same JSON contract."]
+    return "\n".join(parts) + "\n"
+
+
+def cmd_note(cfg: dict, args) -> int:
+    """Talk about one note: `--file` its path in the vault, `--block` a
+    block of it pointed at. The first message carries the note whole; a
+    later one carries it again only when it changed."""
+    message = (args.message or "").strip()
+    if not message:
+        raise Fail("--message is empty")
+    today = dt.date.today()
+    paths = Paths(cfg, today)
+    rel, shown, seen = note_talk(paths, args.file)
+    where = paths.agent_dir / NOTES_DIR / f"{note_key(rel)}.json"
+    try:
+        talk = json.loads(where.read_text())
+    except (OSError, ValueError):
+        talk = {}
+    talk = {"path": rel, "session": talk.get("session", ""), "turns": talk.get("turns") or [], "seen": talk.get("seen", "")}
+    at = dt.datetime.now().isoformat(timespec="seconds")
+    paths.payloads.mkdir(parents=True, exist_ok=True)
+    payload_file = paths.payloads / f"{dt.datetime.now():%Y%m%d-%H%M%S-%f}-note.md"
+    day_cfg = dict(cfg, agent=cfg.get("dayAgent", "longhand-day"))
+    if talk["session"]:
+        payload = note_payload(cfg, paths, rel, shown, message, args.block, False, changed=seen != talk["seen"])
+        payload_file.write_text(payload)                 # logged before inference
+        result = run_model(day_cfg, paths, "", session=talk["session"], message=payload)
+    else:
+        payload = note_payload(cfg, paths, rel, shown, message, args.block, True)
+        payload_file.write_text(payload)
+        result = run_model(day_cfg, paths, payload, message="Context follows on stdin.")
+    payload_file.with_suffix(".events.jsonl").write_text(result["events"])
+    reply = parse_reply(result["text"]) if not result["error"] else \
+        {"reply": "", "proposals": [], "suggestions": [], "knowledge": [], "read": []}
+    fetched = {"searched": [], "files": [], "documents": [], "withheld": {}}
+    if not result["error"]:
+        result, reply, fetched = day_follow(cfg, paths, "", result, reply, payload_file)
+
+    try:
+        talk["turns"] = (json.loads(where.read_text()).get("turns") or talk["turns"])
+    except (OSError, ValueError):
+        pass
+    talk["session"] = result["session"] or talk["session"]
+    if not result["error"]:
+        talk["seen"] = seen
+    turn = {"role": "student", "text": message, "at": at}
+    if args.block:
+        turn["block"] = args.block
+    talk["turns"].append(turn)
+    if result["error"]:
+        talk["turns"].append({"role": "agent", "text": "", "error": result["error"], "at": at})
+    else:
+        talk["turns"].append({"role": "agent", "text": reply["reply"], "at": dt.datetime.now().isoformat(timespec="seconds"),
+                              "cost": result["cost"], "prompt": result.get("prompt", ""), "model": result.get("model", ""),
+                              "payload": str(payload_file), "documents": fetched["documents"],
+                              "searched": fetched["searched"], "files": fetched["files"], "withheld": fetched["withheld"]})
+    written = []
+    write_knowledge(paths, reply.get("knowledge") or [], written)
+    write_atomic(paths, where, json.dumps(talk, indent=2, ensure_ascii=False) + "\n")
+    tk = result["tokens"]
+    paths.ledger.parent.mkdir(parents=True, exist_ok=True)
+    if not paths.ledger.exists():
+        paths.ledger.write_text("at\tdate\ttrigger\tblock\tcost\tinput\toutput\treasoning\tsession\tprompt\tmodel\n")
+    with open(paths.ledger, "a") as f:
+        f.write(f"{at}\t{paths.stamp}\tnote\t{args.block or ''}\t{result['cost']:.6f}\t{tk.get('input', 0)}\t{tk.get('output', 0)}"
+                f"\t{tk.get('reasoning', 0)}\t{result['session']}\t{result.get('prompt', '')}\t{result.get('model', '')}\n")
+    if result["error"]:
+        print(f"error: {result['error']}", file=sys.stderr)
+        return 1
+    print(f"note: {'reply' if reply['reply'] else 'silent'} · ${result['cost']:.4f} · {tk.get('total', 0)} tokens")
+    return 0
+
+
 def brief_payload(cfg: dict, date: dt.date, turns: list[dict]) -> str:
     """What a day's brief is written from: that day's conversation and
     what came of what it proposed — not the note, which stays the note."""
@@ -3605,6 +3741,10 @@ def main(argv: list[str]) -> int:
     p.add_argument("--file", default="")
     p.add_argument("--folders", action="store_true")
     sub.add_parser("horizon")
+    p = sub.add_parser("note")
+    p.add_argument("--file", required=True, help="the note's path in the vault")
+    p.add_argument("--message", required=True)
+    p.add_argument("--block", default="", help="a block of the note the student points at")
     p = sub.add_parser("day")
     p.add_argument("--message", required=True)
     p.add_argument("--block", default="", help="a block of today's note the student points at")
@@ -3648,7 +3788,7 @@ def main(argv: list[str]) -> int:
     try:
         cfg = load_config()
         return {"run": cmd_run, "chat": cmd_chat, "ack": cmd_ack, "accept": cmd_accept, "tasks": cmd_tasks, "sections": cmd_sections,
-                "next": cmd_next, "box": cmd_box, "rate": cmd_rate, "eval": cmd_eval, "review": cmd_review, "plan": cmd_plan, "proposals": cmd_proposals, "proposal": cmd_proposal, "talk": cmd_talk, "thread": cmd_thread, "timetable": cmd_timetable, "notebook": cmd_notebook, "documents": cmd_documents, "day": cmd_day, "search": cmd_search, "horizon": cmd_horizon, "autonomy": cmd_autonomy, "dismiss": cmd_dismiss, "curriculum": cmd_curriculum,
+                "next": cmd_next, "box": cmd_box, "rate": cmd_rate, "eval": cmd_eval, "review": cmd_review, "plan": cmd_plan, "proposals": cmd_proposals, "proposal": cmd_proposal, "talk": cmd_talk, "thread": cmd_thread, "timetable": cmd_timetable, "notebook": cmd_notebook, "documents": cmd_documents, "day": cmd_day, "search": cmd_search, "horizon": cmd_horizon, "note": cmd_note, "autonomy": cmd_autonomy, "dismiss": cmd_dismiss, "curriculum": cmd_curriculum,
                 "context": cmd_context, "state": cmd_state, "install": cmd_install, "stats": cmd_stats,
                 "projects": cmd_projects, "project": cmd_project}[args.cmd](cfg, args)
     except Fail as e:

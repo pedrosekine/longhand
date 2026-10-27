@@ -157,6 +157,53 @@ an agent file read only, home, a fresh open) and `tests/test_search.py`
   pane, what the agent will be given (the block, the whole sheet, the row)
   pulses once, so it's always visible what goes along.
 
+### How it is built (2026-10-27)
+
+**The runner.** `longhand-agent note --file REL --message M [--block H]`.
+- One conversation per note, at `agents/longhand/notes/<md5 of the path,
+  16>.json` (`path`, `session`, `turns`, `seen`). The page computes the same
+  name with `Qt.md5`, which agrees on non-ASCII paths ("FHOÖ").
+- The first message tells the day agent what this conversation is, and
+  carries the note whole, the notebook and what may be searched. A later one
+  carries the note again only when it changed. A block pointed at goes
+  along either way.
+- No prompt change: the instructions travel in the payload.
+- Proposals are ignored. Search and read work as in the day conversation.
+- The note is never written. Every message is logged before inference.
+
+**What is never sent, even when asked about.**
+- `[!private]` callouts and frontmatter.
+- Anything search's never-list refuses: `_Secrets`, documents named for
+  identity, money, health, contracts or secrets.
+- What gitleaks flags (withheld) and IBAN- or card-shaped strings (masked).
+- Anything outside the vault.
+
+A note marked private, or a day before the horizon, is shown, because
+asking is the consent.
+
+**The page.** The agent's pane gains a room, `noteRoom`: the day pane's
+view, reading the note's conversation instead of the day's.
+- It opens from **ask about this note** in the header. The word becomes
+  "about this note · n" once a conversation exists.
+- It also opens from the pane's key or the seal while a file is in the
+  sheet, and from Ctrl+Shift+Enter on a file's block.
+- The header word shows only where the agent does not already read the
+  note: a file, a day before the horizon, a private day.
+- A note's answers have no helpful / not-helpful yet. Opening another note
+  or day closes the room.
+
+**The blip.** When the keys go from the note into the agent's pane, what
+goes with them lights once under the words, an accent wash that fades in
+about 0.8 s:
+- the block pointed at;
+- else the block a margin conversation is on;
+- else the whole visible note, for the note's room or today's conversation.
+
+Nothing lights over the dashboard, keys or settings. A dashboard row
+talked about already stays faintly marked.
+
+Tests: `tests/test_note.py`, and `tests/page/run.py` 12h.
+
 ## Privacy
 
 ### The horizon (built 2026-10-26)
