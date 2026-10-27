@@ -255,9 +255,12 @@ which reads "private · the agent sees nothing here" and goes from faint to
 the text colour. The words, the sheet and the gutter stay as they were, so
 clicking **private** seems to do nothing but show a hint.
 
-**Private blocks.** A `[!private]` block is a callout with a magenta label
-over ordinary text. Meanwhile "the agent has seen this" is a veil, so the two
-are easy to confuse or miss.
+**Private blocks.** A `[!private]` block is a magenta bar at its left with
+the label "private · never sent", over ordinary text. A block with an answer
+is also a thin bar at the left: in the gutter, accent until read, then dim.
+(The veil over seen blocks was dropped before this, because it made a note
+hard to read.) So privacy and the agent's answers both read as "a bar at the
+left", which makes them easy to confuse.
 
 **What needs designing.** How a private *note*, a private *block*, a day
 *before the horizon* and a block the agent *has seen* are told apart. The
@@ -267,6 +270,23 @@ one rule so far: **private and seen never share a look.** Candidates:
   of that tone for a private block;
 - a lock in the gutter where the agent's marks would go;
 - the header's "ask" replaced by "private".
+
+**Mockups (2026-10-27).** The canvas "How private looks", in Birnbaum with
+iA Writer Quattro, has five rows. Each shows three sheets: a day with an
+answered block and a private block, a private day, and a day before the
+horizon.
+- **A, as built:** the baseline.
+- **B, Paper:** private is sunk into a darker paper, with a lock in the
+  gutter.
+- **C, Marks:** the paper is unchanged; a lock and a dotted rule in the
+  gutter.
+- **D, Sealed:** a hairline frame with its word on the edge.
+- **E, Ink:** the private words are in a rose italic ink, and a day before
+  the horizon in a sage one.
+
+In every row an answer keeps its solid accent bar in the gutter. None of B
+to E uses a solid bar for privacy, so "private" and "answered" no longer
+share a look. The choice is the student's.
 
 These are to be mocked up in the theme and compared before anything is
 built.
