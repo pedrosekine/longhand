@@ -302,6 +302,18 @@ one says (written by the page, as from its row), Del declines it or, for
 what it did on its own, undoes it. A card made after the page last read
 the ledger is "arriving", never "settled".
 
+**A drop asked for, and a card refused (2026-10-27).** Found when the
+student asked the day to strike a duplicate deadline box ("the task is the
+same one"): the agent proposed the drop and said "accept the card below",
+but `validate` allowed dropping only a box stale and not yet due, so the
+proposal vanished and no card came. In the day conversation (`asked`), a
+drop is offered whatever the box's age or due date, with its reason — the
+student is there asking, and the card is still theirs to accept; the
+planner's rule is unchanged. And whatever local code still refuses is no
+longer silent: the turn keeps it (`unoffered`), the page says "not offered
+as a card" under the reply, and the next message tells the agent, whose
+prompt no longer lets it point at a card it cannot see.
+
 **How the brief works (slice 4, built 2026-10-21).** The day's first run —
 the morning pass, the plan, or the first message to the day, whichever
 comes first; runs that start together wait for each other — writes the

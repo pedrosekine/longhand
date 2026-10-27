@@ -106,6 +106,19 @@ def units() -> None:
     props, _ = plan.validate(reply, cands, days, ledger, TODAY, boxes, deadlines, plan.autonomy({}))
     check([p["kind"] for p in props] == ["steps"], "a priority the person undid is not proposed again")
 
+    # A drop the student asks for in the day conversation (2026-10-27): a
+    # duplicate deadline box, young and still due, the planner never drops.
+    boxes2 = boxes + [{"key": "k5", "title": "Epistemology and research design", "project": "respro",
+                       "due": day(24) + " 23:59", "when": "", "priority": 0, "steps_under_it": 0,
+                       "age_days": 15, "quiet": False}]
+    reply = {"proposals": [{"kind": "drop", "key": "k5", "why": "the student: the same task as today's"},
+                           {"kind": "drop", "key": "k4", "why": ""}], "questions": []}
+    props, _ = plan.validate(reply, cands, days, {"next": 1, "items": []}, TODAY, boxes2, deadlines, plan.autonomy({}))
+    check(props == [], "the planner drops only a stale box not yet due")
+    props, _ = plan.validate(reply, cands, days, {"next": 1, "items": []}, TODAY, boxes2, deadlines,
+                             plan.autonomy({}), asked=True)
+    check([p["key"] for p in props] == ["k5"], "asked: a still-due box may be proposed for dropping, never without why")
+
     # The record, and when raising is suggested.
     items = [{"id": i, "kind": "do-date", "key": f"k{i}", "status": "accepted", "resolved": f"2026-10-{i + 10:02d}"}
              for i in range(9)] + [{"id": 9, "kind": "do-date", "key": "k9", "status": "declined", "resolved": "2026-10-19"}]

@@ -2635,22 +2635,24 @@ def proposable_parts(data: dict, again: bool = False) -> list[str]:
             "```json", json.dumps(data, indent=1, ensure_ascii=False), "```"]
 
 
-def day_proposals(cfg: dict, reply: dict, result: dict, payload_file: Path, at: str) -> list[dict]:
-    """The day's agent proposed: checked exactly as the planner's are
-    (plan.py `validate`, against what is open and what the store has
-    closed), recorded in the one ledger with the dashboard's rows — the
-    same item, shown in the conversation as a card. Returns what each card
-    says, with its id: the turn keeps it, so a card settled since still
-    reads."""
+def day_proposals(cfg: dict, reply: dict, result: dict, payload_file: Path, at: str) -> tuple[list[dict], list[str]]:
+    """The day's agent proposed: checked as the planner's are (plan.py
+    `validate`, against what is open and what the store has closed — a drop
+    the student asks for is offered whatever its age), recorded in the one
+    ledger with the dashboard's rows — the same item, shown in the
+    conversation as a card. Returns what each card says, with its id: the
+    turn keeps it, so a card settled since still reads; and what was
+    proposed but not offered, so the turn says so rather than the reply
+    pointing at a card that is not there (2026-10-27)."""
     if not reply.get("proposals"):
-        return []
+        return [], []
     today = dt.date.today()
     tasks, deadlines, days, cands, boxes, notes, allowed = plan_inputs(cfg, today)
     lock = planlib.hold(PROPOSALS)
     ledger = planlib.load_ledger(PROPOSALS)
     closed = planlib.store_deadlines(STATE_HOME / "deadlines.tsv", ("done", "cancelled"))
     props, _ = planlib.validate({"proposals": reply["proposals"], "questions": []}, cands, days, ledger, today,
-                                boxes, deadlines, allowed, closed, project_tags(cfg))
+                                boxes, deadlines, allowed, closed, project_tags(cfg), asked=True)
     for item in props:
         item.update({"from": "day", "prompt": result.get("prompt", ""), "model": result.get("model", ""),
                      "payload": str(payload_file)})
@@ -2661,7 +2663,19 @@ def day_proposals(cfg: dict, reply: dict, result: dict, payload_file: Path, at: 
     planlib.save_ledger(PROPOSALS, ledger)
     lock.close()
     keep = ("id", "kind", "key", "title", "project", "date", "priority", "steps", "why", "auto")
-    return [{k: x[k] for k in keep if k in x} for x in new + same]
+    offered = {planlib.ident(x) for x in props}
+    titles = {b["key"]: b["title"] for b in boxes}
+    unoffered = []
+    for p in reply["proposals"]:
+        if not isinstance(p, dict):
+            continue
+        kind, key = str(p.get("kind") or ""), str(p.get("key") or "")
+        about = (kind, str(p.get("tag") or "").strip().lstrip("#").lower()) if kind == "project" \
+            else (kind, key or planlib.norm(str(p.get("title") or "")))
+        if about not in offered:
+            words = titles.get(key) or str(p.get("title") or p.get("name") or "") or key.split("\t")[-1].lstrip("- ")
+            unoffered.append(f"{kind} · {words}".strip(" ·"))
+    return [{k: x[k] for k in keep if k in x} for x in new + same], unoffered[:planlib.MAX_PROPOSALS]
 
 
 def day_payload(cfg: dict, paths: Paths, visible: list[dict], private: bool, message: str, block: str,
@@ -2697,6 +2711,11 @@ def day_followup(cfg: dict, paths: Paths, visible: list[dict], last: str, messag
     other = today_conversations(cfg, paths, since=last)
     if other:
         parts += ["# Since your last answer, in today's other conversations", ""] + other
+    turns = (load_state(paths).get("day") or {}).get("turns") or []
+    gone = next((t.get("unoffered") or [] for t in reversed(turns) if t["role"] == "agent"), [])
+    if gone:
+        parts += ["# Your last proposals local code did not offer as cards", "",
+                  "The student saw no card for these; do not point at one:", ""] + [f"- {x}" for x in gone] + [""]
     parts += block_reference(paths, visible, block) if block else []
     parts += proposable_parts(proposable, again=True) if proposable else []
     parts += ["", "# The student says", "", message, "", "Answer with the same JSON contract."]
@@ -2866,7 +2885,7 @@ def cmd_day(cfg: dict, args) -> int:
             if args.block and any(b["hash"] == args.block for b in visible) else ""
         result, reply, fetched = day_follow(cfg, paths, tag, result, reply, payload_file)
 
-    proposed = day_proposals(cfg, reply, result, payload_file, at) if not result["error"] else []
+    proposed, unoffered = day_proposals(cfg, reply, result, payload_file, at) if not result["error"] else ([], [])
 
     state = load_state(paths)                            # the page or a margin run may have written meanwhile
     day = day_of(state)
@@ -2884,7 +2903,7 @@ def cmd_day(cfg: dict, args) -> int:
                              "cost": result["cost"], "prompt": result.get("prompt", ""), "model": result.get("model", ""),
                              "payload": str(payload_file), "documents": fetched["documents"],
                              "searched": fetched["searched"], "files": fetched["files"], "withheld": fetched["withheld"],
-                             "proposals": proposed, "read": False})
+                             "proposals": proposed, "unoffered": unoffered, "read": False})
     written = []
     write_knowledge(paths, reply.get("knowledge") or [], written)
     state.setdefault("runs", []).append({"at": at, "trigger": "day", "block": args.block or "", "session": result["session"],

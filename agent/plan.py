@@ -314,11 +314,14 @@ def record_of(ledger: dict, kind: str) -> dict:
 def validate(reply: dict, cands: list[dict], days: list[dict], ledger: dict, today: dt.date,
              boxes: list[dict] | None = None, deadlines: list[dict] | None = None,
              allowed: dict[str, str] | None = None, closed: list[dict] | None = None,
-             projects: list[str] | None = None) -> tuple[list[dict], list[dict]]:
+             projects: list[str] | None = None, asked: bool = False) -> tuple[list[dict], list[dict]]:
     """What the model said, kept only where it holds: every kind checked
     against what it was shown, against what the person already refused, and
     against what the person allows ("never" drops it). At most
-    MAX_PROPOSALS of all kinds, in the model's order, and MAX_QUESTIONS."""
+    MAX_PROPOSALS of all kinds, in the model's order, and MAX_QUESTIONS.
+    `asked`: the day conversation, where the person is there and talking — a
+    drop they ask for (a duplicate, a box no longer wanted) is offered
+    whatever its age or due date, with its reason (2026-10-27)."""
     by_key = {c["key"]: c for c in cands}
     by_box = {b["key"]: b for b in boxes or []}
     window = {d["date"] for d in days}
@@ -393,7 +396,10 @@ def validate(reply: dict, cands: list[dict], days: list[dict], ledger: dict, tod
                     continue
                 item = dict(base, steps=steps[:MAX_STEPS])
             elif kind == "drop":
-                if not (b["quiet"] or b["age_days"] >= STALE_DAYS) or (b["due"] and b["due"][:10] >= today.isoformat()):
+                if asked:
+                    if not why:
+                        continue
+                elif not (b["quiet"] or b["age_days"] >= STALE_DAYS) or (b["due"] and b["due"][:10] >= today.isoformat()):
                     continue
                 item = base
             elif kind == "done":

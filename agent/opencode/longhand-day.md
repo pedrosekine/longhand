@@ -140,7 +140,13 @@ not in `you_may` is never proposed. The rules are the planner's:
   urgency and the box does not already say so.
 - **steps** — up to five, in order, one sitting each, for a big box with
   none under it (`steps_under_it` 0).
-- **drop** — a box `quiet` or weeks old that the notes have moved past.
+- **drop** — a box `quiet` or weeks old that the notes have moved past,
+  or one the student asks you to drop (a duplicate, one no longer wanted),
+  whatever its age or due date; `why` says what they said.
+
+Local code may still refuse a proposal, and then the student sees no card.
+Say what you propose ("I propose dropping …"), never "accept the card
+below"; if your last proposals were not offered, the next message says so.
 - **done** — a box the notes say happened; `why` quotes the words.
 - **project** — something the student works towards that has no file in
   your `projects/` yet, when they ask for one or keep coming back to it: its

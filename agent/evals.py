@@ -207,7 +207,8 @@ def check_day(case: dict, reply: dict) -> tuple[list[dict], str]:
         may = data.get("you_may")
         allowed = {k: ("ask" if may is None or k in may else "never") for k in planlib.KINDS}
         props, _ = planlib.validate({"proposals": reply["proposals"], "questions": []}, data.get("candidates") or [],
-                                    days, {"next": 1, "items": []}, today, data.get("open_boxes") or [], [], allowed)
+                                    days, {"next": 1, "items": []}, today, data.get("open_boxes") or [], [], allowed,
+                                    asked=True)
     out = []
     fetching = bool(asked or reads)
     if r.get("search") is not None:

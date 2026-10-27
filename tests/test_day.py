@@ -150,7 +150,11 @@ def main() -> int:
     turn = state()["day"]["turns"][-1]
     check(sorted(x["id"] for x in turn.get("proposals") or []) == sorted(x["id"] for x in mine)
           and any(x.get("date") and x.get("why") for x in turn["proposals"]), "the answer keeps its proposals, for the cards")
+    check(turn.get("unoffered") == ["do-date · no such box"],
+          f"what was proposed but not offered is kept on the turn, for the page to say so ({turn.get('unoffered')})")
     agent("day", "--message", "PROPOSE it again")
+    check("did not offer as cards" in calls()[-1]["argv"][-1] and "- do-date · no such box" in calls()[-1]["argv"][-1],
+          "…and the next message tells the agent, so it points at no card that is not there")
     again = json.loads((tmp / "state" / "longhand" / "proposals.json").read_text())
     check(len(again["items"]) == len(ledger["items"]) and sorted(x["id"] for x in state()["day"]["turns"][-1]["proposals"]) == sorted(x["id"] for x in mine),
           "the same proposal again is the same card: no new item")

@@ -247,6 +247,20 @@ BorderSurface {
               }
             }
           }
+          // What it proposed that local code did not offer (refused, or a
+          // key it made up): said here, so a reply pointing at a card that
+          // is not there is not the last word (2026-10-27).
+          Text {
+            visible: modelData.role === "agent" && (modelData.unoffered || []).length > 0
+            width: parent.width
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
+            text: "◇ not offered as a card: " + (modelData.unoffered || []).join("; ")
+            color: page.faint
+            font.family: page.fontFamily
+            font.styleName: page.fontStyle
+            font.pixelSize: page.fs(Style.font.caption)
+          }
 
           // Helpful or not: the student's word on the answer, for the
           // weekly review and the eval cases. A word again takes it back.
