@@ -25,6 +25,7 @@ var places = {
   any: "everywhere",
   note: "in the note",
   mention: "while @ or # lists tags, or @ blocks in the day's box",
+  cue: "while a box's date lights up as it is typed",
   search: "in find",
   dash: "in the dashboard",
   calendar: "in the calendar",
@@ -37,7 +38,7 @@ var places = {
   notebook: "in what the agent knows",
   autonomy: "in what the agent may do"
 }
-var typing = { note: true, mention: true, search: true, chat: true, settings: true }
+var typing = { note: true, mention: true, cue: true, search: true, chat: true, settings: true }
 
 var groups = [
   { id: "page", title: "The page" },
@@ -104,6 +105,10 @@ var actions = [
   { id: "strike", group: "write", places: ["note"], does: "Strikethrough", keys: ["Ctrl+Shift+S"] },
   { id: "checkbox", group: "write", places: ["note"], does: "Tick or untick a checkbox", keys: ["Ctrl+L"] },
   { id: "deadline", group: "write", places: ["note"], does: "Bind a checkbox's date, reschedule or unbind it", keys: ["Ctrl+D"] },
+  // Tab takes the date and keeps you on the line, the way it takes an @
+  // or # suggestion (2026-10-27); Enter is a new line, binding it as the
+  // line is left.
+  { id: "cueAccept", group: "write", places: ["cue"], does: "Make the lit date the deadline and go on writing the line", keys: ["Tab"] },
   { id: "lineUp", group: "write", places: ["note"], does: "Move the line (or the lines selected) up", keys: ["Alt+Up"] },
   { id: "lineDown", group: "write", places: ["note"], does: "Move the line (or the lines selected) down", keys: ["Alt+Down"] },
   { id: "undo", group: "write", places: ["note"], does: "Undo", keys: ["Ctrl+Z"] },

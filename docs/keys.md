@@ -41,6 +41,7 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | Strikethrough | `Ctrl+Shift+S` | in the note |
 | Tick or untick a checkbox | `Ctrl+L` | in the note |
 | Bind a checkbox's date, reschedule or unbind it | `Ctrl+D` | in the note |
+| Make the lit date the deadline and go on writing the line | `Tab` | while a box's date lights up as it is typed |
 | Move the line (or the lines selected) up | `Alt+↑` | in the note |
 | Move the line (or the lines selected) down | `Alt+↓` | in the note |
 | Undo | `Ctrl+Z` | in the note |

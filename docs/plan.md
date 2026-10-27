@@ -634,6 +634,13 @@ from 2026-09/10 and still stand.
 - **B · Paper and Ctrl+P** (2026-10-27): is private used more now that it
   is visible and one key away (`private-block` in the usage log)? Does the
   darker paper read well in a light theme? It has not been seen in one.
+- **Tab takes a lit date** (2026-10-27, the student's): Tab makes the date
+  the deadline and keeps you on the line, writing; Enter is still a new
+  line that binds as it is left. Space was the first idea, as Todoist was
+  remembered, but it would bind "fri" before "17:00" is typed. Is Tab
+  used (`cue` `tab` against `bound` in the usage log), and does anything
+  get written after it? The number comes a moment later from the store;
+  a note left in that moment keeps its date as a plain `📅`, unbound.
 - **Two flaky checks:**
   - `test_day.py` "…only what is new in the other conversations" fails
     between midnight and 09:05: a fixture turn is stamped 09:05 today.

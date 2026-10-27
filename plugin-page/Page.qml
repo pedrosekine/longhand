@@ -2187,6 +2187,7 @@ Item {
   function pageKey(event) {
     if (root.mentionKey(event)) return true
     if (root.anywhereKey(event)) return true
+    if (Sc.hit(event, "cueAccept") && root.acceptCue()) return true
     if (Sc.hit(event, "close")) { if (!root.alongside) root.dismiss(); return true }
     if (Sc.hit(event, "private")) { root.togglePrivate(); return true }
     if (Sc.hit(event, "privateBlock")) { root.togglePrivateBlock(); return true }
@@ -4564,9 +4565,12 @@ Item {
     root.putLine(r, raw)
   }
 
-  function putLine(r, raw) {
+  // `keep`: only what differs is written, so a cursor in the line's words
+  // stays where it is (the line is being written on).
+  function putLine(r, raw, keep) {
     root.quiet = true
-    editor.replace(r.start, r.start + r.raw.length, raw)
+    if (keep) editor.replaceLine(r, raw)
+    else editor.replace(r.start, r.start + r.raw.length, raw)
     root.quiet = false
     root.bound = Bound.anchors(editor.text)
     root.tickedCount = root.countTicked(editor.text)
@@ -4616,6 +4620,15 @@ Item {
   // before — becomes the line's, rather than a second one being added. It
   // takes the line's date and, if it has none, the line's #tag.
   function bindTwin(raw, head, project, phrase, ms, auto) {
+    var d = root.twinOf(head, project, phrase, ms)
+    if (!d) return false
+    root.writeBinding(raw, head, ms, d.id, auto, false)
+    return true
+  }
+
+  // That deadline, given the line's date (and its #tag if it has none); null
+  // when there is none.
+  function twinOf(head, project, phrase, ms) {
     var key = Bound.titleKey(head), tw = Bound.wordsOf(head)
     var day = new Date(ms).toDateString()
     for (var i = 0; i < dl.items.length; i++) {
@@ -4625,10 +4638,92 @@ Item {
       var args = dl.words(phrase)
       if (project !== "" && d.project === "") args = ["--project", project].concat(args)
       dl.set(d.id, args)
-      root.writeBinding(raw, head, ms, d.id, auto, false)
-      return true
+      return d
     }
-    return false
+    return null
+  }
+
+  // Tab on a date lit up as it is typed (2026-10-27, the student's): it
+  // becomes the deadline there and then, and the cursor stays in the words
+  // to go on writing, as in Todoist. Enter is still a new line, and binds
+  // as the line is left. The store answers a moment later with the
+  // deadline's number, and the typing does not wait for it: the line takes
+  // its date at once, as a plain `📅 date` tail — out of the words, so
+  // typing in them leaves it alone and Enter steps over it — and the
+  // number is added at its end when it comes. Like every binding, an undo
+  // step of its own: Ctrl+Z gives the words back and the deadline goes.
+  property var binding: []          // [{ stem, raw, written, ms, line }]: lines Tab bound, their number on its way
+
+  function acceptCue() {
+    var i = root.lineIndexAt(editor.cursorPosition)
+    var it = editor.rowItem(i)
+    var r = editor.rows[i]
+    if (!it || !it.pending || !r || editor.spanning || !svc.ready || root.quiet || !root.dayNote || r.priv) return false
+    var c = Bound.cue(r.body)
+    var w = c ? Dates.read(c.phrase) : null
+    if (!w) return false
+    var words = c.head.replace(/\s+$/, "")
+    // A space after the words, for the next ones; the tail keeps its own.
+    var written = r.raw.substring(0, r.prefixLen) + words + " " + Bound.tail(w.ms, 0)
+    var rec = { stem: svc.noteDate, raw: r.raw, written: written, ms: w.ms, line: i }
+    editor.typedRaw = ""
+    root.writeLine(r, written)
+    editor.setCursor(r.start + r.prefixLen + words.length + 1, true)
+    root.used("cue", "tab")
+    var d = root.twinOf(c.head, c.project, w.iso, w.ms)
+    if (d) { root.numberLine(rec, d.id, false); return true }
+    root.setBinding(root.binding.concat([rec]))
+    dl.add(c.title, c.project, w.iso, function (id) { root.numberLine(rec, id, true) })
+    return true
+  }
+
+  function setBinding(list) {
+    root.binding = list
+    var at = {}
+    for (var i = 0; i < list.length; i++) at[Math.floor(list[i].ms / 60000)] = true
+    editor.bindingAt = at
+  }
+
+  // The line Tab bound, as it is now: a box still carrying that date and no
+  // number, the nearest to where it was (Enter may have moved it); -1 when
+  // there is none.
+  function lineTabBound(rec) {
+    var rows = editor.rows, best = -1
+    for (var i = 0; i < rows.length; i++) {
+      var x = rows[i]
+      if (x.kind !== "task" || x.deadline > 0 || Math.floor(x.dueAt / 60000) !== Math.floor(rec.ms / 60000)) continue
+      if (best < 0 || Math.abs(i - rec.line) < Math.abs(best - rec.line)) best = i
+    }
+    return best
+  }
+
+  // The store's number reaches the line Tab bound: ` ^dN` at its end,
+  // after the cursor, so whatever is being typed in the words goes on.
+  // Nobody asked for it as a step: every undo state that holds the line as
+  // Tab wrote it gets the number too. The line gone meanwhile (deleted,
+  // Ctrl+Z, another note opened): the deadline made for it goes too.
+  function numberLine(rec, id, made) {
+    root.setBinding(root.binding.filter(function (x) { return x !== rec }))
+    if (id <= 0) return
+    var i = svc.noteDate === rec.stem ? root.lineTabBound(rec) : -1
+    var r = editor.rows[i]
+    if (!r) {
+      if (made) dl.remove(id)
+      root.decline(rec.raw)
+      return
+    }
+    var tag = " ^d" + id
+    editor.rebase(rec.written, rec.written.replace(/\s+$/, "") + tag)
+    // Left already (Enter came first): tidied as leftLine tidies a bound
+    // line. (The new tag sets off the check, which carries the words.)
+    var left = root.lineIndexAt(editor.cursorPosition) !== i
+    var next = left ? r.raw.substring(0, r.prefixLen) + r.body.replace(/\s+$/, "") + r.suffix.replace(/\s+$/, "") + tag
+      : r.raw.replace(/\s+$/, "") + tag
+    editor.rebase(r.raw, next)
+    root.putLine(r, next, true)
+    root.autoBound = { id: id, raw: rec.raw, made: made }
+    dl.set(id, ["--link", Bound.link(rec.stem, id)])
+    root.used("bound")
   }
 
   // What changed among bound lines with the last edit. A line gone, back,

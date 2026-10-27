@@ -572,6 +572,55 @@ def main() -> int:
         time.sleep(1)
         check("read ch.7 by tomorrow\n" in p.note(), "…and it is not bound again")
 
+        # 10c, Tab: it takes a lit date there and then, and the line goes on
+        # being written: typing right after it, before the store has
+        # answered with the number, lands in the words and the number at
+        # the end; Enter right after it steps over the date.
+        TAB = 0x01000001
+        # Offsets as the page counts them: 📅 is two UTF-16 units there.
+        at = lambda i: sum(len(l.encode("utf-16-le")) // 2 + 1 for l in p.lines()[:i])
+        (p.daily / f"{TODAY}.md").write_text(header(TODAY) + "- [ ] call mum\nnext item\n")
+        p.open_fresh()
+        count = len(p.store.read_text().splitlines())
+        p.call("cursor", p.offset_of_line(p.line_of("call mum")) + len("- [ ] call mum"))
+        p.call("type", " by fri 17:00")
+        check(p.call("pageKey", TAB, 0) == "true", "Tab on a lit date is taken")
+        p.call("type", "about the trip")
+        line = lambda: p.lines()[p.line_of("call mum")]
+        check(p.wait(lambda: re.search(r"^- \[ \] call mum about the trip +📅 \d{4}-\d\d-\d\d 17:00 \^d\d+$", line())),
+              f"…the date is the deadline, the words typed after Tab are the line's ({line()!r})")
+        check(len(p.store.read_text().splitlines()) == count + 1, "…one deadline added")
+        n = int(re.search(r"\^d(\d+)", line()).group(1))
+        p.call("cursor", at(p.line_of("next item")) + 2)
+        check(p.wait(lambda: p.deadline(n)["title"] == "call mum about the trip" and "call mum about the trip 📅 " in p.note()),
+              f"left, its words are the deadline's title ({p.deadline(n)})")
+        check(p.call("pageKey", TAB, 0) == "false", "Tab on a line with nothing lit is the line's own (nesting)")
+        p.call("cursor", at(p.line_of("next item")) + len("next item"))
+        p.call("enter")
+        p.call("type", "- [ ] essay due mon")
+        p.call("pageKey", TAB, 0)
+        p.call("enter")
+        p.call("type", "outline")
+        check(p.wait(lambda: re.search(r"^- \[ \] essay 📅 \S+ \^d\d+$", p.lines()[p.line_of("essay")]) is not None),
+              f"Enter right after Tab: the box keeps its date and number ({p.lines()[p.line_of('essay')]!r})")
+        check(p.lines()[p.line_of("essay") + 1] == "- [ ] outline", f"…and the new line is the next box ({p.lines()[p.line_of('essay') + 1]!r})")
+        # Ctrl+Z after Tab: the words come back, the deadline goes.
+        p.call("cursor", at(p.line_of("outline")) + len("- [ ] outline"))
+        p.call("type", " by tomorrow")
+        count = len(p.store.read_text().splitlines())
+        p.call("pageKey", TAB, 0)
+        check(p.wait(lambda: re.search(r"outline +📅 \S+ \^d\d+", p.call("text")) is not None and len(p.store.read_text().splitlines()) == count + 1),
+              "Tab binds it")
+        p.call("undo")
+        check(p.wait(lambda: "- [ ] outline by tomorrow\n" in p.note() and len(p.store.read_text().splitlines()) == count),
+              "Ctrl+Z after Tab: the words are back and the deadline it made is gone")
+        # Enter at the end of a bound line's words: the new line, and the
+        # cursor in it (until 2026-10-27 the cursor stayed behind).
+        p.call("cursor", at(p.line_of("essay")) + len("- [ ] essay"))
+        p.call("enter")
+        p.call("type", "bound too")
+        check(p.lines()[p.line_of("essay") + 1] == "- [ ] bound too", f"Enter after a bound line's words: typing goes on in the new line ({p.lines()[p.line_of('essay') + 1]!r})")
+
         # 10e. a list written with dates: every item is bound as it is left,
         # and the list goes to the agent only after that
         (p.daily / f"{TODAY}.md").write_text(header(TODAY) + "Dates\n")

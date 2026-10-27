@@ -118,7 +118,9 @@ function parseLine(raw) {
     t.checked = x[2] !== " "
     t.cancelled = x[2] === "-"
     liftTail(t)
-    if (t.deadline <= 0) readCue(t)
+    // A box with a 📅 at its end has its date: words before it light up
+    // nothing (a line Tab bound while its number is on its way, too).
+    if (t.deadline <= 0 && t.dueAt <= 0) readCue(t)
     return t
   }
   if ((x = rest.match(BULLET_RE))) return make("bullet", indent, x[1], x[2])

@@ -64,6 +64,10 @@ Item {
   // The row whose date lit up with the last keystroke: a Backspace right
   // then keeps the date as words (as Todoist does), instead of deleting.
   property int freshCue: -1
+  // Dates Tab made deadlines whose number the store has not given yet, by
+  // the minute (Page.qml, acceptCue): a box carrying one draws it as the
+  // pill to be, as while it was typed.
+  property var bindingAt: ({})
   signal cueDismissed(string raw)
   // A box ticked (done) or unticked by the person, in the note.
   signal boxTicked(int lineIndex, bool done)
@@ -931,8 +935,9 @@ Item {
     var lineText = r.raw
     var lineEnd = r.start + r.raw.length
     // At the end of a bound line's words, the new line starts after its
-    // date, so the line keeps its deadline.
-    if (r.suffix !== "" && pos >= r.bodyEnd) pos = lineEnd
+    // date, so the line keeps its deadline — and the cursor goes with it,
+    // or it would stay behind on this line.
+    if (r.suffix !== "" && pos >= r.bodyEnd) { pos = lineEnd; ed.cursorPosition = pos }
     // A fence inside a quote carries the quote; elsewhere code carries nothing.
     var carry = r.kind === "code" ? (r.quoteLead || "") : r.kind === "front" ? "" : Rows.continuation(r)
     if (soft) {
@@ -1332,6 +1337,8 @@ Item {
         // A date being written at the end of this checkbox: lit up, its
         // pill pending (accent) until the line is left and it is bound.
         readonly property bool pending: ed.cues && !priv && kind === "task" && cueAt >= 0 && ed.typedRaw !== "" && raw === ed.typedRaw && !ed.declined[raw]
+        // Bound with Tab, its number on its way: the same pill, its date.
+        readonly property bool binding: kind === "task" && deadline <= 0 && dueAt > 0 && !!ed.bindingAt[Math.floor(dueAt / 60000)]
         readonly property int gapTop: blank ? 0 : Math.round(space * ed.textSize)
         readonly property real indentX: outerLevel * ed.markerWidth + (quoteRow ? 0 : quoteSpace) + (level - outerLevel) * ed.markerWidth
         readonly property real labelWidth: kind === "calloutHead" && !priv ? label.implicitWidth + Math.round(ed.textSize * 0.4) : 0
@@ -1652,18 +1659,18 @@ Item {
           visible: row.dueLabel !== "" || row.pending
           anchors.right: parent.right
           y: row.gapTop + Math.round((row.firstLine - height) / 2)
-          width: dueText.implicitWidth + (row.deadline > 0 || row.pending ? Math.round(ed.textSize * 0.9) : 0)
+          width: dueText.implicitWidth + (row.deadline > 0 || row.pending || row.binding ? Math.round(ed.textSize * 0.9) : 0)
           height: dueText.implicitHeight + Math.round(ed.textSize * 0.2)
           radius: height / 2
           color: "transparent"
-          border.width: row.deadline > 0 || row.pending ? 1 : 0
-          border.color: row.pending ? ed.accent : late ? ed.urgent : ed.faint
+          border.width: row.deadline > 0 || row.pending || row.binding ? 1 : 0
+          border.color: row.pending || row.binding ? ed.accent : late ? ed.urgent : ed.faint
           Text {
             id: dueText
             anchors.centerIn: parent
             textFormat: Text.PlainText
             text: row.pending ? row.cueLabel : row.dueLabel
-            color: row.pending ? ed.accent : due.late ? ed.urgent : ed.dim
+            color: row.pending || row.binding ? ed.accent : due.late ? ed.urgent : ed.dim
             font.family: ed.fontFamily
             font.styleName: ed.fontStyle
             font.pixelSize: Math.round(ed.textSize * 0.78)
