@@ -99,9 +99,18 @@ panes.
   character. It shares one engine with the switcher (page-wide
   there, this block here), built in the same task, and every item shows its
   key.
-- **To check before building:** `Ctrl+\` was seen opening the agent's pane
-  on Pedro's keyboard (US international), though the code binds it to the
-  middle.
+- **Checked: why `Ctrl+\` seemed to open the agent's pane.** Not the
+  keyboard: the US international layout gives `\` plainly, and no Hyprland
+  bind takes `Ctrl+\`. It is the rooms coming back with their views
+  (navigation.md): `Ctrl+\` flips the middle, and the agent's pane follows.
+  The day's chat, once opened, stays open beside the dashboard, wider than
+  beside the note; a block's chat, hidden while the dashboard is up, comes
+  back with the note. The usage log shows it that way (the day opened, then
+  the dashboard). The decided keys keep the rule, now said by `Ctrl+3`'s
+  "this chat": the cursor's block beside the note, the selected task beside
+  the dashboard, the day's chat beside either. Open for the build plan:
+  whether `Ctrl+2` should keep that (the agent's pane changing with the
+  middle), or leave the agent's pane exactly as it is.
 
 ## Talking to the agent: one word, one key
 
@@ -232,8 +241,6 @@ panes.
 
 ## Open
 
-- Before building: why `Ctrl+\` opened the agent's pane on Pedro's
-  keyboard.
 
 
 ## Sources
