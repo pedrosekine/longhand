@@ -763,8 +763,9 @@ Item {
   }
 
   // Lines moved to another level: their list's markers follow (Rows.relist).
-  function relist(lines) {
-    var ch = Rows.relist(ed.rows, lines)
+  // `kept`: the lines stayed where they are, only the numbers count on.
+  function relist(lines, kept) {
+    var ch = Rows.relist(ed.rows, lines, kept)
     for (var k = ch.length - 1; k >= 0; k--) {
       var r = ed.rows[ch[k].line]
       ed.replace(r.start + r.indent.length, r.start + r.prefixLen, ch[k].marker)
@@ -901,14 +902,18 @@ Item {
     if (!r) return
     ed.clearSelection()
     body = body.replace(/\r/g, "")
-    // A list marker typed into an empty item takes the item's place: "2. "
-    // then "- " is a bullet, not "2. - ".
-    var swap = (r.kind === "bullet" || r.kind === "ordered" || r.kind === "task") && /^([-*+]|\d+[.)]) $/.test(body)
+    // A list marker typed into an empty item, or at the start of its words,
+    // takes the item's place: "2. " then "- " is a bullet, not "2. - ".
+    // A bound checkbox keeps its box: its deadline never goes by typing.
+    var lead = /^([-*+]|\d+[.)]) /.exec(body)
+    var swap = (r.kind === "bullet" || r.kind === "ordered" || r.kind === "task") && lead !== null
+      && col === lead[0].length && (body === lead[0] || r.suffix === "")
     var line = (swap ? r.indent : r.raw.substring(0, r.prefixLen)) + body + r.suffix
     ed.snapshot(/\n/.test(body))
     var lineEnd = r.start + r.raw.length
     var before = ed.rows.length
     ed.commit(ed.text.slice(0, r.start) + line + ed.text.slice(lineEnd), r.start + (swap ? r.indent.length : r.prefixLen) + col)
+    if (swap) ed.relist([i], true)
     // The line changed kind (markdown typed or broken) or a paste brought
     // new lines: the field's text moved, so put the cursor back.
     var now = ed.rows[i]
@@ -978,6 +983,8 @@ Item {
       return
     }
     ed.insert(pos, "\n" + carry)
+    // A new number in the middle of a list: the items below count on.
+    if (r.kind === "ordered") ed.relist([i + 1], true)
     ed.returnFinished(i, lineText)
   }
 

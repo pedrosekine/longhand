@@ -619,7 +619,49 @@ Item {
       compare(ed.text, "\n1. ")
       start("\n1. ", 4)
       type("x - y")
-      compare(ed.text, "\n1. x - y")   // only when the item has nothing else
+      compare(ed.text, "\n1. x - y")   // only at the start of the words
+    }
+
+    // A marker typed at the start of an item's words takes the item's
+    // place too: one list becomes the other without erasing anything.
+    // Numbers typed this way count on from the item above. 2026-10-27.
+    function test_marker_typed_before_the_words_replaces_it() {
+      start("\n1. one\n2. two\n3. three", 11)   // start of "two"
+      type("- ")
+      compare(ed.text, "\n1. one\n- two\n3. three")
+      compare(focused().text, "two")
+      compare(focused().cursorPosition, 0)
+      start("\n- a\n- b\n- c", 3)
+      type("1. ")
+      compare(ed.text, "\n1. a\n- b\n- c")
+      ed.setCursor(8, true)   // start of "b"
+      type("1. ")
+      compare(ed.text, "\n1. a\n2. b\n- c")
+      start("\n- [ ] call mum", 7)
+      type("- ")
+      compare(ed.text, "\n- call mum")
+      start("\n- [ ] essay 📅 2026-10-30 ^d6", 7)
+      type("- ")
+      compare(ed.text, "\n- [ ] - essay 📅 2026-10-30 ^d6")   // a deadline is never dropped by typing
+    }
+
+    // Enter inside a numbered list: the items below count on. 2026-10-27.
+    function test_enter_in_a_numbered_list_numbers_on_below() {
+      start("\n1. a\n2. b\n3. c", 5)   // end of "a"
+      keyClick(Qt.Key_Return)
+      compare(ed.text, "\n1. a\n2. \n3. b\n4. c")
+      compare(ed.focusedRow, 2)
+      type("x")
+      compare(ed.text, "\n1. a\n2. x\n3. b\n4. c")
+      keyClick(Qt.Key_Z, Qt.ControlModifier)
+      keyClick(Qt.Key_Z, Qt.ControlModifier)
+      compare(ed.text, "\n1. a\n2. b\n3. c")   // the new item and its numbers, one step
+      start("\n1. ab\n2. c", 5)   // between "a" and "b"
+      keyClick(Qt.Key_Return)
+      compare(ed.text, "\n1. a\n2. b\n3. c")
+      start("\n1. a\n\t1. x\n2. b", 5)
+      keyClick(Qt.Key_Return)
+      compare(ed.text, "\n1. a\n2. \n\t1. x\n3. b")
     }
 
     function test_a_date_lights_up_as_it_is_typed() {

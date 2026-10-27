@@ -912,7 +912,9 @@ a fix or a feature to decide first):
   "2."; under bullets a number moved in is a bullet), a first child that is
   numbered starts at 1, and the list's numbers count on within each level
   (Rows.relist). A marker typed into an empty item replaces it ("2. " then
-  "- " is a bullet).
+  "- " is a bullet). 2026-10-27: so does one typed at the start of an
+  item's words (a bound checkbox excepted), and Enter inside a numbered
+  list numbers on the items below (it only numbered the new line).
 - **Trackpad scrolling felt slow.** Fixed 2026-10-13: Qt's Flickable moves
   1:1 with the fingers and stops dead on lift, where the rest of the
   desktop scrolls further and glides (and Omarchy scales all touchpad

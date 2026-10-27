@@ -336,15 +336,19 @@ function spaceAbove(p, r, blank) {
 // the list then count on within each level, from where each run starts.
 // Checkboxes are never turned into anything. Returns [{ line, marker }]
 // for the lines whose marker should change.
+//
+// `kept`: the lines did not move, they are new or changed kind where they
+// are (Enter, a marker typed over another) — every item keeps its kind and
+// only the numbers count on.
 function inList(r) { return listy(r) || (r.kind === "plain" && r.level > 0) }
 
-function relist(rows, moved) {
+function relist(rows, moved, kept) {
   if (moved.length === 0) return []
   var lo = Math.min.apply(null, moved), hi = Math.max.apply(null, moved)
   while (lo > 0 && inList(rows[lo - 1])) lo--
   while (hi < rows.length - 1 && inList(rows[hi + 1])) hi++
   var isMoved = {}
-  for (var m = 0; m < moved.length; m++) isMoved[moved[m]] = true
+  if (!kept) for (var m = 0; m < moved.length; m++) isMoved[moved[m]] = true
   var last = []   // per level, the item before at that level, under the same parent
   var out = []
   for (var i = lo; i <= hi; i++) {
