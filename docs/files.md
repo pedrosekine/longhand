@@ -303,9 +303,15 @@ share a look.
 - **A private day, or a day before the horizon:** the whole sheet, and the
   window in the window shape, is that paper (`sheetSunk`). The header shows
   a magenta lock and "private", or a grey lock and "before the horizon".
+- **The keys.** `Ctrl+P` makes the block the cursor is in private, or the
+  blocks a selection spans, by wrapping them in `> [!private]`; on a
+  private block it unwraps it. `Ctrl+Shift+P` does the whole note.
+  - Only the markers are written, and one undo takes them back.
+  - A quote only gains the naming line.
+  - A callout touching the block is kept apart by a blank line.
 - **Checked.** Tests: `tests/page/run.py` (a private block sunk, a note
-  marked private sunk whole, a day before the horizon sunk). Photographed
-  in Birnbaum.
+  marked private sunk whole, a day before the horizon sunk, `Ctrl+P` and
+  back, unwrapping, undo). Photographed in Birnbaum.
 - **Not yet seen in a real light theme.** The test harness cannot replay
   the shell's own theme switch.
 

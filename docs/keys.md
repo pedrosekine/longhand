@@ -28,7 +28,8 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | Open or close the dashboard | `Ctrl+T` | everywhere |
 | Flip between overlay and window | `F11` · `Ctrl+Alt+P` | everywhere |
 | Close the overlay | `Esc` | in the note |
-| Make the note private (the agent sees nothing) | `Ctrl+Shift+P` | in the note |
+| Make the whole note private (the agent sees nothing) | `Ctrl+Shift+P` | in the note |
+| Make the block private, or the blocks selected (again: not private) | `Ctrl+P` | in the note |
 
 ## Writing
 

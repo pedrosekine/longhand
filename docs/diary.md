@@ -135,7 +135,7 @@ itself, so the note carries its own answer and nothing has to be looked up.
 | | scope | the mark | who writes it | who enforces it |
 |---|---|---|---|---|
 | **A private day** | the whole note | `agent: false` in the note's frontmatter | the page (`Service.setPrivate`, header word **private** / `Ctrl+Shift+P`) | the page refuses to run at all (`agentOn`); the runner refuses the note (`note_is_private` → `Fail`) |
-| **A private block** | one block | a `> [!private]` callout | the student, by typing it | `blocks.py` marks the block `private`; `visible_blocks()` drops it before the payload exists |
+| **A private block** | one block | a `> [!private]` callout | the student, by typing it or with `Ctrl+P` (2026-10-27) | `blocks.py` marks the block `private`; `visible_blocks()` drops it before the payload exists |
 | **A day before the horizon** (2026-10-26) | every daily note older than a date | `horizon` in settings.json; unset, the first day the agent kept | the page (Settings → what the agent may search, the row above the folders) | the page offers nothing on such a day (`beforeHorizon`); the runner refuses it (`before_horizon`), leaves it out of a project's earlier notes, the week's notes and the outcomes, and search holds it back (counted as `horizon`) |
 
 Both are enforced by local code *before* inference, and every payload is
@@ -167,8 +167,9 @@ none of it is decided yet:
    pass; it does not retract passes already made. What was sent is in the
    transcript, the state file and the payload log, and the agent's replies
    for that day stay where they are.
-3. **A private block has no control.** It is typed by hand; there is no
-   keystroke for it. Since 2026-10-27 (B · Paper, `files.md`) it is drawn
+3. **A private block has a key now.** `Ctrl+P` (2026-10-27) wraps the
+   block the cursor is in, or the blocks a selection spans, in the callout,
+   and unwraps a private one. `Ctrl+Shift+P` does the whole note. Since 2026-10-27 (B · Paper, `files.md`) it is drawn
    as what it is: sunk into a darker paper, with a lock in the gutter,
    where the agent's marks go. A private day, or a day before the horizon,
    is the whole sheet in that paper. Before, it was a magenta callout,

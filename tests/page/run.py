@@ -2466,6 +2466,24 @@ def main() -> int:
         p.call("openFile", "Studies/Course A/Journal.md", "false")
         look = lambda: json.loads(p.call("privateLook"))
         check(p.wait(lambda: look() == {"sunk": False, "blocks": 1}), f"a private block is sunk, the sheet is not ({look()})")
+        # Ctrl+P: the block the cursor is in, made private and back; the
+        # cursor stays in its words; one undo takes it back.
+        journal = course / "Journal.md"
+        before = journal.read_text()
+        p.call("cursor", p.call("text").index("Out loud again.") + 4)
+        p.call("pageKey", 0x50, CTRL)                      # Ctrl+P
+        check(p.wait(lambda: "> [!private]\n> Out loud again.\n" in journal.read_text() and look()["blocks"] == 2),
+              f"Ctrl+P makes the block private ({journal.read_text()!r}, {look()})")
+        at = int(p.call("cursorAt"))
+        check(p.call("text")[at - 4:at] == "Out ", f"…the cursor still in its words ({p.call('text')[at - 6:at + 6]!r})")
+        p.call("pageKey", 0x50, CTRL)
+        check(p.wait(lambda: journal.read_text() == before), f"again: not private, the note as it was ({journal.read_text()!r})")
+        p.call("cursor", p.call("text").index("Only for me.") + 2)
+        p.call("pageKey", 0x50, CTRL)
+        check(p.wait(lambda: journal.read_text() == "Out loud.\n\nOnly for me.\n\nOut loud again.\n"),
+              f"on a private block, Ctrl+P unwraps it ({journal.read_text()!r})")
+        p.call("undo")
+        check(p.wait(lambda: journal.read_text() == before), "…and one undo puts it back")
         p.call("openFile", "Studies/Course A/Locked.md", "false")
         check(p.wait(lambda: look()["sunk"]), f"a note marked private: the whole sheet is sunk ({look()})")
         # A PDF (step 5): listed with your notes, opened in the note's place,

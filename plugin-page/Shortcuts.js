@@ -90,11 +90,13 @@ var actions = [
   { id: "paneRight", group: "page", places: ["any"], does: "The open pane to the right (in the note, with none: this block's conversation)", keys: ["Alt+Right"] },
   { id: "dashboard", group: "page", places: ["any"], does: "Open or close the dashboard", keys: ["Ctrl+T"] },
   // F11 is every app's full-screen key, and the overlay is the full-screen
-  // shape; Ctrl+Alt+P for keyboards whose F-row wants Fn. Ctrl+P is left
-  // to what it means everywhere else (a switcher), off since 2026-10-16.
+  // shape; Ctrl+Alt+P for keyboards whose F-row wants Fn. Ctrl+P was left
+  // free on 2026-10-16; since 2026-10-27 it makes a block private (the
+  // student's choice), Ctrl+Shift+P the whole note.
   { id: "pin", group: "page", places: ["any"], does: "Flip between overlay and window", keys: ["F11", "Ctrl+Alt+P"] },
   { id: "close", group: "page", places: ["note"], does: "Close the overlay", keys: ["Esc"] },
-  { id: "private", group: "page", places: ["note"], does: "Make the note private (the agent sees nothing)", keys: ["Ctrl+Shift+P"] },
+  { id: "private", group: "page", places: ["note"], does: "Make the whole note private (the agent sees nothing)", keys: ["Ctrl+Shift+P"] },
+  { id: "privateBlock", group: "page", places: ["note"], does: "Make the block private, or the blocks selected (again: not private)", keys: ["Ctrl+P"] },
 
   { id: "bold", group: "write", places: ["note"], does: "Bold", keys: ["Ctrl+B"] },
   { id: "italic", group: "write", places: ["note"], does: "Italic", keys: ["Ctrl+I"] },

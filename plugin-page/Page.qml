@@ -514,6 +514,67 @@ Item {
     root.used("private", on ? "on" : "off")
     root.showHint(on ? "private — the agent sees nothing in this note" : "the agent can be asked about this note again")
   }
+  // Ctrl+P: the block the cursor is in — or every block a selection spans —
+  // made private, wrapped in a `> [!private]` callout; on a private block,
+  // unwrapped. Only the markers are written, never a word, and one undo
+  // takes it back. A quote already is one: it only gains the line that
+  // names it. A callout touching it is kept apart by a blank line, so the
+  // two never run together.
+  function togglePrivateBlock() {
+    if (!svc.ready || svc.readOnly) return
+    var text = editor.text
+    var lines = text.split("\n")
+    var lineOf = function (pos) { return text.substring(0, pos).split("\n").length - 1 }
+    var blocks = Blocks.split(text).filter(function (b) { return b.kind !== "frontmatter" })
+    var cur = editor.cursorPosition
+    var la = lineOf(editor.spanning ? editor.selStart : cur)
+    var lb = lineOf(editor.spanning ? editor.selEnd : cur)
+    var first = -1, last = -1
+    for (var k = 0; k < blocks.length; k++)
+      if (blocks[k].end > la && blocks[k].start <= lb) { if (first < 0) first = k; last = k }
+    if (first < 0) { root.showHint("no block here to make private"); return }
+    var start = blocks[first].start, end = blocks[last].end
+    var curLine = lineOf(cur)
+    var curCol = cur - (text.lastIndexOf("\n", cur - 1) + 1)
+    var unwrap = first === last && blocks[first].private && blocks[first].kind === "callout"
+    var out = [], at = -1, shift = 0
+    if (unwrap) {
+      for (var i = start; i < end; i++) {
+        var m = lines[i].match(i === start ? /^>[ \t]?\[!private\][+-]?[ \t]?/i : /^>[ \t]?/)
+        var cut = m ? m[0].length : 0
+        var rest = lines[i].substring(cut)
+        if (i === start && rest.trim() === "") { if (curLine === i) { at = out.length; shift = -curCol } continue }
+        if (curLine === i) { at = out.length; shift = -Math.min(cut, curCol) }
+        out.push(rest)
+      }
+    } else {
+      var quoted = true
+      for (var q = start; q < end; q++) if (lines[q].trim() !== "" && !/^>/.test(lines[q])) quoted = false
+      out.push("> [!private]")
+      for (var j = start; j < end; j++) {
+        var pre = quoted ? "" : lines[j].trim() === "" ? ">" : "> "
+        if (curLine === j) { at = out.length; shift = pre.length }
+        out.push(pre + lines[j])
+      }
+      if (start > 0 && /^>/.test(lines[start - 1])) { out.unshift(""); if (at >= 0) at++ }
+      if (end < lines.length && /^>/.test(lines[end])) out.push("")
+    }
+    var from = 0
+    for (var s = 0; s < start; s++) from += lines[s].length + 1
+    var to = from + lines.slice(start, end).join("\n").length
+    var pos = from
+    if (at >= 0) {
+      for (var o = 0; o < at; o++) pos += out[o].length + 1
+      pos += Math.max(0, Math.min(out[at].length, curCol + shift))
+    }
+    editor.clearSelection()
+    editor.snapshot(true)
+    editor.replace(from, to, out.join("\n"))
+    editor.setCursor(pos, true)
+    root.flush()
+    root.used("private-block", unwrap ? "off" : "on")
+    root.showHint(unwrap ? "not private: the agent can be asked about it again" : "private: this block is never sent")
+  }
   property string pendingStamp: ""   // a day to open once the save in flight lands
   property var pendingFile: null     // or a file: { rel, readOnly }
 
@@ -2121,6 +2182,7 @@ Item {
     if (root.anywhereKey(event)) return true
     if (Sc.hit(event, "close")) { if (!root.alongside) root.dismiss(); return true }
     if (Sc.hit(event, "private")) { root.togglePrivate(); return true }
+    if (Sc.hit(event, "privateBlock")) { root.togglePrivateBlock(); return true }
     if (Sc.hit(event, "ask")) { root.sendCurrent(); return true }
     if (Sc.hit(event, "dayHere")) { root.openDay(root.currentHash); return true }
     // Selecting to the same edges is the editor's (selectToBlockEdge).

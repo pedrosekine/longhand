@@ -425,6 +425,7 @@ section, word for word, and to the diary's decisions log.
    in a private note still binds, so its title, project and date are in the
    store, and every payload carries the store whole; calendars shared whole
    make the boundary matter more. Three ways out, in the record; plus a key
+   (built 2026-10-27: Ctrl+P makes a block private, Ctrl+Shift+P the note)
    and a visible treatment for the block-level `[!private]` callout (the
    treatment is built: B · Paper, item 9's step 6, for notes and blocks alike).
 4. **Structure** — split `Page.qml` (5,822 lines on 2026-10-17, 6,337 by
