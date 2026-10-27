@@ -500,6 +500,25 @@ section, word for word, and to the diary's decisions log.
    - tabs;
    - a fuzzy switcher, if the tree's filter is not enough.
 
+   **Formatting inside quotes and callouts** (found 2026-10-27, the
+   student's ask: bullets and checkboxes in a private block). A line is read
+   for one kind only, and `>` is checked first, so whatever follows it stays
+   raw text: `- `, `- [ ]`, `1. `, `## `, a nested `> `, a fence, a table or
+   a picture. The same holds for a `>` line indented under a list item.
+   Inline formatting (bold, italic, code, links) does work there. The task
+   readers (`Task.js`, `task.py`: `^(\s*)[-*+] \[`) see no box inside any
+   callout, so such boxes are missing from the dashboard, the check and the
+   lifespans. Also: bold that holds a link breaks, because links split the
+   line before emphasis is read.
+   - **The fix (proposed):** read a line's prefix as layers, the indent and
+     then any number of `> `, and read the rest as a line of its own. The
+     row draws the quote or private paper for the layers, then the inner
+     kind as usual. Enter, Tab and Backspace work layer by layer.
+   - **Then** the task readers learn the `> ` layers.
+   - **Decisions before that:** do private boxes show on your dashboard
+     (with a lock, and no way to talk about them with the agent)? Does a
+     dated box in a private block become a deadline (item 3)?
+
    Left by the build (2026-10-27), roughly in the order worth doing:
    - **Asking about a PDF.** Mostly wiring: the runner already reads PDFs,
      through pdftotext.
