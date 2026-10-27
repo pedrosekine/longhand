@@ -124,6 +124,13 @@ var actions = [
   { id: "dayPrev", group: "move", places: ["note", "dash"], does: "The day before, with a note", keys: ["Alt+[", "Ctrl+PgUp"] },
   { id: "dayNext", group: "move", places: ["note", "dash"], does: "The day after, with a note (and then today)", keys: ["Alt+]", "Ctrl+PgDn"] },
   { id: "find", group: "move", places: ["note", "search"], does: "Find in the note (in find: select the words)", keys: ["Ctrl+F"] },
+  // Links (docs/files.md, 2026-10-27), as Obsidian has them: Alt+Enter
+  // follows the one the cursor is in (a click does too), and the way back
+  // and on again are its navigation keys. Back and on are global: they are
+  // about where you are, not about the line you are on.
+  { id: "followLink", group: "move", places: ["note"], does: "Follow the link the cursor is in", keys: ["Alt+Enter"] },
+  { id: "linkBack", group: "move", places: ["any"], does: "Back to where a link was followed from", keys: ["Ctrl+Alt+Left"] },
+  { id: "linkForward", group: "move", places: ["any"], does: "On again, after going back", keys: ["Ctrl+Alt+Right"] },
 
   { id: "ask", group: "agent", places: ["note"], does: "Ask about this block, or open its conversation", keys: ["Ctrl+Enter"] },
   { id: "dayHelpful", group: "agent", places: ["chat"], does: "In the day's conversation: its last answer was helpful (again: take it back)", keys: ["Alt+="] },

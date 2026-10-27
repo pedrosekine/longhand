@@ -24,6 +24,7 @@
 .import "Blocks.js" as Blocks
 .import "Bound.js" as Bound
 .import "Dates.js" as Dates
+.import "Links.js" as Links
 
 var HEADING_RE = /^(#{1,6} )(.*)$/
 var CALLOUT_RE = /^(>[ \t]?\[!([^\]]+)\][+-]?[ \t]?)(.*)$/
@@ -54,7 +55,8 @@ function make(kind, indent, marker, body) {
     kind: kind, indent: indent, marker: marker, body: body,
     prefixLen: indent.length + marker.length, level: levelOf(indent),
     checked: false, cancelled: false, ordinal: "", headingLevel: 0, callout: "",
-    suffix: "", deadline: 0, dueLabel: "", dueAt: 0, cueAt: -1, cueLabel: ""
+    suffix: "", deadline: 0, dueLabel: "", dueAt: 0, cueAt: -1, cueLabel: "",
+    tableRow: -1, tableStart: -1, tableLen: 0
   }
 }
 
@@ -93,6 +95,10 @@ function parseLine(raw) {
     o.ordinal = x[2] + x[3]
     return o
   }
+  // A line that is only an image (docs/files.md, 2026-10-27): the picture
+  // is drawn, and its source is the row's body, shown while the cursor is
+  // on it.
+  if (rest !== "" && Links.imageLine(rest)) return make("image", indent, "", rest)
   return make(rest === "" ? "blank" : "plain", indent, "", rest)
 }
 
@@ -192,7 +198,58 @@ function derive(text) {
     out.push(r)
     pos += raw.length + 1
   }
+  markTables(out)
   return out
+}
+
+// A GFM table (docs/files.md, 2026-10-27): a line of cells, then the line
+// of dashes that says how each column aligns, then more lines of cells.
+// Its rows become one block, `tableRow` 0 the header, 1 the dashes, then
+// the body; `tableStart` and `tableLen` say where the block is, so the
+// whole table shows its source while the cursor is anywhere in it.
+var TABLE_LINE = /^[ \t]*\|.*\|[ \t]*$/
+var TABLE_SEP = /^[ \t]*\|?[ \t]*:?-+:?[ \t]*(\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$/
+
+function markTables(rows) {
+  for (var i = 0; i + 1 < rows.length; i++) {
+    var r = rows[i]
+    if (r.kind !== "plain" || !TABLE_LINE.test(r.raw) || !TABLE_SEP.test(rows[i + 1].raw)) continue
+    var n = 2
+    while (i + n < rows.length && (rows[i + n].kind === "plain" || rows[i + n].kind === "bullet") && TABLE_LINE.test(rows[i + n].raw)) n++
+    for (var k = 0; k < n; k++) {
+      var t = rows[i + k]
+      t.kind = "table"
+      t.tableRow = k
+      t.tableStart = i
+      t.tableLen = n
+      if (k > 0) t.space = 0
+    }
+    i += n - 1
+  }
+}
+
+// A table line's cells, trimmed; `\|` is a pipe inside a cell.
+function cells(line) {
+  var s = String(line).trim()
+  if (s.charAt(0) === "|") s = s.substring(1)
+  if (s.charAt(s.length - 1) === "|" && s.charAt(s.length - 2) !== "\\") s = s.substring(0, s.length - 1)
+  var out = [], cur = ""
+  for (var i = 0; i < s.length; i++) {
+    var c = s.charAt(i)
+    if (c === "\\" && s.charAt(i + 1) === "|") { cur += "|"; i++; continue }
+    if (c === "|") { out.push(cur.trim()); cur = ""; continue }
+    cur += c
+  }
+  out.push(cur.trim())
+  return out
+}
+
+// How each column aligns, from the line of dashes: "left", "center", "right".
+function aligns(sep) {
+  return cells(sep).map(function (c) {
+    var l = c.charAt(0) === ":", r = c.charAt(c.length - 1) === ":"
+    return l && r ? "center" : r ? "right" : "left"
+  })
 }
 
 // The page's vertical rhythm, in body ems. More above a heading than below

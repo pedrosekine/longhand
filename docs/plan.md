@@ -484,7 +484,9 @@ section, word for word, and to the diary's decisions log.
       block, and the context blip when the keys move to the agent's pane.
    4. **The read view, researched and prototyped:** images (source shown on
       the cursor's line), wikilinks with a back history, tables, then
-      Mermaid through Pele.
+      Mermaid through Pele. *Images, links and tables built 2026-10-27*
+      (`docs/files.md`, "How it is built … images, links, tables"); Mermaid
+      waits on fetching Pele.
    5. **PDFs** through `QtQuick.Pdf`.
    6. **How private looks.** Mockups in the theme, compared before any code.
       Can run beside any step above.

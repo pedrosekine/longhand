@@ -25,6 +25,7 @@
 // `2 * 3 * 4` arithmetic. An underscore inside a word is part of the word,
 // so `snake_case_name` is never italic.
 .pragma library
+.import "Links.js" as Links
 
 // Longest first within a family, and the ones that bind tightest first:
 // a backtick opening at a position wins over anything inside it.
@@ -97,14 +98,31 @@ function anyIn(nodes) {
 // Is there anything here to draw? A body without one of these characters
 // never needs parsing, and a row without emphasis stays plain text.
 function has(s) {
-  return /[*_`~]/.test(s) && anyIn(parse(s))
+  return (/[*_`~]/.test(s) && anyIn(parse(s))) || (/\[/.test(s) && linksIn(s).length > 0)
+}
+
+// Links (docs/files.md, 2026-10-27) are drawn the same way: the brackets
+// and the target stay in the text, one pixel and transparent, and what
+// shows is the alias, else the target as written, in the link colour —
+// faint when the vault has no such note. With the cursor inside one, it is
+// drawn as written instead, dim, so it can be edited; nothing else ever
+// hides a link's source. A link inside a code span is code.
+function linksIn(s) {
+  var code = parse(s, 0).filter(function (n) { return n.kind === "code" })
+  return Links.inLine(s).filter(function (l) {
+    for (var i = 0; i < code.length; i++) if (l.at < code[i].end && l.end > code[i].at) return false
+    return true
+  })
 }
 
 function esc(t) {
   return t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
 }
 
-var HIDDEN = "<span style=\"font-size:1px;color:transparent\">"
+// One pixel, transparent, and drawn back over itself: at 1px a character
+// still advances about half a pixel, which a long link target made a gap of
+// (2026-10-27); -0.48px of letter spacing takes that back to nearly nothing.
+var HIDDEN = "<span style=\"font-size:1px;color:transparent;letter-spacing:-0.48px\">"
 var TAGS = { bold: ["<b>", "</b>"], italic: ["<i>", "</i>"], strike: ["<s>", "</s>"] }
 
 function render(nodes, codeFamily) {
@@ -126,8 +144,30 @@ function render(nodes, codeFamily) {
 // is what keeps it so: without it the renderer would eat runs of spaces
 // and the trailing space of a line being written, and every offset after
 // them would be off by one.
-function html(s, codeFamily) {
-  return "<span style=\"white-space:pre-wrap\">" + render(parse(s), codeFamily || "monospace") + "</span>"
+// `links`: { color, missing, source (colours), known(link) -> bool,
+// reveal (the column of a link being edited, else -1) }; without it links
+// are left as written.
+function html(s, codeFamily, links) {
+  codeFamily = codeFamily || "monospace"
+  var ls = links ? linksIn(s) : []
+  if (ls.length === 0) return "<span style=\"white-space:pre-wrap\">" + render(parse(s), codeFamily) + "</span>"
+  var out = "", pos = 0
+  for (var i = 0; i < ls.length; i++) {
+    var l = ls[i]
+    if (l.at > pos) out += render(parse(s.substring(pos, l.at), pos), codeFamily)
+    if (links.reveal === l.at) {
+      out += "<span style=\"color:" + links.source + "\">" + esc(s.substring(l.at, l.end)) + "</span>"
+    } else {
+      var shown = s.substring(l.inner[0], l.inner[1])
+      var colour = links.known(l) ? links.color : links.missing
+      out += HIDDEN + esc(s.substring(l.at, l.inner[0])) + "</span>"
+        + "<span style=\"color:" + colour + (links.known(l) ? ";text-decoration:underline" : "") + "\">" + esc(shown) + "</span>"
+        + HIDDEN + esc(s.substring(l.inner[1], l.end)) + "</span>"
+    }
+    pos = l.end
+  }
+  if (pos < s.length) out += render(parse(s.substring(pos), pos), codeFamily)
+  return "<span style=\"white-space:pre-wrap\">" + out + "</span>"
 }
 
 

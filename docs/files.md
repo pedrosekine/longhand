@@ -304,6 +304,77 @@ building:
 - **PDFs** use `QtQuick.Pdf` (`PdfMultiPageView`), already installed with
   Qt 6.12, so no new dependency.
 
+### How it is built (2026-10-27): images, links, tables
+
+The research came first: Obsidian 1.13–1.15, Typora, Bear 2, iA Writer, and
+two local checks against Qt 6.12. Rendering follows one rule throughout:
+**drawn, and the source shown where the cursor is**, as Obsidian's Live
+Preview does.
+
+**Links.js** reads the three forms (`[[…]]`, `![[…]]`, `[…](…)`) and
+resolves a target by Obsidian's rule:
+- a path from the root when it has a folder, or a partial path that ends a
+  real one;
+- else a bare name, case aside;
+- when several files share it: the vault's root first (Obsidian's own,
+  deliberately), then the note's folder, then the shortest path;
+- a markdown path is relative to the note, decoded.
+
+It resolves against an index of the vault's paths, read by one `find` when
+a note first needs it and read again on a fresh open. `tests/tst_links.qml`
+covers it.
+
+**Images.** A line that is only an image becomes an `image` row: the picture
+at the column's width, never wider than it is.
+- Its size is read from the file's header by one `file` call per batch
+  (`imageSizes`), so its room is kept before it loads and the note does not
+  jump. Qt's own size is no help here: on a 2× screen it reports the size it
+  decoded at.
+- It is decoded no larger than it is drawn (`sourceSize`), loaded only
+  within a screen of the view, and let go of further away.
+- With the cursor on the line, its source shows above it, dim.
+- A picture the vault does not have says so in a faint line.
+
+**Links.**
+- Drawn in the theme's blue and underlined. The brackets and the target
+  stay in the text, one pixel and transparent, with `letter-spacing:
+  -0.48px`, which cancels the half pixel each hidden character would
+  otherwise take. That also tightens emphasis.
+- A link the vault cannot resolve is faint, with no underline.
+- With the cursor inside a link, it is drawn as written, dim, so it can be
+  edited.
+- A click follows it, and so does `Alt+Enter` at the cursor.
+- `Ctrl+Alt+←` / `Ctrl+Alt+→` go back and on (Obsidian's keys), landing
+  where the cursor was. A `#heading` or `^block` lands on its line.
+- A day's note opens as a day, a note in `agents/` opens read-only, a file
+  that is not a note opens in its own application, a web address in the
+  browser.
+
+**Tables.** A GFM table (a line of cells, then the line of dashes) is one
+block, `table` rows.
+- Drawn, it has a semi-bold header and a hairline under it, faint hairlines
+  between rows, no rules down, and alignment from the `:--:` line.
+- Each column is as wide as its widest cell. When the row would not fit,
+  the narrow columns keep their width and the wide ones share the rest and
+  wrap.
+- Cells draw emphasis and links.
+- With the cursor anywhere in it, every line shows as written.
+
+**Not yet.** Ideas from the research, in the order they seem worth doing:
+- `Space` on a picture's line for a lightbox, and arrows between the
+  pictures (Obsidian 1.13.2).
+- Tab between links, with `Space` to preview one and Enter to go.
+- A table too wide even at its narrowest scrolls sideways in its block.
+- A cell editor; the pipes lined up while the source shows.
+- Embedded notes and blocks (`![[Note#^id]]`) drawn inline with a quiet
+  rule.
+- Footnote previews.
+
+**Mermaid** waits on a decision. Pele can't run in Qt's own JavaScript
+engine (ES2022: `matchAll`, `replaceAll`, `\p{}`, `Intl`), so it needs
+Node, and its npm package fetched once. No note in the vault has a diagram
+yet.
+
 ## Open, and documented as open
 
 - **The middle ground.** `projects/`, `reference/` and `inbox/` are mixed

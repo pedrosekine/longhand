@@ -151,6 +151,12 @@ ShellRoot {
         blip: page.blipWhat, here: page.here, path: page.noteTalkPath })
     }
     function askNote(): void { page.openRoom("", true) }
+    // The read view (docs/files.md): what each line is drawn as.
+    function rowKinds(): string { return JSON.stringify(page.editorItem.rows.map(function (r) { return r.kind })) }
+    function imageShown(i: int): string {
+      var it = page.editorItem.rowItem(i)
+      return JSON.stringify(it ? { src: it.imgSource, natural: it.natural, width: it.imgWidth, reveal: it.reveal } : null)
+    }
     function blipReset(): void { page.blipWhat = "" }
     function horizon(): string { return JSON.stringify({ data: page.horizonData, before: page.beforeHorizon, agentOn: page.agentOn }) }
     function linkCitations(text: string): string { return page.linkCitations(text) }

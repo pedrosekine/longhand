@@ -2,6 +2,7 @@ import QtQuick
 import "Rows.js" as Rows
 import "Blocks.js" as Blocks
 import "Emph.js" as Emph
+import "Links.js" as Links
 import "Shortcuts.js" as Sc
 import "Task.js" as Task
 
@@ -111,6 +112,88 @@ Item {
   // the lines after it move down instead of being drawn over (2026-10-17).
   // `roomTop` is where that room starts, in editor coordinates.
   property int roomRow: -1
+  // Images (docs/files.md, 2026-10-27). The page resolves a target to a
+  // file url ("" when the vault has no such file); `resolveVersion` moves
+  // when its index of the vault arrives, so rows ask again. Only rows within
+  // a screen of the view load their picture, decoded at the size drawn, and
+  // a picture scrolled further away is let go of.
+  property var resolveImage: null
+  property int resolveVersion: 0
+  property real viewTop: 0
+  property real viewBottom: 100000
+  property real pixelRatio: 1
+  // A picture's own size, { w, h } in pixels, read from its file's header by
+  // the page (`imageSize(source)`, null until known; `sizesVersion` moves
+  // when sizes arrive): its room is kept before it loads, it is never drawn
+  // larger than it is, and it is decoded no larger than it is drawn.
+  property var imageSize: null
+  property int sizesVersion: 0
+  // True once the page has tried and could not read a size (an svg, a
+  // file `file` does not know): the picture loads anyway, at the column.
+  property var sizeUnknown: function (src) { return false }
+
+  // Tables (docs/files.md, 2026-10-27): drawn as one block while the cursor
+  // is outside it — a bold header, hairlines across, no rules down, each
+  // column as wide as its widest cell until the row would not fit, then the
+  // widest ones give way and wrap — and as written while it is inside.
+  FontMetrics { id: cellMetrics; font.family: ed.fontFamily; font.styleName: ed.fontStyle; font.pixelSize: ed.textSize }
+  readonly property real cellGap: Math.round(ed.textSize * 1.2)
+  property var tableCache: ({})
+  function tableInfo(start, width) {
+    var rows = ed.rows
+    var head = rows[start]
+    if (!head || head.kind !== "table") return null
+    var lines = []
+    for (var i = start; i < start + head.tableLen; i++) lines.push(rows[i].raw)
+    var key = start + "\u0000" + Math.round(width) + "\u0000" + ed.textSize + "\u0000" + lines.join("\n")
+    if (ed.tableCache.key === key) return ed.tableCache.info
+    var align = Rows.aligns(lines[1])
+    var n = align.length
+    var natural = []
+    for (var c = 0; c < n; c++) natural.push(0)
+    for (var k = 0; k < lines.length; k++) {
+      if (k === 1) continue
+      var cs = Rows.cells(lines[k])
+      for (var j = 0; j < n; j++)
+        natural[j] = Math.max(natural[j], cellMetrics.advanceWidth(cs[j] || "") * (k === 0 ? 1.06 : 1) + 2)
+    }
+    var room = Math.max(n * 40, width - ed.cellGap * (n - 1))
+    var widths = natural.slice()
+    var total = widths.reduce(function (a, b) { return a + b }, 0)
+    // Too wide: the narrow columns keep their width, the rest share what is left.
+    for (var guard = 0; total > room && guard < n; guard++) {
+      var fair = room / n, keep = 0, wide = 0
+      for (var w = 0; w < n; w++) { if (natural[w] <= fair) keep += natural[w]; else wide++ }
+      var share = wide > 0 ? Math.max(40, (room - keep) / wide) : fair
+      widths = natural.map(function (x) { return Math.min(x, share) })
+      total = widths.reduce(function (a, b) { return a + b }, 0)
+      if (total <= room + 1) break
+    }
+    var info = { align: align, widths: widths, width: widths.reduce(function (a, b) { return a + b }, 0) + ed.cellGap * (n - 1) }
+    ed.tableCache.key = key           // mutated, not reassigned: a cache tells no binding
+    ed.tableCache.info = info
+    return info
+  }
+  // Links: their colour, and whether the vault has what one points at
+  // (`linkKnown(link)`, the page's; resolveVersion moves when it can tell).
+  property color linkColor: accent
+  property var linkKnown: null
+  property bool linkHover: false
+
+  // The link under a hit, unless it is drawn as written (being edited).
+  function linkAtHit(h) {
+    var item = ed.rowItem(h.i)
+    if (!item || item.links.length === 0) return null
+    var l = Links.at(item.links, h.col)
+    return l && l.at !== item.revealLink ? l : null
+  }
+  // The link the cursor is in, for the key that follows it.
+  function linkAtCursor() {
+    var i = ed.focusedRow >= 0 ? ed.focusedRow : Rows.rowAt(ed.rows, ed.cursorPosition)
+    var item = ed.rowItem(i), r = ed.rows[i]
+    if (!item || !r || item.links.length === 0) return null
+    return Links.at(item.links, ed.cursorPosition - r.start - r.prefixLen)
+  }
   property real roomHeight: 0
   property real roomTop: 0
 
@@ -139,6 +222,8 @@ Item {
   // on an empty item left a list. The page decides what they mean.
   signal returnFinished(int lineIndex, string lineText)
   signal listLeft(int lineIndex)
+  // A link clicked (docs/files.md): the page follows it.
+  signal linkActivated(int lineIndex, var link)
 
   implicitHeight: column.height
 
@@ -347,7 +432,7 @@ Item {
 
   // ------------------------------------------------------------ rows
 
-  readonly property var roles: ["kind", "body", "level", "checked", "cancelled", "ordinal", "headingLevel", "callout", "priv", "blank", "lead", "space", "deadline", "dueLabel", "dueAt", "raw", "cueAt", "cueLabel"]
+  readonly property var roles: ["kind", "body", "level", "checked", "cancelled", "ordinal", "headingLevel", "callout", "priv", "blank", "lead", "space", "deadline", "dueLabel", "dueAt", "raw", "cueAt", "cueLabel", "tableRow", "tableStart", "tableLen"]
 
   function roleValues(r) {
     var o = {}
@@ -1202,6 +1287,9 @@ Item {
         required property string raw
         required property int cueAt
         required property string cueLabel
+        required property int tableRow
+        required property int tableStart
+        required property int tableLen
 
         property alias field: field
         property alias box: box
@@ -1223,14 +1311,53 @@ Item {
         // but not under a selection or a press: a drag passing over it
         // would move every line below by that much and back (2026-10-19).
         readonly property bool opened: !blank || field.activeFocus && !ed.spanning && !pointer.pressed
-        height: (opened ? gapTop + field.height : Math.round(space * ed.textSize)) + room
+        height: (tableDrawn ? (tableRow === 1 ? Math.round(ed.textSize * 0.5) : gapTop + cellRow.height + Math.round(ed.textSize * 0.5))
+                 : img ? gapTop + (reveal ? field.height + imgGap : 0) + picture.height
+                 : opened ? gapTop + field.height : Math.round(space * ed.textSize)) + room
         Binding { when: row.index === ed.roomRow; target: ed; property: "roomTop"; value: row.y + row.height - row.room }
 
         // What the field holds, read and written as the body: with emphasis
         // in it the field is rich text (Emph.js), and then its `text` is
         // html — `plain` is the body, character for character, and the only
         // thing the editor ever looks at.
-        readonly property bool rich: kind !== "code" && kind !== "front" && Emph.has(body)
+        readonly property bool rich: kind !== "code" && kind !== "front" && kind !== "image" && Emph.has(body)
+        // Its links (Emph.linksIn), and the one being edited — the cursor in
+        // it — which is drawn as written.
+        readonly property var links: kind !== "code" && kind !== "front" && kind !== "image" && body.indexOf("[") >= 0 ? Emph.linksIn(body) : []
+        readonly property int revealLink: {
+          if (links.length === 0 || ed.focusedRow !== index || !ed.rows[index]) return -1
+          var l = Links.at(links, ed.cursorPosition - ed.rows[index].start - ed.rows[index].prefixLen)
+          return l ? l.at : -1
+        }
+        onRevealLinkChanged: row.show()
+        Connections {
+          target: ed
+          enabled: row.links.length > 0
+          function onResolveVersionChanged() { row.show() }
+        }
+        function linkStyle() {
+          return { color: String(ed.linkColor), missing: String(ed.faint), source: String(ed.dim), reveal: row.revealLink,
+                   known: function (l) { return !ed.linkKnown || ed.linkKnown(l) } }
+        }
+
+        // A picture: its source shown above it while the cursor is on the
+        // line, else the picture alone.
+        readonly property var img: kind === "image" ? Links.imageLine(body) : null
+        readonly property bool reveal: !img || field.activeFocus
+        readonly property string imgSource: img && ed.resolveImage ? ed.resolveImage(img.target, img.wiki, ed.resolveVersion) : ""
+        readonly property var natural: img && row.imgSource !== "" && row.imgSource !== "?" && ed.imageSize
+          ? ed.imageSize(row.imgSource, ed.sizesVersion) : null
+        readonly property real imgWidth: !img ? 0 : Math.max(0, Math.min(row.width - row.fieldX,
+          img.width > 0 ? img.width : natural ? natural.w : row.width - row.fieldX))
+        readonly property bool near: !!img && row.y + row.height > ed.viewTop - (ed.viewBottom - ed.viewTop)
+          && row.y < ed.viewBottom + (ed.viewBottom - ed.viewTop)
+        readonly property real imgGap: Math.round(ed.textSize * 0.4)
+
+        // A table's row, drawn (`tableDrawn`) unless the cursor is in its
+        // table, where every line of it shows as written.
+        readonly property bool tableDrawn: kind === "table" && !(ed.focusedRow >= tableStart && ed.focusedRow < tableStart + tableLen)
+        readonly property var tinfo: kind === "table" ? ed.tableInfo(tableStart, row.width - row.fieldX) : null
+        readonly property var tcells: kind === "table" && tableRow !== 1 ? Rows.cells(raw) : []
         property bool rendering: false
 
         function plain() {
@@ -1240,7 +1367,7 @@ Item {
         }
 
         function show() {
-          var want = row.rich ? Emph.html(row.body, ed.codeFamily) : row.body
+          var want = row.rich ? Emph.html(row.body, ed.codeFamily, row.links.length ? row.linkStyle() : null) : row.body
           if (field.shown === want && row.plain() === row.body) return
           var col = field.cursorPosition
           row.rendering = true
@@ -1255,6 +1382,85 @@ Item {
         Component.onCompleted: row.show()
 
         FontMetrics { id: fm; font: field.font }
+
+        Row {
+          id: cellRow
+          visible: row.tableDrawn && row.tableRow !== 1 && !!row.tinfo
+          x: row.fieldX
+          y: row.gapTop + Math.round(ed.textSize * 0.25)
+          spacing: ed.cellGap
+          Repeater {
+            model: cellRow.visible ? row.tinfo.widths.length : 0
+            Text {
+              required property int index
+              width: row.tinfo.widths[index]
+              wrapMode: Text.Wrap
+              textFormat: Text.RichText
+              text: Emph.html(row.tcells[index] || "", ed.codeFamily, { color: String(ed.linkColor), missing: String(ed.faint),
+                                source: String(ed.dim), reveal: -1, known: function (l) { return !ed.linkKnown || ed.linkKnown(l) } })
+              horizontalAlignment: row.tinfo.align[index] === "right" ? Text.AlignRight : row.tinfo.align[index] === "center" ? Text.AlignHCenter : Text.AlignLeft
+              color: ed.foreground
+              font.family: ed.fontFamily
+              font.styleName: row.tableRow === 0 ? "" : ed.fontStyle
+              font.weight: row.tableRow === 0 ? Font.DemiBold : Font.Normal
+              font.pixelSize: ed.textSize
+            }
+          }
+        }
+        // The hairlines: under the header strong, between the rows faint.
+        Rectangle {
+          visible: row.tableDrawn && !!row.tinfo && row.tableRow !== 0 && row.tableRow < row.tableLen - 1
+          x: row.fieldX
+          y: row.tableRow === 1 ? Math.round(row.height / 2) : row.height - 1
+          width: row.tinfo ? row.tinfo.width : 0
+          height: 1
+          color: row.tableRow === 1 ? ed.dim : Qt.rgba(ed.faint.r, ed.faint.g, ed.faint.b, 0.35)
+        }
+
+        Item {
+          id: picture
+          visible: !!row.img
+          x: row.fieldX
+          y: row.gapTop + (row.reveal ? field.height + row.imgGap : 0)
+          width: row.imgWidth
+          height: !row.img ? 0
+            : row.imgSource === "" ? missing.implicitHeight
+            : row.natural ? Math.round(row.imgWidth * row.natural.h / Math.max(1, row.natural.w))
+            : loader.item && loader.item.status === Image.Ready ? loader.item.paintedHeight
+            : Math.round(row.imgWidth * 0.4)
+          Loader {
+            id: loader
+            active: row.near && row.imgSource !== "" && row.imgSource !== "?" && (!!row.natural || ed.sizeUnknown(row.imgSource, ed.sizesVersion))
+            // No size of its own: a sized Loader would stretch the picture.
+            // A picture smaller than the column keeps its own size: Qt only
+            // ever scales a bitmap down to `sourceSize`, so `implicitWidth`
+            // is the smaller of the two.
+            sourceComponent: Image {
+              width: picture.width
+              height: row.natural ? picture.height : status === Image.Ready ? Math.round(width * implicitHeight / Math.max(1, implicitWidth)) : 0
+              asynchronous: true
+              cache: false
+              fillMode: Image.PreserveAspectFit
+              sourceSize.width: Math.round(Math.min(row.natural ? row.natural.w : 1e9, picture.width * ed.pixelRatio))
+              source: row.imgSource
+              smooth: true
+              mipmap: true
+
+            }
+          }
+          Text {
+            id: missing
+            visible: !!row.img && row.imgSource === ""
+            width: parent.width
+            wrapMode: Text.WordWrap
+            textFormat: Text.PlainText
+            text: row.img ? row.img.target + " · not found in the vault" : ""
+            color: ed.faint
+            font.family: ed.fontFamily
+            font.styleName: ed.fontStyle
+            font.pixelSize: Math.round(ed.textSize * 0.8)
+          }
+        }
 
         // A click beside the words (the indent, the space of a blank line)
         // lands on this line; on a blank line it opens a line to write on.
@@ -1480,7 +1686,8 @@ Item {
           selectByMouse: true
           selectByKeyboard: true
           persistentSelection: false
-          color: row.checked || row.kind === "front" ? ed.dim
+          opacity: row.reveal && !row.tableDrawn ? 1 : 0
+          color: row.checked || row.kind === "front" || row.img ? ed.dim
             : row.kind === "heading" ? ed.headingColors[Math.max(0, Math.min(row.headingLevel, ed.headingColors.length) - 1)]
             : row.kind === "code" ? ed.codeColor : ed.foreground
           selectionColor: ed.selectionColor
@@ -1488,7 +1695,7 @@ Item {
           font.family: row.kind === "code" || row.kind === "front" ? ed.codeFamily : ed.fontFamily
           font.pixelSize: row.kind === "heading"
             ? Math.round(ed.textSize * (row.headingLevel === 1 ? 1.7 : row.headingLevel === 2 ? 1.4 : row.headingLevel === 3 ? 1.15 : 1))
-            : (row.kind === "code" || row.kind === "front" ? Math.round(ed.textSize * 0.85) : ed.textSize)
+            : (row.kind === "code" || row.kind === "front" || row.img ? Math.round(ed.textSize * 0.85) : ed.textSize)
           font.styleName: row.kind === "heading" || row.kind === "code" || row.kind === "front" ? "" : ed.fontStyle
           // Rank, in the three channels that have an order: size, weight and
           // the colour's distance from the prose (ThemeColors `headings`).
@@ -1531,7 +1738,10 @@ Item {
     anchors.fill: column
     // Over the lines it is on top, so its cursor is the one shown: a
     // hand on a checkbox (which takes the click), a text cursor elsewhere.
-    cursorShape: ed.boxHover >= 0 ? Qt.PointingHandCursor : Qt.IBeamCursor
+    cursorShape: ed.boxHover >= 0 || ed.linkHover ? Qt.PointingHandCursor : Qt.IBeamCursor
+    hoverEnabled: true
+    // A press on a link follows it on release, unless it became a drag.
+    property var linkDown: null
     preventStealing: true
     property int downAt: -1
     // What a drag grows by (1 a character, 2 a word, 3 a line), and the
@@ -1592,13 +1802,28 @@ Item {
         return
       }
       pointer.downAt = pos
-      if (pointer.clicks > 1) { pointer.begin(h, pointer.clicks); return }
+      if (pointer.clicks > 1) { pointer.linkDown = null; pointer.begin(h, pointer.clicks); return }
+      var link = ed.linkAtHit(h)
+      if (link) { pointer.linkDown = { i: h.i, link: link }; return }
       ed.clearSelection()
       ed.setCursor(pos, true)
     }
     onPositionChanged: function (mouse) {
-      if (!pressed || pointer.downAt < 0) return
+      if (!pressed) {
+        // Hovering is this area's now (for links), so a box's hand is
+        // decided here too: the box's own area no longer hears the hover.
+        var hv = ed.hitTest(mouse.x, mouse.y)
+        ed.linkHover = !hv.box && !!ed.linkAtHit(hv)
+        if (hv.box) ed.boxHover = hv.i
+        else if (ed.boxHover >= 0) ed.boxHover = -1
+        return
+      }
+      if (pointer.downAt < 0) return
       var h = ed.hitTest(mouse.x, mouse.y)
+      if (pointer.linkDown) {
+        if (Math.abs(mouse.x - pointer.pressPt.x) < 6 && Math.abs(mouse.y - pointer.pressPt.y) < 6) return
+        pointer.linkDown = null
+      }
       if (pointer.unit > 1) {
         var u = pointer.unitAt(h, pointer.unit)
         if (u.a < pointer.unitA) ed.selectSpan(pointer.unitB, u.a)
@@ -1610,6 +1835,10 @@ Item {
       if (pos !== pointer.downAt) ed.selectSpan(pointer.downAt, pos)
       else if (ed.spanning) { ed.clearSelection(); ed.setCursor(pos, true) }
     }
-    onReleased: pointer.downAt = -1
+    onReleased: {
+      pointer.downAt = -1
+      if (pointer.linkDown) { var d = pointer.linkDown; pointer.linkDown = null; ed.linkActivated(d.i, d.link) }
+    }
+    onExited: { ed.linkHover = false; ed.boxHover = -1 }
   }
 }

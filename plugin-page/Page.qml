@@ -18,6 +18,7 @@ import "Threads.js" as Threads
 import "Tags.js" as Tags
 import "Shortcuts.js" as Sc
 import "Layout.js" as Layout
+import "Links.js" as Links
 
 // The page: today's note as a blank sheet in the shell, with the agent in
 // the margin. Two shapes of the same sheet: the overlay (a layer over
@@ -123,6 +124,124 @@ Item {
 
   // Handles for a test harness driving the page over IPC.
   readonly property alias editorItem: editor
+
+  // The vault's notes and pictures, as paths (Links.js): read when a note
+  // first needs them — a picture or a link in it — and read again on a
+  // fresh open. One `find`, a few thousand short strings; dropped on close.
+  property var vaultIndex: null
+  property int vaultIndexVersion: 0
+  function needIndex() {
+    if (root.vaultIndex !== null || indexProc.running || !svc.configured) return
+    indexProc.command = ["find", svc.config.vault, "-name", ".*", "-prune", "-o", "-type", "f", "-regextype", "posix-extended",
+                         "-iregex", ".*\\.(md|png|jpe?g|gif|webp|bmp|svg|avif)", "-print"]
+    indexProc.running = true
+  }
+  // Following links (docs/files.md, 2026-10-27). Where it leads: a day's
+  // note opens as a day, a note of the agent's to read, any other note in
+  // the sheet; a file that is not a note opens in its own application, a
+  // web address in the browser. Every jump is remembered, so the way back
+  // (and on again) returns to the place, the cursor where it was.
+  property var backStack: []
+  property var foreStack: []
+  property var pendingLink: null       // { heading, block }: where to land once the note is read
+  function linkKnown(l) {
+    if (l.url || l.target === "") return true
+    if (root.vaultIndex === null) { root.needIndex(); return true }
+    return Links.resolve(root.vaultIndex, l.target, root.noteRel, l.kind !== "md") !== ""
+  }
+  function placeNow() {
+    return { stem: svc.noteDate, file: svc.filePath, readOnly: svc.readOnly, at: editor.cursorPosition }
+  }
+  function goTo(place) {
+    root.pendingLink = { at: place.at }
+    if (place.stem !== "") { if (place.stem === svc.noteDate) root.landOnLink(); else root.openNote(place.stem) }
+    else if (place.file === svc.filePath) root.landOnLink()
+    else root.openFile(place.file, place.readOnly)
+    root.showNote()
+  }
+  function followLink(l) {
+    root.used("link", l.url ? "web" : l.kind)
+    if (l.url) { Qt.openUrlExternally(l.url); return }
+    if (l.target === "") { root.pendingLink = { heading: l.heading }; root.landOnLink(); return }
+    if (root.vaultIndex === null) { root.needIndex(); root.showHint("reading the vault's names…"); return }
+    var rel = Links.resolve(root.vaultIndex, l.target, root.noteRel, l.kind !== "md")
+    if (rel === "") { root.showHint("no note “" + l.target + "” in the vault"); return }
+    if (!/\.md$/i.test(rel)) { Qt.openUrlExternally("file://" + (svc.config.vault + "/" + rel).split("/").map(encodeURIComponent).join("/")); return }
+    root.backStack = root.backStack.concat([root.placeNow()]).slice(-50)
+    root.foreStack = []
+    var heading = l.heading.charAt(0) === "^" ? "" : l.heading
+    var block = l.heading.charAt(0) === "^" ? l.heading.substring(1) : ""
+    var daily = String(svc.config.daily.dir).replace(/^\/+|\/+$/g, "")
+    var stem = rel.replace(/^.*\//, "").replace(/\.md$/i, "")
+    root.pendingLink = { heading: heading, block: block }
+    if (rel === daily + "/" + stem + ".md" && Days.parse(stem, svc.dailyFormat())) {
+      if (stem === svc.noteDate) root.landOnLink(); else root.openNote(stem)
+    } else if (rel === svc.filePath) root.landOnLink()
+    else root.openFile(rel, svc.agentRoot !== "" && rel.indexOf(svc.agentRoot + "/") === 0)
+    root.showNote()
+  }
+  function goBack(d) {
+    var from = d < 0 ? root.backStack : root.foreStack
+    if (from.length === 0) { root.showHint(d < 0 ? "nowhere to go back to" : "nowhere on to go"); return }
+    var place = from[from.length - 1]
+    if (d < 0) { root.backStack = from.slice(0, -1); root.foreStack = root.foreStack.concat([root.placeNow()]) }
+    else { root.foreStack = from.slice(0, -1); root.backStack = root.backStack.concat([root.placeNow()]) }
+    root.used("link", d < 0 ? "back" : "forward")
+    root.goTo(place)
+  }
+  // The note read: to the heading, the block or the place the link meant.
+  function landOnLink() {
+    var p = root.pendingLink
+    if (!p || !svc.ready) return
+    root.pendingLink = null
+    var rows = editor.rows
+    if (p.at !== undefined) { editor.setCursor(Math.min(p.at, editor.length), true); return }
+    var want = String(p.heading || "").trim().toLowerCase()
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i]
+      if ((want !== "" && r.kind === "heading" && r.body.trim().toLowerCase() === want)
+          || (p.block && new RegExp("\\s\\^" + p.block.replace(/[^\w-]/g, "") + "\\s*$").test(r.raw))) {
+        editor.setCursor(r.start + r.prefixLen, true)
+        return
+      }
+    }
+    if (want !== "" || p.block) root.showHint("“" + (p.heading || "^" + p.block) + "” is not in this note")
+  }
+
+  // A picture's own size, from its file's header (`file`, one call for the
+  // pictures a note shows, batched), so its room is kept before it loads and
+  // it is decoded no larger than it is drawn: Qt's own reading of a size is
+  // the size it decoded at, not the picture's.
+  property var imageSizes: ({})        // file url -> { w, h }, or { none: true } when `file` cannot tell
+  property int imageSizesVersion: 0
+  property var sizeQueue: []
+  property var sizeAsked: ({})
+  function imageSize(src) {
+    var s = root.imageSizes[src]
+    if (s) return s.none ? null : s
+    if (!root.sizeAsked[src] && root.sizeQueue.indexOf(src) < 0) { root.sizeQueue = root.sizeQueue.concat([src]); sizeTimer.restart() }
+    return null
+  }
+  function sizeUnknown(src) { var s = root.imageSizes[src]; return !!s && !!s.none }
+  function probeSizes() {
+    if (sizeProc.running || root.sizeQueue.length === 0) return
+    var batch = root.sizeQueue.slice(0, 200)
+    root.sizeQueue = root.sizeQueue.slice(200)
+    for (var i = 0; i < batch.length; i++) root.sizeAsked[batch[i]] = true
+    sizeProc.batch = batch
+    sizeProc.command = ["file", "-b", "-L", "--"].concat(batch.map(function (u) { return decodeURIComponent(u.replace(/^file:\/\//, "")) }))
+    sizeProc.running = true
+  }
+
+  // A picture's file url, "" when the vault has none such, "?" while the
+  // index is still being read.
+  function resolveImage(target, wiki) {
+    if (!svc.configured) return ""
+    if (root.vaultIndex === null) { root.needIndex(); return "?" }
+    var rel = Links.resolve(root.vaultIndex, target, root.noteRel, wiki)
+    if (rel === "") return ""
+    return "file://" + (svc.config.vault + "/" + rel).split("/").map(encodeURIComponent).join("/")
+  }
   readonly property alias sidebarItem: sidebar
   readonly property alias contentItem: content    // what is drawn, for tests to photograph
   readonly property alias noteService: svc
@@ -1071,6 +1190,7 @@ Item {
     if (fresh) {
       root.sidebarOpen = false
       root.sidebarSpace = "time"
+      root.vaultIndex = null
       // The margin is on-demand only, so a page opened from nothing shows
       // the note alone — not the panel the last session left open.
       root.marginOpen = false
@@ -1171,6 +1291,8 @@ Item {
     if (Sc.hit(event, "settings")) { root.toggleSettings(); return true }
     if (Sc.hit(event, "sidebar")) { root.paneKey("left"); return true }
     if (Sc.hit(event, "spacePrev")) { root.switchSpace(-1); return true }
+    if (Sc.hit(event, "linkBack")) { root.goBack(-1); return true }
+    if (Sc.hit(event, "linkForward")) { root.goBack(1); return true }
     if (Sc.hit(event, "spaceNext")) { root.switchSpace(1); return true }
     if (Sc.hit(event, "home")) { root.paneKey("center"); return true }
     if (Sc.hit(event, "day")) { root.paneKey("right"); return true }
@@ -1954,6 +2076,7 @@ Item {
     if (Sc.hit(event, "dayPrev")) { root.stepDay(-1); return true }
     if (Sc.hit(event, "dayNext")) { root.stepDay(1); return true }
     if (Sc.hit(event, "find")) { root.openSearch(); return true }
+    if (Sc.hit(event, "followLink")) { var l = editor.linkAtCursor(); if (l) root.followLink(l); else root.showHint("no link here"); return true }
     // Emphasis, where every editor puts it. The sidebar moved to the
     // shifted pair on 2026-10-15 so that Ctrl+B could be bold.
     if (Sc.hit(event, "bold")) { editor.emphasise("**"); return true }
@@ -4620,6 +4743,7 @@ Item {
     root.landOnTask()
     root.landOnSection()
     root.landOnLine()
+    root.landOnLink()
     root.doPendingWrite()
     root.writeClass()
   }
@@ -5533,6 +5657,38 @@ Item {
     onLoadFailed: root.noteTalk = null
     onFileChanged: reload()
   }
+  Timer { id: sizeTimer; interval: 40; onTriggered: root.probeSizes() }
+  Process {
+    id: sizeProc
+    property var batch: []
+    stdout: StdioCollector {
+      onStreamFinished: {
+        var lines = String(text).split("\n")
+        var sizes = {}
+        for (var k in root.imageSizes) sizes[k] = root.imageSizes[k]
+        for (var i = 0; i < sizeProc.batch.length; i++) {
+          // The last "W x H" on the line: a JPEG's "density 1x1" comes first.
+          var all = (lines[i] || "").match(/(\d+)\s*x\s*(\d+)/g)
+          var m = all ? all[all.length - 1].match(/(\d+)\s*x\s*(\d+)/) : null
+          sizes[sizeProc.batch[i]] = m && +m[1] > 0 && +m[2] > 0 ? { w: +m[1], h: +m[2] } : { none: true }
+        }
+        root.imageSizes = sizes
+        root.imageSizesVersion++
+        if (root.sizeQueue.length > 0) Qt.callLater(root.probeSizes)
+      }
+    }
+  }
+  Process {
+    id: indexProc
+    stdout: StdioCollector {
+      onStreamFinished: {
+        var cut = svc.config.vault.length + 1
+        var paths = String(text).split("\n").filter(function (p) { return p !== "" }).map(function (p) { return p.slice(cut) })
+        root.vaultIndex = Links.index(paths)
+        root.vaultIndexVersion++
+      }
+    }
+  }
   Process {
     id: horizonProc
     stdout: StdioCollector { onStreamFinished: { try { root.horizonData = JSON.parse(text) } catch (e) {} } }
@@ -6348,6 +6504,18 @@ Item {
             id: editor
             readOnly: svc.readOnly
             cues: root.dayNote
+            resolveImage: root.resolveImage
+            resolveVersion: root.vaultIndexVersion
+            imageSize: root.imageSize
+            sizeUnknown: root.sizeUnknown
+            sizesVersion: root.imageSizesVersion
+            linkColor: pal.blue
+            linkKnown: root.linkKnown
+            onLinkActivated: function (i, l) { root.followLink(l) }
+            viewTop: flick.contentY - y
+            viewBottom: flick.contentY - y + flick.height
+            // 0 until the item is on a screen; a picture is decoded for 1 then.
+            pixelRatio: Math.max(1, Screen.devicePixelRatio || 1)
             // What the page shows under a line opens room there, so the
             // lines below move down rather than being drawn over.
             roomRow: whenBox.visible || mentionBox.visible || nameBox.visible ? root.lineIndexAt(root.newProject ? root.newProject.end : editor.cursorPosition) : -1

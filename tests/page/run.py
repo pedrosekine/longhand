@@ -2458,6 +2458,31 @@ def main() -> int:
               and p.wait(lambda: fs()["rows"] == []), "…never a hidden one")
         p.call("filesFilter", "")
         p.call("filesKey", KEY_ESC, 0)
+        # The read view (step 4): a picture by name, a link followed to its
+        # heading and back, a table drawn as one block.
+        att = p.vault / "_Attachments"
+        att.mkdir(exist_ok=True)
+        import base64
+        (att / "board.png").write_bytes(base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR4nGP4z8DwHwQZGBgAJ+wE/Fa3oGAAAAAASUVORK5CYII="))
+        (course / "Themes.md").write_text("# Themes\n\n## Built\n\nThemes are built, not found.\n")
+        (course / "Links.md").write_text("# Links\n\n![[board.png]]\n\nSee [[Themes#Built|how themes are made]].\n\n"
+                                         "| a | b |\n|---|---|\n| 1 | 2 |\n")
+        p.call("openFile", "Studies/Course A/Links.md", "false")
+        check(p.wait(lambda: json.loads(p.call("rowKinds"))[2] == "image" and "table" in json.loads(p.call("rowKinds"))),
+              f"a picture's line and a table's lines are drawn as such ({p.call('rowKinds')})")
+        img = lambda: json.loads(p.call("imageShown", 2))
+        check(p.wait(lambda: (img() or {}).get("src", "").endswith("_Attachments/board.png") and (img() or {}).get("natural") == {"w": 2, "h": 1}),
+              f"![[board.png]] is found by name, its size read from the file ({img()})")
+        check(img()["width"] == 2, f"…and never drawn larger than it is ({img()})")
+        at = p.call("text").index("how themes")
+        p.call("cursor", at)
+        p.call("pageKey", KEY_RETURN, 0x08000000)          # Alt+Enter
+        check(p.wait(lambda: fs()["filePath"] == "Studies/Course A/Themes.md" and p.call("cursorLine") == "2"),
+              f"Alt+Enter follows the link, to its heading ({fs()['filePath']}, line {p.call('cursorLine')})")
+        p.call("pageKey", 0x01000012, CTRL | 0x08000000)    # Ctrl+Alt+Left
+        check(p.wait(lambda: fs()["filePath"] == "Studies/Course A/Links.md" and p.call("cursorAt") == str(at)),
+              f"Ctrl+Alt+←: back where the link was, the cursor at it ({fs()['filePath']}, {p.call('cursorAt')})")
         p.call("openFile", "agents/longhand/knowledge/about-you.md", "true")
         check(p.wait(lambda: fs()["readOnly"] and "What the agent keeps." in p.call("text")), "the agent's file opens to read")
         p.call("cursorEnd")

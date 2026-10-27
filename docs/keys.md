@@ -59,6 +59,9 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | The day before, with a note | `Alt+[` · `Ctrl+PgUp` | in the note, in the dashboard |
 | The day after, with a note (and then today) | `Alt+]` · `Ctrl+PgDn` | in the note, in the dashboard |
 | Find in the note (in find: select the words) | `Ctrl+F` | in the note, in find |
+| Follow the link the cursor is in | `Alt+Enter` | in the note |
+| Back to where a link was followed from | `Ctrl+Alt+←` | everywhere |
+| On again, after going back | `Ctrl+Alt+→` | everywhere |
 
 ## The agent
 

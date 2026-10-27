@@ -68,6 +68,7 @@ Item {
   readonly property color orange: pick("orange", yellow)
   readonly property color green: pick("green", accent)
   readonly property color magenta: pick("magenta", accent)
+  readonly property color blue: pick("blue", accent)        // links (docs/files.md)
 
   // How far a colour is from grey: what tells a theme's chromatic accent
   // (tokyo-night's blue, matte-black's orange) from one that is a warm or
