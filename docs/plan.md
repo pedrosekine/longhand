@@ -500,7 +500,11 @@ section, word for word, and to the diary's decisions log.
    - the mixed folders (`projects/`, `reference/`, `inbox/`): whose are they,
      and how do they show?
    - tabs;
-   - a fuzzy switcher, if the tree's filter is not enough.
+   - a fuzzy switcher, if the tree's filter is not enough (its key is
+     decided: `Ctrl+O`, `docs/keys-proposal.md`);
+   - **a new note** (2026-10-27, the keys grilling): creating a note file
+     in Files, on `Ctrl+N` as in Obsidian, Notion and Craft. Not built;
+     `Ctrl+N` is kept free for it.
 
    ~~**Formatting inside quotes and callouts**~~ *built 2026-10-27*: the
    layered reading in the editor, boxes inside callouts in both task
