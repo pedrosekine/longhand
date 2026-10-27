@@ -487,7 +487,8 @@ section, word for word, and to the diary's decisions log.
       Mermaid through Pele. *Images, links and tables built 2026-10-27*
       (`docs/files.md`, "How it is built … images, links, tables"); Mermaid
       parked (see *Not built, on purpose*).
-   5. **PDFs** through `QtQuick.Pdf`.
+   5. ~~**PDFs**~~ *built 2026-10-27* through `QtQuick.Pdf` (`docs/files.md`,
+      "PDFs").
    6. **How private looks.** Mockups in the theme, compared before any code.
       Can run beside any step above.
 

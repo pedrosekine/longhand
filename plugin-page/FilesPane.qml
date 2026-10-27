@@ -41,8 +41,8 @@ Item {
   // What is never listed (docs/files.md): dot and underscore names
   // (`_Attachments`, `_Archive`, `_Secrets`), Templates, the daily folder
   // (the Time space has it) and, when the notes are the vault itself, the
-  // agent's root (it has a root of its own here). Files: notes only, for now
-  // (PDFs come with their view).
+  // agent's root (it has a root of its own here). Files: notes, and in yours
+  // PDFs too (opened in the page's PDF view, 2026-10-27).
   function listed(rel, name, dir, side) {
     if (name.charAt(0) === "." || name.charAt(0) === "_") return false
     if (dir) {
@@ -50,7 +50,7 @@ Item {
       if (side === "mine" && (rel === files.dailyDir || rel === files.agentRoot)) return false
       return true
     }
-    return /\.md$/i.test(name)
+    return side === "mine" ? /\.(md|pdf)$/i.test(name) : /\.md$/i.test(name)
   }
 
   function roots() {
@@ -196,7 +196,7 @@ Item {
     if (files.allNames === null && !walker.running) {
       var roots = [files.abs(files.notesRoot)]
       if (files.agentRoot !== "" && files.notesRoot !== "") roots.push(files.abs(files.agentRoot))
-      walker.command = ["find"].concat(roots, ["-type", "f", "-iname", "*.md"])
+      walker.command = ["find"].concat(roots, ["-type", "f", "(", "-iname", "*.md", "-o", "-iname", "*.pdf", ")"])
       walker.running = true
     }
     page.used("files-filter")

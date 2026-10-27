@@ -30,6 +30,7 @@ var places = {
   calendar: "in the calendar",
   lists: "in the sidebar's lists",
   files: "in the files",
+  pdf: "in a PDF",
   margin: "in the margin",
   chat: "in the conversation box",
   settings: "in settings",
@@ -49,6 +50,7 @@ var groups = [
   { id: "calendar", title: "Calendar" },
   { id: "lists", title: "Deadlines, projects and sections in the sidebar" },
   { id: "files", title: "Files in the sidebar" },
+  { id: "pdf", title: "A PDF" },
   { id: "margin", title: "The margin" },
   { id: "settings", title: "Settings" },
   { id: "typing", title: "Typing (the text field's own, not changeable)" },
@@ -217,6 +219,21 @@ var actions = [
   { id: "filesOut", group: "files", places: ["files"], does: "Fold the folder (folded: up to the one it is in)", keys: ["Left", "H"] },
   { id: "filesFilter", group: "files", places: ["files"], does: "Filter by name", keys: ["/"] },
   { id: "filesBack", group: "files", places: ["files"], does: "Clear the filter; else close the sidebar", keys: ["Esc"] },
+
+  // A PDF in the middle (docs/files.md, step 5): read, never written, so
+  // bare letters are free to be its keys, as in any reader.
+  { id: "pdfDown", group: "pdf", places: ["pdf"], does: "Scroll down", keys: ["Down", "J"] },
+  { id: "pdfUp", group: "pdf", places: ["pdf"], does: "Scroll up", keys: ["Up", "K"] },
+  { id: "pdfNextPage", group: "pdf", places: ["pdf"], does: "The next page", keys: ["PgDn", "Space"] },
+  { id: "pdfPrevPage", group: "pdf", places: ["pdf"], does: "The page before", keys: ["PgUp", "Shift+Space"] },
+  { id: "pdfFirst", group: "pdf", places: ["pdf"], does: "The first page", keys: ["Home"] },
+  { id: "pdfLast", group: "pdf", places: ["pdf"], does: "The last page", keys: ["End"] },
+  { id: "pdfBigger", group: "pdf", places: ["pdf"], does: "Larger", keys: ["Plus", "="] },
+  { id: "pdfSmaller", group: "pdf", places: ["pdf"], does: "Smaller", keys: ["-"] },
+  { id: "pdfFit", group: "pdf", places: ["pdf"], does: "Fit to the column again", keys: ["0"] },
+  { id: "pdfFind", group: "pdf", places: ["pdf"], does: "Find in it (Enter: next, Shift+Enter: before)", keys: ["Ctrl+F", "/"] },
+  { id: "pdfOpen", group: "pdf", places: ["pdf"], does: "Open it in its own application", keys: ["O"] },
+  { id: "pdfClose", group: "pdf", places: ["pdf"], does: "Close it, back to the note", keys: ["Esc"] },
 
   { id: "marginUp", group: "margin", places: ["margin", "chat"], does: "Previous proposal (from an empty box: into the proposals)", keys: ["Up"] },
   { id: "marginDown", group: "margin", places: ["margin"], does: "Next proposal, then the box", keys: ["Down"] },

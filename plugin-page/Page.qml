@@ -150,9 +150,11 @@ Item {
     return Links.resolve(root.vaultIndex, l.target, root.noteRel, l.kind !== "md") !== ""
   }
   function placeNow() {
-    return { stem: svc.noteDate, file: svc.filePath, readOnly: svc.readOnly, at: editor.cursorPosition }
+    return { stem: svc.noteDate, file: svc.filePath, readOnly: svc.readOnly, at: editor.cursorPosition, pdf: root.pdfRel }
   }
   function goTo(place) {
+    if (place.pdf) { root.openPdf(place.pdf); return }
+    root.pdfRel = ""
     root.pendingLink = { at: place.at }
     if (place.stem !== "") { if (place.stem === svc.noteDate) root.landOnLink(); else root.openNote(place.stem) }
     else if (place.file === svc.filePath) root.landOnLink()
@@ -166,6 +168,12 @@ Item {
     if (root.vaultIndex === null) { root.needIndex(); root.showHint("reading the vault's names…"); return }
     var rel = Links.resolve(root.vaultIndex, l.target, root.noteRel, l.kind !== "md")
     if (rel === "") { root.showHint("no note “" + l.target + "” in the vault"); return }
+    if (/\.pdf$/i.test(rel)) {
+      root.backStack = root.backStack.concat([root.placeNow()]).slice(-50)
+      root.foreStack = []
+      root.openPdf(rel)
+      return
+    }
     if (!/\.md$/i.test(rel)) { Qt.openUrlExternally("file://" + (svc.config.vault + "/" + rel).split("/").map(encodeURIComponent).join("/")); return }
     root.backStack = root.backStack.concat([root.placeNow()]).slice(-50)
     root.foreStack = []
@@ -243,6 +251,7 @@ Item {
     return "file://" + (svc.config.vault + "/" + rel).split("/").map(encodeURIComponent).join("/")
   }
   readonly property alias sidebarItem: sidebar
+  readonly property alias pdfItem: pdfPane
   readonly property alias contentItem: content    // what is drawn, for tests to photograph
   readonly property alias noteService: svc
   readonly property alias whenInput: whenField
@@ -390,9 +399,34 @@ Item {
   // a day has that a file does not — its deadlines bound to lines, who made
   // each line, the agent's records and runs, the check — asks this first.
   readonly property bool dayNote: svc.noteDate !== ""
+  // A PDF in the middle, in the note's place (PdfPane.qml, step 5): the note
+  // stays loaded under it, and Esc goes back to it.
+  property string pdfRel: ""
+  readonly property bool pdfShown: root.pdfRel !== ""
+  function openPdf(rel) {
+    if (rel === "") return
+    if (root.searchOpen) root.closeSearch("back")
+    root.leftLine(root.lastLine)
+    root.flush()
+    root.used("pdf", "open")
+    root.marginOpen = false
+    root.closeTalk(false)
+    root.dayOpen = false
+    root.noteRoom = false
+    root.dashOpen = false
+    root.marginFocus = -1
+    root.pdfRel = rel
+    root.showNote()
+  }
+  function closePdf() {
+    if (!root.pdfShown) return
+    root.pdfRel = ""
+    root.showNote()
+  }
   // The header's name for what is in the sheet: the day, or the file's
   // name (where it is, the Files tree shows).
-  readonly property string noteLabel: root.dayNote ? root.dateLabel
+  readonly property string noteLabel: root.pdfShown ? root.pdfRel.replace(/^.*\//, "")
+    : root.dayNote ? root.dateLabel
     : svc.filePath === "" ? "" : svc.filePath.replace(/^.*\//, "").replace(/\.md$/i, "")
 
   // Which day is in the sheet, and whether the agent can work on it: the
@@ -1188,6 +1222,7 @@ Item {
       root.overlayOpen = true
     }
     if (fresh) {
+      root.pdfRel = ""
       root.sidebarOpen = false
       root.sidebarSpace = "time"
       root.vaultIndex = null
@@ -1329,7 +1364,7 @@ Item {
   // whole note when the room is the note's own (or today's, which the day
   // conversation reads). Nothing over the dashboard, keys or settings.
   function blipContext() {
-    if (root.centerView !== "note" || !svc.ready) return
+    if (root.centerView !== "note" || !svc.ready || root.pdfShown) return
     var what = ""
     if (root.dayShown) what = root.dayBlock !== "" ? root.dayBlock : (root.noteRoom || (svc.isToday && root.agentOn)) ? "sheet" : ""
     else if (root.rightView === "margin" || root.rightView === "talk") what = root.currentRec || root.currentHash
@@ -1399,6 +1434,7 @@ Item {
     else if (root.searchOpen) searchField.forceActiveFocus()
     else if (root.whenFor) whenField.forceActiveFocus()
     else if (root.newProject) nameField.forceActiveFocus()
+    else if (root.pdfShown) (pdfPane.finding ? pdfPane.findRef : pdfPane.keysRef).forceActiveFocus()
     else editor.focusNote()
   }
 
@@ -2113,7 +2149,8 @@ Item {
     if (root.keysOpen) root.toggleKeys()
     if (root.settingsOpen) root.toggleSettings()
     if (root.dashOpen) root.toggleDash()
-    editor.focusNote()
+    if (root.pdfShown) Qt.callLater(function () { pdfPane.keysRef.forceActiveFocus() })
+    else editor.focusNote()
   }
 
   function toNote() {
@@ -5194,6 +5231,7 @@ Item {
   // the note it was typed in; a save still in flight is waited for. What
   // belonged to the old day (staging, the prompt, the margin) goes with it.
   function openNote(stamp) {
+    if (stamp !== "") root.pdfRel = ""
     if (stamp === "" || stamp === svc.noteDate) return
     if (root.searchOpen) root.closeSearch("back")
     root.leftLine(root.lastLine)
@@ -5216,6 +5254,8 @@ Item {
   // typed is written first, as for a day; the agent's pane, which belongs
   // to a day, closes.
   function openFile(rel, readOnly) {
+    if (/\.pdf$/i.test(rel)) { root.openPdf(rel); return }
+    root.pdfRel = ""
     if (rel === "" || (rel === svc.filePath && svc.ready)) { root.showNote(); return }
     if (root.searchOpen) root.closeSearch("back")
     root.leftLine(root.lastLine)
@@ -6118,7 +6158,7 @@ Item {
           // On another day: the way back to today.
           Text {
             id: backToday
-            visible: !svc.isToday && (svc.noteDate !== "" || svc.filePath !== "") && root.status === ""
+            visible: (root.pdfShown || !svc.isToday && (svc.noteDate !== "" || svc.filePath !== "")) && root.status === ""
             anchors.left: dateText.right
             anchors.leftMargin: root.sp(12)
             anchors.verticalCenter: dateText.verticalCenter
@@ -6127,7 +6167,7 @@ Item {
             textFormat: Text.PlainText
             // Short of room (a long file name, a narrow window), the name
             // keeps its room and the way back says only "today".
-            readonly property string full: !root.dayNote ? "back to today"
+            readonly property string full: root.pdfShown || !root.dayNote ? "back to today"
               : root.beforeHorizon ? "back to today · before the agent's horizon"
               : root.agentDay ? "back to today" : "back to today · agent off for this note"
             TextMetrics { id: backFull; font: backToday.font; text: backToday.full }
@@ -6217,7 +6257,7 @@ Item {
             // (2026-10-15). When it is on, "ask" and the agent mark are not
             // dimmed but gone — there is nothing to offer.
             Text {
-              visible: root.agentDay && !root.beforeHorizon
+              visible: root.agentDay && !root.beforeHorizon && !root.pdfShown
               anchors.verticalCenter: parent.verticalCenter
               textFormat: Text.PlainText
               text: svc.notePrivate ? "private · the agent sees nothing here" : "private"
@@ -6247,7 +6287,7 @@ Item {
               id: noteAsk
               // Hidden where even the short word has no room (a sheet squeezed
               // between both panes): the pane's key and the seal still open it.
-              visible: root.noteAskable && headerRight.parent.width / 2 - root.sp(120) >= root.sp(60)
+              visible: root.noteAskable && !root.pdfShown && headerRight.parent.width / 2 - root.sp(120) >= root.sp(60)
               anchors.verticalCenter: parent.verticalCenter
               textFormat: Text.PlainText
               // Its full words while the right half of the header has room
@@ -6281,7 +6321,7 @@ Item {
             // own words. Dim when this block carries a sign for the agent,
             // faint when it does not; a click then says why in one line.
             Text {
-              visible: svc.header !== "" && root.agentOn
+              visible: svc.header !== "" && root.agentOn && !root.pdfShown
               anchors.verticalCenter: parent.verticalCenter
               textFormat: Text.PlainText
               // Once the block has an answer the word is not "ask" any
@@ -6311,7 +6351,7 @@ Item {
             // something is asked until it comes back, accent while a reply
             // in this note is still unread.
             Text {
-              visible: svc.header !== "" && root.agentOn
+              visible: svc.header !== "" && root.agentOn && !root.pdfShown
               anchors.verticalCenter: parent.verticalCenter
               textFormat: Text.PlainText
               text: "agent"
@@ -6408,9 +6448,21 @@ Item {
           font.pixelSize: root.fs(Style.font.body)
         }
 
+        // A PDF, in the note's place (PdfPane.qml).
+        PdfPane {
+          id: pdfPane
+          page: root
+          rel: root.pdfRel
+          anchors.top: searchBar.bottom
+          anchors.topMargin: root.sp(24)
+          anchors.left: parent.left
+          anchors.right: parent.right
+          anchors.bottom: parent.bottom
+        }
+
         Flickable {
           id: flick
-          visible: root.problem === ""
+          visible: root.problem === "" && !root.pdfShown
           anchors.top: searchBar.bottom
           anchors.topMargin: root.sp(24)
           anchors.left: parent.left

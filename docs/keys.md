@@ -157,6 +157,23 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | Filter by name | `/` | in the files |
 | Clear the filter; else close the sidebar | `Esc` | in the files |
 
+## A PDF
+
+| | Keys | Works |
+|---|---|---|
+| Scroll down | `↓` · `j` | in a PDF |
+| Scroll up | `↑` · `k` | in a PDF |
+| The next page | `PgDn` · `Space` | in a PDF |
+| The page before | `PgUp` · `Shift+Space` | in a PDF |
+| The first page | `Home` | in a PDF |
+| The last page | `End` | in a PDF |
+| Larger | `+` · `=` | in a PDF |
+| Smaller | `-` | in a PDF |
+| Fit to the column again | `0` | in a PDF |
+| Find in it (Enter: next, Shift+Enter: before) | `Ctrl+F` · `/` | in a PDF |
+| Open it in its own application | `o` | in a PDF |
+| Close it, back to the note | `Esc` | in a PDF |
+
 ## The margin
 
 | | Keys | Works |

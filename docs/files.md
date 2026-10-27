@@ -370,7 +370,39 @@ block, `table` rows.
   rule.
 - Footnote previews.
 
-**Mermaid** is parked (2026-10-27): plan.md, *Not built, on purpose*. Pele can't run in Qt's own JavaScript
+**Mermaid** is parked (2026-10-27): plan.md, *Not built, on purpose*.
+
+### PDFs (built 2026-10-27)
+
+- **Opening.** Your side of the Files tree lists PDFs beside the notes (the
+  agent's side lists notes only), and the filter finds them. A link to a
+  PDF opens it too, remembered in the way back.
+- **Where it shows.** In the note's place, in `PdfPane.qml`: Qt's own
+  `PdfMultiPageView`, fitted to the column, pages drawn as they come into
+  view. It is in a `Loader`, active only while a PDF is open, so the
+  document and its pages are let go of when it closes.
+- **The note underneath.** The note stays loaded under it. While a PDF
+  shows, the header names it, and its words for the note (private, ask,
+  ask about this note, the agent's mark) step aside.
+- **Keys** (the "in a PDF" place; a PDF is read-only here, so bare letters
+  are free):
+  - ↑↓ or j/k scroll;
+  - PgUp/PgDn and Space/Shift+Space turn a page; Home/End go to the ends;
+  - `Ctrl+F` or `/` finds (Enter for the next match, Shift+Enter the one
+    before);
+  - `+` / `-` / `0` size it;
+  - `o` opens it in its own application;
+  - Esc closes it, back to the note.
+- **A known shortcut.** Qt's view keeps its scroller to itself, so the pane
+  finds it among the view's children to scroll by keys.
+
+**Not yet:**
+- asking the agent about a PDF (the runner reads PDFs already, through
+  pdftotext);
+- a dark reading mode for white pages;
+- keeping your place in a PDF between openings.
+
+Tests: `tests/page/run.py` 12h. Pele can't run in Qt's own JavaScript
 engine (ES2022: `matchAll`, `replaceAll`, `\p{}`, `Intl`), so it needs
 Node, and its npm package fetched once. No note in the vault has a diagram
 yet.

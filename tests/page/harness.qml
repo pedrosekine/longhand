@@ -151,6 +151,14 @@ ShellRoot {
         blip: page.blipWhat, here: page.here, path: page.noteTalkPath })
     }
     function askNote(): void { page.openRoom("", true) }
+    // A PDF in the middle (step 5).
+    function pdf(): string {
+      var p = page.pdfItem
+      return JSON.stringify({ shown: page.pdfShown, label: page.noteLabel, ready: p.ready, pages: p.pages, finding: p.finding,
+        found: p.view && p.view.searchModel ? p.view.searchModel.count : 0, here: page.here })
+    }
+    function pdfKey(key: int, mods: int): bool { return page.pdfItem.key({ key: key, text: "", modifiers: mods }) }
+    function pdfFind(text: string): void { page.pdfItem.findRef.text = text }
     // The read view (docs/files.md): what each line is drawn as.
     function rowKinds(): string { return JSON.stringify(page.editorItem.rows.map(function (r) { return r.kind })) }
     function imageShown(i: int): string {

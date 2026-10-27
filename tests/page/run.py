@@ -2458,6 +2458,22 @@ def main() -> int:
               and p.wait(lambda: fs()["rows"] == []), "…never a hidden one")
         p.call("filesFilter", "")
         p.call("filesKey", KEY_ESC, 0)
+        # A PDF (step 5): listed with your notes, opened in the note's place,
+        # found in, closed with Esc back to the note.
+        sys.path.insert(0, str(ROOT / "tests"))
+        from test_documents import pdf as make_pdf
+        make_pdf(course / "Reading.pdf", "Reflexive thematic analysis is a method.")
+        p.call("openFile", "Studies/Course A/Reading.pdf", "false")
+        pd = lambda: json.loads(p.call("pdf"))
+        check(p.wait(lambda: pd()["shown"] and pd()["ready"] and pd()["pages"] == 1 and pd()["label"] == "Reading.pdf"),
+              f"a PDF opens in the note's place, read and named ({pd()})")
+        check(p.wait(lambda: pd()["here"] == "center"), "…the keys in it")
+        p.call("pdfKey", 0x46, CTRL)                        # Ctrl+F
+        p.call("pdfFind", "thematic")
+        check(p.wait(lambda: pd()["finding"] and pd()["found"] >= 1), f"Ctrl+F finds in it ({pd()})")
+        p.call("pdfKey", KEY_ESC, 0)
+        check(p.wait(lambda: not pd()["shown"] and "Notes from the first session." in p.call("text")),
+              f"Esc closes it, back to the note under it ({pd()})")
         # The read view (step 4): a picture by name, a link followed to its
         # heading and back, a table drawn as one block.
         att = p.vault / "_Attachments"
