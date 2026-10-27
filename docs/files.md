@@ -370,7 +370,7 @@ block, `table` rows.
   rule.
 - Footnote previews.
 
-**Mermaid** waits on a decision. Pele can't run in Qt's own JavaScript
+**Mermaid** is parked (2026-10-27): plan.md, *Not built, on purpose*. Pele can't run in Qt's own JavaScript
 engine (ES2022: `matchAll`, `replaceAll`, `\p{}`, `Intl`), so it needs
 Node, and its npm package fetched once. No note in the vault has a diagram
 yet.

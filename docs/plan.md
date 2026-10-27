@@ -486,7 +486,7 @@ section, word for word, and to the diary's decisions log.
       the cursor's line), wikilinks with a back history, tables, then
       Mermaid through Pele. *Images, links and tables built 2026-10-27*
       (`docs/files.md`, "How it is built … images, links, tables"); Mermaid
-      waits on fetching Pele.
+      parked (see *Not built, on purpose*).
    5. **PDFs** through `QtQuick.Pdf`.
    6. **How private looks.** Mockups in the theme, compared before any code.
       Can run beside any step above.
@@ -551,6 +551,12 @@ this list, with *Open, in order* above. Each says why it waits.
 - **A second model route** (`codex exec`, the APIs; `docs/agent.md`,
   "Reaching a model") — when a second route is wanted.
 - **Autonomy per project** — per kind of action only, for now.
+- **Mermaid diagrams through Pele** (parked 2026-10-27, the student's call):
+  no note in the vault has a diagram yet. Pele is written in a newer
+  JavaScript than the engine inside Qt understands, so it would run through
+  Node from a copy fetched from npm (pin a version at least two weeks old;
+  it released almost daily in October 2026). Revisit when a note has a
+  diagram.
 - **The rest of the Page.qml split** (item 4): the note sheet, the logic
   into tested `.js` libraries, one deadline-store parser for both plugins.
   Install by symlink is out (Omarchy refuses symlinks).
