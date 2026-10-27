@@ -105,6 +105,14 @@ ShellRoot {
       var it = page.editorItem.rowItem(line)
       return it ? JSON.stringify({ rich: it.rich, plain: it.plain(), len: it.field.length }) : "null"
     }
+    function shown(line: int): string { var it = page.editorItem.rowItem(line); return it ? it.field.shown : "" }
+    // Typing straight into a drawn line's field, as keys do: what it holds
+    // is read back through `plain()`. Only for text with no html in it.
+    function typeField(s: string): void {
+      var e = page.editorItem
+      var it = e.rowItem(e.focusedRow) || e.rowItem(page.lineIndexAt(e.cursorPosition))
+      it.field.insert(it.field.cursorPosition, s)
+    }
 
     function focusedRow(): string { var e = page.editorItem; return e.focusedRow + "/" + e.rows.length + " item=" + (!!e.rowItem(e.focusedRow)) }
     // Whether the note has the keys (a line's field has them), and where
@@ -119,6 +127,13 @@ ShellRoot {
     function no(): void { page.declineAsk() }
     // A key as the note's own filter sees it (Qt.Key_*, Qt modifiers).
     function keyPage(key: int, mods: int): bool { return page.pageKey({ key: key, text: "", modifiers: mods }) }
+    // A key as the cursor's line takes it, in its own field.
+    function lineKey(key: int, mods: int): bool {
+      var e = page.editorItem, it = e.rowItem(e.focusedRow) || e.rowItem(page.lineIndexAt(e.cursorPosition))
+      var ev = { key: key, text: "", modifiers: mods, accepted: false }
+      e.key(ev, it)
+      return ev.accepted
+    }
     function ctrlD(): void { page.deadlineKey() }
     function closeWhen(): void { page.closeWhen() }
     // Where a row sits, and the room a line has opened under it.

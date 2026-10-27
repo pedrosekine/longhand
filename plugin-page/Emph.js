@@ -24,6 +24,11 @@
 // and that something may not start or end in a space — which is what keeps
 // `2 * 3 * 4` arithmetic. An underscore inside a word is part of the word,
 // so `snake_case_name` is never italic.
+//
+// Arrows are drawn the same way (2026-10-27): `->`, `<-` and `<->` show as
+// →, ← and ↔. Their first character is drawn as the arrow and the rest to
+// nothing, so the file keeps what was typed and every offset holds. Not in
+// code, nor inside a link.
 .pragma library
 .import "Links.js" as Links
 
@@ -42,6 +47,7 @@ function wordish(c) { return c !== "" && /[A-Za-z0-9\u00c0-\u024f]/.test(c) }
 // link, so `**bold with a [[link]] inside**` is bold around a link
 // (2026-10-27; links used to cut the line first, and the `**` showed).
 var LINKS = []
+var ARROWS = []
 var SRC = ""
 var STYLE = null
 function linkAt(pos) {
@@ -111,6 +117,43 @@ function parse(s, base) {
   return out
 }
 
+// ------------------------------------------------------------- arrows
+
+// Longest first, so `<->` is one arrow and not `<` and `->`.
+var ARROW_FORMS = [["<->", "\u2194"], ["->", "\u2192"], ["<-", "\u2190"]]
+
+// What a drawn arrow leaves in the field: the glyph, then what is hidden.
+// A field's text is read back through these (`unarrow`), so a body that
+// already holds one of them as written is never drawn with arrows — the
+// reading back would change it.
+var DRAWN = ["\u2194->", "\u2192>", "\u2190-"]
+
+// The arrows of a body, as { at, end, glyph }: none in code, none in a link.
+function arrowsIn(s) {
+  if (!/<-|->/.test(s)) return []
+  for (var d = 0; d < DRAWN.length; d++) if (s.indexOf(DRAWN[d]) >= 0) return []
+  var code = /`/.test(s) ? parse(s, 0).filter(function (n) { return n.kind === "code" }) : []
+  var links = /\[/.test(s) ? linksIn(s) : []
+  var out = []
+  for (var i = 0; i < s.length; i++) {
+    for (var f = 0; f < ARROW_FORMS.length; f++) {
+      var form = ARROW_FORMS[f][0]
+      if (s.substr(i, form.length) !== form) continue
+      var end = i + form.length, inside = false
+      for (var c = 0; c < code.length && !inside; c++) inside = i < code[c].end && end > code[c].at
+      for (var l = 0; l < links.length && !inside; l++) inside = i < links[l].end && end > links[l].at
+      if (!inside) { out.push({ at: i, end: end, glyph: ARROW_FORMS[f][1] }); i = end - 1 }
+      break
+    }
+  }
+  return out
+}
+
+// A field that drew arrows, read back as the body.
+function unarrow(t) {
+  return t.replace(/\u2194->/g, "<->").replace(/\u2192>/g, "->").replace(/\u2190-/g, "<-")
+}
+
 function anyIn(nodes) {
   for (var i = 0; i < nodes.length; i++) if (nodes[i].marker) return true
   return false
@@ -119,7 +162,7 @@ function anyIn(nodes) {
 // Is there anything here to draw? A body without one of these characters
 // never needs parsing, and a row without emphasis stays plain text.
 function has(s) {
-  return (/[*_`~]/.test(s) && anyIn(parse(s))) || (/\[/.test(s) && linksIn(s).length > 0)
+  return (/[*_`~]/.test(s) && anyIn(parse(s))) || (/\[/.test(s) && linksIn(s).length > 0) || arrowsIn(s).length > 0
 }
 
 // Links (docs/files.md, 2026-10-27) are drawn the same way: the brackets
@@ -172,10 +215,12 @@ function html(s, codeFamily, links) {
   codeFamily = codeFamily || "monospace"
   var ls = links ? linksIn(s) : []
   LINKS = ls
+  ARROWS = arrowsIn(s)
   SRC = s
   STYLE = links
   var out = render(parse(s, 0), codeFamily)
   LINKS = []
+  ARROWS = []
   SRC = ""
   STYLE = null
   return "<span style=\"white-space:pre-wrap\">" + out + "</span>"
@@ -183,15 +228,30 @@ function html(s, codeFamily, links) {
 
 // A run of words, with the links inside it drawn as links.
 function textWithLinks(t, at) {
-  if (!LINKS.length || at === undefined) return esc(t)
+  if (at === undefined) return esc(t)
+  if (!LINKS.length) return words(t, at)
   var out = "", pos = at, end = at + t.length
   for (var i = 0; i < LINKS.length; i++) {
     var l = LINKS[i]
     if (l.at < pos || l.end > end) continue
-    out += esc(SRC.substring(pos, l.at)) + linkHtml(l)
+    out += words(SRC.substring(pos, l.at), pos) + linkHtml(l)
     pos = l.end
   }
-  return out + esc(SRC.substring(pos, end))
+  return out + words(SRC.substring(pos, end), pos)
+}
+
+// Words, with their arrows drawn: the glyph over the first character, the
+// rest of it to nothing.
+function words(t, at) {
+  if (!ARROWS.length) return esc(t)
+  var out = "", pos = 0
+  for (var i = 0; i < ARROWS.length; i++) {
+    var a = ARROWS[i]
+    if (a.at < at + pos || a.end > at + t.length) continue
+    out += esc(t.substring(pos, a.at - at)) + a.glyph + HIDDEN + esc(t.substring(a.at - at + 1, a.end - at)) + "</span>"
+    pos = a.end - at
+  }
+  return out + esc(t.substring(pos))
 }
 
 function linkHtml(l) {
@@ -222,8 +282,20 @@ function runsIn(nodes, out) {
 }
 
 function hidden(s) {
-  if (!/[*_`~]/.test(s)) return []
-  var raw = runsIn(parse(s, 0), [])
+  return merged(/[*_`~]/.test(s) ? runsIn(parse(s, 0), []) : [])
+}
+
+// Where the cursor may not stand: inside a marker run, and inside an
+// arrow — an arrow is one thing to it, and a click on its right half lands
+// after it.
+function stops(s) {
+  var raw = /[*_`~]/.test(s) ? runsIn(parse(s, 0), []) : []
+  var arrows = arrowsIn(s)
+  for (var i = 0; i < arrows.length; i++) raw.push({ a: arrows[i].at + 1, b: arrows[i].end, open: true })
+  return merged(raw)
+}
+
+function merged(raw) {
   raw.sort(function (x, y) { return x.a - y.a })
   var out = []
   for (var i = 0; i < raw.length; i++) {

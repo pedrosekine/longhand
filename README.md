@@ -90,7 +90,9 @@ takes the letter past it rather than the marker. Delete what an emphasis
 holds and the pair goes with it, so you are never left looking at a `**` you
 did not type. The one pair you do see is the empty one the key writes when
 there is nothing to wrap — it stands waiting for the first letter, which
-takes it away.
+takes it away. Arrows are drawn the same way: `->`, `<-` and `<->` show as
+→, ← and ↔ (never in code or inside a link), stay as typed in the file, and
+are one character to the cursor, so Backspace takes the whole arrow.
 
 The page is set in **iA Writer Quattro S**, a proportional face made for
 writing: prose reads as prose rather than as code, and 72 characters take

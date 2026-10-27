@@ -490,10 +490,18 @@ Item {
     return Emph.hidden(r.body)
   }
 
+  // Its arrows (Emph.arrowsIn), each one character to the cursor.
+  function arrowsIn(i) {
+    var r = ed.rows[i]
+    if (!r || r.kind === "code" || r.kind === "front" || r.kind === "image") return []
+    return Emph.arrowsIn(r.body)
+  }
+
   function restCol(i, col, dir) {
     var r = ed.rows[i]
     if (!r) return col
-    return Emph.validCol(ed.hiddenIn(i), col, r.body.length, dir)
+    var stops = r.kind === "code" || r.kind === "front" ? [] : r.kind === "image" ? Emph.hidden(r.body) : Emph.stops(r.body)
+    return Emph.validCol(stops, col, r.body.length, dir)
   }
 
   // Inline code is drawn in the code face, so a change of face is a redraw.
@@ -1107,7 +1115,8 @@ Item {
   function emphKey(event, item) {
     var i = item.index
     var runs = ed.hiddenIn(i)
-    if (runs.length === 0) return false
+    var arrows = ed.arrowsIn(i)
+    if (runs.length === 0 && arrows.length === 0) return false
     var ctrl = event.modifiers & Qt.ControlModifier
     var shift = event.modifiers & Qt.ShiftModifier
     var alt = event.modifiers & Qt.AltModifier
@@ -1146,6 +1155,12 @@ Item {
         for (x = 0; x < runs.length; x++) if (a >= runs[x].a && a < runs[x].b) a = runs[x].b
         if (a >= len) return false                  // the line's own end, as before
         b = ctrl ? Rows.wordStep(r.body, a, 1) : a + 1
+      }
+      // An arrow goes whole, as the one character it looks like.
+      for (x = 0; x < arrows.length; x++) {
+        var w = arrows[x]
+        if (a > w.at && a < w.end) a = w.at
+        if (b > w.at && b < w.end) b = w.end
       }
       var span = Emph.collapse(r.body, a, b)
       var base = r.start + r.prefixLen
@@ -1400,10 +1415,13 @@ Item {
         readonly property var tcells: kind === "table" && tableRow !== 1 ? Rows.cells(raw) : []
         property bool rendering: false
 
+        // A drawn arrow is its glyph over its first character (Emph.js):
+        // read back, it is the characters that were typed.
+        readonly property bool arrowed: rich && Emph.arrowsIn(body).length > 0
         function plain() {
-          return field.textFormat === TextEdit.RichText
-            ? field.getText(0, field.length).replace(/[\u2028\u2029]/g, "\n")
-            : field.text
+          if (field.textFormat !== TextEdit.RichText) return field.text
+          var t = field.getText(0, field.length).replace(/[\u2028\u2029]/g, "\n")
+          return row.arrowed ? Emph.unarrow(t) : t
         }
 
         function show() {

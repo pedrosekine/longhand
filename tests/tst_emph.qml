@@ -125,5 +125,43 @@ Item {
       verify(Emph.has("an __bold__ word"))
       verify(!Emph.has("an_italic_word"))
     }
+
+    // Arrows (2026-10-27): the glyph over the first character, the rest to
+    // nothing, and the field read back through `unarrow` is the body.
+    function test_arrows_are_drawn_data() {
+      return [
+        { body: "a -> b", shows: "a \u2192 b" },
+        { body: "a <- b", shows: "a \u2190 b" },
+        { body: "a <-> b", shows: "a \u2194 b" },
+        { body: "**x -> y** and `p->q`", shows: "x \u2192 y and p->q" },
+        { body: "see [[a->b]] then ->", shows: "see [[a->b]] then \u2192" },
+        { body: "x<-1 and -->", shows: "x\u21901 and -\u2192" }
+      ]
+    }
+
+    function test_arrows_are_drawn(row) {
+      verify(Emph.has(row.body))
+      var h = Emph.html(row.body, "mono")
+      var seen = strip(h.replace(/<span style="font-size:1px[^>]*>[^<]*<\/span>/g, "").replace(/<span style="font-family[^>]*>|<\/span>/g, "")).replace(/`/g, "")
+      compare(seen, row.shows.replace(/`/g, ""))
+      compare(Emph.unarrow(strip(h)), row.body, "read back, the field is the body")
+      compare(strip(h).length, row.body.length, "one position per character")
+    }
+
+    // A body holding what a drawn arrow leaves behind would not read back
+    // as itself, so it is left as written.
+    function test_a_drawn_arrow_written_out_is_left_alone() {
+      verify(!Emph.has("already \u2192> here ->"))
+      compare(Emph.arrowsIn("already \u2192> here ->").length, 0)
+    }
+
+    // The cursor never stands inside an arrow; a click there lands after it.
+    function test_an_arrow_is_one_place_to_the_cursor() {
+      var stops = Emph.stops("a <-> b")
+      compare(Emph.validCol(stops, 3, 7, 0), 5)
+      compare(Emph.validCol(stops, 4, 7, 0), 5)
+      compare(Emph.validCol(stops, 3, 7, -1), 2)
+      compare(Emph.validCol(stops, 2, 7, 0), 2)
+    }
   }
 }

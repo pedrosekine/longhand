@@ -890,6 +890,32 @@ def main() -> int:
         check(p.wait(lambda: json.loads(p.call("drawn", p.line_of("read **chapter*")))["rich"] is False),
               "…and a broken pair shows itself again")
 
+        # 11f'. arrows, drawn: `->`, `<-` and `<->` show as one arrow each,
+        # the file keeps what was typed, and the cursor takes each arrow as
+        # the one character it looks like.
+        (p.daily / f"{TODAY}.md").write_text(header(TODAY) + "home -> work <- bed <-> sofa `a->b`\n")
+        p.open_fresh()
+        line = p.line_of("home ->")
+        arrows = json.loads(p.call("drawn", line))
+        check(arrows["rich"] is True and arrows["plain"] == "home -> work <- bed <-> sofa `a->b`" and arrows["len"] == 35,
+              f"a line with arrows is drawn over the line as it is on disk ({arrows!r})")
+        check("\u2192" in p.call("shown", line) and "\u2190" in p.call("shown", line) and "\u2194" in p.call("shown", line)
+              and "a-&gt;b" in p.call("shown", line), f"…as →, ← and ↔, never in code ({p.call('shown', line)!r})")
+        at = p.offset_of_line(line)
+        for asked, rests, why in ((at + 6, at + 7, "inside ->"), (at + 21, at + 23, "inside <->")):
+            p.call("cursor", asked)
+            got = int(p.call("cursorAt"))
+            check(got == rests, f"a cursor put {why} rests after it ({got} vs {rests})")
+        p.call("cursor", at + 7)
+        check(p.call("lineKey", 0x01000003, 0) == "true"
+              and p.wait(lambda: "home  work <- bed" in p.call("text")), f"Backspace takes the arrow whole ({p.call('text')!r})")
+        p.call("cursor", p.offset_of_line(line) + 18)
+        check(p.call("lineKey", 0x01000007, 0) == "true"
+              and p.wait(lambda: "bed  sofa" in p.call("text")), f"…and so does Delete ({p.call('text')!r})")
+        p.call("cursor", p.offset_of_line(line) + 4)
+        p.call("typeField", "!")
+        check(p.wait(lambda: "home!  work <- bed" in p.call("text")), f"typing beside an arrow keeps it as typed ({p.call('text')!r})")
+
         # 11g. the agent, away: asking marks the block from the moment of the
         # ask and the mark goes when the answer is back. The page used to
         # look identical whether a pass was in flight or had died.
