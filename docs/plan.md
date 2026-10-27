@@ -561,6 +561,15 @@ Small, when passing by:
   and never makes one: a new `project` proposal, a question only, accepted
   like any card. `tests/test_projects.py`, `tests/tst_tags.qml`, 11d' and
   12i in `tests/page/run.py`.
+
+10. **The keys after the benchmark apps** (grilled 2026-10-27, the design
+    and the build plan are in `docs/keys-proposal.md`): panes by number,
+    one word "chat" on `Ctrl+Enter` / `C`, back and forward through one
+    history, Todoist's keys on the dashboard. Five slices, in order: chat on
+    a task, what a row's chat shows, panes by number, one history, the rest
+    of the map. Started from the dashboard, where a task had no visible way
+    to talk with the agent.
+
 - ~~**Tag suggestions while typing**~~ *done 2026-10-18*: `#` and a letter
   offer the tags that exist — the projects', then those written in the
   notes, most used first (`Tags.js`) — in the `@` list; never for a lone

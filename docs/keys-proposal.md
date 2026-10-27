@@ -108,9 +108,8 @@ panes.
   back with the note. The usage log shows it that way (the day opened, then
   the dashboard). The decided keys keep the rule, now said by `Ctrl+3`'s
   "this chat": the cursor's block beside the note, the selected task beside
-  the dashboard, the day's chat beside either. Open for the build plan:
-  whether `Ctrl+2` should keep that (the agent's pane changing with the
-  middle), or leave the agent's pane exactly as it is.
+  the dashboard, the day's chat beside either. **Decided: `Ctrl+2` keeps
+  the rule;** the agent's pane follows the middle.
 
 ## Talking to the agent: one word, one key
 
@@ -239,9 +238,113 @@ panes.
   are** (decided). They already follow the conventions (Enter /
   Shift+Enter, Esc).
 
-## Open
+## Build plan
 
+Five slices, in this order, each shippable alone and each ending the same
+way: every suite passing (`python3 tests/run_all.py`), the page installed
+into the live shell and the shell restarted. They run one after another,
+not side by side: every slice edits `Shortcuts.js`, `Page.qml` and
+`tests/page/run.py`.
 
+What every slice touches, beyond its own code:
+- **`plugin-page/Shortcuts.js`:** an action keeps its id when its meaning
+  stays and only its key moves; a new meaning gets a new id. An id that
+  goes is simply dropped: `load()` already skips ids it does not know, so
+  an old `keys.json` cannot break (Pedro's is empty).
+- **`agent/manual.md`:** its `{key:<id>}` follow the ids;
+  `tests/test_manual.py` fails on an id that is gone.
+- **`docs/keys.md`:** rewritten by `tools/keys_guide.py`;
+  `tests/test_keys_guide.py` fails while it is stale.
+- **The docs that describe the keys:** `navigation.md` (panes, Esc,
+  history), `agent.md` ("Talking about a proposal", the day's chat),
+  `diary.md` (the signs rule), `tasks.md` (the dashboard), and a line in
+  `plan.md`'s *Built — to evaluate in use* for what to watch.
+- **`tests/page/run.py`:** the checks that press the old keys are rewritten
+  to the new ones, each new behaviour gets a check, and each check is proven
+  by breaking the code it guards, as the suite does now.
+
+### 1 · Chat on a task (the reason this started)
+
+Keys and words only; nothing new is fetched.
+- **The word "chat":** the note header's "ask"/"reply" becomes "chat"; the
+  tooltips, the hint lines, the keys sheet, the margin's empty line and the
+  day pane's lines say "chat" where they say ask, talk or conversation.
+- **`Ctrl+Enter` in the note:** without a sign it opens the block's chat,
+  box ready (as `diveIn(true)`); with a sign it sends as now
+  (`sendCurrent`, [Page.qml](../plugin-page/Page.qml) `noSignHint` goes).
+- **`Ctrl+Shift+Enter`:** the day's chat everywhere (`dayHere` in the note
+  stops pointing at the block; `dashTalk` stops opening the task's chat);
+  in a note from Files, that note's chat, as now.
+- **The dashboard:** `C` and `Ctrl+Enter` open the selected row's chat
+  (`talkFocused`); done loses `Ctrl+Enter`. The row shows "chat C" at its
+  end on the selected row and under the mouse; the hint line and the row's
+  tooltip name it.
+
+### 2 · What a row's chat shows
+
+Needs data the dashboard does not have: a row cannot tell today whether its
+task has a chat (that is fetched only when one opens, `thread --key`).
+- **The runner:** `longhand-agent next` gives each task and deadline a
+  `chat` field: how many turns, the last one (who, its first line, when),
+  and whether the agent is answering it now. It reads the same two sources
+  the thread view merges: the ledger's `threads` and the margin records in
+  the day's state.
+- **Unread:** a chat is unread while its last turn is the agent's and came
+  after the chat was last opened; the page keeps the last opening per task
+  in `page.json`, as it keeps the last proposal seen.
+- **The row:** the gutter bar as in the note (accent unread, dim read, a
+  moving light while answering, nothing without a chat), and on the
+  selected row with a chat, its last line under the task.
+- Tests: `tests/test_agent.py` (or its own file) for the `chat` field;
+  the page suite for the bar's states and the last line.
+
+### 3 · Panes by number
+
+- **`Ctrl+1` / `Ctrl+2` / `Ctrl+3`:** from outside a pane, go there,
+  opening it on what it showed last; inside, switch between its two
+  things (the sidebar's spaces; the note and the dashboard; the day's chat
+  and this block's or task's chat). `paneKey` grows the switch for the left
+  and right panes as the middle has it now.
+- **`Ctrl+\` / `Ctrl+Shift+\`:** open or close the sidebar / the agent's
+  pane.
+- **Gone:** the brackets as panes, `Ctrl+T`, `Ctrl+Shift+B`,
+  `Ctrl+{`/`Ctrl+}`, `Ctrl+J`. `Alt+←`/`Alt+→` and Esc as they are.
+- **The rule kept:** the agent's pane follows the middle.
+- **Hover:** the date and the seal name their pane's keys.
+- Rewrites the page suite's 12b ("The panes"), and the calendar checks
+  that use `Ctrl+[`.
+
+### 4 · One history: back and forward
+
+- `Ctrl+[` / `Ctrl+]` beside `Ctrl+Alt+←`/`→`.
+- **What is a step:** a link followed (as now), the note ↔ the dashboard, a
+  day before or after, a file opened. `placeNow()` learns the middle's view
+  (note or dashboard) as well as the note and the cursor; `goTo()` puts it
+  back. Opening or closing a side pane is not a step.
+- Depends on slice 3 (the brackets free).
+
+### 5 · The rest of the map
+
+- **The dashboard:** `Shift+T` removes the date; `F2` renames; "not now"
+  reads "set aside", "keep" reads "renew"; `?` opens the keys.
+- **The note:** `Ctrl+K` makes a link: with words selected, `[words]()`
+  with the cursor in the parentheses for the address, as Obsidian does;
+  with none, `[]()` with the cursor in the brackets.
+- **The sidebar's lists:** `#` puts the tag; "start the class" becomes "new
+  section" on `S` (and `Shift+Enter` in the `@` list); `?` opens the keys.
+- **Settings as a list:** `↑↓` walks every setting, not only the calendars;
+  `Space`/`Enter` changes or opens it; `Del` removes a calendar or forgets
+  a notebook note, after "Remove this calendar? Enter / Esc". The settings
+  sheet's own letters go (`Ctrl+Shift+S`, `Ctrl+Shift+M`, `Ctrl+K`,
+  `Ctrl+M`, `Ctrl+F` there; `Ctrl+Shift+A`, `Ctrl+E`, `Ctrl+R` on a calendar
+  row stay).
+
+### After, each a task of its own
+
+- **The switcher (`Ctrl+O`) and the `/` menu,** one engine: the actions
+  table in `Shortcuts.js` is already the list of what can be done, with a
+  key for each.
+- **A new note** (`Ctrl+N`), parked in `plan.md`.
 
 ## Sources
 
