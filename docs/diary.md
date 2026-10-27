@@ -168,10 +168,12 @@ none of it is decided yet:
    transcript, the state file and the payload log, and the agent's replies
    for that day stay where they are.
 3. **A private block has no control.** It is typed by hand; there is no
-   keystroke and nothing on screen that says "the agent cannot see this" —
-   the page draws it as a callout in the theme's magenta, which reads as a
-   callout and not as a guarantee. The 2026-10-15 question offered one and
-   the student took the day-scope control first.
+   keystroke for it. Since 2026-10-27 (B · Paper, `files.md`) it is drawn
+   as what it is: sunk into a darker paper, with a lock in the gutter,
+   where the agent's marks go. A private day, or a day before the horizon,
+   is the whole sheet in that paper. Before, it was a magenta callout,
+   which read as a callout and not as a guarantee. The 2026-10-15 question
+   offered a control and the student took the day-scope one first.
 4. **A private day is still a day.** It is listed in the calendar, its
    sections still appear under their project, and its words are still
    searched — the privacy is from the *agent*, not from the student.
@@ -1330,3 +1332,17 @@ only the window and the panels around it differ.
     PDFs through QtQuick.Pdf, each researched before it is built.
   - **Principle 10.** Added the same day: light on memory, minimal,
     keyboard first, beautiful, better each pass.
+- **2026-10-27: how private looks, B · Paper.** Five designs were mocked up
+  in the theme (`files.md`); the student chose Paper.
+  - Private things are sunk into the theme's darker paper.
+  - A private block is an inset of it, with no bar and no label, and a
+    magenta lock in the gutter, the agent's lane.
+  - A private day, or a day before the horizon, is the whole sheet in that
+    paper. The header shows a lock and "private" for a private day, and a
+    grey lock and "before the horizon" for a day before the horizon, since
+    one is a choice and the other a rule.
+  - An answer keeps its solid bar in the gutter, so private and answered no
+    longer share a look.
+  - The theme's darker ground is taken only when it is a shade darker than
+    the page's own. Else the page darkens its own background, so a page
+    caught between themes never sinks light paper under light words.

@@ -69,6 +69,18 @@ Item {
   readonly property color green: pick("green", accent)
   readonly property color magenta: pick("magenta", accent)
   readonly property color blue: pick("blue", accent)        // links (docs/files.md)
+  // The paper private things are sunk into (docs/files.md, B · Paper): the
+  // theme's own darker ground, which light themes give as a shade darker too.
+  // Taken only when it is what it says, a shade darker than the ground the
+  // page is drawn on (contrast under 1.35): the ground comes from the shell
+  // and the key from colors.toml, and a page caught between two themes once
+  // sank light paper under light words. Else the ground, darkened.
+  readonly property color sunk: {
+    root.keys
+    var c = root.keys["dark_background"] ? Qt.color(root.keys["dark_background"]) : null
+    if (c && root.luminance(c) < root.luminance(background) && root.contrast(c, background) < 1.35) return c
+    return Qt.darker(background, root.luminance(background) > 0.5 ? 1.07 : 1.25)
+  }
 
   // How far a colour is from grey: what tells a theme's chromatic accent
   // (tokyo-night's blue, matte-black's orange) from one that is a warm or

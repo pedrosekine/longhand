@@ -403,6 +403,16 @@ Item {
   // stays loaded under it, and Esc goes back to it.
   property string pdfRel: ""
   readonly property bool pdfShown: root.pdfRel !== ""
+
+  // How private looks (docs/files.md, B · Paper, chosen 2026-10-27): what
+  // the agent may not see is sunk into a darker paper — a private block as
+  // an inset of it with a lock in the gutter, the agent's lane; a private
+  // day, or a day before the horizon, as the whole sheet. An answer keeps
+  // its solid bar in the gutter, so private and answered never share a look.
+  readonly property color sunk: pal.sunk
+  readonly property bool sheetSunk: svc.ready && !root.pdfShown && (svc.notePrivate || root.beforeHorizon)
+  readonly property color sheetColor: root.sheetSunk ? root.sunk : root.background
+  property var privatePaint: []         // [{ y, h }]: the private blocks, in editor coordinates
   function openPdf(rel) {
     if (rel === "") return
     if (root.searchOpen) root.closeSearch("back")
@@ -1971,6 +1981,13 @@ Item {
                  unread: !!rec && rec.state === "reply" && !rec.read })
     }
     root.paint = out
+    var priv = []
+    for (var k = 0; k < blocks.length; k++) {
+      if (!blocks[k].private || blocks[k].kind !== "callout") continue
+      var pr = editor.blockRect(blocks[k].start, blocks[k].end)
+      if (pr) priv.push({ y: pr.y, h: pr.h })
+    }
+    root.privatePaint = priv
     root.currentHash = root.hashNearLine(root.lineIndexAt(editor.cursorPosition))
   }
 
@@ -5992,7 +6009,8 @@ Item {
     id: win
     visible: root.windowOpen
     title: root.windowTitle
-    color: root.background
+    color: root.sheetColor
+    Behavior on color { ColorAnimation { duration: 240 } }
     implicitWidth: Style.space(680)
     implicitHeight: Style.space(900)
     minimumSize: Qt.size(Style.space(360), Style.space(300))
@@ -6073,7 +6091,8 @@ Item {
       Behavior on x { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
       height: root.alongside ? content.height : content.height - root.sheetMargin * 2
       radius: root.alongside ? 0 : Style.cornerRadius
-      color: root.background
+      color: root.sheetColor
+      Behavior on color { ColorAnimation { duration: 240 } }
       borderSpec: root.alongside ? Border.none() : root.borderSpec
       padding: root.sheetPadding
 
@@ -6256,11 +6275,33 @@ Item {
             // sight, because a guarantee you cannot see is not one
             // (2026-10-15). When it is on, "ask" and the agent mark are not
             // dimmed but gone — there is nothing to offer.
+            // A day before the horizon says so where "private" would be: a
+            // grey lock, since it is the rule and not a choice.
+            Row {
+              visible: root.dayNote && root.beforeHorizon && !root.pdfShown
+              anchors.verticalCenter: parent.verticalCenter
+              spacing: root.sp(6)
+              LockMark { anchors.verticalCenter: parent.verticalCenter; width: root.sp(10); color: root.dim }
+              Text {
+                textFormat: Text.PlainText
+                text: "before the horizon"
+                color: root.dim
+                font.family: root.fontFamily
+                font.styleName: root.fontStyle
+                font.pixelSize: root.fs(Style.font.bodySmall)
+              }
+            }
+            LockMark {
+              visible: svc.notePrivate && root.agentDay && !root.beforeHorizon && !root.pdfShown
+              anchors.verticalCenter: parent.verticalCenter
+              width: root.sp(10)
+              color: pal.magenta
+            }
             Text {
               visible: root.agentDay && !root.beforeHorizon && !root.pdfShown
               anchors.verticalCenter: parent.verticalCenter
               textFormat: Text.PlainText
-              text: svc.notePrivate ? "private · the agent sees nothing here" : "private"
+              text: "private"
               color: privateArea.containsMouse ? root.accent : svc.notePrivate ? root.foreground : root.faint
               font.family: root.fontFamily
               font.styleName: root.fontStyle
@@ -6294,7 +6335,8 @@ Item {
               // for them beside the pin; else the short ones.
               readonly property string full: root.noteTalkTurns > 0 ? "about this note · " + Math.ceil(root.noteTalkTurns / 2) : "ask about this note"
               TextMetrics { id: noteAskFull; font: noteAsk.font; text: noteAsk.full }
-              text: headerRight.parent.width / 2 - root.sp(120) >= noteAskFull.width ? full
+              // (A day before the horizon has its own words beside it.)
+              text: headerRight.parent.width / 2 - root.sp(120) - (root.beforeHorizon ? root.sp(140) : 0) >= noteAskFull.width ? full
                 : root.noteTalkTurns > 0 ? "about · " + Math.ceil(root.noteTalkTurns / 2) : "ask"
               color: noteAskArea.containsMouse ? root.accent : root.noteRoom && root.dayShown ? root.foreground : root.faint
               font.family: root.fontFamily
@@ -6527,6 +6569,34 @@ Item {
                   NumberAnimation { from: -spark.height; to: spark.parent.height
                                     duration: 1500; easing.type: Easing.InOutSine }
                 }
+              }
+            }
+          }
+
+          // Private blocks, sunk into the darker paper, and their locks in
+          // the gutter (B · Paper). Under the words, as the blip is.
+          Repeater {
+            model: root.privatePaint
+            Item {
+              required property var modelData
+              x: 0
+              y: modelData.y - root.sp(8)
+              width: flick.width
+              height: modelData.h + root.sp(16)
+              // The gutter is narrow (the agent's marks live there): the
+              // paper reaches a little into it, the lock stands left of it.
+              Rectangle {
+                x: root.gutter - root.sp(5)
+                width: editor.width + root.sp(10)
+                height: parent.height
+                radius: Style.cornerRadius
+                color: root.sunk
+              }
+              LockMark {
+                x: Math.max(0, root.gutter - root.sp(5) - width - root.sp(3))
+                y: root.sp(10)
+                width: root.sp(10)
+                color: pal.magenta
               }
             }
           }

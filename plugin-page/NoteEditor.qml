@@ -1295,13 +1295,19 @@ Item {
         property alias box: box
         readonly property string author: ed.authors[row.index] || ""
         readonly property bool listy: kind === "task" || kind === "bullet" || kind === "ordered"
-        readonly property bool quoted: kind === "quote" || kind === "calloutHead"
+        // A private callout is not drawn as a quote (B · Paper, 2026-10-27):
+        // no bar, no label, its words aligned with the prose; the page sinks
+        // it into a darker paper and puts a lock in the gutter.
+        readonly property bool quoted: (kind === "quote" || kind === "calloutHead") && !priv
+        // Its `> [!private]` line, empty and not being written on, is only
+        // the top of the sunk paper.
+        readonly property bool sunkHead: kind === "calloutHead" && priv && body.trim() === "" && !field.activeFocus
         // A date being written at the end of this checkbox: lit up, its
         // pill pending (accent) until the line is left and it is bound.
         readonly property bool pending: ed.cues && kind === "task" && cueAt >= 0 && ed.typedRaw !== "" && raw === ed.typedRaw && !ed.declined[raw]
         readonly property int gapTop: blank ? 0 : Math.round(space * ed.textSize)
         readonly property real indentX: level * ed.markerWidth
-        readonly property real labelWidth: kind === "calloutHead" ? label.implicitWidth + Math.round(ed.textSize * 0.4) : 0
+        readonly property real labelWidth: kind === "calloutHead" && !priv ? label.implicitWidth + Math.round(ed.textSize * 0.4) : 0
         readonly property real fieldX: indentX + (listy ? ed.markerWidth : (quoted ? ed.quoteWidth : 0)) + labelWidth
         readonly property real firstLine: fm.height
 
@@ -1311,7 +1317,7 @@ Item {
         // but not under a selection or a press: a drag passing over it
         // would move every line below by that much and back (2026-10-19).
         readonly property bool opened: !blank || field.activeFocus && !ed.spanning && !pointer.pressed
-        height: (tableDrawn ? (tableRow === 1 ? Math.round(ed.textSize * 0.5) : gapTop + cellRow.height + Math.round(ed.textSize * 0.5))
+        height: sunkHead ? Math.round(ed.textSize * 0.35) + room : (tableDrawn ? (tableRow === 1 ? Math.round(ed.textSize * 0.5) : gapTop + cellRow.height + Math.round(ed.textSize * 0.5))
                  : img ? gapTop + (reveal ? field.height + imgGap : 0) + picture.height
                  : opened ? gapTop + field.height : Math.round(space * ed.textSize)) + room
         Binding { when: row.index === ed.roomRow; target: ed; property: "roomTop"; value: row.y + row.height - row.room }
@@ -1482,7 +1488,7 @@ Item {
 
         Text {
           id: label
-          visible: row.kind === "calloutHead"
+          visible: row.kind === "calloutHead" && !row.priv
           x: row.indentX + ed.quoteWidth
           y: row.gapTop + (row.firstLine - height) / 2
           textFormat: Text.PlainText
@@ -1686,7 +1692,7 @@ Item {
           selectByMouse: true
           selectByKeyboard: true
           persistentSelection: false
-          opacity: row.reveal && !row.tableDrawn ? 1 : 0
+          opacity: row.reveal && !row.tableDrawn && !row.sunkHead ? 1 : 0
           color: row.checked || row.kind === "front" || row.img ? ed.dim
             : row.kind === "heading" ? ed.headingColors[Math.max(0, Math.min(row.headingLevel, ed.headingColors.length) - 1)]
             : row.kind === "code" ? ed.codeColor : ed.foreground

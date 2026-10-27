@@ -286,7 +286,28 @@ horizon.
 
 In every row an answer keeps its solid accent bar in the gutter. None of B
 to E uses a solid bar for privacy, so "private" and "answered" no longer
-share a look. The choice is the student's.
+share a look.
+
+**Chosen and built (2026-10-27): B · Paper.**
+- **The paper.** `ThemeColors.sunk` is the theme's `dark_background`, but
+  only when it is a shade darker than the page's actual ground (contrast
+  under 1.35). Else the ground darkened. A page caught between two themes
+  once sank light paper under light words; this rules that out.
+- **A private block** (`> [!private]`): `privatePaint`, from `repaint()`,
+  draws it under the words as an inset of that paper, reaching a little
+  into the gutter.
+  - A magenta `LockMark` stands left of it, in the gutter.
+  - The editor no longer draws it as a quote: no bar, no label, its words
+    aligned with the prose.
+  - An empty `> [!private]` line is only the paper's top edge.
+- **A private day, or a day before the horizon:** the whole sheet, and the
+  window in the window shape, is that paper (`sheetSunk`). The header shows
+  a magenta lock and "private", or a grey lock and "before the horizon".
+- **Checked.** Tests: `tests/page/run.py` (a private block sunk, a note
+  marked private sunk whole, a day before the horizon sunk). Photographed
+  in Birnbaum.
+- **Not yet seen in a real light theme.** The test harness cannot replay
+  the shell's own theme switch.
 
 These are to be mocked up in the theme and compared before anything is
 built.

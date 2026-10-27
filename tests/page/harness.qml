@@ -151,6 +151,8 @@ ShellRoot {
         blip: page.blipWhat, here: page.here, path: page.noteTalkPath })
     }
     function askNote(): void { page.openRoom("", true) }
+    // How private looks (B · Paper).
+    function privateLook(): string { return JSON.stringify({ sunk: page.sheetSunk, blocks: page.privatePaint.length }) }
     // A PDF in the middle (step 5).
     function pdf(): string {
       var p = page.pdfItem

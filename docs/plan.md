@@ -426,7 +426,7 @@ section, word for word, and to the diary's decisions log.
    store, and every payload carries the store whole; calendars shared whole
    make the boundary matter more. Three ways out, in the record; plus a key
    and a visible treatment for the block-level `[!private]` callout (the
-   treatment is now explored in item 9's step 6, for notes and blocks alike).
+   treatment is built: B · Paper, item 9's step 6, for notes and blocks alike).
 4. **Structure** — split `Page.qml` (5,822 lines on 2026-10-17, 6,337 by
    the 18th). *First pass done 2026-10-18*: the five sheets beside the note
    — the dashboard, settings, keys, the sidebar, the margin — each in a file
@@ -489,8 +489,8 @@ section, word for word, and to the diary's decisions log.
       parked (see *Not built, on purpose*).
    5. ~~**PDFs**~~ *built 2026-10-27* through `QtQuick.Pdf` (`docs/files.md`,
       "PDFs").
-   6. **How private looks.** Mockups in the theme, compared before any code.
-      Can run beside any step above.
+   6. ~~**How private looks.**~~ *built 2026-10-27*: five mockups compared,
+      **B · Paper** chosen and built (`docs/files.md`).
 
    Waiting inside it:
    - the mixed folders (`projects/`, `reference/`, `inbox/`): whose are they,

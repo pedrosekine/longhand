@@ -1396,6 +1396,7 @@ def main() -> int:
         p.call("openDay", YDAY)
         check(p.wait(lambda: json.loads(p.call("horizon"))["before"] and not json.loads(p.call("horizon"))["agentOn"]),
               f"a day before the horizon: the agent is off for it ({p.call('horizon')})")
+        check(p.wait(lambda: json.loads(p.call("privateLook"))["sunk"]), "…and its sheet is the sunk paper")
         settings_json.write_text(json.dumps(cur))
         p.call("loadHorizon")
         p.call("openDay", TODAY)
@@ -2458,6 +2459,15 @@ def main() -> int:
               and p.wait(lambda: fs()["rows"] == []), "…never a hidden one")
         p.call("filesFilter", "")
         p.call("filesKey", KEY_ESC, 0)
+        # How private looks (B · Paper): a private block sunk with a lock in
+        # the gutter, the sheet itself sunk for a note marked private.
+        (course / "Journal.md").write_text("Out loud.\n\n> [!private]\n> Only for me.\n\nOut loud again.\n")
+        (course / "Locked.md").write_text("---\nagent: false\n---\nAll of it mine.\n")
+        p.call("openFile", "Studies/Course A/Journal.md", "false")
+        look = lambda: json.loads(p.call("privateLook"))
+        check(p.wait(lambda: look() == {"sunk": False, "blocks": 1}), f"a private block is sunk, the sheet is not ({look()})")
+        p.call("openFile", "Studies/Course A/Locked.md", "false")
+        check(p.wait(lambda: look()["sunk"]), f"a note marked private: the whole sheet is sunk ({look()})")
         # A PDF (step 5): listed with your notes, opened in the note's place,
         # found in, closed with Esc back to the note.
         sys.path.insert(0, str(ROOT / "tests"))
@@ -2472,7 +2482,7 @@ def main() -> int:
         p.call("pdfFind", "thematic")
         check(p.wait(lambda: pd()["finding"] and pd()["found"] >= 1), f"Ctrl+F finds in it ({pd()})")
         p.call("pdfKey", KEY_ESC, 0)
-        check(p.wait(lambda: not pd()["shown"] and "Notes from the first session." in p.call("text")),
+        check(p.wait(lambda: not pd()["shown"] and "All of it mine." in p.call("text")),
               f"Esc closes it, back to the note under it ({pd()})")
         # The read view (step 4): a picture by name, a link followed to its
         # heading and back, a table drawn as one block.
