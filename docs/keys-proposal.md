@@ -1,7 +1,7 @@
 # Keys: a proposal after the benchmark apps
 
-_Proposed and grilled 2026-10-27; decided. Slices 1 to 4 built 2026-10-28,
-the rest not yet. Building moves each row into `plugin-page/Shortcuts.js`, and
+_Proposed and grilled 2026-10-27; decided. All five slices built 2026-10-28;
+the switcher and the `/` menu, and a new note, wait as tasks of their own. Building moves each row into `plugin-page/Shortcuts.js`, and
 `tools/keys_guide.py` rewrites [keys.md](keys.md); navigation.md, the
 agent's manual and the keys sheet follow._
 
@@ -355,6 +355,14 @@ done, so a move made of several is one step.
   sheet's own letters go (`Ctrl+Shift+S`, `Ctrl+Shift+M`, `Ctrl+K`,
   `Ctrl+M`, `Ctrl+F` there; `Ctrl+Shift+A`, `Ctrl+E`, `Ctrl+R` on a calendar
   row stay).
+
+**Built 2026-10-28,** with two calls made while building:
+- `?` shows the keys in the calendar too, the sidebar's one place that is
+  not a list but types nothing either.
+- In settings, Enter or Space on a calendar's own row fetches it. Its
+  setting, what the agent sees, stays on `Ctrl+Shift+A`, so a stray Enter
+  never widens what the agent sees. Typing from any row picks the address
+  field, where Space and Enter are the field's again.
 
 ### After, each a task of its own
 

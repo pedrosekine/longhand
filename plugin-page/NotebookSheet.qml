@@ -149,12 +149,24 @@ BorderSurface {
               font.styleName: page.fontStyle
               font.pixelSize: page.fs(Style.font.caption)
             }
-            // The picked line's two verbs, for the mouse.
+            // The picked line's two verbs, for the mouse; while Del asks,
+            // the question and its two answers.
             Row {
               visible: nbRow.picked && !page.notebookCorrecting
               spacing: page.sp(16)
+              Text {
+                visible: page.notebookAsking
+                textFormat: Text.PlainText
+                text: (nbRow.modelData.kind === "correction" ? "Take this correction back?" : "Forget this note?") + " Enter / Esc"
+                color: page.urgent
+                font.family: page.fontFamily
+                font.styleName: page.fontStyle
+                font.pixelSize: page.fs(Style.font.caption)
+              }
               Repeater {
-                model: nbRow.modelData.kind === "line"
+                model: page.notebookAsking
+                  ? [{ text: nbRow.modelData.kind === "correction" ? "take it back" : "forget it", act: "yes" }, { text: "keep it", act: "no" }]
+                  : nbRow.modelData.kind === "line"
                   ? [{ text: "correct", act: "notebookCorrect" }, { text: "forget", act: "notebookForget" }]
                   : [{ text: nbRow.modelData.kind === "correction" ? "take back" : "forget", act: "notebookForget" }]
                 Text {
@@ -170,8 +182,16 @@ BorderSurface {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: { if (modelData.act === "notebookCorrect") page.startCorrect(); else page.forgetNote() }
-                    PanelToolTip { visible: parent.containsMouse; text: page.tip(modelData.text, modelData.act) }
+                    onClicked: {
+                      if (modelData.act === "notebookCorrect") page.startCorrect()
+                      else if (modelData.act === "yes") page.forgetNote()
+                      else if (modelData.act === "no") page.notebookAsking = false
+                      else page.askForgetNote()
+                    }
+                    PanelToolTip {
+                      visible: parent.containsMouse && modelData.act !== "yes" && modelData.act !== "no"
+                      text: page.tip(modelData.text, modelData.act)
+                    }
                   }
                 }
               }
@@ -218,7 +238,7 @@ BorderSurface {
           wrapMode: Text.WordWrap
           text: page.notebookCorrecting ? "Enter keeps your words · Esc leaves the line as it is"
             : "↑↓ pick a line · Enter or " + page.keyName("notebookCorrect") + " corrects it · "
-              + page.keyName("notebookForget") + " forgets it (on a correction: takes it back) · Esc back to settings"
+              + page.keyName("notebookForget") + " forgets it, asking first (on a correction: takes it back) · Esc back to settings"
           color: page.faint
           font.family: page.fontFamily
           font.styleName: page.fontStyle

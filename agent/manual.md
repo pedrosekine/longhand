@@ -23,7 +23,8 @@ the day before or after that has a note.
 Typing `# `, `- [ ] ` or `> ` turns the line into a heading, a checkbox or a
 quote; Backspace at its start turns it back. {key:bold}, {key:italic},
 {key:code} and {key:strike} wrap the selection or the word the cursor is
-in. {key:checkbox} ticks or unticks a checkbox (a click works too); a tick
+in. {key:link} makes a link: the words selected become its text, and the
+cursor waits for the address. {key:checkbox} ticks or unticks a checkbox (a click works too); a tick
 writes the day it was done (`✅`) and makes a short sound, which Settings can
 turn off. {key:lineUp} and {key:lineDown} move lines. Tab nests a line,
 Shift+Tab un-nests it, and so does Enter on an empty nested item (at the
@@ -55,7 +56,9 @@ the priority) or written on the line.
 A project is a course or anything worked towards, with a `#tag`. A heading
 `# Course #tag` claims everything under it until the next heading of the
 same or a higher level. Typing `@` lists the projects: Enter writes its
-`#tag`, Shift+Enter starts the class with its `# Course #tag` heading. The
+`#tag`, {key:mentionClass} starts a new section with its `# Name #tag`
+heading; in the sidebar's projects, {key:listTag} and {key:listClass} do the
+same. The
 sidebar ({key:sidebar} opens or closes it; {key:pane1} goes there, and in it
 switches between Time and Files) shows a month calendar, the day's deadlines
 and the projects with their next session; a project opens its notes from
@@ -78,10 +81,11 @@ and tag stay as made; the agent never makes one, only proposes it.
 back): every open checkbox and
 deadline across all the notes, grouped by what they ask (due, doing, to
 schedule) and by course. {key:dashOpen} goes to the line; {key:dashDone}
-ticks it; {key:dashWhen} reschedules it; {key:dashPriority} cycles its
-priority; {key:dashRename} renames it; {key:dashDrop} cancels it (the line
-stays, as cancelled); {key:dashShelve} puts it aside for now; {key:dashKeep}
-keeps it when it has gone quiet; {key:dashGrade} grades a deadline;
+ticks it; {key:dashWhen} reschedules it and {key:dashNoDate} takes the date
+off; {key:dashPriority} cycles its priority; {key:dashRename} renames it;
+{key:dashDrop} cancels it (the line stays, as cancelled); {key:dashShelve}
+sets it aside for now; {key:dashKeep} renews it when it has gone quiet;
+{key:dashGrade} grades a deadline;
 {key:dashUndo} takes the last tick back. A box left untouched goes quiet
 after a while instead of nagging. The agent's proposals and questions are
 rows here too: {key:dashDone} accepts, {key:dashDrop} declines;
@@ -109,7 +113,7 @@ observation waits at the top, it sees today's other conversations, and a
 past day's note shows that day's conversation, read-only — talking happens
 in today's. A private day still has it, seeing nothing of the note. It can
 search your files — the folders switched on in Settings → what the agent
-may search ({key:settingsSearch} in Settings) — and cites where it found
+may search — and cites where it found
 things as links that open the note at that line. Never private notes or
 blocks, `_Secrets`, or documents of identity, money, health, contracts or
 secrets. Typing `@` in its box lists the note's blocks; Enter points the
@@ -138,10 +142,9 @@ the margin, where `+` and `-` say whether a reply helped. It plans the next
 two weeks when the page or the dashboard opens: do-dates, and with the
 student's leave, deadlines found in the writing, priorities, steps under a
 box, dropping a stale box, "this looks done — tick it?". Every kind starts
-at "ask me"; Settings → what the agent may do ({key:settingsAutonomy}) sets
-each to ask me, do it and tell me, or never. What it learns is in Settings →
-what the agent knows ({key:settingsNotebook}), each line correctable or
-forgettable. It never writes the student's prose.
+at "ask me"; Settings → what the agent may do sets each to ask me, do it
+and tell me, or never. What it learns is in Settings → what the agent
+knows, each line correctable or forgettable. It never writes the student's prose.
 
 ## Private
 
@@ -153,7 +156,9 @@ the agent (`agent: false`). A `> [!private]` callout hides one block.
 {key:settings} opens Settings: calendars (paste an `.ics` or `webcal://`
 address; for each, the agent sees its classes only or everything in it),
 the agent (what it knows, what it may do, its eval checks and weekly
-review), and the tick's sound.
+review), the tick's sound and the pointer. It is a list: ↑↓ walk every
+setting, {key:settingsChange} changes the one picked or opens it, and
+{key:settingsForget} removes a calendar, asking first.
 
 ## Documents
 
@@ -165,8 +170,8 @@ sidebar; the agent sees their titles and can ask to read one.
 
 ## Keys
 
-Every key can be moved: {key:keys} opens the list of keys; Enter on a row,
-then the new key.
+Every key can be moved: {key:keys} opens the list of keys ({key:keysHere}
+too, in the dashboard and the sidebar); Enter on a row, then the new key.
 
 ## The timer
 

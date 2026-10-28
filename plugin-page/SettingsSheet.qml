@@ -192,10 +192,22 @@ BorderSurface {
                 }
               }
 
+              // Its verbs; while Del asks, the question and its answers.
               Row {
+                readonly property bool asking: page.settingsAsking === calRow.index
                 spacing: page.sp(16)
+                Text {
+                  visible: parent.asking
+                  textFormat: Text.PlainText
+                  text: "Remove this calendar? Enter / Esc"
+                  color: page.urgent
+                  font.family: page.fontFamily
+                  font.styleName: page.fontStyle
+                  font.pixelSize: page.fs(Style.font.bodySmall)
+                }
                 Repeater {
-                  model: [{ text: calRow.modelData.agent === "all" ? "classes only" : "share everything", act: "settingsShare" },
+                  model: parent.asking ? [{ text: "remove it", act: "yes" }, { text: "keep it", act: "no" }]
+                    : [{ text: calRow.modelData.agent === "all" ? "classes only" : "share everything", act: "settingsShare" },
                           { text: "fetch now", act: "settingsFetch" }, { text: "rename", act: "settingsRename" },
                           { text: "remove", act: "settingsForget" }]
                   Text {
@@ -216,10 +228,15 @@ BorderSurface {
                         if (modelData.act === "settingsShare") page.toggleShare(calRow.index)
                         else if (modelData.act === "settingsFetch") page.fetchCalendar(calRow.index)
                         else if (modelData.act === "settingsRename") page.startRename(calRow.index)
-                        else page.removeCalendar(calRow.index)
+                        else if (modelData.act === "yes") { page.settingsAsking = -1; page.removeCalendar(calRow.index) }
+                        else if (modelData.act === "no") page.settingsAsking = -1
+                        else page.askRemoveCalendar(calRow.index)
                         settingsField.forceActiveFocus()
                       }
-                      PanelToolTip { visible: parent.containsMouse; text: page.tip(modelData.text, modelData.act) }
+                      PanelToolTip {
+                        visible: parent.containsMouse && modelData.act !== "yes" && modelData.act !== "no"
+                        text: page.tip(modelData.text, modelData.act)
+                      }
                     }
                   }
                 }
@@ -230,9 +247,17 @@ BorderSurface {
 
         Item { width: 1; height: page.sp(4) }
 
+        SettingRow {
+          id: fieldRow
+          page: settingsSheet.page
+          kind: "field"
+          onChosen: settingsField.forceActiveFocus()
         TextField {
           id: settingsField
-          width: parent.width
+          width: fieldRow.width
+          // Typing from any row is typing an address: the field's row is
+          // picked, so Enter adds it.
+          onTextChanged: if (text !== "" && page.settingsFieldKind === "add") page.settingsFocus = page.settingsAt("field")
           placeholderText: page.settingsFieldKind === "rename" ? "its name"
             : page.settingsState && page.settingsState.configured
               ? "paste another calendar's address to add it" : "https://…  or  webcal://…"
@@ -242,6 +267,7 @@ BorderSurface {
           foreground: page.foreground
           Keys.priority: Keys.BeforeItem
           Keys.onPressed: function (event) { if (page.settingsKey(event)) event.accepted = true }
+        }
         }
 
         Item { width: 1; height: page.sp(4) }
@@ -300,8 +326,10 @@ BorderSurface {
           }
         }
         // What it knows: a count here, the notebook itself one key away.
-        Row {
-          spacing: page.sp(16)
+        SettingRow {
+          page: settingsSheet.page
+          kind: "notebook"
+          onChosen: settingsField.forceActiveFocus()
           Text {
             textFormat: Text.PlainText
             text: page.sayNotebook()
@@ -323,12 +351,14 @@ BorderSurface {
               hoverEnabled: true
               cursorShape: Qt.PointingHandCursor
               onClicked: page.openNotebook()
-              PanelToolTip { visible: parent.containsMouse; text: page.tip("what it knows", "settingsNotebook") }
+              PanelToolTip { visible: parent.containsMouse; text: page.tip("What the agent knows: its notes, to correct or forget", "settingsChange") }
             }
           }
         }
-        Row {
-          spacing: page.sp(16)
+        SettingRow {
+          page: settingsSheet.page
+          kind: "autonomy"
+          onChosen: settingsField.forceActiveFocus()
           Text {
             textFormat: Text.PlainText
             text: page.sayAutonomy()
@@ -350,12 +380,14 @@ BorderSurface {
               hoverEnabled: true
               cursorShape: Qt.PointingHandCursor
               onClicked: page.openAutonomy()
-              PanelToolTip { visible: parent.containsMouse; text: page.tip("what it may do", "settingsAutonomy") }
+              PanelToolTip { visible: parent.containsMouse; text: page.tip("What it may do: each kind of action, ask me · do it and tell me · never", "settingsChange") }
             }
           }
         }
-        Row {
-          spacing: page.sp(16)
+        SettingRow {
+          page: settingsSheet.page
+          kind: "search"
+          onChosen: settingsField.forceActiveFocus()
           Text {
             textFormat: Text.PlainText
             text: page.saySearchFolders()
@@ -377,7 +409,7 @@ BorderSurface {
               hoverEnabled: true
               cursorShape: Qt.PointingHandCursor
               onClicked: page.openSearchFolders()
-              PanelToolTip { visible: parent.containsMouse; text: page.tip("what it may search", "settingsSearch") }
+              PanelToolTip { visible: parent.containsMouse; text: page.tip("What it may search: each folder of the vault, on or off", "settingsChange") }
             }
           }
         }
@@ -421,8 +453,10 @@ BorderSurface {
           font.pixelSize: page.fs(Style.font.bodySmall)
         }
 
-        Row {
-          spacing: page.sp(16)
+        SettingRow {
+          page: settingsSheet.page
+          kind: "sound"
+          onChosen: settingsField.forceActiveFocus()
           Text {
             textFormat: Text.PlainText
             text: page.settingsData.tickSound === false ? "Off" : "On"
@@ -448,7 +482,7 @@ BorderSurface {
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: { if (modelData.act === "settingsSound") page.toggleTickSound(); else page.playTick(true); settingsField.forceActiveFocus() }
-                PanelToolTip { visible: parent.containsMouse && modelData.act !== ""; text: page.tip(modelData.text, modelData.act) }
+                PanelToolTip { visible: parent.containsMouse && modelData.act !== ""; text: page.tip("The tick's sound: on or off", "settingsChange") }
               }
             }
           }
@@ -479,8 +513,10 @@ BorderSurface {
           font.pixelSize: page.fs(Style.font.bodySmall)
         }
 
-        Row {
-          spacing: page.sp(16)
+        SettingRow {
+          page: settingsSheet.page
+          kind: "pointer"
+          onChosen: settingsField.forceActiveFocus()
           Repeater {
             model: [{ mode: "every", text: "every selection" }, { mode: "panes", text: "pane changes only" }, { mode: "off", text: "off" }]
             Text {
@@ -500,7 +536,7 @@ BorderSurface {
                   page.setPointer(modelData.mode)
                   settingsField.forceActiveFocus()
                 }
-                PanelToolTip { visible: parent.containsMouse; text: page.tip("The pointer: " + modelData.text, "settingsPointer") }
+                PanelToolTip { visible: parent.containsMouse; text: page.tip("The pointer: " + modelData.text + " (picked: the next one)", "settingsChange") }
               }
             }
           }
@@ -525,11 +561,13 @@ BorderSurface {
         anchors.bottom: parent.bottom
         textFormat: Text.PlainText
         wrapMode: Text.WordWrap
+        readonly property string kind: { page.settingsFocus; page.calendarCount; return page.settingsPicked() }
         text: page.settingsFieldKind === "rename" ? "Enter renames it · Esc keeps the old name"
-          : "Enter adds a calendar · ↑↓ pick one · " + page.keyName("settingsShare") + " what the agent sees · "
-          + page.keyName("settingsFetch") + " fetches it · " + page.keyName("settingsRename") + " renames · "
-          + page.keyName("settingsForget") + " removes it · " + page.keyName("settingsSound") + " tick sound · " + page.keyName("settingsPointer") + " the pointer · "
-          + page.keyName("settingsNotebook") + " what the agent knows · " + page.keyName("settingsAutonomy") + " what it may do · " + page.keyName("settingsSearch") + " what it may search · Esc back"
+          : page.settingsAsking >= 0 ? "Enter removes it · Esc keeps it"
+          : kind === "field" ? "Enter adds the calendar pasted · ↑↓ the settings · Esc back"
+          : kind === "calendar" ? "↑↓ the settings · " + page.keyName("settingsChange") + " fetches it · " + page.keyName("settingsShare") + " what the agent sees · "
+            + page.keyName("settingsRename") + " renames · " + page.keyName("settingsForget") + " removes it · Esc back"
+          : "↑↓ the settings · " + page.keyName("settingsChange") + (kind === "sound" || kind === "pointer" ? " changes it" : " opens it") + " · Esc back"
         color: page.faint
         font.family: page.fontFamily
         font.styleName: page.fontStyle

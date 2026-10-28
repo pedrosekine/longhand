@@ -81,18 +81,41 @@ TestCase {
   }
 
   function test_moving_a_key() {
-    var c = Sc.assign("bold", "Ctrl+K")
+    // Ctrl+Shift+K: free (Ctrl+K makes a link since 2026-10-28).
+    var c = Sc.assign("bold", "Ctrl+Shift+K")
     verify(c.ok)
-    verify(Sc.hit(ev(Qt.Key_K, Qt.ControlModifier), "bold"))
+    verify(Sc.hit(ev(Qt.Key_K, Qt.ControlModifier | Qt.ShiftModifier), "bold"))
     verify(!Sc.hit(ev(Qt.Key_B, Qt.ControlModifier), "bold"))
-    compare(JSON.stringify(Sc.save()), JSON.stringify({ bold: ["Ctrl+K"] }))
+    compare(JSON.stringify(Sc.save()), JSON.stringify({ bold: ["Ctrl+Shift+K"] }))
     // Added beside, not in place of.
     Sc.assign("bold", "Ctrl+Alt+B", true)
-    compare(Sc.keysOf("bold").join(" "), "Ctrl+K Ctrl+Alt+B")
+    compare(Sc.keysOf("bold").join(" "), "Ctrl+Shift+K Ctrl+Alt+B")
     // Back to its own, and the file forgets it.
     Sc.reset("bold")
     compare(Sc.keysOf("bold").join(" "), "Ctrl+B")
     compare(JSON.stringify(Sc.save()), "{}")
+  }
+
+  // The rest of the map (2026-10-28): the link, the symbols that are keys
+  // in lists, and settings walked as a list.
+  function test_the_rest_of_the_map() {
+    verify(Sc.hit(ev(Qt.Key_K, Qt.ControlModifier), "link"))
+    verify(Sc.hit(ev(Qt.Key_Question, Qt.ShiftModifier), "keysHere"))
+    verify(Sc.hit(ev(Qt.Key_NumberSign, Qt.ShiftModifier), "listTag"))
+    verify(Sc.hit(ev(Qt.Key_S, 0), "listClass"))
+    verify(!Sc.hit(ev(Qt.Key_Return, Qt.ShiftModifier), "listClass"))
+    verify(Sc.hit(ev(Qt.Key_T, Qt.ShiftModifier), "dashNoDate"))
+    verify(!Sc.hit(ev(Qt.Key_T, Qt.ShiftModifier), "dashWhen"))
+    verify(Sc.hit(ev(Qt.Key_F2, 0), "dashRename"))
+    verify(Sc.hit(ev(Qt.Key_Space, 0), "settingsChange"))
+    verify(Sc.hit(ev(Qt.Key_Delete, 0), "settingsForget"))
+    verify(Sc.hit(ev(Qt.Key_Delete, 0), "notebookForget"))
+    // Gone: the settings sheet's own letters.
+    compare(Sc.keysOf("settingsSound").length, 0)
+    compare(Sc.keysOf("settingsNotebook").length, 0)
+    // `?` never in a place you type in.
+    verify(!Sc.check("keysHere", "?").taken.length)
+    compare(Sc.byId["keysHere"].places.indexOf("note"), -1)
   }
 
   function test_taking_a_key_another_has() {

@@ -490,7 +490,7 @@ BorderSurface {
                   wrapMode: Text.WordWrap
                   text: dashRow.kind === "proposal" || dashRow.kind === "told" ? page.sayAsk(modelData.item, !!modelData.task)
                     : dashRow.kind === "question" ? modelData.item.question
-                    : dashRow.kind === "shelf" ? "+" + modelData.count + " not now · " + page.keyName("dashOpen") + " to show"
+                    : dashRow.kind === "shelf" ? "+" + modelData.count + " set aside · " + page.keyName("dashOpen") + " to show"
                     : dashRow.kind === "grading" ? "+" + modelData.count + " waiting for a grade · " + page.keyName("dashOpen") + " to show"
                     : dashRow.kind === "raised"
                       ? (modelData.item.kind === "suggestion" ? "◇ " : "· ") + modelData.item.text
@@ -587,17 +587,18 @@ BorderSurface {
                 readonly property string kind: dashRow.modelData.kind
                 visible: parent.containsMouse && (kind === "task" || kind === "deadline" || kind === "shelf" || kind === "grading" || kind === "raised"
                                                   || kind === "proposal" || kind === "question" || kind === "told")
-                text: kind === "task" ? page.tips([["Go to the line", "dashOpen"], ["Done", "dashDone"], ["Reschedule", "dashWhen"], ["Cycle its priority", "dashPriority"],
-                                                   [dashRow.task && dashRow.task.away ? "Back" : "Not now", "dashShelve"], ["Keep it", "dashKeep"], ["Drop it", "dashDrop"]]
+                text: kind === "task" ? page.tips([["Go to the line", "dashOpen"], ["Done", "dashDone"], ["Reschedule", "dashWhen"], ["Take the date off", "dashNoDate"],
+                                                   ["Cycle its priority", "dashPriority"], ["Rename", "dashRename"],
+                                                   [dashRow.task && dashRow.task.away ? "Back" : "Set aside", "dashShelve"], ["Renew", "dashKeep"], ["Drop it", "dashDrop"]]
                                                   .concat(chatWord.can ? [["Chat about it", "dashTalk"]] : []))
-                  : kind === "deadline" ? page.tips([["Go to its line", "dashOpen"], ["Done", "dashDone"], ["The day to work on it", "dashWhen"], ["Cycle its priority", "dashPriority"], ["Grade", "dashGrade"]]
+                  : kind === "deadline" ? page.tips([["Go to its line", "dashOpen"], ["Done", "dashDone"], ["The day to work on it", "dashWhen"], ["Take that day off", "dashNoDate"], ["Cycle its priority", "dashPriority"], ["Grade", "dashGrade"]]
                                                    .concat(chatWord.can ? [["Chat about it", "dashTalk"]] : []))
                   : kind === "told" ? page.tips([["Let it stand", "dashDone"], ["Undo it", "dashDrop"], ["Chat about it", "dashOpen"]])
                   : kind === "proposal" && dashRow.modelData.item.kind === "file"
                     ? page.tips([["File it: moved from Downloads into the course's documents", "dashDone"], ["Decline", "dashDrop"], ["Open it first", "dashOpen"]])
                   : kind === "proposal" ? page.tips([["Accept", "dashDone"], ["Decline", "dashDrop"], ["Chat about it", "dashOpen"]])
                   : kind === "question" ? page.tips([["Accept the recommended answer", "dashDone"], ["Chat about it: answer in your words, or ask back", "dashOpen"], ["Decline", "dashDrop"]])
-                  : kind === "shelf" ? page.tip("Show what is not now", "dashOpen")
+                  : kind === "shelf" ? page.tip("Show what is set aside", "dashOpen")
                   : kind === "grading" ? page.tip("Show what waits for a grade", "dashOpen")
                   : page.tip("Dismiss it", "dashOpen")
               }
@@ -626,10 +627,10 @@ BorderSurface {
         text: page.keyName("dashUp") + page.keyName("dashDown") + " move · " + page.keyName("dashOpen") + " opens the line · "
           + page.keyName("dashTalk") + " chat · "
           + page.keyName("dashDone") + " done · " + page.keyName("dashWhen") + " when · " + page.keyName("dashPriority") + " priority · "
-          + page.keyName("dashShelve") + " not now · " + page.keyName("dashKeep") + " keep · " + page.keyName("dashGrade") + " grade · "
+          + page.keyName("dashShelve") + " set aside · " + page.keyName("dashKeep") + " renew · " + page.keyName("dashGrade") + " grade · "
           + page.keyName("dashPlan") + " plan now · "
           + page.keyName("dashRename") + " rename · " + page.keyName("dashDrop") + " cancel · " + page.keyName("dashUndo") + " undo · " + page.keyName("dashBack") + " back · "
-          + page.keyName("keys") + " all keys"
+          + page.keyName("keysHere") + " all keys"
         color: page.faint
         font.family: page.fontFamily
         font.styleName: page.fontStyle

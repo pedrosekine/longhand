@@ -650,6 +650,11 @@ from 2026-09/10 and still stand.
   - One history (slice 4, same day): is back used beyond links (`link`
     `back` in the usage log), and does a step feel like one, or does it
     want to skip some (a day stepped through with Alt+[ several times)?
+  - The rest of the map (slice 5, same day): is settings walked with the
+    keys (`setting` in the usage log) or still clicked? Is Ctrl+K reached
+    for when a link is wanted, and is `[words]()` with the cursor in the
+    parentheses the right half to stop in? Does Shift+T (`when` `removed`)
+    get used, and do "set aside" and "renew" read as what `s` and `r` do?
 - **Notes beyond the calendar** (built 2026-10-26/27, `docs/files.md`):
   - Is the Files space opened at all, and from where (`space`,
     `space-swipe` and `file` in the usage log)?

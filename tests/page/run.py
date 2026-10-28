@@ -691,8 +691,8 @@ def main() -> int:
         check(p.call("header").startswith(dt.date.today().strftime("%A")) and int(p.call("cursorLine")) == len(p.lines()) - 1,
               "…opens today with the cursor under it")
         p.call("insert", "first point")
-        p.call("insertTag", 1)
-        check(p.wait(lambda: "first point #dtm " in p.call("text")), "Ctrl+Enter puts just the tag at the cursor")
+        check(p.call("projectKey", 1, 0x23, 0x02000000) == "true", "# on a project in the sidebar is taken")
+        check(p.wait(lambda: "first point #dtm " in p.call("text")), "…and puts just its tag at the cursor")
 
         # 11b. a project's notes: every section of its tag, newest first,
         # opened in place. The claiming rule is the runner's; what matters
@@ -731,9 +731,11 @@ def main() -> int:
         p.call("leaveProject")
         check(p.wait(lambda: json.loads(p.call("sections")) == []), "← goes back to the projects")
         before = p.note()
-        p.call("projectEnter", 0, "false", "true")
+        check(p.call("projectKey", 0, 0x01000004, 0x02000000) == "false" and p.note() == before,
+              "Shift+Enter on a project writes nothing now")
+        check(p.call("projectKey", 0, 0x53, 0) == "true", "s on a project is taken")
         check(p.wait(lambda: p.note().rstrip().endswith("# Interdisciplinary Seminar #intsem")),
-              "Shift+Enter still starts a class")
+              "…and starts a new section for it")
         check(json.loads(p.call("panel"))["project"] is False, "…and does not open the project")
         p.call("openProject", 1)
         check(p.wait(lambda: json.loads(p.call("sections")) == [f"{YDAY}|Design Theory & Methods|Methods"]),
@@ -862,6 +864,23 @@ def main() -> int:
         check(json.loads(p.call("panel"))["project"] is False and p.call("keyPage", 0x5c, CTRL) == "true",
               "Ctrl+\\ is taken too")
         check(p.wait(lambda: "**chapter**" in p.call("text")), "…and does not touch the words")
+
+        # 11e'. Ctrl+K makes a link (2026-10-28): words selected become its
+        # text and the cursor waits between the parentheses for the address;
+        # with none, `[]()` and the cursor between the brackets.
+        KEY_K = 0x4b
+        (p.daily / f"{TODAY}.md").write_text(header(TODAY) + "see the reading list\n")
+        p.open_fresh()
+        at = p.offset_of_line(p.line_of("see the reading"))
+        p.call("selectSpan", at + 8, at + 20)
+        check(p.call("keyPage", KEY_K, CTRL) == "true", "Ctrl+K is taken by the note")
+        check(p.wait(lambda: "see the [reading list]()" in p.call("text")), f"…and makes the words selected a link ({p.call('text')!r})")
+        check(int(p.call("cursorAt")) == at + 23, f"…the cursor between its parentheses ({p.call('cursorAt')} vs {at + 23})")
+        p.call("cursorEnd")
+        end = int(p.call("cursorAt"))
+        p.call("keyPage", KEY_K, CTRL)
+        check(p.wait(lambda: p.call("text")[end:end + 4] == "[]()") and int(p.call("cursorAt")) == end + 1,
+              f"…with nothing selected, an empty one and the cursor between the brackets ({p.call('text')[-12:]!r}, {p.call('cursorAt')})")
 
         # 11f. emphasis, drawn: the markers go to nothing and the words
         # carry the weight, while the field underneath still holds the line
@@ -1241,6 +1260,25 @@ def main() -> int:
         p.call("dashWhen", "read the whole paper")
         check(p.wait(lambda: "- [ ] read the whole paper ⏫" in p.call("text")),
               f"…the line's words, its facts kept ({p.call('text')[-60:]!r})")
+        # The rest of the map (2026-10-28): F2 renames too, Shift+T takes
+        # the day to work on it off, `?` shows the keys.
+        KEY_F2, KEY_T, KEY_QUESTION = 0x01000031, 0x54, 0x3f
+        row("read the whole paper")
+        check(p.call("dashKey", KEY_F2, 0) == "true", "F2 renames as well")
+        p.call("dashWhen", "read the paper")
+        check(p.wait(lambda: "- [ ] read the paper ⏫" in p.call("text")), f"…the same way ({p.call('text')[-60:]!r})")
+        row("read the paper")
+        p.call("dashKey", KEY_T, 0)
+        p.call("dashWhen", "2030-01-05")
+        check(p.wait(lambda: "read the paper ⏫ ⏳ 2030-01-05" in p.call("text")), f"t gives it a day ({p.call('text')[-60:]!r})")
+        row("read the paper")
+        check(p.call("dashKey", KEY_T, SHIFT) == "true", "Shift+T is taken")
+        check(p.wait(lambda: "- [ ] read the paper ⏫\n" in p.call("text")),
+              f"…and takes the day off again, the rest of the line kept ({p.call('text')[-60:]!r})")
+        check(p.call("dashKey", KEY_QUESTION, SHIFT) == "true" and p.call("keysOpen") == "true", "? in the dashboard shows the keys")
+        p.call("keys")
+        if p.call("dashOpen") != "true":
+            p.call("dash")
 
         # A deadline's row shows what its line holds, as a task's does
         # (2026-10-25): the day to work on it, the priority, the estimate;
@@ -1338,7 +1376,7 @@ def main() -> int:
         shelf = next(n for n, r in enumerate(json.loads(p.call("dashRows"))) if r["kind"] == "shelf")
         p.call("dashFocus", shelf)
         p.call("dashKey", KEY_RETURN, 0)
-        check(p.wait(lambda: "NOT NOW" in heads() and "gone quiet" in row("an old aside").get("where", "")),
+        check(p.wait(lambda: "SET ASIDE" in heads() and "gone quiet" in row("an old aside").get("where", "")),
               f"Enter unfolds it: there to be found ({heads()})")
         row("an old aside")
         check(p.call("dashKey", KEY_S, 0) == "true", "s is taken")
@@ -1444,8 +1482,10 @@ def main() -> int:
         # settings.json; a citation in an answer opens the note at its line.
         KEY_F, KEY_SPACE = 0x46, 0x20
         p.call("settings")
-        check(p.call("settingsKey", KEY_F, CTRL) == "true" and p.call("settingsView") == "search",
-              "Ctrl+F in settings: what the agent may search")
+        check(p.call("settingsKey", KEY_F, CTRL) == "false", "Ctrl+F in settings is no longer a key of its own")
+        p.call("settingsPick", "search")
+        check(p.call("settingsKey", KEY_RETURN, 0) == "true" and p.call("settingsView") == "search",
+              "Enter on what the agent may search opens it")
         check(p.wait(lambda: "Daily=on" in json.loads(p.call("searchFolders"))),
               f"…every folder of the vault, the daily notes' own on ({p.call('searchFolders')})")
         i = json.loads(p.call("searchFolders")).index("Daily=on")
@@ -1556,12 +1596,43 @@ def main() -> int:
         lines = json.loads(p.call("settingsLines"))
         check("sign-in page" in lines[4] and lines[1].startswith("Working"),
               f"…why, in words, while the first still works ({lines})")
-        check(p.call("settingsKey", KEY_BACKSPACE, CTRL | SHIFT) == "true", "Ctrl+Shift+Backspace is taken")
-        check(p.wait(lambda: [c["url"] for c in cals()] == [url]), "…and removes the picked calendar, the new one")
+        check(p.call("settingsKey", KEY_BACKSPACE, CTRL | SHIFT) == "false", "Ctrl+Shift+Backspace is no longer a key in settings")
+        check(p.call("settingsPicked") == "calendar" and p.call("settingsKey", KEY_DELETE, 0) == "true"
+              and p.call("settingsAsking") == "1" and len(cals()) == 2,
+              f"Del on the picked calendar asks first, removing nothing yet ({p.call('settingsAsking')}, {len(cals())})")
+        check(p.call("settingsKey", KEY_ESC, 0) == "true" and p.call("settingsAsking") == "-1"
+              and p.call("settingsOpen") == "true" and len(cals()) == 2, "…Esc keeps it, and settings stays open")
+        p.call("settingsKey", KEY_DELETE, 0)
+        check(p.call("settingsKey", KEY_RETURN, 0) == "true", "…Del again, then Enter")
+        check(p.wait(lambda: [c["url"] for c in cals()] == [url]), "…removes the picked calendar, the new one")
+        p.wait(lambda: len(json.loads(p.call("settingsLines"))) < 5)
         p.call("settingsFocus", 0)
-        p.call("settingsKey", KEY_BACKSPACE, CTRL | SHIFT)
+        p.call("settingsKey", KEY_DELETE, 0)
+        p.call("settingsKey", KEY_RETURN, 0)
         check(p.wait(lambda: cals() == [] and any("No calendar yet" in l for l in json.loads(p.call("settingsLines")))),
               "…and the last one, back to no calendar")
+        # Settings is a list (2026-10-28): ↑↓ walk every setting, Space or
+        # Enter changes the picked one, typing picks the address field.
+        KEY_SPACE, KEY_DOWN, KEY_S = 0x20, 0x01000015, 0x53
+        check(p.call("settingsKey", KEY_S, CTRL | SHIFT) == "false", "Ctrl+Shift+S is no longer the sound in settings")
+        p.call("settingsPick", "sound")
+        was = p.call("tickSoundOn")
+        check(p.call("settingsKey", KEY_SPACE, 0) == "true" and p.wait(lambda: p.call("tickSoundOn") != was),
+              "Space on the picked sound turns it off or on")
+        p.call("settingsKey", KEY_SPACE, 0)
+        check(p.wait(lambda: p.call("tickSoundOn") == was), "…and back")
+        check(p.call("settingsKey", KEY_DOWN, 0) == "true" and p.call("settingsPicked") == "pointer", "↓ walks on to the pointer")
+        mode = p.call("pointerMode")
+        p.call("settingsKey", KEY_RETURN, 0)
+        check(p.wait(lambda: p.call("pointerMode") != mode), f"…and Enter changes it ({mode} → {p.call('pointerMode')})")
+        p.call("settingsKey", KEY_RETURN, 0)
+        p.call("settingsKey", KEY_RETURN, 0)
+        check(p.wait(lambda: p.call("pointerMode") == mode), "…round to where it was")
+        check(p.call("settingsKey", KEY_DOWN, 0) == "true" and p.call("settingsPicked") == "pointer", "…the last row stays the last")
+        p.call("settingsType", "w")
+        check(p.call("settingsPicked") == "field", "typing from any row picks the address field")
+        check(p.call("settingsKey", KEY_SPACE, 0) == "false", "…where Space is typed")
+        p.call("settingsType", "")
         check(p.call("settingsKey", 0x01000000, 0) == "true" and p.call("settingsOpen") == "false", "Esc goes back")
         uni.shutdown()
 
@@ -1589,17 +1660,22 @@ def main() -> int:
         know = p.vault / "agents" / "longhand" / "knowledge"
         know.mkdir(parents=True, exist_ok=True)
         (know / "profile.md").write_text("# Profile\n\n- Lives in Vienna.\n  - Commutes by train.\n- Grading scale not yet confirmed.\n")
-        KEY_K = 0x4b
         p.call("settings")
-        check(p.call("settingsKey", KEY_K, CTRL) == "true" and p.wait(lambda: p.call("settingsView") == "notebook"),
-              "Ctrl+K in settings opens what the agent knows")
+        p.call("settingsPick", "notebook")
+        check(p.call("settingsKey", KEY_RETURN, 0) == "true" and p.wait(lambda: p.call("settingsView") == "notebook"),
+              "Enter on what the agent knows, in settings, opens it")
         check(p.wait(lambda: any(r["text"] == "Lives in Vienna." for r in json.loads(p.call("notebookRows")))),
               "…its notes, line by line")
         rows = json.loads(p.call("notebookRows"))
         check(rows[0]["kind"] == "head" and rows[0]["text"] == "Profile" and rows[int(p.call("notebookPicked"))]["kind"] == "line",
               "…under each file's title, the first line picked")
         p.call("notebookFocus", next(i for i, r in enumerate(rows) if r["text"] == "Lives in Vienna."))
-        check(p.call("notebookKey", KEY_BACKSPACE, CTRL | SHIFT) == "true", "Ctrl+Shift+Backspace forgets the picked line")
+        check(p.call("notebookKey", KEY_DELETE, 0) == "true" and p.call("notebookAsking") == "true",
+              "Del on the picked line asks first")
+        check(p.call("notebookKey", KEY_ESC, 0) == "true" and p.call("settingsView") == "notebook"
+              and "Vienna" in (know / "profile.md").read_text(), "…Esc keeps it, and stays in the notebook")
+        p.call("notebookKey", KEY_DELETE, 0)
+        check(p.call("notebookKey", KEY_RETURN, 0) == "true", "…Del again, then Enter forgets it")
         check(p.wait(lambda: "Vienna" not in (know / "profile.md").read_text()), "…taken out of the agent's file, with what hung off it")
         check(p.wait(lambda: "forget · profile.md: «Lives in Vienna.»" in (know / "corrections.md").read_text()),
               "…and recorded in corrections.md, so it stays forgotten")
@@ -2006,7 +2082,8 @@ def main() -> int:
         p.call("dash")
         p.call("settings")
         KEY_M, KEY_RIGHT = 0x4d, 0x01000014
-        check(p.call("settingsKey", KEY_M, CTRL) == "true" and p.call("settingsView") == "autonomy", "Ctrl+M in settings: what the agent may do")
+        p.call("settingsPick", "autonomy")
+        check(p.call("settingsKey", KEY_RETURN, 0) == "true" and p.call("settingsView") == "autonomy", "Enter on what the agent may do opens it")
         check(p.wait(lambda: "priority=do" in p.call("autonomyKinds") and len(json.loads(p.call("autonomyKinds"))) == 8),
               f"…every kind with its level ({p.call('autonomyKinds')})")
         p.call("autonomyFocus", 0)
@@ -2071,6 +2148,7 @@ def main() -> int:
 
         # 12b. the keys sheet: every key the page answers to, listed; one
         # moved through the sheet, kept in keys.json, and working in the note
+        # (onto Ctrl+Shift+K, free since Ctrl+K became the link, 2026-10-28)
         KEY_B, KEY_K = 0x42, 0x4b
         keysjson = p.tmp / "config" / "longhand" / "keys.json"
 
@@ -2082,38 +2160,38 @@ def main() -> int:
         check(keys_of("bold") == ["Ctrl+B"] and keys_of("dashPriority") == ["p"], "…listing every key, bold on Ctrl+B")
         p.call("keysFind", "bold")
         p.call("keysKey", KEY_RETURN, 0)
-        p.call("keysKey", KEY_K, CTRL)
-        check(keys_of("bold") == ["Ctrl+K"], "Enter, then a key: bold moves to it")
-        check(p.wait(lambda: keysjson.exists() and json.loads(keysjson.read_text()) == {"bold": ["Ctrl+K"]}),
+        p.call("keysKey", KEY_K, CTRL | SHIFT)
+        check(keys_of("bold") == ["Ctrl+Shift+K"], "Enter, then a key: bold moves to it")
+        check(p.wait(lambda: keysjson.exists() and json.loads(keysjson.read_text()) == {"bold": ["Ctrl+Shift+K"]}),
               "…and keys.json keeps only that")
         p.call("keysFind", "italic")
         p.call("keysKey", KEY_RETURN, 0)
         p.call("keysKey", KEY_K, 0)
         check("would be typed" in p.call("keysNote"), f"a letter alone is refused where you write ({p.call('keysNote')})")
-        p.call("keysKey", KEY_K, CTRL)
-        check("again" in p.call("keysNote") and keys_of("bold") == ["Ctrl+K"], "a key bold has: asked first, not taken")
-        p.call("keysKey", KEY_K, CTRL)
-        check(keys_of("italic") == ["Ctrl+K"] and keys_of("bold") == [], "…and taken on the second press")
-        check(p.call("tip", "italic") == "does   Ctrl+K" and p.call("tip", "bold") == "does   no key (Ctrl+/ gives it one)",
+        p.call("keysKey", KEY_K, CTRL | SHIFT)
+        check("again" in p.call("keysNote") and keys_of("bold") == ["Ctrl+Shift+K"], "a key bold has: asked first, not taken")
+        p.call("keysKey", KEY_K, CTRL | SHIFT)
+        check(keys_of("italic") == ["Ctrl+Shift+K"] and keys_of("bold") == [], "…and taken on the second press")
+        check(p.call("tip", "italic") == "does   Ctrl+Shift+K" and p.call("tip", "bold") == "does   no key (Ctrl+/ gives it one)",
               f"a hover's hint names the moved key, or says there is none ({p.call('tip', 'bold')!r})")
         p.call("keysFind", "bold")
         p.call("keysKey", KEY_DELETE, 0)
         check(keys_of("bold") == ["Ctrl+B"], "Del gives bold its own key back")
-        check(p.wait(lambda: json.loads(keysjson.read_text()) == {"italic": ["Ctrl+K"]}), "…and the file follows")
+        check(p.wait(lambda: json.loads(keysjson.read_text()) == {"italic": ["Ctrl+Shift+K"]}), "…and the file follows")
         p.call("keysKey", KEY_ESC, 0)
         p.call("keysKey", KEY_ESC, 0)
         check(p.call("keysOpen") == "false", "Esc clears the search, then closes the sheet")
 
         # Edited by hand, read again; the moved key works in the note.
-        keysjson.write_text(json.dumps({"bold": ["ctrl+k"]}))
-        check(p.wait(lambda: keys_of("bold") == ["Ctrl+K"]), "keys.json edited by hand is read again")
+        keysjson.write_text(json.dumps({"bold": ["ctrl+shift+k"]}))
+        check(p.wait(lambda: keys_of("bold") == ["Ctrl+Shift+K"]), "keys.json edited by hand is read again")
         (p.daily / f"{TODAY}.md").write_text(header(TODAY) + "a word here\n")
         p.open_fresh()
         p.wait(lambda: "a word here" in p.call("text"))
         p.call("cursor", p.call("text").index("word") + 1)
         check(p.call("pageKey", KEY_B, CTRL) == "false", "Ctrl+B is nothing once bold has moved")
-        check(p.call("pageKey", KEY_K, CTRL) == "true", "…and Ctrl+K is bold")
-        check(p.call("tip", "ask") == "does   Ctrl+Enter" and p.call("tip", "bold") == "does   Ctrl+K", "…and the hints say so")
+        check(p.call("pageKey", KEY_K, CTRL | SHIFT) == "true", "…and Ctrl+Shift+K is bold")
+        check(p.call("tip", "ask") == "does   Ctrl+Enter" and p.call("tip", "bold") == "does   Ctrl+Shift+K", "…and the hints say so")
         check(p.wait(lambda: "a **word** here" in p.call("text")), f"…on the word ({p.call('text')!r})")
         keysjson.write_text("{}\n")
         check(p.wait(lambda: keys_of("bold") == ["Ctrl+B"]), "an empty keys.json is every key its own")
@@ -2514,6 +2592,8 @@ def main() -> int:
               f"…Esc backs out to the calendar too ({side()}, {panes()})")
         p.call("calDay", 2030, 3, 14)
         check(p.call("sideKey", KEY_TAB, 0) == "true" and side() == {"due": -1, "proj": 0}, f"Tab on a day with none: straight to the projects ({side()})")
+        check(p.call("sideKey", 0x3f, 0x02000000) == "true" and p.call("keysOpen") == "true", "? in the sidebar's lists shows the keys")
+        p.call("keys")
         p.call("sideKey", KEY_ESC, 0)
         # (Not whether a line of the note has the keys: a note shorter than
         # the line the cursor was on drops them, 2026-10-25, a bug of its own.)

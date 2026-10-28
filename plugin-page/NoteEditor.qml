@@ -316,6 +316,24 @@ Item {
     }
   }
 
+  // Ctrl+K: a link, the way Obsidian writes one. Words selected become its
+  // text and the cursor waits between the parentheses for the address;
+  // with none, `[]()` and the cursor between the brackets for the words.
+  function makeLink() {
+    if (ed.readOnly) return
+    if (ed.spanning) {
+      var a = ed.selStart, b = ed.selEnd
+      ed.insert(b, "]()")              // the far end first: the near offset holds
+      ed.insert(a, "[")
+      ed.clearSelection()
+      ed.setCursor(b + 3, true)
+    } else {
+      var c = ed.cursorPosition
+      ed.insert(c, "[]()")
+      ed.setCursor(c + 1, true)
+    }
+  }
+
   // Alt+Up / Alt+Down: the line the cursor is on — or every line a
   // selection touches — trades places with the line above or below, as in
   // VS Code; the cursor and the selection go with it. A bound line carries

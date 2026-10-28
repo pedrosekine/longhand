@@ -38,7 +38,10 @@ var places = {
   notebook: "in what the agent knows",
   autonomy: "in what the agent may do"
 }
-var typing = { note: true, mention: true, cue: true, search: true, chat: true, settings: true }
+// Settings is not one of them since it became a list (2026-10-28): its
+// field types only while its own row is picked, and the list's keys wait
+// until then (Page.qml, settingsKey).
+var typing = { note: true, mention: true, cue: true, search: true, chat: true }
 
 var groups = [
   { id: "page", title: "The page" },
@@ -69,6 +72,8 @@ var actions = [
   { id: "zoomOut", group: "page", places: ["any"], does: "Zoom out", keys: ["Ctrl+-", "Ctrl+_"] },
   { id: "zoomReset", group: "page", places: ["any"], does: "Zoom back to 100%", keys: ["Ctrl+0"] },
   { id: "keys", group: "page", places: ["any"], does: "Show these keys", keys: ["Ctrl+/"] },
+  // `?` where nothing is typed, as Gmail, Todoist and GitHub have it.
+  { id: "keysHere", group: "page", places: ["dash", "lists", "files", "calendar"], does: "Show these keys (where nothing is typed)", keys: ["?"] },
   { id: "settings", group: "page", places: ["any"], does: "Settings (calendars, sound)", keys: ["Ctrl+,"] },
   // The three panes, left to right, are the digits (2026-10-27, docs/
   // keys-proposal.md; the brackets were theirs from 2026-10-23, and need
@@ -101,6 +106,8 @@ var actions = [
   { id: "italic", group: "write", places: ["note"], does: "Italic", keys: ["Ctrl+I"] },
   { id: "code", group: "write", places: ["note"], does: "Inline code", keys: ["Ctrl+`", "Ctrl+E"] },
   { id: "strike", group: "write", places: ["note"], does: "Strikethrough", keys: ["Ctrl+Shift+S"] },
+  // Notion's, Craft's and Obsidian's key for it (2026-10-27).
+  { id: "link", group: "write", places: ["note"], does: "Make a link (with words selected: they are its text)", keys: ["Ctrl+K"] },
   { id: "checkbox", group: "write", places: ["note"], does: "Tick or untick a checkbox", keys: ["Ctrl+L"] },
   { id: "deadline", group: "write", places: ["note"], does: "Bind a checkbox's date, reschedule or unbind it", keys: ["Ctrl+D"] },
   // Tab takes the date and keeps you on the line, the way it takes an @
@@ -155,7 +162,7 @@ var actions = [
   { id: "mentionUp", group: "mention", places: ["mention"], does: "Previous project", keys: ["Up"] },
   { id: "mentionDown", group: "mention", places: ["mention"], does: "Next project", keys: ["Down"] },
   { id: "mentionPick", group: "mention", places: ["mention"], does: "Write its #tag", keys: ["Enter", "Tab"] },
-  { id: "mentionClass", group: "mention", places: ["mention"], does: "Start the class (# Course #tag)", keys: ["Shift+Enter"] },
+  { id: "mentionClass", group: "mention", places: ["mention"], does: "New section (# Name #tag)", keys: ["Shift+Enter"] },
   { id: "mentionClose", group: "mention", places: ["mention"], does: "Close the list", keys: ["Esc"] },
 
 
@@ -176,24 +183,24 @@ var actions = [
   { id: "dashOpen", group: "dash", places: ["dash"], does: "Go to the line; on what the agent proposes, asks or did, its chat (the margin opens beside)", keys: ["Enter"] },
   { id: "dashDone", group: "dash", places: ["dash"], does: "Done (again: not done); on the agent's proposal, accept", keys: ["Space", "E", "Ctrl+L"] },
   { id: "dashWhen", group: "dash", places: ["dash"], does: "When: reschedule it", keys: ["T", "Ctrl+D"] },
+  { id: "dashNoDate", group: "dash", places: ["dash"], does: "Take its date off (the day to work on it)", keys: ["Shift+T"] },
   { id: "dashPriority", group: "dash", places: ["dash"], does: "Cycle its priority", keys: ["P"] },
-  { id: "dashRename", group: "dash", places: ["dash"], does: "Rename it (its line's words)", keys: ["Ctrl+E"] },
+  { id: "dashRename", group: "dash", places: ["dash"], does: "Rename it (its line's words)", keys: ["Ctrl+E", "F2"] },
   { id: "dashDrop", group: "dash", places: ["dash"], does: "Cancel it (the line stays, as cancelled); on the agent's proposal, decline", keys: ["Del", "Backspace"] },
-  { id: "dashShelve", group: "dash", places: ["dash"], does: "Not now: put it aside (again: back)", keys: ["S"] },
-  { id: "dashKeep", group: "dash", places: ["dash"], does: "Keep it: its clock starts again", keys: ["R"] },
+  { id: "dashShelve", group: "dash", places: ["dash"], does: "Set aside: out of the list for now (again: back)", keys: ["S"] },
+  { id: "dashKeep", group: "dash", places: ["dash"], does: "Renew: its clock starts again", keys: ["R"] },
   { id: "dashGrade", group: "dash", places: ["dash"], does: "Grade a deadline", keys: ["G"] },
   { id: "dashPlan", group: "dash", places: ["dash"], does: "Ask the agent to plan now", keys: ["Ctrl+R"] },
   { id: "settingsShare", group: "settings", places: ["settings"], does: "What the agent sees of the picked calendar: its classes, or everything", keys: ["Ctrl+Shift+A"] },
   { id: "settingsFetch", group: "settings", places: ["settings"], does: "Fetch the picked calendar now", keys: ["Ctrl+R"] },
   { id: "settingsRename", group: "settings", places: ["settings"], does: "Rename the picked calendar", keys: ["Ctrl+E"] },
-  { id: "settingsForget", group: "settings", places: ["settings"], does: "Remove the picked calendar", keys: ["Ctrl+Shift+Backspace"] },
-  { id: "settingsSound", group: "settings", places: ["settings"], does: "The tick's sound: on or off", keys: ["Ctrl+Shift+S"] },
-  { id: "settingsPointer", group: "settings", places: ["settings"], does: "The pointer follows the keys: every selection · pane changes · off", keys: ["Ctrl+Shift+M"] },
-  { id: "settingsNotebook", group: "settings", places: ["settings"], does: "What the agent knows: its notes, to correct or forget", keys: ["Ctrl+K"] },
-  { id: "settingsSearch", group: "settings", places: ["settings"], does: "What the agent may search: each folder of the vault, on or off", keys: ["Ctrl+F"] },
-  { id: "settingsAutonomy", group: "settings", places: ["settings"], does: "What the agent may do: each kind of action, ask me · do it and tell me · never", keys: ["Ctrl+M"] },
+  { id: "settingsForget", group: "settings", places: ["settings"], does: "Remove the picked calendar (it asks first)", keys: ["Del"] },
+  // Settings is a list (2026-10-28): ↑↓ walk every setting, these change
+  // the picked one; the sound, the pointer and the agent's three sheets had
+  // a Ctrl letter each until then.
+  { id: "settingsChange", group: "settings", places: ["settings"], does: "Change the picked setting, or open it (a calendar: fetch it now)", keys: ["Enter", "Space"] },
   { id: "notebookCorrect", group: "settings", places: ["notebook"], does: "Correct the picked note in your words (Enter too)", keys: ["Ctrl+E"] },
-  { id: "notebookForget", group: "settings", places: ["notebook"], does: "Forget the picked note, or take a correction back", keys: ["Ctrl+Shift+Backspace"] },
+  { id: "notebookForget", group: "settings", places: ["notebook"], does: "Forget the picked note, or take a correction back (it asks first)", keys: ["Del"] },
   // The note's key for talking about a block, on a row (2026-10-20; Alt+→
   // until 2026-10-23, now the panes'): the agent summoned to think the
   // task through.
@@ -222,8 +229,8 @@ var actions = [
   // The note's tick, on a deadline of the day (2026-10-17).
   { id: "listDone", group: "lists", places: ["lists"], does: "A deadline: done (again: not done)", keys: ["Ctrl+L"] },
   { id: "listInto", group: "lists", places: ["lists"], does: "Into a project's notes", keys: ["Right"] },
-  { id: "listClass", group: "lists", places: ["lists"], does: "A project: start its class in the note", keys: ["Shift+Enter"] },
-  { id: "listTag", group: "lists", places: ["lists"], does: "A project: put its #tag at the cursor", keys: ["Ctrl+Enter"] },
+  { id: "listClass", group: "lists", places: ["lists"], does: "A project: a new section for it in today's note (# Name #tag)", keys: ["S"] },
+  { id: "listTag", group: "lists", places: ["lists"], does: "A project: put its #tag at the cursor", keys: ["#"] },
   { id: "listNext", group: "lists", places: ["lists"], does: "On to the next list", keys: ["Tab"] },
   { id: "listBack", group: "lists", places: ["lists"], does: "Back out of the list", keys: ["Esc", "Shift+Tab", "Left"] },
 

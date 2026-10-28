@@ -109,6 +109,8 @@ BorderSurface {
     // The panes' keys are global (page.anywhereKey): Ctrl+[ closes the
     // sidebar from here, Alt+→ moves on and leaves it open.
     if (page.anywhereKey(event)) return true
+    // `?`: the keys, from any of its lists (the files' filter types it).
+    if (Sc.hit(event, "keysHere")) { page.toggleKeys(); return true }
     if (page.sidebarSpace === "files") return filesPane.keyPressed(event)
     // Inside a project: its sections, newest first. Enter opens one in
     // the sheet (the list stays), Left or Esc goes back to the list of
@@ -468,7 +470,7 @@ BorderSurface {
           cursorShape: Qt.PointingHandCursor
           PanelToolTip {
             visible: parent.containsMouse
-            text: page.tips([["Its notes", "listOpen"], ["Shift-click: start its class", "listClass"], ["Ctrl-click: put its #tag at the cursor", "listTag"]])
+            text: page.tips([["Its notes", "listOpen"], ["Shift-click: a new section for it", "listClass"], ["Ctrl-click: put its #tag at the cursor", "listTag"]])
           }
           onClicked: function (mouse) {
             if (mouse.modifiers & Qt.ControlModifier) page.insertTag(modelData)
@@ -552,11 +554,13 @@ BorderSurface {
       wrapMode: Text.WordWrap
       text: page.projFocus >= 0 && page.projFocus === page.projects.length ? page.keyName("listOpen") + " names a new project · " + page.keyName("listNext") + " back"
         : page.projFocus >= 0 ? page.keyName("listUp") + page.keyName("listDown") + " pick · " + page.keyName("listOpen") + " its notes · "
-          + page.keyName("listClass") + " starts a class · " + page.keyName("listTag") + " puts the tag · " + page.keyName("listNext") + " back"
+          + page.keyName("listClass") + " new section · " + page.keyName("listTag") + " puts the tag · " + page.keyName("listNext") + " back · "
+          + page.keyName("keysHere") + " keys"
         : page.dueFocus >= 0 ? page.keyName("listUp") + page.keyName("listDown") + " pick · " + page.keyName("listOpen") + " goes to its line · "
-          + page.keyName("listDone") + " done · " + page.keyName("listNext") + " on to the projects"
+          + page.keyName("listDone") + " done · " + page.keyName("listNext") + " on to the projects · " + page.keyName("keysHere") + " keys"
         : "arrows move · " + page.keyName("calPrevMonth") + page.keyName("calNextMonth") + " month · " + page.keyName("calToday") + " today · "
           + page.keyName("calOpen") + " opens · " + page.keyName("calLists") + ": " + (page.focusDue.length > 0 ? "this day's deadlines" : "the projects")
+          + " · " + page.keyName("keysHere") + " keys"
       color: page.faint
       font.family: page.fontFamily
       font.styleName: page.fontStyle

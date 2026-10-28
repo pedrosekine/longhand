@@ -17,6 +17,7 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | Zoom out | `Ctrl+-` · `Ctrl+_` | everywhere |
 | Zoom back to 100% | `Ctrl+0` | everywhere |
 | Show these keys | `Ctrl+/` | everywhere |
+| Show these keys (where nothing is typed) | `?` | in the dashboard, in the sidebar's lists, in the files, in the calendar |
 | Settings (calendars, sound) | `Ctrl+,` | everywhere |
 | The sidebar: go there, opening it; in it, Time ↔ Files | `Ctrl+1` | everywhere |
 | The middle: go there; in it, the note ↔ the dashboard | `Ctrl+2` | everywhere |
@@ -38,6 +39,7 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | Italic | `Ctrl+I` | in the note |
 | Inline code | `` Ctrl+` `` · `Ctrl+E` | in the note |
 | Strikethrough | `Ctrl+Shift+S` | in the note |
+| Make a link (with words selected: they are its text) | `Ctrl+K` | in the note |
 | Tick or untick a checkbox | `Ctrl+L` | in the note |
 | Bind a checkbox's date, reschedule or unbind it | `Ctrl+D` | in the note |
 | Make the lit date the deadline and go on writing the line | `Tab` | while a box's date lights up as it is typed |
@@ -80,7 +82,7 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | Previous project | `↑` | while @ or # lists tags, or @ blocks in the day's box |
 | Next project | `↓` | while @ or # lists tags, or @ blocks in the day's box |
 | Write its #tag | `Enter` · `Tab` | while @ or # lists tags, or @ blocks in the day's box |
-| Start the class (# Course #tag) | `Shift+Enter` | while @ or # lists tags, or @ blocks in the day's box |
+| New section (# Name #tag) | `Shift+Enter` | while @ or # lists tags, or @ blocks in the day's box |
 | Close the list | `Esc` | while @ or # lists tags, or @ blocks in the day's box |
 
 ## Find
@@ -104,11 +106,12 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | Go to the line; on what the agent proposes, asks or did, its chat (the margin opens beside) | `Enter` | in the dashboard |
 | Done (again: not done); on the agent's proposal, accept | `Space` · `e` · `Ctrl+L` | in the dashboard |
 | When: reschedule it | `t` · `Ctrl+D` | in the dashboard |
+| Take its date off (the day to work on it) | `Shift+T` | in the dashboard |
 | Cycle its priority | `p` | in the dashboard |
-| Rename it (its line's words) | `Ctrl+E` | in the dashboard |
+| Rename it (its line's words) | `Ctrl+E` · `F2` | in the dashboard |
 | Cancel it (the line stays, as cancelled); on the agent's proposal, decline | `Del` · `Backspace` | in the dashboard |
-| Not now: put it aside (again: back) | `s` | in the dashboard |
-| Keep it: its clock starts again | `r` | in the dashboard |
+| Set aside: out of the list for now (again: back) | `s` | in the dashboard |
+| Renew: its clock starts again | `r` | in the dashboard |
 | Grade a deadline | `g` | in the dashboard |
 | Ask the agent to plan now | `Ctrl+R` | in the dashboard |
 | Next thing from the agent to settle (round again at the end) | `n` | in the dashboard |
@@ -141,8 +144,8 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | Open it (a deadline: go to its line) | `Enter` | in the sidebar's lists |
 | A deadline: done (again: not done) | `Ctrl+L` | in the sidebar's lists |
 | Into a project's notes | `→` | in the sidebar's lists |
-| A project: start its class in the note | `Shift+Enter` | in the sidebar's lists |
-| A project: put its #tag at the cursor | `Ctrl+Enter` | in the sidebar's lists |
+| A project: a new section for it in today's note (# Name #tag) | `s` | in the sidebar's lists |
+| A project: put its #tag at the cursor | `#` | in the sidebar's lists |
 | On to the next list | `Tab` | in the sidebar's lists |
 | Back out of the list | `Esc` · `Shift+Tab` · `←` | in the sidebar's lists |
 
@@ -195,14 +198,10 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | What the agent sees of the picked calendar: its classes, or everything | `Ctrl+Shift+A` | in settings |
 | Fetch the picked calendar now | `Ctrl+R` | in settings |
 | Rename the picked calendar | `Ctrl+E` | in settings |
-| Remove the picked calendar | `Ctrl+Shift+Backspace` | in settings |
-| The tick's sound: on or off | `Ctrl+Shift+S` | in settings |
-| The pointer follows the keys: every selection · pane changes · off | `Ctrl+Shift+M` | in settings |
-| What the agent knows: its notes, to correct or forget | `Ctrl+K` | in settings |
-| What the agent may search: each folder of the vault, on or off | `Ctrl+F` | in settings |
-| What the agent may do: each kind of action, ask me · do it and tell me · never | `Ctrl+M` | in settings |
+| Remove the picked calendar (it asks first) | `Del` | in settings |
+| Change the picked setting, or open it (a calendar: fetch it now) | `Enter` · `Space` | in settings |
 | Correct the picked note in your words (Enter too) | `Ctrl+E` | in what the agent knows |
-| Forget the picked note, or take a correction back | `Ctrl+Shift+Backspace` | in what the agent knows |
+| Forget the picked note, or take a correction back (it asks first) | `Del` | in what the agent knows |
 
 ## Typing (the text field's own, not changeable)
 

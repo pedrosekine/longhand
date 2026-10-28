@@ -162,7 +162,8 @@ it also follows each row the keys move to in a list.
 It never moves while your hand is on the mouse (moved in the last moment),
 never while you type in the note, never when it is already on the thing, and
 only while the page's window is the active one. It uses Hyprland
-(`hl.dsp.cursor.move`). Settings → The pointer (`Ctrl+Shift+M` there) has
+(`hl.dsp.cursor.move`). Settings → The pointer (picked with ↑↓, changed with
+Enter or Space, since settings became a list on 2026-10-28) has
 *every selection*, *pane changes only* or *off*, kept as `pointer` in
 `settings.json`.
 

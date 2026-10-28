@@ -242,6 +242,11 @@ ShellRoot {
       page.projFocus = i
       page.projectsKey({ key: Qt.Key_Return, text: "\r", modifiers: (ctrl ? Qt.ControlModifier : 0) | (shift ? Qt.ShiftModifier : 0) })
     }
+    // A key on a row of the projects list, as its own handler gets it.
+    function projectKey(i: int, key: int, mods: int): bool {
+      page.projFocus = i
+      return page.projectsKey({ key: key, text: "", modifiers: mods })
+    }
     function panel(): string { return JSON.stringify({ project: page.projectOpen, tasks: page.tasksOpen, margin: page.marginOpen, focus: page.sectionFocus }) }
     // The conversation as the margin draws it, and whether the box has the
     // keyboard — which is where Ctrl+Enter on an answered block must land.
@@ -373,6 +378,13 @@ ShellRoot {
     function settingsOpen(): bool { return page.settingsOpen }
     function settingsSave(url: string): void { page.addCalendar(url) }
     function settingsFocus(i: int): void { page.settingsFocus = i }
+    // A row of the settings list by its kind ("notebook", "sound", …), as ↑↓ would pick it.
+    function settingsPick(kind: string): void { page.settingsFocus = page.settingsAt(kind) }
+    function settingsPicked(): string { return page.settingsPicked() }
+    function settingsAsking(): int { return page.settingsAsking }
+    function settingsType(t: string): void { page.settingsSheetItem.settingsFieldRef.text = t }
+    function tickSoundOn(): bool { return page.settingsData.tickSound !== false }
+    function pointerMode(): string { return page.pointerMode }
     function settingsKey(key: int, mods: int): bool { return page.settingsKey({ key: key, text: "", modifiers: mods }) }
     function settingsLines(): string { return JSON.stringify(page.settingsLines().map(function (l) { return l.text })) }
     function settingsNote(): string { return page.settingsNote }
@@ -383,6 +395,7 @@ ShellRoot {
     function notebookPicked(): int { return page.notebookFocus }
     function notebookNote(): string { return page.notebookNote }
     function notebookCorrecting(): bool { return page.notebookCorrecting }
+    function notebookAsking(): bool { return page.notebookAsking }
     function notebookType(t: string): void { page.notebookSheetItem.notebookFieldRef.text = t }
 
     // The measure

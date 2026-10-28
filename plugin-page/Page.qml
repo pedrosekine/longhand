@@ -68,7 +68,7 @@ import "Links.js" as Links
 // the cursor back where it was. Ctrl+T opens the dashboard: every open checkbox
 // across the daily notes, carried while it is alive (a box goes quiet after
 // 7 days of silence, a task after 30 — agent/lifespan.py — and waits under
-// "not now"; it is never rewritten, the page being the one program that
+// "set aside"; it is never rewritten, the page being the one program that
 // edits notes) and, below, what the agent has raised — suggestions with
 // their evidence, observations from open passes — where Enter waves one off
 // and the runner remembers that.
@@ -286,6 +286,7 @@ Item {
   readonly property alias agentState: agent
   readonly property alias sectionsProcess: sectionsProc
   readonly property alias notebookSheetItem: notebookSheet
+  readonly property alias settingsSheetItem: settingsSheet
   readonly property alias dashItem: dash
   readonly property alias marginItem: margin
   property bool overlayOpen: false
@@ -757,7 +758,7 @@ Item {
   property var tasks: []
   property var raised: []
   property var tickHistory: []   // ticks made from the panel, newest last, for Ctrl+Z
-  property bool showShelf: false      // the "not now" band unfolded
+  property bool showShelf: false      // the "set aside" band unfolded
   // A tick from the dashboard is drawn at once, before the note is written
   // and the list read again (rowKey → true), and the row that was just
   // ticked plays the tick; the list waits for it (holdTasksUntil).
@@ -1181,7 +1182,7 @@ Item {
   property string settingsNote: ""     // what just happened, or why not
   property var settingsPending: null   // the runner's flags, once the file is written
   property var timetableAgain: null    // { flags, index } asked for while the runner was busy
-  property int settingsFocus: 0        // the calendar ↑↓ picks
+  property int settingsFocus: 0        // the row ↑↓ picks: a calendar, then settingsKinds
   property int settingsBusyIndex: -1   // the calendar being fetched; -1 all
   property string settingsFieldKind: "add"   // the field adds a calendar, or renames the picked one
   property var settingsData: ({})      // settings.json as last read or written
@@ -2303,6 +2304,7 @@ Item {
     if (Sc.hit(event, "italic")) { editor.emphasise("*"); return true }
     if (Sc.hit(event, "code")) { editor.emphasise("`"); return true }
     if (Sc.hit(event, "strike")) { editor.emphasise("~~"); return true }
+    if (Sc.hit(event, "link")) { editor.makeLink(); return true }
     if (Sc.hit(event, "deadline")) {
       var dr = editor.rows[root.lineIndexAt(editor.cursorPosition)]
       if (dr && dr.priv) root.showHint("private: a box here never becomes a deadline")
@@ -2412,6 +2414,7 @@ Item {
     root.settingsOpen = !root.settingsOpen
     root.settingsNote = ""
     root.settingsFieldKind = "add"
+    root.settingsAsking = -1
     root.settingsView = "main"
     root.notebookCorrecting = false
     if (root.settingsOpen) {
@@ -2433,35 +2436,77 @@ Item {
     }
   }
 
+  // Settings as a list (2026-10-28, docs/keys-proposal.md): ↑↓ walk every
+  // setting in the order the sheet draws them, and Space or Enter changes
+  // the picked one or opens it — the sound, the pointer and the agent's
+  // three sheets each had a Ctrl letter of their own until then. The field
+  // that adds a calendar is a row too: keys type into it while it is
+  // picked, and typing from any row picks it.
+  readonly property var settingsKinds: ["field", "notebook", "autonomy", "search", "sound", "pointer"]
+  readonly property int calendarCount: root.settingsState && root.settingsState.configured ? root.settingsState.calendars.length : 0
+  property int settingsAsking: -1      // the calendar Del asked about, until Enter or Esc
+  function settingsAt(kind) { return root.calendarCount + root.settingsKinds.indexOf(kind) }
+  function settingsPicked() {
+    if (root.settingsFocus < root.calendarCount) return "calendar"
+    return root.settingsKinds[root.settingsFocus - root.calendarCount] || "field"
+  }
+
+  function changeSetting(kind) {
+    root.used("setting", kind)        // by key: a click goes straight to its own
+    if (kind === "calendar") root.fetchCalendar(root.settingsFocus)
+    else if (kind === "notebook") root.openNotebook()
+    else if (kind === "autonomy") root.openAutonomy()
+    else if (kind === "search") root.openSearchFolders()
+    else if (kind === "sound") root.toggleTickSound()
+    else if (kind === "pointer") root.cyclePointer()
+  }
+
+  // Del asks first, as a removal should: the calendar's address is gone
+  // with it, and it was a paste away from a sign-in.
+  function askRemoveCalendar(i) {
+    if (i < 0 || i >= root.calendarCount) return
+    root.settingsFocus = i
+    root.settingsAsking = i
+    root.settingsNote = ""
+  }
+
   function settingsKey(event) {
     if (root.anywhereKey(event)) return true
     var seq = Sc.fromEvent(event)
-    var n = root.calendarList().length
+    if (root.settingsAsking >= 0) {
+      var asked = root.settingsAsking
+      root.settingsAsking = -1
+      if (seq === "Enter") { root.removeCalendar(asked); return true }
+      if (seq === "Esc") return true
+    }
     if (seq === "Esc") {
       if (root.settingsFieldKind === "rename") { root.settingsFieldKind = "add"; settingsSheet.settingsFieldRef.text = "" }
       else root.toggleSettings()
       return true
     }
-    if (seq === "Enter") {
-      if (root.settingsFieldKind === "rename") root.renameCalendar(settingsSheet.settingsFieldRef.text)
-      else root.addCalendar(settingsSheet.settingsFieldRef.text)
-      return true
+    if (root.settingsFieldKind === "rename") {
+      if (seq === "Enter") { root.renameCalendar(settingsSheet.settingsFieldRef.text); return true }
+      return false
     }
+    var last = root.calendarCount + root.settingsKinds.length - 1
     if (seq === "Up") { root.settingsFocus = Math.max(0, root.settingsFocus - 1); return true }
-    if (seq === "Down") { root.settingsFocus = Math.max(0, Math.min(n - 1, root.settingsFocus + 1)); return true }
-    if (Sc.hit(event, "settingsFetch")) { root.fetchCalendar(root.settingsFocus); return true }
-    if (Sc.hit(event, "settingsForget")) { root.removeCalendar(root.settingsFocus); return true }
-    if (Sc.hit(event, "settingsShare")) { root.toggleShare(root.settingsFocus); return true }
-    if (Sc.hit(event, "settingsRename")) { root.startRename(root.settingsFocus); return true }
-    if (Sc.hit(event, "settingsSound")) { root.toggleTickSound(); return true }
-    if (Sc.hit(event, "settingsPointer")) { root.cyclePointer(); return true }
-    if (Sc.hit(event, "settingsNotebook")) { root.openNotebook(); return true }
-    if (Sc.hit(event, "settingsAutonomy")) { root.openAutonomy(); return true }
-    if (Sc.hit(event, "settingsSearch")) { root.openSearchFolders(); return true }
+    if (seq === "Down") { root.settingsFocus = Math.min(last, root.settingsFocus + 1); return true }
+    var kind = root.settingsPicked()
+    if (kind === "field") {
+      if (seq === "Enter") { root.addCalendar(settingsSheet.settingsFieldRef.text); return true }
+      return false
+    }
+    if (kind === "calendar") {
+      if (Sc.hit(event, "settingsFetch")) { root.fetchCalendar(root.settingsFocus); return true }
+      if (Sc.hit(event, "settingsForget")) { root.askRemoveCalendar(root.settingsFocus); return true }
+      if (Sc.hit(event, "settingsShare")) { root.toggleShare(root.settingsFocus); return true }
+      if (Sc.hit(event, "settingsRename")) { root.startRename(root.settingsFocus); return true }
+    }
+    if (Sc.hit(event, "settingsChange")) { root.changeSetting(kind); return true }
     return false
   }
 
-  // What the agent may do (Settings → The agent, Ctrl+M; docs/agent.md,
+  // What the agent may do (Settings → The agent, picked and Enter; docs/agent.md,
   // "Actions, and how far each may go"): each kind at ask me, do it and
   // tell me, or never — the person's to set, kept in settings.json — with
   // its record, and past 9 of the last 10 accepted, the suggestion that it
@@ -2564,7 +2609,7 @@ Item {
     return out
   }
 
-  // What the agent may search (Settings, Ctrl+F; docs/agent.md, "The day
+  // What the agent may search (Settings, picked and Enter; docs/agent.md, "The day
   // conversation"): each folder of the vault, on or off, the student's to
   // set in settings.json (`searchFolders`). Private notes and blocks,
   // `_Secrets`, other types and documents of identity, money, health,
@@ -2711,6 +2756,7 @@ Item {
     root.settingsView = "notebook"
     root.notebookNote = ""
     root.notebookCorrecting = false
+    root.notebookAsking = false
     root.used("notebook")
     root.loadNotebook()
     if (root.notebookFocus < 0 || root.notebookFocus >= root.notebookList.length
@@ -2722,6 +2768,7 @@ Item {
   function closeNotebook() {
     root.settingsView = "main"
     root.notebookCorrecting = false
+    root.notebookAsking = false
     Qt.callLater(settingsSheet.settingsFieldRef.forceActiveFocus)
   }
 
@@ -2764,7 +2811,18 @@ Item {
     root.notebookAct(["correct", "--file", row.file, "--text", row.text, "--to", to], "corrected — it keeps your words from now on", "correct")
   }
 
+  // Del asks first ("Forget this note? Enter / Esc"), as removing a
+  // calendar does: forgotten stays forgotten.
+  property bool notebookAsking: false
+  function askForgetNote() {
+    var row = root.notebookList[root.notebookFocus]
+    if (!row || (row.kind !== "line" && row.kind !== "answer" && row.kind !== "correction")) return
+    root.notebookNote = ""
+    root.notebookAsking = true
+  }
+
   function forgetNote() {
+    root.notebookAsking = false
     var row = root.notebookList[root.notebookFocus]
     if (!row) return
     if (row.kind === "correction")
@@ -2783,11 +2841,16 @@ Item {
       if (seq === "Enter") { root.saveCorrection(notebookSheet.notebookFieldRef.text); return true }
       return false
     }
+    if (root.notebookAsking) {
+      root.notebookAsking = false
+      if (seq === "Enter") { root.forgetNote(); return true }
+      if (seq === "Esc") return true
+    }
     if (seq === "Esc") { root.closeNotebook(); return true }
     if (seq === "Up") { root.notebookFocus = root.nextNotebookRow(root.notebookFocus, -1); return true }
     if (seq === "Down") { root.notebookFocus = root.nextNotebookRow(root.notebookFocus, 1); return true }
     if (seq === "Enter" || Sc.hit(event, "notebookCorrect")) { root.startCorrect(); return true }
-    if (Sc.hit(event, "notebookForget")) { root.forgetNote(); return true }
+    if (Sc.hit(event, "notebookForget")) { root.askForgetNote(); return true }
     return false
   }
 
@@ -3327,9 +3390,10 @@ Item {
 
   // The projects list's keys, in one function so the page can be driven
   // without a keyboard. Enter (or Right) opens the project's own notes —
-  // the list is there to find them. Writing into the note is the shifted
-  // pair: Shift+Enter starts a class, Ctrl+Enter puts the tag at the
-  // cursor. Inverted 2026-10-15; `@` in the note is the way to write one.
+  // the list is there to find them. Writing into the note is a key each,
+  // Todoist's: `s` a new section, `#` the tag at the cursor (2026-10-28;
+  // Shift+Enter and Ctrl+Enter until then). `@` in the note is the way to
+  // write one.
   function projectsKey(event) {
     // The row after the last project makes a new one.
     var pr = root.projects[root.projFocus]
@@ -3438,7 +3502,7 @@ Item {
   //                  do-date is for
   //   #project       note boxes, under the project that claims them, newest
   //                  first
-  //   NOT NOW        folded: boxes whose silence ran out, or put aside with
+  //   SET ASIDE      folded: boxes whose silence ran out, or put aside with
   //                  `s` (agent/lifespan.py) — never rewritten, back when
   //                  touched
   //   WAITING FOR A GRADE   folded: done deadlines with no grade yet
@@ -3534,7 +3598,7 @@ Item {
     if (shelf.length > 0) {
       if (!root.showShelf) rows.push({ kind: "shelf", count: shelf.length })
       else {
-        rows.push({ kind: "head", text: "NOT NOW", tag: "" })
+        rows.push({ kind: "head", text: "SET ASIDE", tag: "" })
         for (var s = 0; s < shelf.length; s++) rows.push({ kind: "task", task: shelf[s] })
       }
     }
@@ -4276,7 +4340,7 @@ Item {
     root.used("priority")
   }
 
-  // `s`: not now. The box goes where quiet ones go, and nothing is written
+  // `s`: set aside. The box goes where quiet ones go, and nothing is written
   // into the note; `s` again (or `r`) brings it back. Its clock is the
   // layer's (agent/lifespan.py).
   function shelveFocused() {
@@ -4286,7 +4350,7 @@ Item {
     root.used(t.away ? "keep" : "shelve")
   }
 
-  // `r`: kept on purpose — its clock starts again, and it is back if it was
+  // `r`: renewed on purpose — its clock starts again, and it is back if it was
   // away.
   function keepFocused() {
     var t = root.focusedTask()
@@ -4338,7 +4402,18 @@ Item {
     root.dashWhenText = ""
   }
 
-  // Ctrl+E: the task's words, rewritten on its row (Todoist's key for it).
+  // Shift+T: the day to work on it taken off again (Todoist's key), the
+  // other half of `t`. A deadline's own date is not this: it is changed
+  // where it was given, in the note.
+  function noDateFocused() {
+    var t = root.focusedLine()
+    if (!t) return
+    if (!t.when) { root.showHint("no day to work on it: " + root.keyName("dashWhen") + " gives it one"); return }
+    root.editTask(t, "when", "")
+    root.used("when", "removed")
+  }
+
+  // Ctrl+E or F2: the task's words, rewritten on its row (Todoist's key for it).
   // The second place the dashboard takes typed words, beside `t`; the
   // details stay in the note, under the line. A deadline the agent wrote
   // and no line holds yet is where a person writes over the agent's words.
@@ -4467,6 +4542,7 @@ Item {
     if (Sc.hit(e, "dashUndo")) { root.untickLast(); return true }
     if (Sc.hit(e, "dashPriority")) { root.cyclePriorityFocused(); return true }
     if (Sc.hit(e, "dashWhen")) { root.startDashWhen(); return true }
+    if (Sc.hit(e, "dashNoDate")) { root.noDateFocused(); return true }
     if (Sc.hit(e, "dashRename")) { root.startDashRename(); return true }
     if (Sc.hit(e, "dashShelve")) { root.shelveFocused(); return true }
     if (Sc.hit(e, "dashKeep")) { root.keepFocused(); return true }
@@ -4475,6 +4551,7 @@ Item {
     if (Sc.hit(e, "dashTalk")) { root.talkFocused(); return true }
     if (Sc.hit(e, "dashNextAsk")) { root.focusAsk(1); return true }
     if (Sc.hit(e, "dashPrevAsk")) { root.focusAsk(-1); return true }
+    if (Sc.hit(e, "keysHere")) { root.toggleKeys(); return true }
     return false
   }
 
@@ -5037,9 +5114,13 @@ Item {
   // Opening a note: its bound lines catch up with the store — ticked or
   // unticked as the deadline is done or open, the date as the store has
   // it, and a line whose deadline is gone keeps its date but not its
-  // anchor.
+  // anchor. Not while a check is still to come, even one only scheduled:
+  // the store it answers to is behind the note, and catching the note up
+  // with it would undo the edit that scheduled the check — Ctrl+Z on a
+  // dropped deadline, pressed before the store's reload arrived, was put
+  // back to cancelled (2026-10-28).
   function reconcile() {
-    if (!root.reconcilePending || !dl.loaded || !svc.ready || root.checking || root.checkWanted) return
+    if (!root.reconcilePending || !dl.loaded || !svc.ready || root.checking || root.checkWanted || checkTimer.running) return
     root.reconcilePending = false
     var a = root.dayNote ? Bound.anchors(editor.text) : ({})
     for (var id in a) {
@@ -5430,9 +5511,10 @@ Item {
     return when + (n.room ? " · " + n.room : "")
   }
 
-  // A class begins: its heading on a new line at the end of today's note,
-  // the cursor on the empty line under it. The student asked for it, and
-  // the words are the course's name.
+  // A new section (once "start the class"; renamed 2026-10-28, Longhand
+  // being not only for students): its heading on a new line at the end of
+  // today's note, the cursor on the empty line under it. The words are the
+  // project's name.
   property var pendingClass: null
   function startClass(p) {
     root.used("class", p.tag)
@@ -5454,7 +5536,7 @@ Item {
     editor.setCursor(editor.length, true)
   }
 
-  // Ctrl+Enter: just the tag, where the cursor is.
+  // `#`: just the tag, where the cursor is.
   function insertTag(p) {
     root.used("tag", p.tag)
     root.projFocus = -1
@@ -7049,7 +7131,7 @@ Item {
                     onClicked: { root.mentionFocus = index; root.acceptMention(false) }
                     PanelToolTip { visible: parent.containsMouse; text: modelData.make ? "Name it, and it is in the sidebar, @ and #"
                       : root.mention && root.mention.atLineStart
-                      ? root.tips([["Write its #tag", "mentionPick"], ["Start the class", "mentionClass"]]) : root.tip("Write its #tag", "mentionPick") }
+                      ? root.tips([["Write its #tag", "mentionPick"], ["New section", "mentionClass"]]) : root.tip("Write its #tag", "mentionPick") }
                   }
                 }
               }
@@ -7063,7 +7145,7 @@ Item {
                   : root.mention && root.mention.items[root.mentionFocus] && root.mention.items[root.mentionFocus].make
                   ? root.keyName("mentionPick") + " names the new project · " + root.keyName("mentionClose") + " leaves it"
                   : root.mention && root.mention.atLineStart
-                  ? root.keyName("mentionPick") + " its tag · " + root.keyName("mentionClass") + " starts the class · " + root.keyName("mentionClose") + " leaves it"
+                  ? root.keyName("mentionPick") + " its tag · " + root.keyName("mentionClass") + " new section · " + root.keyName("mentionClose") + " leaves it"
                   : root.keyName("mentionPick") + " its tag · " + root.keyName("mentionClose") + " leaves it"
                 color: root.faint
                 font.family: root.fontFamily

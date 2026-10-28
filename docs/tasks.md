@@ -125,7 +125,8 @@ person inside Longhand.
 8. **The dashboard acts on every row the same way.** Enter goes to the line,
    on any day. Delete cancels it: the line becomes `- [-] … ❌ <today>` and
    stays in the note, because deleting words happens only in the note.
-   `Ctrl+E` renames in place (Todoist's key for it) — the one other place
+   `Ctrl+E` or `F2` renames in place (Todoist's and Obsidian's keys for it;
+   F2 since 2026-10-28) — the one other place
    besides `t` where the dashboard takes typed words; details stay in the
    note, as indented lines under the task, and the row says how many lines
    it has. One way of finding a line again everywhere.
