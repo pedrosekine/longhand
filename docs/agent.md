@@ -160,7 +160,8 @@ a question are all settled the same way — no new keys:
   the cursor and round again at the end; **Shift+N** the one before — the
   queue worked through without walking to it. One new key, asked for by
   the student on 2026-10-23.
-- **Space / Ctrl+Enter** accept (on a question: the recommended answer).
+- **Space / E** accept (on a question: the recommended answer). Ctrl+Enter
+  accepted too until 2026-10-27; it opens the chat now.
 - **Del** declines; it asks nothing back, and the record notes it.
 - **Enter** on anything the agent offers — a proposal, a question, what it
   did on its own — opens a conversation about it (below): writing back
@@ -193,9 +194,10 @@ about, not only to take or leave, as any block is in the note.
   each agent reads the other's part before it answers. A deadline found in
   the writing has no box yet: its conversation is filed under its words; a
   question about no box, under its own.
-- **Summoned on any task** (Ctrl+Shift+Enter on its row, the note's key for
-  talking about a block; Alt+→ until 2026-10-23): the margin opens beside the dashboard on the task's one
-  conversation, to think it through. Nothing is pinned to accept; a message
+- **Summoned on any task** (C or Ctrl+Enter on its row, or the "chat" the
+  row shows where the keys or the mouse are, since 2026-10-27; Ctrl+Shift+Enter
+  from 2026-10-23, Alt+→ before): the margin opens beside the dashboard on
+  the task's one conversation, to think it through. Nothing is pinned to accept; a message
   goes to the margin agent, about the task's block, as Ctrl+Enter in the
   note would — it knows the notes, the course's documents and what the
   planner said. Once a pinned proposal is settled, the conversation goes on
@@ -233,8 +235,10 @@ about the tasks and the context itself — what was written, searchable —
 not only about one block. A conversation attached to **the day**.
 
 **Where it lives.** The right pane, from anywhere in the page: **Ctrl+J**
-everywhere, **Ctrl+Shift+Enter** in the note (the shifted twin of Ctrl+Enter:
-"this, but to the day", opening with the cursor's block referenced). The
+and, since 2026-10-27, **Ctrl+Shift+Enter** (the shifted twin of Ctrl+Enter:
+the whole rather than this block). Until then Ctrl+Shift+Enter worked in
+the note only and opened with the cursor's block referenced; `@` in the
+box points at a block now. The
 **seal**, moved to the centre of the header, opens and closes it; it never
 carries a badge (the brand rule stands). The **date**, at the left, opens
 the left sidebar — the click lands on the side the thing appears. The day is

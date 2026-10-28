@@ -143,8 +143,9 @@ an agent file read only, home, a fresh open) and `tests/test_search.py`
 
 ## Talking about a note
 
-- `Ctrl+Shift+Enter` keeps meaning "talk about *this thing*": the block in
-  a file, as in the note.
+- `Ctrl+Shift+Enter` opens the note's chat, the whole of it (2026-10-27:
+  the Shift of a key is the whole, [keys-proposal.md](keys-proposal.md),
+  rule 6; it pointed at the cursor's block until then, which `@` does now).
 - **ask about this note** in the header shares the whole file.
 - Neither writes into the file. The conversation lives in the agent's pane,
   is kept in `agents/` under the file's path, and the file's header shows
@@ -183,10 +184,11 @@ asking is the consent.
 
 **The page.** The agent's pane gains a room, `noteRoom`: the day pane's
 view, reading the note's conversation instead of the day's.
-- It opens from **ask about this note** in the header. The word becomes
-  "about this note · n" once a conversation exists.
+- It opens from **chat about this note** in the header (it said "ask about
+  this note" until 2026-10-27). The word becomes "this note's chat · n" once
+  a chat exists.
 - It also opens from the pane's key or the seal while a file is in the
-  sheet, and from Ctrl+Shift+Enter on a file's block.
+  sheet, and from Ctrl+Shift+Enter anywhere in a file.
 - The header word shows only where the agent does not already read the
   note: a file, a day before the horizon, a private day.
 - A note's answers have no helpful / not-helpful yet. Opening another note

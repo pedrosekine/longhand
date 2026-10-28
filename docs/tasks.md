@@ -155,8 +155,8 @@ quote. `task.py` and `Task.js` read it the same way, as twins, and
 A box inside a `> [!private]` callout is **private**. So is a box on a day
 marked private, or on a day before the agent's horizon.
 - **The dashboard** lists it, with a lock.
-- **Nothing of the agent's** is offered on it: Alt+→ and Ctrl+Shift+Enter
-  say so instead.
+- **Nothing of the agent's** is offered on it: its row shows no "chat", and
+  Ctrl+Enter, C and Alt+→ say so instead.
 - **The agent's readers** (`visible_only`) never carry it.
 - **Deadlines** (the student's call): a box in a private block never
   becomes one, however it is dated. The date stays words on the line, so

@@ -1,7 +1,7 @@
 # Keys: a proposal after the benchmark apps
 
-_Proposed and grilled 2026-10-27; decided, not built. Nothing in the code
-has changed. Building moves each row into `plugin-page/Shortcuts.js`, and
+_Proposed and grilled 2026-10-27; decided. Slice 1 built 2026-10-28, the
+rest not yet. Building moves each row into `plugin-page/Shortcuts.js`, and
 `tools/keys_guide.py` rewrites [keys.md](keys.md); navigation.md, the
 agent's manual and the keys sheet follow._
 
@@ -264,6 +264,8 @@ What every slice touches, beyond its own code:
   by breaking the code it guards, as the suite does now.
 
 ### 1 · Chat on a task (the reason this started)
+
+_Built 2026-10-28._
 
 Keys and words only; nothing new is fetched.
 - **The word "chat":** the note header's "ask"/"reply" becomes "chat"; the

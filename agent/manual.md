@@ -82,21 +82,22 @@ rows here too: {key:dashDone} accepts, {key:dashDrop} declines;
 {key:dashNextAsk} goes to the next one to settle ({key:dashPrevAsk} the one
 before); one that arrived since you last left the dashboard says "new";
 {key:dashPlan} asks it to plan now. {key:dashOpen} on a proposal, a
-question, or something it did on its own opens the margin beside the
-dashboard, to talk with the planner about it: why that day, what you would
-rather, or your own answer to its question. It can change its proposal, and
-when the two of you agree, that settles it. {key:dashTalk} on any task's
-row summons the agent to think the task through, in the same margin. Each
-task keeps one conversation — what was said in the margin of its note and
-with the planner, shown together — shared by the boxes under it.
+question, or something it did on its own opens its chat beside the
+dashboard, with the planner: why that day, what you would rather, or your
+own answer to its question. It can change its proposal, and when the two of
+you agree, that settles it. {key:dashTalk} on any task's row (the row says
+"chat" where the keys or the mouse are) opens the task's chat, to think it
+through, in the same margin. Each task keeps one chat — what was said in the
+margin of its note and with the planner, shown together — shared by the
+boxes under it.
 
-## The day's conversation
+## The day's chat
 
-{key:day} opens the day's conversation in the right pane, from anywhere in
-the page — talk to the day, not one line: the tasks, the courses, what was
-written. In the note, {key:dayHere} opens it pointing at the block the
-cursor is in. The seal at the centre of the header opens and closes it; the
-date at the left opens the sidebar. One conversation a day: the morning's
+{key:dayChat} opens the day's chat in the right pane, from anywhere in the
+page — about the day, not one line: the tasks, the courses, what was
+written (in a note from Files, the same key opens that note's chat). {key:day}
+opens and closes the pane. The seal at the centre of the header opens and
+closes it; the date at the left opens the sidebar. One chat a day: the morning's
 observation waits at the top, it sees today's other conversations, and a
 past day's note shows that day's conversation, read-only — talking happens
 in today's. A private day still has it, seeing nothing of the note. It can
@@ -121,9 +122,11 @@ gets no brief.
 ## The agent
 
 The agent answers in the margin, beside the note. Nothing interrupts the
-writing to offer it: {key:ask} sends the block the cursor is in (a
-checkbox, an `@` line or a line ending in `?` are the usual signs), or
-opens the conversation on a block that has a reply; {key:margin} goes into
+writing to offer it: {key:ask} opens the chat of the block the cursor is
+in, the "chat" in the header does the same. A block with a sign for the
+agent (a checkbox, or a line ending in `?`) is sent first, and the agent
+answers; any other block opens its chat with the box ready, for you to
+start. A block already answered opens on its chat. {key:margin} goes into
 the margin, where `+` and `-` say whether a reply helped. It plans the next
 two weeks when the page or the dashboard opens: do-dates, and with the
 student's leave, deadlines found in the writing, priorities, steps under a

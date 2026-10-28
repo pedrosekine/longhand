@@ -33,7 +33,7 @@ var places = {
   files: "in the files",
   pdf: "in a PDF",
   margin: "in the margin",
-  chat: "in the conversation box",
+  chat: "in the chat's box",
   settings: "in settings",
   notebook: "in what the agent knows",
   autonomy: "in what the agent may do"
@@ -86,9 +86,9 @@ var actions = [
   { id: "spacePrev", group: "page", places: ["any"], does: "The sidebar's space before (Time, Files), opening the sidebar", keys: ["Ctrl+{"] },
   { id: "spaceNext", group: "page", places: ["any"], does: "The sidebar's space after (Time, Files), opening the sidebar", keys: ["Ctrl+}"] },
   { id: "home", group: "page", places: ["any"], does: "The middle: go there; in it, flip the note and the dashboard", keys: ["Ctrl+\\"] },
-  { id: "day", group: "page", places: ["any"], does: "The agent's pane: go there, opening it on the day's conversation; in it, close it", keys: ["Ctrl+]", "Ctrl+J"] },
+  { id: "day", group: "page", places: ["any"], does: "The agent's pane: go there, opening it on the day's chat; in it, close it", keys: ["Ctrl+]", "Ctrl+J"] },
   { id: "paneLeft", group: "page", places: ["any"], does: "The open pane to the left", keys: ["Alt+Left"] },
-  { id: "paneRight", group: "page", places: ["any"], does: "The open pane to the right (in the note, with none: this block's conversation)", keys: ["Alt+Right"] },
+  { id: "paneRight", group: "page", places: ["any"], does: "The open pane to the right (in the note, with none: this block's chat)", keys: ["Alt+Right"] },
   { id: "dashboard", group: "page", places: ["any"], does: "Open or close the dashboard", keys: ["Ctrl+T"] },
   // F11 is every app's full-screen key, and the overlay is the full-screen
   // shape; Ctrl+Alt+P for keyboards whose F-row wants Fn. Ctrl+P was left
@@ -141,10 +141,14 @@ var actions = [
   { id: "linkBack", group: "move", places: ["any"], does: "Back to where a link was followed from", keys: ["Ctrl+Alt+Left"] },
   { id: "linkForward", group: "move", places: ["any"], does: "On again, after going back", keys: ["Ctrl+Alt+Right"] },
 
-  { id: "ask", group: "agent", places: ["note"], does: "Ask about this block, or open its conversation", keys: ["Ctrl+Enter"] },
-  { id: "dayHelpful", group: "agent", places: ["chat"], does: "In the day's conversation: its last answer was helpful (again: take it back)", keys: ["Alt+="] },
-  { id: "dayNotHelpful", group: "agent", places: ["chat"], does: "In the day's conversation: its last answer was not helpful (again: take it back)", keys: ["Alt+-"] },
-  { id: "dayHere", group: "agent", places: ["note"], does: "The day's conversation, pointing at this block", keys: ["Ctrl+Shift+Enter"] },
+  // One word for talking with the agent, "chat", and one key for this
+  // block's, Ctrl+Enter: the "send" every app knows, and Craft's key for its
+  // assistant. The Shift of it is the whole: the day's chat (a note from
+  // Files: the note's). docs/keys-proposal.md, rule 6 (2026-10-27).
+  { id: "ask", group: "agent", places: ["note"], does: "Chat about this block (with a sign for the agent: it answers first)", keys: ["Ctrl+Enter"] },
+  { id: "dayChat", group: "agent", places: ["any"], does: "The day's chat (in a note from Files: the note's)", keys: ["Ctrl+Shift+Enter"] },
+  { id: "dayHelpful", group: "agent", places: ["chat"], does: "In the day's chat: its last answer was helpful (again: take it back)", keys: ["Alt+="] },
+  { id: "dayNotHelpful", group: "agent", places: ["chat"], does: "In the day's chat: its last answer was not helpful (again: take it back)", keys: ["Alt+-"] },
 
   { id: "mentionUp", group: "mention", places: ["mention"], does: "Previous project", keys: ["Up"] },
   { id: "mentionDown", group: "mention", places: ["mention"], does: "Next project", keys: ["Down"] },
@@ -167,8 +171,8 @@ var actions = [
   { id: "dashDown", group: "dash", places: ["dash"], does: "Move down", keys: ["Down", "J"] },
   { id: "dashFirst", group: "dash", places: ["dash"], does: "First row", keys: ["Home"] },
   { id: "dashLast", group: "dash", places: ["dash"], does: "Last row", keys: ["End"] },
-  { id: "dashOpen", group: "dash", places: ["dash"], does: "Go to the line; on what the agent proposes, asks or did, talk with it (the margin opens beside)", keys: ["Enter"] },
-  { id: "dashDone", group: "dash", places: ["dash"], does: "Done (again: not done); on the agent's proposal, accept", keys: ["Ctrl+Enter", "Space", "E", "Ctrl+L"] },
+  { id: "dashOpen", group: "dash", places: ["dash"], does: "Go to the line; on what the agent proposes, asks or did, its chat (the margin opens beside)", keys: ["Enter"] },
+  { id: "dashDone", group: "dash", places: ["dash"], does: "Done (again: not done); on the agent's proposal, accept", keys: ["Space", "E", "Ctrl+L"] },
   { id: "dashWhen", group: "dash", places: ["dash"], does: "When: reschedule it", keys: ["T", "Ctrl+D"] },
   { id: "dashPriority", group: "dash", places: ["dash"], does: "Cycle its priority", keys: ["P"] },
   { id: "dashRename", group: "dash", places: ["dash"], does: "Rename it (its line's words)", keys: ["Ctrl+E"] },
@@ -193,7 +197,9 @@ var actions = [
   // task through.
   { id: "dashNextAsk", group: "dash", places: ["dash"], does: "Next thing from the agent to settle (round again at the end)", keys: ["N"] },
   { id: "dashPrevAsk", group: "dash", places: ["dash"], does: "The one before it", keys: ["Shift+N"] },
-  { id: "dashTalk", group: "dash", places: ["dash"], does: "Talk with the agent about it (the agent's pane opens on it)", keys: ["Ctrl+Shift+Enter"] },
+  // C is Todoist's comment key, and the word on the row; Ctrl+Enter is
+  // the note's key for the same chat (2026-10-27, no longer done here).
+  { id: "dashTalk", group: "dash", places: ["dash"], does: "Chat about it (the agent's pane opens on it)", keys: ["C", "Ctrl+Enter"] },
   { id: "dashUndo", group: "dash", places: ["dash"], does: "Take the last tick back", keys: ["Ctrl+Z"] },
   { id: "dashBack", group: "dash", places: ["dash"], does: "Back to the note", keys: ["Esc"] },
 
@@ -252,7 +258,7 @@ var actions = [
   // Esc backs out one level: a block's or a task's conversation to the
   // day's, when that is open (the pane's home); else the pane closes and
   // the keys go back where they were.
-  { id: "marginBack", group: "margin", places: ["margin", "chat"], does: "Back out: to the day's conversation if it is open, else close the pane", keys: ["Esc"] }
+  { id: "marginBack", group: "margin", places: ["margin", "chat"], does: "Back out: to the day's chat if it is open, else close the pane", keys: ["Esc"] }
 ]
 
 // The text field's own keys: shown, never moved, and never taken. `keys`

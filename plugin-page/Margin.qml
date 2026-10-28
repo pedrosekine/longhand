@@ -197,7 +197,7 @@ BorderSurface {
         textFormat: Text.PlainText
         wrapMode: Text.WordWrap
         text: !page.talkItem ? "Think it through with the agent below — it knows your notes, this course's documents and "
-          + "what the planner said about it. The conversation stays with the task."
+          + "what the planner said about it. The chat stays with the task."
           : (page.talkItem.kind === "question"
           ? "Answer in your words below, or ask back. " : "Ask the planner about it below — why this, or what you would rather. ")
           + "If you two agree, that settles it."
@@ -437,7 +437,8 @@ BorderSurface {
         visible: !margin.talk && !page.answered(page.currentRecord) && !page.answering && page.noteTurns.length === 0
         textFormat: Text.PlainText
         wrapMode: Text.WordWrap
-        text: "Nothing from the agent on this block yet. " + page.keyName("ask") + " sends it, or ask below."
+        text: "Nothing from the agent on this block yet. " + (page.currentTrigger !== ""
+          ? page.keyName("ask") + " sends it, or write below." : "Write below to start its chat.")
         color: page.faint
         font.family: page.fontFamily
         font.styleName: page.fontStyle

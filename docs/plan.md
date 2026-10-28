@@ -632,6 +632,14 @@ this list, with *Open, in order* above. Each says why it waits.
 No work unless they bite; each says what would tell. The first four came
 from 2026-09/10 and still stand.
 
+- **Chat on a task** (built 2026-10-28, `docs/keys-proposal.md`, slice 1):
+  - Is a task's chat opened from the dashboard now (`talk` `task` in the
+    usage log; `talk` and a kind for a proposal's)?
+  - Ctrl+Enter on a block with no sign opens its chat (`chat` / `open` in
+    the usage log): do those chats get a first message, or are they opened
+    and left?
+  - Does "chat c" on the selected row read as a control, and is it found
+    without the hint line?
 - **Notes beyond the calendar** (built 2026-10-26/27, `docs/files.md`):
   - Is the Files space opened at all, and from where (`space`,
     `space-swipe` and `file` in the usage log)?
@@ -660,7 +668,8 @@ from 2026-09/10 and still stand.
   - The live check "…the block goes with the message" waits 12 s for the
     day's answer, and failed 3 times in about 12 runs.
 
-- Whether **"ask"** is the right word for sending a block.
+- ~~Whether **"ask"** is the right word for sending a block.~~ Answered
+  2026-10-27: "chat", one word in every state (`docs/keys-proposal.md`).
 - Whether **"seen, nothing to say"** wants a mark.
 - The type's **weight on a light theme**; the trackpad's **`gain`**.
 - Whether the **seal as "made together"** reads as a status rather than

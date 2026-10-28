@@ -122,9 +122,11 @@ different things in different places (Enter, Ctrl+E), but only one thing in
 each, and the keys sheet lists each place's keys under it.
 
 Days moved off the brackets for this: the day before and after are now
-`Alt+[` / `Alt+]` (and `Ctrl+PgUp` / `Ctrl+PgDn` as before). Talking about a
-dashboard row is `Ctrl+Shift+Enter`, the same key that talks about a block
-in the note.
+`Alt+[` / `Alt+]` (and `Ctrl+PgUp` / `Ctrl+PgDn` as before). A chat has one
+key since 2026-10-27 ([keys-proposal.md](keys-proposal.md)): `Ctrl+Enter`
+opens this block's or this row's chat (`C` on the dashboard too), and
+`Ctrl+Shift+Enter` the whole's, the day's chat from anywhere (in a note from
+Files, that note's).
 
 ## The pointer follows the keys
 

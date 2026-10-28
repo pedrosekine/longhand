@@ -200,9 +200,13 @@ things must both be true for a block to reach the model: it carries a
   to every item, so ticking one later does not lose it for the others.
   Typing `- []` becomes `- [ ] `.
 - `Ctrl+Enter` sends the block or list under the cursor at any later moment,
-  asked about or not. On a block without a sign it sends nothing and a washed
-  line under the cursor says why. A ticked box is a sign of its own, so a
-  tick can be sent this way too.
+  asked about or not. A ticked box is a sign of its own, so a tick can be
+  sent this way too. On a block without a sign it sent nothing and a washed
+  line said why, until 2026-10-27: it opens the block's chat now, the box
+  ready, and the student speaks first ([keys-proposal.md](keys-proposal.md)).
+  Nothing reaches the model until they write, so the sign + say-so pair
+  still holds for what the agent is sent unasked. The header's word is
+  "chat" since then, not "ask"/"reply".
 - Opening the page runs one automatic pass (skipped when nothing is new), so
   answers are waiting when the student comes back. Its observations have no
   block; they are kept in the state file for the suggestions panel.

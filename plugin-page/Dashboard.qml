@@ -336,9 +336,56 @@ BorderSurface {
                 font.pixelSize: page.fs(Style.font.caption)
               }
 
+              // "chat c": this row's chat, on the row the keys are on and the
+              // one under the mouse (docs/keys-proposal.md, 2026-10-27). One
+              // word whatever the chat holds; nothing on a private box, which
+              // offers nothing of the agent's.
+              Item {
+                id: chatWord
+                readonly property bool can: (dashRow.kind === "task" || dashRow.kind === "deadline" || dashRow.asks)
+                  && !(dashRow.line && dashRow.line.private)
+                visible: can && (dashRow.hot || rowHover.hovered)
+                anchors.right: parent.right
+                y: Math.round((inner.lineH - height) / 2)
+                width: chatRow.implicitWidth
+                height: chatRow.implicitHeight
+                Row {
+                  id: chatRow
+                  spacing: page.sp(4)
+                  Text {
+                    anchors.baseline: chatKey.baseline
+                    textFormat: Text.PlainText
+                    text: "chat"
+                    color: chatArea.containsMouse ? page.accent : page.dim
+                    font.family: page.fontFamily
+                    font.styleName: page.fontStyle
+                    font.pixelSize: page.fs(Style.font.bodySmall)
+                  }
+                  Text {
+                    id: chatKey
+                    textFormat: Text.PlainText
+                    text: page.keyName("dashTalk")
+                    color: page.faint
+                    font.family: page.fontFamily
+                    font.styleName: page.fontStyle
+                    font.pixelSize: page.fs(Style.font.caption)
+                  }
+                }
+                MouseArea {
+                  id: chatArea
+                  anchors.fill: parent
+                  anchors.margins: -page.sp(4)
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: { page.taskFocus = dashRow.index; page.talkFocused() }
+                  PanelToolTip { visible: parent.containsMouse; text: page.tip("Chat about it", "dashTalk") }
+                }
+              }
+
               Row {
                 id: pills
-                anchors.right: parent.right
+                anchors.right: chatWord.visible ? chatWord.left : parent.right
+                anchors.rightMargin: chatWord.visible ? page.sp(10) : 0
                 y: Math.round((inner.lineH - height) / 2)
                 spacing: page.sp(6)
                 Repeater {
@@ -485,13 +532,15 @@ BorderSurface {
                 visible: parent.containsMouse && (kind === "task" || kind === "deadline" || kind === "shelf" || kind === "grading" || kind === "raised"
                                                   || kind === "proposal" || kind === "question" || kind === "told")
                 text: kind === "task" ? page.tips([["Go to the line", "dashOpen"], ["Done", "dashDone"], ["Reschedule", "dashWhen"], ["Cycle its priority", "dashPriority"],
-                                                   [dashRow.task && dashRow.task.away ? "Back" : "Not now", "dashShelve"], ["Keep it", "dashKeep"], ["Drop it", "dashDrop"]])
-                  : kind === "deadline" ? page.tips([["Go to its line", "dashOpen"], ["Done", "dashDone"], ["The day to work on it", "dashWhen"], ["Cycle its priority", "dashPriority"], ["Grade", "dashGrade"]])
-                  : kind === "told" ? page.tips([["Let it stand", "dashDone"], ["Undo it", "dashDrop"], ["Talk with the planner about it", "dashOpen"]])
+                                                   [dashRow.task && dashRow.task.away ? "Back" : "Not now", "dashShelve"], ["Keep it", "dashKeep"], ["Drop it", "dashDrop"]]
+                                                  .concat(chatWord.can ? [["Chat about it", "dashTalk"]] : []))
+                  : kind === "deadline" ? page.tips([["Go to its line", "dashOpen"], ["Done", "dashDone"], ["The day to work on it", "dashWhen"], ["Cycle its priority", "dashPriority"], ["Grade", "dashGrade"]]
+                                                   .concat(chatWord.can ? [["Chat about it", "dashTalk"]] : []))
+                  : kind === "told" ? page.tips([["Let it stand", "dashDone"], ["Undo it", "dashDrop"], ["Chat about it", "dashOpen"]])
                   : kind === "proposal" && dashRow.modelData.item.kind === "file"
                     ? page.tips([["File it: moved from Downloads into the course's documents", "dashDone"], ["Decline", "dashDrop"], ["Open it first", "dashOpen"]])
-                  : kind === "proposal" ? page.tips([["Accept", "dashDone"], ["Decline", "dashDrop"], ["Talk with the planner about it", "dashOpen"]])
-                  : kind === "question" ? page.tips([["Accept the recommended answer", "dashDone"], ["Talk it through: answer in your words, or ask back", "dashOpen"], ["Decline", "dashDrop"]])
+                  : kind === "proposal" ? page.tips([["Accept", "dashDone"], ["Decline", "dashDrop"], ["Chat about it", "dashOpen"]])
+                  : kind === "question" ? page.tips([["Accept the recommended answer", "dashDone"], ["Chat about it: answer in your words, or ask back", "dashOpen"], ["Decline", "dashDrop"]])
                   : kind === "shelf" ? page.tip("Show what is not now", "dashOpen")
                   : kind === "grading" ? page.tip("Show what waits for a grade", "dashOpen")
                   : page.tip("Dismiss it", "dashOpen")
@@ -519,6 +568,7 @@ BorderSurface {
         textFormat: Text.PlainText
         wrapMode: Text.WordWrap
         text: page.keyName("dashUp") + page.keyName("dashDown") + " move · " + page.keyName("dashOpen") + " opens the line · "
+          + page.keyName("dashTalk") + " chat · "
           + page.keyName("dashDone") + " done · " + page.keyName("dashWhen") + " when · " + page.keyName("dashPriority") + " priority · "
           + page.keyName("dashShelve") + " not now · " + page.keyName("dashKeep") + " keep · " + page.keyName("dashGrade") + " grade · "
           + page.keyName("dashPlan") + " plan now · "

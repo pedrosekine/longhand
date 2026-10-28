@@ -324,9 +324,9 @@ BorderSurface {
         textFormat: Text.PlainText
         wrapMode: Text.WordWrap
         text: page.noteRoom
-          ? "Ask about this note. Asking shares it with the agent, for this conversation only; the note itself is never written. Point at a part with " + page.keyName("dayHere") + "."
+          ? "Chat about this note. Chatting shares it with the agent, for this chat only; the note itself is never written. Point at a part with @."
           : page.dayCanSend
-          ? "Talk to the day: your tasks, your courses, what you wrote. Point at a block with " + page.keyName("dayHere") + " from the note."
+          ? "The day's chat: your tasks, your courses, what you wrote. Point at a block with @."
           : "Nothing was said on this day."
         color: page.faint
         font.family: page.fontFamily
@@ -399,8 +399,8 @@ BorderSurface {
       // Read-only rather than disabled on a past day: the pane still takes
       // the keys, so Esc and the panes' keys work in it.
       readOnly: !page.dayCanSend
-      placeholderText: page.noteRoom ? "ask about this note…"
-        : page.dayCanSend ? "talk to the day…" : "a past day: today's is where you talk (" + page.keyName("today") + ")"
+      placeholderText: page.noteRoom ? "chat about this note…"
+        : page.dayCanSend ? "chat with the day…" : "a past day: today's is where you chat (" + page.keyName("today") + ")"
       onKeyPressed: function (event) { if (page.dayKey(event)) event.accepted = true }
       onTextChanged: Qt.callLater(page.updateDayMention)
       onCursorPositionChanged: Qt.callLater(page.updateDayMention)
@@ -412,7 +412,7 @@ BorderSurface {
       wrapMode: Text.WordWrap
       text: page.keyName("chatSend") + " sends · Shift+Enter a new line · @ points at a block"
         + (page.dayOpenCards.length > 0 ? " · " + page.keyName("marginUp") + " to its proposals" : "")
-        + " · " + page.keyName("marginBack") + " closes · " + page.keyName("day") + " from anywhere"
+        + " · " + page.keyName("marginBack") + " closes · " + page.keyName("dayChat") + " from anywhere"
       color: page.faint
       font.family: page.fontFamily
       font.styleName: page.fontStyle

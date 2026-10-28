@@ -22,9 +22,9 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | The sidebar's space before (Time, Files), opening the sidebar | `Ctrl+{` | everywhere |
 | The sidebar's space after (Time, Files), opening the sidebar | `Ctrl+}` | everywhere |
 | The middle: go there; in it, flip the note and the dashboard | `Ctrl+\` | everywhere |
-| The agent's pane: go there, opening it on the day's conversation; in it, close it | `Ctrl+]` · `Ctrl+J` | everywhere |
+| The agent's pane: go there, opening it on the day's chat; in it, close it | `Ctrl+]` · `Ctrl+J` | everywhere |
 | The open pane to the left | `Alt+←` | everywhere |
-| The open pane to the right (in the note, with none: this block's conversation) | `Alt+→` | everywhere |
+| The open pane to the right (in the note, with none: this block's chat) | `Alt+→` | everywhere |
 | Open or close the dashboard | `Ctrl+T` | everywhere |
 | Flip between overlay and window | `F11` · `Ctrl+Alt+P` | everywhere |
 | Close the overlay | `Esc` | in the note |
@@ -69,10 +69,10 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 
 | | Keys | Works |
 |---|---|---|
-| Ask about this block, or open its conversation | `Ctrl+Enter` | in the note |
-| In the day's conversation: its last answer was helpful (again: take it back) | `Alt+=` | in the conversation box |
-| In the day's conversation: its last answer was not helpful (again: take it back) | `Alt+-` | in the conversation box |
-| The day's conversation, pointing at this block | `Ctrl+Shift+Enter` | in the note |
+| Chat about this block (with a sign for the agent: it answers first) | `Ctrl+Enter` | in the note |
+| The day's chat (in a note from Files: the note's) | `Ctrl+Shift+Enter` | everywhere |
+| In the day's chat: its last answer was helpful (again: take it back) | `Alt+=` | in the chat's box |
+| In the day's chat: its last answer was not helpful (again: take it back) | `Alt+-` | in the chat's box |
 
 ## @ a project
 
@@ -102,8 +102,8 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | Move down | `↓` · `j` | in the dashboard |
 | First row | `Home` | in the dashboard |
 | Last row | `End` | in the dashboard |
-| Go to the line; on what the agent proposes, asks or did, talk with it (the margin opens beside) | `Enter` | in the dashboard |
-| Done (again: not done); on the agent's proposal, accept | `Ctrl+Enter` · `Space` · `e` · `Ctrl+L` | in the dashboard |
+| Go to the line; on what the agent proposes, asks or did, its chat (the margin opens beside) | `Enter` | in the dashboard |
+| Done (again: not done); on the agent's proposal, accept | `Space` · `e` · `Ctrl+L` | in the dashboard |
 | When: reschedule it | `t` · `Ctrl+D` | in the dashboard |
 | Cycle its priority | `p` | in the dashboard |
 | Rename it (its line's words) | `Ctrl+E` | in the dashboard |
@@ -114,7 +114,7 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | Ask the agent to plan now | `Ctrl+R` | in the dashboard |
 | Next thing from the agent to settle (round again at the end) | `n` | in the dashboard |
 | The one before it | `Shift+N` | in the dashboard |
-| Talk with the agent about it (the agent's pane opens on it) | `Ctrl+Shift+Enter` | in the dashboard |
+| Chat about it (the agent's pane opens on it) | `c` · `Ctrl+Enter` | in the dashboard |
 | Take the last tick back | `Ctrl+Z` | in the dashboard |
 | Back to the note | `Esc` | in the dashboard |
 
@@ -180,14 +180,14 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 
 | | Keys | Works |
 |---|---|---|
-| Previous proposal (from an empty box: into the proposals) | `↑` | in the margin, in the conversation box |
+| Previous proposal (from an empty box: into the proposals) | `↑` | in the margin, in the chat's box |
 | Next proposal, then the box | `↓` | in the margin |
 | Do what the proposal says | `Enter` · `Space` | in the margin |
 | Decline what you are talking about (a question: set it aside; a thing done: undo it) | `Del` | in the margin |
 | The reply was helpful (again: take it back) | `+` · `=` | in the margin |
 | The reply was not helpful (again: take it back) | `-` | in the margin |
-| Send what you wrote | `Enter` | in the conversation box |
-| Back out: to the day's conversation if it is open, else close the pane | `Esc` | in the margin, in the conversation box |
+| Send what you wrote | `Enter` | in the chat's box |
+| Back out: to the day's chat if it is open, else close the pane | `Esc` | in the margin, in the chat's box |
 
 ## Settings
 

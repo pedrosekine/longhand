@@ -1403,6 +1403,7 @@ Item {
     if (Sc.hit(event, "keys")) { root.toggleKeys(); return true }
     if (Sc.hit(event, "settings")) { root.toggleSettings(); return true }
     if (Sc.hit(event, "sidebar")) { root.paneKey("left"); return true }
+    if (Sc.hit(event, "dayChat")) { root.openDay(""); return true }
     if (Sc.hit(event, "spacePrev")) { root.switchSpace(-1); return true }
     if (Sc.hit(event, "linkBack")) { root.goBack(-1); return true }
     if (Sc.hit(event, "linkForward")) { root.goBack(1); return true }
@@ -1822,16 +1823,11 @@ Item {
     root.enqueue(cmd, hash)
   }
 
-  // Ctrl+Enter: send the block under the cursor, if it carries a sign for
-  // the agent. A block without one stays where it is; the margin says why.
-  property bool noSignHint: false
   property string hint: ""   // a passing word (a date that did not read, what a check did, …)
   // What the page says in passing, in the header's status line. It used to
   // float under the cursor and print over the line below it (2026-10-17);
   // up there it covers nothing, so it can stay long enough to be read.
-  readonly property string status: root.hint !== "" ? root.hint
-    : root.noSignHint ? "nothing to ask here — make it a checkbox or end it with ?"
-    : ""
+  readonly property string status: root.hint
   function showHint(t) { root.hint = t; hintTimer.restart() }
   // A block the agent has already answered is not asked again. The hash is
   // of the block's text, so a block that still carries its answer is text
@@ -1845,15 +1841,17 @@ Item {
     return !!rec && (!!rec.reply || (!!rec.chat && rec.chat.length > 0))
   }
 
+  // Ctrl+Enter, and the header's "chat": this block's chat. A block with a
+  // sign for the agent (a checkbox, a closing ?, a tick) is sent, and the
+  // agent speaks first; any other block opens its chat with the box ready,
+  // and you do (2026-10-27: a block without a sign used to be refused, while
+  // Alt+→ opened the same chat). One answered already is not asked again.
   function sendCurrent() {
     if (root.currentHash === "" || !root.dayNote) return
-    if (root.answered(root.currentRecord)) {
-      if (root.marginWidth <= 0) { root.showHint("already answered — the window is too narrow to show it"); return }
-      root.used("reopen")
-      root.diveIn(true)
-      return
-    }
-    if (root.currentTrigger === "") { root.noSignHint = true; hintTimer.restart(); return }
+    if (!root.agentOn) { root.showHint("private: the agent sees nothing of this note"); return }
+    if (root.blockPrivate(root.currentHash)) { root.showHint("private: the agent sees nothing of this block"); return }
+    if (root.answered(root.currentRecord)) { root.openBlockChat("reopen"); return }
+    if (root.currentTrigger === "") { root.openBlockChat("open"); return }
     // A dated item may still be binding. The agent has to see its dates as
     // deadlines, never as words to propose a second time (2026-10-13), so
     // the send waits for the queue — as the prompt used to before it went.
@@ -1862,7 +1860,7 @@ Item {
       var h = root.hashNearLine(root.lineIndexAt(editor.cursorPosition))
       if (h === "") { root.doneSending(); return }
       var trigger = root.triggerForBlock(h)
-      if (trigger === "") { root.doneSending(); root.noSignHint = true; hintTimer.restart(); return }
+      if (trigger === "") { root.doneSending(); root.openBlockChat("open"); return }
       // A list of boxes is one submission however it is sent.
       root.send(trigger, trigger === "checkbox" || trigger === "tick" ? root.listAround(h) : [h], h)
     })
@@ -1878,6 +1876,18 @@ Item {
     root.used("send", trigger)
     root.markSending([focus || hashes[0]])
     root.requestRun(trigger, hashes.join(","))
+  }
+
+  function openBlockChat(how) {
+    if (root.marginWidth <= 0) { root.showHint("the window is too narrow for the chat"); return }
+    root.used(how === "reopen" ? "reopen" : "chat", how)
+    root.diveIn(true)
+  }
+
+  function blockPrivate(hash) {
+    var blocks = Blocks.split(editor.text)
+    for (var i = 0; i < blocks.length; i++) if (blocks[i].hash === hash) return !!blocks[i].private
+    return false
   }
 
   // The run of adjacent list items around a block: no blank line between
@@ -2192,7 +2202,6 @@ Item {
     if (Sc.hit(event, "private")) { root.togglePrivate(); return true }
     if (Sc.hit(event, "privateBlock")) { root.togglePrivateBlock(); return true }
     if (Sc.hit(event, "ask")) { root.sendCurrent(); return true }
-    if (Sc.hit(event, "dayHere")) { root.openDay(root.currentHash); return true }
     // Selecting to the same edges is the editor's (selectToBlockEdge).
     if (Sc.hit(event, "blockStart")) { root.walkBlocks(-1); return true }
     if (Sc.hit(event, "blockEnd")) { root.walkBlocks(1); return true }
@@ -3640,8 +3649,8 @@ Item {
     root.startTalk("open")
   }
 
-  // Alt+→ on a task's row (the note's key for its margin): the agent,
-  // summoned to think the task through, on the task's one conversation.
+  // C or Ctrl+Enter on a task's row, or the row's "chat" (2026-10-27): the
+  // agent, summoned to think the task through, on the task's one chat.
   function openTaskTalk(t) {
     if (!t || !t.key) return
     if (t.private) { root.showHint("private: the agent sees nothing of this box"); return }
@@ -6158,7 +6167,7 @@ Item {
   Timer {
     id: hintTimer
     interval: 6000
-    onTriggered: { root.noSignHint = false; root.hint = "" }
+    onTriggered: root.hint = ""
   }
 
   // ------------------------------------------------------------ window
@@ -6310,7 +6319,7 @@ Item {
               onClicked: root.sealClicked()
               PanelToolTip {
                 visible: parent.containsMouse
-                text: root.tip(root.dayShown ? "Close the agent's pane" : "The agent's pane: talk to the day", "day")
+                text: root.tip(root.dayShown ? "Close the agent's pane" : "The agent's pane: the day's chat", "day")
               }
             }
           }
@@ -6505,11 +6514,11 @@ Item {
               textFormat: Text.PlainText
               // Its full words while the right half of the header has room
               // for them beside the pin; else the short ones.
-              readonly property string full: root.noteTalkTurns > 0 ? "about this note · " + Math.ceil(root.noteTalkTurns / 2) : "ask about this note"
+              readonly property string full: root.noteTalkTurns > 0 ? "this note's chat · " + Math.ceil(root.noteTalkTurns / 2) : "chat about this note"
               TextMetrics { id: noteAskFull; font: noteAsk.font; text: noteAsk.full }
               // (A day before the horizon has its own words beside it.)
               text: headerRight.parent.width / 2 - root.sp(120) - (root.beforeHorizon ? root.sp(140) : 0) >= noteAskFull.width ? full
-                : root.noteTalkTurns > 0 ? "about · " + Math.ceil(root.noteTalkTurns / 2) : "ask"
+                : root.noteTalkTurns > 0 ? "chat · " + Math.ceil(root.noteTalkTurns / 2) : "chat"
               color: noteAskArea.containsMouse ? root.accent : root.noteRoom && root.dayShown ? root.foreground : root.faint
               font.family: root.fontFamily
               font.styleName: root.fontStyle
@@ -6523,7 +6532,7 @@ Item {
                 onClicked: root.noteRoom && root.dayShown ? root.closeDay() : root.openRoom("", true)
                 PanelToolTip {
                   visible: parent.containsMouse
-                  text: root.tip(root.noteTalkTurns > 0 ? "This note's conversation" : "Talk to the agent about this note: asking shares it, for this conversation only", "day")
+                  text: root.tip(root.noteTalkTurns > 0 ? "This note's chat" : "Chat about this note: chatting shares it, for this chat only", "dayChat")
                 }
               }
             }
@@ -6538,10 +6547,11 @@ Item {
               visible: svc.header !== "" && root.agentOn && !root.pdfShown
               anchors.verticalCenter: parent.verticalCenter
               textFormat: Text.PlainText
-              // Once the block has an answer the word is not "ask" any
-              // more: the key opens the conversation on it instead of
-              // paying to be told the same thing twice.
-              text: root.answered(root.currentRecord) ? "reply" : "ask"
+              // One word, whatever the chat holds (2026-10-27: it was "ask",
+              // then "reply" once answered, and a word that changes says the
+              // key under it changes too). It opens this block's chat; a block
+              // with a sign is sent first, and one answered is not asked again.
+              text: "chat"
               color: askArea.containsMouse ? root.accent
                 : (root.currentTrigger !== "" || root.answered(root.currentRecord) ? root.dim : root.faint)
               font.family: root.fontFamily
@@ -6556,7 +6566,8 @@ Item {
                 onClicked: { root.sendCurrent(); editor.focusNote() }
                 PanelToolTip {
                   visible: parent.containsMouse
-                  text: root.tip(root.answered(root.currentRecord) ? "Open the conversation on this block" : "Ask the agent about this block", "ask")
+                  text: root.tip(root.answered(root.currentRecord) ? "This block's chat"
+                    : root.currentTrigger !== "" ? "Chat about this block: the agent answers first" : "Chat about this block", "ask")
                 }
               }
             }

@@ -638,14 +638,16 @@ def main() -> int:
         text = p.call("text")
         check("by 30 oct" not in text and "by 15 jan" not in text,
               f"…with its cue words gone ({text.count(' ^d')} of 3)")
-        # The header's "ask" is the visible way in, on the same path as
+        # The header's "chat" is the visible way in, on the same path as
         # Ctrl+Enter: it reads the sign on the block under the cursor.
         p.call("cursor", p.offset_of_line(p.line_of("Initial paper")) + 10)
         check(p.wait(lambda: p.call("sign") == "checkbox"), f"a box is a sign the header can see ({p.call('sign')})")
         p.call("cursor", 1)
         check(p.wait(lambda: p.call("sign") == ""), "a line with no sign offers nothing")
         p.call("askNow")
-        check(p.wait(lambda: p.call("noSign") == "true"), "…and asking anyway says why instead of sending")
+        check(p.wait(lambda: json.loads(p.call("panes"))["right"] == "margin") and p.call("ask") == "null",
+              f"…and chatting anyway opens its chat, the box ready, nothing sent ({p.call('panes')})")
+        p.call("closePanes")
 
         # 10d. one line, one deadline: the page's own binding and the agent's
         # proposal for the same line do not make two, in either order
@@ -1037,11 +1039,11 @@ def main() -> int:
         check(p.wait(below, 3), f"…and the next line moves below the question ({before} → {p.call('rowY', b)}, {p.call('room')})")
         p.call("closeWhen")
         check(p.wait(lambda: abs(float(p.call("rowY", b)) - before) < 1), "…and back when it is answered or left")
-        (p.daily / f"{TODAY}.md").write_text(header(TODAY) + "just words\n")
+        (p.daily / f"{TODAY}.md").write_text(header(TODAY) + "> [!private]\n> just words\n")
         p.open_fresh()
-        p.call("cursor", 3)
+        p.call("cursor", p.call("text").index("just words") + 3)
         p.call("askNow")
-        check(p.wait(lambda: "nothing to ask here" in p.call("status")), f"a passing word is in the status line ({p.call('status')!r})")
+        check(p.wait(lambda: p.call("status").startswith("private: the agent sees nothing")), f"a passing word is in the status line ({p.call('status')!r})")
 
         # A run of list items is one submission, but the mark is on the line
         # the student asked from — the whole list lighting up read as the
@@ -1153,7 +1155,7 @@ def main() -> int:
 
         heard = int(p.call("ticksHeard"))
         row("draft the intro")
-        check(p.call("dashKey", KEY_RETURN, CTRL) == "true", "Ctrl+Enter is the act that settles a row")
+        check(p.call("dashKey", 0x20, 0) == "true", "Space is the act that settles a row")
         check(int(p.call("ticksHeard")) == heard + 1, "…and the tick asks for its sound")
         check(p.wait(lambda: p.played.exists() and "tick.wav" in p.played.read_text()),
               "…and the sound is really played (pw-play, given tick.wav)")
@@ -1417,8 +1419,11 @@ def main() -> int:
         p.wait(lambda: "ask the dean" in p.note())
         p.call("cursor", p.offset_of_line(p.line_of("ask the dean")) + 6)
         check(p.call("pageKey", KEY_ENTER, CTRL | SHIFT) == "true" and p.wait(lambda: p.call("dayShown") == "true")
-              and "ask the dean" in p.call("dayBlockText"),
-              f"Ctrl+Shift+Enter in a block opens the day pointing at it ({p.call('dayBlockText')!r})")
+              and p.call("dayBlockText") == "",
+              f"Ctrl+Shift+Enter in a block opens the day's chat, pointing at nothing ({p.call('dayBlockText')!r})")
+        p.call("dayType", "@dean")
+        check(p.wait(lambda: json.loads(p.call("dayMention"))) and p.call("dayKey", KEY_ENTER, 0) == "true"
+              and "ask the dean" in p.call("dayBlockText"), f"…@ points at the block ({p.call('dayBlockText')!r})")
         p.call("daySend", "and this one?")
         check(p.wait(lambda: json.loads(p.call("dayTurns"))[-1] == "agent: day: and this one?", timeout=12)
               and p.call("dayBlockText") == "", "…the block goes with the message, and the box lets go of it")
@@ -1729,7 +1734,7 @@ def main() -> int:
         notes_before = {f.name: f.read_text() for f in p.daily.glob("*.md")}
         check(all(f.read_text() == notes_before[f.name] for f in p.daily.glob("*.md")), "proposing wrote nothing into a note")
         p.call("dashFocus", i)
-        check(p.call("dashKey", KEY_RETURN, CTRL) == "true", "Ctrl+Enter on the proposal accepts it")
+        check(p.call("dashKey", 0x20, 0) == "true", "Space on the proposal accepts it")
         when = prop["date"]
         check(p.wait(lambda: any(f"⏳ {when}" in f.read_text() for f in p.daily.glob("*.md"))),
               f"…and the page writes the do-date on the box's line (⏳ {when})")
@@ -1824,7 +1829,7 @@ def main() -> int:
         check(p.wait(lambda: task_row() >= 0),
               f"the task talked about has its row ({talked!r} in {[r.get('text') for r in json.loads(p.call('dashRows')) if r.get('kind') in ('task', 'deadline')]})")
         p.call("dashFocus", task_row())
-        check(p.call("dashKey", KEY_RETURN, CTRL | SHIFT) == "true", "Ctrl+Shift+Enter on a task's row")
+        check(p.call("dashKey", 0x43, 0) == "true", "C on a task's row")
         check(p.wait(lambda: "student: why that day?" in json.loads(p.call("talk"))["turns"]),
               f"…opens the task's conversation beside the dashboard, what was said with the planner in it ({p.call('talk')})")
         check(json.loads(p.call("talk"))["item"] == "", "…nothing pinned to accept: it is the task itself")
@@ -1878,7 +1883,7 @@ def main() -> int:
         check("Rechnung" not in p.call("dashRows"), "…and the invoice beside it is not listed")
         check(p.call("rowAuthor", fi) == "agent", "…as the agent's proposal")
         p.call("dashFocus", fi)
-        check(p.call("dashKey", KEY_RETURN, CTRL) == "true", "Ctrl+Enter files it")
+        check(p.call("dashKey", 0x20, 0) == "true", "Space files it")
         filed = p.vault / "projects" / "dtm" / "docs" / f"{TODAY_ISO} DTM handout.pdf"
         check(p.wait(lambda: filed.is_file() and not (inbox / "DTM_handout.pdf").exists()),
               "…moved from the inbox into projects/dtm/docs/")
@@ -1946,7 +1951,7 @@ def main() -> int:
               f"accepting writes the steps under the box, one level in ({p.note()[-160:]!r})")
         check(p.wait(lambda: p.call("authorOf", p.line_of("- [ ] outline it")) == "agent"), "…as the agent's (◇)")
         p.wait(lambda: not any(r.get("ask") == "steps" for _, r in acts()))
-        check(p.call("dashKeyOn", "proposal", "deadline", KEY_RETURN, CTRL) == "true", "Ctrl+Enter accepts the deadline")
+        check(p.call("dashKeyOn", "proposal", "deadline", 0x20, 0) == "true", "Space accepts the deadline")
         check(p.wait(lambda: f"- [ ] Poster 📅 {poster_day}" in p.note()),
               f"accepting a deadline found in the writing writes its box (rows now: "
               f"{[(r['kind'], r.get('ask'), r.get('say')) for _, r in acts()]}; text has it: {'Poster' in p.call('text')}; "
@@ -2370,13 +2375,22 @@ def main() -> int:
         check(p.wait(lambda: panes()["center"] == "dash" and panes()["right"] == "day" and panes()["here"] == "center", 2),
               f"the dashboard, the day beside it, the keys on the rows ({panes()})")
         p.call("dashFocus", next(n for n, r in enumerate(json.loads(p.call("dashRows"))) if r.get("text") == "write the intro"))
-        check(p.call("dashKey", KEY_RETURN, CTRL | SHIFT) == "true" and p.wait(lambda: panes()["right"] == "talk" and panes()["here"] == "right", 2),
-              f"Ctrl+Shift+Enter on a task: its conversation in the day's place ({panes()})")
+        check(p.call("dashKey", 0x43, 0) == "true" and p.wait(lambda: panes()["right"] == "talk" and panes()["here"] == "right", 2),
+              f"C on a task: its chat in the day's place ({panes()})")
         check(p.call("talkKey", KEY_ESC, 0) == "true" and p.wait(lambda: panes()["right"] == "day" and panes()["here"] == "right", 2),
               f"…Esc: back to the day's conversation, the pane's home, with the keys ({panes()})")
         p.call("dayKey", KEY_ESC, 0)
         check(p.wait(lambda: panes()["panes"] == ["center"] and panes()["center"] == "dash" and p.call("dashFocused") == "true", 2),
               f"…and Esc again closes the pane, the keys back on the dashboard ({panes()})")
+        check(p.call("dashKey", KEY_RETURN, CTRL) == "true" and p.wait(lambda: panes()["right"] == "talk", 2)
+              and not any("- [x] write the intro" in f.read_text() for f in p.daily.glob("*.md")),
+              f"Ctrl+Enter on a task: the same chat, and not done ({panes()})")
+        p.call("talkKey", KEY_ESC, 0)
+        p.wait(lambda: panes()["panes"] == ["center"], 2)
+        check(p.call("dashKey", KEY_RETURN, CTRL | SHIFT) == "true" and p.wait(lambda: panes()["right"] == "day", 2),
+              f"Ctrl+Shift+Enter on the dashboard: the day's chat ({panes()})")
+        p.call("dayKey", KEY_ESC, 0)
+        p.wait(lambda: panes()["panes"] == ["center"], 2)
 
         # Cancelled rows stay on the dashboard until tomorrow, as done ones
         # do (docs/tasks.md, rule 5): one cancelled today is listed, one
@@ -2521,9 +2535,9 @@ def main() -> int:
         p.call("cursor", p.call("text").index("Notes from") + 3)
         p.call("blipReset")
         p.call("pageKey", KEY_RETURN, CTRL | SHIFT)
-        check(p.wait(lambda: nt()["room"] and "Notes from the first session." in p.call("dayBlockText")),
-              f"Ctrl+Shift+Enter in a file: its conversation, pointing at the block ({p.call('dayBlockText')!r})")
-        check(p.wait(lambda: nt()["blip"] not in ("", "sheet")), f"…and only that block lights ({nt()})")
+        check(p.wait(lambda: nt()["room"] and nt()["shown"]) and p.call("dayBlockText") == "",
+              f"Ctrl+Shift+Enter in a file: the note's chat, the whole of it ({nt()}, {p.call('dayBlockText')!r})")
+        check(p.wait(lambda: nt()["blip"] == "sheet"), f"…and the whole note lights ({nt()})")
         p.call("dayKey", KEY_ESC, 0)
         p.call("pageKey", KEY_BL, CTRL)
         p.call("filesKey", KEY_SLASH, 0)
@@ -2574,12 +2588,18 @@ def main() -> int:
         time.sleep(1.2)
         check("^d" not in [l for l in p.note().split("\n") if "therapy" in l][0],
               f"…left with a date at its end, it is not bound ({[l for l in p.note().split(chr(10)) if 'therapy' in l]})")
+        p.call("cursor", p.offset_of_line(line) + 8)
+        p.call("askNow")
+        check(p.wait(lambda: p.call("hint").startswith("private: the agent sees nothing of this block"))
+              and json.loads(p.call("panes"))["right"] != "margin" and p.call("ask") == "null",
+              f"Ctrl+Enter in it: no chat opens, nothing is sent ({p.call('hint')!r})")
+        p.call("cursor", 1)
         p.call("dash")
         trow = lambda: next((r for r in json.loads(p.call("dashRows")) if r.get("text", "").startswith("therapy")), None)
         check(p.wait(lambda: (trow() or {}).get("priv") is True, 8), f"…on the dashboard, marked private ({trow()})")
         p.call("dashFocus", next(n for n, r in enumerate(json.loads(p.call("dashRows"))) if r.get("text", "").startswith("therapy")))
-        p.call("dashKey", KEY_RETURN, CTRL | SHIFT)
-        check(p.wait(lambda: "private" in p.call("hint")) and not json.loads(p.call("noteTalk"))["shown"],
+        p.call("dashKey", 0x43, 0)
+        check(p.wait(lambda: p.call("hint").startswith("private: the agent sees nothing of this box")) and not json.loads(p.call("noteTalk"))["shown"],
               f"…and talking about it with the agent is refused ({p.call('hint')!r})")
         p.call("dash")
         # A PDF (step 5): listed with your notes, opened in the note's place,
