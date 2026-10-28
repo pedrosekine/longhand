@@ -70,26 +70,24 @@ var actions = [
   { id: "zoomReset", group: "page", places: ["any"], does: "Zoom back to 100%", keys: ["Ctrl+0"] },
   { id: "keys", group: "page", places: ["any"], does: "Show these keys", keys: ["Ctrl+/"] },
   { id: "settings", group: "page", places: ["any"], does: "Settings (calendars, sound)", keys: ["Ctrl+,"] },
-  // The three panes, left to right, are the three bracket keys (the
-  // student's idea, 2026-10-23): a pane's key takes you there, opening it
-  // if it is closed; pressed in it, it closes it. The middle has nothing
-  // to close, so there it flips the note and the dashboard. Alt+←/→ only
-  // move between the panes that are open, as Super+arrows do between
-  // Hyprland's windows: nothing opens or closes, save one (2026-10-25):
-  // Alt+→ in the note with nothing to its right opens the block's own
-  // conversation, its key before the panes. Ctrl+J and Ctrl+Shift+B are
-  // the keys these had before.
-  { id: "sidebar", group: "page", places: ["any"], does: "The sidebar (calendar, projects): go there, opening it; in it, close it", keys: ["Ctrl+[", "Ctrl+Shift+B"] },
-  // The sidebar's spaces, after Zen's workspaces (docs/files.md,
-  // 2026-10-26): Time and Files, the shifted brackets beside the sidebar's
-  // own, wrapping around. They open the sidebar when it is closed.
-  { id: "spacePrev", group: "page", places: ["any"], does: "The sidebar's space before (Time, Files), opening the sidebar", keys: ["Ctrl+{"] },
-  { id: "spaceNext", group: "page", places: ["any"], does: "The sidebar's space after (Time, Files), opening the sidebar", keys: ["Ctrl+}"] },
-  { id: "home", group: "page", places: ["any"], does: "The middle: go there; in it, flip the note and the dashboard", keys: ["Ctrl+\\"] },
-  { id: "day", group: "page", places: ["any"], does: "The agent's pane: go there, opening it on the day's chat; in it, close it", keys: ["Ctrl+]", "Ctrl+J"] },
+  // The three panes, left to right, are the digits (2026-10-27, docs/
+  // keys-proposal.md; the brackets were theirs from 2026-10-23, and need
+  // AltGr on many layouts). A pane's number takes you there, opening it on
+  // what it shows; pressed in it, it switches what it shows, each pane
+  // holding two things. Opening and closing a side pane is its own key,
+  // Notion's and Craft's for the sidebar and its Shift for the agent's
+  // pane, as VS Code pairs its two sidebars. Alt+←/→ only move between the
+  // panes that are open, as Super+arrows do between Hyprland's windows:
+  // nothing opens or closes, save one (2026-10-25): Alt+→ in the note with
+  // nothing to its right opens the block's own chat. A symbol carries no
+  // Shift (above), so the agent's pane is written Ctrl+|.
+  { id: "pane1", group: "page", places: ["any"], does: "The sidebar: go there, opening it; in it, Time ↔ Files", keys: ["Ctrl+1"] },
+  { id: "pane2", group: "page", places: ["any"], does: "The middle: go there; in it, the note ↔ the dashboard", keys: ["Ctrl+2"] },
+  { id: "pane3", group: "page", places: ["any"], does: "The agent's pane: go there, opening it; in it, the day's chat ↔ this block's or task's", keys: ["Ctrl+3"] },
+  { id: "sidebar", group: "page", places: ["any"], does: "The sidebar: open or close", keys: ["Ctrl+\\"] },
+  { id: "day", group: "page", places: ["any"], does: "The agent's pane: open (on the day's chat) or close", keys: ["Ctrl+|"] },
   { id: "paneLeft", group: "page", places: ["any"], does: "The open pane to the left", keys: ["Alt+Left"] },
   { id: "paneRight", group: "page", places: ["any"], does: "The open pane to the right (in the note, with none: this block's chat)", keys: ["Alt+Right"] },
-  { id: "dashboard", group: "page", places: ["any"], does: "Open or close the dashboard", keys: ["Ctrl+T"] },
   // F11 is every app's full-screen key, and the overlay is the full-screen
   // shape; Ctrl+Alt+P for keyboards whose F-row wants Fn. Ctrl+P was left
   // free on 2026-10-16; since 2026-10-27 it makes a block private (the

@@ -56,9 +56,12 @@ A project is a course or anything worked towards, with a `#tag`. A heading
 `# Course #tag` claims everything under it until the next heading of the
 same or a higher level. Typing `@` lists the projects: Enter writes its
 `#tag`, Shift+Enter starts the class with its `# Course #tag` heading. The
-sidebar ({key:sidebar}) shows a month calendar, the day's deadlines and the
-projects with their next session; a project opens its notes from every day,
-newest first, and its documents.
+sidebar ({key:sidebar} opens or closes it; {key:pane1} goes there, and in it
+switches between Time and Files) shows a month calendar, the day's deadlines
+and the projects with their next session; a project opens its notes from
+every day, newest first, and its documents. The page is three panes, left to
+right, and the digits are their keys: {key:pane1} the sidebar, {key:pane2}
+the middle, {key:pane3} the agent's pane.
 
 To make a project: type `@` or `#` and its new tag in the note — when
 nothing matches, the list offers "+ make #tag a project" (after `#`, press
@@ -69,7 +72,8 @@ and tag stay as made; the agent never makes one, only proposes it.
 
 ## The dashboard
 
-{key:dashboard} turns the sheet into the dashboard: every open checkbox and
+{key:pane2}, pressed in the middle, turns the note into the dashboard (and
+back): every open checkbox and
 deadline across all the notes, grouped by what they ask (due, doing, to
 schedule) and by course. {key:dashOpen} goes to the line; {key:dashDone}
 ticks it; {key:dashWhen} reschedules it; {key:dashPriority} cycles its
@@ -96,7 +100,8 @@ boxes under it.
 {key:dayChat} opens the day's chat in the right pane, from anywhere in the
 page — about the day, not one line: the tasks, the courses, what was
 written (in a note from Files, the same key opens that note's chat). {key:day}
-opens and closes the pane. The seal at the centre of the header opens and
+opens and closes the pane; {key:pane3} goes there, and in it switches
+between the day's chat and the chat of what is selected in the middle. The seal at the centre of the header opens and
 closes it; the date at the left opens the sidebar. One chat a day: the morning's
 observation waits at the top, it sees today's other conversations, and a
 past day's note shows that day's conversation, read-only — talking happens

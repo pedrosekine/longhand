@@ -615,7 +615,7 @@ BorderSurface {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: page.setSpace(modelData.space, 0)
-            PanelToolTip { visible: parent.containsMouse; text: page.tip(modelData.tip, modelData.space === "time" ? "spacePrev" : "spaceNext") }
+            PanelToolTip { visible: parent.containsMouse; text: page.tip(modelData.tip, "pane1") }
           }
         }
       }

@@ -643,6 +643,10 @@ from 2026-09/10 and still stand.
   - The row's gutter bar and last line (slice 2, same day): is an unread
     reply noticed from the dashboard, and is the last line worth its
     height on the selected row?
+  - Panes by number (slice 3, same day): do Ctrl+1/2/3 replace the
+    brackets in the hand, and is "press it again to switch" found? Is
+    Ctrl+| (Ctrl+Shift+\) reached for, or the seal clicked instead
+    (`seal` in the usage log)?
 - **Notes beyond the calendar** (built 2026-10-26/27, `docs/files.md`):
   - Is the Files space opened at all, and from where (`space`,
     `space-swipe` and `file` in the usage log)?

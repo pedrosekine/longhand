@@ -83,8 +83,9 @@ def render(d, mine=False):
         "",
         "The keys that work **everywhere** (in a box you are typing in too) are the ones about the page "
         "itself and where you are in it: the zoom, these lists, the three panes and the page's shape. "
-        "The panes are the bracket keys, left to right: `Ctrl+[` the sidebar, `Ctrl+\\` the middle, "
-        "`Ctrl+]` the agent's pane. How focus moves between them is in "
+        "The panes are the digits, left to right: `Ctrl+1` the sidebar, `Ctrl+2` the middle, "
+        "`Ctrl+3` the agent's pane; `Ctrl+\\` and `Ctrl+|` open and close the side ones. "
+        "How focus moves between them is in "
         "[navigation.md](navigation.md).",
     ]
     for g in d["groups"]:

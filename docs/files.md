@@ -45,11 +45,11 @@ the note or the dashboard. There are two:
 | **Time** (the default) | the calendar, the day's deadlines, the projects, as today |
 | **Files** | the notes as folders and files: yours, then the agent's |
 
-- **Switching:** `Ctrl+Shift+[` and `Ctrl+Shift+]` (wrapping around), a
-  two-finger swipe or Ctrl+scroll on the sidebar, or a click on the two
-  marks at the sidebar's foot that show which space is open. `Ctrl+[` keeps
-  its one meaning (go to the sidebar; in it, close it), and Esc still backs
-  out one level ([navigation.md](navigation.md)).
+- **Switching:** `Ctrl+1` pressed in the sidebar (since 2026-10-27; it was
+  `Ctrl+Shift+[` and `Ctrl+Shift+]` before), a two-finger swipe or
+  Ctrl+scroll on the sidebar, or a click on the two marks at the sidebar's
+  foot that show which space is open. From outside the sidebar `Ctrl+1` goes
+  there, and Esc still backs out one level ([navigation.md](navigation.md)).
 - **Each space has its own tint**, so the space is known without reading.
 - **A fresh open lands on Time.** The page still opens blank on today.
 - **Essentials:** what stays at the sidebar's foot in every space. That is
@@ -91,7 +91,7 @@ the note or the dashboard. There are two:
 **Spaces.**
 - `page.sidebarSpace` holds the space, and a fresh open sets it back to
   `time`.
-- `Ctrl+{` and `Ctrl+}` (the shifted brackets) call `switchSpace`. A
+- `Ctrl+1` in the sidebar calls `switchSpace` (the shifted brackets did, until 2026-10-27). A
   sideways swipe or Ctrl+wheel past a threshold does the same, once per
   gesture (a `WheelHandler` on the sidebar; `TouchScroll` passes sideways
   and Ctrl scrolls on).

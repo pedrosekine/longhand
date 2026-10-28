@@ -1435,17 +1435,16 @@ Item {
     if (Sc.hit(event, "zoomReset")) { root.setZoom(1); return true }
     if (Sc.hit(event, "keys")) { root.toggleKeys(); return true }
     if (Sc.hit(event, "settings")) { root.toggleSettings(); return true }
-    if (Sc.hit(event, "sidebar")) { root.paneKey("left"); return true }
+    if (Sc.hit(event, "pane1")) { root.paneKey("left"); return true }
+    if (Sc.hit(event, "pane2")) { root.paneKey("center"); return true }
+    if (Sc.hit(event, "pane3")) { root.paneKey("right"); return true }
+    if (Sc.hit(event, "sidebar")) { root.toggleSidebar(); return true }
     if (Sc.hit(event, "dayChat")) { root.openDay(""); return true }
-    if (Sc.hit(event, "spacePrev")) { root.switchSpace(-1); return true }
     if (Sc.hit(event, "linkBack")) { root.goBack(-1); return true }
     if (Sc.hit(event, "linkForward")) { root.goBack(1); return true }
-    if (Sc.hit(event, "spaceNext")) { root.switchSpace(1); return true }
-    if (Sc.hit(event, "home")) { root.paneKey("center"); return true }
-    if (Sc.hit(event, "day")) { root.paneKey("right"); return true }
+    if (Sc.hit(event, "day")) { root.toggleRight(); return true }
     if (Sc.hit(event, "paneLeft")) { root.movePane(-1); return true }
     if (Sc.hit(event, "paneRight")) { root.movePane(1); return true }
-    if (Sc.hit(event, "dashboard")) { root.toggleDash(); return true }
     if (Sc.hit(event, "today")) { root.goToday(); return true }
     if (Sc.hit(event, "pin")) { root.togglePin(); return true }
     return false
@@ -1562,25 +1561,57 @@ Item {
   // A pane's own key (the brackets): there, opening it; in it, closing it.
   // The middle has nothing to close, so there it flips the note and the
   // dashboard (a sheet in its place closes instead).
+  // Ctrl+1/2/3 (docs/keys-proposal.md, 2026-10-27): a pane's number takes
+  // the keys there, opening it if it is closed; in it, the pane switches
+  // between its two things. The sidebar: Time and Files. The middle: the
+  // note and the dashboard (a keys or settings sheet in its place closes
+  // instead). The agent's pane: the day's chat, its home, and this block's
+  // chat beside the note or the selected task's beside the dashboard.
   function paneKey(p) {
     if (p === "left") {
       if (!root.sidebarOpen) root.toggleSidebar()
       else if (root.here !== "left") root.focusPane("left")
-      else root.toggleSidebar()
+      else root.switchSpace(1)
       return
     }
     if (p === "right") {
-      if (root.rightView === "") {
-        root.openDay("")
-        if (root.rightView === "") root.showHint("the window is too narrow for the agent's pane")
-      } else if (root.here !== "right") root.focusPane("right")
-      else root.closeRight()
+      if (root.rightView === "") root.openRight()
+      else if (root.here !== "right") root.focusPane("right")
+      else if (root.rightView === "day") root.openThisChat()
+      else root.openDay("")
       return
     }
     if (root.here !== "center") root.focusCenter()
     else if (root.keysOpen) root.toggleKeys()
     else if (root.settingsOpen) root.toggleSettings()
     else root.toggleDash()
+  }
+
+  // Ctrl+|: the agent's pane, opened on the day's chat (its home), or
+  // closed, wherever the keys are. Ctrl+\ is the sidebar's (toggleSidebar).
+  function toggleRight() {
+    if (root.rightView !== "") root.closeRight()
+    else root.openRight()
+  }
+  function openRight() {
+    root.openDay("")
+    if (root.rightView === "") root.showHint("the window is too narrow for the agent's pane")
+  }
+
+  // In the agent's pane on the day's chat, its number again: the chat of
+  // what is selected in the middle, the block under the cursor beside the
+  // note, the row beside the dashboard.
+  function openThisChat() {
+    if (root.centerView === "dash") {
+      var row = root.taskRows[root.taskFocus]
+      if (row && ["task", "deadline", "proposal", "question", "told"].indexOf(row.kind) >= 0) root.talkFocused()
+      else root.showHint("this row has no chat")
+    } else if (root.centerView === "note" && root.dayNote && !root.pdfShown) {
+      if (root.currentHash === "") root.showHint("no block under the cursor")
+      else if (!root.agentOn) root.showHint("private: the agent sees nothing of this note")
+      else if (root.blockPrivate(root.currentHash)) root.showHint("private: the agent sees nothing of this block")
+      else root.openBlockChat("pane")
+    } else root.showHint(root.dayNote ? "nothing here has a chat of its own" : "a note from Files has one chat: its own")
   }
 
   // Alt+←/→: the next open pane that way, as Hyprland moves between
@@ -1594,8 +1625,8 @@ Item {
     // your own words; Ctrl+Enter is the key that sends.
     if (d > 0 && root.here === "center" && root.centerView === "note"
         && root.currentHash !== "" && root.marginWidth > 0) { root.diveIn(); return }
-    root.showHint(d < 0 ? "nothing to the left · " + root.keyName("sidebar") + " opens the sidebar"
-                        : "nothing to the right · " + root.keyName("day") + " opens the agent's pane")
+    root.showHint(d < 0 ? "nothing to the left · " + root.keyName("pane1") + " opens the sidebar"
+                        : "nothing to the right · " + root.keyName("pane3") + " opens the agent's pane")
   }
 
   // ------------------------------------------------------------ the pointer
@@ -6354,7 +6385,9 @@ Item {
               onClicked: root.sealClicked()
               PanelToolTip {
                 visible: parent.containsMouse
-                text: root.tip(root.dayShown ? "Close the agent's pane" : "The agent's pane: the day's chat", "day")
+                // Both of the pane's keys, so the pair is remembered (2026-10-27).
+                text: root.tips([[root.dayShown ? "Close the agent's pane" : "The agent's pane: the day's chat", "day"],
+                                 ["Go there; in it, the day's chat ↔ this one", "pane3"]])
               }
             }
           }
@@ -6385,7 +6418,8 @@ Item {
               onClicked: root.dateClicked()
               PanelToolTip {
                 visible: parent.containsMouse
-                text: root.tip(root.sidebarOpen ? "Close the sidebar" : "The sidebar: calendar, projects, keys and settings", "sidebar")
+                text: root.tips([[root.sidebarOpen ? "Close the sidebar" : "The sidebar: calendar, projects, keys and settings", "sidebar"],
+                                 ["Go there; in it, Time ↔ Files", "pane1"]])
               }
             }
           }
@@ -6626,7 +6660,7 @@ Item {
                 PanelToolTip {
                   visible: parent.containsMouse
                   text: root.tips([[root.replyWaiting ? "A reply is waiting in this note" : root.working ? "The agent is thinking" : "The agent reads what you ask it", ""],
-                                   ["This block's conversation, when it has an answer", "ask"], ["The agent's pane", "day"]])
+                                   ["This block's chat", "ask"], ["The agent's pane", "pane3"]])
                 }
               }
               Behavior on color { ColorAnimation { duration: 240 } }

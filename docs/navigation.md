@@ -16,9 +16,13 @@ The page is at most three panes side by side:
 
 | Pane | What it shows | Its key |
 |---|---|---|
-| **left**: the sidebar | its space: Time (the calendar, the day's deadlines, the projects) or Files (2026-10-27, `Ctrl+{`/`Ctrl+}`; [files.md](files.md)) | `Ctrl+[` |
-| **center**: the middle | the note, or in its place the dashboard, the keys or settings | `Ctrl+\` |
-| **right**: the agent's pane | the day's conversation (its home), a block's conversation beside the note, a task's beside the dashboard | `Ctrl+]` |
+| **left**: the sidebar | its space: Time (the calendar, the day's deadlines, the projects) or Files ([files.md](files.md)) | `Ctrl+1` |
+| **center**: the middle | the note, or in its place the dashboard, the keys or settings | `Ctrl+2` |
+| **right**: the agent's pane | the day's chat (its home), a block's chat beside the note, a task's beside the dashboard | `Ctrl+3` |
+
+The digits since 2026-10-27 ([keys-proposal.md](keys-proposal.md)); the
+brackets `Ctrl+[` `Ctrl+\` `Ctrl+]` before, which need AltGr on many
+layouts.
 
 The keyboard is always in exactly one pane. When it is in a side pane, the
 **focus frame** (Omarchy's active border: the theme's own gradient for it,
@@ -37,10 +41,18 @@ being talked about beside it, which stays faintly marked.
 
 ## Moving
 
-- **A pane's key** (the brackets) takes you to it, opening it if it is
-  closed. Pressed while you are in it, it closes it. The middle has nothing to
-  close, so there `Ctrl+\` flips the note and the dashboard (a keys or
-  settings sheet in its place closes instead).
+- **A pane's number** takes you to it, opening it if it is closed. Pressed
+  while you are in it, the pane switches between its two things: the sidebar
+  between Time and Files, the middle between the note and the dashboard (a
+  keys or settings sheet in its place closes instead), the agent's pane
+  between the day's chat and the chat of what the middle has selected (the
+  cursor's block beside the note, the row beside the dashboard). A side pane
+  opened by its number opens as it was left: the sidebar on its space, the
+  agent's pane on the day's chat.
+- **`Ctrl+\`** opens or closes the sidebar and **`Ctrl+|`** (Ctrl+Shift+\)
+  the agent's pane, wherever the keys are: Notion's and Craft's key for the
+  sidebar, and its Shift for the other side, as VS Code pairs its two.
+  Hovering over the date or the seal names both of a pane's keys.
 - **`Alt+←` / `Alt+→`** move to the next open pane that way, as Super+arrows
   move between Hyprland's windows. They never close anything, and open one
   thing only: `Alt+→` in the note with nothing to its right opens the
@@ -48,8 +60,8 @@ being talked about beside it, which stays faintly marked.
   panes (brought back 2026-10-25: it was missed). Anywhere else, at the
   edge a hint says which key would open a pane there.
 - **A click** in a pane puts the keys there too.
-- `Ctrl+T` (the dashboard), `Ctrl+J` (the agent's pane) and `Ctrl+Shift+B`
-  (the sidebar) still work, as second keys.
+- `Ctrl+T`, `Ctrl+J`, `Ctrl+Shift+B` and `Ctrl+{`/`Ctrl+}` went with the
+  brackets on 2026-10-27: the digits and the two toggles say it all.
 
 Moving between panes never closes one. What replaces what is fixed: the
 middle shows one thing at a time (the note, the dashboard, keys or settings),
@@ -109,8 +121,8 @@ middle.
 
 A key is global ("everywhere", the `any` place in `Shortcuts.js`) when it is
 **about the page itself or where you are in it, never about the thing you are
-on**: the zoom, the keys sheet, settings, the five pane keys, the dashboard,
-home (`Ctrl+H`: today's note in the middle with the keys in it, the side
+on**: the zoom, the keys sheet, settings, the pane keys (the three digits
+and the two toggles), the day's chat, home (`Ctrl+H`: today's note in the middle with the keys in it, the side
 panes left open) and the page's shape (F11). Global keys are read first by every place's
 handler (`anywhereKey`), including the boxes you type in, so none of them may
 be a key a text field types or uses. That is why they all carry Ctrl or Alt,
@@ -121,7 +133,7 @@ list's letters on the dashboard, the calendar's arrows. A local key may mean
 different things in different places (Enter, Ctrl+E), but only one thing in
 each, and the keys sheet lists each place's keys under it.
 
-Days moved off the brackets for this: the day before and after are now
+Days moved off the brackets for the panes (2026-10-23): the day before and after are now
 `Alt+[` / `Alt+]` (and `Ctrl+PgUp` / `Ctrl+PgDn` as before). A chat has one
 key since 2026-10-27 ([keys-proposal.md](keys-proposal.md)): `Ctrl+Enter`
 opens this block's or this row's chat (`C` on the dashboard too), and

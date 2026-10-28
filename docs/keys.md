@@ -7,7 +7,7 @@ Every key the page answers to, as it starts. Any of them can be moved in the pag
 
 Where a row has two keys, either works: the second is usually the one another app taught (Notion, Todoist, vim) or one a laptop reaches without Fn.
 
-The keys that work **everywhere** (in a box you are typing in too) are the ones about the page itself and where you are in it: the zoom, these lists, the three panes and the page's shape. The panes are the bracket keys, left to right: `Ctrl+[` the sidebar, `Ctrl+\` the middle, `Ctrl+]` the agent's pane. How focus moves between them is in [navigation.md](navigation.md).
+The keys that work **everywhere** (in a box you are typing in too) are the ones about the page itself and where you are in it: the zoom, these lists, the three panes and the page's shape. The panes are the digits, left to right: `Ctrl+1` the sidebar, `Ctrl+2` the middle, `Ctrl+3` the agent's pane; `Ctrl+\` and `Ctrl+|` open and close the side ones. How focus moves between them is in [navigation.md](navigation.md).
 
 ## The page
 
@@ -18,14 +18,13 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | Zoom back to 100% | `Ctrl+0` | everywhere |
 | Show these keys | `Ctrl+/` | everywhere |
 | Settings (calendars, sound) | `Ctrl+,` | everywhere |
-| The sidebar (calendar, projects): go there, opening it; in it, close it | `Ctrl+[` · `Ctrl+Shift+B` | everywhere |
-| The sidebar's space before (Time, Files), opening the sidebar | `Ctrl+{` | everywhere |
-| The sidebar's space after (Time, Files), opening the sidebar | `Ctrl+}` | everywhere |
-| The middle: go there; in it, flip the note and the dashboard | `Ctrl+\` | everywhere |
-| The agent's pane: go there, opening it on the day's chat; in it, close it | `Ctrl+]` · `Ctrl+J` | everywhere |
+| The sidebar: go there, opening it; in it, Time ↔ Files | `Ctrl+1` | everywhere |
+| The middle: go there; in it, the note ↔ the dashboard | `Ctrl+2` | everywhere |
+| The agent's pane: go there, opening it; in it, the day's chat ↔ this block's or task's | `Ctrl+3` | everywhere |
+| The sidebar: open or close | `Ctrl+\` | everywhere |
+| The agent's pane: open (on the day's chat) or close | `Ctrl+|` | everywhere |
 | The open pane to the left | `Alt+←` | everywhere |
 | The open pane to the right (in the note, with none: this block's chat) | `Alt+→` | everywhere |
-| Open or close the dashboard | `Ctrl+T` | everywhere |
 | Flip between overlay and window | `F11` · `Ctrl+Alt+P` | everywhere |
 | Close the overlay | `Esc` | in the note |
 | Make the whole note private (the agent sees nothing) | `Ctrl+Shift+P` | in the note |

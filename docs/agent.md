@@ -238,8 +238,9 @@ Decided with the student in a grilling on 2026-10-20/21: an agent to talk to
 about the tasks and the context itself — what was written, searchable —
 not only about one block. A conversation attached to **the day**.
 
-**Where it lives.** The right pane, from anywhere in the page: **Ctrl+J**
-and, since 2026-10-27, **Ctrl+Shift+Enter** (the shifted twin of Ctrl+Enter:
+**Where it lives.** The right pane, from anywhere in the page: **Ctrl+3**
+(go there; in it, the day's chat ↔ this one), **Ctrl+|** (open or close;
+Ctrl+J and Ctrl+] until 2026-10-27) and **Ctrl+Shift+Enter** (the shifted twin of Ctrl+Enter:
 the whole rather than this block). Until then Ctrl+Shift+Enter worked in
 the note only and opened with the cursor's block referenced; `@` in the
 box points at a block now. The

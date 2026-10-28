@@ -28,10 +28,14 @@ TestCase {
     compare(Sc.fromEvent(ev(Qt.Key_Dead_Grave, Qt.ControlModifier)), "Ctrl+`")
     verify(Sc.hit(ev(Qt.Key_Dead_Grave, Qt.ControlModifier), "code"))
     verify(Sc.hit(ev(Qt.Key_E, Qt.ControlModifier), "code"))
-    // The panes, left to right, are the bracket keys (2026-10-23).
-    verify(Sc.hit(ev(Qt.Key_BracketLeft, Qt.ControlModifier), "sidebar"))
-    verify(Sc.hit(ev(Qt.Key_Backslash, Qt.ControlModifier), "home"))
-    verify(Sc.hit(ev(Qt.Key_BracketRight, Qt.ControlModifier), "day"))
+    // The panes, left to right, are the digits (2026-10-27); Ctrl+\ and its
+    // Shift, which arrives as the bar, open and close the side ones.
+    verify(Sc.hit(ev(Qt.Key_1, Qt.ControlModifier), "pane1"))
+    verify(Sc.hit(ev(Qt.Key_2, Qt.ControlModifier), "pane2"))
+    verify(Sc.hit(ev(Qt.Key_3, Qt.ControlModifier), "pane3"))
+    verify(Sc.hit(ev(Qt.Key_Backslash, Qt.ControlModifier), "sidebar"))
+    verify(Sc.hit(ev(Qt.Key_Bar, Qt.ControlModifier | Qt.ShiftModifier), "day"))
+    verify(!Sc.hit(ev(Qt.Key_BracketLeft, Qt.ControlModifier), "sidebar"))
     verify(Sc.hit(ev(Qt.Key_Left, Qt.AltModifier), "paneLeft"))
     verify(Sc.hit(ev(Qt.Key_BracketLeft, Qt.AltModifier), "dayPrev"))
   }
@@ -57,7 +61,7 @@ TestCase {
   function test_defaults_hit() {
     verify(Sc.hit(ev(Qt.Key_B, Qt.ControlModifier), "bold"))
     verify(!Sc.hit(ev(Qt.Key_B, Qt.ControlModifier | Qt.ShiftModifier), "bold"))
-    verify(Sc.hit(ev(Qt.Key_B, Qt.ControlModifier | Qt.ShiftModifier), "sidebar"))
+    verify(!Sc.hit(ev(Qt.Key_B, Qt.ControlModifier | Qt.ShiftModifier), "sidebar"))   // gone 2026-10-27
     verify(Sc.hit(ev(Qt.Key_Equal, Qt.ControlModifier), "zoomIn"))
     verify(Sc.hit(ev(Qt.Key_Plus, Qt.ControlModifier | Qt.ShiftModifier), "zoomIn"))
     verify(Sc.hit(ev(Qt.Key_Z, Qt.ControlModifier | Qt.ShiftModifier), "redo"))

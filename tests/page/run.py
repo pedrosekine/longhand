@@ -859,8 +859,8 @@ def main() -> int:
         check(p.call("keyPage", KEY_B, CTRL) == "true", "Ctrl+B is taken by the note")
         check(p.wait(lambda: "read **chapter** seven" in p.call("text")),
               f"…and bolds the word under the cursor ({p.call('text')!r})")
-        check(json.loads(p.call("panel"))["project"] is False and p.call("keyPage", KEY_B, CTRL | SHIFT) == "true",
-              "Ctrl+Shift+B is taken too")
+        check(json.loads(p.call("panel"))["project"] is False and p.call("keyPage", 0x5c, CTRL) == "true",
+              "Ctrl+\\ is taken too")
         check(p.wait(lambda: "**chapter**" in p.call("text")), "…and does not touch the words")
 
         # 11f. emphasis, drawn: the markers go to nothing and the words
@@ -1405,8 +1405,8 @@ def main() -> int:
         p.call("dateClick")
         check(p.wait(lambda: p.call("sidebarOpen") == was), "…and again, back as it was")
         KEY_J, KEY_ENTER = 0x4a, 0x01000004
-        check(p.call("pageKey", KEY_J, CTRL) == "true" and p.wait(lambda: p.call("dayShown") == "true"),
-              "Ctrl+J opens the day's conversation from the note")
+        check(p.call("pageKey", 0x7c, CTRL) == "true" and p.wait(lambda: p.call("dayShown") == "true"),
+              "Ctrl+| opens the day's chat from the note")
         p.call("daySend", "what comes first today?")
         check(p.wait(lambda: json.loads(p.call("dayTurns"))[-2:] == ["student: what comes first today?",
                                                                     "agent: day: what comes first today?"], timeout=12),
@@ -2118,37 +2118,53 @@ def main() -> int:
         keysjson.write_text("{}\n")
         check(p.wait(lambda: keys_of("bold") == ["Ctrl+B"]), "an empty keys.json is every key its own")
 
-        # 12b. The panes (docs/navigation.md): the bracket keys are the
-        # sidebar, the middle and the agent's pane, from any box; a pane's
-        # key opens it; in the middle, Ctrl+\ flips the note and the
-        # dashboard; Esc closes what it is in. The window never has the
-        # keyboard, but the page's own focus is real in it, so where the
-        # keys land (`here`) is checked; the frame and the pointer are not.
-        KEY_BL, KEY_BR, KEY_BS = 0x5b, 0x5d, 0x5c
+        # 12b. The panes (docs/navigation.md): the digits are the sidebar,
+        # the middle and the agent's pane, from any box; a pane's number goes
+        # there, opening it, and in it switches what the pane shows; Ctrl+\
+        # and Ctrl+| open and close the side panes; Esc closes what it is
+        # in. The window never has the keyboard, but the page's own focus is
+        # real in it, so where the keys land (`here`) is checked; the frame
+        # and the pointer are not.
+        KEY_1, KEY_2, KEY_3, KEY_BS, KEY_BAR = 0x31, 0x32, 0x33, 0x5c, 0x7c
         def panes():
             return json.loads(p.call("panes"))
         p.call("closePanes")
         check(panes()["panes"] == ["center"] and panes()["center"] == "note", f"the note alone ({panes()})")
-        check(p.call("pageKey", KEY_BL, CTRL) == "true" and panes()["panes"] == ["left", "center"], f"Ctrl+[ opens the sidebar ({panes()})")
-        check(p.call("pageKey", KEY_BR, CTRL) == "true" and panes()["panes"] == ["left", "center", "right"] and panes()["right"] == "day",
-              f"Ctrl+] opens the agent's pane, on the day ({panes()})")
+        check(p.call("pageKey", KEY_1, CTRL) == "true" and panes()["panes"] == ["left", "center"] and panes()["here"] == "left",
+              f"Ctrl+1 opens the sidebar, the keys in it ({panes()})")
+        space = json.loads(p.call("files"))["space"]
+        check(p.call("sideKey", KEY_1, CTRL) == "true" and json.loads(p.call("files"))["space"] != space and panes()["panes"] == ["left", "center"],
+              f"…Ctrl+1 in it: the other space, nothing closed ({p.call('files')[:60]})")
+        p.call("sideKey", KEY_1, CTRL)
+        check(json.loads(p.call("files"))["space"] == space, "…and again, back")
+        check(p.call("pageKey", KEY_3, CTRL) == "true" and panes()["panes"] == ["left", "center", "right"] and panes()["right"] == "day"
+              and panes()["here"] == "right", f"Ctrl+3 opens the agent's pane, on the day, the keys in it ({panes()})")
         def against():
             sd = json.loads(p.call("sides"))
             return sd["left"] is not None and sd["right"] is not None \
                 and sd["left"] == sd["edge"] and sd["rightEnd"] == sd["width"] - sd["edge"] \
                 and sd["x"] >= sd["leftEnd"] + sd["gap"] and sd["x"] + sd["w"] + sd["gap"] <= sd["right"]
         check(p.wait(against, 2), f"both panes stand against the window's edges, the note between them ({p.call('sides')})")
-        check(p.call("pageKey", KEY_BS, CTRL) == "true" and panes()["here"] == "center" and panes()["center"] == "note",
-              f"Ctrl+\\ from the agent's pane: the keys to the middle, nothing flipped ({panes()})")
-        check(p.call("pageKey", KEY_BS, CTRL) == "true" and panes()["center"] == "dash" and panes()["right"] == "day",
+        check(p.call("pageKey", KEY_2, CTRL) == "true" and panes()["here"] == "center" and panes()["center"] == "note",
+              f"Ctrl+2 from the agent's pane: the keys to the middle, nothing flipped ({panes()})")
+        check(p.call("pageKey", KEY_2, CTRL) == "true" and panes()["center"] == "dash" and panes()["right"] == "day",
               f"…and again in the middle: the dashboard, the day beside it ({panes()})")
         check(p.call("dashKey", KEY_ESC, 0) == "true" and panes()["center"] == "note" and panes()["right"] == "day",
               f"Esc on the dashboard: the note, the day still beside it ({panes()})")
-        check(p.call("pageKey", KEY_BR, CTRL) == "true" and panes()["here"] == "right", f"Ctrl+] from the note: the keys to the day ({panes()})")
+        check(p.call("pageKey", KEY_3, CTRL) == "true" and panes()["here"] == "right", f"Ctrl+3 from the note: the keys to the day ({panes()})")
         check(p.call("dayKey", 0x48, CTRL) == "true" and panes()["here"] == "center" and panes()["center"] == "note"
               and panes()["right"] == "day", f"Ctrl+H from the agent's pane: home, today's note with the keys, the pane left open ({panes()})")
+        check(p.call("pageKey", KEY_BS, CTRL) == "true" and panes()["panes"] == ["center", "right"] and panes()["here"] == "center",
+              f"Ctrl+\\ with the keys in the middle closes the sidebar ({panes()})")
+        check(p.call("pageKey", KEY_BAR, CTRL) == "true" and panes()["panes"] == ["center"],
+              f"Ctrl+| closes the agent's pane, wherever the keys are ({panes()})")
+        check(p.call("pageKey", KEY_BAR, CTRL) == "true" and panes()["right"] == "day" and panes()["here"] == "right",
+              f"…and opens it again, on the day ({panes()})")
+        check(p.call("pageKey", KEY_BS, CTRL) == "true" and panes()["panes"] == ["left", "center", "right"] and panes()["here"] == "left",
+              f"Ctrl+\\ opens the sidebar, the keys in it ({panes()})")
+        p.call("pageKey", KEY_3, CTRL)
         check(p.call("dayKey", KEY_ESC, 0) == "true" and panes()["panes"] == ["left", "center"],
-              f"Esc in the day's conversation closes the pane ({panes()})")
+              f"Esc in the day's chat closes the pane ({panes()})")
         check(panes()["pointer"] == "every", "the pointer follows every selection unless told otherwise")
         p.call("closePanes")
 
@@ -2306,8 +2322,8 @@ def main() -> int:
         p.call("closePanes")
         check(p.call("pageKey", KEY_ESC, 0) == "true" and shape()["window"] and not shape()["overlay"],
               f"Esc in the note leaves the window open ({shape()})")
-        p.call("pageKey", KEY_BL, CTRL)
-        p.call("pageKey", KEY_BR, CTRL)
+        p.call("pageKey", KEY_1, CTRL)
+        p.call("pageKey", KEY_3, CTRL)
         check(panes()["panes"] == ["left", "center", "right"] and panes()["here"] == "right", f"three panes, the keys on the right ({panes()})")
         p.call("pageKey", KEY_LEFT, ALT)
         check(panes()["here"] == "center", f"Alt+←: the middle ({panes()})")
@@ -2338,8 +2354,8 @@ def main() -> int:
             time.sleep(0.5)
             lay = json.loads(p.call("layout"))
             check(71.5 <= lay["chars"] <= 72.5 and lay["x"] > 0, f"the overlay's note holds 72 characters, centred ({lay})")
-            p.call("pageKey", KEY_BL, CTRL)
-            p.call("pageKey", KEY_BR, CTRL)
+            p.call("pageKey", KEY_1, CTRL)
+            p.call("pageKey", KEY_3, CTRL)
             check(p.wait(against, 2), f"…the panes inside its margin, the note between them ({p.call('sides')})")
             p.call("closePanes")
             check(p.call("pageKey", KEY_F11, 0) == "true" and p.wait(lambda: shape()["window"] and not shape()["overlay"], 3),
@@ -2381,13 +2397,13 @@ def main() -> int:
         p.call("back")
         check(p.wait(lambda: panes()["here"] == "center" and note_focus() == {"row": morning, "at": at, "active": True}, 2),
               f"Esc there: the keys back in the note, the cursor at the same letter ({panes()}, {note_focus()})")
-        p.call("pageKey", KEY_BL, CTRL)
-        check(p.call("sideKey", KEY_BR, CTRL) == "true" and p.wait(lambda: panes()["here"] == "right" and panes()["right"] == "day", 2),
-              f"Ctrl+] from the sidebar: the day's conversation ({panes()})")
+        p.call("pageKey", KEY_1, CTRL)
+        check(p.call("sideKey", KEY_3, CTRL) == "true" and p.wait(lambda: panes()["here"] == "right" and panes()["right"] == "day", 2),
+              f"Ctrl+3 from the sidebar: the day's chat ({panes()})")
         p.call("dayKey", KEY_ESC, 0)
         check(p.wait(lambda: panes()["panes"] == ["left", "center"] and panes()["here"] == "left", 2),
               f"…Esc: the keys back to the sidebar they came from ({panes()})")
-        p.call("sideKey", KEY_BR, CTRL)
+        p.call("sideKey", KEY_3, CTRL)
         p.wait(lambda: panes()["here"] == "right", 2)
         p.call("sidebar")                          # closed under the keys, as a click on the date does
         check(panes()["panes"] == ["center", "right"] and panes()["here"] == "right", f"the sidebar closed, the keys still on the right ({panes()})")
@@ -2397,11 +2413,22 @@ def main() -> int:
               f"…Esc: the pane they came from has gone, so the keys go to the middle, the cursor where it was ({panes()}, {note_focus()})")
 
         p.call("dash")
-        p.call("dashKey", KEY_BR, CTRL)
-        p.call("dashKey", KEY_BS, CTRL)
+        p.call("dashKey", KEY_3, CTRL)
+        p.call("dashKey", KEY_2, CTRL)
         check(p.wait(lambda: panes()["center"] == "dash" and panes()["right"] == "day" and panes()["here"] == "center", 2),
               f"the dashboard, the day beside it, the keys on the rows ({panes()})")
         p.call("dashFocus", next(n for n, r in enumerate(json.loads(p.call("dashRows"))) if r.get("text") == "write the intro"))
+        check(p.call("dashKey", KEY_3, CTRL) == "true" and panes()["here"] == "right" and panes()["right"] == "day",
+              f"Ctrl+3 from the dashboard: the keys to the day beside it ({panes()})")
+        check(p.call("dayKey", KEY_3, CTRL) == "true" and p.wait(lambda: panes()["right"] == "talk", 2),
+              f"…Ctrl+3 in it: the selected task's chat ({panes()})")
+        # (The margin asks the page's global keys first, as every place does;
+        # the harness's talkKey is only the margin's own.)
+        check(p.call("pageKey", KEY_3, CTRL) == "true" and p.wait(lambda: panes()["right"] == "day", 2),
+              f"…and again: the day's ({panes()})")
+        p.call("pageKey", KEY_2, CTRL)
+        check(p.wait(lambda: panes()["here"] == "center" and panes()["center"] == "dash", 2),
+              f"Ctrl+2: back on the rows ({panes()})")
         check(p.call("dashKey", 0x43, 0) == "true" and p.wait(lambda: panes()["right"] == "talk" and panes()["here"] == "right", 2),
               f"C on a task: its chat in the day's place ({panes()})")
         check(p.call("talkKey", KEY_ESC, 0) == "true" and p.wait(lambda: panes()["right"] == "day" and panes()["here"] == "right", 2),
@@ -2449,7 +2476,7 @@ def main() -> int:
                                                          {"role": "agent", "text": "the outline"}]}}))
         p.call("openDay", YDAY)
         p.wait(lambda: "yesterday's words" in p.call("text"))
-        p.call("pageKey", KEY_BR, CTRL)
+        p.call("pageKey", KEY_3, CTRL)
         check(p.wait(lambda: p.call("dayShown") == "true" and json.loads(p.call("dayTurns")) == ["student: what was yesterday for?", "agent: the outline"]),
               f"yesterday's note: the agent's pane shows yesterday's conversation ({p.call('dayTurns')})")
         check(p.call("dayReadOnly") == "true", "…its box read-only")
@@ -2471,7 +2498,7 @@ def main() -> int:
         def side():
             return json.loads(p.call("sideFocus"))
         p.pomo("add", "the calendar's deadline", "2030-03-13")
-        p.call("pageKey", KEY_BL, CTRL)
+        p.call("pageKey", KEY_1, CTRL)
         p.call("calDay", 2030, 3, 12)
         steps = [(KEY_RIGHT, "2030-03-13"), (KEY_LEFT, "2030-03-12"), (KEY_DOWN, "2030-03-19"), (KEY_UP, "2030-03-12"), (KEY_PGDN, "2030-04-12")]
         walked = [(p.call("sideKey", k, 0), p.call("calAt")) for k, _ in steps]
@@ -2494,19 +2521,19 @@ def main() -> int:
         p.call("calDay", y.year, y.month, y.day)
         check(p.call("sideKey", KEY_RETURN, 0) == "true" and p.wait(lambda: "yesterday's words" in p.call("text") and panes()["here"] == "center"),
               f"Enter opens the day in the sheet, the keys in the middle ({panes()}, {note_focus()})")
-        p.call("pageKey", KEY_BL, CTRL)
-        check(panes()["here"] == "left", "Ctrl+[: back in the sidebar")
+        p.call("pageKey", KEY_1, CTRL)
+        check(panes()["here"] == "left", "Ctrl+1: back in the sidebar")
         check(p.call("sideKey", KEY_ESC, 0) == "true" and p.wait(lambda: panes()["panes"] == ["center"] and panes()["here"] == "center", 2),
               f"Esc on the calendar closes the sidebar, the keys back in the middle ({panes()})")
         p.call("openDay", TODAY)
 
         # 12h. the sidebar's spaces and the Files space (docs/files.md,
-        # 2026-10-26): Ctrl+} goes to Files; folders open as they are asked
+        # 2026-10-26): Ctrl+1, and again in it, goes to Files; folders open as they are asked
         # for, hidden ones never listed; a file opens in the sheet, editable
         # and with no day's machinery; the agent's files read only; Ctrl+H
         # is home; a fresh open lands on Time.
         print("-- spaces and files")
-        KEY_RIGHT, KEY_SLASH, KEY_BRACE_R = 0x01000014, 0x2f, 0x7d
+        KEY_RIGHT, KEY_SLASH = 0x01000014, 0x2f
         course = p.vault / "Studies" / "Course A"
         course.mkdir(parents=True)
         (course / "Session 1.md").write_text("# Session 1\n\nNotes from the first session.\n")
@@ -2516,9 +2543,11 @@ def main() -> int:
         kept.mkdir(parents=True, exist_ok=True)
         (kept / "about-you.md").write_text("What the agent keeps.\n")
         fs = lambda: json.loads(p.call("files"))
-        p.call("pageKey", KEY_BRACE_R, CTRL)
+        p.call("pageKey", KEY_1, CTRL)
+        check(p.wait(lambda: fs()["open"] and fs()["here"] == "left" and fs()["space"] == "time"), f"Ctrl+1: the sidebar opens on Time ({fs()})")
+        p.call("sideKey", KEY_1, CTRL)
         check(p.wait(lambda: fs()["space"] == "files" and fs()["open"] and fs()["here"] == "left"),
-              f"Ctrl+}}: the sidebar opens on Files, the keys in it ({fs()})")
+              f"…Ctrl+1 in it: Files, the keys in it ({fs()})")
         check(p.wait(lambda: "> Studies" in fs()["rows"]), f"…your notes' first level listed ({fs()['rows']})")
         rows = fs()["rows"]
         check(not any(r.endswith("Daily") or "_Attachments" in r or r.endswith("agents") for r in rows),
@@ -2566,7 +2595,7 @@ def main() -> int:
               f"Ctrl+Shift+Enter in a file: the note's chat, the whole of it ({nt()}, {p.call('dayBlockText')!r})")
         check(p.wait(lambda: nt()["blip"] == "sheet"), f"…and the whole note lights ({nt()})")
         p.call("dayKey", KEY_ESC, 0)
-        p.call("pageKey", KEY_BL, CTRL)
+        p.call("pageKey", KEY_1, CTRL)
         p.call("filesKey", KEY_SLASH, 0)
         p.call("filesFilter", "session")
         check(p.wait(lambda: any(r.startswith("Session 1 @Studies/Course A") for r in fs()["rows"])),

@@ -1,6 +1,6 @@
 # Keys: a proposal after the benchmark apps
 
-_Proposed and grilled 2026-10-27; decided. Slices 1 and 2 built 2026-10-28,
+_Proposed and grilled 2026-10-27; decided. Slices 1 to 3 built 2026-10-28,
 the rest not yet. Building moves each row into `plugin-page/Shortcuts.js`, and
 `tools/keys_guide.py` rewrites [keys.md](keys.md); navigation.md, the
 agent's manual and the keys sheet follow._
@@ -307,6 +307,11 @@ task has a chat (that is fetched only when one opens, `thread --key`).
   the page suite for the bar's states and the last line.
 
 ### 3 · Panes by number
+
+_Built 2026-10-28._ The agent's pane's toggle is written `Ctrl+|`: a symbol
+carries no Shift in `Shortcuts.js`, and Ctrl+Shift+\ arrives as the bar. A
+side pane opened by its number or its toggle opens as it was left (the
+sidebar on its space) or on its home (the agent's pane on the day's chat).
 
 - **`Ctrl+1` / `Ctrl+2` / `Ctrl+3`:** from outside a pane, go there,
   opening it on what it showed last; inside, switch between its two
