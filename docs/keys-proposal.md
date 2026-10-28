@@ -1,6 +1,6 @@
 # Keys: a proposal after the benchmark apps
 
-_Proposed and grilled 2026-10-27; decided. Slices 1 to 3 built 2026-10-28,
+_Proposed and grilled 2026-10-27; decided. Slices 1 to 4 built 2026-10-28,
 the rest not yet. Building moves each row into `plugin-page/Shortcuts.js`, and
 `tools/keys_guide.py` rewrites [keys.md](keys.md); navigation.md, the
 agent's manual and the keys sheet follow._
@@ -328,6 +328,10 @@ sidebar on its space) or on its home (the agent's pane on the day's chat).
   that use `Ctrl+[`.
 
 ### 4 · One history: back and forward
+
+_Built 2026-10-28._ Every way the middle moves remembers where it was
+(`openNote`, `openFile`, `openPdf`, `toggleDash`, a link), once per thing
+done, so a move made of several is one step.
 
 - `Ctrl+[` / `Ctrl+]` beside `Ctrl+Alt+←`/`→`.
 - **What is a step:** a link followed (as now), the note ↔ the dashboard, a

@@ -136,8 +136,12 @@ var actions = [
   // and on again are its navigation keys. Back and on are global: they are
   // about where you are, not about the line you are on.
   { id: "followLink", group: "move", places: ["note"], does: "Follow the link the cursor is in", keys: ["Alt+Enter"] },
-  { id: "linkBack", group: "move", places: ["any"], does: "Back to where a link was followed from", keys: ["Ctrl+Alt+Left"] },
-  { id: "linkForward", group: "move", places: ["any"], does: "On again, after going back", keys: ["Ctrl+Alt+Right"] },
+  // One history for whatever the middle shows (2026-10-27): a link
+  // followed, the note ↔ the dashboard, a day before or after, a file
+  // opened. Ctrl+[ ] are Notion's and Craft's back and forward, free since
+  // the panes went to the digits; Ctrl+Alt+←/→ are Obsidian's.
+  { id: "linkBack", group: "move", places: ["any"], does: "Back: where the middle was before (a link, a day, the dashboard, a file)", keys: ["Ctrl+[", "Ctrl+Alt+Left"] },
+  { id: "linkForward", group: "move", places: ["any"], does: "On again, after going back", keys: ["Ctrl+]", "Ctrl+Alt+Right"] },
 
   // One word for talking with the agent, "chat", and one key for this
   // block's, Ctrl+Enter: the "send" every app knows, and Craft's key for its

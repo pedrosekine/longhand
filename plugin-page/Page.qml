@@ -150,16 +150,41 @@ Item {
     return Links.resolve(root.vaultIndex, l.target, root.noteRel, l.kind !== "md") !== ""
   }
   function placeNow() {
-    return { stem: svc.noteDate, file: svc.filePath, readOnly: svc.readOnly, at: editor.cursorPosition, pdf: root.pdfRel }
+    return { stem: svc.noteDate, file: svc.filePath, readOnly: svc.readOnly, at: editor.cursorPosition, pdf: root.pdfRel,
+             dash: root.dashOpen }
+  }
+  function samePlace(a, b) {
+    return a.stem === b.stem && a.file === b.file && (a.pdf || "") === (b.pdf || "") && !!a.dash === !!b.dash
+  }
+  // A step in the middle's history (docs/keys-proposal.md slice 4,
+  // 2026-10-28): where the middle was is remembered before it moves, from
+  // whichever way it moves (openNote, openFile, openPdf, toggleDash, a
+  // link). One step per thing done: a move made of several (the dashboard
+  // closing to go to a line on another day) is remembered once, as it was
+  // before the first. Never while going back or on, nor before a note is
+  // shown.
+  property bool travelling: false
+  property bool stepNoted: false
+  function remember() {
+    if (root.travelling || root.stepNoted || (!svc.ready && root.pdfRel === "")) return
+    var here = root.placeNow()
+    var last = root.backStack[root.backStack.length - 1]
+    if (!last || !root.samePlace(last, here)) root.backStack = root.backStack.concat([here]).slice(-50)
+    root.foreStack = []
+    root.stepNoted = true
+    Qt.callLater(function () { root.stepNoted = false })
   }
   function goTo(place) {
-    if (place.pdf) { root.openPdf(place.pdf); return }
+    root.travelling = true
+    if (place.pdf) { root.openPdf(place.pdf); root.travelling = false; return }
     root.pdfRel = ""
     root.pendingLink = { at: place.at }
     if (place.stem !== "") { if (place.stem === svc.noteDate) root.landOnLink(); else root.openNote(place.stem) }
     else if (place.file === svc.filePath) root.landOnLink()
     else root.openFile(place.file, place.readOnly)
-    root.showNote()
+    if (place.dash) { if (!root.dashOpen) root.toggleDash() }
+    else root.showNote()
+    root.travelling = false
   }
   function followLink(l) {
     root.used("link", l.url ? "web" : l.kind)
@@ -169,14 +194,12 @@ Item {
     var rel = Links.resolve(root.vaultIndex, l.target, root.noteRel, l.kind !== "md")
     if (rel === "") { root.showHint("no note “" + l.target + "” in the vault"); return }
     if (/\.pdf$/i.test(rel)) {
-      root.backStack = root.backStack.concat([root.placeNow()]).slice(-50)
-      root.foreStack = []
+      root.remember()
       root.openPdf(rel)
       return
     }
     if (!/\.md$/i.test(rel)) { Qt.openUrlExternally("file://" + (svc.config.vault + "/" + rel).split("/").map(encodeURIComponent).join("/")); return }
-    root.backStack = root.backStack.concat([root.placeNow()]).slice(-50)
-    root.foreStack = []
+    root.remember()
     var heading = l.heading.charAt(0) === "^" ? "" : l.heading
     var block = l.heading.charAt(0) === "^" ? l.heading.substring(1) : ""
     var daily = String(svc.config.daily.dir).replace(/^\/+|\/+$/g, "")
@@ -416,6 +439,7 @@ Item {
   property var privatePaint: []         // [{ y, h }]: the private blocks, in editor coordinates
   function openPdf(rel) {
     if (rel === "") return
+    if (rel !== root.pdfRel) root.remember()
     if (root.searchOpen) root.closeSearch("back")
     root.leftLine(root.lastLine)
     root.flush()
@@ -3180,6 +3204,7 @@ Item {
   // what's-next panel the margin used to hold, because two surfaces for one
   // list is part of what made the list easy to ignore.
   function toggleDash() {
+    root.remember()
     var was = root.here
     if (!root.dashOpen) root.noteFrom("dash")
     root.dashOpen = !root.dashOpen
@@ -5493,6 +5518,7 @@ Item {
   // the note it was typed in; a save still in flight is waited for. What
   // belonged to the old day (staging, the prompt, the margin) goes with it.
   function openNote(stamp) {
+    if (stamp !== "" && (stamp !== svc.noteDate || root.pdfRel !== "")) root.remember()
     if (stamp !== "") root.pdfRel = ""
     if (stamp === "" || stamp === svc.noteDate) return
     if (root.searchOpen) root.closeSearch("back")
@@ -5517,6 +5543,7 @@ Item {
   // to a day, closes.
   function openFile(rel, readOnly) {
     if (/\.pdf$/i.test(rel)) { root.openPdf(rel); return }
+    if (rel !== "" && (rel !== svc.filePath || root.pdfRel !== "")) root.remember()
     root.pdfRel = ""
     if (rel === "" || (rel === svc.filePath && svc.ready)) { root.showNote(); return }
     if (root.searchOpen) root.closeSearch("back")

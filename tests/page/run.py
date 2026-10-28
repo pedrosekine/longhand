@@ -2710,6 +2710,48 @@ def main() -> int:
         p.call("pageKey", 0x48, CTRL)                      # Ctrl+H
         check(p.wait(lambda: fs()["dayNote"] and fs()["filePath"] == ""), f"Ctrl+H: home to today ({fs()})")
         check(not nt()["askable"], "today has no \"ask about this note\": the day conversation reads it already")
+        # One history (slice 4 of docs/keys-proposal.md): Ctrl+[ and Ctrl+]
+        # go back and on through whatever the middle showed: a file, the
+        # dashboard, a day.
+        KEY_LB, KEY_RB = 0x5b, 0x5d
+        p.call("pageKey", KEY_LB, CTRL)
+        check(p.wait(lambda: fs()["filePath"] == "agents/longhand/knowledge/about-you.md"),
+              f"Ctrl+[: back to the file Ctrl+H left ({fs()['filePath']!r})")
+        p.call("pageKey", KEY_RB, CTRL)
+        check(p.wait(lambda: fs()["dayNote"] and fs()["filePath"] == ""), f"Ctrl+]: on again, to today ({fs()})")
+        p.call("pageKey", KEY_2, CTRL)
+        check(p.wait(lambda: panes()["center"] == "dash"), f"Ctrl+2: the dashboard ({panes()})")
+        p.call("dashKey", KEY_LB, CTRL)
+        check(p.wait(lambda: panes()["center"] == "note" and fs()["dayNote"]), f"Ctrl+[ on the dashboard: back to the note ({panes()})")
+        p.call("pageKey", KEY_RB, CTRL)
+        check(p.wait(lambda: panes()["center"] == "dash"), f"…Ctrl+]: the dashboard again ({panes()})")
+        p.call("dashKey", KEY_ESC, 0)
+        p.wait(lambda: panes()["center"] == "note")
+        today_label = fs()["label"]
+        p.call("pageKey", KEY_LB, ALT)                     # Alt+[: the day before with a note
+        check(p.wait(lambda: fs()["label"] != today_label), f"Alt+[: the day before ({fs()['label']!r})")
+        p.call("pageKey", KEY_LB, CTRL)
+        check(p.wait(lambda: fs()["label"] == today_label and panes()["center"] == "note"),
+              f"…Ctrl+[: back to today, not to the dashboard Esc closed first ({fs()['label']!r}, {panes()})")
+        p.call("pageKey", KEY_LB, CTRL)
+        check(p.wait(lambda: panes()["center"] == "dash"), f"…and Ctrl+[ again: the dashboard, the step before ({panes()})")
+        yday_note = p.daily / f"{YDAY}.md"
+        yday_note.write_text(yday_note.read_text().rstrip("\n") + "\n\n- [ ] a task from the day before\n")
+        p.call("dashKey", KEY_ESC, 0)
+        p.wait(lambda: panes()["center"] == "note")
+        p.call("pageKey", KEY_2, CTRL)
+        def other_row():
+            return next((n for n, r in enumerate(json.loads(p.call("dashRows")))
+                         if r.get("kind") == "task" and r.get("text") == "a task from the day before"), -1)
+        check(p.wait(lambda: panes()["center"] == "dash" and other_row() >= 0), "a task on another day, to go to")
+        other = other_row()
+        p.call("dashFocus", other)
+        p.call("dashKey", KEY_RETURN, 0)
+        check(p.wait(lambda: panes()["center"] == "note" and fs()["label"] != today_label), f"Enter: its line, on its day ({fs()['label']!r})")
+        p.call("pageKey", KEY_LB, CTRL)
+        check(p.wait(lambda: panes()["center"] == "dash"),
+              f"…one Ctrl+[: the dashboard, the move made of two (closing it, opening the day) one step ({panes()}, {fs()['label']!r})")
+        p.call("dashKey", KEY_ESC, 0)
         p.open_fresh()
         check(fs()["space"] == "time" and not fs()["open"], "a fresh open lands on Time, the sidebar closed")
 

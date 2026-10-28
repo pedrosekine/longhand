@@ -647,6 +647,9 @@ from 2026-09/10 and still stand.
     brackets in the hand, and is "press it again to switch" found? Is
     Ctrl+| (Ctrl+Shift+\) reached for, or the seal clicked instead
     (`seal` in the usage log)?
+  - One history (slice 4, same day): is back used beyond links (`link`
+    `back` in the usage log), and does a step feel like one, or does it
+    want to skip some (a day stepped through with Alt+[ several times)?
 - **Notes beyond the calendar** (built 2026-10-26/27, `docs/files.md`):
   - Is the Files space opened at all, and from where (`space`,
     `space-swipe` and `file` in the usage log)?

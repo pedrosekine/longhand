@@ -393,8 +393,10 @@ at the column's width, never wider than it is.
 - With the cursor inside a link, it is drawn as written, dim, so it can be
   edited.
 - A click follows it, and so does `Alt+Enter` at the cursor.
-- `Ctrl+Alt+←` / `Ctrl+Alt+→` go back and on (Obsidian's keys), landing
-  where the cursor was. A `#heading` or `^block` lands on its line.
+- `Ctrl+Alt+←` / `Ctrl+Alt+→` go back and on (Obsidian's keys), and
+  `Ctrl+[` / `Ctrl+]` too since 2026-10-28 (Notion's and Craft's), landing
+  where the cursor was. The history holds more than links since then: see
+  [navigation.md](navigation.md), "Back and forward". A `#heading` or `^block` lands on its line.
 - A day's note opens as a day, a note in `agents/` opens read-only, a file
   that is not a note opens in its own application, a web address in the
   browser.

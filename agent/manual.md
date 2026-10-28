@@ -61,7 +61,9 @@ switches between Time and Files) shows a month calendar, the day's deadlines
 and the projects with their next session; a project opens its notes from
 every day, newest first, and its documents. The page is three panes, left to
 right, and the digits are their keys: {key:pane1} the sidebar, {key:pane2}
-the middle, {key:pane3} the agent's pane.
+the middle, {key:pane3} the agent's pane. {key:linkBack} goes back to where
+the middle was before (a link followed, a day, the dashboard, a file), and
+{key:linkForward} on again.
 
 To make a project: type `@` or `#` and its new tag in the note — when
 nothing matches, the list offers "+ make #tag a project" (after `#`, press

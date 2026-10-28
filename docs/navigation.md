@@ -103,6 +103,16 @@ Esc always undoes the last step in. In order:
 4. in the note itself, the overlay closes. The window shape stays, since it
    is tiled beside your work.
 
+## Back and forward: one history
+
+`Ctrl+[` / `Ctrl+]` (Notion's and Craft's) and `Ctrl+Alt+←` / `Ctrl+Alt+→`
+(Obsidian's) go back and on through what the middle showed (2026-10-28,
+[keys-proposal.md](keys-proposal.md); links only before): a link followed,
+the note ↔ the dashboard, a day before or after, a file or a PDF opened.
+Going back lands where the cursor was. Opening or closing a side pane is not
+a step, and a move made of several (the dashboard closing to go to a line on
+another day) is one step, as it was before it began.
+
 ## Checkpoints: coming back lands where you left
 
 Each pane keeps where its keys were: the note its cursor (and selection),
