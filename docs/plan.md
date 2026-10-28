@@ -640,6 +640,9 @@ from 2026-09/10 and still stand.
     and left?
   - Does "chat c" on the selected row read as a control, and is it found
     without the hint line?
+  - The row's gutter bar and last line (slice 2, same day): is an unread
+    reply noticed from the dashboard, and is the last line worth its
+    height on the selected row?
 - **Notes beyond the calendar** (built 2026-10-26/27, `docs/files.md`):
   - Is the Files space opened at all, and from where (`space`,
     `space-swipe` and `file` in the usage log)?

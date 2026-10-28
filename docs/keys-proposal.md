@@ -1,7 +1,7 @@
 # Keys: a proposal after the benchmark apps
 
-_Proposed and grilled 2026-10-27; decided. Slice 1 built 2026-10-28, the
-rest not yet. Building moves each row into `plugin-page/Shortcuts.js`, and
+_Proposed and grilled 2026-10-27; decided. Slices 1 and 2 built 2026-10-28,
+the rest not yet. Building moves each row into `plugin-page/Shortcuts.js`, and
 `tools/keys_guide.py` rewrites [keys.md](keys.md); navigation.md, the
 agent's manual and the keys sheet follow._
 
@@ -283,6 +283,12 @@ Keys and words only; nothing new is fetched.
   tooltip name it.
 
 ### 2 · What a row's chat shows
+
+_Built 2026-10-28._ As planned, with two details settled while building:
+unread is kept per chat (the thread's key, which a box under another
+shares), and a margin reply already read in the note is not unread on the
+dashboard. The moving light has no check: it lasts as long as an answer
+takes, which the suite cannot hold still.
 
 Needs data the dashboard does not have: a row cannot tell today whether its
 task has a chat (that is fetched only when one opens, `thread --key`).

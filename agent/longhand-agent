@@ -1433,6 +1433,7 @@ def cmd_next(cfg: dict, args) -> int:
             if not ob.get("dismissed") and not ob.get("read"):
                 raised.append({"date": stamp, "kind": "observation", "index": i, "text": ob.get("text", ""),
                                "evidence": "", "at": ob.get("at", "")})
+    task_chats(cfg, tasks)
     print(json.dumps({"tasks": tasks, "raised": raised}, ensure_ascii=False))
     return 0
 
@@ -2552,6 +2553,42 @@ def cmd_thread(cfg: dict, args) -> int:
                       "turns": [{k: t.get(k, "") for k in ("role", "text", "at", "who", "about", "revised", "settled")}
                                 for t in turns]}, ensure_ascii=False))
     return 0
+
+
+def task_chats(cfg: dict, tasks: list[dict]) -> None:
+    """Each task's chat, in brief, for its dashboard row (2026-10-28,
+    docs/keys-proposal.md slice 2): how many turns, and the last one — who
+    said it, its first line, when. The same one conversation `thread`
+    shows: the margin's turns about the box it is under and the planner's.
+    `hash` is the block the margin's turns are filed under, so the page can
+    tell when the agent is answering there. Nothing on a private box, or
+    on one that was never talked about."""
+    ledger = planlib.load_ledger(PROPOSALS)
+    by_key = {t.get("key"): t for t in tasks}
+    states: dict[str, dict] = {}
+    for t in tasks:
+        if t.get("private") or not t.get("key"):
+            continue
+        key = planlib.root_key(t["key"], tasks)
+        box = by_key.get(key) or t
+        margin, h = [], ""
+        found = box_block(cfg, box)
+        if found:
+            paths, visible, block = found
+            if paths.stamp not in states:
+                states[paths.stamp] = load_state(paths)["blocks"]
+            h, rec = block_record(paths, visible, block, states[paths.stamp])
+            margin = margin_turns(rec)
+            if rec and margin and margin[-1]["role"] == "agent":
+                margin[-1]["read"] = bool(rec.get("read"))
+        turns = merged_turns(margin, planlib.thread(ledger, key)["turns"])
+        if not turns:
+            continue
+        last = turns[-1]
+        first = next((l.strip() for l in str(last.get("text", "")).split("\n") if l.strip()), "")
+        t["chat"] = {"turns": len(turns), "role": last.get("role", ""), "who": last.get("who", ""),
+                     "text": first[:160], "at": last.get("at", ""), "read": bool(last.get("read")),
+                     "hash": h, "thread": key}
 
 
 # ------------------------------------------------------------ the day

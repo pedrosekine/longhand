@@ -1836,7 +1836,34 @@ def main() -> int:
         p.call("talkSend", "help me think it through")
         check(p.wait(lambda: "agent: stub answer to: help me think it through" in json.loads(p.call("talk"))["turns"], 10),
               f"…a message there is answered by the margin agent, in the same conversation ({json.loads(p.call('talk'))['turns'][-3:]})")
+        th_key = json.loads(p.call("talk"))["thread"]
         p.call("talkKey", KEY_ESC, 0)
+        # Its row, in brief (slice 2): the gutter bar's state, and where the
+        # chat left off. Read while it was open, so not unread.
+        def chat_row():
+            return json.loads(p.call("dashRows"))[task_row()]
+        p.call("dash")
+        p.call("dash")
+        thread_last = json.loads(subprocess.run([str(p.runner), "thread", "--key", th_key], capture_output=True, text=True,
+                                                env=p.env).stdout)["turns"][-1]["text"].split("\n")[0]
+        check(p.wait(lambda: chat_row().get("chat") == "read" and chat_row().get("last") == thread_last),
+              f"the row says its chat was read, and where it left off: the one conversation's last turn ({chat_row()}, {thread_last!r})")
+        led = json.loads(ledger_file.read_text())
+        led["threads"][th_key]["turns"].append({"role": "agent", "text": "One more thing.\nand a second line", "at": "2099-01-01T00:00:00"})
+        ledger_file.write_text(json.dumps(led))
+        p.call("dash")
+        p.call("dash")
+        check(p.wait(lambda: chat_row().get("chat") == "unread" and chat_row().get("last") == "One more thing."),
+              f"…a newer word from the agent: unread, its first line ({chat_row()})")
+        p.call("dashFocus", task_row())
+        p.call("dashKey", 0x43, 0)
+        p.wait(lambda: "agent: One more thing.\nand a second line" in json.loads(p.call("talk"))["turns"])
+        p.call("talkKey", KEY_ESC, 0)
+        check(p.wait(lambda: chat_row().get("chat") == "read"), f"…read once its chat is opened ({chat_row()})")
+        check(json.loads((p.state / "longhand" / "page.json").read_text()).get("chatSeen", {}).get(th_key) == "2099-01-01T00:00:00",
+              "…and remembered in page.json")
+        quiet = [r for r in json.loads(p.call("dashRows")) if r.get("kind") == "task" and r.get("text") != talked and not r.get("priv")]
+        check(quiet and any(r.get("chat") == "" for r in quiet), "a box never talked about shows nothing")
         p.call("dash")
         p.call("cursor", p.offset_of_line(next(i for i, l in enumerate(p.lines()) if re.match(r"- \[.\] " + re.escape(talked) + r"( |$)", l))) + 8)
         check(p.wait(lambda: "planner agent: Another day, then." in p.call("noteTurns")

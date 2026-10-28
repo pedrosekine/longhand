@@ -393,6 +393,18 @@ def main() -> int:
     th = json.loads(agent("thread", "--key", poster).stdout)
     check([t["text"] for t in th["turns"]][-2:] == ["and the images?", "Start with the sentence, then the images."],
           "…and its answer joins the one conversation")
+    # Each row's chat, in brief (slice 2 of docs/keys-proposal.md): the same
+    # one conversation, its size and its last turn, for the dashboard.
+    nxt = {t["key"]: t for t in json.loads(agent("next", "--days", "7").stdout)["tasks"]}
+    ch = nxt[poster].get("chat")
+    check(ch is not None and ch["turns"] == len(th["turns"]) and ch["role"] == "agent" and ch["who"] == "margin"
+          and ch["text"] == "Start with the sentence, then the images." and ch["hash"] == blk["hash"] and ch["at"]
+          and ch["thread"] == poster,
+          f"next gives a task its chat: how many turns, and the last one ({ch})")
+    check(nxt[images].get("chat") == ch, "…a box under it shares the one it is under")
+    quiet = [k for k, t in nxt.items() if k not in (poster, images) and not t.get("private")]
+    check(quiet and all("chat" not in nxt[k] for k in quiet if not any(
+          x.get("key") == k for x in ledger())), "…and a box never talked about has none")
     (stub / "reply.json").write_text(json.dumps({"proposals": [
         {"kind": "do-date", "key": poster, "date": day(6), "why": "after the lab"}], "questions": [], "knowledge": []}))
     agent("plan", "--force")

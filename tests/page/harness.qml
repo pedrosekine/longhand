@@ -360,10 +360,11 @@ ShellRoot {
           : r.kind === "deadline" ? { kind: "deadline", text: r.deadline.title, due: r.deadline.due, status: r.deadline.status,
                                       where: page.deadlineWhere(r.deadline), grade: r.deadline.grade,
                                       mark: page.taskMark(page.taskOfAnchor(r.deadline.id)),
-                                      pills: page.pillsFor(r).map(function (x) { return x.text }) }
+                                      pills: page.pillsFor(r).map(function (x) { return x.text }),
+                                      chat: page.chatState(r), last: page.chatOf(r) ? page.chatOf(r).text : "" }
           : { kind: "task", text: page.taskTitle(r.task), where: page.taskWhere(r.task),
               date: r.task.date, prio: r.task.priority, when: r.task.when, away: r.task.away || "", done: !!r.task.done,
-              priv: !!r.task["private"] }
+              priv: !!r.task["private"], chat: page.chatState(r), last: page.chatOf(r) ? page.chatOf(r).text : "" }
       }))
     }
 

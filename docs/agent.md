@@ -197,7 +197,11 @@ about, not only to take or leave, as any block is in the note.
 - **Summoned on any task** (C or Ctrl+Enter on its row, or the "chat" the
   row shows where the keys or the mouse are, since 2026-10-27; Ctrl+Shift+Enter
   from 2026-10-23, Alt+→ before): the margin opens beside the dashboard on
-  the task's one conversation, to think it through. Nothing is pinned to accept; a message
+  the task's one conversation, to think it through. The row says how that
+  conversation stands (2026-10-28): the note's gutter bar beside it (the
+  accent while the agent's last word is unread, dim once read, a light
+  travelling down it while the agent answers), and on the selected row its
+  last line, the agent's after ◇, yours after "you:". Nothing is pinned to accept; a message
   goes to the margin agent, about the task's block, as Ctrl+Enter in the
   note would — it knows the notes, the course's documents and what the
   planner said. Once a pinned proposal is settled, the conversation goes on

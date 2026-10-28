@@ -159,6 +159,10 @@ BorderSurface {
             // A click on it does something (activateTask): a hand, and a
             // faint fill while the mouse is over it (2026-10-19).
             readonly property bool acts: ["task", "deadline", "shelf", "grading", "raised", "proposal", "question", "told"].indexOf(kind) >= 0
+            // Its chat, in brief: the gutter bar's state and, on the row the
+            // keys are on, the last thing said (page.chatState).
+            readonly property var chat: page.chatOf(modelData)
+            readonly property string chatState: page.chatState(modelData)
             HoverHandler { id: rowHover; enabled: dashRow.acts }
             width: dashColumn.width
             // The space above a row comes from what it is and what came
@@ -178,6 +182,44 @@ BorderSurface {
               // marked, faintly, so the list says which one it is.
               color: dashRow.hot ? Style.selectedFill
                 : rowHover.hovered || (page.taskFocus === index && !isHead && page.talkOpen) ? Style.hoverFill : "transparent"
+            }
+
+            // The gutter bar, as the note draws one beside a block: the
+            // accent while a reply waits unread, dim once read, a light
+            // travelling down it while the agent answers; nothing for a
+            // box never talked about.
+            Item {
+              visible: dashRow.chatState !== ""
+              x: page.sp(1)
+              y: inner.y - page.sp(3)
+              width: page.sp(3)
+              height: inner.height + page.sp(6)
+              clip: true
+              Rectangle {
+                anchors.fill: parent
+                radius: width
+                color: dashRow.chatState === "unread" ? page.accent : page.dim
+                opacity: dashRow.chatState === "thinking" ? 0.3 : 1
+                Behavior on color { ColorAnimation { duration: 240 } }
+                Behavior on opacity { NumberAnimation { duration: 240 } }
+              }
+              Rectangle {
+                id: chatSpark
+                width: parent.width
+                height: Math.max(page.sp(12), parent.height * 0.5)
+                radius: width
+                visible: dashRow.chatState === "thinking"
+                gradient: Gradient {
+                  GradientStop { position: 0.0; color: Qt.rgba(page.accent.r, page.accent.g, page.accent.b, 0) }
+                  GradientStop { position: 0.5; color: page.accent }
+                  GradientStop { position: 1.0; color: Qt.rgba(page.accent.r, page.accent.g, page.accent.b, 0) }
+                }
+                SequentialAnimation on y {
+                  running: chatSpark.visible
+                  loops: Animation.Infinite
+                  NumberAnimation { from: -chatSpark.height; to: chatSpark.parent.height; duration: 1500; easing.type: Easing.InOutSine }
+                }
+              }
             }
 
             // The glow a tick leaves for a moment.
@@ -516,6 +558,20 @@ BorderSurface {
                     font.styleName: page.fontStyle
                     font.pixelSize: page.fs(Style.font.caption)
                   }
+                }
+
+                // Where its chat left off, on the row the keys are on: the
+                // agent's last word (◇, as its marks are), or yours.
+                Text {
+                  visible: dashRow.hot && !!dashRow.chat
+                  width: parent.width
+                  textFormat: Text.PlainText
+                  elide: Text.ElideRight
+                  text: dashRow.chat ? (dashRow.chat.role === "agent" ? "◇ " : "you: ") + dashRow.chat.text : ""
+                  color: dashRow.chatState === "unread" ? page.foreground : page.dim
+                  font.family: page.fontFamily
+                  font.styleName: page.fontStyle
+                  font.pixelSize: page.fs(Style.font.caption)
                 }
               }
             }

@@ -688,6 +688,39 @@ Item {
     root.savePageState()
   }
   function isNewAsk(x) { return !!x && (Number(x.id) || 0) > root.newAfterId }
+
+  // A row's chat, in brief (docs/keys-proposal.md slice 2, 2026-10-28):
+  // `longhand-agent next` gives each task its chat's size and last turn; a
+  // deadline's is its box's. What the gutter bar says, as the note's does:
+  // "thinking" while the agent answers it, "unread" while its last word is
+  // the agent's and newer than the last time the chat was open (or, from
+  // the margin, read there), "read", or nothing for a box never talked
+  // about. The last opening per chat is kept in page.json.
+  property var chatSeen: ({})          // a chat's thread key -> the last turn's `at` seen
+  function chatOf(row) {
+    if (!row) return null
+    var t = row.kind === "task" ? row.task : row.kind === "deadline" ? root.taskOfAnchor(row.deadline.id) : null
+    return t && !t.private && t.chat ? t.chat : null
+  }
+  function chatState(row) {
+    var c = root.chatOf(row)
+    if (!c) return ""
+    if ((c.hash && (root.runningHash === c.hash || root.queued.some(function (q) { return q.hash === c.hash })))
+        || (root.talking && root.talkData && root.talkData.thread === c.thread)) return "thinking"
+    if (c.role !== "agent" || (c.who === "margin" && c.read)) return "read"
+    var seen = Date.parse(root.chatSeen[c.thread] || "")
+    return isNaN(seen) || Date.parse(c.at) > seen ? "unread" : "read"
+  }
+  function markChatSeen(d) {
+    var turns = d && d.turns ? d.turns : []
+    var at = ""
+    for (var i = 0; i < turns.length; i++) if (turns[i].at && (at === "" || Date.parse(turns[i].at) > Date.parse(at))) at = turns[i].at
+    if (!d || !d.thread || at === "" || root.chatSeen[d.thread] === at) return
+    var m = JSON.parse(JSON.stringify(root.chatSeen))   // a new object, so the rows hear it
+    m[d.thread] = at
+    root.chatSeen = m
+    root.savePageState()
+  }
   property bool projectOpen: false   // the margin is showing one project's notes
   property var sections: []          // [{ date, line, heading, title, sub, preview, open, done }]
   property string projectTag: ""
@@ -1388,7 +1421,7 @@ Item {
   }
 
   function savePageState() {
-    zoomFile.setText(JSON.stringify({ zoom: root.zoom, dashSeen: root.dashSeenId }) + "\n")
+    zoomFile.setText(JSON.stringify({ zoom: root.zoom, dashSeen: root.dashSeenId, chatSeen: root.chatSeen }) + "\n")
   }
 
   // The global keys: the page itself and where you are in it, wherever the
@@ -6053,6 +6086,7 @@ Item {
           if (root.talkThread !== "") {
             root.talkData = d
             root.talkThread = d.thread
+            root.markChatSeen(d)
             if (!root.talking) root.pendingTalk = null
           }
         } catch (e) {}
@@ -6157,6 +6191,7 @@ Item {
         var z = Number(st.zoom)
         if (isFinite(z) && z >= 0.5 && z <= 3) root.zoom = z
         if (typeof st.dashSeen === "number") root.dashSeenId = st.dashSeen
+        if (st.chatSeen && typeof st.chatSeen === "object") root.chatSeen = st.chatSeen
       } catch (e) {}
     }
   }
