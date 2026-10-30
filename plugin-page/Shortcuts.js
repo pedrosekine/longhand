@@ -413,9 +413,15 @@ function hit(event, id) {
   var s = fromEvent(event)
   if (s === "") return false
   var ks = keysOf(id)
-  for (var i = 0; i < ks.length; i++) if (ks[i] === s) return true
+  for (var i = 0; i < ks.length; i++) if (ks[i] === s) { byKey[id] = (byKey[id] || 0) + 1; return true }
   return false
 }
+
+// How often each action came by its key since the page last asked, so a
+// key the student already uses is not named to them again (docs/hints.md,
+// C). Taken, and cleared, by the page.
+var byKey = {}
+function takeUses() { var u = byKey; byKey = {}; return u }
 
 // The first key of an action, for a hint ("" when it has none).
 function label(id) {

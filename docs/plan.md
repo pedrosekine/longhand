@@ -570,9 +570,9 @@ Small, when passing by:
     of the map. Started from the dashboard, where a task had no visible way
     to talk with the agent.
 11. **Hover hints, after the benchmark apps** (study 2026-10-30,
-    `docs/hints.md`): A (hints follow the hand), D (hover marks too) and
-    B (warm hints) are built. Next, in order: the key said in the status
-    line after a click (C), a hint that fits (E). Keys that
+    `docs/hints.md`): A (hints follow the hand), D (hover marks too),
+    B (warm hints) and C (the key named after a click) are built. Next: a
+    hint that fits (E). Keys that
     wait show the keys (F, which-key / KeyTips) wants a mock-up first;
     hints that graduate (G) wait on use.
 
@@ -817,11 +817,19 @@ from 2026-09/10 and still stand.
   hint works as expected. The same day, every hover mark (fill, accent,
   box edge) followed the hand too, and hints went warm: 500 ms for the
   first, then at once for 300 ms. Watch whether a lit row is missed after
-  the keys, and whether the strip feels quick or jumpy.
+  the keys, and whether the strip feels quick or jumpy. Then C: after a
+  click, the status line names the key once a day per action. Watch
+  whether a named key comes into use (`taught` then that action's key in
+  the usage log), and whether being told feels like help or a nag.
 - **A live check that failed once** (2026-10-18, then passed four runs):
   the "when?" box pushing the next line down (11j in `tests/page/run.py`).
-  Another, 2026-10-30 (then passed): "a line written a moment before is on
-  it", the dashboard opened right after an insert (the 2026-10-25 save race).
+  Others, 2026-10-30, each passing on the next run, at a load average near
+  4: "a line written a moment before is on it" (the 2026-10-25 save race);
+  the planner's do-date written on agreeing, and an auto priority set on
+  its own; "@thes…is" offering +thesis; the margin taking its room beside
+  the dashboard; and on HEAD itself, "also when written by rename". Under
+  load the live suite is flaky in its waits; a failure is real when it
+  repeats in the same place.
 
 ### Decided against
 

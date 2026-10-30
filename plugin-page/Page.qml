@@ -1426,6 +1426,7 @@ Item {
       root.used("close", Math.round((Date.now() - root.openedAt) / 1000))
       root.openedAt = 0
       root.flushUsage()
+      if (root.countKeys()) root.writeTaught()
     }
   }
 
@@ -1706,6 +1707,45 @@ Item {
   // until 300 ms have passed with none open (Radix's skip window).
   property bool tipWarm: false
   property int tipsOpen: 0
+
+  // The key after the click (2026-10-30, docs/hints.md C): when the mouse
+  // does what a key also does, the status line names the key, once a day
+  // for each action, and never again once that key has been used three
+  // times. Only keys that work from where the student is (the page's own
+  // and the note's), never a list's Enter. In the state folder,
+  // taught.json: action → { keys: times it came by key, said: the day it
+  // was last named }.
+  property var taught: ({})
+  property double hintAt: 0
+  function mouseDid(id) { Qt.callLater(root.nameKey, id) }   // after the click's own hint
+  function nameKey(id) {
+    var a = Sc.byId[id]
+    if (!a || (a.places.indexOf("any") < 0 && a.places.indexOf("note") < 0)) return
+    var k = Sc.label(id)
+    if (k === "—") return
+    var counted = root.countKeys()
+    var t = root.taught[id] || {}
+    var day = Qt.formatDate(new Date(), "yyyy-MM-dd")
+    if ((t.keys || 0) >= 3 || t.said === day) { if (counted) root.writeTaught(); return }
+    var say = "next time: " + k
+    root.showHint(root.hint !== "" && Date.now() - root.hintAt < 200 ? root.hint + " · " + say : say)
+    t.said = day
+    root.taught[id] = t
+    root.used("taught", id)
+    root.writeTaught()
+  }
+  // What came by key since last asked, into `taught`; true when anything did.
+  function countKeys() {
+    var u = Sc.takeUses(), any = false
+    for (var id in u) {
+      var t = root.taught[id] || {}
+      t.keys = (t.keys || 0) + u[id]
+      root.taught[id] = t
+      any = true
+    }
+    return any
+  }
+  function writeTaught() { taughtFile.setText(JSON.stringify(root.taught) + "\n") }
   function tipOpened() { root.tipsOpen++; root.tipWarm = true; tipCool.stop() }
   function tipClosed() {
     root.tipsOpen = Math.max(0, root.tipsOpen - 1)
@@ -1959,7 +1999,7 @@ Item {
   // float under the cursor and print over the line below it (2026-10-17);
   // up there it covers nothing, so it can stay long enough to be read.
   readonly property string status: root.hint
-  function showHint(t) { root.hint = t; hintTimer.restart() }
+  function showHint(t) { root.hint = t; root.hintAt = Date.now(); hintTimer.restart() }
   // A block the agent has already answered is not asked again. The hash is
   // of the block's text, so a block that still carries its answer is text
   // that has not changed since: the second pass would send the identical
@@ -6046,6 +6086,18 @@ Item {
   }
   Timer { interval: 300000; running: root.usageBuf.length > 0; repeat: true; onTriggered: root.flushUsage() }
 
+  // taught.json: which keys the page has named after a click, and how often
+  // each came by key (docs/hints.md, C). The machine's state, not a choice.
+  FileView {
+    id: taughtFile
+    path: (Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state") + "/longhand/taught.json"
+    atomicWrites: true
+    printErrors: false
+    onLoaded: {
+      try { var o = JSON.parse(text()); if (o && typeof o === "object") root.taught = o } catch (e) { console.warn("longhand.page taught.json: " + e) }
+    }
+  }
+
   // keys.json: the keys the student moved (Shortcuts.js). A choice, so
   // beside config.json rather than with the machine's state; written by the
   // keys sheet, and read again when edited by hand.
@@ -6542,6 +6594,7 @@ Item {
               onClicked: root.sealClicked()
               Tip {
                 host: root
+                act: "day"
                 shown: parent.containsMouse
                 // Both of the pane's keys, so the pair is remembered (2026-10-27).
                 text: root.tips([[root.dayShown ? "Close the agent's pane" : "The agent's pane: the day's chat", "day"],
@@ -6576,6 +6629,7 @@ Item {
               onClicked: root.dateClicked()
               Tip {
                 host: root
+                act: "sidebar"
                 shown: parent.containsMouse
                 text: root.tips([[root.sidebarOpen ? "Close the sidebar" : "The sidebar: calendar, projects, keys and settings", "sidebar"],
                                  ["Go there; in it, Time ↔ Files", "pane1"]])
@@ -6612,6 +6666,7 @@ Item {
               onClicked: root.goToday()
               Tip {
                 host: root
+                act: "today"
                 shown: parent.containsMouse
                 text: root.tips([["Today's note", "today"], ["The day before, with a note", "dayPrev"], ["The day after", "dayNext"]])
               }
@@ -6676,7 +6731,7 @@ Item {
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: root.togglePin()
-                Tip { host: root; shown: parent.containsMouse; text: root.tip(root.alongside ? "Back to the overlay" : "Pin it as a window beside your work", "pin") }
+                Tip { host: root; act: "pin"; shown: parent.containsMouse; text: root.tip(root.alongside ? "Back to the overlay" : "Pin it as a window beside your work", "pin") }
               }
             }
 
@@ -6725,6 +6780,7 @@ Item {
                 onClicked: { root.togglePrivate(); editor.focusNote() }
                 Tip {
                   host: root
+                  act: "private"
                   shown: parent.containsMouse
                   text: root.tip(svc.notePrivate ? "Let the agent see this note again" : "Make this note private: the agent sees nothing", "private")
                 }
@@ -6762,6 +6818,7 @@ Item {
                 onClicked: root.noteRoom && root.dayShown ? root.closeDay() : root.openRoom("", true)
                 Tip {
                   host: root
+                  act: "dayChat"
                   shown: parent.containsMouse
                   text: root.tip(root.noteTalkTurns > 0 ? "This note's chat" : "Chat about this note: chatting shares it, for this chat only", "dayChat")
                 }
@@ -6797,6 +6854,7 @@ Item {
                 onClicked: { root.sendCurrent(); editor.focusNote() }
                 Tip {
                   host: root
+                  act: "ask"
                   shown: parent.containsMouse
                   text: root.tip(root.answered(root.currentRecord) ? "This block's chat"
                     : root.currentTrigger !== "" ? "Chat about this block: the agent answers first" : "Chat about this block", "ask")
@@ -7061,6 +7119,7 @@ Item {
             boxTip: Component { Item { Tip { host: root; shown: true; text: root.tip("Tick or untick it", "checkbox") } } }
             handOn: root.handOn
             onBoxTicked: function (lineIndex, done) { if (done) root.tickSound() }
+            onBoxClicked: root.mouseDid("checkbox")
             authors: root.shownAuthors
             x: root.gutter
             width: flick.width - root.gutter

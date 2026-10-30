@@ -96,15 +96,28 @@ The page counts open hints (`tipWarm`, `tipsOpen`, `tipCool`), and a key
 cools the strip at once. The first wait went from the shell's 400 ms to
 500 ms, since warm hints make up for it.
 
-### C. Teach after the click, in the status line
+### C. Teach after the click, in the status line — built 2026-10-30
 
-When the mouse does something that has a key, the status line says the key
-once, quietly: "done · next time Ctrl+D". It uses the existing passing hint
-(`showHint`), so nothing covers the page. If the usage log (`usage.tsv`)
-also records whether each action came by mouse or by key, this can stop for
-an action once its key has been used a few times. It never speaks while you
-type. This is the
-mouse-teaches-keyboard idea at the moment it is most likely to stick.
+When the mouse does something that has a key, the status line says the key,
+quietly: "next time: Ctrl+H". If the click wrote its own passing word, the
+key follows it ("… · next time: Ctrl+L"). It uses the existing passing hint
+(`showHint`), so nothing covers the page. This is the mouse-teaches-keyboard
+idea at the moment it is most likely to stick.
+
+As built:
+- **Once a day for each action**, and never again once its key has been
+  used three times (counted in `Shortcuts.js` when `hit()` matches).
+- **Only keys that work from where you are**: actions whose place is the
+  whole page or the note. A list's Enter, or a key that needs the
+  selection somewhere first, is not worth naming. That leaves the seal,
+  the date, today, pin, private, the note's chat, ask, the footer (today ·
+  keys · settings), Time / Files, and the note's checkbox.
+- A Ctrl- or Shift-click is a different action, so it names nothing.
+- A hint says which action it teaches (`act` on `Tip.qml`); the note's box
+  says so through the editor's `boxClicked`.
+- Kept in the state folder as `taught.json` (action → times by key, the
+  day last named). `taught` in the usage log says when a key was named, so
+  stats can tell whether the key came into use afterwards.
 
 ### D. Hover marks follow the hand too — built 2026-10-30
 
@@ -146,5 +159,5 @@ be needed.
 
 ## Recommendation
 
-A, B and D are built. C is next: the best teaching gain for its size. E needs a look at the dashboard in use. F is the
+A, B, C and D are built. E is next, after a look at the dashboard in use. E needs a look at the dashboard in use. F is the
 real design exploration, so mock it up before building. G waits on use.

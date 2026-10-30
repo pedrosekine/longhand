@@ -122,6 +122,13 @@ ShellRoot {
     }
     function mentionPick(i: int, shift: bool): void { page.mentionFocus = i; page.acceptMention(shift) }
     function hint(): string { return page.hint }
+    function clearHint(): void { page.hint = "" }
+    // Hover hints (docs/hints.md): the hand on the mouse, and a click's key named.
+    function handOn(): bool { return page.handOn }
+    function hand(): void { page.handOn = true }
+    function mouseDid(id: string): void { page.nameKey(id) }
+    // Nothing taught yet: the keys the suite pressed so far forgotten.
+    function untaught(): void { Sc.takeUses(); page.taught = {} }
     function yes(): void { page.acceptAsk() }
     function no(): void { page.declineAsk() }
     // A key as the note's own filter sees it (Qt.Key_*, Qt modifiers).

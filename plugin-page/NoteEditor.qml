@@ -74,6 +74,8 @@ Item {
   signal cueDismissed(string raw)
   // A box ticked (done) or unticked by the person, in the note.
   signal boxTicked(int lineIndex, bool done)
+  // A box clicked with the mouse (the page may name the key, docs/hints.md).
+  signal boxClicked()
 
   property string fontFamily: "sans-serif"
   property string fontStyle: ""        // the cut of the prose face (Page.qml)
@@ -1109,6 +1111,7 @@ Item {
   function clickCheckbox(i) {
     ed.placeAt(i, ed.rows[i].body.length)
     ed.toggleCheckbox(i)
+    ed.boxClicked()
   }
 
   function atFirstLine(f) { return f.cursorRectangle.y <= f.positionToRectangle(0).y + 1 }

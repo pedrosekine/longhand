@@ -1378,3 +1378,7 @@ only the window and the panels around it differ.
   fill, a word's accent, a box's edge), and hints went warm: the first
   waits 500 ms, and while one is open or for 300 ms after, the next opens
   at once (`Tip.qml`, which every hint now uses).
+  Then the key after the click: a mouse action whose key works from where
+  you are has its key named in the status line ("next time: Ctrl+H"), once
+  a day for each action, never once that key has been used three times
+  (`taught.json` in the state folder). A list's Enter is never named.

@@ -2857,6 +2857,34 @@ def main() -> int:
         p.open_fresh()
         check(fs()["space"] == "time" and not fs()["open"], "a fresh open lands on Time, the sidebar closed")
 
+        # 12z. hover hints (docs/hints.md): a key puts them away, a modifier
+        # alone does not; a click names its key once a day, never a list's
+        # Enter, never a key already used.
+        KEY_CTRL, KEY_A, KEY_H, KEY_BACKSLASH = 0x01000021, 0x41, 0x48, 0x5c
+        p.call("hand")
+        p.call("keyPage", KEY_CTRL, CTRL)
+        check(p.call("handOn") == "true", "holding Ctrl alone keeps the hover hints")
+        p.call("keyPage", KEY_A, 0)
+        check(p.call("handOn") == "false", "…a key puts them away until the hand moves the mouse")
+        today_key = json.loads(p.call("keysOf", "today"))[0]
+        p.call("untaught")      # the suite has pressed Ctrl+H often enough to know it
+        p.call("clearHint")
+        p.call("mouseDid", "today")
+        check(p.call("hint") == "next time: " + today_key, f"a click on today names its key ({p.call('hint')!r})")
+        p.call("clearHint")
+        p.call("mouseDid", "today")
+        check(p.call("hint") == "", "…once a day")
+        p.call("mouseDid", "listOpen")
+        check(p.call("hint") == "", "a list's Enter is never named")
+        for _ in range(4):
+            p.call("keyPage", KEY_BACKSLASH, CTRL)
+        p.call("mouseDid", "sidebar")
+        check(p.call("hint") == "", "a key used three times is not named again")
+        taught = p.state / "longhand" / "taught.json"
+        check(p.wait(lambda: json.loads(taught.read_text())["today"]["said"] == TODAY_ISO
+                     and json.loads(taught.read_text())["sidebar"]["keys"] >= 3),
+              "…kept in the state folder (taught.json)")
+
         # 13. the usage log: written on close, event names only
         p.call("closeAll")
         usage = p.state / "longhand" / "usage.tsv"

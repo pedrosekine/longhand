@@ -620,7 +620,7 @@ BorderSurface {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: page.setSpace(modelData.space, 0)
-            Tip { host: page; shown: parent.containsMouse; text: page.tip(modelData.tip, "pane1") }
+            Tip { host: page; act: "pane1"; shown: parent.containsMouse; text: page.tip(modelData.tip, "pane1") }
           }
         }
       }
@@ -647,7 +647,7 @@ BorderSurface {
           hoverEnabled: true
           cursorShape: Qt.PointingHandCursor
           onClicked: modelData.act === "keys" ? page.toggleKeys() : modelData.act === "settings" ? page.toggleSettings() : page.goToday()
-          Tip { host: page; shown: parent.containsMouse; text: page.tip(modelData.tip, modelData.act) }
+          Tip { host: page; act: modelData.act; shown: parent.containsMouse; text: page.tip(modelData.tip, modelData.act) }
         }
       }
     }
