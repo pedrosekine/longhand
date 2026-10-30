@@ -1374,3 +1374,7 @@ only the window and the panels around it differ.
   `cursor:hide_on_key_press`, Zed's `hide_mouse`, and Esc now dismisses a
   hint (WCAG 1.4.13). The study, with what the benchmark apps do and six
   further explorations, is `docs/hints.md`.
+  The same day, every mark the mouse paints followed the hand too (a row's
+  fill, a word's accent, a box's edge), and hints went warm: the first
+  waits 500 ms, and while one is open or for 300 ms after, the next opens
+  at once (`Tip.qml`, which every hint now uses).

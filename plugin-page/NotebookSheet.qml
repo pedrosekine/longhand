@@ -108,7 +108,7 @@ BorderSurface {
             visible: !nbRow.head
             anchors.fill: parent
             radius: Style.cornerRadius
-            color: nbRow.picked ? Style.selectedFill : nbHover.hovered ? Style.hoverFill : "transparent"
+            color: nbRow.picked ? Style.selectedFill : nbHover.hovered && page.handOn ? Style.hoverFill : "transparent"
           }
           HoverHandler { id: nbHover; enabled: !nbRow.head && !nbRow.picked }
 
@@ -173,7 +173,7 @@ BorderSurface {
                   required property var modelData
                   textFormat: Text.PlainText
                   text: modelData.text
-                  color: verbArea.containsMouse ? page.accent : page.faint
+                  color: verbArea.containsMouse && page.handOn ? page.accent : page.faint
                   font.family: page.fontFamily
                   font.styleName: page.fontStyle
                   font.pixelSize: page.fs(Style.font.caption)
@@ -188,8 +188,9 @@ BorderSurface {
                       else if (modelData.act === "no") page.notebookAsking = false
                       else page.askForgetNote()
                     }
-                    PanelToolTip {
-                      visible: parent.containsMouse && page.handOn && modelData.act !== "yes" && modelData.act !== "no"
+                    Tip {
+                      host: page
+                      shown: parent.containsMouse && modelData.act !== "yes" && modelData.act !== "no"
                       text: page.tip(modelData.text, modelData.act)
                     }
                   }

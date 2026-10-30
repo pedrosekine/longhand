@@ -151,7 +151,7 @@ BorderSurface {
                 anchors.leftMargin: -page.sp(8)
                 anchors.rightMargin: -page.sp(8)
                 radius: Style.cornerRadius
-                color: keyRow.hot ? Style.selectedFill : keyHover.hovered ? Style.hoverFill : "transparent"
+                color: keyRow.hot ? Style.selectedFill : keyHover.hovered && page.handOn ? Style.hoverFill : "transparent"
               }
               HoverHandler { id: keyHover; enabled: !keyRow.isHead }
 

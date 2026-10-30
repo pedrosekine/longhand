@@ -126,7 +126,7 @@ BorderSurface {
               anchors.leftMargin: -page.sp(10)
               anchors.rightMargin: -page.sp(10)
               radius: Style.cornerRadius
-              color: calRow.picked ? Style.selectedFill : calHover.hovered ? Style.hoverFill : "transparent"
+              color: calRow.picked ? Style.selectedFill : calHover.hovered && page.handOn ? Style.hoverFill : "transparent"
             }
             HoverHandler { id: calHover; enabled: !calRow.picked }
 
@@ -214,7 +214,7 @@ BorderSurface {
                     required property var modelData
                     textFormat: Text.PlainText
                     text: modelData.text
-                    color: actArea.containsMouse ? page.accent : page.faint
+                    color: actArea.containsMouse && page.handOn ? page.accent : page.faint
                     font.family: page.fontFamily
                     font.styleName: page.fontStyle
                     font.pixelSize: page.fs(Style.font.bodySmall)
@@ -233,8 +233,9 @@ BorderSurface {
                         else page.askRemoveCalendar(calRow.index)
                         settingsField.forceActiveFocus()
                       }
-                      PanelToolTip {
-                        visible: parent.containsMouse && page.handOn && modelData.act !== "yes" && modelData.act !== "no"
+                      Tip {
+                        host: page
+                        shown: parent.containsMouse && modelData.act !== "yes" && modelData.act !== "no"
                         text: page.tip(modelData.text, modelData.act)
                       }
                     }
@@ -341,7 +342,7 @@ BorderSurface {
           Text {
             textFormat: Text.PlainText
             text: "what it knows"
-            color: knowsArea.containsMouse ? page.accent : page.faint
+            color: knowsArea.containsMouse && page.handOn ? page.accent : page.faint
             font.family: page.fontFamily
             font.styleName: page.fontStyle
             font.pixelSize: page.fs(Style.font.bodySmall)
@@ -351,7 +352,7 @@ BorderSurface {
               hoverEnabled: true
               cursorShape: Qt.PointingHandCursor
               onClicked: page.openNotebook()
-              PanelToolTip { visible: parent.containsMouse && page.handOn; text: page.tip("What the agent knows: its notes, to correct or forget", "settingsChange") }
+              Tip { host: page; shown: parent.containsMouse; text: page.tip("What the agent knows: its notes, to correct or forget", "settingsChange") }
             }
           }
         }
@@ -370,7 +371,7 @@ BorderSurface {
           Text {
             textFormat: Text.PlainText
             text: "what it may do"
-            color: mayArea.containsMouse ? page.accent : page.faint
+            color: mayArea.containsMouse && page.handOn ? page.accent : page.faint
             font.family: page.fontFamily
             font.styleName: page.fontStyle
             font.pixelSize: page.fs(Style.font.bodySmall)
@@ -380,7 +381,7 @@ BorderSurface {
               hoverEnabled: true
               cursorShape: Qt.PointingHandCursor
               onClicked: page.openAutonomy()
-              PanelToolTip { visible: parent.containsMouse && page.handOn; text: page.tip("What it may do: each kind of action, ask me · do it and tell me · never", "settingsChange") }
+              Tip { host: page; shown: parent.containsMouse; text: page.tip("What it may do: each kind of action, ask me · do it and tell me · never", "settingsChange") }
             }
           }
         }
@@ -399,7 +400,7 @@ BorderSurface {
           Text {
             textFormat: Text.PlainText
             text: "what it may search"
-            color: searchArea.containsMouse ? page.accent : page.faint
+            color: searchArea.containsMouse && page.handOn ? page.accent : page.faint
             font.family: page.fontFamily
             font.styleName: page.fontStyle
             font.pixelSize: page.fs(Style.font.bodySmall)
@@ -409,7 +410,7 @@ BorderSurface {
               hoverEnabled: true
               cursorShape: Qt.PointingHandCursor
               onClicked: page.openSearchFolders()
-              PanelToolTip { visible: parent.containsMouse && page.handOn; text: page.tip("What it may search: each folder of the vault, on or off", "settingsChange") }
+              Tip { host: page; shown: parent.containsMouse; text: page.tip("What it may search: each folder of the vault, on or off", "settingsChange") }
             }
           }
         }
@@ -417,7 +418,7 @@ BorderSurface {
           visible: !!page.agentChecks && page.agentChecks.latest_review !== ""
           textFormat: Text.PlainText
           text: "open the latest review"
-          color: reviewArea.containsMouse ? page.accent : page.faint
+          color: reviewArea.containsMouse && page.handOn ? page.accent : page.faint
           font.family: page.fontFamily
           font.styleName: page.fontStyle
           font.pixelSize: page.fs(Style.font.bodySmall)
@@ -472,7 +473,7 @@ BorderSurface {
               required property var modelData
               textFormat: Text.PlainText
               text: modelData.text
-              color: soundArea.containsMouse ? page.accent : page.faint
+              color: soundArea.containsMouse && page.handOn ? page.accent : page.faint
               font.family: page.fontFamily
               font.styleName: page.fontStyle
               font.pixelSize: page.fs(Style.font.bodySmall)
@@ -482,7 +483,7 @@ BorderSurface {
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: { if (modelData.act === "settingsSound") page.toggleTickSound(); else page.playTick(true); settingsField.forceActiveFocus() }
-                PanelToolTip { visible: parent.containsMouse && page.handOn && modelData.act !== ""; text: page.tip("The tick's sound: on or off", "settingsChange") }
+                Tip { host: page; shown: parent.containsMouse && modelData.act !== ""; text: page.tip("The tick's sound: on or off", "settingsChange") }
               }
             }
           }
@@ -523,7 +524,7 @@ BorderSurface {
               required property var modelData
               textFormat: Text.PlainText
               text: modelData.text
-              color: page.pointerMode === modelData.mode ? page.foreground : pointerArea.containsMouse ? page.accent : page.faint
+              color: page.pointerMode === modelData.mode ? page.foreground : pointerArea.containsMouse && page.handOn ? page.accent : page.faint
               font.family: page.fontFamily
               font.styleName: page.fontStyle
               font.pixelSize: page.fs(Style.font.bodySmall)
@@ -536,7 +537,7 @@ BorderSurface {
                   page.setPointer(modelData.mode)
                   settingsField.forceActiveFocus()
                 }
-                PanelToolTip { visible: parent.containsMouse && page.handOn; text: page.tip("The pointer: " + modelData.text + " (picked: the next one)", "settingsChange") }
+                Tip { host: page; shown: parent.containsMouse; text: page.tip("The pointer: " + modelData.text + " (picked: the next one)", "settingsChange") }
               }
             }
           }

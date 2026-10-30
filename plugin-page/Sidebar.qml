@@ -192,7 +192,7 @@ BorderSurface {
         anchors.verticalCenter: parent.verticalCenter
         textFormat: Text.PlainText
         text: "‹"
-        color: prevArea.containsMouse ? page.accent : page.dim
+        color: prevArea.containsMouse && page.handOn ? page.accent : page.dim
         font.family: page.fontFamily
         font.styleName: page.fontStyle
         font.pixelSize: page.fs(Style.font.title)
@@ -203,7 +203,7 @@ BorderSurface {
           hoverEnabled: true
           cursorShape: Qt.PointingHandCursor
           onClicked: page.moveCalendar(0, -1)
-          PanelToolTip { visible: parent.containsMouse && page.handOn; text: page.tip("A month back", "calPrevMonth") }
+          Tip { host: page; shown: parent.containsMouse; text: page.tip("A month back", "calPrevMonth") }
         }
       }
       Text {
@@ -221,7 +221,7 @@ BorderSurface {
         anchors.verticalCenter: parent.verticalCenter
         textFormat: Text.PlainText
         text: "›"
-        color: nextArea.containsMouse ? page.accent : page.dim
+        color: nextArea.containsMouse && page.handOn ? page.accent : page.dim
         font.family: page.fontFamily
         font.styleName: page.fontStyle
         font.pixelSize: page.fs(Style.font.title)
@@ -232,7 +232,7 @@ BorderSurface {
           hoverEnabled: true
           cursorShape: Qt.PointingHandCursor
           onClicked: page.moveCalendar(0, 1)
-          PanelToolTip { visible: parent.containsMouse && page.handOn; text: page.tip("A month on", "calNextMonth") }
+          Tip { host: page; shown: parent.containsMouse; text: page.tip("A month on", "calNextMonth") }
         }
       }
     }
@@ -285,7 +285,7 @@ BorderSurface {
             anchors.fill: parent
             anchors.margins: 1
             radius: Style.cornerRadius
-            visible: dayArea.containsMouse && !(dayCell.isCursor && sidebarKeys.activeFocus)
+            visible: dayArea.containsMouse && page.handOn && !(dayCell.isCursor && sidebarKeys.activeFocus)
             color: Style.hoverFill
           }
           Rectangle {
@@ -347,7 +347,7 @@ BorderSurface {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: page.openCalendarDay(modelData)
-            PanelToolTip { visible: parent.containsMouse && page.handOn && !!modelData; text: page.tips([["Open the day in the sheet", "calOpen"], ["Today", "calToday"]]) }
+            Tip { host: page; shown: parent.containsMouse && !!modelData; text: page.tips([["Open the day in the sheet", "calOpen"], ["Today", "calToday"]]) }
           }
         }
       }
@@ -383,7 +383,7 @@ BorderSurface {
         width: calendar.width
         height: dueRow.implicitHeight + page.sp(6)
         radius: Style.cornerRadius
-        color: page.dueFocus === index && sidebarKeys.activeFocus ? Style.selectedFill : dueArea.containsMouse ? Style.hoverFill : "transparent"
+        color: page.dueFocus === index && sidebarKeys.activeFocus ? Style.selectedFill : dueArea.containsMouse && page.handOn ? Style.hoverFill : "transparent"
         Text {
           id: dueRow
           anchors.left: parent.left
@@ -407,7 +407,7 @@ BorderSurface {
           hoverEnabled: true
           cursorShape: Qt.PointingHandCursor
           onClicked: page.goToDeadline(modelData)
-          PanelToolTip { visible: parent.containsMouse && page.handOn; text: page.tips([["Go to its line", "listOpen"], ["Done (again: not done)", "listDone"]]) }
+          Tip { host: page; shown: parent.containsMouse; text: page.tips([["Go to its line", "listOpen"], ["Done (again: not done)", "listDone"]]) }
         }
       }
     }
@@ -434,7 +434,7 @@ BorderSurface {
         width: calendar.width
         height: projCol.implicitHeight + page.sp(6)
         radius: Style.cornerRadius
-        color: page.projFocus === index && sidebarKeys.activeFocus ? Style.selectedFill : projArea.containsMouse ? Style.hoverFill : "transparent"
+        color: page.projFocus === index && sidebarKeys.activeFocus ? Style.selectedFill : projArea.containsMouse && page.handOn ? Style.hoverFill : "transparent"
         Column {
           id: projCol
           anchors.left: parent.left
@@ -468,8 +468,9 @@ BorderSurface {
           anchors.fill: parent
           hoverEnabled: true
           cursorShape: Qt.PointingHandCursor
-          PanelToolTip {
-            visible: parent.containsMouse && page.handOn
+          Tip {
+            host: page
+            shown: parent.containsMouse
             text: page.tips([["Its notes", "listOpen"], ["Shift-click: a new section for it", "listClass"], ["Ctrl-click: put its #tag at the cursor", "listTag"]])
           }
           onClicked: function (mouse) {
@@ -491,7 +492,7 @@ BorderSurface {
       width: calendar.width
       height: newText.implicitHeight + page.sp(6)
       radius: Style.cornerRadius
-      color: page.projFocus === page.projects.length && sidebarKeys.activeFocus ? Style.selectedFill : newArea.containsMouse ? Style.hoverFill : "transparent"
+      color: page.projFocus === page.projects.length && sidebarKeys.activeFocus ? Style.selectedFill : newArea.containsMouse && page.handOn ? Style.hoverFill : "transparent"
       Text {
         id: newText
         anchors.left: parent.left
@@ -499,7 +500,7 @@ BorderSurface {
         anchors.verticalCenter: parent.verticalCenter
         textFormat: Text.PlainText
         text: "+ new project"
-        color: newArea.containsMouse ? page.accent : page.dim
+        color: newArea.containsMouse && page.handOn ? page.accent : page.dim
         font.family: page.fontFamily
         font.styleName: page.fontStyle
         font.pixelSize: page.fs(Style.font.bodySmall)
@@ -510,7 +511,7 @@ BorderSurface {
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
         onClicked: { page.projFocus = page.projects.length; page.openSidebarProject() }
-        PanelToolTip { visible: parent.containsMouse && page.handOn; text: page.tip("Make a project: in the sidebar, @ and #", "listOpen") }
+        Tip { host: page; shown: parent.containsMouse; text: page.tip("Make a project: in the sidebar, @ and #", "listOpen") }
       }
     }
     Column {
@@ -607,7 +608,7 @@ BorderSurface {
           readonly property bool here: page.sidebarSpace === modelData.space
           textFormat: Text.PlainText
           text: modelData.space
-          color: spaceArea.containsMouse ? page.accent : here ? page.foreground : page.faint
+          color: spaceArea.containsMouse && page.handOn ? page.accent : here ? page.foreground : page.faint
           font.family: page.fontFamily
           font.styleName: page.fontStyle
           font.pixelSize: page.fs(Style.font.bodySmall)
@@ -619,7 +620,7 @@ BorderSurface {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: page.setSpace(modelData.space, 0)
-            PanelToolTip { visible: parent.containsMouse && page.handOn; text: page.tip(modelData.tip, "pane1") }
+            Tip { host: page; shown: parent.containsMouse; text: page.tip(modelData.tip, "pane1") }
           }
         }
       }
@@ -635,7 +636,7 @@ BorderSurface {
           : page.noteService.isToday
         textFormat: Text.PlainText
         text: modelData.text
-        color: footArea.containsMouse ? page.accent : open ? page.foreground : page.faint
+        color: footArea.containsMouse && page.handOn ? page.accent : open ? page.foreground : page.faint
         font.family: page.fontFamily
         font.styleName: page.fontStyle
         font.pixelSize: page.fs(Style.font.bodySmall)
@@ -646,7 +647,7 @@ BorderSurface {
           hoverEnabled: true
           cursorShape: Qt.PointingHandCursor
           onClicked: modelData.act === "keys" ? page.toggleKeys() : modelData.act === "settings" ? page.toggleSettings() : page.goToday()
-          PanelToolTip { visible: parent.containsMouse && page.handOn; text: page.tip(modelData.tip, modelData.act) }
+          Tip { host: page; shown: parent.containsMouse; text: page.tip(modelData.tip, modelData.act) }
         }
       }
     }
@@ -693,7 +694,7 @@ BorderSurface {
         textFormat: Text.PlainText
         elide: Text.ElideRight
         text: "← #" + page.projectTag
-        color: backArea.containsMouse ? page.accent : page.dim
+        color: backArea.containsMouse && page.handOn ? page.accent : page.dim
         font.family: page.fontFamily
         font.styleName: page.fontStyle
         font.pixelSize: page.fs(Style.font.caption)
@@ -703,7 +704,7 @@ BorderSurface {
           hoverEnabled: true
           cursorShape: Qt.PointingHandCursor
           onClicked: page.leaveProject()
-          PanelToolTip { visible: parent.containsMouse && page.handOn; text: page.tip("Back out of the project", "listBack") }
+          Tip { host: page; shown: parent.containsMouse; text: page.tip("Back out of the project", "listBack") }
         }
       }
 
@@ -741,7 +742,7 @@ BorderSurface {
           width: projectColumn.width
           height: docText.implicitHeight + page.sp(6)
           radius: Style.cornerRadius
-          color: hot ? Style.selectedFill : docArea.containsMouse ? Style.hoverFill : "transparent"
+          color: hot ? Style.selectedFill : docArea.containsMouse && page.handOn ? Style.hoverFill : "transparent"
           Text {
             id: docText
             anchors.left: parent.left
@@ -763,7 +764,7 @@ BorderSurface {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: { page.docFocus = index; page.openDocument(modelData) }
-            PanelToolTip { visible: parent.containsMouse && page.handOn; text: page.tip("Open it in the PDF viewer", "listOpen") }
+            Tip { host: page; shown: parent.containsMouse; text: page.tip("Open it in the PDF viewer", "listOpen") }
           }
         }
       }
@@ -793,7 +794,7 @@ BorderSurface {
           width: projectColumn.width
           height: secCol.implicitHeight + page.sp(8)
           radius: Style.cornerRadius
-          color: hot ? Style.selectedFill : secArea.containsMouse ? Style.hoverFill : "transparent"
+          color: hot ? Style.selectedFill : secArea.containsMouse && page.handOn ? Style.hoverFill : "transparent"
           Column {
             id: secCol
             anchors.left: parent.left
@@ -833,7 +834,7 @@ BorderSurface {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: { page.docFocus = -1; page.sectionFocus = index; page.openSection(modelData) }
-            PanelToolTip { visible: parent.containsMouse && page.handOn; text: page.tip("Open the section", "listOpen") }
+            Tip { host: page; shown: parent.containsMouse; text: page.tip("Open the section", "listOpen") }
           }
         }
       }

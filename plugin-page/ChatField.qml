@@ -22,7 +22,7 @@ FocusScope {
   signal keyPressed(var event)
   function remove(a, b) { area.remove(a, b) }
 
-  readonly property var borderSpec: Border.controlSpec(area.activeFocus ? "focus" : area.hovered ? "hover-cursor" : "normal", page.foreground, page.accent)
+  readonly property var borderSpec: Border.controlSpec(area.activeFocus ? "focus" : area.hovered && page.handOn ? "hover-cursor" : "normal", page.foreground, page.accent)
   FontMetrics { id: lineMetrics; font: area.font }
   implicitHeight: Math.min(area.implicitHeight, Math.ceil(lineMetrics.lineSpacing * box.maxLines) + area.topPadding + area.bottomPadding)
 

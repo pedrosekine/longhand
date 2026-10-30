@@ -43,6 +43,9 @@ Item {
   // Drawn while the mouse is on a checkbox: the page's hint, naming the
   // key that does the same (an Item; the editor knows nothing of tooltips).
   property Component boxTip: null
+  // The hand is on the mouse (the page's `handOn`): a box under a still
+  // pointer, as the lines move, is not lit.
+  property bool handOn: true
   // Who made each box and bullet (docs/agent.md): line index -> "agent" or
   // "together"; a line not in it is the person's. Drawn in the box or dot
   // itself — ◇ the agent's, the seal made together — so nothing is added
@@ -1591,8 +1594,8 @@ Item {
           radius: Math.max(2, Math.round(size * 0.22))
           // The person's box is this square; the agent's and the shared one
           // draw their own shape inside it, and the square gives way.
-          readonly property color edge: boxArea.containsMouse ? ed.accent : ed.boxColor
-          color: row.checked && row.author === "" ? (boxArea.containsMouse ? ed.accent : ed.checkColor) : "transparent"
+          readonly property color edge: boxArea.containsMouse && ed.handOn ? ed.accent : ed.boxColor
+          color: row.checked && row.author === "" ? (boxArea.containsMouse && ed.handOn ? ed.accent : ed.checkColor) : "transparent"
           border.width: row.checked || row.author !== "" ? 0 : Math.max(1, Math.round(ed.textSize * 0.08))
           border.color: box.edge
 
@@ -1604,7 +1607,7 @@ Item {
             height: width
             rotation: 45
             radius: Math.max(1, Math.round(width * 0.12))
-            color: row.checked ? (boxArea.containsMouse ? ed.accent : ed.checkColor) : "transparent"
+            color: row.checked ? (boxArea.containsMouse && ed.handOn ? ed.accent : ed.checkColor) : "transparent"
             border.width: row.checked ? 0 : Math.max(1, Math.round(ed.textSize * 0.08))
             border.color: box.edge
           }
@@ -1618,7 +1621,7 @@ Item {
             height: width
             outline: !row.checked
             strokePx: Math.max(1, Math.round(ed.textSize * 0.08))
-            color: row.checked ? (boxArea.containsMouse ? ed.accent : ed.checkColor) : box.edge
+            color: row.checked ? (boxArea.containsMouse && ed.handOn ? ed.accent : ed.checkColor) : box.edge
           }
 
           Text {

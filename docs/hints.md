@@ -85,13 +85,16 @@ until the mouse moves.
 every pane's keys pass through), the `handHover` handler; each
 `PanelToolTip` adds `&& page.handOn`.
 
-### B. Warm hints
+### B. Warm hints — built 2026-10-30
 
 The first hint waits about 500 ms. While one is open, or for 300 ms after
 it closes, the next one opens at once. Running the mouse along the footer
 (today · keys · settings) or the toolbar then reads like one strip instead
-of three waits. Small change: one `tipWarm` flag and a timer on the page,
-and `delay: page.tipWarm ? 0 : 500` on each hint.
+of three waits. Built as `Tip.qml`, which every hint now uses: it wraps
+the shell's `PanelToolTip` and holds both rules, A's gate and this delay.
+The page counts open hints (`tipWarm`, `tipsOpen`, `tipCool`), and a key
+cools the strip at once. The first wait went from the shell's 400 ms to
+500 ms, since warm hints make up for it.
 
 ### C. Teach after the click, in the status line
 
@@ -103,14 +106,18 @@ an action once its key has been used a few times. It never speaks while you
 type. This is the
 mouse-teaches-keyboard idea at the moment it is most likely to stick.
 
-### D. Hover fills follow the hand too
+### D. Hover marks follow the hand too — built 2026-10-30
 
 The same gate for the faint `hoverFill` on rows. While the keys move, only
 the keys' `selectedFill` shows. A list scrolled by the keys under a still,
 hidden pointer then never paints a second, mouse-coloured row. This keeps
 the 2026-10-19 rule that mouse and keys never read as the same thing, even
-when the mouse isn't moving. Small: the same `handOn` on about ten
-`HoverHandler`s.
+when the mouse isn't moving. Built wider than fills: every mark the mouse
+paints, which also covers a button word's accent, a box's accent edge (in
+the note and on the dashboard), the dashboard row's "chat c", and the chat
+field's hover border. In the note this matters most: a box that slides
+under a still pointer is no longer lit. The editor gets `handOn` from the
+page.
 
 ### E. A hint that fits
 
@@ -139,6 +146,5 @@ be needed.
 
 ## Recommendation
 
-A is built. D and B are next: small, and in the same spirit. C is the best
-teaching gain for its size. E needs a look at the dashboard in use. F is the
+A, B and D are built. C is next: the best teaching gain for its size. E needs a look at the dashboard in use. F is the
 real design exploration, so mock it up before building. G waits on use.

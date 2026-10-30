@@ -24,7 +24,7 @@ Item {
     anchors.leftMargin: -page.sp(10)
     anchors.rightMargin: -page.sp(10)
     radius: Style.cornerRadius
-    color: row.picked ? Style.selectedFill : rowHover.hovered ? Style.hoverFill : "transparent"
+    color: row.picked ? Style.selectedFill : rowHover.hovered && page.handOn ? Style.hoverFill : "transparent"
   }
   HoverHandler { id: rowHover; enabled: !row.picked }
   MouseArea {

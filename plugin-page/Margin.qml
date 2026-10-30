@@ -240,7 +240,7 @@ BorderSurface {
             readonly property bool chosen: page.ratingOf(page.currentRec) === modelData.value
             textFormat: Text.PlainText
             text: modelData.text
-            color: rateArea.containsMouse ? page.accent : chosen ? page.foreground : page.faint
+            color: rateArea.containsMouse && page.handOn ? page.accent : chosen ? page.foreground : page.faint
             font.family: page.fontFamily
             font.styleName: page.fontStyle
             font.pixelSize: page.fs(Style.font.caption)
@@ -251,7 +251,7 @@ BorderSurface {
               hoverEnabled: true
               cursorShape: Qt.PointingHandCursor
               onClicked: page.rateReply(modelData.value)
-              PanelToolTip { visible: parent.containsMouse && page.handOn; text: page.tip(chosen ? "Take it back" : "Say it was " + modelData.text, modelData.act) }
+              Tip { host: page; shown: parent.containsMouse; text: page.tip(chosen ? "Take it back" : "Say it was " + modelData.text, modelData.act) }
             }
           }
         }
@@ -301,7 +301,7 @@ BorderSurface {
             width: parent.width
             height: cardColumn.implicitHeight + page.sp(14)
             radius: Style.cornerRadius
-            color: hot ? Style.selectedFill : cardHover.hovered && !done ? Style.hoverFill : "transparent"
+            color: hot ? Style.selectedFill : cardHover.hovered && page.handOn && !done ? Style.hoverFill : "transparent"
             border.width: 1
             border.color: hot ? page.accent : page.faint
             opacity: done ? 0.55 : 1
@@ -390,7 +390,7 @@ BorderSurface {
               hoverEnabled: true
               cursorShape: card.done ? Qt.ArrowCursor : Qt.PointingHandCursor
               onClicked: { page.marginFocus = row.ci; page.acceptProposal(row.ci) }
-              PanelToolTip { visible: parent.containsMouse && page.handOn && !card.done; text: page.tip("Do what it says", "marginAccept") }
+              Tip { host: page; shown: parent.containsMouse && !card.done; text: page.tip("Do what it says", "marginAccept") }
             }
           }
         }

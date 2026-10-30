@@ -570,9 +570,9 @@ Small, when passing by:
     of the map. Started from the dashboard, where a task had no visible way
     to talk with the agent.
 11. **Hover hints, after the benchmark apps** (study 2026-10-30,
-    `docs/hints.md`): A, hints follow the hand, is built. Next, in order:
-    hover fills follow the hand too (D), warm hints (B), the key said in
-    the status line after a click (C), a hint that fits (E). Keys that
+    `docs/hints.md`): A (hints follow the hand), D (hover marks too) and
+    B (warm hints) are built. Next, in order: the key said in the status
+    line after a click (C), a hint that fits (E). Keys that
     wait show the keys (F, which-key / KeyTips) wants a mock-up first;
     hints that graduate (G) wait on use.
 
@@ -814,9 +814,14 @@ from 2026-09/10 and still stand.
   but a modifier alone puts the hover hints away until the hand moves the
   pointer. Watch: whether a hint is missed after typing (moving the mouse
   a hair should bring it), and whether holding Ctrl to read a Ctrl-click
-  hint works as expected.
+  hint works as expected. The same day, every hover mark (fill, accent,
+  box edge) followed the hand too, and hints went warm: 500 ms for the
+  first, then at once for 300 ms. Watch whether a lit row is missed after
+  the keys, and whether the strip feels quick or jumpy.
 - **A live check that failed once** (2026-10-18, then passed four runs):
   the "when?" box pushing the next line down (11j in `tests/page/run.py`).
+  Another, 2026-10-30 (then passed): "a line written a moment before is on
+  it", the dashboard opened right after an insert (the 2026-10-25 save race).
 
 ### Decided against
 

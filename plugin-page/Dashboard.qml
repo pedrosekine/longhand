@@ -181,7 +181,7 @@ BorderSurface {
               // The row talked about beside, while the keys are there: still
               // marked, faintly, so the list says which one it is.
               color: dashRow.hot ? Style.selectedFill
-                : rowHover.hovered || (page.taskFocus === index && !isHead && page.talkOpen) ? Style.hoverFill : "transparent"
+                : rowHover.hovered && page.handOn || (page.taskFocus === index && !isHead && page.talkOpen) ? Style.hoverFill : "transparent"
             }
 
             // The gutter bar, as the note draws one beside a block: the
@@ -310,7 +310,7 @@ BorderSurface {
                 radius: Math.max(2, Math.round(size * 0.22))
                 color: dashRow.done && dashRow.author === "" ? pal.green : "transparent"
                 border.width: dashRow.done || dashRow.author !== "" ? 0 : Math.max(1, Math.round(page.textSize * 0.08))
-                readonly property color edge: boxArea.containsMouse ? page.accent : dashRow.late ? page.urgent : page.dim
+                readonly property color edge: boxArea.containsMouse && page.handOn ? page.accent : dashRow.late ? page.urgent : page.dim
                 border.color: edge
 
                 // The agent's: a diamond. Made together: the seal.
@@ -360,7 +360,7 @@ BorderSurface {
                   cursorShape: Qt.PointingHandCursor
                   hoverEnabled: true
                   onClicked: { page.taskFocus = dashRow.index; page.tickFocused() }
-                  PanelToolTip { visible: parent.containsMouse && page.handOn; text: page.tip("Done (again: not done)", "dashDone") }
+                  Tip { host: page; shown: parent.containsMouse; text: page.tip("Done (again: not done)", "dashDone") }
                 }
               }
 
@@ -386,7 +386,7 @@ BorderSurface {
                 id: chatWord
                 readonly property bool can: (dashRow.kind === "task" || dashRow.kind === "deadline" || dashRow.asks)
                   && !(dashRow.line && dashRow.line.private)
-                visible: can && (dashRow.hot || rowHover.hovered)
+                visible: can && (dashRow.hot || rowHover.hovered && page.handOn)
                 anchors.right: parent.right
                 y: Math.round((inner.lineH - height) / 2)
                 width: chatRow.implicitWidth
@@ -398,7 +398,7 @@ BorderSurface {
                     anchors.baseline: chatKey.baseline
                     textFormat: Text.PlainText
                     text: "chat"
-                    color: chatArea.containsMouse ? page.accent : page.dim
+                    color: chatArea.containsMouse && page.handOn ? page.accent : page.dim
                     font.family: page.fontFamily
                     font.styleName: page.fontStyle
                     font.pixelSize: page.fs(Style.font.bodySmall)
@@ -420,7 +420,7 @@ BorderSurface {
                   hoverEnabled: true
                   cursorShape: Qt.PointingHandCursor
                   onClicked: { page.taskFocus = dashRow.index; page.talkFocused() }
-                  PanelToolTip { visible: parent.containsMouse && page.handOn; text: page.tip("Chat about it", "dashTalk") }
+                  Tip { host: page; shown: parent.containsMouse; text: page.tip("Chat about it", "dashTalk") }
                 }
               }
 
@@ -583,9 +583,10 @@ BorderSurface {
               hoverEnabled: true
               cursorShape: dashRow.acts ? Qt.PointingHandCursor : Qt.ArrowCursor
               onClicked: { page.taskFocus = index; page.activateTask() }
-              PanelToolTip {
+              Tip {
+                host: page
                 readonly property string kind: dashRow.modelData.kind
-                visible: parent.containsMouse && page.handOn && (kind === "task" || kind === "deadline" || kind === "shelf" || kind === "grading" || kind === "raised"
+                shown: parent.containsMouse && (kind === "task" || kind === "deadline" || kind === "shelf" || kind === "grading" || kind === "raised"
                                                   || kind === "proposal" || kind === "question" || kind === "told")
                 text: kind === "task" ? page.tips([["Go to the line", "dashOpen"], ["Done", "dashDone"], ["Reschedule", "dashWhen"], ["Take the date off", "dashNoDate"],
                                                    ["Cycle its priority", "dashPriority"], ["Rename", "dashRename"],

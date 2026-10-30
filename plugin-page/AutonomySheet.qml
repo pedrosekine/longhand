@@ -96,7 +96,7 @@ BorderSurface {
               anchors.leftMargin: -page.sp(10)
               anchors.rightMargin: -page.sp(10)
               radius: Style.cornerRadius
-              color: kindRow.picked ? Style.selectedFill : kindHover.hovered ? Style.hoverFill : "transparent"
+              color: kindRow.picked ? Style.selectedFill : kindHover.hovered && page.handOn ? Style.hoverFill : "transparent"
             }
             HoverHandler { id: kindHover; enabled: !kindRow.picked }
             MouseArea {
@@ -130,7 +130,7 @@ BorderSurface {
                     anchors.baseline: parent.children[0].baseline
                     textFormat: Text.PlainText
                     text: page.sayLevel(modelData)
-                    color: levelArea.containsMouse ? page.accent : chosen ? page.foreground : page.faint
+                    color: levelArea.containsMouse && page.handOn ? page.accent : chosen ? page.foreground : page.faint
                     font.underline: chosen
                     font.family: page.fontFamily
                     font.styleName: page.fontStyle
