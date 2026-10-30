@@ -2243,6 +2243,28 @@ def main() -> int:
         p.call("pageKey", KEY_3, CTRL)
         check(p.call("dayKey", KEY_ESC, 0) == "true" and panes()["panes"] == ["left", "center"],
               f"Esc in the day's chat closes the pane ({panes()})")
+        # Ctrl+Alt+2: the dashboard from anywhere, in one press; it only
+        # shows, so pressed on it it stays; it is a step back can undo.
+        ALT2 = CTRL | 0x08000000
+        p.call("pageKey", KEY_1, CTRL)
+        check(panes()["here"] == "left" and panes()["center"] == "note", f"the keys in the sidebar, the note in the middle ({panes()})")
+        check(p.call("sideKey", KEY_2, ALT2) == "true" and panes()["center"] == "dash" and panes()["here"] == "center",
+              f"Ctrl+Alt+2 from the sidebar: the dashboard in one press, the keys on it ({panes()})")
+        check(p.call("dashKey", KEY_2, ALT2) == "true" and panes()["center"] == "dash",
+              f"…pressed on it, it stays ({panes()})")
+        p.call("pageKey", KEY_1, CTRL)
+        check(p.call("sideKey", KEY_2, ALT2) == "true" and panes()["center"] == "dash" and panes()["here"] == "center",
+              f"…from the sidebar with the dashboard up: the keys to it, nothing flipped ({panes()})")
+        p.call("dashKey", 0x2f, CTRL)
+        check(panes()["center"] == "keys", f"the keys sheet over the dashboard ({panes()})")
+        check(p.call("keysKey", KEY_2, ALT2) == "true" and panes()["center"] == "dash" and p.call("keysOpen") == "false",
+              f"…Ctrl+Alt+2 closes it, the dashboard back ({panes()})")
+        check(p.call("dashKey", 0x5b, CTRL) == "true" and panes()["center"] == "note",
+              f"Ctrl+[ after it: the note, one step back ({panes()})")
+        p.call("pageKey", 0x2f, CTRL)
+        check(p.call("keysKey", KEY_2, ALT2) == "true" and panes()["center"] == "dash" and p.call("keysOpen") == "false",
+              f"Ctrl+Alt+2 from the keys over the note: the dashboard ({panes()})")
+        p.call("dashKey", KEY_ESC, 0)
         check(panes()["pointer"] == "every", "the pointer follows every selection unless told otherwise")
         p.call("closePanes")
 

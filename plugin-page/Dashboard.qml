@@ -13,7 +13,7 @@ import "Task.js" as Task
 import "Authorship.js" as Authorship
 import "Shortcuts.js" as Sc
 
-// The dashboard (Ctrl+T): every open box and deadline, worked with keys
+// The dashboard (Ctrl+2, Ctrl+Alt+2): every open box and deadline, worked with keys
 // Moved out of Page.qml on 2026-10-18 (tools/extract_sheet.py); `page` is
 // the page itself.
 BorderSurface {

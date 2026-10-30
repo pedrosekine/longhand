@@ -49,6 +49,10 @@ being talked about beside it, which stays faintly marked.
   cursor's block beside the note, the row beside the dashboard). A side pane
   opened by its number opens as it was left: the sidebar on its space, the
   agent's pane on the day's chat.
+- **`Ctrl+Alt+2`** goes straight to the dashboard from anywhere, closing a
+  keys or settings sheet over the middle; pressed on the dashboard it stays,
+  so it never needs a look first (2026-10-30, Craft's modifier-and-digit
+  views; `Ctrl+T` stays free for tabs).
 - **`Ctrl+\`** opens or closes the sidebar and **`Ctrl+|`** (Ctrl+Shift+\)
   the agent's pane, wherever the keys are: Notion's and Craft's key for the
   sidebar, and its Shift for the other side, as VS Code pairs its two.

@@ -1,7 +1,7 @@
 # Keys: a proposal after the benchmark apps
 
-_Proposed and grilled 2026-10-27; decided. All five slices built 2026-10-28;
-the switcher and the `/` menu, and a new note, wait as tasks of their own. Building moves each row into `plugin-page/Shortcuts.js`, and
+_Proposed and grilled 2026-10-27; decided. All five slices built 2026-10-28,
+and the dashboard's own key, `Ctrl+Alt+2`, on 2026-10-30; the switcher and the `/` menu, and a new note, wait as tasks of their own. Building moves each row into `plugin-page/Shortcuts.js`, and
 `tools/keys_guide.py` rewrites [keys.md](keys.md); navigation.md, the
 agent's manual and the keys sheet follow._
 
@@ -45,6 +45,7 @@ every layout.
 |---|---|---|---|
 | The left pane: go there; in it, calendar ↔ files | `Ctrl+[` · `Ctrl+{`/`Ctrl+}` | **`Ctrl+1`** | Todoist and Craft switch views by number; here the number is the pane's place |
 | The middle: go there; in it, note ↔ dashboard | `Ctrl+\` · `Ctrl+T` | **`Ctrl+2`** | As above. `Ctrl+T` is "new tab" in Notion, Craft and every browser |
+| The dashboard, from anywhere | `Ctrl+T` (until slice 3) | **`Ctrl+Alt+2`** (2026-10-30) | Craft `Cmd+Option+4` Tasks, `Cmd+Option+5` Calendar: a view by a modifier and a digit, the plain digits being tabs'; Todoist `Ctrl+2` Today |
 | The right pane: go there; in it, the day's chat ↔ this block's or task's chat | `Ctrl+]` | **`Ctrl+3`** | As above |
 | The sidebar: open or close | `Ctrl+[` · `Ctrl+Shift+B` | **`Ctrl+\`** | Notion, Craft `Cmd+\`; Todoist `M` |
 | The agent's pane: open or close | `Ctrl+]` · `Ctrl+J` | **`Ctrl+Shift+\`** | VS Code pairs `Ctrl+B` / `Ctrl+Alt+B` for the two sidebars |
@@ -59,6 +60,28 @@ every layout.
 
 Dropped: `Ctrl+T`, `Ctrl+Shift+B`, `Ctrl+{`/`Ctrl+}`, and the brackets as
 panes.
+
+**Added 2026-10-30: the dashboard's own key, `Ctrl+Alt+2`.** A number per
+pane took the dashboard's own key away without that being weighed:
+`Ctrl+2` is a flip, so from a side pane it lands on whatever the middle
+showed last, and reaching the dashboard can take a second press you have
+to look to know about. The note has both kinds (`Ctrl+2` the day you were
+on, `Ctrl+H` today); the dashboard had only the flip, and it is the most
+opened view after the day's note (85 times, 15–28 October).
+- **`Ctrl+Alt+2` only shows the dashboard:** from anywhere it goes there,
+  closing the keys or settings over the middle; pressed on it, it stays.
+  Esc, `Ctrl+2` or `Ctrl+[` go back.
+- **It is a step in the one history,** as the note ↔ the dashboard is.
+- **Why not `Ctrl+T`:** kept for tabs, should the page grow them (Notion,
+  Craft, every browser). `Ctrl+Shift+T` reopens a closed tab in browsers;
+  `Ctrl+Shift+D` reads as the opposite of `Ctrl+D`'s date (Shift reverses
+  in this map: `Shift+T`, `Shift+N`); Todoist's `G` then `T` needs a
+  sequence the table cannot match and letters the note types. Craft's
+  pattern fits: its plain digits are tabs, its views a modifier and a
+  digit, and here `Ctrl+Alt` already moves the page (`Ctrl+Alt+←/→`,
+  `Ctrl+Alt+P`). Hyprland takes no `Ctrl+Alt+digit`.
+- **Not now:** `Ctrl+Alt+1` (files) and `Ctrl+Alt+3` (this chat) would
+  make it a family; only the dashboard is in daily use enough to earn one.
 
 **Decided (grilling, 2026-10-27):**
 - **A number per pane, left to right** (Pedro's, over a number per view):

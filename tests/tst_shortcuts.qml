@@ -33,6 +33,10 @@ TestCase {
     verify(Sc.hit(ev(Qt.Key_1, Qt.ControlModifier), "pane1"))
     verify(Sc.hit(ev(Qt.Key_2, Qt.ControlModifier), "pane2"))
     verify(Sc.hit(ev(Qt.Key_3, Qt.ControlModifier), "pane3"))
+    // The dashboard straight, with Alt (2026-10-30); Ctrl+2 stays the flip.
+    verify(Sc.hit(ev(Qt.Key_2, Qt.ControlModifier | Qt.AltModifier), "dashGo"))
+    verify(!Sc.hit(ev(Qt.Key_2, Qt.ControlModifier | Qt.AltModifier), "pane2"))
+    verify(!Sc.hit(ev(Qt.Key_2, Qt.ControlModifier), "dashGo"))
     verify(Sc.hit(ev(Qt.Key_Backslash, Qt.ControlModifier), "sidebar"))
     verify(Sc.hit(ev(Qt.Key_Bar, Qt.ControlModifier | Qt.ShiftModifier), "day"))
     verify(!Sc.hit(ev(Qt.Key_BracketLeft, Qt.ControlModifier), "sidebar"))

@@ -65,7 +65,7 @@ import "Links.js" as Links
 // screen until asked: Ctrl+Enter on an answered block opens its margin —
 // the reply, its proposals (Enter accepts one; local code runs the CLI, the
 // model never does), and the chat about that block; Esc closes it again,
-// the cursor back where it was. Ctrl+T opens the dashboard: every open checkbox
+// the cursor back where it was. Ctrl+2 opens the dashboard: every open checkbox
 // across the daily notes, carried while it is alive (a box goes quiet after
 // 7 days of silence, a task after 30 — agent/lifespan.py — and waits under
 // "set aside"; it is never rewritten, the page being the one program that
@@ -1462,6 +1462,7 @@ Item {
     if (Sc.hit(event, "settings")) { root.toggleSettings(); return true }
     if (Sc.hit(event, "pane1")) { root.paneKey("left"); return true }
     if (Sc.hit(event, "pane2")) { root.paneKey("center"); return true }
+    if (Sc.hit(event, "dashGo")) { root.showDash(); return true }
     if (Sc.hit(event, "pane3")) { root.paneKey("right"); return true }
     if (Sc.hit(event, "sidebar")) { root.toggleSidebar(); return true }
     if (Sc.hit(event, "dayChat")) { root.openDay(""); return true }
@@ -1610,6 +1611,17 @@ Item {
     else if (root.keysOpen) root.toggleKeys()
     else if (root.settingsOpen) root.toggleSettings()
     else root.toggleDash()
+  }
+
+  // Ctrl+Alt+2: the dashboard, wherever the keys are. It only shows: the
+  // keys or settings over the middle close, and pressed on the dashboard it
+  // stays, so it can be pressed without looking (Ctrl+2 flips). Opening it
+  // is a step in the history, through toggleDash.
+  function showDash() {
+    if (!root.dashOpen) { root.toggleDash(); return }
+    if (root.keysOpen) root.toggleKeys()
+    if (root.settingsOpen) root.toggleSettings()
+    if (root.here !== "center") root.focusCenter()
   }
 
   // Ctrl+|: the agent's pane, opened on the day's chat (its home), or
@@ -3259,7 +3271,7 @@ Item {
 
   // ------------------------------------------------------------ tasks panel
 
-  // Ctrl+T: the dashboard. Every open box and every deadline in one place,
+  // Ctrl+2 (Ctrl+Alt+2 straight): the dashboard. Every open box and every deadline in one place,
   // full width, worked with keys — the pinned twin of the bar's deadline
   // popup (SUPER+ALT+D), which stays the glance. It takes the sheet's place
   // rather than sitting beside it: a list is not prose and does not want the

@@ -78,7 +78,8 @@ and tag stay as made; the agent never makes one, only proposes it.
 ## The dashboard
 
 {key:pane2}, pressed in the middle, turns the note into the dashboard (and
-back): every open checkbox and
+back); {key:dashGo} goes straight to it from anywhere, and pressed on it
+stays: every open checkbox and
 deadline across all the notes, grouped by what they ask (due, doing, to
 schedule) and by course. {key:dashOpen} goes to the line; {key:dashDone}
 ticks it; {key:dashWhen} reschedules it and {key:dashNoDate} takes the date
