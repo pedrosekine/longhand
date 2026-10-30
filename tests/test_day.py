@@ -68,9 +68,11 @@ def main() -> int:
     qh = blocks.split(q)[0]["hash"]
     daily = vault / "agents/longhand/daily"
     daily.mkdir(parents=True)
+    # Just after midnight, so before the day's first answer whenever the
+    # suite runs: at 09:00 they were newer than it on a morning run.
     (daily / f"{day}.json").write_text(json.dumps({"blocks": {qh: {
-        "state": "reply", "reply": "By when do you need it?", "head": q, "at": f"{day}T09:00:00",
-        "chat": [{"role": "student", "text": "before winter", "at": f"{day}T09:05:00"}]}},
+        "state": "reply", "reply": "By when do you need it?", "head": q, "at": f"{day}T00:00:01",
+        "chat": [{"role": "student", "text": "before winter", "at": f"{day}T00:00:02"}]}},
         "suggestions": [], "observations": [], "runs": []}))
     cfgdir = tmp / "config"
     (cfgdir / "longhand").mkdir(parents=True)
