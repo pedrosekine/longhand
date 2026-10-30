@@ -13,6 +13,7 @@ import "Task.js" as Task
 import "Authorship.js" as Authorship
 import "Shortcuts.js" as Sc
 import "Say.js" as Say
+import "Queue.js" as Queue
 
 // The margin: the agent's side of the page — its reply, its proposals, the conversation
 // Moved out of Page.qml on 2026-10-18 (tools/extract_sheet.py); `page` is
@@ -435,7 +436,7 @@ BorderSurface {
 
       Text {
         width: parent.width
-        visible: !margin.talk && !page.answered(page.currentRecord) && !page.answering && page.noteTurns.length === 0
+        visible: !margin.talk && !Queue.answered(page.currentRecord) && !page.answering && page.noteTurns.length === 0
         textFormat: Text.PlainText
         wrapMode: Text.WordWrap
         text: "Nothing from the agent on this block yet. " + (page.currentTrigger !== ""

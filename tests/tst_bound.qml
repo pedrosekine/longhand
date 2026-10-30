@@ -1,6 +1,7 @@
 import QtQuick
 import QtTest
 import "../plugin-page/Bound.js" as Bound
+import "../plugin-page/Rows.js" as Rows
 
 // The rules for lines that stand for deadlines.
 TestCase {
@@ -82,5 +83,79 @@ TestCase {
     compare(Bound.link("2026.10.09", 6), "[[2026.10.09#^d6]]")
     compare(Bound.parseLink("[[2026.10.09#^d6]]").id, 6)
     compare(Bound.parseLink("https://x"), null)
+  }
+
+  // ---- the page's bound lines (moved out of Page.qml on 2026-10-30)
+
+  function sec(y, m, d, hh, mm) { return new Date(y, m - 1, d, hh, mm).getTime() / 1000 }
+
+  function test_a_line_for_a_deadline() {
+    compare(Bound.lineFor({ status: "open", title: "essay draft", project: "intsem", due: sec(2026, 10, 16, 17, 0), id: 6 }),
+            "- [ ] essay draft #intsem 📅 2026-10-16 17:00 ^d6")
+    compare(Bound.lineFor({ status: "done", title: "read it", project: "", due: sec(2026, 10, 14, 23, 59), id: 7 }),
+            "- [x] read it 📅 2026-10-14 ^d7")
+    // A project that is no tag is not written as one.
+    compare(Bound.lineFor({ status: "open", title: "talk", project: "Guest lecture", due: sec(2026, 10, 14, 23, 59), id: 8 }),
+            "- [ ] talk 📅 2026-10-14 ^d8")
+  }
+
+  function test_ticked_with_its_day() {
+    var raw = "- [ ] essay draft 📅 2026-10-16 17:00 ^d6"
+    var done = Bound.ticked(raw, true, "2026-10-13")
+    verify(/^- \[x\] /.test(done)); verify(done.indexOf("✅ 2026-10-13") > 0); verify(/\^d6$/.test(done))
+    compare(Bound.ticked(done, false, "2026-10-13"), raw)
+  }
+
+  function test_what_an_edit_did_to_bound_lines() {
+    var was = Bound.anchors("- [ ] a 📅 2026-10-16 ^d6\n- [ ] b 📅 2026-10-17 ^d7")
+    var e = Bound.edits(was, Bound.anchors("- [ ] b 📅 2026-10-17 ^d7"))
+    compare(e.gone, [6]); verify(!e.changed)
+    e = Bound.edits(was, Bound.anchors("- [x] a 📅 2026-10-16 ^d6\n- [ ] b 📅 2026-10-17 ^d7"))
+    compare(e.gone, []); verify(e.changed)                                // ticked
+    e = Bound.edits(was, Bound.anchors("- [ ] b 📅 2026-10-17 ^d7\n\n- [ ] a 📅 2026-10-16 ^d6"))
+    compare(e.gone, []); verify(!e.changed)                               // moved: nothing to tell
+    e = Bound.edits(Bound.anchors(""), was)
+    verify(e.changed)                                                     // back
+  }
+
+  function test_the_twin_a_proposal_left() {
+    var items = [
+      { id: 3, status: "done", link: "", title: "essay draft", due: sec(2026, 10, 16, 23, 59) },
+      { id: 4, status: "open", link: "[[2026.10.12#^d4]]", title: "essay draft", due: sec(2026, 10, 16, 23, 59) },
+      { id: 5, status: "open", link: "", title: "Essay draft, first version", due: sec(2026, 10, 16, 17, 0) },
+    ]
+    compare(Bound.twin(items, "essay draft #intsem", sec(2026, 10, 16, 23, 59) * 1000).id, 5)   // the same day, mostly the words
+    compare(Bound.twin(items, "essay draft", sec(2026, 10, 17, 23, 59) * 1000), null)           // another day
+    compare(Bound.twin(items, "poster", sec(2026, 10, 16, 23, 59) * 1000), null)                // other words
+  }
+
+  function test_the_line_tab_bound_and_its_number() {
+    var rows = Rows.derive("- [ ] outline 📅 2026-10-20 \nwords\n- [ ] essay 📅 2026-10-20 ^d6\n- [ ] poster 📅 2026-10-20 ")
+    var ms = new Date(2026, 9, 20, 23, 59).getTime()
+    compare(Bound.tabBound(rows, { ms: ms, line: 3 }), 3)
+    compare(Bound.tabBound(rows, { ms: ms, line: 1 }), 0)      // the nearer of two; a numbered one is not it
+    compare(Bound.tabBound(rows, { ms: ms + 86400000, line: 0 }), -1)
+    compare(Bound.numbered(rows[0], 9, false), "- [ ] outline 📅 2026-10-20 ^d9")
+    var spaced = Rows.derive("- [ ] outline   📅 2026-10-20 ")[0]
+    compare(Bound.numbered(spaced, 9, true), "- [ ] outline 📅 2026-10-20 ^d9")    // left: tidied
+    compare(Bound.numbered(spaced, 9, false), "- [ ] outline   📅 2026-10-20 ^d9")  // still in it: as typed
+  }
+
+  function test_a_line_caught_up_with_the_store() {
+    var r = Rows.derive("- [ ] essay draft #intsem 📅 2026-10-16 17:00 ^d6  ")[0]
+    var d = { id: 6, status: "open", due: sec(2026, 10, 16, 17, 0), doneAt: 0 }
+    compare(Bound.caughtUp(r, d), "- [ ] essay draft #intsem 📅 2026-10-16 17:00 ^d6")
+    d.status = "done"; d.doneAt = sec(2026, 10, 15, 9, 0)
+    compare(Bound.caughtUp(r, d), "- [x] essay draft #intsem 📅 2026-10-16 17:00 ✅ 2026-10-15 ^d6")
+    d.status = "cancelled"
+    compare(Bound.caughtUp(r, d), "- [-] essay draft #intsem 📅 2026-10-16 17:00 ❌ 2026-10-15 ^d6")
+    // Closed with no day on record: today's.
+    d.doneAt = 0
+    compare(Bound.caughtUp(r, d, new Date(2026, 9, 13, 8, 0)), "- [-] essay draft #intsem 📅 2026-10-16 17:00 ❌ 2026-10-13 ^d6")
+    // Open again: neither mark.
+    var closed = Rows.derive("- [x] read it 📅 2026-10-14 ✅ 2026-10-13 ^d7")[0]
+    compare(Bound.caughtUp(closed, { id: 7, status: "open", due: sec(2026, 10, 14, 23, 59), doneAt: 0 }), "- [ ] read it 📅 2026-10-14 ^d7")
+    // The store has no such deadline: the date stays, the number goes.
+    compare(Bound.caughtUp(r, undefined), "- [ ] essay draft #intsem 📅 2026-10-16 17:00")
   }
 }

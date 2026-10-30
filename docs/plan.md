@@ -444,8 +444,11 @@ section, word for word, and to the diary's decisions log.
    item 5. *Second pass 2026-10-30*: what a dashboard row says (dates,
    ages, the silence clock, a course's name, where a box came from, the
    agent's rows) is `Say.js`, with its first unit tests
-   (`tests/tst_say.qml`); `Page.qml` was about 7,600 lines. Next in the
-   same vein: bound lines and the runner queue.
+   (`tests/tst_say.qml`); `Page.qml` was about 7,600 lines. *Third pass,
+   the same day*: the runner queue is `Queue.js` (`tests/tst_queue.qml`),
+   and what the page did with bound lines joined `Bound.js`
+   (`tests/tst_bound.qml`); `Page.qml` is 7,335. Left: the note sheet itself, and
+   what's next.
 5. **A project as one continuous page** (2026-10-17, the consistency
    grilling). Every section of a project in one scroll, newest first,
    editable in place, each edit landing in its day's note. Needs writing
@@ -1164,7 +1167,8 @@ a fix or a feature to decide first):
    all, not how to dress it.
 6. **Structure** — split `Page.qml` into tested modules (bound lines,
    runner queue, what's next); install by symlink so the repo is the
-   install; one deadline-store parser for both plugins.
+   install; one deadline-store parser for both plugins. *Bound lines and
+   the runner queue done 2026-10-30* (Open, item 4).
 
 **Not ordered yet:**
 

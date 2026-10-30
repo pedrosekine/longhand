@@ -10,6 +10,7 @@ import qs.Commons as Commons
 import qs.Ui
 import "Blocks.js" as Blocks
 import "Bound.js" as Bound
+import "Queue.js" as Queue
 import "Dates.js" as Dates
 import "Days.js" as Days
 import "Task.js" as Task
@@ -1230,7 +1231,7 @@ Item {
     var b = agent.blocks
     for (var h in b) {
       var r = b[h]
-      if (!root.answered(r)) continue
+      if (!Queue.answered(r)) continue
       // Records from before the key was kept: their first line(s) stand in.
       var ks = r.key ? [r.key]
         : r.head ? (r.group ? r.head.split(" / ") : [r.head]).map(function (t) { return Blocks.fnv1a(Task.identity(t)) })
@@ -1244,11 +1245,11 @@ Item {
   // (a tick, a date, a priority leave them); else the one its lines carry
   // through an edit of its words (Threads.js).
   function recordHash(hash, text, block) {
-    if (hash === "" || root.answered(agent.record(hash))) return hash
+    if (hash === "" || Queue.answered(agent.record(hash))) return hash
     var byWords = root.recordKeys[Blocks.fnv1a(Task.identity(text))]
     if (byWords) return byWords
     var carried = Threads.find(root.threadMap, block)
-    return carried !== "" && root.answered(agent.record(carried)) ? carried : hash
+    return carried !== "" && Queue.answered(agent.record(carried)) ? carried : hash
   }
   property string currentRec: ""
   function refreshRec() {
@@ -1982,7 +1983,7 @@ Item {
     // Line indices belong to the text they were taken from.
     root.lastLine = -1
     if (keepCursor) editor.setCursor(Math.min(at, editor.length))
-    root.tickedCount = root.countTicked(t)
+    root.tickedCount = Queue.countTicked(t)
     root.scheduleRepaint()
   }
 
@@ -1993,37 +1994,14 @@ Item {
 
   // ------------------------------------------------------------ triggers
 
-  function countTicked(t) {
-    var m = t.match(/^\s*[-*+] \[[xX]\] /gm)
-    return m ? m.length : 0
-  }
-
-  function triggerFor(lineText) {
-    var t = lineText.trim()
-    if (/^[-*+] \[ \] \S/.test(t)) return "checkbox"
-    if (/^[-*+] \[[xX]\] \S/.test(t)) return "tick"
-    if (/\?$/.test(t)) return "question"
-    return ""
-  }
-
   function hashOfLine(lineIndex) {
     var blocks = Blocks.split(editor.text)
     var k = Blocks.blockAt(blocks, lineIndex)
     return k < 0 ? "" : blocks[k].hash
   }
 
-  // For the margin: the block under the cursor, or the nearest one above
-  // when the cursor rests on a blank line — which is where it lands right
-  // after finishing a line.
-  function hashNearLine(lineIndex) {
-    var blocks = Blocks.split(editor.text)
-    var k = Blocks.blockAt(blocks, lineIndex)
-    // An item that is only its marker (what Enter leaves behind) is as good
-    // as a blank line: look up to the block that has words.
-    if (k >= 0 && /^\s*[-*+] (\[[ xX]\] )?$/.test(blocks[k].text)) k = -1
-    if (k < 0) for (var i = blocks.length - 1; i >= 0; i--) if (blocks[i].start <= lineIndex && !/^\s*[-*+] (\[[ xX]\] )?$/.test(blocks[i].text)) { k = i; break }
-    return k < 0 ? "" : blocks[k].hash
-  }
+  // For the margin: the block under the cursor, or the nearest one above.
+  function hashNearLine(lineIndex) { return Queue.hashNear(Blocks.split(editor.text), lineIndex) }
 
   function requestRun(trigger, hash) {
     if (!root.agentOn) return
@@ -2039,18 +2017,6 @@ Item {
   // up there it covers nothing, so it can stay long enough to be read.
   readonly property string status: root.hint
   function showHint(t) { root.hint = t; root.hintAt = Date.now(); hintTimer.restart() }
-  // A block the agent has already answered is not asked again. The hash is
-  // of the block's text, so a block that still carries its answer is text
-  // that has not changed since: the second pass would send the identical
-  // question, pay for it again, and — because a run overwrites the record —
-  // throw the first answer away. Change the words and it is a different
-  // block with no answer, which runs as usual; leave them and what you
-  // want is the conversation, which continues the session the first pass
-  // opened rather than starting a new one.
-  function answered(rec) {
-    return !!rec && (!!rec.reply || (!!rec.chat && rec.chat.length > 0))
-  }
-
   // Ctrl+Enter, and the header's "chat": this block's chat. A block with a
   // sign for the agent (a checkbox, a closing ?, a tick) is sent, and the
   // agent speaks first; any other block opens its chat with the box ready,
@@ -2060,7 +2026,7 @@ Item {
     if (root.currentHash === "" || !root.dayNote) return
     if (!root.agentOn) { root.showHint("private: the agent sees nothing of this note"); return }
     if (root.blockPrivate(root.currentHash)) { root.showHint("private: the agent sees nothing of this block"); return }
-    if (root.answered(root.currentRecord)) { root.openBlockChat("reopen"); return }
+    if (Queue.answered(root.currentRecord)) { root.openBlockChat("reopen"); return }
     if (root.currentTrigger === "") { root.openBlockChat("open"); return }
     // A dated item may still be binding. The agent has to see its dates as
     // deadlines, never as words to propose a second time (2026-10-13), so
@@ -2072,7 +2038,7 @@ Item {
       var trigger = root.triggerForBlock(h)
       if (trigger === "") { root.doneSending(); root.openBlockChat("open"); return }
       // A list of boxes is one submission however it is sent.
-      root.send(trigger, trigger === "checkbox" || trigger === "tick" ? root.listAround(h) : [h], h)
+      root.send(trigger, trigger === "checkbox" || trigger === "tick" ? Queue.listAround(Blocks.split(editor.text), h) : [h], h)
     })
   }
 
@@ -2097,28 +2063,6 @@ Item {
   function blockPrivate(hash) {
     var blocks = Blocks.split(editor.text)
     for (var i = 0; i < blocks.length; i++) if (blocks[i].hash === hash) return !!blocks[i].private
-    return false
-  }
-
-  // The run of adjacent list items around a block: no blank line between
-  // them, all top-level items. One list, one submission.
-  function listAround(hash) {
-    var blocks = Blocks.split(editor.text)
-    var k = -1
-    for (var i = 0; i < blocks.length; i++) if (blocks[i].hash === hash) { k = i; break }
-    if (k < 0 || blocks[k].kind !== "item") return [hash]
-    var lo = k, hi = k
-    while (lo > 0 && blocks[lo - 1].kind === "item" && blocks[lo - 1].end === blocks[lo].start) lo--
-    while (hi < blocks.length - 1 && blocks[hi + 1].kind === "item" && blocks[hi + 1].start === blocks[hi].end) hi++
-    var out = []
-    for (var j = lo; j <= hi; j++) out.push(blocks[j].hash)
-    return out
-  }
-
-  function listHasCheckbox(hashes) {
-    var blocks = Blocks.split(editor.text)
-    for (var i = 0; i < blocks.length; i++)
-      if (hashes.indexOf(blocks[i].hash) >= 0 && /^\s*[-*+] \[ \] \S/m.test(blocks[i].text)) return true
     return false
   }
 
@@ -2151,41 +2095,18 @@ Item {
     if (to >= 0) editor.setCursor(to)
   }
 
-  function triggerForBlock(hash) {
-    var blocks = Blocks.split(editor.text)
-    for (var i = 0; i < blocks.length; i++) {
-      if (blocks[i].hash !== hash) continue
-      var lines = blocks[i].text.split("\n")
-      return root.triggerFor(lines[0]) || root.triggerFor(lines[lines.length - 1])
-    }
-    return ""
-  }
+  function triggerForBlock(hash) { return Queue.triggerOf(Blocks.split(editor.text), hash) }
 
   function markSending(hashes) {
-    // Drop anything that is no longer a block in the note: a line whose
-    // date bound between the ask and the send is a different block now.
-    var live = {}
-    var blocks = Blocks.split(editor.text)
-    for (var b = 0; b < blocks.length; b++) live[blocks[b].hash] = true
-    var next = []
-    for (var k = 0; k < root.sending.length; k++)
-      if (live[root.sending[k]]) next.push(root.sending[k])
-    for (var i = 0; i < hashes.length; i++) {
-      var h = String(hashes[i])
-      if (h !== "" && next.indexOf(h) < 0) next.push(h)
-    }
-    root.sending = next
+    root.sending = Queue.away(root.sending, Blocks.split(editor.text), hashes)
     root.scheduleRepaint()
   }
 
   function runnerFailed() {
-    var lines = runner.said.split("\n")
-    var first = ""
-    for (var i = 0; i < lines.length && first === ""; i++)
-      if (lines[i].trim() !== "") first = lines[i].trim().replace(/^error:\s*/, "")
+    var first = Queue.failure(runner.said)
     runner.said = ""
     root.pendingChat = null      // it never reached the agent; do not pretend it did
-    root.showHint("the agent could not run" + (first === "" ? "" : " — " + first.substring(0, 120)))
+    root.showHint("the agent could not run" + (first === "" ? "" : " — " + first))
   }
 
   function doneSending() {
@@ -2204,12 +2125,11 @@ Item {
     root.enqueue([svc.runner, "chat", "--hash", hash, "--message", message, "--date", svc.noteDate], mark || hash)
   }
 
-  // In order, each once: a confirmed send must never be dropped because
-  // something else was asked for while the runner was busy.
+  // In order, each once (Queue.added).
   function enqueue(cmd, hash) {
-    var key = JSON.stringify(cmd)
-    for (var i = 0; i < root.queued.length; i++) if (JSON.stringify(root.queued[i].cmd) === key) return
-    root.queued = root.queued.concat([{ cmd: cmd, hash: hash }])
+    var q = Queue.added(root.queued, cmd, hash)
+    if (q === root.queued) return
+    root.queued = q
     if (!svc.saving) root.launchQueued()
   }
 
@@ -2296,7 +2216,7 @@ Item {
 
   // Enter on an empty item left the list. Its dated items bind as each is
   // left; nothing is asked. A list is still one submission when it is sent
-  // — `listAround` works that out from the cursor.
+  // — `Queue.listAround` works that out from the cursor.
   function listLeft(lineIndex) {
     Qt.callLater(root.flush)
   }
@@ -4614,8 +4534,7 @@ Item {
   // With the day it was done, or without it, as every tick in the page.
   function tickBoundLine(id, done) {
     var r = root.rowByDeadline(id)
-    if (r) root.writeLine(r, done ? Task.setField(Task.setState(r.raw, "x"), "✅", Qt.formatDate(new Date(), "yyyy-MM-dd"))
-                                  : Task.setField(Task.setState(r.raw, " "), "✅", ""))
+    if (r) root.writeLine(r, Bound.ticked(r.raw, done, Qt.formatDate(new Date(), "yyyy-MM-dd")))
   }
 
   // A deadline no line stands for gets one, at the end of today's note.
@@ -4631,8 +4550,7 @@ Item {
     var d = root.pendingWrite
     if (!d || !svc.isToday || !svc.ready) return
     root.pendingWrite = null
-    var tag = /^[\w\/-]+$/.test(d.project) ? " #" + d.project : ""
-    var line = "- [" + (d.status === "open" ? " " : "x") + "] " + d.title + tag + Bound.tail(d.due * 1000, d.id)
+    var line = Bound.lineFor(d)
     var t = editor.text
     editor.snapshot(true)
     root.quiet = true
@@ -4748,7 +4666,7 @@ Item {
     else editor.replace(r.start, r.start + r.raw.length, raw)
     root.quiet = false
     root.bound = Bound.anchors(editor.text)
-    root.tickedCount = root.countTicked(editor.text)
+    root.tickedCount = Queue.countTicked(editor.text)
     Qt.callLater(root.flush)
   }
 
@@ -4804,18 +4722,12 @@ Item {
   // That deadline, given the line's date (and its #tag if it has none); null
   // when there is none.
   function twinOf(head, project, phrase, ms) {
-    var key = Bound.titleKey(head), tw = Bound.wordsOf(head)
-    var day = new Date(ms).toDateString()
-    for (var i = 0; i < dl.items.length; i++) {
-      var d = dl.items[i]
-      if (d.status !== "open" || d.link !== "" || new Date(d.due * 1000).toDateString() !== day) continue
-      if (Bound.titleKey(d.title) !== key && Bound.overlap(tw, Bound.wordsOf(d.title)) < 0.5) continue
-      var args = dl.words(phrase)
-      if (project !== "" && d.project === "") args = ["--project", project].concat(args)
-      dl.set(d.id, args)
-      return d
-    }
-    return null
+    var d = Bound.twin(dl.items, head, ms)
+    if (!d) return null
+    var args = dl.words(phrase)
+    if (project !== "" && d.project === "") args = ["--project", project].concat(args)
+    dl.set(d.id, args)
+    return d
   }
 
   // Tab on a date lit up as it is typed (2026-10-27, the student's): it
@@ -4859,19 +4771,6 @@ Item {
     editor.bindingAt = at
   }
 
-  // The line Tab bound, as it is now: a box still carrying that date and no
-  // number, the nearest to where it was (Enter may have moved it); -1 when
-  // there is none.
-  function lineTabBound(rec) {
-    var rows = editor.rows, best = -1
-    for (var i = 0; i < rows.length; i++) {
-      var x = rows[i]
-      if (x.kind !== "task" || x.deadline > 0 || Math.floor(x.dueAt / 60000) !== Math.floor(rec.ms / 60000)) continue
-      if (best < 0 || Math.abs(i - rec.line) < Math.abs(best - rec.line)) best = i
-    }
-    return best
-  }
-
   // The store's number reaches the line Tab bound: ` ^dN` at its end,
   // after the cursor, so whatever is being typed in the words goes on.
   // Nobody asked for it as a step: every undo state that holds the line as
@@ -4880,20 +4779,17 @@ Item {
   function numberLine(rec, id, made) {
     root.setBinding(root.binding.filter(function (x) { return x !== rec }))
     if (id <= 0) return
-    var i = svc.noteDate === rec.stem ? root.lineTabBound(rec) : -1
+    var i = svc.noteDate === rec.stem ? Bound.tabBound(editor.rows, rec) : -1
     var r = editor.rows[i]
     if (!r) {
       if (made) dl.remove(id)
       root.decline(rec.raw)
       return
     }
-    var tag = " ^d" + id
-    editor.rebase(rec.written, rec.written.replace(/\s+$/, "") + tag)
+    editor.rebase(rec.written, rec.written.replace(/\s+$/, "") + " ^d" + id)
     // Left already (Enter came first): tidied as leftLine tidies a bound
     // line. (The new tag sets off the check, which carries the words.)
-    var left = root.lineIndexAt(editor.cursorPosition) !== i
-    var next = left ? r.raw.substring(0, r.prefixLen) + r.body.replace(/\s+$/, "") + r.suffix.replace(/\s+$/, "") + tag
-      : r.raw.replace(/\s+$/, "") + tag
+    var next = Bound.numbered(r, id, root.lineIndexAt(editor.cursorPosition) !== i)
     editor.rebase(r.raw, next)
     root.putLine(r, next, true)
     root.autoBound = { id: id, raw: rec.raw, made: made }
@@ -4908,25 +4804,21 @@ Item {
   // page's own binding taken back with Ctrl+Z: the words are back, the
   // deadline it made for them goes, and the line stays words.
   function boundEdited(was, now) {
-    var changed = false
-    for (var id in was) {
-      if (!(id in now)) {
-        var ab = root.autoBound
-        // (The text, not editor.rows: they catch up after this signal.)
-        if (ab && ab.id === parseInt(id, 10) && editor.text.split("\n").indexOf(ab.raw) >= 0) {
-          root.autoBound = null
-          if (ab.made) dl.remove(ab.id)
-          else dl.set(ab.id, ["--link", ""])
-          root.decline(ab.raw)
-          root.used("bound", "undone")
-          continue
-        }
-        changed = true
-      } else if (was[id].state !== now[id].state) {
-        changed = true
+    var e = Bound.edits(was, now)
+    var changed = e.changed
+    for (var i = 0; i < e.gone.length; i++) {
+      var ab = root.autoBound
+      // (The text, not editor.rows: they catch up after this signal.)
+      if (ab && ab.id === e.gone[i] && editor.text.split("\n").indexOf(ab.raw) >= 0) {
+        root.autoBound = null
+        if (ab.made) dl.remove(ab.id)
+        else dl.set(ab.id, ["--link", ""])
+        root.decline(ab.raw)
+        root.used("bound", "undone")
+        continue
       }
+      changed = true
     }
-    for (var n in now) if (!(n in was)) changed = true
     if (changed) root.scheduleCheck()
   }
 
@@ -5126,22 +5018,7 @@ Item {
     for (var id in a) {
       var r = editor.rows[a[id].line]
       if (!r || r.deadline !== parseInt(id, 10)) continue
-      var d = dl.byId[id]
-      var base = r.raw.slice(0, r.raw.length - r.suffix.length)
-      var want
-      if (!d) {
-        want = base + (r.dueAt > 0 ? Bound.tail(r.dueAt, 0) : "")
-      } else {
-        // The store's state on the box, and the day it was closed after its
-        // date, as every tick and drop writes it: `📅 … ✅ <day> ^dN`, or
-        // `❌ <day>` for a cancelled one; open again, neither.
-        var box = d.status === "open" ? " " : d.status === "cancelled" ? "-" : "x"
-        base = Task.setState(base, box).replace(/\s*[❌✅]\s*\d{4}-\d{2}-\d{2}/g, "")
-        var closed = box === " " ? "" : (box === "-" ? " ❌ " : " ✅ ")
-          + Qt.formatDate(new Date(d.doneAt > 0 ? d.doneAt * 1000 : Date.now()), "yyyy-MM-dd")
-        want = base + Bound.tail(d.due * 1000, 0) + closed + " ^d" + d.id
-      }
-      root.catchUp(r, want)
+      root.catchUp(r, Bound.caughtUp(r, dl.byId[id]))
     }
     root.bound = Bound.anchors(editor.text)
     root.landOnGoto()
@@ -5271,7 +5148,7 @@ Item {
     var changed = false
     for (var i = 0; i < blocks.length; i++) {
       var b = blocks[i]
-      var h = root.answered(agent.record(b.hash)) ? b.hash : (root.recordKeys[Blocks.fnv1a(Task.identity(b.text))] || "")
+      var h = Queue.answered(agent.record(b.hash)) ? b.hash : (root.recordKeys[Blocks.fnv1a(Task.identity(b.text))] || "")
       if (h !== "" && Threads.pin(m, b, h)) changed = true
     }
     if (!changed) return
@@ -6812,7 +6689,7 @@ Item {
               // with a sign is sent first, and one answered is not asked again.
               text: "chat"
               color: askArea.containsMouse && root.handOn ? root.accent
-                : (root.currentTrigger !== "" || root.answered(root.currentRecord) ? root.dim : root.faint)
+                : (root.currentTrigger !== "" || Queue.answered(root.currentRecord) ? root.dim : root.faint)
               font.family: root.fontFamily
               font.styleName: root.fontStyle
               font.pixelSize: root.fs(Style.font.bodySmall)
@@ -6834,7 +6711,7 @@ Item {
                   host: root
                   act: "ask"
                   shown: parent.containsMouse
-                  text: root.tip(root.answered(root.currentRecord) ? "This block's chat"
+                  text: root.tip(Queue.answered(root.currentRecord) ? "This block's chat"
                     : root.currentTrigger !== "" ? "Chat about this block: the agent answers first" : "Chat about this block", "ask")
                 }
               }
@@ -7156,7 +7033,7 @@ Item {
               saveTimer.restart()
               if (root.quiet) return
               root.boundEdited(was, root.bound)
-              root.tickedCount = root.countTicked(text)
+              root.tickedCount = Queue.countTicked(text)
               root.scheduleRepaint()
               Qt.callLater(root.updateMention)
             }

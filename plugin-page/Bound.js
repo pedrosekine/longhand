@@ -14,6 +14,7 @@
 // "on the 8th of Feb"),
 // or by Ctrl+D. The first #tag in it is the deadline's project.
 .pragma library
+.import "Task.js" as Task
 
 var CUE_RE = /^(.*\S)\s+(?:due|by|until|before)\s+(.+?)\s*$/i
 var CAL_RE = /^(.*\S)\s*📅\s*(.+?)\s*$/
@@ -149,4 +150,86 @@ function link(stem, id) {
 function parseLink(s) {
   var m = String(s || "").match(/^\[\[([^\]#|]+)#\^d(\d+)\]\]$/)
   return m ? { stem: m[1], id: parseInt(m[2], 10) } : null
+}
+
+// ---- the page's bound lines (moved out of Page.qml on 2026-10-30, the
+// split's third pass). The note comes in as its rows and the store as its
+// items; the page does the writing.
+
+// A deadline's line, for one no line stands for yet: written at the end of
+// today's note.
+function lineFor(d) {
+  var tag = /^[\w\/-]+$/.test(d.project) ? " #" + d.project : ""
+  return "- [" + (d.status === "open" ? " " : "x") + "] " + d.title + tag + tail(d.due * 1000, d.id)
+}
+
+// A bound line ticked, with the day it was done, or unticked, without it —
+// as every tick in the page.
+function ticked(raw, done, day) {
+  return done ? Task.setField(Task.setState(raw, "x"), "✅", day) : Task.setField(Task.setState(raw, " "), "✅", "")
+}
+
+// What changed among bound lines with an edit (`was`, `now`: anchors).
+// `gone`: the ids no longer in the note; `changed`: a line back, or ticked,
+// or cancelled.
+function edits(was, now) {
+  var gone = [], changed = false
+  for (var id in was) {
+    if (!(id in now)) gone.push(parseInt(id, 10))
+    else if (was[id].state !== now[id].state) changed = true
+  }
+  for (var n in now) if (!(n in was)) changed = true
+  return { gone: gone, changed: changed }
+}
+
+// An open deadline with these words (or mostly) on that day that no line
+// holds yet; null when there is none.
+function twin(items, head, ms) {
+  var key = titleKey(head), tw = wordsOf(head)
+  var day = new Date(ms).toDateString()
+  for (var i = 0; i < items.length; i++) {
+    var d = items[i]
+    if (d.status !== "open" || d.link !== "" || new Date(d.due * 1000).toDateString() !== day) continue
+    if (titleKey(d.title) !== key && overlap(tw, wordsOf(d.title)) < 0.5) continue
+    return d
+  }
+  return null
+}
+
+// The line Tab bound (`rec`: { ms, line }), as it is now: a box still
+// carrying that date and no number, the nearest to where it was (Enter may
+// have moved it); -1 when there is none.
+function tabBound(rows, rec) {
+  var best = -1
+  for (var i = 0; i < rows.length; i++) {
+    var x = rows[i]
+    if (x.kind !== "task" || x.deadline > 0 || Math.floor(x.dueAt / 60000) !== Math.floor(rec.ms / 60000)) continue
+    if (best < 0 || Math.abs(i - rec.line) < Math.abs(best - rec.line)) best = i
+  }
+  return best
+}
+
+// That line with the store's number: ` ^dN` at its end. Left already
+// (`left`: Enter came first), tidied as a left bound line is: no spaces at
+// the end of its words or its tail.
+function numbered(r, id, left) {
+  var tag = " ^d" + id
+  return left ? r.raw.substring(0, r.prefixLen) + r.body.replace(/\s+$/, "") + r.suffix.replace(/\s+$/, "") + tag
+    : r.raw.replace(/\s+$/, "") + tag
+}
+
+// A bound line caught up with the store (`r`: its row, `d`: its deadline,
+// or none when the store has lost it). The store's state on the box, and
+// the day it was closed after its date, as every tick and drop writes it:
+// `📅 … ✅ <day> ^dN`, or `❌ <day>` for a cancelled one; open again,
+// neither. A line whose deadline the store no longer has keeps its date,
+// without the number.
+function caughtUp(r, d, now) {
+  var base = r.raw.slice(0, r.raw.length - r.suffix.length)
+  if (!d) return base + (r.dueAt > 0 ? tail(r.dueAt, 0) : "")
+  var box = d.status === "open" ? " " : d.status === "cancelled" ? "-" : "x"
+  base = Task.setState(base, box).replace(/\s*[❌✅]\s*\d{4}-\d{2}-\d{2}/g, "")
+  var closed = box === " " ? "" : (box === "-" ? " ❌ " : " ✅ ")
+    + Qt.formatDate(new Date(d.doneAt > 0 ? d.doneAt * 1000 : (now || new Date()).getTime()), "yyyy-MM-dd")
+  return base + tail(d.due * 1000, 0) + closed + " ^d" + d.id
 }

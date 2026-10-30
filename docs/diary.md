@@ -1396,3 +1396,15 @@ only the window and the panels around it differ.
   tested at last: `tests/tst_say.qml` holds the date words (today,
   tomorrow, so many days late, a time only when it is not the day's end),
   the course names, where a box came from, and the agent's rows.
+- **2026-10-30: the split, third pass — the runner queue and bound lines.**
+  What the page asks of the runner is `Queue.js`: a line's sign for the
+  agent, the block the margin is about, one list as one submission, what is
+  drawn as away, the queue that takes each command once and in order, and
+  the first line of a run that failed. What the page does with a bound line
+  joined the rules already in `Bound.js`: the line written for a deadline
+  no line holds, a tick with its day, what an edit did to bound lines, the
+  twin a proposal left, the line Tab bound and its number, a line caught up
+  with the store. The page keeps the writing (undo steps, the store's
+  calls); the rules take rows and store items as arguments.
+  `tests/tst_queue.qml` is new and `tests/tst_bound.qml` grew by six. One
+  function, `listHasCheckbox`, had no caller and went.

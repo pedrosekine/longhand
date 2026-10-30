@@ -8,6 +8,7 @@ import qs.Commons as Commons
 import "page"
 import "page/Shortcuts.js" as Sc
 import "page/Say.js" as Say
+import "page/Queue.js" as Queue
 
 // The page under test: a stand-in for omarchy-shell (toggle / summon / hide
 // as shell.qml does them), plus IPC handles to drive the page without a
@@ -275,7 +276,7 @@ ShellRoot {
     function chatFocused(): bool { return page.marginFocus === page.currentProposals.length }
     function sendChat(text: string): void { page.pendingChat = { hash: page.currentRec, text: text }; page.requestChat(page.currentRec, text, page.currentHash) }
     function reply(): string { var r = page.currentRecord; return r && r.reply ? r.reply : "" }
-    function askWord(): string { return page.answered(page.currentRecord) ? "reply" : "ask" }
+    function askWord(): string { return Queue.answered(page.currentRecord) ? "reply" : "ask" }
     function insertTag(i: int): void { page.insertTag(page.projects[i]) }
     // The keys sheet, and a key as the page's own filter would get it.
     function keys(): void { page.toggleKeys() }
