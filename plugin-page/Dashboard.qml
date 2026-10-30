@@ -360,7 +360,7 @@ BorderSurface {
                   cursorShape: Qt.PointingHandCursor
                   hoverEnabled: true
                   onClicked: { page.taskFocus = dashRow.index; page.tickFocused() }
-                  PanelToolTip { visible: parent.containsMouse; text: page.tip("Done (again: not done)", "dashDone") }
+                  PanelToolTip { visible: parent.containsMouse && page.handOn; text: page.tip("Done (again: not done)", "dashDone") }
                 }
               }
 
@@ -420,7 +420,7 @@ BorderSurface {
                   hoverEnabled: true
                   cursorShape: Qt.PointingHandCursor
                   onClicked: { page.taskFocus = dashRow.index; page.talkFocused() }
-                  PanelToolTip { visible: parent.containsMouse; text: page.tip("Chat about it", "dashTalk") }
+                  PanelToolTip { visible: parent.containsMouse && page.handOn; text: page.tip("Chat about it", "dashTalk") }
                 }
               }
 
@@ -585,7 +585,7 @@ BorderSurface {
               onClicked: { page.taskFocus = index; page.activateTask() }
               PanelToolTip {
                 readonly property string kind: dashRow.modelData.kind
-                visible: parent.containsMouse && (kind === "task" || kind === "deadline" || kind === "shelf" || kind === "grading" || kind === "raised"
+                visible: parent.containsMouse && page.handOn && (kind === "task" || kind === "deadline" || kind === "shelf" || kind === "grading" || kind === "raised"
                                                   || kind === "proposal" || kind === "question" || kind === "told")
                 text: kind === "task" ? page.tips([["Go to the line", "dashOpen"], ["Done", "dashDone"], ["Reschedule", "dashWhen"], ["Take the date off", "dashNoDate"],
                                                    ["Cycle its priority", "dashPriority"], ["Rename", "dashRename"],

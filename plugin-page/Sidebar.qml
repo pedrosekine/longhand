@@ -203,7 +203,7 @@ BorderSurface {
           hoverEnabled: true
           cursorShape: Qt.PointingHandCursor
           onClicked: page.moveCalendar(0, -1)
-          PanelToolTip { visible: parent.containsMouse; text: page.tip("A month back", "calPrevMonth") }
+          PanelToolTip { visible: parent.containsMouse && page.handOn; text: page.tip("A month back", "calPrevMonth") }
         }
       }
       Text {
@@ -232,7 +232,7 @@ BorderSurface {
           hoverEnabled: true
           cursorShape: Qt.PointingHandCursor
           onClicked: page.moveCalendar(0, 1)
-          PanelToolTip { visible: parent.containsMouse; text: page.tip("A month on", "calNextMonth") }
+          PanelToolTip { visible: parent.containsMouse && page.handOn; text: page.tip("A month on", "calNextMonth") }
         }
       }
     }
@@ -347,7 +347,7 @@ BorderSurface {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: page.openCalendarDay(modelData)
-            PanelToolTip { visible: parent.containsMouse && !!modelData; text: page.tips([["Open the day in the sheet", "calOpen"], ["Today", "calToday"]]) }
+            PanelToolTip { visible: parent.containsMouse && page.handOn && !!modelData; text: page.tips([["Open the day in the sheet", "calOpen"], ["Today", "calToday"]]) }
           }
         }
       }
@@ -407,7 +407,7 @@ BorderSurface {
           hoverEnabled: true
           cursorShape: Qt.PointingHandCursor
           onClicked: page.goToDeadline(modelData)
-          PanelToolTip { visible: parent.containsMouse; text: page.tips([["Go to its line", "listOpen"], ["Done (again: not done)", "listDone"]]) }
+          PanelToolTip { visible: parent.containsMouse && page.handOn; text: page.tips([["Go to its line", "listOpen"], ["Done (again: not done)", "listDone"]]) }
         }
       }
     }
@@ -469,7 +469,7 @@ BorderSurface {
           hoverEnabled: true
           cursorShape: Qt.PointingHandCursor
           PanelToolTip {
-            visible: parent.containsMouse
+            visible: parent.containsMouse && page.handOn
             text: page.tips([["Its notes", "listOpen"], ["Shift-click: a new section for it", "listClass"], ["Ctrl-click: put its #tag at the cursor", "listTag"]])
           }
           onClicked: function (mouse) {
@@ -510,7 +510,7 @@ BorderSurface {
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
         onClicked: { page.projFocus = page.projects.length; page.openSidebarProject() }
-        PanelToolTip { visible: parent.containsMouse; text: page.tip("Make a project: in the sidebar, @ and #", "listOpen") }
+        PanelToolTip { visible: parent.containsMouse && page.handOn; text: page.tip("Make a project: in the sidebar, @ and #", "listOpen") }
       }
     }
     Column {
@@ -619,7 +619,7 @@ BorderSurface {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: page.setSpace(modelData.space, 0)
-            PanelToolTip { visible: parent.containsMouse; text: page.tip(modelData.tip, "pane1") }
+            PanelToolTip { visible: parent.containsMouse && page.handOn; text: page.tip(modelData.tip, "pane1") }
           }
         }
       }
@@ -646,7 +646,7 @@ BorderSurface {
           hoverEnabled: true
           cursorShape: Qt.PointingHandCursor
           onClicked: modelData.act === "keys" ? page.toggleKeys() : modelData.act === "settings" ? page.toggleSettings() : page.goToday()
-          PanelToolTip { visible: parent.containsMouse; text: page.tip(modelData.tip, modelData.act) }
+          PanelToolTip { visible: parent.containsMouse && page.handOn; text: page.tip(modelData.tip, modelData.act) }
         }
       }
     }
@@ -703,7 +703,7 @@ BorderSurface {
           hoverEnabled: true
           cursorShape: Qt.PointingHandCursor
           onClicked: page.leaveProject()
-          PanelToolTip { visible: parent.containsMouse; text: page.tip("Back out of the project", "listBack") }
+          PanelToolTip { visible: parent.containsMouse && page.handOn; text: page.tip("Back out of the project", "listBack") }
         }
       }
 
@@ -763,7 +763,7 @@ BorderSurface {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: { page.docFocus = index; page.openDocument(modelData) }
-            PanelToolTip { visible: parent.containsMouse; text: page.tip("Open it in the PDF viewer", "listOpen") }
+            PanelToolTip { visible: parent.containsMouse && page.handOn; text: page.tip("Open it in the PDF viewer", "listOpen") }
           }
         }
       }
@@ -833,7 +833,7 @@ BorderSurface {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: { page.docFocus = -1; page.sectionFocus = index; page.openSection(modelData) }
-            PanelToolTip { visible: parent.containsMouse; text: page.tip("Open the section", "listOpen") }
+            PanelToolTip { visible: parent.containsMouse && page.handOn; text: page.tip("Open the section", "listOpen") }
           }
         }
       }

@@ -251,7 +251,7 @@ BorderSurface {
               hoverEnabled: true
               cursorShape: Qt.PointingHandCursor
               onClicked: page.rateReply(modelData.value)
-              PanelToolTip { visible: parent.containsMouse; text: page.tip(chosen ? "Take it back" : "Say it was " + modelData.text, modelData.act) }
+              PanelToolTip { visible: parent.containsMouse && page.handOn; text: page.tip(chosen ? "Take it back" : "Say it was " + modelData.text, modelData.act) }
             }
           }
         }
@@ -390,7 +390,7 @@ BorderSurface {
               hoverEnabled: true
               cursorShape: card.done ? Qt.ArrowCursor : Qt.PointingHandCursor
               onClicked: { page.marginFocus = row.ci; page.acceptProposal(row.ci) }
-              PanelToolTip { visible: parent.containsMouse && !card.done; text: page.tip("Do what it says", "marginAccept") }
+              PanelToolTip { visible: parent.containsMouse && page.handOn && !card.done; text: page.tip("Do what it says", "marginAccept") }
             }
           }
         }

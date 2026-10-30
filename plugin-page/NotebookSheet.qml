@@ -189,7 +189,7 @@ BorderSurface {
                       else page.askForgetNote()
                     }
                     PanelToolTip {
-                      visible: parent.containsMouse && modelData.act !== "yes" && modelData.act !== "no"
+                      visible: parent.containsMouse && page.handOn && modelData.act !== "yes" && modelData.act !== "no"
                       text: page.tip(modelData.text, modelData.act)
                     }
                   }

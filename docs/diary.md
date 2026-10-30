@@ -1364,3 +1364,13 @@ only the window and the panels around it differ.
   - **Deadlines:** a box in a private block never becomes one, however it
     is dated. A whole private day still binds its dated boxes; that stays
     open.
+- **2026-10-30: hints follow the hand.** The student: when typing, hover
+  reminders are not wanted; they help when the mouse is the focus. Three
+  cases brought a hint up under the keys: the pointer warped onto the
+  selected row, a checkbox sliding under a still (hidden) pointer as the
+  note grew, and rows scrolling under it. Now any key but a modifier alone
+  puts every hover hint away until the hand moves the pointer more than
+  2 px (a warp is not the hand). It matches Hyprland's own
+  `cursor:hide_on_key_press`, Zed's `hide_mouse`, and Esc now dismisses a
+  hint (WCAG 1.4.13). The study, with what the benchmark apps do and six
+  further explorations, is `docs/hints.md`.

@@ -1455,6 +1455,7 @@ Item {
   // student can move it (the keys sheet, below); the ones read here are
   // its "any" place.
   function anywhereKey(event) {
+    root.keysTook(event)   // every pane's keys come through here first
     if (Sc.hit(event, "zoomIn")) { root.zoomBy(1); return true }
     if (Sc.hit(event, "zoomOut")) { root.zoomBy(-1); return true }
     if (Sc.hit(event, "zoomReset")) { root.setZoom(1); return true }
@@ -1681,6 +1682,21 @@ Item {
   property var marks: ({})          // pane -> the item selected in it, as rows say (`selected`)
   property real handMovedAt: 0      // the student's own pointer, last moved
   property real warpedAt: 0
+
+  // Hints follow the hand (2026-10-30, docs/hints.md): a hover's hint shows
+  // only while the hand is on the mouse. Any key but a modifier alone puts
+  // them away until the hand moves the pointer again, as Hyprland hides the
+  // pointer itself (cursor:hide_on_key_press). So typing never brings one
+  // up: not a box the note's new lines slide under a still pointer, nor
+  // the row a warp lands on. A modifier alone keeps them, for Ctrl-click.
+  property bool handOn: false
+  property point handAt: Qt.point(-1, -1)
+  function keysTook(event) {
+    var k = event.key
+    if (k === Qt.Key_Control || k === Qt.Key_Shift || k === Qt.Key_Alt || k === Qt.Key_Meta
+        || k === Qt.Key_AltGr || k === Qt.Key_Super_L || k === Qt.Key_Super_R) return
+    root.handOn = false
+  }
 
   // A row the keys come to says so (`on`), and again when they leave it;
   // the pointer goes to it while its pane has the keys.
@@ -6505,7 +6521,7 @@ Item {
               cursorShape: Qt.PointingHandCursor
               onClicked: root.sealClicked()
               PanelToolTip {
-                visible: parent.containsMouse
+                visible: parent.containsMouse && root.handOn
                 // Both of the pane's keys, so the pair is remembered (2026-10-27).
                 text: root.tips([[root.dayShown ? "Close the agent's pane" : "The agent's pane: the day's chat", "day"],
                                  ["Go there; in it, the day's chat ↔ this one", "pane3"]])
@@ -6538,7 +6554,7 @@ Item {
               cursorShape: Qt.PointingHandCursor
               onClicked: root.dateClicked()
               PanelToolTip {
-                visible: parent.containsMouse
+                visible: parent.containsMouse && root.handOn
                 text: root.tips([[root.sidebarOpen ? "Close the sidebar" : "The sidebar: calendar, projects, keys and settings", "sidebar"],
                                  ["Go there; in it, Time ↔ Files", "pane1"]])
               }
@@ -6573,7 +6589,7 @@ Item {
               hoverEnabled: true
               onClicked: root.goToday()
               PanelToolTip {
-                visible: parent.containsMouse
+                visible: parent.containsMouse && root.handOn
                 text: root.tips([["Today's note", "today"], ["The day before, with a note", "dayPrev"], ["The day after", "dayNext"]])
               }
             }
@@ -6600,7 +6616,7 @@ Item {
               anchors.fill: parent
               hoverEnabled: true
               acceptedButtons: Qt.NoButton
-              PanelToolTip { visible: parent.containsMouse && statusText.truncated; text: root.status }
+              PanelToolTip { visible: parent.containsMouse && root.handOn && statusText.truncated; text: root.status }
             }
           }
 
@@ -6637,7 +6653,7 @@ Item {
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: root.togglePin()
-                PanelToolTip { visible: parent.containsMouse; text: root.tip(root.alongside ? "Back to the overlay" : "Pin it as a window beside your work", "pin") }
+                PanelToolTip { visible: parent.containsMouse && root.handOn; text: root.tip(root.alongside ? "Back to the overlay" : "Pin it as a window beside your work", "pin") }
               }
             }
 
@@ -6685,7 +6701,7 @@ Item {
                 cursorShape: Qt.PointingHandCursor
                 onClicked: { root.togglePrivate(); editor.focusNote() }
                 PanelToolTip {
-                  visible: parent.containsMouse
+                  visible: parent.containsMouse && root.handOn
                   text: root.tip(svc.notePrivate ? "Let the agent see this note again" : "Make this note private: the agent sees nothing", "private")
                 }
               }
@@ -6721,7 +6737,7 @@ Item {
                 cursorShape: Qt.PointingHandCursor
                 onClicked: root.noteRoom && root.dayShown ? root.closeDay() : root.openRoom("", true)
                 PanelToolTip {
-                  visible: parent.containsMouse
+                  visible: parent.containsMouse && root.handOn
                   text: root.tip(root.noteTalkTurns > 0 ? "This note's chat" : "Chat about this note: chatting shares it, for this chat only", "dayChat")
                 }
               }
@@ -6755,7 +6771,7 @@ Item {
                 cursorShape: Qt.PointingHandCursor
                 onClicked: { root.sendCurrent(); editor.focusNote() }
                 PanelToolTip {
-                  visible: parent.containsMouse
+                  visible: parent.containsMouse && root.handOn
                   text: root.tip(root.answered(root.currentRecord) ? "This block's chat"
                     : root.currentTrigger !== "" ? "Chat about this block: the agent answers first" : "Chat about this block", "ask")
                 }
@@ -6779,7 +6795,7 @@ Item {
                 hoverEnabled: true
                 acceptedButtons: Qt.NoButton
                 PanelToolTip {
-                  visible: parent.containsMouse
+                  visible: parent.containsMouse && root.handOn
                   text: root.tips([[root.replyWaiting ? "A reply is waiting in this note" : root.working ? "The agent is thinking" : "The agent reads what you ask it", ""],
                                    ["This block's chat", "ask"], ["The agent's pane", "pane3"]])
                 }
@@ -7015,7 +7031,7 @@ Item {
             // lines below move down rather than being drawn over.
             roomRow: whenBox.visible || mentionBox.visible || nameBox.visible ? root.lineIndexAt(root.newProject ? root.newProject.end : editor.cursorPosition) : -1
             roomHeight: (whenBox.visible ? whenBox.height : mentionBox.visible ? mentionBox.height : nameBox.visible ? nameBox.height : 0) + root.sp(12)
-            boxTip: Component { Item { PanelToolTip { visible: true; text: root.tip("Tick or untick it", "checkbox") } } }
+            boxTip: Component { Item { PanelToolTip { visible: root.handOn; text: root.tip("Tick or untick it", "checkbox") } } }
             onBoxTicked: function (lineIndex, done) { if (done) root.tickSound() }
             authors: root.shownAuthors
             x: root.gutter
@@ -7141,7 +7157,7 @@ Item {
                     cursorShape: Qt.PointingHandCursor
                     hoverEnabled: true
                     onClicked: { root.mentionFocus = index; root.acceptMention(false) }
-                    PanelToolTip { visible: parent.containsMouse; text: modelData.make ? "Name it, and it is in the sidebar, @ and #"
+                    PanelToolTip { visible: parent.containsMouse && root.handOn; text: modelData.make ? "Name it, and it is in the sidebar, @ and #"
                       : root.mention && root.mention.atLineStart
                       ? root.tips([["Write its #tag", "mentionPick"], ["New section", "mentionClass"]]) : root.tip("Write its #tag", "mentionPick") }
                   }
@@ -7295,10 +7311,19 @@ Item {
     }
 
     // The student's own hand on the mouse: the pointer is left alone while
-    // it moves (a warp's own motion is not the hand).
+    // it moves, and the hints come back (a warp's own motion is not the
+    // hand, nor a row sliding under a still pointer, which only redelivers
+    // the same spot).
     HoverHandler {
       id: handHover
-      onPointChanged: if (Date.now() - root.warpedAt > 250) root.handMovedAt = Date.now()
+      onPointChanged: {
+        var p = point.scenePosition
+        var moved = Math.abs(p.x - root.handAt.x) + Math.abs(p.y - root.handAt.y) > 2
+        root.handAt = p
+        if (!moved || Date.now() - root.warpedAt <= 250) return
+        root.handMovedAt = Date.now()
+        root.handOn = true
+      }
     }
   }
 }

@@ -234,7 +234,7 @@ BorderSurface {
                         settingsField.forceActiveFocus()
                       }
                       PanelToolTip {
-                        visible: parent.containsMouse && modelData.act !== "yes" && modelData.act !== "no"
+                        visible: parent.containsMouse && page.handOn && modelData.act !== "yes" && modelData.act !== "no"
                         text: page.tip(modelData.text, modelData.act)
                       }
                     }
@@ -351,7 +351,7 @@ BorderSurface {
               hoverEnabled: true
               cursorShape: Qt.PointingHandCursor
               onClicked: page.openNotebook()
-              PanelToolTip { visible: parent.containsMouse; text: page.tip("What the agent knows: its notes, to correct or forget", "settingsChange") }
+              PanelToolTip { visible: parent.containsMouse && page.handOn; text: page.tip("What the agent knows: its notes, to correct or forget", "settingsChange") }
             }
           }
         }
@@ -380,7 +380,7 @@ BorderSurface {
               hoverEnabled: true
               cursorShape: Qt.PointingHandCursor
               onClicked: page.openAutonomy()
-              PanelToolTip { visible: parent.containsMouse; text: page.tip("What it may do: each kind of action, ask me · do it and tell me · never", "settingsChange") }
+              PanelToolTip { visible: parent.containsMouse && page.handOn; text: page.tip("What it may do: each kind of action, ask me · do it and tell me · never", "settingsChange") }
             }
           }
         }
@@ -409,7 +409,7 @@ BorderSurface {
               hoverEnabled: true
               cursorShape: Qt.PointingHandCursor
               onClicked: page.openSearchFolders()
-              PanelToolTip { visible: parent.containsMouse; text: page.tip("What it may search: each folder of the vault, on or off", "settingsChange") }
+              PanelToolTip { visible: parent.containsMouse && page.handOn; text: page.tip("What it may search: each folder of the vault, on or off", "settingsChange") }
             }
           }
         }
@@ -482,7 +482,7 @@ BorderSurface {
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: { if (modelData.act === "settingsSound") page.toggleTickSound(); else page.playTick(true); settingsField.forceActiveFocus() }
-                PanelToolTip { visible: parent.containsMouse && modelData.act !== ""; text: page.tip("The tick's sound: on or off", "settingsChange") }
+                PanelToolTip { visible: parent.containsMouse && page.handOn && modelData.act !== ""; text: page.tip("The tick's sound: on or off", "settingsChange") }
               }
             }
           }
@@ -536,7 +536,7 @@ BorderSurface {
                   page.setPointer(modelData.mode)
                   settingsField.forceActiveFocus()
                 }
-                PanelToolTip { visible: parent.containsMouse; text: page.tip("The pointer: " + modelData.text + " (picked: the next one)", "settingsChange") }
+                PanelToolTip { visible: parent.containsMouse && page.handOn; text: page.tip("The pointer: " + modelData.text + " (picked: the next one)", "settingsChange") }
               }
             }
           }

@@ -569,6 +569,12 @@ Small, when passing by:
     a task, what a row's chat shows, panes by number, one history, the rest
     of the map. Started from the dashboard, where a task had no visible way
     to talk with the agent.
+11. **Hover hints, after the benchmark apps** (study 2026-10-30,
+    `docs/hints.md`): A, hints follow the hand, is built. Next, in order:
+    hover fills follow the hand too (D), warm hints (B), the key said in
+    the status line after a click (C), a hint that fits (E). Keys that
+    wait show the keys (F, which-key / KeyTips) wants a mock-up first;
+    hints that graduate (G) wait on use.
 
 - ~~**Tag suggestions while typing**~~ *done 2026-10-18*: `#` and a letter
   offer the tags that exist — the projects', then those written in the
@@ -804,6 +810,11 @@ from 2026-09/10 and still stand.
   on 2026-10-25, in the note at the right edge), and whether
   "every selection" for the pointer is felt as help or as the mouse being
   taken (the `pointer` counts in the usage log).
+- **Hints follow the hand** (built 2026-10-30, `docs/hints.md`): any key
+  but a modifier alone puts the hover hints away until the hand moves the
+  pointer. Watch: whether a hint is missed after typing (moving the mouse
+  a hair should bring it), and whether holding Ctrl to read a Ctrl-click
+  hint works as expected.
 - **A live check that failed once** (2026-10-18, then passed four runs):
   the "when?" box pushing the next line down (11j in `tests/page/run.py`).
 

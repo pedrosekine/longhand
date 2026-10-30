@@ -171,6 +171,10 @@ Enter or Space, since settings became a list on 2026-10-28) has
 *every selection*, *pane changes only* or *off*, kept as `pointer` in
 `settings.json`.
 
+Hover hints follow the hand the other way round (2026-10-30,
+[hints.md](hints.md)): a key puts them away until your hand moves the
+mouse, so a row the pointer is warped onto never opens its hint.
+
 ## Not yet
 
 - Several sheets still read raw keys that cannot be moved in the keys sheet
