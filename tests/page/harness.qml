@@ -129,6 +129,17 @@ ShellRoot {
     function mouseDid(id: string): void { page.nameKey(id) }
     // Nothing taught yet: the keys the suite pressed so far forgotten.
     function untaught(): void { Sc.takeUses(); page.taught = {} }
+    // Hold Ctrl (docs/hints.md, F): shown, and what it shows.
+    function ctrlShown(): bool { return page.ctrlShown }
+    function ctrlKey(id: string): string { return page.ctrlKey(id) }
+    function ctrlStrip(): string { return JSON.stringify(page.ctrlStripItems) }
+    // A hint drawn on demand, for a look at it (tools, not the suite).
+    function tipDemo(text: string, x: real, y: real): void {
+      var c = Qt.createComponent(Qt.resolvedUrl("page/Tip.qml"))
+      var t = c.createObject(page.contentItem, { host: page, text: text, x: x, y: y, delay: 0 })
+      page.handOn = true
+      t.shown = true
+    }
     function yes(): void { page.acceptAsk() }
     function no(): void { page.declineAsk() }
     // A key as the note's own filter sees it (Qt.Key_*, Qt modifiers).

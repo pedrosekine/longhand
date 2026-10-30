@@ -132,23 +132,29 @@ field's hover border. In the note this matters most: a box that slides
 under a still pointer is no longer lit. The editor gets `handOn` from the
 page.
 
-### E. A hint that fits
+### E. A hint that fits — built 2026-10-30, as part of the look
 
-The dashboard's task hint lists ten lines (open, done, reschedule, …). It
-is the most complete hint on the page and the least read. Options: the
-three keys that matter for this row, then "all keys: Ctrl+/"; or the key
-as a right-aligned chip so the words scan first (Linear's shape). And no
-hint is ever drawn over the line with the text cursor.
+The dashboard's task hint listed ten lines (open, done, reschedule, …): the
+most complete hint on the page and the least read. It now lists the four a
+row is most used for (go to the line, done, reschedule, chat), a rule, and
+"Every key here" with its key. No hint is drawn over the words at the
+cursor: the Ctrl badge for the block's chat sits at the line's right edge.
 
-### F. Keys that wait show the keys (which-key, KeyTips)
+### F. Hold Ctrl — built 2026-10-30 (the canvas's direction 5)
 
-The keyboard's own help. Hold Ctrl (or a leader key) about 700 ms without
-pressing anything, and the pane with the keys shows what it answers to:
-either small key badges on its controls (KeyTips) or a one-line strip at
-the bottom (which-key). Nothing shows on a quick Ctrl+S. This is the
-counterpart to A: once hover hints stop for typists, this is how a typist
-finds a key without the sheet. The biggest of these explorations; it wants
-a mock-up first, in the real theme.
+The keyboard's own help. Hold Ctrl alone for 700 ms and its keys appear on
+the things they act on, as small accent badges with the part of the key
+after Ctrl (`KeyBadge.qml`): in the header, `\ sidebar` under the date,
+`| agent` under the seal, and the keys under pin, private, the note's chat
+and today. In the note, `L` over the box on the cursor's line and
+`Enter  chat about this block` at the line's right edge. On the dashboard's
+selected row, `L` over its box, `E rename` by its words and `D when` under
+its day. The rest goes in a strip over the foot of the middle (`Ctrl +  B
+bold · I italic · …`), which takes the place of the dashboard's key line
+while it shows. Any other key, letting go of Ctrl, the hand on the mouse,
+or the page closing puts them away, so a quick Ctrl+S never shows them.
+Office's KeyTips for placement, which-key for the wait. Keys are read from
+`Shortcuts.js`, so a moved key is the one shown.
 
 ### G. Hints that graduate
 
@@ -157,7 +163,24 @@ hint drops the key, or the hint goes quiet for that action. This needs the
 usage log and a threshold. Watch A–C in use before building it: it may not
 be needed.
 
+## The look (2026-10-30)
+
+Six directions were mocked up on a canvas, "Longhand hover hints", in
+Birnbaum with iA Writer Quattro S, each at three moments: the mouse on
+"private" in the header, on a box while writing, and on a dashboard row.
+- **0 · As built:** the shell's box, a 1 px edge in the full text colour,
+  the loudest line on the page.
+- **1 · Keycaps:** the darker paper, a faint edge, the words on the left
+  (after ": " a second line in faint ink), each part of the key a cap.
+- **2 · Margin note:** no box; a faint line beside the thing.
+- **3 · The status line:** the hint in the date's place.
+- **4 · Only the key:** the word is the hint; just the key appears.
+- **5 · Hold Ctrl:** badges for the keyboard (F).
+
+**Chosen and built: 1 and 5** (the student's call). The mouse gets keycaps
+(`Tip.qml` reads the existing `tip()` text, so no hint changed shape), and
+the keyboard gets Hold Ctrl.
+
 ## Recommendation
 
-A, B, C and D are built. E is next, after a look at the dashboard in use. E needs a look at the dashboard in use. F is the
-real design exploration, so mock it up before building. G waits on use.
+A to F are built. G waits on use.

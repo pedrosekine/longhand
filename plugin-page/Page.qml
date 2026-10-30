@@ -1425,6 +1425,7 @@ Item {
     } else if (root.openedAt > 0) {
       root.used("close", Math.round((Date.now() - root.openedAt) / 1000))
       root.openedAt = 0
+      root.ctrlLetGo()
       root.flushUsage()
       if (root.countKeys()) root.writeTaught()
     }
@@ -1697,10 +1698,47 @@ Item {
   property point handAt: Qt.point(-1, -1)
   function keysTook(event) {
     var k = event.key
+    if (k === Qt.Key_Control && !event.isAutoRepeat) { if (!root.ctrlShown) ctrlWait.restart(); return }
+    root.ctrlLetGo()
     if (k === Qt.Key_Control || k === Qt.Key_Shift || k === Qt.Key_Alt || k === Qt.Key_Meta
         || k === Qt.Key_AltGr || k === Qt.Key_Super_L || k === Qt.Key_Super_R) return
     root.handOn = false
     root.tipWarm = false
+  }
+
+  // Hold Ctrl (2026-10-30, docs/hints.md F; the canvas's direction 5): Ctrl
+  // held alone for a moment puts its keys on the things they act on
+  // (KeyBadge.qml), and the rest in a strip at the foot of the middle. Any
+  // other key, letting go, or the hand on the mouse puts them away; a quick
+  // Ctrl+S never shows them. The keyboard's own hint, as hover is the
+  // mouse's.
+  property bool ctrlShown: false
+  property var caretAt: null        // where the note's cursor was when they showed
+  function ctrlLetGo() { ctrlWait.stop(); root.ctrlShown = false }
+  function ctrlShow() {
+    root.caretAt = null
+    if (root.centerView === "note" && editor.focusedRow >= 0) {
+      var r = editor.cursorRect
+      root.caretAt = editor.mapToItem(content, editor.width, r.y + r.height / 2)
+    }
+    root.ctrlShown = true
+  }
+  // An action's key after Ctrl ("" when none of its keys holds Ctrl).
+  function ctrlKey(id) {
+    root.keysVersion
+    var ks = Sc.keysOf(id)
+    for (var i = 0; i < ks.length; i++) if (ks[i].indexOf("Ctrl+") === 0) return Sc.show(ks[i]).substring(5)
+    return ""
+  }
+  // What Ctrl does here that no badge shows, most used first.
+  readonly property var ctrlStripItems: {
+    var v = root.centerView
+    var rest = v === "note" ? [["bold", "bold"], ["italic", "italic"], ["link", "link"], ["deadline", "a date"], ["privateBlock", "private"], ["find", "find"], ["undo", "undo"]]
+      : v === "dash" ? [["dashPlan", "plan now"], ["dashUndo", "undo"]]
+      : []
+    return rest.concat([["linkBack", "back"], ["keys", "every key"]])
+      .map(function (a) { return { key: root.ctrlKey(a[0]), words: a[1] } })
+      .filter(function (a) { return a.key !== "" })
   }
 
   // Warm hints (Tip.qml): once one has opened, the next opens at once,
@@ -6445,6 +6483,12 @@ Item {
     onTriggered: root.tipWarm = false
   }
 
+  Timer {
+    id: ctrlWait
+    interval: 700
+    onTriggered: root.ctrlShow()
+  }
+
   // ------------------------------------------------------------ window
 
   PanelWindow {
@@ -6498,6 +6542,9 @@ Item {
     id: content
     parent: root.overlayOpen ? panel.contentItem : win.contentItem
     anchors.fill: parent
+    // Ctrl let go, wherever the keys are: a release no pane takes comes
+    // up to here.
+    Keys.onReleased: function (event) { if (event.key === Qt.Key_Control) root.ctrlLetGo() }
 
     Rectangle {
       anchors.fill: parent
@@ -6602,6 +6649,14 @@ Item {
               }
             }
           }
+          KeyBadge {
+            host: root
+            act: "day"
+            words: "agent"
+            anchors.top: seal.bottom
+            anchors.topMargin: root.sp(6)
+            anchors.horizontalCenter: seal.horizontalCenter
+          }
 
           Text {
             id: dateText
@@ -6620,6 +6675,14 @@ Item {
             font.styleName: root.fontStyle
             font.pixelSize: root.fs(Style.font.bodySmall)
             // The door to the sidebar: the calendar, the projects, keys and settings.
+            KeyBadge {
+              host: root
+              act: "sidebar"
+              words: "sidebar"
+              anchors.top: parent.bottom
+              anchors.topMargin: root.sp(6)
+              anchors.horizontalCenter: parent.horizontalCenter
+            }
             MouseArea {
               id: dateArea
               anchors.fill: parent
@@ -6658,6 +6721,13 @@ Item {
             font.family: root.fontFamily
             font.styleName: root.fontStyle
             font.pixelSize: root.fs(Style.font.bodySmall)
+            KeyBadge {
+              host: root
+              act: "today"
+              anchors.top: parent.bottom
+              anchors.topMargin: root.sp(6)
+              anchors.horizontalCenter: parent.horizontalCenter
+            }
             MouseArea {
               id: todayArea
               anchors.fill: parent
@@ -6725,6 +6795,13 @@ Item {
               font.styleName: root.fontStyle
               font.pixelSize: root.fs(Style.font.bodySmall)
               Behavior on color { ColorAnimation { duration: 240 } }
+              KeyBadge {
+                host: root
+                act: "pin"
+                anchors.top: parent.bottom
+                anchors.topMargin: root.sp(6)
+                anchors.horizontalCenter: parent.horizontalCenter
+              }
               MouseArea {
                 id: pinArea
                 anchors.fill: parent
@@ -6772,6 +6849,13 @@ Item {
               font.styleName: root.fontStyle
               font.pixelSize: root.fs(Style.font.bodySmall)
               Behavior on color { ColorAnimation { duration: 240 } }
+              KeyBadge {
+                host: root
+                act: "private"
+                anchors.top: parent.bottom
+                anchors.topMargin: root.sp(6) + height + root.sp(4)
+                anchors.horizontalCenter: parent.horizontalCenter
+              }
               MouseArea {
                 id: privateArea
                 anchors.fill: parent
@@ -6810,6 +6894,13 @@ Item {
               font.styleName: root.fontStyle
               font.pixelSize: root.fs(Style.font.bodySmall)
               Behavior on color { ColorAnimation { duration: 240 } }
+              KeyBadge {
+                host: root
+                act: "dayChat"
+                anchors.top: parent.bottom
+                anchors.topMargin: root.sp(6)
+                anchors.horizontalCenter: parent.horizontalCenter
+              }
               MouseArea {
                 id: noteAskArea
                 anchors.fill: parent
@@ -6846,6 +6937,13 @@ Item {
               font.styleName: root.fontStyle
               font.pixelSize: root.fs(Style.font.bodySmall)
               Behavior on color { ColorAnimation { duration: 240 } }
+              KeyBadge {
+                host: root
+                act: "ask"
+                anchors.top: parent.bottom
+                anchors.topMargin: root.sp(6) + height + root.sp(4)
+                anchors.horizontalCenter: parent.horizontalCenter
+              }
               MouseArea {
                 id: askArea
                 anchors.fill: parent
@@ -7117,6 +7215,7 @@ Item {
             roomRow: whenBox.visible || mentionBox.visible || nameBox.visible ? root.lineIndexAt(root.newProject ? root.newProject.end : editor.cursorPosition) : -1
             roomHeight: (whenBox.visible ? whenBox.height : mentionBox.visible ? mentionBox.height : nameBox.visible ? nameBox.height : 0) + root.sp(12)
             boxTip: Component { Item { Tip { host: root; shown: true; text: root.tip("Tick or untick it", "checkbox") } } }
+            boxBadge: Component { KeyBadge { host: root; act: "checkbox" } }
             handOn: root.handOn
             onBoxTicked: function (lineIndex, done) { if (done) root.tickSound() }
             onBoxClicked: root.mouseDid("checkbox")
@@ -7397,6 +7496,68 @@ Item {
       }
     }
 
+    // Ctrl held: the block's chat beside the note's cursor, and the strip
+    // of what else Ctrl does here, over the foot of the middle.
+    KeyBadge {
+      host: root
+      act: "ask"
+      words: "chat about this block"
+      place: !!root.caretAt && root.centerView === "note"
+      x: root.caretAt ? root.caretAt.x - width : 0
+      y: root.caretAt ? root.caretAt.y - height / 2 : 0
+    }
+    Rectangle {
+      id: ctrlStrip
+      readonly property Item mid: root.paneItem("center")
+      visible: root.ctrlShown && !!mid && root.ctrlStripItems.length > 0
+      z: 60
+      x: mid ? mid.x : 0
+      width: mid ? mid.width : 0
+      y: mid ? mid.y + mid.height - height : 0
+      height: stripFlow.implicitHeight + root.sp(20)
+      color: root.sunk
+      Flow {
+        id: stripFlow
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.verticalCenter: parent.verticalCenter
+        anchors.leftMargin: root.sp(28)
+        anchors.rightMargin: root.sp(28)
+        spacing: root.sp(14)
+        Text {
+          textFormat: Text.PlainText
+          text: "Ctrl +"
+          color: root.faint
+          font.family: root.fontFamily
+          font.styleName: root.fontStyle
+          font.pixelSize: root.fs(Style.font.bodySmall)
+        }
+        Repeater {
+          model: root.ctrlStripItems
+          Row {
+            required property var modelData
+            spacing: root.sp(5)
+            Text {
+              textFormat: Text.PlainText
+              text: parent.modelData.key
+              color: root.accent
+              font.family: root.fontFamily
+              font.styleName: root.fontStyle
+              font.pixelSize: root.fs(Style.font.bodySmall)
+            }
+            Text {
+              textFormat: Text.PlainText
+              text: parent.modelData.words
+              color: root.dim
+              font.family: root.fontFamily
+              font.styleName: root.fontStyle
+              font.pixelSize: root.fs(Style.font.bodySmall)
+            }
+          }
+        }
+      }
+    }
+
     // The student's own hand on the mouse: the pointer is left alone while
     // it moves, and the hints come back (a warp's own motion is not the
     // hand, nor a row sliding under a still pointer, which only redelivers
@@ -7410,6 +7571,7 @@ Item {
         if (!moved || Date.now() - root.warpedAt <= 250) return
         root.handMovedAt = Date.now()
         root.handOn = true
+        root.ctrlLetGo()
       }
     }
   }

@@ -2880,6 +2880,14 @@ def main() -> int:
             p.call("keyPage", KEY_BACKSLASH, CTRL)
         p.call("mouseDid", "sidebar")
         check(p.call("hint") == "", "a key used three times is not named again")
+        KEY_CTRL_ALONE = 0x01000021
+        p.call("keyPage", KEY_CTRL_ALONE, CTRL)
+        check(p.wait(lambda: p.call("ctrlShown") == "true", 3), "Ctrl held a moment shows its keys")
+        check(p.call("ctrlKey", "checkbox") == "L" and p.call("ctrlKey", "pin") == "Alt+P" and p.call("ctrlKey", "dashDone") == "L",
+              f"…each the rest of its key after Ctrl ({p.call('ctrlKey', 'pin')!r})")
+        check(any(i["words"] == "every key" for i in json.loads(p.call("ctrlStrip"))), "…and the strip names the rest")
+        p.call("keyPage", KEY_A, 0)
+        check(p.call("ctrlShown") == "false", "…another key puts them away")
         taught = p.state / "longhand" / "taught.json"
         check(p.wait(lambda: json.loads(taught.read_text())["today"]["said"] == TODAY_ISO
                      and json.loads(taught.read_text())["sidebar"]["keys"] >= 3),

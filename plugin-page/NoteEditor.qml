@@ -43,6 +43,9 @@ Item {
   // Drawn while the mouse is on a checkbox: the page's hint, naming the
   // key that does the same (an Item; the editor knows nothing of tooltips).
   property Component boxTip: null
+  // Drawn by the box on the cursor's line: the page's key for it while
+  // Ctrl is held (an Item; the editor knows nothing of keys).
+  property Component boxBadge: null
   // The hand is on the mouse (the page's `handOn`): a box under a still
   // pointer, as the lines move, is not lit.
   property bool handOn: true
@@ -1654,6 +1657,13 @@ Item {
             Component.onDestruction: if (ed.boxHover === row.index) ed.boxHover = -1
             onClicked: ed.clickCheckbox(row.index)
             Loader { anchors.fill: parent; active: !!ed.boxTip && parent.containsMouse; sourceComponent: ed.boxTip }
+          }
+          Loader {
+            active: !!ed.boxBadge && row.index === ed.focusedRow
+            sourceComponent: ed.boxBadge
+            anchors.bottom: parent.top
+            anchors.bottomMargin: Math.round(ed.textSize * 0.2)
+            anchors.horizontalCenter: parent.horizontalCenter
           }
         }
 

@@ -1382,3 +1382,10 @@ only the window and the panels around it differ.
   you are has its key named in the status line ("next time: Ctrl+H"), once
   a day for each action, never once that key has been used three times
   (`taught.json` in the state folder). A list's Enter is never named.
+- **2026-10-30: the look of a hint, keycaps; and Hold Ctrl.** Six
+  directions were mocked up in the theme (`docs/hints.md`, "The look"); the
+  student chose 1 · Keycaps and 5 · Hold Ctrl. A hover hint is on the
+  darker paper with a faint edge, the words left and the key as caps right,
+  and the dashboard row's ten lines are four and "every key". Holding Ctrl
+  alone for 700 ms puts its keys on the things they act on and the rest in
+  a strip at the foot; any key, letting go, or the mouse puts them away.

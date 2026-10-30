@@ -571,8 +571,10 @@ Small, when passing by:
     to talk with the agent.
 11. **Hover hints, after the benchmark apps** (study 2026-10-30,
     `docs/hints.md`): A (hints follow the hand), D (hover marks too),
-    B (warm hints) and C (the key named after a click) are built. Next: a
-    hint that fits (E). Keys that
+    B (warm hints) and C (the key named after a click) are built; then the
+    look, from six mockups: keycaps for the mouse (with E, a hint that
+    fits) and Hold Ctrl for the keyboard (F). Hints that graduate (G) wait
+    on use. Keys that
     wait show the keys (F, which-key / KeyTips) wants a mock-up first;
     hints that graduate (G) wait on use.
 
@@ -821,6 +823,10 @@ from 2026-09/10 and still stand.
   click, the status line names the key once a day per action. Watch
   whether a named key comes into use (`taught` then that action's key in
   the usage log), and whether being told feels like help or a nag.
+  Then the look (keycaps) and Hold Ctrl: watch whether Ctrl is held to look
+  (nothing in the usage log yet; add `ctrl` if it is wanted), whether the
+  badges flash during ordinary Ctrl+key use (they should not: 700 ms), and
+  whether the header's badges, two rows under the words, read clearly.
 - **A live check that failed once** (2026-10-18, then passed four runs):
   the "when?" box pushing the next line down (11j in `tests/page/run.py`).
   Others, 2026-10-30, each passing on the next run, at a load average near

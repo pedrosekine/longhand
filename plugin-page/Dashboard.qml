@@ -457,6 +457,34 @@ BorderSurface {
                 }
               }
 
+              // Ctrl held on the row the keys are on (docs/hints.md, F):
+              // done on its box, rename by its words, when by its day.
+              KeyBadge {
+                host: page
+                act: "dashDone"
+                place: dashRow.hot && dashRow.boxed
+                anchors.bottom: box.top
+                anchors.bottomMargin: page.sp(3)
+                anchors.horizontalCenter: box.horizontalCenter
+              }
+              KeyBadge {
+                host: page
+                act: "dashRename"
+                words: "rename"
+                place: dashRow.hot && dashRow.kind === "task"
+                x: Math.min(texts.x + titleText.contentWidth + page.sp(10), pills.x - width - page.sp(10))
+                y: texts.y + Math.round((titleText.font.pixelSize * 1.3 - height) / 2)
+              }
+              KeyBadge {
+                host: page
+                act: "dashWhen"
+                words: "when"
+                place: dashRow.hot && (dashRow.kind === "task" || dashRow.kind === "deadline")
+                anchors.top: pills.bottom
+                anchors.topMargin: page.sp(4)
+                anchors.right: pills.right
+              }
+
               Column {
                 id: texts
                 anchors.left: parent.left
@@ -588,12 +616,12 @@ BorderSurface {
                 readonly property string kind: dashRow.modelData.kind
                 shown: parent.containsMouse && (kind === "task" || kind === "deadline" || kind === "shelf" || kind === "grading" || kind === "raised"
                                                   || kind === "proposal" || kind === "question" || kind === "told")
-                text: kind === "task" ? page.tips([["Go to the line", "dashOpen"], ["Done", "dashDone"], ["Reschedule", "dashWhen"], ["Take the date off", "dashNoDate"],
-                                                   ["Cycle its priority", "dashPriority"], ["Rename", "dashRename"],
-                                                   [dashRow.task && dashRow.task.away ? "Back" : "Set aside", "dashShelve"], ["Renew", "dashKeep"], ["Drop it", "dashDrop"]]
-                                                  .concat(chatWord.can ? [["Chat about it", "dashTalk"]] : []))
-                  : kind === "deadline" ? page.tips([["Go to its line", "dashOpen"], ["Done", "dashDone"], ["The day to work on it", "dashWhen"], ["Take that day off", "dashNoDate"], ["Cycle its priority", "dashPriority"], ["Grade", "dashGrade"]]
-                                                   .concat(chatWord.can ? [["Chat about it", "dashTalk"]] : []))
+                // The four a row is most used for, then the sheet for the rest
+                // (2026-10-30, the canvas's keycaps: ten lines hid the list).
+                text: kind === "task" ? page.tips([["Go to the line", "dashOpen"], ["Done", "dashDone"], ["Reschedule", "dashWhen"]]
+                                                  .concat(chatWord.can ? [["Chat about it", "dashTalk"]] : []).concat([["—"], ["Every key here", "keysHere"]]))
+                  : kind === "deadline" ? page.tips([["Go to its line", "dashOpen"], ["Done", "dashDone"], ["The day to work on it", "dashWhen"]]
+                                                   .concat(chatWord.can ? [["Chat about it", "dashTalk"]] : []).concat([["—"], ["Every key here", "keysHere"]]))
                   : kind === "told" ? page.tips([["Let it stand", "dashDone"], ["Undo it", "dashDrop"], ["Chat about it", "dashOpen"]])
                   : kind === "proposal" && dashRow.modelData.item.kind === "file"
                     ? page.tips([["File it: moved from Downloads into the course's documents", "dashDone"], ["Decline", "dashDrop"], ["Open it first", "dashOpen"]])
@@ -622,7 +650,7 @@ BorderSurface {
         id: dashHint
         anchors.left: parent.left
         anchors.right: parent.right
-        visible: !page.dashWhenFor
+        visible: !page.dashWhenFor && !page.ctrlShown   // Ctrl held: its strip says it
         textFormat: Text.PlainText
         wrapMode: Text.WordWrap
         text: page.keyName("dashUp") + page.keyName("dashDown") + " move · " + page.keyName("dashOpen") + " opens the line · "
