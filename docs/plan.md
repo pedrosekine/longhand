@@ -441,7 +441,11 @@ section, word for word, and to the diary's decisions log.
    runner queue — into `.js` libraries with unit tests. Install by symlink
    is out: the Omarchy plugin folder refuses symlinks, so the install stays
    a copy. One deadline-store parser for both plugins, still to do. Before
-   item 5.
+   item 5. *Second pass 2026-10-30*: what a dashboard row says (dates,
+   ages, the silence clock, a course's name, where a box came from, the
+   agent's rows) is `Say.js`, with its first unit tests
+   (`tests/tst_say.qml`); `Page.qml` was about 7,600 lines. Next in the
+   same vein: bound lines and the runner queue.
 5. **A project as one continuous page** (2026-10-17, the consistency
    grilling). Every section of a project in one scroll, newest first,
    editable in place, each edit landing in its day's note. Needs writing

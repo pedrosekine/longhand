@@ -17,6 +17,7 @@ import "Authorship.js" as Authorship
 import "Threads.js" as Threads
 import "Tags.js" as Tags
 import "Shortcuts.js" as Sc
+import "Say.js" as Say
 import "Layout.js" as Layout
 import "Links.js" as Links
 
@@ -958,8 +959,8 @@ Item {
     return x.title || ""
   }
   function dayCardPill(x) {
-    return x.kind === "do-date" && x.date ? "do " + root.sayDate(x.date)
-      : x.kind === "deadline" && x.date ? "📅 " + root.sayDate(x.date) : ""
+    return x.kind === "do-date" && x.date ? "do " + Say.sayDate(x.date)
+      : x.kind === "deadline" && x.date ? "📅 " + Say.sayDate(x.date) : ""
   }
   function settleDayCard(i, how) {
     var p = root.dayOpenCards[i]
@@ -1311,7 +1312,7 @@ Item {
   // The day as the page says days ("Fri 20 Nov", "tomorrow"); words the
   // agent wrote that are not a date ("friday") as written.
   function marginCardPill(p) {
-    var when = /^\d{4}-\d{2}-\d{2}( \d{1,2}:\d{2})?$/.test(p.when || "") ? root.sayDate(p.when) : p.when
+    var when = /^\d{4}-\d{2}-\d{2}( \d{1,2}:\d{2})?$/.test(p.when || "") ? Say.sayDate(p.when) : p.when
     return p.moves ? Qt.formatDate(new Date(p.moves.due * 1000), "ddd d MMM") + " → " + when : "📅 " + when
   }
   readonly property var taskRows: root.buildTaskRows()
@@ -3652,7 +3653,7 @@ Item {
       rows.push({ kind: "head", text: "DUE", tag: "" })
       var month = ""
       for (var k = 0; k < due.length; k++) {
-        var lbl = root.monthLabel(due[k].due * 1000)
+        var lbl = Say.monthLabel(due[k].due * 1000)
         if (lbl !== month) { rows.push({ kind: "month", text: lbl }); month = lbl }
         rows.push({ kind: "deadline", deadline: due[k] })
       }
@@ -3678,7 +3679,7 @@ Item {
       rows.push({ kind: "head", text: "DOING", tag: "" })
       var dm = ""
       for (var d1 = 0; d1 < doing.length; d1++) {
-        var dl1 = root.monthLabel(root.taskMs(doing[d1]))
+        var dl1 = Say.monthLabel(Say.taskMs(doing[d1]))
         if (dl1 !== dm) { rows.push({ kind: "month", text: dl1 }); dm = dl1 }
         rows.push({ kind: "task", task: doing[d1] })
       }
@@ -3700,7 +3701,7 @@ Item {
       // knows the names from the curriculum; for a tag it does not know,
       // the heading the notes themselves use is the next best name.
       var key = groups[g].key
-      var named = key === "" ? "No project" : root.courseName(key)
+      var named = key === "" ? "No project" : Say.courseName(key, root.projects)
       if (key !== "" && named === key) {
         for (var h = 0; h < groups[g].items.length; h++) {
           var path0 = (groups[g].items[h].path || [])[0]
@@ -3757,12 +3758,12 @@ Item {
     var t = null
     for (var i = 0; i < root.tasks.length; i++) if (root.tasks[i].anchor === d.id) t = root.tasks[i]
     var place = t ? (t.path || []).slice() : []
-    var full = d.project ? root.courseName(d.project) : ""
+    var full = d.project ? Say.courseName(d.project, root.projects) : ""
     if (full !== "" && full !== d.project && place.length > 0) place[0] = full
     if (place.length > 0) bits.push(place.join(" › "))
-    else if (d.project) bits.push(root.courseLabel(d.project))
+    else if (d.project) bits.push(Say.courseLabel(d.project, root.projects))
     if (d.status === "cancelled") bits.push("cancelled")
-    var aside = root.asideIn(d)
+    var aside = Say.asideIn(d)
     if (aside > 0) bits.push(aside === 1 ? "steps aside tomorrow" : "steps aside in " + aside + " days")
     if (d.status === "done" && d.grade !== "") bits.push("graded " + d.grade)
     var o = root.origins[String(d.id)]
@@ -3796,7 +3797,7 @@ Item {
       for (var m = 0; m < mine.length; m++) {
         if (used[mine[m].id]) continue
         used[mine[m].id] = true
-        out.push({ kind: root.askKind(mine[m]), item: mine[m], task: t })
+        out.push({ kind: Say.askKind(mine[m]), item: mine[m], task: t })
       }
     }
     // A document to file, or a deadline found in the writing — about no box
@@ -3805,7 +3806,7 @@ Item {
       if (used[props[f].id] || (props[f].kind !== "file" && props[f].kind !== "deadline") || !props[f].project) continue
       for (var b = 0; b < out.length; b++) {
         if (out[b].kind !== "head" || out[b].tag !== props[f].project) continue
-        out.splice(b + 1, 0, { kind: root.askKind(props[f]), item: props[f], task: null })
+        out.splice(b + 1, 0, { kind: Say.askKind(props[f]), item: props[f], task: null })
         used[props[f].id] = true
         break
       }
@@ -3815,29 +3816,10 @@ Item {
     var at = -1
     for (var h = 0; h < out.length; h++) if (out[h].kind === "head" && out[h].text === "FROM THE AGENT") at = h
     var extra = rest.map(function (x) {
-      return { kind: root.askKind(x), item: x, task: root.taskOfKey(x.key) }
+      return { kind: Say.askKind(x), item: x, task: root.taskOfKey(x.key) }
     })
     if (at < 0) return out.concat([{ kind: "head", text: "FROM THE AGENT", tag: "" }]).concat(extra)
     return out.slice(0, at + 1).concat(extra).concat(out.slice(at + 1))
-  }
-
-  // A row's kind: a question, something the agent did and tells (told), or
-  // something it proposes.
-  function askKind(x) { return x.told ? "told" : x.kind === "question" ? "question" : "proposal" }
-
-  // What a proposal or a told row says, by its kind.
-  function sayAsk(x, under) {
-    var what = x.kind === "do-date" ? "do " + root.sayDate(x.date) + (under ? "" : " · " + (x.title || ""))
-      : x.kind === "file" ? "file “" + x.name.replace(/\.pdf$/, "") + "” in " + (x.title || x.project)
-      : x.kind === "deadline" ? "deadline: " + x.title + " · 📅 " + root.sayDate(x.date)
-      : x.kind === "project" ? "make it a project: " + x.title + " #" + x.project
-      : x.kind === "priority" ? "priority " + (x.priority === 2 ? "▲ high" : x.priority === 1 ? "medium" : "▽ low")
-        + (under ? "" : " · " + x.title)
-      : x.kind === "steps" ? "steps: " + x.steps.join(" · ")
-      : x.kind === "drop" ? "drop it?" + (under ? "" : " · " + x.title)
-      : x.kind === "done" ? "looks done — tick it?" + (under ? "" : " · " + x.title)
-      : x.title || ""
-    return x.told ? "done: " + what : what
   }
 
   function taskOfAnchor(id) {
@@ -4024,7 +4006,7 @@ Item {
   function acceptTalked() {
     var p = root.talkItem
     if (!p) return
-    root.acceptPlanned({ kind: root.askKind(p), item: p, task: root.taskOfKey(p.key) })
+    root.acceptPlanned({ kind: Say.askKind(p), item: p, task: root.taskOfKey(p.key) })
     root.talkSettled = p.kind === "question" ? "answered" : p.told ? "kept" : "accepted"
   }
 
@@ -4217,91 +4199,6 @@ Item {
     }
   }
 
-  // An open deadline a fortnight past its date steps aside (longhand-check);
-  // the days it has left, through the last four of them, else 0.
-  function asideIn(d) {
-    if (d.status !== "open") return 0
-    var left = Math.ceil(((d.due + 14 * 86400) * 1000 - Date.now()) / 86400000)
-    return left > 0 && left <= 4 ? left : 0
-  }
-
-  // What a row says. The title is the words alone: the dates and the
-  // priority a line carries are drawn as marks, so the metadata is on disk
-  // and quiet on screen.
-  function taskTitle(t) { return t.title !== undefined && t.title !== "" ? t.title : t.text }
-
-  // Priority is a mark beside the box, not a word in the row: ▲ for the
-  // high one, ▽ for the low, nothing for the rest.
-  function taskMark(t) {
-    if (!t || t.priority === undefined || t.priority === 0) return ""
-    return t.priority >= 1 ? "▲" : "▽"
-  }
-
-  // A course's own name, from its tag. The sidebar reads the curriculum for
-  // them; a tag the list does not know stays a tag. (Not `projectName` —
-  // that is the open project's own name, a property of the sidebar.)
-  function courseName(tag) {
-    for (var i = 0; i < root.projects.length; i++)
-      if (root.projects[i].tag === tag) return root.projects[i].name || tag
-    return tag
-  }
-
-  // A course for a row that has no heading path to fall back on.
-  function courseLabel(tag) {
-    if (!tag) return ""
-    var name = root.courseName(tag)
-    return name === tag ? "#" + tag : name
-  }
-
-  // Where it came from, under the words: the course in full, then the
-  // section it was written in, then how long ago. The line that makes
-  // "draft the intro" mean something again three days later. The dates are
-  // not in here — they are pills, as they are in the note.
-  function taskWhere(t, under) {
-    var path = (t.path || []).slice()
-    var full = t.project ? root.courseName(t.project) : ""
-    // The first heading is the course itself by the convention in use, so
-    // its full name belongs there when the list knows it.
-    if (full !== "" && full !== t.project) {
-      if (path.length > 0) path[0] = full
-      else path = [full]
-    } else if (path.length === 0 && t.project) {
-      path = ["#" + t.project]
-    }
-    // Under a band that already names the course, the course is noise.
-    if (under !== undefined && under !== "" && path.length > 0 && path[0] === under) path.shift()
-    var bits = []
-    if (path.length > 0) bits.push(path.join(" › "))
-    bits.push(root.sayAge(t.age))
-    if (t.details > 0) bits.push(t.details === 1 ? "1 line of detail" : t.details + " lines of detail")
-    var life = root.sayLife(t)
-    if (life !== "") bits.push(life)
-    return bits.join("   ·   ")
-  }
-
-  // The silence clock, said only when it matters: through the last quarter
-  // of a box's life, and once it is away. Nothing goes without first being
-  // shown as about to (agent/lifespan.py).
-  function sayLife(t) {
-    if (t.away === "shelved") return "put aside"
-    if (t.away === "quiet") return "gone quiet"
-    if (!t.warn) return ""
-    return t.left === 1 ? "goes quiet tomorrow" : "goes quiet in " + t.left + " days"
-  }
-
-  // The month a row falls in, for the band above it.
-  function monthLabel(ms) {
-    var d = new Date(ms)
-    return Qt.formatDate(d, d.getFullYear() === new Date().getFullYear() ? "MMMM" : "MMMM yyyy")
-  }
-
-  function taskMs(t) {
-    var iso = t.when || t.due
-    if (!iso) return 0
-    var p = iso.split(" ")[0].split("-")
-    return new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10)).getTime()
-  }
-
   // The dates a row carries, drawn the way the note draws them: a bordered
   // date at the line's end. The day it is owed is bare, as in the note; the
   // day I mean to work on it says so and is filled rather than outlined.
@@ -4316,7 +4213,7 @@ Item {
       if (lt && lt.when && d.status === "open") out.push(root.doPill(lt))
       var at = new Date(d.due * 1000)
       var timed = !(at.getHours() === 23 && at.getMinutes() === 59)
-      out.push({ text: root.sayDate(Qt.formatDateTime(at, timed ? "yyyy-MM-dd HH:mm" : "yyyy-MM-dd")),
+      out.push({ text: Say.sayDate(Qt.formatDateTime(at, timed ? "yyyy-MM-dd HH:mm" : "yyyy-MM-dd")),
                  tone: d.status !== "open" ? "done" : (d.due * 1000 < Date.now() ? "late" : "due") })
       if (lt && lt.est) out.push({ text: lt.est, tone: "est" })
       return out
@@ -4324,30 +4221,13 @@ Item {
     if (row.kind !== "task") return out
     var t = row.task
     if (t.when) out.push(root.doPill(t))
-    if (t.due) out.push({ text: root.sayDate(t.due), tone: "due" })
+    if (t.due) out.push({ text: Say.sayDate(t.due), tone: "due" })
     if (t.est) out.push({ text: t.est, tone: "est" })
     return out
   }
 
   function doPill(t) {
-    return { text: "do " + root.sayDate(t.when) + (root.agentDates[t.key] === t.when ? " ◇" : ""), tone: "do" }
-  }
-
-  function sayDate(iso) {
-    if (!iso) return ""
-    var parts = iso.split(" ")
-    var ymd = parts[0].split("-")
-    var d = new Date(parseInt(ymd[0], 10), parseInt(ymd[1], 10) - 1, parseInt(ymd[2], 10))
-    var today = new Date()
-    today.setHours(0, 0, 0, 0)
-    var days = Math.round((d.getTime() - today.getTime()) / 86400000)
-    var say = days === 0 ? "today" : days === 1 ? "tomorrow" : days === -1 ? "yesterday"
-      : days < 0 ? Math.abs(days) + " days late" : Qt.formatDate(d, "ddd d MMM")
-    return say + (parts[1] && parts[1] !== "23:59" ? " " + parts[1] : "")
-  }
-
-  function sayAge(age) {
-    return age === 0 ? "written today" : age === 1 ? "written yesterday" : "written " + age + " days ago"
+    return { text: "do " + Say.sayDate(t.when) + (root.agentDates[t.key] === t.when ? " ◇" : ""), tone: "do" }
   }
 
   // Heads and month bands are passed over: they are not rows you act on.
@@ -6321,7 +6201,7 @@ Item {
             // not have it yet: wait for the one asked for after it.
             if (agreed || !root.proposalsAgain) root.acceptAfterRefresh = -1
             if (agreed) {
-              root.acceptPlanned({ kind: root.askKind(agreed), item: agreed, task: root.taskOfKey(agreed.key) })
+              root.acceptPlanned({ kind: Say.askKind(agreed), item: agreed, task: root.taskOfKey(agreed.key) })
               root.showHint("accepted, as you agreed")
             }
           }

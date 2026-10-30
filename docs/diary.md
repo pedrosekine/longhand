@@ -1389,3 +1389,10 @@ only the window and the panels around it differ.
   and the dashboard row's ten lines are four and "every key". Holding Ctrl
   alone for 700 ms puts its keys on the things they act on and the rest in
   a strip at the foot; any key, letting go, or the mouse puts them away.
+- **2026-10-30: the split, second pass — what a row says.** The thirteen
+  functions that turn a box, a deadline or the agent's row into words moved
+  from `Page.qml` into `Say.js`, unchanged. What they read of the page's
+  state (the projects, today) now comes in as arguments, so they could be
+  tested at last: `tests/tst_say.qml` holds the date words (today,
+  tomorrow, so many days late, a time only when it is not the day's end),
+  the course names, where a box came from, and the agent's rows.

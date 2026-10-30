@@ -12,6 +12,7 @@ import "Days.js" as Days
 import "Task.js" as Task
 import "Authorship.js" as Authorship
 import "Shortcuts.js" as Sc
+import "Say.js" as Say
 
 // The dashboard (Ctrl+2, Ctrl+Alt+2): every open box and deadline, worked with keys
 // Moved out of Page.qml on 2026-10-18 (tools/extract_sheet.py); `page` is
@@ -372,7 +373,7 @@ BorderSurface {
                 anchors.leftMargin: page.sp(5)
                 y: Math.round((inner.lineH - implicitHeight) / 2)
                 textFormat: Text.PlainText
-                text: page.taskMark(dashRow.line)
+                text: Say.taskMark(dashRow.line)
                 color: dashRow.line && dashRow.line.priority >= 1 ? page.accent : page.faint
                 font.family: page.fontFamily
                 font.pixelSize: page.fs(Style.font.caption)
@@ -516,14 +517,14 @@ BorderSurface {
                   elide: Text.ElideRight
                   maximumLineCount: 2
                   wrapMode: Text.WordWrap
-                  text: dashRow.kind === "proposal" || dashRow.kind === "told" ? page.sayAsk(modelData.item, !!modelData.task)
+                  text: dashRow.kind === "proposal" || dashRow.kind === "told" ? Say.sayAsk(modelData.item, !!modelData.task)
                     : dashRow.kind === "question" ? modelData.item.question
                     : dashRow.kind === "shelf" ? "+" + modelData.count + " set aside · " + page.keyName("dashOpen") + " to show"
                     : dashRow.kind === "grading" ? "+" + modelData.count + " waiting for a grade · " + page.keyName("dashOpen") + " to show"
                     : dashRow.kind === "raised"
                       ? (modelData.item.kind === "suggestion" ? "◇ " : "· ") + modelData.item.text
                     : dashRow.kind === "deadline" ? modelData.deadline.title
-                    : dashRow.kind === "task" ? page.taskTitle(modelData.task)
+                    : dashRow.kind === "task" ? Say.taskTitle(modelData.task)
                     : " "
                   color: dashRow.isHead ? "transparent"
                     : dashRow.kind === "shelf" || dashRow.kind === "grading" ? page.faint
@@ -577,7 +578,7 @@ BorderSurface {
                     elide: Text.ElideRight
                     text: dashRow.kind === "proposal" || dashRow.kind === "told" ? (modelData.item.why || "")
                       : dashRow.kind === "question" ? "recommended: " + modelData.item.recommended
-                      : dashRow.kind === "task" ? page.taskWhere(modelData.task, modelData.under)
+                      : dashRow.kind === "task" ? Say.taskWhere(modelData.task, modelData.under, page.projects)
                       : dashRow.kind === "deadline" ? page.deadlineWhere(modelData.deadline)
                       : dashRow.kind === "raised" ? (modelData.item.evidence || "")
                       : ""
@@ -679,7 +680,7 @@ BorderSurface {
           text: !page.dashWhenFor ? ""
             : page.dashFieldKind === "rename" ? "rename"
             : page.dashFieldKind === "grade" ? "grade · " + page.dashWhenFor.deadline.title
-            : "when · " + page.taskTitle(page.dashWhenFor)
+            : "when · " + Say.taskTitle(page.dashWhenFor)
           color: page.dim
           font.family: page.fontFamily
           font.styleName: page.fontStyle

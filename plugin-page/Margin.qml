@@ -12,6 +12,7 @@ import "Days.js" as Days
 import "Task.js" as Task
 import "Authorship.js" as Authorship
 import "Shortcuts.js" as Sc
+import "Say.js" as Say
 
 // The margin: the agent's side of the page — its reply, its proposals, the conversation
 // Moved out of Page.qml on 2026-10-18 (tools/extract_sheet.py); `page` is
@@ -120,7 +121,7 @@ BorderSurface {
             text: !page.talkItem ? (page.talkSettled !== "" ? "◇ " + page.talkSettled
                 : page.talkData ? "☐ " + page.talkData.title : "…")
               : page.talkItem.kind === "question" ? "◇ " + page.talkItem.question
-              : "◇ " + page.sayAsk(page.talkItem, false)
+              : "◇ " + Say.sayAsk(page.talkItem, false)
             color: page.talkItem ? page.foreground : page.dim
             font.family: page.fontFamily
             font.styleName: page.fontStyle

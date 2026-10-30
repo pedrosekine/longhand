@@ -7,6 +7,7 @@ import qs.Commons
 import qs.Commons as Commons
 import "page"
 import "page/Shortcuts.js" as Sc
+import "page/Say.js" as Say
 
 // The page under test: a stand-in for omarchy-shell (toggle / summon / hide
 // as shell.qml does them), plus IPC handles to drive the page without a
@@ -299,11 +300,11 @@ ShellRoot {
     function talk(): string {
       var m = page.marginItem
       return JSON.stringify({ open: page.talkOpen, id: page.talkId, thread: page.talkThread, settled: page.talkSettled,
-        item: !page.talkItem ? "" : page.talkItem.kind === "question" ? page.talkItem.question : page.sayAsk(page.talkItem, false), talking: page.talking, visible: m.visible,
+        item: !page.talkItem ? "" : page.talkItem.kind === "question" ? page.talkItem.question : Say.sayAsk(page.talkItem, false), talking: page.talking, visible: m.visible,
         turns: page.talkTurns.map(function (t) { return t.role + ": " + t.text }),
         marginX: m.x, marginWidth: m.width, dashX: page.dashItem.x, dashWidth: page.dashItem.width, chatFocus: m.chatFieldRef.activeFocus })
     }
-    function sayDate(d: string): string { return page.sayDate(d) }
+    function sayDate(d: string): string { return Say.sayDate(d) }
     function noteTurns(): string { return JSON.stringify(page.noteTurns.map(function (t) { return (t.who === "planner" ? "planner " : "") + t.role + ": " + t.text })) }
     function talkSend(text: string): void { page.marginItem.chatFieldRef.text = text; page.sendTalk() }
     function talkKey(key: int, mods: int): bool { return page.talkKey({ key: key, text: "", modifiers: mods }) }
@@ -311,7 +312,7 @@ ShellRoot {
     function dashOpen(): bool { return page.dashOpen }
     function dashFocused(): bool { return page.dashItem.dashKeysRef.activeFocus }
     function dashFocus(i: int): void { page.taskFocus = i }
-    function focusedDashRow(): string { var r = page.taskRows[page.taskFocus]; return r ? r.kind + "/" + (r.item ? r.item.kind : (r.task ? page.taskTitle(r.task) : "")) : "" }
+    function focusedDashRow(): string { var r = page.taskRows[page.taskFocus]; return r ? r.kind + "/" + (r.item ? r.item.kind : (r.task ? Say.taskTitle(r.task) : "")) : "" }
     function acceptRow(rowKind: string, ask: string): bool {
       for (var i = 0; i < page.taskRows.length; i++) {
         var r = page.taskRows[i]
@@ -376,16 +377,16 @@ ShellRoot {
           : r.kind === "shelf" || r.kind === "grading" ? { kind: r.kind, count: r.count }
           : r.kind === "raised" ? { kind: "raised", text: r.item.text }
           : r.kind === "proposal" || r.kind === "told" ? { kind: r.kind, id: r.item.id, date: r.item.date, why: r.item.why,
-                                      under: r.task ? page.taskTitle(r.task) : "", file: r.item.kind === "file" ? r.item.name : "",
-                                      ask: r.item.kind, say: page.sayAsk(r.item, !!r.task), fresh: page.isNewAsk(r.item) }
+                                      under: r.task ? Say.taskTitle(r.task) : "", file: r.item.kind === "file" ? r.item.name : "",
+                                      ask: r.item.kind, say: Say.sayAsk(r.item, !!r.task), fresh: page.isNewAsk(r.item) }
           : r.kind === "question" ? { kind: "question", id: r.item.id, text: r.item.question, recommended: r.item.recommended,
                                       fresh: page.isNewAsk(r.item) }
           : r.kind === "deadline" ? { kind: "deadline", text: r.deadline.title, due: r.deadline.due, status: r.deadline.status,
                                       where: page.deadlineWhere(r.deadline), grade: r.deadline.grade,
-                                      mark: page.taskMark(page.taskOfAnchor(r.deadline.id)),
+                                      mark: Say.taskMark(page.taskOfAnchor(r.deadline.id)),
                                       pills: page.pillsFor(r).map(function (x) { return x.text }),
                                       chat: page.chatState(r), last: page.chatOf(r) ? page.chatOf(r).text : "" }
-          : { kind: "task", text: page.taskTitle(r.task), where: page.taskWhere(r.task),
+          : { kind: "task", text: Say.taskTitle(r.task), where: Say.taskWhere(r.task, undefined, page.projects),
               date: r.task.date, prio: r.task.priority, when: r.task.when, away: r.task.away || "", done: !!r.task.done,
               priv: !!r.task["private"], chat: page.chatState(r), last: page.chatOf(r) ? page.chatOf(r).text : "" }
       }))
