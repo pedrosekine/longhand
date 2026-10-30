@@ -87,4 +87,31 @@ TestCase {
     compare(Say.sayAsk({ kind: "file", name: "syllabus.pdf", project: "intsem" }, false, now), "file “syllabus” in intsem")
     compare(Say.sayAsk({ kind: "steps", steps: ["outline it", "draft the intro"] }, false, now), "steps: outline it · draft the intro")
   }
+
+  function test_a_deadline_row_s_second_line() {
+    var at = Math.floor(now.getTime() / 1000), day = 86400
+    var d = { id: 6, status: "open", project: "intsem", due: at + 3 * day, grade: "" }
+    var t = { path: ["#intsem", "Essay 2"], details: 2 }
+    compare(Say.deadlineWhere(d, t, projects, null, null, now), "Interdisciplinary Seminar › Essay 2   ·   2 lines of detail")
+    // No line holds it: the course alone.
+    compare(Say.deadlineWhere(d, null, projects, null, null, now), "Interdisciplinary Seminar")
+    compare(Say.deadlineWhere({ id: 7, status: "open", project: "bikes", due: at, grade: "" }, null, projects, null, null, now), "#bikes")
+    compare(Say.deadlineWhere({ id: 8, status: "cancelled", project: "", due: at, grade: "" }, null, projects, null, null, now), "cancelled")
+    compare(Say.deadlineWhere({ id: 9, status: "done", project: "", due: at, grade: "1.3" }, null, projects, null, null, now), "graded 1.3")
+    // A fortnight past its date, an open one steps aside.
+    compare(Say.deadlineWhere({ id: 10, status: "open", project: "", due: at - 12 * day, grade: "" }, null, projects, null, null, now),
+            "steps aside in 2 days")
+    compare(Say.deadlineWhere(d, null, projects, { origin: "agent", rewritten: true }, null, now),
+            "Interdisciplinary Seminar   ·   from the agent · rewritten by you")
+    compare(Say.deadlineWhere(d, null, projects, { origin: "you" }, { moves: 2, firstDue: at }, now),
+            "Interdisciplinary Seminar   ·   moved twice, first due " + Qt.formatDate(now, "d MMM"))
+    compare(Say.deadlineWhere(d, null, projects, null, { moves: 3 }, now), "Interdisciplinary Seminar   ·   moved 3 times")
+  }
+
+  function test_what_a_section_says_under_it() {
+    compare(Say.sectionUnder({ sub: [{ text: "Essay #intsem" }, { text: "Reading" }] }), "Essay · Reading")
+    compare(Say.sectionUnder({ sub: [{ text: "a" }, { text: "b" }, { text: "c" }, { text: "d" }, { text: "e" }, { text: "f" }] }), "a · b · c · d · +2")
+    compare(Say.sectionUnder({ sub: [], preview: ["first line", "second"] }), "first line · second")
+    compare(Say.sectionUnder({}), "")
+  }
 }

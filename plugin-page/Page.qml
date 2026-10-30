@@ -11,6 +11,7 @@ import qs.Ui
 import "Blocks.js" as Blocks
 import "Bound.js" as Bound
 import "Queue.js" as Queue
+import "Next.js" as Next
 import "Dates.js" as Dates
 import "Days.js" as Days
 import "Task.js" as Task
@@ -1316,7 +1317,10 @@ Item {
     var when = /^\d{4}-\d{2}-\d{2}( \d{1,2}:\d{2})?$/.test(p.when || "") ? Say.sayDate(p.when) : p.when
     return p.moves ? Qt.formatDate(new Date(p.moves.due * 1000), "ddd d MMM") + " → " + when : "📅 " + when
   }
-  readonly property var taskRows: root.buildTaskRows()
+  // What's next: the dashboard's rows, in the order they ask something of
+  // you (Next.js).
+  readonly property var taskRows: Next.rows({ deadlines: dl.items, tasks: root.tasks, projects: root.projects, raised: root.raised,
+                                              proposals: root.proposals, showShelf: root.showShelf, showGrading: root.showGrading })
   // The dashboard's cursor stays on the same row when the list is drawn
   // again — rows added above it (a plan, the agent's steps) must not move
   // the next key onto another row. Only when its row is gone does the
@@ -3518,147 +3522,10 @@ Item {
 
   // A section's second line in the list: what is under it, or its first
   // words when it has no headings of its own.
-  function sectionUnder(s) {
-    if (s.sub && s.sub.length > 0) {
-      var names = []
-      for (var i = 0; i < s.sub.length && i < 4; i++) names.push(s.sub[i].text.replace(/\s*#[\w\/-]+/g, ""))
-      return names.join(" · ") + (s.sub.length > 4 ? " · +" + (s.sub.length - 4) : "")
-    }
-    return (s.preview || []).join(" · ")
-  }
-
   function sectionWhen(s) {
     var p = svc.configured ? Days.parse(s.date, svc.dailyFormat()) : null
     if (!p) return s.date
     return Qt.formatDate(p.date, "ddd d MMM") + (s.age === 0 ? " · today" : s.age === 1 ? " · yesterday" : "")
-  }
-
-  // The dashboard's rows, in the order they ask something of you:
-  //
-  //   DUE            deadlines — late ones are the earliest, so they lead;
-  //                  ones closed today stay until tomorrow
-  //   DOING          boxes with a day on them (⏳ a do-date, or 📅 still
-  //                  unbound), by that day
-  //   TO SCHEDULE    boxes with a priority but no day yet — the pile the
-  //                  do-date is for
-  //   #project       note boxes, under the project that claims them, newest
-  //                  first
-  //   SET ASIDE      folded: boxes whose silence ran out, or put aside with
-  //                  `s` (agent/lifespan.py) — never rewritten, back when
-  //                  touched
-  //   WAITING FOR A GRADE   folded: done deadlines with no grade yet
-  //   FROM THE AGENT
-  //
-  // Note boxes group by project rather than by the day they were written,
-  // because the day a thought was written is not how it is looked for
-  // (2026-10-15, and the 31 trips to the calendar before it). A box bound to
-  // the store is listed once, as its deadline.
-  function buildTaskRows() {
-    var rows = []
-    var today = new Date()
-    today.setHours(0, 0, 0, 0)
-    // Closed today (done, or cancelled) stays until tomorrow, so what just
-    // happened can still be seen; a deadline no line stands for yet has a
-    // band of its own.
-    var due = dl.items.filter(function (d) {
-      return (d.status === "open" && d.link !== "")
-        || ((d.status === "done" || d.status === "cancelled") && d.doneAt * 1000 >= today.getTime())
-    })
-    var waiting = dl.items.filter(function (d) { return d.status === "open" && d.link === "" })
-    due.sort(function (a, b) {
-      if (a.status !== b.status) return a.status === "open" ? -1 : 1
-      return a.due - b.due
-    })
-    if (due.length > 0) {
-      rows.push({ kind: "head", text: "DUE", tag: "" })
-      var month = ""
-      for (var k = 0; k < due.length; k++) {
-        var lbl = Say.monthLabel(due[k].due * 1000)
-        if (lbl !== month) { rows.push({ kind: "month", text: lbl }); month = lbl }
-        rows.push({ kind: "deadline", deadline: due[k] })
-      }
-    }
-    if (waiting.length > 0) {
-      waiting.sort(function (a, b) { return a.due - b.due })
-      rows.push({ kind: "head", text: "NOT IN A NOTE YET", tag: "" })
-      for (var w = 0; w < waiting.length; w++) rows.push({ kind: "deadline", deadline: waiting[w] })
-    }
-
-    var doing = [], later = [], notes = [], shelf = []
-    for (var i = 0; i < root.tasks.length; i++) {
-      var t = root.tasks[i]
-      if (t.anchor > 0) continue
-      if (t.away) shelf.push(t)
-      else if (t.when !== "" || t.due !== "") doing.push(t)
-      else if (t.kind === "task") later.push(t)
-      else notes.push(t)
-    }
-    doing.sort(function (a, b) { return (a.when || a.due).localeCompare(b.when || b.due) })
-    later.sort(function (a, b) { return b.priority - a.priority || a.age - b.age })
-    if (doing.length > 0) {
-      rows.push({ kind: "head", text: "DOING", tag: "" })
-      var dm = ""
-      for (var d1 = 0; d1 < doing.length; d1++) {
-        var dl1 = Say.monthLabel(Say.taskMs(doing[d1]))
-        if (dl1 !== dm) { rows.push({ kind: "month", text: dl1 }); dm = dl1 }
-        rows.push({ kind: "task", task: doing[d1] })
-      }
-    }
-    if (later.length > 0) {
-      rows.push({ kind: "head", text: "TO SCHEDULE", tag: "" })
-      for (var l = 0; l < later.length; l++) rows.push({ kind: "task", task: later[l] })
-    }
-
-    var groups = [], seen = ({})
-    for (var n = 0; n < notes.length; n++) {
-      var key = notes[n].project || ""
-      if (seen[key] === undefined) { seen[key] = groups.length; groups.push({ key: key, items: [] }) }
-      groups[seen[key]].items.push(notes[n])
-    }
-    for (var g = 0; g < groups.length; g++) {
-      // The course's own name, not its tag: a band that reads
-      // "Interdisciplinary Seminar" says more than #intsem. The sidebar
-      // knows the names from the curriculum; for a tag it does not know,
-      // the heading the notes themselves use is the next best name.
-      var key = groups[g].key
-      var named = key === "" ? "No project" : Say.courseName(key, root.projects)
-      if (key !== "" && named === key) {
-        for (var h = 0; h < groups[g].items.length; h++) {
-          var path0 = (groups[g].items[h].path || [])[0]
-          if (path0) { named = path0; break }
-        }
-      }
-      rows.push({ kind: "head", text: named, tag: key === "" ? "" : "#" + key })
-      // Under a band, a row does not repeat it: the section it was written
-      // in is what the row still has to say.
-      for (var m = 0; m < groups[g].items.length; m++)
-        rows.push({ kind: "task", task: groups[g].items[m], under: named })
-    }
-    // What is away and what is owed a grade, each folded into one row until
-    // asked for: there to be found, never in the way.
-    if (shelf.length > 0) {
-      if (!root.showShelf) rows.push({ kind: "shelf", count: shelf.length })
-      else {
-        rows.push({ kind: "head", text: "SET ASIDE", tag: "" })
-        for (var s = 0; s < shelf.length; s++) rows.push({ kind: "task", task: shelf[s] })
-      }
-    }
-    var grading = dl.items.filter(function (d) {
-      return d.status === "done" && d.grade === "" && d.doneAt * 1000 < today.getTime()
-    })
-    if (grading.length > 0) {
-      if (!root.showGrading) rows.push({ kind: "grading", count: grading.length })
-      else {
-        grading.sort(function (a, b) { return b.doneAt - a.doneAt })
-        rows.push({ kind: "head", text: "WAITING FOR A GRADE", tag: "" })
-        for (var gr = 0; gr < grading.length; gr++) rows.push({ kind: "deadline", deadline: grading[gr] })
-      }
-    }
-    if (root.raised.length > 0) {
-      rows.push({ kind: "head", text: "FROM THE AGENT", tag: "" })
-      for (var j = 0; j < root.raised.length; j++) rows.push({ kind: "raised", item: root.raised[j] })
-    }
-    return root.withProposals(rows)
   }
 
   // The line that stands for a deadline, as a task the edit path can find —
@@ -3671,87 +3538,13 @@ Item {
     return { anchor: d.id, date: l.stem, file: svc.pathFor(l.stem), text: "", line: -1, details: 0, path: [] }
   }
 
-  // A deadline row's second line: where its line is, where it came from,
-  // how much is written under it.
+  // A deadline row's second line (Say.deadlineWhere).
   function deadlineWhere(d) {
-    var bits = []
-    var t = null
-    for (var i = 0; i < root.tasks.length; i++) if (root.tasks[i].anchor === d.id) t = root.tasks[i]
-    var place = t ? (t.path || []).slice() : []
-    var full = d.project ? Say.courseName(d.project, root.projects) : ""
-    if (full !== "" && full !== d.project && place.length > 0) place[0] = full
-    if (place.length > 0) bits.push(place.join(" › "))
-    else if (d.project) bits.push(Say.courseLabel(d.project, root.projects))
-    if (d.status === "cancelled") bits.push("cancelled")
-    var aside = Say.asideIn(d)
-    if (aside > 0) bits.push(aside === 1 ? "steps aside tomorrow" : "steps aside in " + aside + " days")
-    if (d.status === "done" && d.grade !== "") bits.push("graded " + d.grade)
-    var o = root.origins[String(d.id)]
-    if (o && o.origin === "agent") bits.push("from the agent" + (o.rewritten ? " · rewritten by you" : ""))
-    var h = root.dueDates[String(d.id)]
-    if (h && h.moves > 0)
-      bits.push("moved " + (h.moves === 1 ? "once" : h.moves === 2 ? "twice" : h.moves + " times")
-                + (h.firstDue ? ", first due " + Qt.formatDate(new Date(h.firstDue * 1000), "d MMM") : ""))
-    if (t && t.details > 0) bits.push(t.details === 1 ? "1 line of detail" : t.details + " lines of detail")
-    return bits.join("   ·   ")
+    return Say.deadlineWhere(d, root.taskOfAnchor(d.id), root.projects, root.origins[String(d.id)], root.dueDates[String(d.id)])
   }
 
-  // The agent's proposals and questions, as rows (docs/agent.md): each right
-  // under the box it is about, so the decision is made where the box is;
-  // one about a box not on the list waits under "from the agent".
-  function withProposals(rows) {
-    var props = root.proposals
-    if (!props || props.length === 0) return rows
-    var byKey = {}, used = {}
-    for (var i = 0; i < props.length; i++) {
-      var k = props[i].key
-      if (k) (byKey[k] = byKey[k] || []).push(props[i])
-    }
-    var out = []
-    for (var r = 0; r < rows.length; r++) {
-      out.push(rows[r])
-      var t = rows[r].kind === "task" ? rows[r].task
-        : rows[r].kind === "deadline" ? root.taskOfAnchor(rows[r].deadline.id) : null
-      var mine = t && t.key ? byKey[t.key] : null
-      if (!mine) continue
-      for (var m = 0; m < mine.length; m++) {
-        if (used[mine[m].id]) continue
-        used[mine[m].id] = true
-        out.push({ kind: Say.askKind(mine[m]), item: mine[m], task: t })
-      }
-    }
-    // A document to file, or a deadline found in the writing — about no box
-    // yet — goes in its course's band, when the list has one.
-    for (var f = 0; f < props.length; f++) {
-      if (used[props[f].id] || (props[f].kind !== "file" && props[f].kind !== "deadline") || !props[f].project) continue
-      for (var b = 0; b < out.length; b++) {
-        if (out[b].kind !== "head" || out[b].tag !== props[f].project) continue
-        out.splice(b + 1, 0, { kind: Say.askKind(props[f]), item: props[f], task: null })
-        used[props[f].id] = true
-        break
-      }
-    }
-    var rest = props.filter(function (x) { return !used[x.id] })
-    if (rest.length === 0) return out
-    var at = -1
-    for (var h = 0; h < out.length; h++) if (out[h].kind === "head" && out[h].text === "FROM THE AGENT") at = h
-    var extra = rest.map(function (x) {
-      return { kind: Say.askKind(x), item: x, task: root.taskOfKey(x.key) }
-    })
-    if (at < 0) return out.concat([{ kind: "head", text: "FROM THE AGENT", tag: "" }]).concat(extra)
-    return out.slice(0, at + 1).concat(extra).concat(out.slice(at + 1))
-  }
-
-  function taskOfAnchor(id) {
-    for (var i = 0; i < root.tasks.length; i++) if (root.tasks[i].anchor === id) return root.tasks[i]
-    return null
-  }
-
-  function taskOfKey(key) {
-    if (!key) return null
-    for (var i = 0; i < root.tasks.length; i++) if (root.tasks[i].key === key) return root.tasks[i]
-    return null
-  }
+  function taskOfAnchor(id) { return Next.taskOfAnchor(root.tasks, id) }
+  function taskOfKey(key) { return Next.taskOfKey(root.tasks, key) }
 
   // Planning (docs/agent.md): when the page or the dashboard opens (the
   // runner plans at most once a day unless what it plans around changed),

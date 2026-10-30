@@ -447,8 +447,14 @@ section, word for word, and to the diary's decisions log.
    (`tests/tst_say.qml`); `Page.qml` was about 7,600 lines. *Third pass,
    the same day*: the runner queue is `Queue.js` (`tests/tst_queue.qml`),
    and what the page did with bound lines joined `Bound.js`
-   (`tests/tst_bound.qml`); `Page.qml` is 7,335. Left: the note sheet itself, and
-   what's next.
+   (`tests/tst_bound.qml`); `Page.qml` is 7,335. *Fourth pass, the same
+   day*: what's next, the dashboard's order, is `Next.js`
+   (`tests/tst_next.qml`, which found and fixed two faults: a document
+   never reached its course's band, and the closed deadlines' order was
+   the sort's to pick); `Page.qml` is 7,128. Left: the note sheet's view,
+   kept on purpose — the page's logic reaches its editor 159 times, and
+   moving it buys length, not tests. One deadline-store parser for both
+   plugins is still open.
 5. **A project as one continuous page** (2026-10-17, the consistency
    grilling). Every section of a project in one scroll, newest first,
    editable in place, each edit landing in its day's note. Needs writing
@@ -580,10 +586,8 @@ Small, when passing by:
     `docs/hints.md`): A (hints follow the hand), D (hover marks too),
     B (warm hints) and C (the key named after a click) are built; then the
     look, from six mockups: keycaps for the mouse (with E, a hint that
-    fits) and Hold Ctrl for the keyboard (F). Hints that graduate (G) wait
-    on use. Keys that
-    wait show the keys (F, which-key / KeyTips) wants a mock-up first;
-    hints that graduate (G) wait on use.
+    fits) and Hold Ctrl for the keyboard (F), both built the same day.
+    Left: hints that graduate (G), which wait on use.
 
 - ~~**Tag suggestions while typing**~~ *done 2026-10-18*: `#` and a letter
   offer the tags that exist — the projects', then those written in the
@@ -612,6 +616,11 @@ this list, with *Open, in order* above. Each says why it waits.
   only way out of the overlay, a mode would cost presses to leave, and
   Ctrl+A's second press, Ctrl+Shift+Up/Down, Alt+Up/Down and Ctrl+Enter
   already do what a block selection is for. Revisit if those prove short.
+- **The note sheet's view in a file of its own** (2026-10-30, the split's
+  fourth pass): the page's logic reaches its editor 159 times, so moving
+  it would point all of them into another file, on the surface typed on
+  all day, for a shorter file and no new test. Revisit if the editor's
+  wiring is touched for another reason.
 - **By design, not a gap:** the agent never rewords the person's boxes,
   never writes prose, and never raises its own autonomy (it may only
   suggest it, at 9 of the last 10 accepted).
@@ -1167,8 +1176,8 @@ a fix or a feature to decide first):
    all, not how to dress it.
 6. **Structure** — split `Page.qml` into tested modules (bound lines,
    runner queue, what's next); install by symlink so the repo is the
-   install; one deadline-store parser for both plugins. *Bound lines and
-   the runner queue done 2026-10-30* (Open, item 4).
+   install; one deadline-store parser for both plugins. *Bound lines, the
+   runner queue and what's next done 2026-10-30* (Open, item 4).
 
 **Not ordered yet:**
 

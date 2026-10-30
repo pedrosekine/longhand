@@ -1408,3 +1408,17 @@ only the window and the panels around it differ.
   calls); the rules take rows and store items as arguments.
   `tests/tst_queue.qml` is new and `tests/tst_bound.qml` grew by six. One
   function, `listHasCheckbox`, had no caller and went.
+- **2026-10-30: the split, fourth pass — what's next.** The dashboard's
+  order (due, doing, to schedule, the course bands, the folded ones, the
+  agent's) is `Next.js`; a deadline row's second line and what a section
+  says under its heading joined `Say.js`. The tests for the order
+  (`tests/tst_next.qml`) found two faults on their first run, both old and
+  both fixed. A document to file never reached its course's band, as
+  `docs/agent.md` says it should: the band's tag carries its # and the
+  proposal's project does not, so they never matched, and every one waited
+  under "from the agent". And the deadlines closed today were sorted by a
+  rule that put done after cancelled and cancelled after done, so their
+  order was the sort's to choose; now open first, then closed, each by its
+  date. The note sheet's view stays in `Page.qml`: the page's logic reaches
+  its editor 159 times, and moving it would make the file shorter, not
+  tested.

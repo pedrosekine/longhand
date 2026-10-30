@@ -251,7 +251,7 @@ ShellRoot {
     function projects(): string { return JSON.stringify(page.projects.map(function (p) { return p.tag + "|" + page.sessionLabel(p.next) })) }
     function startClass(i: int): void { page.startClass(page.projects[i]) }
     function openProject(i: int): void { page.openProject(page.projects[i]) }
-    function sections(): string { return JSON.stringify(page.sections.map(function (s) { return s.date + "|" + s.title + "|" + page.sectionUnder(s) })) }
+    function sections(): string { return JSON.stringify(page.sections.map(function (s) { return s.date + "|" + s.title + "|" + Say.sectionUnder(s) })) }
     function openSection(i: int): void { page.sectionFocus = i; page.openSection(page.sections[i]) }
     function projectDocs(): string { return JSON.stringify(page.projectDocs()) }
     function docFocus(): int { return page.docFocus }

@@ -13,6 +13,7 @@ import "Task.js" as Task
 import "Authorship.js" as Authorship
 import "Shortcuts.js" as Sc
 import "Tags.js" as Tags
+import "Say.js" as Say
 
 // The sidebar: the calendar, the day's deadlines, the projects, keys and settings at its foot
 // Moved out of Page.qml on 2026-10-18 (tools/extract_sheet.py); `page` is
@@ -821,7 +822,7 @@ BorderSurface {
               wrapMode: Text.WordWrap
               maximumLineCount: 2
               elide: Text.ElideRight
-              text: page.sectionUnder(modelData)
+              text: Say.sectionUnder(modelData)
               color: page.foreground
               font.family: page.fontFamily
               font.styleName: page.fontStyle

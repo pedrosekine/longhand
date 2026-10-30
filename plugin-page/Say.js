@@ -125,3 +125,37 @@ function sayAsk(x, under, now) {
     : x.title || ""
   return x.told ? "done: " + what : what
 }
+
+// A deadline row's second line: where its line is (`t`, the task that
+// stands for it, if any), where it came from (`origin`, the ledger's), how
+// it moved (`moves`, its due dates' history), how much is written under it.
+function deadlineWhere(d, t, projects, origin, moves, now) {
+  var bits = []
+  var place = t ? (t.path || []).slice() : []
+  var full = d.project ? courseName(d.project, projects) : ""
+  if (full !== "" && full !== d.project && place.length > 0) place[0] = full
+  if (place.length > 0) bits.push(place.join(" › "))
+  else if (d.project) bits.push(courseLabel(d.project, projects))
+  if (d.status === "cancelled") bits.push("cancelled")
+  var aside = asideIn(d, now)
+  if (aside > 0) bits.push(aside === 1 ? "steps aside tomorrow" : "steps aside in " + aside + " days")
+  if (d.status === "done" && d.grade !== "") bits.push("graded " + d.grade)
+  if (origin && origin.origin === "agent") bits.push("from the agent" + (origin.rewritten ? " · rewritten by you" : ""))
+  var h = moves
+  if (h && h.moves > 0)
+    bits.push("moved " + (h.moves === 1 ? "once" : h.moves === 2 ? "twice" : h.moves + " times")
+              + (h.firstDue ? ", first due " + Qt.formatDate(new Date(h.firstDue * 1000), "d MMM") : ""))
+  if (t && t.details > 0) bits.push(t.details === 1 ? "1 line of detail" : t.details + " lines of detail")
+  return bits.join("   ·   ")
+}
+
+// What a section in the sidebar says under its heading: its first few
+// sub-headings, without their tags, or the first lines of what it holds.
+function sectionUnder(s) {
+  if (s.sub && s.sub.length > 0) {
+    var names = []
+    for (var i = 0; i < s.sub.length && i < 4; i++) names.push(s.sub[i].text.replace(/\s*#[\w\/-]+/g, ""))
+    return names.join(" · ") + (s.sub.length > 4 ? " · +" + (s.sub.length - 4) : "")
+  }
+  return (s.preview || []).join(" · ")
+}
