@@ -101,6 +101,9 @@ var actions = [
   // free on 2026-10-16; since 2026-10-27 it makes a block private (the
   // student's choice), Ctrl+Shift+P the whole note.
   { id: "pin", group: "page", places: ["any"], does: "Flip between overlay and window", keys: ["F11", "Ctrl+Alt+P"] },
+  // Where you are, as a path to hand to an agent outside the page
+  // (2026-11-03, Where.js): Ctrl+C's Shift, as terminals copy with it.
+  { id: "copyPath", group: "page", places: ["any"], does: "Copy the path of what you are on (in a note, with the line), to give to an agent", keys: ["Ctrl+Shift+C"] },
   { id: "close", group: "page", places: ["note"], does: "Close the overlay", keys: ["Esc"] },
   { id: "private", group: "page", places: ["note"], does: "Make the whole note private (the agent sees nothing)", keys: ["Ctrl+Shift+P"] },
   { id: "privateBlock", group: "page", places: ["note"], does: "Make the block private, or the blocks selected (again: not private)", keys: ["Ctrl+P"] },

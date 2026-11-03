@@ -18,6 +18,7 @@ import "Task.js" as Task
 import "Authorship.js" as Authorship
 import "Threads.js" as Threads
 import "Tags.js" as Tags
+import "Where.js" as Where
 import "Shortcuts.js" as Sc
 import "Say.js" as Say
 import "Layout.js" as Layout
@@ -1482,7 +1483,41 @@ Item {
     if (Sc.hit(event, "paneRight")) { root.movePane(1); return true }
     if (Sc.hit(event, "today")) { root.goToday(); return true }
     if (Sc.hit(event, "pin")) { root.togglePin(); return true }
+    if (Sc.hit(event, "copyPath")) { root.copyPath(); return true }
     return false
+  }
+
+  // Ctrl+Shift+C: the path of what you are on, for an agent outside the
+  // page (Where.js). A row of Files, the PDF open, a task on the dashboard
+  // (its note and line), else the note, at the cursor's line or the lines
+  // selected. The keys and settings are no file.
+  function pathHere() {
+    var vault = svc.config ? svc.config.vault : ""
+    if (root.here === "left" && root.sidebarSpace === "files") {
+      var fp = sidebar.filesPaneRef
+      var r = fp.rows[fp.pick]
+      return r && !r.none && vault !== "" ? vault + "/" + r.rel.replace(/\/$/, "") : ""
+    }
+    if (root.centerView === "dash") {
+      var row = root.taskRows[root.taskFocus]
+      return row && row.kind === "task" && row.task.file ? row.task.file + ":" + (row.task.line + 1) : ""
+    }
+    if (root.centerView !== "note") return ""
+    if (root.pdfShown) return vault !== "" ? vault + "/" + root.pdfRel : ""
+    if (svc.notePath === "" || !svc.ready) return ""
+    var body = editor.text
+    var whole = svc.joinHeader(body)
+    var before = whole.substring(0, whole.length - body.length)
+    return editor.spanning ? Where.at(svc.notePath, before, body, editor.selStart, editor.selEnd)
+      : Where.at(svc.notePath, before, body, editor.cursorPosition)
+  }
+
+  function copyPath() {
+    var p = root.pathHere()
+    if (p === "") { root.showHint("no file here to copy"); return }
+    editor.copyText(p)
+    root.showHint("copied " + p.replace(Quickshell.env("HOME") + "/", "~/"))
+    root.used("copy-path", root.here)
   }
 
   // ------------------------------------------------------------ panes

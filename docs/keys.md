@@ -28,6 +28,7 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | The open pane to the left | `Alt+←` | everywhere |
 | The open pane to the right (in the note, with none: this block's chat) | `Alt+→` | everywhere |
 | Flip between overlay and window | `F11` · `Ctrl+Alt+P` | everywhere |
+| Copy the path of what you are on (in a note, with the line), to give to an agent | `Ctrl+Shift+C` | everywhere |
 | Close the overlay | `Esc` | in the note |
 | Make the whole note private (the agent sees nothing) | `Ctrl+Shift+P` | in the note |
 | Make the block private, or the blocks selected (again: not private) | `Ctrl+P` | in the note |

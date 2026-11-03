@@ -16,7 +16,11 @@ its daily notes. {key:sys:page} opens it from anywhere (or the bar's glyph);
 tile beside something; {key:pin} flips between the two. {key:zoomIn},
 {key:zoomOut}, {key:zoomReset} zoom. {key:find} finds in the note.
 {key:today} goes to today's note; {key:dayPrev} and {key:dayNext} step to
-the day before or after that has a note.
+the day before or after that has a note. {key:copyPath} copies the path of
+what you are on, to give to an agent outside Longhand: in a note, the file
+with the cursor's line (`…/2026-11-03.md:42`, or `:42-48` for lines
+selected); in Files, the file picked; a PDF; a task on the dashboard, its
+note and line.
 
 ## Writing
 
