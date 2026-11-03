@@ -256,9 +256,15 @@ def same_deadline(title: str, date: str, d: dict) -> bool:
     """Whether a proposed deadline is one the store already has, open or
     closed: the same words; or the same day and a word in common; or most of
     the shorter title's words in common. A model rewording a ticked box
-    ("Proposal of version 1 …" → "Proposal v1") must not bring it back."""
+    ("Proposal of version 1 …" → "Proposal v1") must not bring it back.
+    Titles numbered alike whose numbers disagree are two of a series
+    ("Diary 1", "Diary 2"), whatever words they share; a title with dates
+    in its words ("weekly until Feb 4th") is still the series' own."""
     if norm(title) == norm(d["title"]):
         return True
+    na, nb = sorted(int(n) for n in re.findall(r"\d+", title)), sorted(int(n) for n in re.findall(r"\d+", d["title"]))
+    if na and len(na) == len(nb) and na != nb:
+        return False
     a, b = _words(title), _words(d["title"])
     if not a or not b:
         return False

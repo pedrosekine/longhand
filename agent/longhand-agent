@@ -833,11 +833,14 @@ def card_places(props: list[dict], new: list[dict], at: str) -> tuple[list[int],
     "propose a new task then, please" made a second card the same as the
     first, and neither showed beside the dashboard). The same as a card
     still open is that card; about the same thing but different, it takes
-    the open one's place (`superseded`, as a plan's do). Returns the
-    indexes the answer made, and the cards that are new."""
+    the open one's place (`superseded`, as a plan's do). Only a card from
+    an earlier answer: one answer's cards are all meant (2026-11-03: nine
+    weekly diaries, each taking the one before's place, left one). Returns
+    the indexes the answer made, and the cards that are new."""
     made, fresh = [], []
+    before = len(props)
     for p in new:
-        old = next((i for i, x in enumerate(props) if not x.get("accepted") and not x.get("superseded")
+        old = next((i for i, x in enumerate(props[:before]) if not x.get("accepted") and not x.get("superseded")
                     and same_card(x, p)), -1)
         if old >= 0 and all(props[old].get(k) == p.get(k) for k in ("title", "when", "project")):
             made.append(old)

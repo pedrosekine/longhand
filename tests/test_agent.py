@@ -320,6 +320,30 @@ def main() -> int:
         r = t.agent("accept", "--hash", at_block["hash"], "--index", str(first), "--date", DAY)
         check(r.returncode != 0 and "replaced" in r.stderr, f"…and the replaced one is not accepted ({r.stderr.strip()})")
 
+        # 8a''. a series in one answer (2026-11-03: nine weekly diaries,
+        # each taking the one before's place, left one live): one answer's
+        # cards are all meant; asked again a day later, each takes the
+        # place of its own number only.
+        diaries = [{"kind": "deadline", "title": f"Reflective Research Diary {i}", "when": f"2026-11-{i + 5:02d} 23:59",
+                    "project": "studio"} for i in range(1, 4)]
+        t.set_reply(reply="Proposed.", proposals=diaries)
+        t.agent("chat", "--hash", at_block["hash"], "--message", "add the diaries", "--date", DAY)
+        rec = json.loads(st.read_text())["blocks"][at_block["hash"]]
+        series = rec["chat"][-1]["proposals"]
+        check(len(series) == 3 and not any(rec["proposals"][i].get("superseded") for i in series),
+              f"a numbered series in one answer is three cards, none replaced ({[rec['proposals'][i].get('superseded') for i in series]})")
+        t.set_reply(reply="At 10:30.", proposals=[dict(diaries[1], when="2026-11-07 10:30")])
+        t.agent("chat", "--hash", at_block["hash"], "--message", "diary 2 is due at 10:30", "--date", DAY)
+        rec = json.loads(st.read_text())["blocks"][at_block["hash"]]
+        check([bool(rec["proposals"][i].get("superseded")) for i in series] == [False, True, False],
+              "…and a later 'Diary 2' takes the place of Diary 2 alone")
+        import plan as planlib
+        check(not planlib.same_deadline("Reflective Research Diary 1", "", {"title": "Reflective Research Diary 2"})
+              and planlib.same_deadline("Proposal v1", "", {"title": "Proposal of version 1 draft"})
+              and planlib.same_deadline("Reflective Research Diary 1", "", {"title":
+                  "Reflective Research Diary — weekly until Feb 4th, aside from Dec 17th to Jan 6th"}),
+              "numbers that disagree are two deadlines; reworded with the same number, or dates in the words, the same")
+
         # 8b. a box answered, then ticked: the record keeps its words key, and
         # a chat on it (by the hash it was answered under) still runs and
         # tells the agent how the block reads now (2026-10-17).
