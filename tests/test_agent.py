@@ -297,6 +297,29 @@ def main() -> int:
               "ticked meanwhile: the card says so, and nothing is moved or added")
         (t.stub_dir / "pomo_store.json").unlink()
 
+        # 8a'. asked again (2026-11-03: "propose a new task then, please"
+        # made a second card the same as the first): the same card is that
+        # card; in other words, it takes the open one's place, which can no
+        # longer be accepted.
+        card = {"kind": "deadline", "title": "Confirm thesis scope with Bernd", "when": "friday", "project": "thesis"}
+        t.set_reply(reply="Proposed.", proposals=[card])
+        t.agent("chat", "--hash", at_block["hash"], "--message", "create a new task", "--date", DAY)
+        rec = json.loads(st.read_text())["blocks"][at_block["hash"]]
+        first = len(rec["proposals"]) - 1
+        t.agent("chat", "--hash", at_block["hash"], "--message", "propose it then, please", "--date", DAY)
+        rec = json.loads(st.read_text())["blocks"][at_block["hash"]]
+        check(len(rec["proposals"]) == first + 1 and rec["chat"][-1]["proposals"] == [first],
+              f"the same card asked for again is the one already open ({rec['chat'][-1].get('proposals')})")
+        check(tr.read_text().count("add deadline: Confirm thesis scope with Bernd") == 1, "…listed once in the transcript")
+        t.set_reply(reply="Reworded.", proposals=[dict(card, title="Confirm the thesis scope with Bernd")])
+        t.agent("chat", "--hash", at_block["hash"], "--message", "say 'the'", "--date", DAY)
+        rec = json.loads(st.read_text())["blocks"][at_block["hash"]]
+        check(len(rec["proposals"]) == first + 2 and rec["proposals"][first].get("superseded")
+              and not rec["proposals"][first + 1].get("superseded") and rec["chat"][-1]["proposals"] == [first + 1],
+              "…in other words, a new card that takes the open one's place")
+        r = t.agent("accept", "--hash", at_block["hash"], "--index", str(first), "--date", DAY)
+        check(r.returncode != 0 and "replaced" in r.stderr, f"…and the replaced one is not accepted ({r.stderr.strip()})")
+
         # 8b. a box answered, then ticked: the record keeps its words key, and
         # a chat on it (by the hash it was answered under) still runs and
         # tells the agent how the block reads now (2026-10-17).

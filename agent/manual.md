@@ -104,7 +104,12 @@ you agree, that settles it. {key:dashTalk} on any task's row (the row says
 "chat" where the keys or the mouse are) opens the task's chat, to think it
 through, in the same margin. Each task keeps one chat — what was said in the
 margin of its note and with the planner, shown together — shared by the
-boxes under it.
+boxes under it. When the agent proposes something in a task's chat (a new
+deadline, or moving one), it is a card under its answer, beside the note or
+the dashboard alike: {key:marginUp} from the empty box goes onto the cards,
+{key:marginAccept} does what one says; until then it only waits, and the
+task's row says "a card in its chat". Asked again for the same thing, the
+agent's card is the same one, or replaces it.
 
 ## The day's chat
 

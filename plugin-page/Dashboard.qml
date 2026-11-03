@@ -554,7 +554,7 @@ BorderSurface {
                 // The reason line; what the agent proposed since the
                 // dashboard was last left says so first, in the accent.
                 Row {
-                  visible: freshMark.visible || caption.text !== ""
+                  visible: freshMark.visible || cardMark.visible || caption.text !== ""
                   width: parent.width
                   spacing: page.sp(8)
 
@@ -571,9 +571,25 @@ BorderSurface {
                     font.letterSpacing: page.sp(1)
                   }
 
+                  // A card its chat made that waits for the person
+                  // (2026-11-03): said on the row, so a proposal is never
+                  // only in a conversation nobody opens.
+                  Text {
+                    id: cardMark
+                    visible: !!dashRow.chat && dashRow.chat.cards > 0
+                    textFormat: Text.PlainText
+                    text: visible ? "◇ " + (dashRow.chat.cards === 1 ? "a card" : dashRow.chat.cards + " cards")
+                      + " in its chat · " + page.keyName("dashTalk") : ""
+                    color: page.accent
+                    font.family: page.fontFamily
+                    font.styleName: page.fontStyle
+                    font.pixelSize: page.fs(Style.font.caption)
+                  }
+
                   Text {
                     id: caption
                     width: parent.width - (freshMark.visible ? freshMark.implicitWidth + parent.spacing : 0)
+                      - (cardMark.visible ? cardMark.implicitWidth + parent.spacing : 0)
                     textFormat: Text.PlainText
                     elide: Text.ElideRight
                     text: dashRow.kind === "proposal" || dashRow.kind === "told" ? (modelData.item.why || "")

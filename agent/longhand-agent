@@ -817,6 +817,39 @@ def block_key(text: str) -> str:
     return blocklib.fnv1a(tasklib.identity(text))
 
 
+def same_card(a: dict, b: dict) -> bool:
+    """Whether two of a block's cards are about the same thing: a move of
+    the same deadline, or a new deadline in much the same words."""
+    if a.get("kind") != b.get("kind"):
+        return False
+    ma, mb = (a.get("moves") or {}).get("id"), (b.get("moves") or {}).get("id")
+    if ma or mb:
+        return ma == mb
+    return planlib.same_deadline(str(a.get("title") or ""), "", {"title": str(b.get("title") or "")})
+
+
+def card_places(props: list[dict], new: list[dict], at: str) -> tuple[list[int], list[dict]]:
+    """Where an answer's proposals go among the block's cards (2026-11-03:
+    "propose a new task then, please" made a second card the same as the
+    first, and neither showed beside the dashboard). The same as a card
+    still open is that card; about the same thing but different, it takes
+    the open one's place (`superseded`, as a plan's do). Returns the
+    indexes the answer made, and the cards that are new."""
+    made, fresh = [], []
+    for p in new:
+        old = next((i for i, x in enumerate(props) if not x.get("accepted") and not x.get("superseded")
+                    and same_card(x, p)), -1)
+        if old >= 0 and all(props[old].get(k) == p.get(k) for k in ("title", "when", "project")):
+            made.append(old)
+            continue
+        if old >= 0:
+            props[old]["superseded"] = at
+        props.append(p)
+        made.append(len(props) - 1)
+        fresh.append(p)
+    return made, fresh
+
+
 def apply(cfg: dict, paths: Paths, trigger: str, fired: list[dict], visible: list[dict],
           result: dict, reply: dict, payload_file: Path, hash_: str = "", message: str = "") -> dict:
     now = dt.datetime.now()
@@ -828,6 +861,7 @@ def apply(cfg: dict, paths: Paths, trigger: str, fired: list[dict], visible: lis
         hash_ = fired[0]["hash"]
     chat = trigger == "chat"
     mark_moves(reply["proposals"])
+    listed = reply["proposals"]
 
     # Every block the model saw is now "seen"; the fired ones get the reply.
     for b in visible:
@@ -841,17 +875,17 @@ def apply(cfg: dict, paths: Paths, trigger: str, fired: list[dict], visible: lis
             turns.append({"role": "student", "text": message, "at": at})
             # Which of the block's proposals this answer made: the margin
             # draws them under it, in the conversation, not at its top.
-            start = len(rec.get("proposals") or [])
+            props = rec.setdefault("proposals", [])
+            made, fresh = card_places(props, reply["proposals"], at)
             turns.append({"role": "agent", "text": reply["reply"], "at": at, "cost": result["cost"],
                           "prompt": result.get("prompt", ""), "model": result.get("model", ""),
-                          "documents": result.get("reads", []),
-                          "proposals": list(range(start, start + len(reply["proposals"])))})
+                          "documents": result.get("reads", []), "proposals": made})
             rec["session"] = result["session"] or rec.get("session", "")
             rec["read"] = False
             if rec.get("state") != "reply":
                 rec["state"] = "reply"
                 rec["reply"] = rec.get("reply") or ""
-            rec["proposals"] = rec.get("proposals", []) + reply["proposals"]
+            listed = fresh
     elif fired:
         head = " / ".join(b["text"].split("\n")[0] for b in fired)
         for h in hashes:
@@ -899,7 +933,7 @@ def apply(cfg: dict, paths: Paths, trigger: str, fired: list[dict], visible: lis
         sec += [f"**you:** {message}", "", f"**agent:** {reply['reply'] or '_(nothing to add)_'}"]
     else:
         sec.append(reply["reply"] if reply["reply"] else "_(nothing to add)_")
-    for p in reply["proposals"]:
+    for p in listed:
         if p.get("kind") == "deadline" and p.get("moves"):
             sec.append(f"- [ ] move deadline #{p['moves']['id']}: {p['moves']['title']} — to {p.get('when', '')}")
         elif p.get("kind") == "deadline":
@@ -1198,6 +1232,8 @@ def cmd_accept(cfg: dict, args) -> int:
     prop = props[args.index]
     if prop.get("accepted"):
         return 0
+    if prop.get("superseded"):
+        raise Fail(f"block {args.hash}'s proposal #{args.index} was replaced by a later one")
     at = dt.datetime.now().isoformat(timespec="seconds")
     if prop.get("kind") == "deadline":
         when = str(prop.get("when") or "").split() or ["today"]
@@ -2470,13 +2506,45 @@ def block_record(paths: Paths, visible: list[dict], block: dict, blocks: dict) -
     return block["hash"], None
 
 
+CARD_KEYS = ("kind", "title", "when", "project", "moves", "accepted", "error", "superseded")
+
+
 def margin_turns(rec: dict | None) -> list[dict]:
-    """A margin record as turns: its first reply, then its conversation."""
+    """A margin record as turns: its first reply, then its conversation.
+    An answer carries the cards it made (`cards`, with their index among
+    the block's), so beside the dashboard they are drawn and accepted where
+    they were said, as in the note's margin (2026-11-03); the first reply
+    has the ones no later answer claims (Page.qml `marginRows`)."""
     if not rec:
         return []
-    out = [{"role": "agent", "text": rec["reply"], "at": rec.get("at", ""), "who": "margin"}] if rec.get("reply") else []
-    out += [{"role": t["role"], "text": t["text"], "at": t.get("at", ""), "who": "margin"} for t in rec.get("chat") or []]
+    props = rec.get("proposals") or []
+    def cards(idx):
+        return [dict({k: props[i][k] for k in CARD_KEYS if k in props[i]}, index=i)
+                for i in idx if 0 <= i < len(props)]
+    chat = rec.get("chat") or []
+    claimed = {i for t in chat if t.get("role") == "agent" for i in t.get("proposals") or []}
+    out = [{"role": "agent", "text": rec["reply"], "at": rec.get("at", ""), "who": "margin",
+            "cards": cards([i for i in range(len(props)) if i not in claimed])}] if rec.get("reply") else []
+    out += [dict({"role": t["role"], "text": t["text"], "at": t.get("at", ""), "who": "margin"},
+                 **({"cards": cards(t.get("proposals") or [])} if t["role"] == "agent" else {}))
+            for t in chat]
     return out
+
+
+CARD_QUIET_DAYS = 7   # a card older than this is not said on its row (it goes quiet, as a box does)
+
+
+def open_cards(rec: dict | None, now: dt.datetime | None = None) -> int:
+    """A block's cards still waiting for the person, made in the last
+    CARD_QUIET_DAYS: when each was made is the answer's that made it, or
+    the first reply's. Older ones are still in the chat, to accept there
+    (found 2026-11-03: a dozen rows would have said so of September's)."""
+    if not rec:
+        return 0
+    made = {i: t.get("at", "") for t in rec.get("chat") or [] if t.get("role") == "agent" for i in t.get("proposals") or []}
+    since = ((now or dt.datetime.now()) - dt.timedelta(days=CARD_QUIET_DAYS)).isoformat(timespec="seconds")
+    return sum(1 for i, p in enumerate(rec.get("proposals") or [])
+               if not p.get("accepted") and not p.get("superseded") and (made.get(i) or rec.get("at", "")) >= since)
 
 
 def merged_turns(margin: list[dict], planner: list[dict]) -> list[dict]:
@@ -2550,8 +2618,8 @@ def cmd_thread(cfg: dict, args) -> int:
         margin, chat = margin_turns(rec), {"date": task["date"], "hash": h}
     turns = merged_turns(margin, planlib.thread(ledger, key)["turns"])
     print(json.dumps({"thread": key, "title": title, "chat": chat,
-                      "turns": [{k: t.get(k, "") for k in ("role", "text", "at", "who", "about", "revised", "settled")}
-                                for t in turns]}, ensure_ascii=False))
+                      "turns": [dict({k: t.get(k, "") for k in ("role", "text", "at", "who", "about", "revised", "settled")},
+                                     cards=t.get("cards") or []) for t in turns]}, ensure_ascii=False))
     return 0
 
 
@@ -2571,7 +2639,7 @@ def task_chats(cfg: dict, tasks: list[dict]) -> None:
             continue
         key = planlib.root_key(t["key"], tasks)
         box = by_key.get(key) or t
-        margin, h = [], ""
+        margin, h, rec = [], "", None
         found = box_block(cfg, box)
         if found:
             paths, visible, block = found
@@ -2586,9 +2654,12 @@ def task_chats(cfg: dict, tasks: list[dict]) -> None:
             continue
         last = turns[-1]
         first = next((l.strip() for l in str(last.get("text", "")).split("\n") if l.strip()), "")
+        # `cards`: what the chat proposed that still waits, so the row can
+        # say so — a card is never only in a conversation nobody opens. On
+        # the box the chat is about, not again on each box under it.
         t["chat"] = {"turns": len(turns), "role": last.get("role", ""), "who": last.get("who", ""),
                      "text": first[:160], "at": last.get("at", ""), "read": bool(last.get("read")),
-                     "hash": h, "thread": key}
+                     "hash": h, "thread": key, "cards": open_cards(rec) if t["key"] == key else 0}
 
 
 # ------------------------------------------------------------ the day

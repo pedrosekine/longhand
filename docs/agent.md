@@ -206,6 +206,20 @@ about, not only to take or leave, as any block is in the note.
   note would — it knows the notes, the course's documents and what the
   planner said. Once a pinned proposal is settled, the conversation goes on
   the same way.
+- **What the margin agent proposes there is a card there** (2026-11-03).
+  Found when the student asked a task's chat to "create a new task": the
+  agent said "Proposed", and nothing showed — its cards were kept on the
+  block (the note's margin draws them), but beside the dashboard the margin
+  drew only the turns, and the ledger never had them. They stay the
+  block's cards (they bind the box's own line, and move a deadline, which
+  the ledger's kinds do not), and `thread` now gives each answer its cards:
+  drawn under it beside the dashboard, ↑ from the empty box onto them,
+  Space runs `accept` on the block the chat is filed under. The box the
+  chat is about says "◇ a card in its chat" on its row while one from the
+  last week waits (`next`'s `chat.cards`; older ones go quiet, still in the
+  chat). Asked again, the same card is that card; about the same deadline
+  in other words, it takes the open one's place (`superseded`, drawn faint,
+  not accepted).
 - **The planner answers,** given back the very payload it planned from (it
   is logged), then the proposal, what came of its others about the box, the
   box as it stands, and the conversation. Its instructions for the

@@ -374,10 +374,17 @@ def main() -> int:
     st.setdefault("blocks", {})[blk["hash"]] = {
         "state": "reply", "reply": "A poster wants its argument first.", "at": "2000-01-01T09:00:00", "session": "",
         "chat": [{"role": "student", "text": "where do I start?", "at": "2000-01-01T09:05:00"},
-                 {"role": "agent", "text": "With the one sentence it argues.", "at": "2000-01-01T09:05:00"}]}
+                 {"role": "agent", "text": "With the one sentence it argues.", "at": "2000-01-01T09:05:00", "proposals": [0]}],
+        "proposals": [{"kind": "deadline", "title": "print the poster", "when": "friday"}]}
     day_state.write_text(json.dumps(st))
     th = json.loads(agent("thread", "--key", images).stdout)
     texts = [t["text"] for t in th["turns"]]
+    # A card the margin agent made in the chat comes with the answer that
+    # made it, so beside the dashboard it is drawn and accepted there
+    # (2026-11-03: "Proposed", and nothing to see).
+    check(th["turns"][2]["cards"] == [{"kind": "deadline", "title": "print the poster", "when": "friday", "index": 0}]
+          and th["turns"][0]["cards"] == [] and "cards" in th["turns"][1],
+          f"the chat's answers carry their cards, with their index among the block's ({th['turns'][:3]})")
     check(th["thread"] == poster and th["chat"] == {"date": TODAY.isoformat(), "hash": blk["hash"]},
           f"a box under another summons the conversation of the box it is under, which takes messages in the margin ({th['chat']})")
     check(texts[:3] == ["A poster wants its argument first.", "where do I start?", "With the one sentence it argues."]
@@ -385,7 +392,8 @@ def main() -> int:
           "…the margin's turns and the planner's, one conversation, in the order said")
     th2 = json.loads(agent("thread", "--id", str(dd["id"])).stdout)
     check(th2["turns"] == th["turns"], "a proposal's conversation is the same one")
-    (stub / "reply.json").write_text(json.dumps({"reply": "Start with the sentence, then the images."}))
+    (stub / "reply.json").write_text(json.dumps({"reply": "Start with the sentence, then the images.",
+                                                 "proposals": [{"kind": "deadline", "title": "print the images", "when": "friday"}]}))
     agent("chat", "--hash", blk["hash"], "--message", "and the images?", "--date", TODAY.isoformat())
     told_margin = (stub / "payload.md").read_text()
     check("# This box with the planner" in told_margin and "student: I have lab on Wednesday" in told_margin,
@@ -401,7 +409,8 @@ def main() -> int:
           and ch["text"] == "Start with the sentence, then the images." and ch["hash"] == blk["hash"] and ch["at"]
           and ch["thread"] == poster,
           f"next gives a task its chat: how many turns, and the last one ({ch})")
-    check(nxt[images].get("chat") == ch, "…a box under it shares the one it is under")
+    check(nxt[images].get("chat") == dict(ch, cards=0), "…a box under it shares the one it is under (its cards said on that one)")
+    check(ch["cards"] == 1, f"…and says a card waits in it: the one just made, not the one from 2000, gone quiet ({ch.get('cards')})")
     quiet = [k for k, t in nxt.items() if k not in (poster, images) and not t.get("private")]
     check(quiet and all("chat" not in nxt[k] for k in quiet if not any(
           x.get("key") == k for x in ledger())), "…and a box never talked about has none")

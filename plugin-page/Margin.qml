@@ -99,7 +99,7 @@ BorderSurface {
       // The proposal talked about, pinned at the top: what it is, and why.
       Rectangle {
         id: pinned
-        readonly property bool hot: page.marginFocus === 0 && marginKeys.activeFocus
+        readonly property bool hot: page.marginFocus === 0 && page.talkCardFocus < 0 && marginKeys.activeFocus
         onHotChanged: page.selected(pinned, "right", hot)
         visible: margin.talk
         width: marginColumn.width
@@ -189,6 +189,21 @@ BorderSurface {
             font.family: page.fontFamily
             font.styleName: page.fontStyle
             font.pixelSize: page.fs(Style.font.caption)
+          }
+          // What the margin agent proposed in the task's chat: its cards,
+          // under the answer that made them, as beside the note
+          // (2026-11-03: "Proposed", and nothing here to see).
+          Repeater {
+            model: modelData.cards || []
+            MarginCard {
+              required property var modelData
+              width: marginColumn.width
+              page: margin.page
+              p: modelData
+              hot: !!(page.talkCardFocus >= 0 && marginKeys.activeFocus && page.talkCards[page.talkCardFocus]
+                && page.talkCards[page.talkCardFocus].index === modelData.index)
+              onActivated: page.acceptTalkCard(modelData)
+            }
           }
         }
       }
@@ -293,107 +308,13 @@ BorderSurface {
             font.pixelSize: page.fs(Style.font.caption)
           }
 
-          Rectangle {
-            id: card
+          MarginCard {
             visible: row.isCard
-            readonly property bool done: !!row.p.accepted
-            readonly property bool hot: page.marginFocus === row.ci && marginKeys.activeFocus
-            onHotChanged: page.selected(card, "right", hot)
-            Component.onCompleted: if (hot) page.selected(card, "right", true)
             width: parent.width
-            height: cardColumn.implicitHeight + page.sp(14)
-            radius: Style.cornerRadius
-            color: hot ? Style.selectedFill : cardHover.hovered && page.handOn && !done ? Style.hoverFill : "transparent"
-            border.width: 1
-            border.color: hot ? page.accent : page.faint
-            opacity: done ? 0.55 : 1
-            HoverHandler { id: cardHover }
-
-            Column {
-              id: cardColumn
-              x: page.sp(10)
-              y: page.sp(7)
-              width: parent.width - page.sp(20)
-              spacing: page.sp(3)
-              Text {
-                width: parent.width
-                textFormat: Text.PlainText
-                text: "◇ " + (row.p.moves ? "move deadline #" + row.p.moves.id : row.p.kind === "deadline" ? "new deadline" : (row.p.kind || ""))
-                  + (card.done ? " · " + (row.p.accepted.moved ? "moved" : "added" + (row.p.accepted.id ? " #" + row.p.accepted.id : ""))
-                     : row.p.error ? " · failed" : "")
-                color: card.done ? page.faint : page.accent
-                font.family: page.fontFamily
-                font.styleName: page.fontStyle
-                font.capitalization: Font.SmallCaps
-                font.pixelSize: page.fs(Style.font.caption)
-              }
-              Item {
-                width: parent.width
-                height: Math.max(cardFacts.implicitHeight, cardPill.visible ? cardPill.height : 0)
-                Text {
-                  id: cardFacts
-                  anchors.left: parent.left
-                  anchors.right: cardPill.visible ? cardPill.left : parent.right
-                  anchors.rightMargin: cardPill.visible ? page.sp(8) : 0
-                  textFormat: Text.PlainText
-                  wrapMode: Text.WordWrap
-                  text: row.p.kind === "deadline" ? page.marginCardFacts(row.p) : JSON.stringify(row.p)
-                  color: page.foreground
-                  font.family: page.fontFamily
-                  font.styleName: page.fontStyle
-                  font.pixelSize: page.fs(Style.font.body)
-                }
-                Rectangle {
-                  id: cardPill
-                  readonly property string label: row.p.kind === "deadline" && row.p.when ? page.marginCardPill(row.p) : ""
-                  visible: label !== ""
-                  anchors.right: parent.right
-                  width: cardPillText.implicitWidth + Math.round(page.textSize * 0.9)
-                  height: cardPillText.implicitHeight + Math.round(page.textSize * 0.25)
-                  radius: height / 2
-                  color: "transparent"
-                  border.width: 1
-                  border.color: page.faint
-                  Text {
-                    id: cardPillText
-                    anchors.centerIn: parent
-                    textFormat: Text.PlainText
-                    text: cardPill.label
-                    color: page.dim
-                    font.family: page.fontFamily
-                    font.styleName: page.fontStyle
-                    font.pixelSize: Math.round(page.textSize * 0.78)
-                  }
-                }
-              }
-              Text {
-                visible: !!row.p.error
-                width: parent.width
-                textFormat: Text.PlainText
-                wrapMode: Text.WordWrap
-                text: row.p.error || ""
-                color: page.urgent
-                font.family: page.fontFamily
-                font.styleName: page.fontStyle
-                font.pixelSize: page.fs(Style.font.bodySmall)
-              }
-              Text {
-                visible: card.hot && !card.done
-                textFormat: Text.PlainText
-                text: page.keyName("marginAccept") + " does it · it waits for you until then"
-                color: page.faint
-                font.family: page.fontFamily
-                font.styleName: page.fontStyle
-                font.pixelSize: page.fs(Style.font.caption)
-              }
-            }
-            MouseArea {
-              anchors.fill: parent
-              hoverEnabled: true
-              cursorShape: card.done ? Qt.ArrowCursor : Qt.PointingHandCursor
-              onClicked: { page.marginFocus = row.ci; page.acceptProposal(row.ci) }
-              Tip { host: page; shown: parent.containsMouse && !card.done; text: page.tip("Do what it says", "marginAccept") }
-            }
+            page: margin.page
+            p: row.p
+            hot: row.isCard && page.marginFocus === row.ci && marginKeys.activeFocus
+            onActivated: { page.marginFocus = row.ci; page.acceptProposal(row.ci) }
           }
         }
       }
@@ -474,6 +395,7 @@ BorderSurface {
         if (margin.talk) {
           if (Sc.hit(event, "chatSend")) page.sendTalk()
           else if (Sc.hit(event, "marginBack")) page.leaveTalk()
+          else if (Sc.hit(event, "marginUp") && text === "" && page.talkCards.length > 0) page.focusTalkCard(page.talkCards.length - 1)
           else if (Sc.hit(event, "marginUp") && text === "" && page.talkItem) { page.marginFocus = 0; marginKeys.forceActiveFocus() }
           else return
           event.accepted = true

@@ -1105,6 +1105,19 @@ Item {
   // revision, before the list is read again; else to the margin, about the
   // task's block.
   readonly property bool talkToPlanner: root.talkId >= 0 && root.talkSettled === ""
+  // The cards the margin agent made in the task's chat and the person has
+  // not settled (2026-11-03), in the order drawn: the keys go through them
+  // as through the note margin's, ↑ from the empty box onto the last.
+  readonly property var talkCards: {
+    var out = [], turns = root.talkTurns
+    for (var t = 0; t < turns.length; t++)
+      for (var c = 0; c < (turns[t].cards || []).length; c++) {
+        var card = turns[t].cards[c]
+        if (!card.accepted && !card.superseded) out.push(card)
+      }
+    return out
+  }
+  property int talkCardFocus: -1      // which of talkCards the keys are on; -1: none
   readonly property bool talkCanSend: root.talkToPlanner || !!(root.talkData && root.talkData.chat)
 
   // The note's margin shows the box's one conversation too: its own turns
@@ -2451,7 +2464,7 @@ Item {
 
   function acceptProposal(i) {
     var p = root.currentProposals[i]
-    if (!p || p.accepted || root.currentRec === "" || acceptProc.running) return
+    if (!p || p.accepted || p.superseded || root.currentRec === "" || acceptProc.running) return
     root.pendingAccept = { hash: root.currentRec, index: i }
     acceptProc.command = [svc.runner, "accept", "--hash", root.currentRec, "--index", String(i), "--date", svc.noteDate]
     acceptProc.running = true
@@ -3666,6 +3679,7 @@ Item {
   function startTalk(how) {
     if (root.here !== "right") root.noteFrom("right")
     root.talkSettled = ""
+    root.talkCardFocus = -1
     root.talkData = null
     root.used("talk", how)
     root.fetchTalk()
@@ -3696,6 +3710,7 @@ Item {
     root.talkThread = ""
     root.talkData = null
     root.talkSettled = ""
+    root.talkCardFocus = -1
     root.marginFocus = -1
     if (focusRows !== false) dash.dashKeysRef.forceActiveFocus()
   }
@@ -3762,10 +3777,48 @@ Item {
   // driven without a keyboard (tests/page/run.py).
   function talkKey(e) {
     if (Sc.hit(e, "marginBack")) { root.leaveTalk(); return true }
+    if (root.talkCardFocus >= 0) {
+      var n = root.talkCards.length
+      if (Sc.hit(e, "marginAccept")) { root.acceptTalkCard(root.talkCards[root.talkCardFocus]); return true }
+      if (Sc.hit(e, "marginUp")) {
+        if (root.talkCardFocus > 0) root.focusTalkCard(root.talkCardFocus - 1)
+        else if (root.talkItem) { root.talkCardFocus = -1; root.marginFocus = 0 }
+        return true
+      }
+      if (Sc.hit(e, "marginDown")) {
+        if (root.talkCardFocus < n - 1) root.focusTalkCard(root.talkCardFocus + 1)
+        else { root.talkCardFocus = -1; root.marginFocus = 1; margin.chatFieldRef.forceActiveFocus() }
+        return true
+      }
+      return Sc.hit(e, "marginDecline")
+    }
     if (Sc.hit(e, "marginAccept")) { root.acceptTalked(); return true }
     if (Sc.hit(e, "marginDecline")) { root.declineTalked(); return true }
-    if (Sc.hit(e, "marginDown")) { root.marginFocus = 1; margin.chatFieldRef.forceActiveFocus(); return true }
+    if (Sc.hit(e, "marginDown")) {
+      if (root.talkCards.length > 0) { root.focusTalkCard(0); return true }
+      root.marginFocus = 1; margin.chatFieldRef.forceActiveFocus(); return true
+    }
     return Sc.hit(e, "marginUp")
+  }
+
+  function focusTalkCard(i) {
+    if (i < 0 || i >= root.talkCards.length) return
+    root.talkCardFocus = i
+    root.marginFocus = 1
+    margin.marginKeysRef.forceActiveFocus()
+  }
+
+  // Space on a card in the task's chat, or a click: the runner does what it
+  // says (`accept`, as from the note's margin), on the block the chat is
+  // filed under; the chat is read again, and the card says what came of it.
+  // The box's line is bound only from its note, where the page has it.
+  function acceptTalkCard(c) {
+    var chat = root.talkData ? root.talkData.chat : null
+    if (!c || !chat || c.accepted || c.superseded || acceptProc.running) return
+    root.pendingAccept = null
+    acceptProc.command = [svc.runner, "accept", "--hash", chat.hash, "--index", String(c.index), "--date", chat.date]
+    acceptProc.running = true
+    root.used("talk", "card")
   }
 
   function declineTalked() {
@@ -5508,7 +5561,14 @@ Item {
     stderr: StdioCollector { onStreamFinished: if (text.trim() !== "") console.warn("longhand.page accept: " + text.trim()) }
     // A deadline moved or added in the store: its line follows (the check),
     // and so does the dashboard.
-    onExited: function (code, status) { agent.reload(); if (code === 0) root.startCheck() }
+    onExited: function (code, status) {
+      agent.reload()
+      if (code === 0) root.startCheck()
+      if (root.talkThread !== "") {
+        root.fetchTalk()
+        root.refreshTasks()
+      }
+    }
   }
 
   Process {
@@ -5944,6 +6004,11 @@ Item {
             root.talkData = d
             root.talkThread = d.thread
             root.markChatSeen(d)
+            // A card just accepted leaves the keys on the next, or the box.
+            if (root.talkCardFocus >= root.talkCards.length) {
+              if (root.talkCards.length > 0) root.talkCardFocus = root.talkCards.length - 1
+              else { root.talkCardFocus = -1; margin.chatFieldRef.forceActiveFocus() }
+            }
             if (!root.talking) root.pendingTalk = null
           }
         } catch (e) {}
