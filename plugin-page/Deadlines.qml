@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "Store.js" as Store
 
 // The deadline store, as the page sees it. Reads `deadlines.tsv` (watched,
 // so the popup's and the CLI's changes arrive on their own) and changes it
@@ -20,26 +21,11 @@ Item {
   readonly property string filePath: (Quickshell.env("XDG_STATE_HOME")
     || Quickshell.env("HOME") + "/.local/state") + "/longhand/deadlines.tsv"
 
-  // Same columns as the CLI writes: id, due (epoch), title, status, done_at,
-  // grade, project, link. Shorter, older lines read as the CLI reads them.
+  // The columns are the CLI's (Store.js).
   function parse(raw) {
-    var out = []
+    var out = Store.parse(raw)
     var map = {}
-    var lines = String(raw || "").split("\n")
-    for (var i = 0; i < lines.length; i++) {
-      var f = lines[i].split("\t")
-      if (f.length < 3) continue
-      var id = parseInt(f[0], 10)
-      var due = parseInt(f[1], 10)
-      if (!isFinite(id) || !isFinite(due)) continue
-      var status = f.length > 3 ? f[3] : "open"
-      if (status !== "done" && status !== "hidden" && status !== "cancelled") status = "open"
-      var doneAt = f.length > 4 ? parseInt(f[4], 10) : 0
-      var d = { id: id, due: due, title: f[2], status: status, doneAt: isFinite(doneAt) ? doneAt : 0,
-                grade: f.length > 5 ? f[5] : "", project: f.length > 6 ? f[6] : "", link: f.length > 7 ? f[7] : "" }
-      out.push(d)
-      map[id] = d
-    }
+    for (var i = 0; i < out.length; i++) map[out[i].id] = out[i]
     root.items = out
     root.byId = map
     root.loaded = true

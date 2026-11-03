@@ -453,8 +453,10 @@ section, word for word, and to the diary's decisions log.
    never reached its course's band, and the closed deadlines' order was
    the sort's to pick); `Page.qml` is 7,128. Left: the note sheet's view,
    kept on purpose — the page's logic reaches its editor 159 times, and
-   moving it buys length, not tests. One deadline-store parser for both
-   plugins is still open.
+   moving it buys length, not tests. *One deadline-store reader for both
+   plugins, the same day*: `plugin-page/Store.js` (`tests/tst_store.qml`),
+   copied beside the popup by `tools/install-plugins`, which replaces the
+   README's `cp -r` lines.
 5. **A project as one continuous page** (2026-10-17, the consistency
    grilling). Every section of a project in one scroll, newest first,
    editable in place, each edit landing in its day's note. Needs writing
@@ -1216,7 +1218,8 @@ a fix or a feature to decide first):
 6. **Structure** — split `Page.qml` into tested modules (bound lines,
    runner queue, what's next); install by symlink so the repo is the
    install; one deadline-store parser for both plugins. *Bound lines, the
-   runner queue and what's next done 2026-10-30* (Open, item 4).
+   runner queue, what's next and one store parser done 2026-10-30* (Open,
+   item 4); the symlink install stays out (the plugin folder refuses them).
 
 **Not ordered yet:**
 

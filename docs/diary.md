@@ -1422,6 +1422,17 @@ only the window and the panels around it differ.
   date. The note sheet's view stays in `Page.qml`: the page's logic reaches
   its editor 159 times, and moving it would make the file shorter, not
   tested.
+- **2026-10-30: one reader for the deadline store.** The page
+  (`Deadlines.qml`) and the popup (`plugin-deadline/Service.qml`) each read
+  `deadlines.tsv` with their own copy of the same twenty lines; they are
+  `plugin-page/Store.js` now, with `tests/tst_store.qml`, and each plugin
+  keeps only what it then leaves out (the popup: hidden and cancelled). A
+  plugin is a folder of its own and the plugin folder refuses symlinks, so
+  the one file is copied beside the popup at install, by a new
+  `tools/install-plugins` that does what the README's three `cp -r` lines
+  did, and then says whether each install matches the repo, file by file.
+  `tests/test_popup.py` loads the popup as the tool installs it. The repo's
+  `plugin-deadline` folder no longer runs alone; the tool is the way in.
 - **2026-11-03: a path to hand to an agent.** Pedro wanted to point an
   agent outside Longhand (Claude Code, opencode) at the note open in the
   page, not describe it. `Ctrl+Shift+C`, from anywhere in the page,

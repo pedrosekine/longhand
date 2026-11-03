@@ -3,7 +3,9 @@ and its tick is the page's — a deadline marked done asks for the sound
 (never on reopening, never when Settings turned it off) and is done in the
 store. It runs `longhand-check` when it opens and after each change, and
 never in the background (docs/tasks.md, rules 1 and 6). Runs quickshell
-against a throwaway state folder.
+against a throwaway state folder, on the popup as `tools/install-plugins`
+installs it: with the page's Store.js beside it, which the repo's folder
+does not hold.
 
 Run: python3 tests/test_popup.py
 """
@@ -75,7 +77,8 @@ def main() -> int:
     shell.mkdir()
     for name in ("Commons", "Ui"):
         (shell / name).symlink_to(f"{SHELL}/{name}")
-    (shell / "deadline").symlink_to(ROOT / "plugin-deadline")
+    subprocess.run([str(ROOT / "tools" / "install-plugins"), "--to", str(tmp / "plugins")], check=True, capture_output=True)
+    (shell / "deadline").symlink_to(tmp / "plugins" / "longhand.deadline")
     (shell / "shell.qml").write_text(QML)
     bindir = tmp / "bin"
     bindir.mkdir()
@@ -111,6 +114,8 @@ def main() -> int:
 
     same = (ROOT / "plugin-deadline" / "tick.wav").read_bytes() == (ROOT / "plugin-page" / "tick.wav").read_bytes()
     check(same, "the popup's tick is the page's sound (tools/make_tick.py writes both)")
+    store = (tmp / "plugins" / "longhand.deadline" / "Store.js").read_bytes() == (ROOT / "plugin-page" / "Store.js").read_bytes()
+    check(store, "the popup reads the store as the page does: the page's Store.js, installed beside it")
     print("PASS" if failures == 0 else f"{failures} FAILED")
     return 1 if failures else 0
 

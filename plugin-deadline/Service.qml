@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "Store.js" as Store
 
 // Live deadline list. Watches the CLI's deadlines.tsv (one
 // "id<TAB>epoch<TAB>title<TAB>status<TAB>done_at<TAB>grade<TAB>project<TAB>link"
@@ -87,33 +88,10 @@ Item {
     nowSec = Math.floor(Date.now() / 1000)
   }
 
+  // The columns are the CLI's (Store.js, which tools/install-plugins puts
+  // beside this file). Hidden and cancelled ones are not the list's.
   function applyText(raw) {
-    var out = []
-    var lines = String(raw || "").split("\n")
-    for (var i = 0; i < lines.length; i++) {
-      var f = lines[i].split("\t")
-      if (f.length < 3) continue
-      var id = parseInt(f[0], 10)
-      var due = parseInt(f[1], 10)
-      if (!isFinite(id) || !isFinite(due)) continue
-      // Columns past the eighth are ignored rather than folded into the
-      // title: the widget is installed as a *copy* of this file, so a newer
-      // CLI adding a column must not make a stale install render it as text.
-      var status = f.length > 3 ? f[3] : "open"
-      if (status !== "done" && status !== "hidden" && status !== "cancelled") status = "open"
-      if (status === "hidden" || status === "cancelled") continue
-      var doneAt = f.length > 4 ? parseInt(f[4], 10) : 0
-      out.push({
-        id: id,
-        due: due,
-        title: f[2],
-        status: status,
-        doneAt: isFinite(doneAt) ? doneAt : 0,
-        grade: f.length > 5 ? f[5] : "",
-        project: f.length > 6 ? f[6] : "",
-        link: f.length > 7 ? f[7] : ""
-      })
-    }
+    var out = Store.parse(raw).filter(function (d) { return d.status !== "hidden" && d.status !== "cancelled" })
     // Open ones first (they are what the list is for), then done ones fade
     // out at the bottom. Same order as `pomo deadline list`.
     out.sort(function (a, b) {

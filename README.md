@@ -40,9 +40,7 @@ one model key.
 ```bash
 mkdir -p ~/.config/longhand
 cp config.example.json ~/.config/longhand/config.json   # then point "vault" at your notes
-cp -r plugin-page     ~/.config/omarchy/plugins/longhand.page
-cp -r plugin          ~/.config/omarchy/plugins/longhand.pomo
-cp -r plugin-deadline ~/.config/omarchy/plugins/longhand.deadline
+tools/install-plugins   # the page, the timer and the deadlines into ~/.config/omarchy/plugins; again after each update
 # add {"id":"longhand.page"}, {"id":"longhand.pomo"}, {"id":"longhand.deadline"} to plugins[] in ~/.config/omarchy/shell.json
 ln -s "$PWD/cli/pomo"             ~/.local/bin/pomo
 ln -s "$PWD/agent/longhand-agent" ~/.local/bin/longhand-agent
