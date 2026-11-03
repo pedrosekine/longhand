@@ -61,10 +61,15 @@ Rectangle {
         font.styleName: page.fontStyle
         font.pixelSize: page.fs(Style.font.body)
       }
+      // The day as a pill while it is short enough to be one; words the
+      // agent wrote about when ("Mondays from 2 November, aside from …")
+      // are a line under them instead, or the pill outgrew the card and
+      // drew over its words (2026-11-03).
       Rectangle {
         id: cardPill
         readonly property string label: card.p.kind === "deadline" && card.p.when ? page.marginCardPill(card.p) : ""
-        visible: label !== ""
+        readonly property bool fits: width <= parent.width * 0.5
+        visible: label !== "" && fits
         anchors.right: parent.right
         width: cardPillText.implicitWidth + Math.round(page.textSize * 0.9)
         height: cardPillText.implicitHeight + Math.round(page.textSize * 0.25)
@@ -83,6 +88,17 @@ Rectangle {
           font.pixelSize: Math.round(page.textSize * 0.78)
         }
       }
+    }
+    Text {
+      visible: cardPill.label !== "" && !cardPill.fits
+      width: parent.width
+      textFormat: Text.PlainText
+      wrapMode: Text.WordWrap
+      text: cardPill.label
+      color: page.dim
+      font.family: page.fontFamily
+      font.styleName: page.fontStyle
+      font.pixelSize: Math.round(page.textSize * 0.78)
     }
     Text {
       visible: !!card.p.error && card.live
