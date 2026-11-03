@@ -105,6 +105,10 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | Move down | `↓` · `j` | in the dashboard |
 | First row | `Home` | in the dashboard |
 | Last row | `End` | in the dashboard |
+| By date: up to the row's band; on a band, fold it | `←` · `h` | in the dashboard |
+| By date: open a folded band; on an open one, into it | `→` · `l` | in the dashboard |
+| By date: collapse every band (the words above the list too) | `Shift+←` · `Shift+H` | in the dashboard |
+| By date: expand every band (the words above the list too) | `Shift+→` · `Shift+L` | in the dashboard |
 | Go to the line; on what the agent proposes, asks or did, its chat (the margin opens beside) | `Enter` | in the dashboard |
 | Done (again: not done); on the agent's proposal, accept | `Space` · `e` · `Ctrl+L` | in the dashboard |
 | When: reschedule it | `t` · `Ctrl+D` | in the dashboard |

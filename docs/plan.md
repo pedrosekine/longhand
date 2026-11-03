@@ -697,6 +697,22 @@ from 2026-09/10 and still stand.
     welcome, or does a narrowed list surprise the next time?
   - Words match a course's name too ("seminar" is the whole seminar):
     useful, or noise?
+- **The date bands, folded** (built 2026-11-03, `plugin-page/Next.js`
+  `byDate`, `bands` and `bandOpen`): by date is now where the dashboard
+  opens, in bands that narrow as they come near (late, today, this week,
+  next week, the rest of the month, a band a month, no day yet); the near
+  ones open, the far ones folded with their count and what comes first.
+  ←/→ (h/l) fold and open, Shift with them collapse or expand all, and
+  "expand all · collapse all" above the list.
+  - Is folding used, and how: `dash-fold` `open` / `shut` / `all open` /
+    `all shut` in the usage log?
+  - A folded band's "next:" line: enough to leave the month shut?
+  - Are day labels inside the near bands wanted (designed as option B,
+    not built): do two items on one day read as one?
+  - Today said with "nothing due" when it is empty: reassuring, or a line
+    to skip?
+  - Collapse all keeps folding the near bands on later days (it sets
+    every band, `*`): wanted, or should this week and next always open?
 - **Chat on a task** (built 2026-10-28, `docs/keys-proposal.md`, slice 1):
   - Is a task's chat opened from the dashboard now (`talk` `task` in the
     usage log; `talk` and a kind for a proposal's)?

@@ -10,6 +10,7 @@
 //   showShelf, showGrading   the folded bands, unfolded
 //   lens, query, order       the course strip: the courses picked, the
 //                words typed, and the order ("ask", "course", "date")
+//   folds        by date, the bands folded or unfolded (`bandOpen`)
 //   now          the moment it is asked, when not given
 .pragma library
 .import "Say.js" as Say
@@ -167,27 +168,84 @@ function byCourse(b, s, now) {
   return rows
 }
 
-// By date (2026-11-03): one timeline across the courses — every deadline
-// and every box with a day, by that day, banded by month — then what has
-// no day yet.
+// By date: one timeline across the courses — every deadline and every
+// box with a day, by that day — then what has no day yet. Until
+// 2026-11-03 it was banded by month alone, so Thursday's call and a paper
+// due at the month's end read as one band; now the bands narrow as they
+// come near (`bands`), and each folds (`folds`).
 function byDate(b, s, now) {
   var dated = []
-  for (var i = 0; i < b.due.length; i++) dated.push({ ms: b.due[i].due * 1000, row: { kind: "deadline", deadline: b.due[i] } })
-  for (var w = 0; w < b.waiting.length; w++) dated.push({ ms: b.waiting[w].due * 1000, row: { kind: "deadline", deadline: b.waiting[w] } })
-  for (var d = 0; d < b.doing.length; d++) dated.push({ ms: Say.taskMs(b.doing[d]), row: { kind: "task", task: b.doing[d] } })
-  dated.sort(function (x, y) { return x.ms - y.ms })
-  var rows = [], month = ""
+  // What was closed today is today's, whatever day it was due; on a day,
+  // what is still open comes first.
+  var today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  function put(ms, row, closed) { dated.push({ ms: closed ? Math.max(ms, today) : ms, row: row, closed: closed }) }
+  for (var i = 0; i < b.due.length; i++) put(b.due[i].due * 1000, { kind: "deadline", deadline: b.due[i] }, b.due[i].status !== "open")
+  for (var w = 0; w < b.waiting.length; w++) put(b.waiting[w].due * 1000, { kind: "deadline", deadline: b.waiting[w] }, false)
+  for (var d = 0; d < b.doing.length; d++) put(Say.taskMs(b.doing[d]), { kind: "task", task: b.doing[d] }, !!b.doing[d].done)
+  dated.sort(function (x, y) {
+    var dx = new Date(x.ms).setHours(0, 0, 0, 0), dy = new Date(y.ms).setHours(0, 0, 0, 0)
+    return dx - dy || (x.closed ? 1 : 0) - (y.closed ? 1 : 0) || x.ms - y.ms
+  })
+  var spans = bands(now), groups = []
   for (var k = 0; k < dated.length; k++) {
-    var lbl = Say.monthLabel(dated[k].ms, now)
-    if (lbl !== month) { rows.push({ kind: "head", text: lbl.toUpperCase(), tag: "" }); month = lbl }
-    rows.push(dated[k].row)
+    var ms = dated[k].ms
+    var at = 0
+    while (at + 1 < spans.length && ms >= spans[at + 1].from) at++
+    var span = spans[at]
+    // Past the month this one is in, a band for each month.
+    var id = span.id === "month" ? "m" + Qt.formatDate(new Date(ms), "yyyy-MM") : span.id
+    var g = groups.length > 0 && groups[groups.length - 1].id === id ? groups[groups.length - 1] : null
+    if (!g) {
+      g = { id: id, text: span.id === "month" ? Say.monthLabel(ms, now).toUpperCase() : span.text, items: [] }
+      groups.push(g)
+    }
+    g.items.push(dated[k])
   }
   var rest = b.later.concat(b.notes)
-  if (rest.length > 0) {
-    rows.push({ kind: "head", text: "NO DAY YET", tag: "" })
-    for (var r = 0; r < rest.length; r++) rows.push({ kind: "task", task: rest[r] })
+  if (rest.length > 0) groups.push({ id: "none", text: "NO DAY YET", items: rest.map(function (t) { return { row: { kind: "task", task: t } } }) })
+  // Today is said even when nothing is due: the line that says so is the
+  // answer to the first question the list is opened with.
+  if (groups.length > 0 && !groups.some(function (x) { return x.id === "today" }))
+    groups.splice(groups.length > 0 && groups[0].id === "late" ? 1 : 0, 0, { id: "today", text: "TODAY", items: [] })
+  var words = String(s.query || "").split(/\s+/).some(function (x) { return x !== "" && x.charAt(0) !== "#" })
+  var rows = []
+  for (var n = 0; n < groups.length; n++) {
+    var gr = groups[n]
+    var open = gr.id === "late" || words || bandOpen(s.folds, gr.id)
+    var first = gr.items.length > 0 ? gr.items[0].row : null
+    rows.push({ kind: "band", id: gr.id, text: gr.text, count: gr.items.length, open: open, fixed: gr.id === "late",
+                next: first ? (first.kind === "deadline" ? { title: first.deadline.title, ms: first.deadline.due * 1000 }
+                                                         : { title: Say.taskTitle(first.task), ms: Say.taskMs(first.task) }) : null })
+    if (open) for (var r = 0; r < gr.items.length; r++) rows.push(gr.items[r].row)
   }
   return rows
+}
+
+// The bands of the timeline, nearest first, each from the moment it
+// starts: what is late, today, the rest of this week (Monday to Sunday),
+// next week, the rest of this month, and then a band for each month.
+function bands(now) {
+  var y = now.getFullYear(), m = now.getMonth(), d = now.getDate()
+  function at(days) { return new Date(y, m, d + days).getTime() }
+  var toMonday = 7 - (now.getDay() + 6) % 7
+  var out = [{ id: "late", text: "LATE", from: -Infinity },
+             { id: "today", text: "TODAY", from: at(0) },
+             { id: "week", text: "THIS WEEK", from: at(1) },
+             { id: "next", text: "NEXT WEEK", from: at(toMonday) }]
+  var after = at(toMonday + 7), monthEnd = new Date(y, m + 1, 1).getTime()
+  if (after < monthEnd) out.push({ id: "rest", text: "LATER IN " + Qt.formatDate(now, "MMMM").toUpperCase(), from: after })
+  out.push({ id: "month", text: "", from: Math.max(after, monthEnd) })
+  return out
+}
+
+// Whether a band shows what it holds: as it was last folded or unfolded,
+// else as all were (`*`, from fold all or unfold all), else the near ones
+// open — what is late, today, this week and next — and the far ones shut.
+function bandOpen(folds, id) {
+  var f = folds || {}
+  if (f[id] !== undefined) return !!f[id]
+  if (f["*"] !== undefined) return !!f["*"]
+  return ["late", "today", "week", "next"].indexOf(id) >= 0
 }
 
 // What is away and what is owed a grade, each folded into one row until

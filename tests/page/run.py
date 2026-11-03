@@ -145,6 +145,9 @@ class Page:
         self.daily.mkdir(parents=True)
         self.state = self.tmp / "state"
         (self.state / "longhand").mkdir(parents=True)
+        # The page opens by date (2026-11-03); the checks below were written
+        # for the order by what each row asks, and 12f walks to the others.
+        (self.state / "longhand" / "page.json").write_text('{"dashOrder": "ask"}\n')
         self.store = self.state / "longhand" / "deadlines.tsv"
         cfg = self.tmp / "config"
         (cfg / "longhand").mkdir(parents=True)
@@ -1292,6 +1295,30 @@ def main() -> int:
               and json.loads(p.call("dashRows"))[0].get("tag"), f"O orders the list by course ({strip()})")
         p.call("dashType", "o")
         check(strip()["order"] == "date", "…then by date")
+        # By date the bands fold: → on a folded one opens it, ← on a row
+        # climbs to its band and ← again folds it; Shift and an arrow, all.
+        def bands():
+            return [r for r in json.loads(p.call("dashRows")) if r["kind"] == "band"]
+        check(p.wait(lambda: any(b["id"] == "today" for b in bands())), f"by date, the bands, today among them ({bands()})")
+        p.call("dashKey", KEY_RIGHT, SHIFT)
+        check(p.wait(lambda: all(b["open"] for b in bands())), f"Shift+→ expands every band ({bands()})")
+        p.call("dashKey", KEY_LEFT, SHIFT)
+        check(p.wait(lambda: all(not b["open"] for b in bands() if b["count"] > 0 and b["id"] != "late")),
+              f"Shift+← collapses them, all but what is late ({bands()})")
+        rows = json.loads(p.call("dashRows"))
+        at = int(p.call("dashAt"))
+        check(rows[at]["kind"] == "band" and not rows[at]["open"], f"…the cursor on a folded band ({rows[at]})")
+        p.call("dashKey", KEY_RIGHT, 0)
+        check(p.wait(lambda: json.loads(p.call("dashRows"))[at]["open"]), "→ opens it")
+        p.call("dashKey", KEY_RIGHT, 0)
+        check(int(p.call("dashAt")) == at + 1, "→ again steps into it")
+        p.call("dashKey", KEY_LEFT, 0)
+        check(int(p.call("dashAt")) == at, "← climbs back to its band")
+        p.call("dashKey", KEY_LEFT, 0)
+        check(p.wait(lambda: not json.loads(p.call("dashRows"))[at]["open"]), "…and ← there folds it")
+        check(json.loads((p.state / "longhand" / "page.json").read_text()).get("dashFolds", {}).get("*") is False,
+              "the folds are kept in page.json")
+        p.call("dashKey", KEY_RIGHT, SHIFT)
         p.call("dashType", "o")
         check(strip()["order"] == "ask" and p.wait(lambda: heads()[-4:] == ["DOING", "TO SCHEDULE",
                                                                              "Interdisciplinary Seminar", "Design Theory & Methods"]),

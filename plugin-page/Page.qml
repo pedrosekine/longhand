@@ -1335,7 +1335,8 @@ Item {
   // you (Next.js).
   readonly property var taskRows: Next.rows({ deadlines: dl.items, tasks: root.tasks, projects: root.projects, raised: root.raised,
                                               proposals: root.proposals, showShelf: root.showShelf, showGrading: root.showGrading,
-                                              lens: root.dashLens, query: root.dashQuery, order: root.dashOrder })
+                                              lens: root.dashLens, query: root.dashQuery, order: root.dashOrder,
+                                              folds: root.dashFolds })
 
   // The course strip above the dashboard's list (2026-11-03): a chip for
   // each course with something open, the ⌕ before them to type into, the
@@ -1345,7 +1346,11 @@ Item {
   // not.
   property var dashLens: []           // the courses shown; [] every one, "" no project
   property string dashQuery: ""       // what is typed into ⌕
-  property string dashOrder: "ask"    // "ask" (what it asks of you), "course", "date"
+  // By date since 2026-11-03: the order the student kept it in.
+  property string dashOrder: "date"   // "ask" (what it asks of you), "course", "date"
+  // By date, the bands folded or unfolded (Next.bandOpen): a band's id to
+  // open or not, "*" for all at once. Kept in page.json.
+  property var dashFolds: ({})
   readonly property var dashOrders: ["ask", "course", "date"]
   property int stripAt: -1            // the strip's cursor: 0 ⌕, 1 All, the chips, then the order; -1 the list
   property bool stripOpen: false      // unfolded
@@ -1494,7 +1499,7 @@ Item {
 
   function savePageState() {
     zoomFile.setText(JSON.stringify({ zoom: root.zoom, dashSeen: root.dashSeenId, chatSeen: root.chatSeen,
-                                      dashLens: root.dashLens, dashOrder: root.dashOrder }) + "\n")
+                                      dashLens: root.dashLens, dashOrder: root.dashOrder, dashFolds: root.dashFolds }) + "\n")
   }
 
   // The global keys: the page itself and where you are in it, wherever the
@@ -3440,6 +3445,7 @@ Item {
     if (row.kind === "deadline") return "d" + row.deadline.id
     if (row.kind === "proposal" || row.kind === "question" || row.kind === "told") return "p" + row.item.id
     if (row.kind === "task") return row.task.date + "|" + row.task.line + "|" + row.task.text
+    if (row.kind === "band") return "b" + row.id
     return ""
   }
 
@@ -4052,13 +4058,64 @@ Item {
   }
 
   // Heads and month bands are passed over: they are not rows you act on.
-  // A move of 0 is how the cursor lands on a real row to begin with.
+  // A date band is (it folds), unless it has nothing to fold. A move of 0
+  // is how the cursor lands on a real row to begin with.
   function moveTaskFocus(d) {
     var rows = root.taskRows
     var step = d === 0 ? 1 : d
     var i = root.taskFocus + d
-    while (i >= 0 && i < rows.length && (rows[i].kind === "head" || rows[i].kind === "month")) i += step
+    while (i >= 0 && i < rows.length && (rows[i].kind === "head" || rows[i].kind === "month"
+                                         || (rows[i].kind === "band" && (rows[i].count === 0 || rows[i].fixed)))) i += step
     if (i >= 0 && i < rows.length) root.taskFocus = i
+  }
+
+  // ------------------------------------------- the date bands, folded
+  // (2026-11-03): ← on a row climbs to its band, ← on a band folds it;
+  // → opens a folded band, or steps into an open one; Enter toggles; fold
+  // all and unfold all, by Shift and the arrows or the two words above
+  // the list.
+  function bandAt(i) {
+    for (var j = i; j >= 0; j--) if (root.taskRows[j] && root.taskRows[j].kind === "band") return j
+    return -1
+  }
+  function setFold(id, open) {
+    var f = {}
+    for (var k in root.dashFolds) f[k] = root.dashFolds[k]
+    f[id] = open
+    root.dashFolds = f
+    root.savePageState()
+  }
+  function foldAll(open) {
+    if (root.dashOrder !== "date") return
+    // The cursor stays on the band it was in.
+    var b = root.taskRows[root.bandAt(root.taskFocus)]
+    root.dashFolds = { "*": open }
+    root.savePageState()
+    root.used("dash-fold", open ? "all open" : "all shut")
+    if (!b) return
+    for (var i = 0; i < root.taskRows.length; i++) if (root.taskRows[i].kind === "band" && root.taskRows[i].id === b.id) root.taskFocus = i
+    if (root.taskRows[root.taskFocus].fixed || root.taskRows[root.taskFocus].count === 0) root.moveTaskFocus(0)
+  }
+  function toggleBand(row) {
+    if (row.fixed || row.count === 0) return
+    root.setFold(row.id, !row.open)
+    root.used("dash-fold", row.open ? "shut" : "open")
+  }
+  function foldLeft() {
+    var row = root.taskRows[root.taskFocus]
+    if (!row || root.dashOrder !== "date") return
+    if (row.kind === "band") { if (row.open) root.toggleBand(row); return }
+    var at = root.bandAt(root.taskFocus)
+    if (at < 0) return
+    // Late never folds: ← there stays where it is.
+    if (root.taskRows[at].fixed) return
+    root.taskFocus = at
+  }
+  function foldRight() {
+    var row = root.taskRows[root.taskFocus]
+    if (!row || row.kind !== "band") return
+    if (!row.open) root.toggleBand(row)
+    else root.moveTaskFocus(1)
   }
 
   // What the list adds up to, for the line beside its name.
@@ -4096,6 +4153,7 @@ Item {
     if (row.kind === "proposal" || row.kind === "question" || row.kind === "told") { root.openTalk(row.item); return }
     if (row.kind === "shelf") { root.showShelf = true; return }
     if (row.kind === "grading") { root.showGrading = true; return }
+    if (row.kind === "band") { root.toggleBand(row); return }
     if (row.kind === "task") root.goToTask(row.task)
     if (row.kind === "deadline") {
       var d = row.deadline
@@ -4364,6 +4422,10 @@ Item {
       return true
     }
     if (Sc.hit(e, "dashDown")) { root.moveTaskFocus(1); return true }
+    if (Sc.hit(e, "dashFold")) { root.foldLeft(); return true }
+    if (Sc.hit(e, "dashUnfold")) { root.foldRight(); return true }
+    if (Sc.hit(e, "dashFoldAll")) { root.foldAll(false); return true }
+    if (Sc.hit(e, "dashUnfoldAll")) { root.foldAll(true); return true }
     if (Sc.hit(e, "dashFirst")) { root.taskFocus = 0; root.moveTaskFocus(0); return true }
     if (Sc.hit(e, "dashLast")) { root.taskFocus = root.taskRows.length; root.moveTaskFocus(-1); return true }
     // Enter goes to it, everywhere in the page; Ctrl+Enter is the act that
@@ -6301,6 +6363,12 @@ Item {
         if (st.chatSeen && typeof st.chatSeen === "object") root.chatSeen = st.chatSeen
         if (Array.isArray(st.dashLens)) root.dashLens = st.dashLens.filter(function (t) { return typeof t === "string" })
         if (root.dashOrders.indexOf(st.dashOrder) >= 0) root.dashOrder = st.dashOrder
+        // A month gone by takes its band's fold with it.
+        if (st.dashFolds && typeof st.dashFolds === "object") {
+          var folds = {}, month = "m" + Qt.formatDate(new Date(), "yyyy-MM")
+          for (var id in st.dashFolds) if (!(/^m\d{4}-\d\d$/.test(id) && id < month)) folds[id] = !!st.dashFolds[id]
+          root.dashFolds = folds
+        }
       } catch (e) {}
     }
   }

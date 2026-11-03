@@ -306,6 +306,40 @@ BorderSurface {
           font.pixelSize: page.fs(Style.font.caption)
         }
 
+        // By date: every band at once (2026-11-03). The word that would
+        // change nothing is faint.
+        Row {
+          id: foldAllRow
+          visible: page.dashOrder === "date" && !page.stripOpen && page.taskRows.some(function (r) { return r.kind === "band" && r.count > 0 && !r.fixed })
+          readonly property bool anyShut: page.taskRows.some(function (r) { return r.kind === "band" && r.count > 0 && !r.fixed && !r.open })
+          readonly property bool anyOpen: page.taskRows.some(function (r) { return r.kind === "band" && r.count > 0 && !r.fixed && r.open })
+          anchors.right: parent.right
+          anchors.rightMargin: page.sp(8)
+          spacing: page.sp(6)
+          Repeater {
+            model: [{ word: "expand all", open: true, key: "dashUnfoldAll" }, { word: "collapse all", open: false, key: "dashFoldAll" }]
+            Text {
+              required property var modelData
+              required property int index
+              readonly property bool live: modelData.open ? foldAllRow.anyShut : foldAllRow.anyOpen
+              textFormat: Text.PlainText
+              text: (index > 0 ? "·  " : "") + modelData.word
+              color: foldHover.containsMouse && live && page.handOn ? page.accent : live ? page.dim : page.faint
+              font.family: page.fontFamily
+              font.styleName: page.fontStyle
+              font.pixelSize: page.fs(Style.font.caption)
+              MouseArea {
+                id: foldHover
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: parent.live ? Qt.PointingHandCursor : Qt.ArrowCursor
+                onClicked: { dashKeys.forceActiveFocus(); page.foldAll(modelData.open) }
+                Tip { host: page; shown: parent.containsMouse; text: page.tip(modelData.open ? "Expand every band" : "Collapse every band", modelData.key) }
+              }
+            }
+          }
+        }
+
         Rectangle {
           visible: page.stripOpen
           width: parent.width
@@ -482,6 +516,7 @@ BorderSurface {
             // A click on it does something (activateTask): a hand, and a
             // faint fill while the mouse is over it (2026-10-19).
             readonly property bool acts: ["task", "deadline", "shelf", "grading", "raised", "proposal", "question", "told"].indexOf(kind) >= 0
+                                         || (kind === "band" && modelData.count > 0 && !modelData.fixed)
             // Its chat, in brief: the gutter bar's state and, on the row the
             // keys are on, the last thing said (page.chatState).
             readonly property var chat: page.chatOf(modelData)
@@ -491,7 +526,9 @@ BorderSurface {
             // The space above a row comes from what it is and what came
             // before it, the way the note's own rhythm works (Rows.js).
             height: inner.implicitHeight + page.sp(16)
-              + (kind === "head" ? page.sp(30) : kind === "month" ? page.sp(16) : 0)
+              + (kind === "head" ? page.sp(30) : kind === "month" ? page.sp(16)
+                 // A run of folded bands reads as one list of headings.
+                 : kind === "band" ? (index > 0 && page.taskRows[index - 1].kind === "band" ? page.sp(10) : page.sp(30)) : 0)
             color: "transparent"
 
             Rectangle {
@@ -603,6 +640,62 @@ BorderSurface {
                 font.family: page.fontFamily
                 font.styleName: page.fontStyle
                 font.pixelSize: page.fs(Style.font.caption)
+              }
+
+              // A band of the timeline (by date): ▾ open, ▸ folded, then
+              // how much it holds; folded, what comes first in it.
+              Row {
+                id: bandRow
+                visible: dashRow.kind === "band"
+                anchors.left: parent.left
+                anchors.right: parent.right
+                y: 0
+                spacing: page.sp(8)
+                readonly property bool empty: dashRow.kind === "band" && modelData.count === 0
+                Text {
+                  id: bandMark
+                  width: page.sp(10)
+                  anchors.baseline: bandName.baseline
+                  textFormat: Text.PlainText
+                  text: dashRow.kind !== "band" || modelData.fixed || bandRow.empty ? "" : modelData.open ? "▾" : "▸"
+                  color: page.faint
+                  font.family: page.fontFamily
+                  font.pixelSize: page.fs(Style.font.caption)
+                }
+                Text {
+                  id: bandName
+                  textFormat: Text.PlainText
+                  text: dashRow.kind === "band" ? modelData.text : ""
+                  color: bandRow.empty ? page.faint
+                    : dashRow.kind === "band" && modelData.fixed ? page.urgent
+                    : pal.headings.length > 0 ? pal.headings[0] : page.accent
+                  font.family: page.fontFamily
+                  font.styleName: page.fontStyle
+                  font.pixelSize: page.fs(Style.font.body)
+                }
+                Text {
+                  id: bandCount
+                  anchors.baseline: bandName.baseline
+                  textFormat: Text.PlainText
+                  text: dashRow.kind !== "band" ? "" : bandRow.empty ? "nothing due" : String(modelData.count)
+                  color: page.faint
+                  font.family: page.fontFamily
+                  font.styleName: page.fontStyle
+                  font.pixelSize: page.fs(Style.font.caption)
+                }
+                Text {
+                  anchors.baseline: bandName.baseline
+                  width: Math.max(0, bandRow.width - bandMark.width - bandName.implicitWidth - bandCount.implicitWidth - 3 * bandRow.spacing)
+                  visible: dashRow.kind === "band" && !modelData.open && !!modelData.next
+                  horizontalAlignment: Text.AlignRight
+                  elide: Text.ElideRight
+                  textFormat: Text.PlainText
+                  text: !visible ? "" : "next: " + modelData.next.title + ",  " + Qt.formatDate(new Date(modelData.next.ms), "ddd d MMM")
+                  color: page.dim
+                  font.family: page.fontFamily
+                  font.styleName: page.fontStyle
+                  font.pixelSize: page.fs(Style.font.caption)
+                }
               }
 
               // The month the rows under it fall in — the separation the
@@ -954,7 +1047,7 @@ BorderSurface {
                 host: page
                 readonly property string kind: dashRow.modelData.kind
                 shown: parent.containsMouse && (kind === "task" || kind === "deadline" || kind === "shelf" || kind === "grading" || kind === "raised"
-                                                  || kind === "proposal" || kind === "question" || kind === "told")
+                                                  || kind === "proposal" || kind === "question" || kind === "told" || (kind === "band" && dashRow.acts))
                 // The four a row is most used for, then the sheet for the rest
                 // (2026-10-30, the canvas's keycaps: ten lines hid the list).
                 text: kind === "task" ? page.tips([["Go to the line", "dashOpen"], ["Done", "dashDone"], ["Reschedule", "dashWhen"]]
@@ -968,6 +1061,8 @@ BorderSurface {
                   : kind === "question" ? page.tips([["Accept the recommended answer", "dashDone"], ["Chat about it: answer in your words, or ask back", "dashOpen"], ["Decline", "dashDrop"]])
                   : kind === "shelf" ? page.tip("Show what is set aside", "dashOpen")
                   : kind === "grading" ? page.tip("Show what waits for a grade", "dashOpen")
+                  : kind === "band" ? page.tips([[dashRow.modelData.open ? "Fold it" : "Open it", "dashOpen"], ["Collapse every band", "dashFoldAll"],
+                                                 ["Expand every band", "dashUnfoldAll"]])
                   : page.tip("Dismiss it", "dashOpen")
               }
               z: -1
@@ -1004,7 +1099,9 @@ BorderSurface {
                                                                                     : " pick (shown at once) · " + page.keyName("stripAdd") + " keep it, to add another · ")
             + page.keyName("stripUnfold") + " unfold · " + page.keyName("stripDown") + " the list · " + page.keyName("dashOrder") + " order · "
             + page.keyName("stripClear") + " clear"
-          : page.keyName("dashUp") + page.keyName("dashDown") + " move · " + page.keyName("dashOpen") + " opens the line · "
+          : page.keyName("dashUp") + page.keyName("dashDown") + " move · "
+          + (page.dashOrder === "date" ? page.keyName("dashFold") + page.keyName("dashUnfold") + " fold · " : "")
+          + page.keyName("dashOpen") + " opens the line · "
           + page.keyName("dashTalk") + " chat · "
           + page.keyName("dashDone") + " done · " + page.keyName("dashWhen") + " when · " + page.keyName("dashPriority") + " priority · "
           + page.keyName("dashShelve") + " set aside · " + page.keyName("dashKeep") + " renew · " + page.keyName("dashGrade") + " grade · "

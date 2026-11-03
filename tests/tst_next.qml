@@ -26,6 +26,7 @@ TestCase {
   function said(rows) {
     return rows.map(function (r) {
       return r.kind === "head" || r.kind === "month" ? r.kind + ":" + r.text
+        : r.kind === "band" ? "band:" + r.text + (r.open ? "" : " ▸") + " " + r.count
         : r.kind === "deadline" ? "d" + r.deadline.id
         : r.kind === "task" ? r.task.title
         : r.kind === "shelf" || r.kind === "grading" ? r.kind + ":" + r.count
@@ -178,11 +179,70 @@ TestCase {
              "head:Themenvorschlag", "month:DUE", "d6", "proposal:p1", "month:TO SCHEDULE", "ask Bernd about scope",
              "head:No project", "month:TO SCHEDULE", "call my sister",
              "shelf:1", "head:FROM THE AGENT", "question:p2", "raised:r1"])
+    // By date, the bands narrow as they come near: today (nothing due,
+    // said), this week, next week open; November and what has no day
+    // yet folded, each with how much it holds.
     compare(said(Next.rows(strip_state({ order: "date" }))),
-            ["head:" + Qt.formatDate(new Date(2026, 9, 16), "MMMM").toUpperCase(), "d6", "proposal:p1", "outline the talk",
-             "head:" + Qt.formatDate(new Date(2026, 10, 2), "MMMM").toUpperCase(), "d7",
-             "head:NO DAY YET", "read for the seminar", "ask Bernd about scope", "call my sister",
+            ["band:TODAY 0", "band:THIS WEEK 1", "d6", "proposal:p1", "band:NEXT WEEK 1", "outline the talk",
+             "band:" + Qt.formatDate(new Date(2026, 10, 2), "MMMM").toUpperCase() + " ▸ 1", "band:NO DAY YET ▸ 3",
              "shelf:1", "head:FROM THE AGENT", "question:p2", "raised:r1"])
+  }
+
+  // The date bands (2026-11-03), on Tuesday 13 October: late, today, the
+  // rest of this week to Sunday, next week, the rest of October, then a
+  // band a month.
+  function date_state(extra) {
+    return state(Object.assign({
+      order: "date",
+      deadlines: [deadline(1, "open", sec(10, 10)),                                   // late
+                  deadline(2, "done", sec(10, 9), { doneAt: sec(10, 13, 8, 0) }),     // closed today: today's
+                  deadline(3, "open", sec(10, 18)),                                   // Sunday: this week
+                  deadline(4, "open", sec(10, 19)),                                   // Monday: next week
+                  deadline(5, "open", sec(10, 26)),                                   // later in October
+                  deadline(6, "open", sec(11, 2)),
+                  deadline(7, "open", new Date(2027, 0, 15, 23, 59).getTime() / 1000)],
+      tasks: [task("today's", { when: "2026-10-13" }), task("Sunday's too", { when: "2026-10-25" }), task("someday")],
+    }, extra))
+  }
+
+  function test_date_bands_narrow_as_they_come_near() {
+    var oct = Qt.formatDate(now, "MMMM").toUpperCase(), nov = Qt.formatDate(new Date(2026, 10, 2), "MMMM").toUpperCase()
+    var jan = Qt.formatDate(new Date(2027, 0, 15), "MMMM yyyy").toUpperCase()
+    compare(said(Next.rows(date_state({}))),
+            ["band:LATE 1", "d1", "band:TODAY 2", "today's", "d2", "band:THIS WEEK 1", "d3",
+             "band:NEXT WEEK 2", "d4", "Sunday's too", "band:LATER IN " + oct + " ▸ 1",
+             "band:" + nov + " ▸ 1", "band:" + jan + " ▸ 1", "band:NO DAY YET ▸ 1"])
+    // A folded band says what comes first in it.
+    var later = Next.rows(date_state({})).filter(function (r) { return r.kind === "band" && r.id === "rest" })[0]
+    compare([later.next.title, later.next.ms], ["d5", sec(10, 26) * 1000])
+  }
+
+  function test_date_bands_fold_and_unfold() {
+    function bandsSaid(folds) {
+      return said(Next.rows(date_state({ folds: folds }))).filter(function (x) { return x.indexOf("band:") === 0 })
+    }
+    // Unfold all, then fold one: the one wins. What is late never folds.
+    var all = bandsSaid({ "*": true, week: false })
+    compare(all.filter(function (x) { return x.indexOf("▸") >= 0 }), ["band:THIS WEEK ▸ 1"])
+    var none = bandsSaid({ "*": false })
+    compare(none.filter(function (x) { return x.indexOf("▸") < 0 }), ["band:LATE 1"])
+    compare(said(Next.rows(date_state({ folds: { "*": false, "m2026-11": true } }))).indexOf("d6") >= 0, true)
+    // Words typed are looked for everywhere: every band open.
+    compare(said(Next.rows(date_state({ folds: { "*": false }, query: "d" }))).filter(function (x) { return x.indexOf("▸") >= 0 }), [])
+  }
+
+  function test_date_bands_at_the_turn_of_a_month_and_on_a_sunday() {
+    // Thursday 26 November: next week runs into December, so there is no
+    // rest of November, and December starts after next week.
+    var thu = new Date(2026, 10, 26, 9, 0)
+    var rows = Next.rows(state({ now: thu, order: "date", folds: { "*": true },
+                                 deadlines: [deadline(1, "open", sec(11, 28)), deadline(2, "open", sec(12, 3)), deadline(3, "open", sec(12, 10))] }))
+    compare(said(rows), ["band:TODAY 0", "band:THIS WEEK 1", "d1", "band:NEXT WEEK 1", "d2",
+                         "band:" + Qt.formatDate(new Date(2026, 11, 10), "MMMM").toUpperCase() + " 1", "d3"])
+    // On a Sunday this week is over: Monday is next week's.
+    var sun = new Date(2026, 9, 18, 9, 0)
+    compare(said(Next.rows(state({ now: sun, order: "date", deadlines: [deadline(1, "open", sec(10, 19))] }))),
+            ["band:TODAY 0", "band:NEXT WEEK 1", "d1"])
   }
 
   function test_the_strip_s_chips() {

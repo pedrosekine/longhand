@@ -105,10 +105,18 @@ no day) and its next deadline, where {key:stripUnfold} picks only that one.
 {key:dashCourse} and the other digits pick a course from the list itself,
 {key:dashAll} shows all again. {key:dashSearch} goes to the strip's ⌕:
 type words (in a box's words, its section or its course) or a `#tag`.
-{key:dashOrder} orders the list by what it asks, by course, or by date (one
-timeline across the courses). {key:stripClear} on the strip clears what is
-typed, then the courses, then goes back to the list. The courses picked and
-the order are kept until you change them. {key:dashOpen} on a proposal, a
+{key:dashOrder} orders the list by date (one timeline across the courses,
+where it opens), by what it asks, or by course. By date the list is in
+bands that narrow as they come near: late, today, this week, next week,
+the rest of the month, then a band a month, and what has no day yet. The
+near ones are open and the far ones folded, each saying how much it holds
+and what comes first. {key:dashFold} on a row goes up to its band and on a
+band folds it; {key:dashUnfold} opens a folded band or steps into an open
+one; {key:dashOpen} on a band does either. {key:dashFoldAll} collapses
+every band and {key:dashUnfoldAll} expands them (or "collapse all" and
+"expand all" above the list). {key:stripClear} on the strip clears what is
+typed, then the courses, then goes back to the list. The courses picked,
+the order and the bands folded are kept until you change them. {key:dashOpen} on a proposal, a
 question, or something it did on its own opens its chat beside the
 dashboard, with the planner: why that day, what you would rather, or your
 own answer to its question. It can change its proposal, and when the two of

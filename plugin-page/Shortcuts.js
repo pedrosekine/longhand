@@ -187,6 +187,11 @@ var actions = [
   { id: "dashDown", group: "dash", places: ["dash"], does: "Move down", keys: ["Down", "J"] },
   { id: "dashFirst", group: "dash", places: ["dash"], does: "First row", keys: ["Home"] },
   { id: "dashLast", group: "dash", places: ["dash"], does: "Last row", keys: ["End"] },
+  // By date, the bands fold (2026-11-03), as the files' folders do.
+  { id: "dashFold", group: "dash", places: ["dash"], does: "By date: up to the row's band; on a band, fold it", keys: ["Left", "H"] },
+  { id: "dashUnfold", group: "dash", places: ["dash"], does: "By date: open a folded band; on an open one, into it", keys: ["Right", "L"] },
+  { id: "dashFoldAll", group: "dash", places: ["dash"], does: "By date: collapse every band (the words above the list too)", keys: ["Shift+Left", "Shift+H"] },
+  { id: "dashUnfoldAll", group: "dash", places: ["dash"], does: "By date: expand every band (the words above the list too)", keys: ["Shift+Right", "Shift+L"] },
   { id: "dashOpen", group: "dash", places: ["dash"], does: "Go to the line; on what the agent proposes, asks or did, its chat (the margin opens beside)", keys: ["Enter"] },
   { id: "dashDone", group: "dash", places: ["dash"], does: "Done (again: not done); on the agent's proposal, accept", keys: ["Space", "E", "Ctrl+L"] },
   { id: "dashWhen", group: "dash", places: ["dash"], does: "When: reschedule it", keys: ["T", "Ctrl+D"] },

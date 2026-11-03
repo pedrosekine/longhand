@@ -380,6 +380,7 @@ ShellRoot {
       return JSON.stringify(page.taskRows.map(function (r) {
         return r.kind === "head" ? { kind: "head", text: r.text, tag: r.tag || "" }
           : r.kind === "month" ? { kind: "month", text: r.text }
+          : r.kind === "band" ? { kind: "band", id: r.id, text: r.text, count: r.count, open: r.open }
           : r.kind === "shelf" || r.kind === "grading" ? { kind: r.kind, count: r.count }
           : r.kind === "raised" ? { kind: "raised", text: r.item.text }
           : r.kind === "proposal" || r.kind === "told" ? { kind: r.kind, id: r.item.id, date: r.item.date, why: r.item.why,
