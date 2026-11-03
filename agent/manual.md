@@ -96,7 +96,19 @@ after a while instead of nagging. The agent's proposals and questions are
 rows here too: {key:dashDone} accepts, {key:dashDrop} declines;
 {key:dashNextAsk} goes to the next one to settle ({key:dashPrevAsk} the one
 before); one that arrived since you last left the dashboard says "new";
-{key:dashPlan} asks it to plan now. {key:dashOpen} on a proposal, a
+{key:dashPlan} asks it to plan now. Above the list, the course strip: a chip
+for each course with something open, and how much. {key:dashUp} from the
+first row climbs onto it; {key:stripPrev} and {key:stripNext} show each
+course as you land on it; {key:stripAdd} keeps one, and on another adds
+it; {key:stripUnfold} unfolds every course with what it holds (due, doing,
+no day) and its next deadline, where {key:stripUnfold} picks only that one.
+{key:dashCourse} and the other digits pick a course from the list itself,
+{key:dashAll} shows all again. {key:dashSearch} goes to the strip's ⌕:
+type words (in a box's words, its section or its course) or a `#tag`.
+{key:dashOrder} orders the list by what it asks, by course, or by date (one
+timeline across the courses). {key:stripClear} on the strip clears what is
+typed, then the courses, then goes back to the list. The courses picked and
+the order are kept until you change them. {key:dashOpen} on a proposal, a
 question, or something it did on its own opens its chat beside the
 dashboard, with the planner: why that day, what you would rather, or your
 own answer to its question. It can change its proposal, and when the two of

@@ -1334,7 +1334,32 @@ Item {
   // What's next: the dashboard's rows, in the order they ask something of
   // you (Next.js).
   readonly property var taskRows: Next.rows({ deadlines: dl.items, tasks: root.tasks, projects: root.projects, raised: root.raised,
-                                              proposals: root.proposals, showShelf: root.showShelf, showGrading: root.showGrading })
+                                              proposals: root.proposals, showShelf: root.showShelf, showGrading: root.showGrading,
+                                              lens: root.dashLens, query: root.dashQuery, order: root.dashOrder })
+
+  // The course strip above the dashboard's list (2026-11-03): a chip for
+  // each course with something open, the ⌕ before them to type into, the
+  // order after. Moving along it shows each course at once; Space adds
+  // one; Enter unfolds it into every course with what it holds. The
+  // courses picked and the order are kept (page.json); what is typed is
+  // not.
+  property var dashLens: []           // the courses shown; [] every one, "" no project
+  property string dashQuery: ""       // what is typed into ⌕
+  property string dashOrder: "ask"    // "ask" (what it asks of you), "course", "date"
+  readonly property var dashOrders: ["ask", "course", "date"]
+  property int stripAt: -1            // the strip's cursor: 0 ⌕, 1 All, the chips, then the order; -1 the list
+  property bool stripOpen: false      // unfolded
+  property int stripPick: 0           // unfolded: 0 ⌕, then a row per chip, then the orders
+  // Space kept a course: moving along the strip no longer shows each one,
+  // and Space on another adds it. Until then the strip shows where its
+  // cursor is, so Space could never add (found writing its test).
+  property bool stripPinned: false
+  readonly property var dashCourses: Next.courses({ deadlines: dl.items, tasks: root.tasks, projects: root.projects,
+                                                    proposals: root.proposals, raised: root.raised,
+                                                    lens: root.dashLens, query: root.dashQuery })
+  readonly property var stripChips: root.dashCourses.chips
+  readonly property int stripEnd: root.stripChips.length + 2      // the order, last
+  readonly property bool dashNarrowed: root.dashLens.length > 0 || root.dashQuery.trim() !== ""
   // The dashboard's cursor stays on the same row when the list is drawn
   // again — rows added above it (a plan, the agent's steps) must not move
   // the next key onto another row. Only when its row is gone does the
@@ -1468,7 +1493,8 @@ Item {
   }
 
   function savePageState() {
-    zoomFile.setText(JSON.stringify({ zoom: root.zoom, dashSeen: root.dashSeenId, chatSeen: root.chatSeen }) + "\n")
+    zoomFile.setText(JSON.stringify({ zoom: root.zoom, dashSeen: root.dashSeenId, chatSeen: root.chatSeen,
+                                      dashLens: root.dashLens, dashOrder: root.dashOrder }) + "\n")
   }
 
   // The global keys: the page itself and where you are in it, wherever the
@@ -3369,6 +3395,8 @@ Item {
     root.dashWhenText = ""
     root.showShelf = false
     root.showGrading = false
+    root.stripAt = -1
+    root.stripOpen = false
     if (root.dashOpen) {
       root.used("dashboard")
       root.taskFocus = 0
@@ -4319,10 +4347,22 @@ Item {
       if (k === Qt.Key_Return || k === Qt.Key_Enter) { root.commitDashWhen(); return true }
       return false
     }
+    if (root.stripAt >= 0) return root.stripKey(e)
     if (Sc.hit(e, "dashBack")) { root.toggleDash(); return true }
+    if (Sc.hit(e, "dashSearch")) { root.enterStrip(0); return true }
+    if (Sc.hit(e, "dashStrip")) { root.enterStrip(root.lensChip()); return true }
+    if (Sc.hit(e, "dashCourse")) { root.lensDigit(e); return true }
+    if (Sc.hit(e, "dashAll")) { root.setLens([]); root.dashQuery = ""; return true }
+    if (Sc.hit(e, "dashOrder")) { root.cycleOrder(); return true }
     if (Sc.hit(e, "dayPrev")) { root.stepDay(-1); return true }
     if (Sc.hit(e, "dayNext")) { root.stepDay(1); return true }
-    if (Sc.hit(e, "dashUp")) { root.moveTaskFocus(-1); return true }
+    if (Sc.hit(e, "dashUp")) {
+      // Up from the first row: onto the strip, on the course shown.
+      var was = root.taskFocus
+      root.moveTaskFocus(-1)
+      if (root.taskFocus === was) root.enterStrip(root.lensChip())
+      return true
+    }
     if (Sc.hit(e, "dashDown")) { root.moveTaskFocus(1); return true }
     if (Sc.hit(e, "dashFirst")) { root.taskFocus = 0; root.moveTaskFocus(0); return true }
     if (Sc.hit(e, "dashLast")) { root.taskFocus = root.taskRows.length; root.moveTaskFocus(-1); return true }
@@ -4346,6 +4386,161 @@ Item {
     if (Sc.hit(e, "dashPrevAsk")) { root.focusAsk(-1); return true }
     if (Sc.hit(e, "keysHere")) { root.toggleKeys(); return true }
     return false
+  }
+
+  // ------------------------------------------------- the course strip
+
+  function setLens(tags, pinned) {
+    root.dashLens = tags
+    root.stripPinned = !!pinned && tags.length > 0
+    root.savePageState()
+    root.taskFocus = 0
+    root.moveTaskFocus(0)
+  }
+  function cycleOrder() {
+    root.dashOrder = root.dashOrders[(root.dashOrders.indexOf(root.dashOrder) + 1) % root.dashOrders.length]
+    root.savePageState()
+    root.taskFocus = 0
+    root.moveTaskFocus(0)
+    root.used("dash-order", root.dashOrder)
+  }
+  // The chip of the course shown, when one is; else All.
+  function lensChip() {
+    if (root.dashLens.length === 0) return 1
+    for (var i = 0; i < root.stripChips.length; i++) if (root.stripChips[i].tag === root.dashLens[0]) return i + 2
+    return 1
+  }
+  function enterStrip(at) {
+    root.stripAt = Math.max(0, Math.min(root.stripEnd, at))
+    root.stripOpen = false
+    root.used("strip", at === 0 ? "search" : "chips")
+  }
+  function leaveStrip() {
+    root.stripAt = -1
+    root.stripOpen = false
+    root.stripPinned = false
+    root.taskFocus = 0
+    root.moveTaskFocus(0)
+  }
+  // 1–9: the strip's first course, second…; on the strip, its cursor goes
+  // there too.
+  function lensDigit(e) {
+    var n = e.key - Qt.Key_0
+    var chip = root.stripChips[n - 1]
+    if (!chip) { root.showHint("the strip has " + root.stripChips.length + " courses"); return }
+    root.setLens([chip.tag])
+    if (root.stripOpen) root.stripPick = n
+    else if (root.stripAt >= 0) root.stripAt = n + 1
+  }
+  // Where the strip's cursor is, as the list would show it: All, or a
+  // course's chip, picks; ⌕ and the order leave the lens as it is.
+  function stripMoved() {
+    if (root.stripPinned) return
+    if (root.stripAt === 1) root.setLens([])
+    else if (root.stripAt >= 2 && root.stripAt < root.stripEnd) root.setLens([root.stripChips[root.stripAt - 2].tag])
+  }
+  function toggleLens(tag) {
+    var on = root.dashLens.indexOf(tag) >= 0
+    root.setLens(on ? root.dashLens.filter(function (t) { return t !== tag }) : root.dashLens.concat([tag]), true)
+  }
+  // What a key types into ⌕: a printable character with no Ctrl or Alt.
+  function typedChar(e) {
+    if (e.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier)) return ""
+    var t = e.text || ""
+    return t.length === 1 && t >= " " ? t : ""
+  }
+  function typeInto(e) {
+    if (e.key === Qt.Key_Backspace) { root.dashQuery = root.dashQuery.slice(0, -1); return true }
+    var t = root.typedChar(e)
+    if (t === "") return false
+    root.dashQuery += t
+    root.taskFocus = 0
+    root.moveTaskFocus(0)
+    return true
+  }
+
+  // The strip's keys, folded and unfolded. Everything else waits: the
+  // list's own keys (Space, T, Del…) are not for a row nobody is on.
+  function stripKey(e) {
+    if (Sc.hit(e, "keysHere")) { root.toggleKeys(); return true }
+    if (root.stripOpen) return root.unfoldedKey(e)
+    var at = root.stripAt
+    if (at === 0) {
+      if (Sc.hit(e, "stripClear")) { if (root.dashQuery !== "") root.dashQuery = ""; else root.leaveStrip(); return true }
+      if (Sc.hit(e, "stripUnfold") || Sc.hit(e, "stripDown")) { root.leaveStrip(); return true }
+      if (Sc.hit(e, "stripNext")) { root.stripAt = 1; root.stripMoved(); return true }
+      if (root.typeInto(e)) return true
+      return true
+    }
+    if (Sc.hit(e, "stripPrev")) { root.stripAt = Math.max(0, at - 1); root.stripMoved(); return true }
+    if (Sc.hit(e, "stripNext")) { root.stripAt = Math.min(root.stripEnd, at + 1); root.stripMoved(); return true }
+    if (Sc.hit(e, "stripDown")) { root.leaveStrip(); return true }
+    if (Sc.hit(e, "stripAdd")) {
+      if (at === 1) root.setLens([])
+      else if (at === root.stripEnd) root.cycleOrder()
+      else {
+        // The course shown already: Space keeps it, and the next adds.
+        var tag = root.stripChips[at - 2].tag
+        if (!root.stripPinned && root.dashLens.length === 1 && root.dashLens[0] === tag) root.stripPinned = true
+        else root.toggleLens(tag)
+      }
+      return true
+    }
+    if (Sc.hit(e, "stripUnfold")) {
+      root.stripOpen = true
+      root.stripPick = at === root.stripEnd ? root.stripChips.length + 1 + root.dashOrders.indexOf(root.dashOrder)
+        : at >= 2 ? at - 1 : 1
+      root.used("strip", "unfold")
+      return true
+    }
+    if (Sc.hit(e, "stripClear")) {
+      if (root.dashQuery !== "") root.dashQuery = ""
+      else if (root.dashLens.length > 0) { root.setLens([]); root.stripAt = 1 }
+      else root.leaveStrip()
+      return true
+    }
+    if (Sc.hit(e, "dashSearch")) { root.stripAt = 0; return true }
+    if (Sc.hit(e, "dashCourse")) { root.lensDigit(e); return true }
+    if (Sc.hit(e, "dashAll")) { root.setLens([]); root.stripAt = 1; return true }
+    if (Sc.hit(e, "dashOrder")) { root.cycleOrder(); return true }
+    return true
+  }
+
+  // Unfolded: ⌕ at the top, a row per course, the three orders. Typing
+  // anywhere in it goes into ⌕.
+  function unfoldedKey(e) {
+    var n = root.stripChips.length, last = n + root.dashOrders.length
+    var p = root.stripPick
+    if (Sc.hit(e, "stripClear")) { root.stripOpen = false; return true }
+    if (Sc.hit(e, "stripUp")) { root.stripPick = Math.max(0, p - 1); return true }
+    if (Sc.hit(e, "stripDown")) { root.stripPick = Math.min(last, p + 1); return true }
+    if (p > 0 && Sc.hit(e, "dashCourse")) { root.lensDigit(e); return true }
+    if (p > 0 && Sc.hit(e, "dashAll")) { root.setLens([]); return true }
+    var add = Sc.hit(e, "stripAdd"), only = !add && Sc.hit(e, "stripUnfold")
+    if ((add || only) && p >= 1 && p <= n) {
+      var tag = root.stripChips[p - 1].tag
+      if (add) root.toggleLens(tag)
+      else { root.setLens([tag]); root.stripOpen = false; root.stripAt = p + 1 }
+      return true
+    }
+    if ((add || only) && p > n) {
+      root.dashOrder = root.dashOrders[p - n - 1]
+      root.savePageState()
+      if (only) root.stripOpen = false
+      return true
+    }
+    if (only && p === 0) { root.stripOpen = false; root.leaveStrip(); return true }
+    if (p !== 0 && e.key !== Qt.Key_Backspace && root.typedChar(e) !== "") root.stripPick = 0
+    if (root.stripPick === 0 && root.typeInto(e)) return true
+    return true
+  }
+
+  // A chip clicked: the strip's cursor there, and what it picks.
+  function clickChip(at) {
+    dash.dashKeysRef.forceActiveFocus()
+    root.stripAt = at
+    if (at === root.stripEnd) root.cycleOrder()
+    else root.stripMoved()
   }
 
   // The next thing the agent asks of you, past the cursor and round again:
@@ -6104,6 +6299,8 @@ Item {
         if (isFinite(z) && z >= 0.5 && z <= 3) root.zoom = z
         if (typeof st.dashSeen === "number") root.dashSeenId = st.dashSeen
         if (st.chatSeen && typeof st.chatSeen === "object") root.chatSeen = st.chatSeen
+        if (Array.isArray(st.dashLens)) root.dashLens = st.dashLens.filter(function (t) { return typeof t === "string" })
+        if (root.dashOrders.indexOf(st.dashOrder) >= 0) root.dashOrder = st.dashOrder
       } catch (e) {}
     }
   }

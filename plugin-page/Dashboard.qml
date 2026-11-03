@@ -39,6 +39,160 @@ BorderSurface {
 
   MouseArea { anchors.fill: parent; onClicked: dashKeys.forceActiveFocus() }
 
+  // A chip on the course strip: lit where the strip's cursor is, outlined
+  // when the list shows its course. The ⌕ chip shows what is typed into it,
+  // and a caret while the cursor is on it.
+  component Chip: Rectangle {
+    id: chip
+    required property Item page
+    property bool keys: false            // the dashboard has the keys
+    property int at: -1
+    property string label: ""
+    property string count: ""
+    property bool on: false
+    property bool search: false
+    readonly property bool cur: page.stripAt === at && !page.stripOpen && keys
+    onCurChanged: page.selected(chip, "center", cur)
+    width: chipRow.implicitWidth + page.sp(16)
+    height: chipRow.implicitHeight + Math.round(page.textSize * 0.3)
+    radius: height / 2
+    color: cur ? Style.selectedFill : chipHover.hovered && page.handOn ? Style.hoverFill : "transparent"
+    border.width: on ? 1 : 0
+    border.color: page.accent
+    HoverHandler { id: chipHover }
+    Row {
+      id: chipRow
+      anchors.centerIn: parent
+      spacing: page.sp(5)
+      Text {
+        anchors.verticalCenter: parent.verticalCenter
+        textFormat: Text.PlainText
+        text: chip.label
+        color: chip.on ? page.accent : chip.cur ? page.foreground : page.dim
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.bodySmall)
+      }
+      Rectangle {
+        id: caret
+        visible: chip.search && chip.cur
+        anchors.verticalCenter: parent.verticalCenter
+        width: 1
+        height: Math.round(page.textSize * 0.8)
+        color: page.accent
+        Timer { interval: 530; repeat: true; running: caret.visible; onTriggered: caret.opacity = caret.opacity > 0 ? 0 : 1 }
+      }
+      Text {
+        visible: chip.count !== ""
+        anchors.verticalCenter: parent.verticalCenter
+        textFormat: Text.PlainText
+        text: chip.count
+        color: page.faint
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.caption)
+      }
+    }
+    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: page.clickChip(chip.at) }
+  }
+
+  // A row of the strip unfolded: a course with what it holds, or an order.
+  component Unfolded: Rectangle {
+    id: urow
+    required property Item page
+    property bool keys: false
+    property int pick: -1
+    property string digit: ""
+    property bool on: false
+    property string name: ""
+    property string tag: ""
+    property string holds: ""
+    property string next: ""
+    signal clicked()
+    readonly property bool cur: page.stripOpen && page.stripPick === pick && keys
+    onCurChanged: page.selected(urow, "center", cur)
+    width: parent ? parent.width : 0
+    height: ucol.implicitHeight + page.sp(8)
+    color: cur ? Style.selectedFill : uHover.hovered && page.handOn ? Style.hoverFill : "transparent"
+    HoverHandler { id: uHover }
+    Column {
+      id: ucol
+      x: page.sp(12)
+      width: parent.width - page.sp(24)
+      anchors.verticalCenter: parent.verticalCenter
+      spacing: page.sp(1)
+      Item {
+        width: parent.width
+        height: uname.implicitHeight
+        Text {
+          id: udigit
+          width: page.sp(18)
+          textFormat: Text.PlainText
+          text: urow.digit
+          color: page.faint
+          font.family: page.codeFamily
+          font.pixelSize: page.fs(Style.font.caption)
+          anchors.verticalCenter: parent.verticalCenter
+        }
+        Text {
+          id: udot
+          anchors.left: udigit.right
+          anchors.verticalCenter: parent.verticalCenter
+          textFormat: Text.PlainText
+          text: urow.on ? "●" : "○"
+          color: urow.on ? page.accent : page.faint
+          font.pixelSize: page.fs(Style.font.caption)
+        }
+        Text {
+          id: uname
+          anchors.left: udot.right
+          anchors.leftMargin: page.sp(8)
+          textFormat: Text.PlainText
+          text: urow.name
+          color: page.foreground
+          font.family: page.fontFamily
+          font.styleName: page.fontStyle
+          font.pixelSize: page.fs(Style.font.body)
+        }
+        Text {
+          anchors.left: uname.right
+          anchors.leftMargin: page.sp(8)
+          anchors.baseline: uname.baseline
+          visible: urow.tag !== ""
+          textFormat: Text.PlainText
+          text: urow.tag
+          color: page.faint
+          font.family: page.fontFamily
+          font.styleName: page.fontStyle
+          font.pixelSize: page.fs(Style.font.caption)
+        }
+        Text {
+          anchors.right: parent.right
+          anchors.baseline: uname.baseline
+          textFormat: Text.PlainText
+          text: urow.holds
+          color: page.faint
+          font.family: page.fontFamily
+          font.styleName: page.fontStyle
+          font.pixelSize: page.fs(Style.font.caption)
+        }
+      }
+      Text {
+        visible: urow.next !== ""
+        x: udigit.width + udot.implicitWidth + page.sp(8)
+        width: parent.width - x
+        elide: Text.ElideRight
+        textFormat: Text.PlainText
+        text: urow.next
+        color: page.faint
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.caption)
+      }
+    }
+    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: { page.stripPick = urow.pick; urow.clicked() } }
+  }
+
   Item {
     id: dashKeys
     anchors.fill: parent
@@ -64,10 +218,178 @@ BorderSurface {
       font.pixelSize: page.fs(Style.font.caption)
     }
 
+    // The course strip (2026-11-03): ⌕ to type into, All, a chip for each
+    // course with something open, the order at the end; under it, what the
+    // list shows when it is narrowed; unfolded, every course with what it
+    // holds and the orders. ↑ from the first row climbs onto it.
+    Item {
+      id: strip
+      readonly property var orderWords: ({ ask: "what it asks", course: "course", date: "date" })
+      anchors.top: dashTitle.bottom
+      anchors.topMargin: page.sp(10)
+      width: Math.min(parent.width, Math.round(page.measure * 1.45))
+      x: Math.round((parent.width - width) / 2)
+      height: stripCol.implicitHeight
+
+      Column {
+        id: stripCol
+        width: parent.width
+        spacing: page.sp(4)
+
+        Item {
+          width: parent.width
+          height: Math.max(chipFlow.implicitHeight, orderChip.height)
+          Flow {
+            id: chipFlow
+            anchors.left: parent.left
+            anchors.right: orderChip.left
+            anchors.rightMargin: page.sp(8)
+            spacing: page.sp(4)
+            Chip {
+              page: dash.page
+              keys: dashKeys.activeFocus
+              at: 0
+              search: true
+              label: "⌕" + (page.dashQuery !== "" ? " " + page.dashQuery : "")
+              on: page.dashQuery !== ""
+            }
+            Chip {
+              page: dash.page
+              keys: dashKeys.activeFocus
+              at: 1
+              label: "All"
+              count: String(page.dashCourses.total)
+              on: page.dashLens.length === 0
+            }
+            Repeater {
+              model: page.stripChips
+              Chip {
+                required property var modelData
+                required property int index
+                page: dash.page
+                keys: dashKeys.activeFocus
+                at: index + 2
+                label: modelData.label
+                count: String(modelData.count)
+                on: page.dashLens.indexOf(modelData.tag) >= 0
+              }
+            }
+          }
+          Chip {
+            id: orderChip
+            page: dash.page
+            keys: dashKeys.activeFocus
+            anchors.right: parent.right
+            anchors.top: parent.top
+            at: page.stripEnd
+            label: "by " + strip.orderWords[page.dashOrder] + (page.stripOpen ? "  ▴" : "  ▾")
+          }
+        }
+
+        // What the list shows, when it is narrowed: never a filter you
+        // cannot see.
+        Text {
+          visible: page.dashNarrowed
+          x: page.sp(8)
+          width: parent.width - page.sp(8)
+          elide: Text.ElideRight
+          textFormat: Text.PlainText
+          text: !page.dashNarrowed ? ""
+            : "showing " + page.dashCourses.shown + " of " + page.dashCourses.total
+              + (page.dashLens.length > 0 ? "  ·  " + page.dashLens.map(function (t) { return t === "" ? "no project" : "#" + t }).join(" + ") : "")
+              + (page.dashQuery.trim() !== "" ? "  ·  “" + page.dashQuery.trim() + "”" : "")
+              + (page.dashCourses.outside > 0 ? "  ·  " + page.dashCourses.outside + " from the agent outside it" : "")
+              + "  ·  " + page.keyName("dashAll") + " shows all"
+          color: page.faint
+          font.family: page.fontFamily
+          font.styleName: page.fontStyle
+          font.pixelSize: page.fs(Style.font.caption)
+        }
+
+        Rectangle {
+          visible: page.stripOpen
+          width: parent.width
+          height: visible ? unfoldCol.implicitHeight + page.sp(12) : 0
+          radius: Style.cornerRadius
+          color: page.sunk
+          border.width: 1
+          border.color: page.faint
+          Column {
+            id: unfoldCol
+            y: page.sp(6)
+            width: parent.width
+            spacing: 0
+            Unfolded {
+              page: dash.page
+              keys: dashKeys.activeFocus
+              pick: 0
+              name: "⌕ " + (page.dashQuery !== "" ? page.dashQuery : "")
+              holds: page.dashQuery === "" ? "type words, or a #tag" : ""
+              onClicked: dashKeys.forceActiveFocus()
+            }
+            Text {
+              x: page.sp(12)
+              topPadding: page.sp(8)
+              textFormat: Text.PlainText
+              text: "COURSES"
+              color: page.faint
+              font.family: page.fontFamily
+              font.styleName: page.fontStyle
+              font.pixelSize: page.fs(Style.font.caption)
+              font.letterSpacing: 0.8
+            }
+            Repeater {
+              model: page.stripChips
+              Unfolded {
+                required property var modelData
+                required property int index
+                page: dash.page
+                keys: dashKeys.activeFocus
+                pick: index + 1
+                digit: index < 9 ? String(index + 1) : ""
+                on: page.dashLens.indexOf(modelData.tag) >= 0
+                name: modelData.name
+                tag: modelData.tag === "" ? "" : "#" + modelData.tag
+                holds: [modelData.due > 0 ? modelData.due + " due" : "", modelData.doing > 0 ? modelData.doing + " doing" : "",
+                        modelData.later > 0 ? modelData.later + " no day" : ""].filter(function (x) { return x !== "" }).join(" · ")
+                next: modelData.next ? "next: " + Qt.formatDate(new Date(modelData.next.due * 1000), "ddd d MMM") + " · " + modelData.next.title : ""
+                onClicked: { dashKeys.forceActiveFocus(); page.toggleLens(modelData.tag) }
+              }
+            }
+            Text {
+              x: page.sp(12)
+              topPadding: page.sp(8)
+              textFormat: Text.PlainText
+              text: "ORDER"
+              color: page.faint
+              font.family: page.fontFamily
+              font.styleName: page.fontStyle
+              font.pixelSize: page.fs(Style.font.caption)
+              font.letterSpacing: 0.8
+            }
+            Repeater {
+              model: page.dashOrders
+              Unfolded {
+                required property var modelData
+                required property int index
+                page: dash.page
+                keys: dashKeys.activeFocus
+                pick: page.stripChips.length + 1 + index
+                digit: page.keyName("dashOrder")
+                on: page.dashOrder === modelData
+                name: "by " + strip.orderWords[modelData]
+                onClicked: { dashKeys.forceActiveFocus(); page.dashOrder = modelData; page.savePageState() }
+              }
+            }
+          }
+        }
+      }
+    }
+
     Flickable {
       id: dashFlick
-      anchors.top: dashTitle.bottom
-      anchors.topMargin: page.sp(12)
+      anchors.top: strip.bottom
+      anchors.topMargin: page.sp(10)
       anchors.left: parent.left
       anchors.right: parent.right
       anchors.bottom: dashFoot.top
@@ -105,7 +427,7 @@ BorderSurface {
           width: parent.width
           visible: page.taskRows.length === 0
           textFormat: Text.PlainText
-          text: "nothing open"
+          text: page.dashNarrowed ? "nothing matches  ·  " + page.keyName("dashAll") + " shows all" : "nothing open"
           color: page.faint
           font.family: page.fontFamily
           font.styleName: page.fontStyle
@@ -154,7 +476,7 @@ BorderSurface {
             // Lit only while the dashboard has the keys: one place is lit
             // at a time, in the pane the focus frame is around
             // (docs/navigation.md). The pointer follows it (page.selected).
-            readonly property bool hot: page.taskFocus === index && !isHead && page.here === "center"
+            readonly property bool hot: page.taskFocus === index && !isHead && page.here === "center" && page.stripAt < 0
             onHotChanged: page.selected(dashRow, "center", hot)
             Component.onCompleted: if (hot) page.selected(dashRow, "center", true)
             // A click on it does something (activateTask): a hand, and a
@@ -670,11 +992,24 @@ BorderSurface {
         visible: !page.dashWhenFor && !page.ctrlShown   // Ctrl held: its strip says it
         textFormat: Text.PlainText
         wrapMode: Text.WordWrap
-        text: page.keyName("dashUp") + page.keyName("dashDown") + " move · " + page.keyName("dashOpen") + " opens the line · "
+        text: page.stripOpen
+          ? page.keyName("stripUp") + page.keyName("stripDown") + " move · " + page.keyName("stripAdd") + " add a course · "
+            + page.keyName("stripUnfold") + " only this one · " + page.keyName("dashCourse") + "… a course · typing searches · "
+            + page.keyName("stripClear") + " fold"
+          : page.stripAt === 0
+          ? "type words, or a #tag · " + page.keyName("stripNext") + " the courses · " + page.keyName("stripDown") + " the list · "
+            + page.keyName("stripClear") + " clear"
+          : page.stripAt > 0
+          ? page.keyName("stripPrev") + page.keyName("stripNext") + (page.stripPinned ? " move · " + page.keyName("stripAdd") + " adds or takes out · "
+                                                                                    : " pick (shown at once) · " + page.keyName("stripAdd") + " keep it, to add another · ")
+            + page.keyName("stripUnfold") + " unfold · " + page.keyName("stripDown") + " the list · " + page.keyName("dashOrder") + " order · "
+            + page.keyName("stripClear") + " clear"
+          : page.keyName("dashUp") + page.keyName("dashDown") + " move · " + page.keyName("dashOpen") + " opens the line · "
           + page.keyName("dashTalk") + " chat · "
           + page.keyName("dashDone") + " done · " + page.keyName("dashWhen") + " when · " + page.keyName("dashPriority") + " priority · "
           + page.keyName("dashShelve") + " set aside · " + page.keyName("dashKeep") + " renew · " + page.keyName("dashGrade") + " grade · "
           + page.keyName("dashPlan") + " plan now · "
+          + page.keyName("dashSearch") + " search · " + page.keyName("dashCourse") + "… a course · " + page.keyName("dashOrder") + " order · "
           + page.keyName("dashRename") + " rename · " + page.keyName("dashDrop") + " cancel · " + page.keyName("dashUndo") + " undo · " + page.keyName("dashBack") + " back · "
           + page.keyName("keysHere") + " all keys"
         color: page.faint

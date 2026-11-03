@@ -38,16 +38,6 @@ TestCase {
     return s
   }
 
-  // A band for a tag the curriculum does not name takes its heading from a
-  // box under its own course — never from one written inside another's.
-  function test_a_band_named_by_its_own_heading() {
-    var stray = task("confirm the scope", { kind: "bullet", project: "thesis", claimed: "dtm", path: ["Speculative Environments"] })
-    var own = task("read Martin's thesis", { kind: "bullet", project: "thesis", claimed: "thesis", path: ["Master Thesis"] })
-    function heads(ts) { return Next.rows(state({ tasks: ts })).filter(function (r) { return r.kind === "head" }).map(function (r) { return r.text }) }
-    compare(heads([stray, own]), ["Master Thesis"])
-    compare(heads([stray]), ["thesis"])
-  }
-
   function test_nothing_is_nothing() {
     compare(Next.rows(state({})), [])
   }
@@ -137,5 +127,83 @@ TestCase {
     compare(Next.taskOfAnchor(tasks, 4), null)
     compare(Next.taskOfKey(tasks, "kb").title, "b")
     compare(Next.taskOfKey(tasks, ""), null)
+  }
+
+  // The course strip (2026-11-03): a lens on the courses picked, words
+  // typed into its ⌕, and two more orders.
+  function strip_state(extra) {
+    return state(Object.assign({
+      tasks: [task("outline the talk", { project: "intsem", when: "2026-10-20", path: ["Talk"] }),
+              task("read for the seminar", { project: "intsem" }),
+              task("ask Bernd about scope", { project: "respro", path: ["Themenvorschlag"] }),
+              task("call my sister"),
+              task("gone quiet", { project: "respro", away: "quiet" }),
+              task("essay", { anchor: 6, key: "k6", project: "respro" })],
+      deadlines: [deadline(6, "open", sec(10, 16), { project: "respro", title: "essay" }),
+                  deadline(7, "open", sec(11, 2), { project: "intsem", title: "review" })],
+      proposals: [{ id: "p1", key: "k6", kind: "priority" }, { id: "p2", key: "", kind: "question", question: "when is the talk?" }],
+      raised: [{ id: "r1", text: "the seminar is busy" }],
+    }, extra))
+  }
+
+  function test_a_lens_keeps_its_courses_in_every_band() {
+    var rows = Next.rows(strip_state({ lens: ["respro"] }))
+    compare(said(rows), ["head:DUE", "month:" + Qt.formatDate(new Date(2026, 9, 16), "MMMM"), "d6", "proposal:p1",
+                         "head:TO SCHEDULE", "ask Bernd about scope", "shelf:1"])
+    // No project is a course of its own, and so is a question about no box.
+    compare(said(Next.rows(strip_state({ lens: [""] }))), ["head:TO SCHEDULE", "call my sister", "head:FROM THE AGENT", "question:p2"])
+    compare(said(Next.rows(strip_state({ lens: ["respro", "intsem"] }))).filter(function (x) { return x.charAt(0) === "d" }),
+            ["d6", "d7"])
+  }
+
+  function test_words_and_tags_typed() {
+    // Words are in the row's words, its section or its course's name:
+    // "seminar" is the whole Interdisciplinary Seminar.
+    compare(said(Next.rows(strip_state({ query: "seminar" }))),
+            ["head:DUE", "month:" + Qt.formatDate(new Date(2026, 10, 2), "MMMM"), "d7",
+             "head:DOING", "month:" + Qt.formatDate(new Date(2026, 9, 20), "MMMM"), "outline the talk",
+             "head:TO SCHEDULE", "read for the seminar", "head:FROM THE AGENT", "raised:r1"])
+    compare(said(Next.rows(strip_state({ query: "bernd scope" }))), ["head:TO SCHEDULE", "ask Bernd about scope"])
+    compare(said(Next.rows(strip_state({ query: "talk" }))),
+            ["head:DOING", "month:" + Qt.formatDate(new Date(2026, 9, 20), "MMMM"), "outline the talk",
+             "head:FROM THE AGENT", "question:p2"])
+    compare(said(Next.rows(strip_state({ query: "#int talk" }))),
+            ["head:DOING", "month:" + Qt.formatDate(new Date(2026, 9, 20), "MMMM"), "outline the talk"])
+    compare(said(Next.rows(strip_state({ query: "#nosuch" }))), [])
+  }
+
+  function test_by_course_and_by_date() {
+    compare(said(Next.rows(strip_state({ order: "course" }))),
+            ["head:Interdisciplinary Seminar", "month:DUE", "d7", "month:DOING", "outline the talk", "month:TO SCHEDULE", "read for the seminar",
+             "head:Themenvorschlag", "month:DUE", "d6", "proposal:p1", "month:TO SCHEDULE", "ask Bernd about scope",
+             "head:No project", "month:TO SCHEDULE", "call my sister",
+             "shelf:1", "head:FROM THE AGENT", "question:p2", "raised:r1"])
+    compare(said(Next.rows(strip_state({ order: "date" }))),
+            ["head:" + Qt.formatDate(new Date(2026, 9, 16), "MMMM").toUpperCase(), "d6", "proposal:p1", "outline the talk",
+             "head:" + Qt.formatDate(new Date(2026, 10, 2), "MMMM").toUpperCase(), "d7",
+             "head:NO DAY YET", "read for the seminar", "ask Bernd about scope", "call my sister",
+             "shelf:1", "head:FROM THE AGENT", "question:p2", "raised:r1"])
+  }
+
+  function test_the_strip_s_chips() {
+    var c = Next.courses(strip_state({ lens: ["respro"] }))
+    compare(c.chips.map(function (x) { return x.label + " " + x.count }), ["intsem 3", "respro 2", "none 1"])
+    var respro = c.chips[1]
+    compare([respro.due, respro.doing, respro.later, respro.next.title], [1, 0, 1, "essay"])
+    compare([c.shown, c.total, c.outside], [2, 6, 1])
+    // Words change the counts, not the chips; a #tag typed is a lens, not a count.
+    var w = Next.courses(strip_state({ query: "#res seminar" }))
+    compare(w.chips.map(function (x) { return x.label + " " + x.count }), ["intsem 3", "respro 0", "none 0"])
+    compare(w.shown, 0)
+  }
+
+  // A band for a tag the curriculum does not name takes its heading from a
+  // box under its own course — never from one written inside another's.
+  function test_a_band_named_by_its_own_heading() {
+    var stray = task("confirm the scope", { project: "thesis", claimed: "dtm", path: ["Speculative Environments"] })
+    var own = task("read Martin's thesis", { project: "thesis", claimed: "thesis", path: ["Master Thesis"] })
+    compare(Next.bandName("thesis", [stray, own], projects), "Master Thesis")
+    compare(Next.bandName("thesis", [stray], projects), "thesis")
+    compare(Next.bandName("intsem", [stray], projects), "Interdisciplinary Seminar")
   }
 }

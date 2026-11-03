@@ -1233,6 +1233,74 @@ def main() -> int:
         check(p.call("dashKey", KEY_Z, CTRL) == "true", "Ctrl+Z takes a drop back")
         check(p.wait(lambda: "- [ ] loose thought\n" in p.call("text")), "…with no mark left on the line")
 
+        # 12f. the course strip (2026-11-03): ↑ from the first row climbs
+        # onto it; moving along it shows each course at once; Space adds
+        # one; Enter unfolds it; ⌕ takes what is typed; O orders the list.
+        KEY_LEFT, KEY_UP, KEY_RIGHT, KEY_DOWN = 0x01000012, 0x01000013, 0x01000014, 0x01000015
+
+        def strip():
+            return json.loads(p.call("strip"))
+
+        def courses_shown():
+            return [r["tag"] for r in json.loads(p.call("dashRows")) if r["kind"] == "head" and r.get("tag")]
+
+        st = strip()
+        check("intsem" in st["chips"] and st["at"] == -1 and st["shown"] == st["total"],
+              f"the strip has a chip for each course with something open, the list not narrowed ({st})")
+        p.call("dashFocus", 0)
+        p.call("dashKey", KEY_DOWN, 0)
+        p.call("dashKey", KEY_UP, 0)
+        p.call("dashKey", KEY_UP, 0)
+        check(strip()["at"] == 1, f"↑ from the first row climbs onto the strip, on All ({strip()})")
+        p.call("dashKey", KEY_RIGHT, 0)
+        first = strip()["chips"][0]
+        check(p.wait(lambda: strip()["lens"] == [first] and set(courses_shown()) <= {"#" + first}),
+              f"→ shows the first course at once, and only it ({strip()}, {courses_shown()})")
+        check(strip()["shown"] < strip()["total"], "…the line under the strip says how much of the list it shows")
+        p.call("dashKey", KEY_RIGHT, 0)
+        second = strip()["chips"][1]
+        check(strip()["lens"] == [second], f"→ again shows the next one instead ({strip()})")
+        p.call("dashKey", 0x20, 0)
+        p.call("dashKey", KEY_LEFT, 0)
+        check(strip()["lens"] == [second], f"Space keeps it: moving on no longer changes what is shown ({strip()})")
+        p.call("dashKey", 0x20, 0)
+        check(strip()["lens"] == [second, first], f"…and Space on another adds it ({strip()})")
+        p.call("dashKey", 0x20, 0)
+        check(strip()["lens"] == [second], f"…or takes it out again ({strip()})")
+        p.call("dashKey", KEY_LEFT, 0)
+        p.call("dashKey", 0x20, 0)
+        p.call("dashKey", KEY_RIGHT, 0)
+        p.call("dashKey", KEY_RETURN, 0)
+        check(strip()["open"] and strip()["pick"] == 1, f"Enter unfolds it, on the course the cursor was on ({strip()})")
+        p.call("dashKey", KEY_DOWN, 0)
+        p.call("dashKey", KEY_RETURN, 0)
+        check(not strip()["open"] and strip()["lens"] == [second], f"…and Enter there shows only that one ({strip()})")
+        check(p.call("dashKey", KEY_ESC, 0) == "true" and strip()["lens"] == [] and strip()["at"] == 1,
+              f"Esc on the strip clears the courses first ({strip()})")
+        p.call("dashKey", KEY_ESC, 0)
+        check(strip()["at"] == -1 and p.call("dashOpen") == "true", "…then gives the keys back to the list, the dashboard still open")
+        check(p.call("dashType", "/") == "true" and strip()["at"] == 0, "/ goes to the strip's ⌕")
+        for ch in "rubric":
+            p.call("dashType", ch)
+        check(p.wait(lambda: [r.get("text") for r in json.loads(p.call("dashRows")) if r["kind"] == "task"] == ["ask about the rubric"]),
+              f"typed there, words narrow the list ({strip()}, {[r.get('text') for r in json.loads(p.call('dashRows'))]})")
+        p.call("dashKey", KEY_ESC, 0)
+        check(strip()["query"] == "" and strip()["at"] == 0, "Esc clears what was typed")
+        p.call("dashKey", KEY_ESC, 0)
+        p.call("dashType", "o")
+        check(strip()["order"] == "course" and json.loads(p.call("dashRows"))[0]["kind"] == "head"
+              and json.loads(p.call("dashRows"))[0].get("tag"), f"O orders the list by course ({strip()})")
+        p.call("dashType", "o")
+        check(strip()["order"] == "date", "…then by date")
+        p.call("dashType", "o")
+        check(strip()["order"] == "ask" and p.wait(lambda: heads()[-4:] == ["DOING", "TO SCHEDULE",
+                                                                             "Interdisciplinary Seminar", "Design Theory & Methods"]),
+              f"…and back to what it asks ({heads()})")
+        p.call("dashType", "1")
+        check(strip()["lens"] == [first], f"1 shows the strip's first course from the list ({strip()})")
+        p.call("dashType", "0")
+        check(strip()["lens"] == [], "0 shows every course again")
+
         row("read the paper")
         p.call("dashKey", KEY_RETURN, 0)
         check(p.wait(lambda: p.call("dashOpen") == "false"), "Enter leaves the dashboard for the line")

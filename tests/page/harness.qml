@@ -368,6 +368,11 @@ ShellRoot {
     // As the dashboard's own handler does: the global keys first.
     function dashKey(key: int, mods: int): bool { var e = { key: key, text: "", modifiers: mods }; return page.anywhereKey(e) || page.dashKey(e) }
     function dashType(ch: string): bool { return page.dashKey({ key: ch.toUpperCase().charCodeAt(0), text: ch, modifiers: 0 }) }
+    function strip(): string {
+      return JSON.stringify({ at: page.stripAt, open: page.stripOpen, pick: page.stripPick, lens: page.dashLens, query: page.dashQuery,
+                              order: page.dashOrder, chips: page.stripChips.map(function (c) { return c.label }),
+                              shown: page.dashCourses.shown, total: page.dashCourses.total })
+    }
     function dashWhen(phrase: string): void { page.dashWhenText = phrase; page.commitDashWhen() }
     function dashWhenStart(): void { page.startDashWhen() }
     function dashWhenField(): string { var f = page.dashItem.dashWhenFieldRef; return JSON.stringify({ focus: f.focus, text: f.text }) }

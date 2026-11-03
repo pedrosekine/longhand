@@ -8,6 +8,8 @@
 //   raised       what the agent raised, under "from the agent"
 //   proposals    the agent's open proposals and questions
 //   showShelf, showGrading   the folded bands, unfolded
+//   lens, query, order       the course strip: the courses picked, the
+//                words typed, and the order ("ask", "course", "date")
 //   now          the moment it is asked, when not given
 .pragma library
 .import "Say.js" as Say
@@ -39,13 +41,26 @@ function taskOfKey(tasks, key) {
 //   WAITING FOR A GRADE   folded: done deadlines with no grade yet
 //   FROM THE AGENT
 //
+// That is the order "what it asks" (`order`); "course" puts the courses
+// first, each with those bands inside, and "date" makes one timeline. The
+// course strip narrows any of them (`lens`, `query`; `narrowed`).
+//
 // Note boxes group by project rather than by the day they were written,
 // because the day a thought was written is not how it is looked for
 // (2026-10-15, and the 31 trips to the calendar before it). A box bound to
 // the store is listed once, as its deadline.
 function rows(s) {
   var now = s.now || new Date()
-  var rows = []
+  var f = narrowed(s)
+  var b = buckets(f, now)
+  var order = s.order === "course" ? byCourse : s.order === "date" ? byDate : byAsk
+  var out = order(b, f, now)
+  folded(out, b, f)
+  return withProposals(out, f.proposals, s.tasks)
+}
+
+// What the list is made of, before it is put in an order.
+function buckets(s, now) {
   var today = new Date(now.getTime())
   today.setHours(0, 0, 0, 0)
   // Closed today (done, or cancelled) stays until tomorrow, so what just
@@ -64,21 +79,7 @@ function rows(s) {
     if (ao !== bo) return ao ? -1 : 1
     return a.due - b.due
   })
-  if (due.length > 0) {
-    rows.push({ kind: "head", text: "DUE", tag: "" })
-    var month = ""
-    for (var k = 0; k < due.length; k++) {
-      var lbl = Say.monthLabel(due[k].due * 1000, now)
-      if (lbl !== month) { rows.push({ kind: "month", text: lbl }); month = lbl }
-      rows.push({ kind: "deadline", deadline: due[k] })
-    }
-  }
-  if (waiting.length > 0) {
-    waiting.sort(function (a, b) { return a.due - b.due })
-    rows.push({ kind: "head", text: "NOT IN A NOTE YET", tag: "" })
-    for (var w = 0; w < waiting.length; w++) rows.push({ kind: "deadline", deadline: waiting[w] })
-  }
-
+  waiting.sort(function (a, b) { return a.due - b.due })
   var doing = [], later = [], notes = [], shelf = []
   for (var i = 0; i < s.tasks.length; i++) {
     var t = s.tasks[i]
@@ -90,66 +91,121 @@ function rows(s) {
   }
   doing.sort(function (a, b) { return (a.when || a.due).localeCompare(b.when || b.due) })
   later.sort(function (a, b) { return b.priority - a.priority || a.age - b.age })
-  if (doing.length > 0) {
+  var grading = s.deadlines.filter(function (d) {
+    return d.status === "done" && d.grade === "" && d.doneAt * 1000 < today.getTime()
+  })
+  grading.sort(function (a, b) { return b.doneAt - a.doneAt })
+  return { due: due, waiting: waiting, doing: doing, later: later, notes: notes, shelf: shelf, grading: grading }
+}
+
+// By what each row asks of you: the order the dashboard was made in.
+function byAsk(b, s, now) {
+  var rows = []
+  if (b.due.length > 0) {
+    rows.push({ kind: "head", text: "DUE", tag: "" })
+    var month = ""
+    for (var k = 0; k < b.due.length; k++) {
+      var lbl = Say.monthLabel(b.due[k].due * 1000, now)
+      if (lbl !== month) { rows.push({ kind: "month", text: lbl }); month = lbl }
+      rows.push({ kind: "deadline", deadline: b.due[k] })
+    }
+  }
+  if (b.waiting.length > 0) {
+    rows.push({ kind: "head", text: "NOT IN A NOTE YET", tag: "" })
+    for (var w = 0; w < b.waiting.length; w++) rows.push({ kind: "deadline", deadline: b.waiting[w] })
+  }
+  if (b.doing.length > 0) {
     rows.push({ kind: "head", text: "DOING", tag: "" })
     var dm = ""
-    for (var d1 = 0; d1 < doing.length; d1++) {
-      var dl1 = Say.monthLabel(Say.taskMs(doing[d1]), now)
+    for (var d1 = 0; d1 < b.doing.length; d1++) {
+      var dl1 = Say.monthLabel(Say.taskMs(b.doing[d1]), now)
       if (dl1 !== dm) { rows.push({ kind: "month", text: dl1 }); dm = dl1 }
-      rows.push({ kind: "task", task: doing[d1] })
+      rows.push({ kind: "task", task: b.doing[d1] })
     }
   }
-  if (later.length > 0) {
+  if (b.later.length > 0) {
     rows.push({ kind: "head", text: "TO SCHEDULE", tag: "" })
-    for (var l = 0; l < later.length; l++) rows.push({ kind: "task", task: later[l] })
+    for (var l = 0; l < b.later.length; l++) rows.push({ kind: "task", task: b.later[l] })
   }
-
-  var groups = [], seen = ({})
-  for (var n = 0; n < notes.length; n++) {
-    var key = notes[n].project || ""
-    if (seen[key] === undefined) { seen[key] = groups.length; groups.push({ key: key, items: [] }) }
-    groups[seen[key]].items.push(notes[n])
-  }
+  var groups = byProject(b.notes, s.projects)
   for (var g = 0; g < groups.length; g++) {
-    // The course's own name, not its tag: a band that reads
-    // "Interdisciplinary Seminar" says more than #intsem. The sidebar
-    // knows the names from the curriculum; for a tag it does not know,
-    // the heading the notes themselves use is the next best name — from a
-    // box under its own course's headings, never one written inside
-    // another course's section.
-    var gk = groups[g].key
-    var named = gk === "" ? "No project" : Say.courseName(gk, s.projects)
-    if (gk !== "" && named === gk) {
-      for (var h = 0; h < groups[g].items.length; h++) {
-        if (!Say.inOwnCourse(groups[g].items[h], gk)) continue
-        var path0 = (groups[g].items[h].path || [])[0]
-        if (path0) { named = path0; break }
-      }
-    }
-    rows.push({ kind: "head", text: named, tag: gk === "" ? "" : "#" + gk })
+    var named = bandName(groups[g].key, groups[g].items, s.projects)
+    rows.push({ kind: "head", text: named, tag: groups[g].key === "" ? "" : "#" + groups[g].key })
     // Under a band, a row does not repeat it: the section it was written
     // in is what the row still has to say.
     for (var m = 0; m < groups[g].items.length; m++)
       rows.push({ kind: "task", task: groups[g].items[m], under: named })
   }
-  // What is away and what is owed a grade, each folded into one row until
-  // asked for: there to be found, never in the way.
-  if (shelf.length > 0) {
-    if (!s.showShelf) rows.push({ kind: "shelf", count: shelf.length })
-    else {
-      rows.push({ kind: "head", text: "SET ASIDE", tag: "" })
-      for (var sh = 0; sh < shelf.length; sh++) rows.push({ kind: "task", task: shelf[sh] })
+  return rows
+}
+
+// By course (2026-11-03, the course strip's order): a band for each, and
+// in it what each row asks of you, in the same order as above.
+function byCourse(b, s, now) {
+  var parts = [["DUE", b.due.concat(b.waiting), "deadline"], ["DOING", b.doing, "task"],
+               ["TO SCHEDULE", b.later, "task"], ["", b.notes, "task"]]
+  var keys = courseKeys(s, [b.due, b.waiting, b.doing, b.later, b.notes])
+  var rows = []
+  for (var c = 0; c < keys.length; c++) {
+    var key = keys[c], items = [], mine = []
+    for (var p = 0; p < parts.length; p++) {
+      var got = parts[p][1].filter(function (x) { return (x.project || "") === key })
+      mine.push(got)
+      if (parts[p][2] === "task") items = items.concat(got)
+    }
+    var named = bandName(key, items, s.projects)
+    rows.push({ kind: "head", text: named, tag: key === "" ? "" : "#" + key })
+    for (var q = 0; q < parts.length; q++) {
+      if (mine[q].length === 0) continue
+      // Its notes need no word of their own: they are what is left.
+      if (parts[q][0] !== "") rows.push({ kind: "month", text: parts[q][0] })
+      for (var i = 0; i < mine[q].length; i++)
+        rows.push(parts[q][2] === "deadline" ? { kind: "deadline", deadline: mine[q][i] }
+                                             : { kind: "task", task: mine[q][i], under: named })
     }
   }
-  var grading = s.deadlines.filter(function (d) {
-    return d.status === "done" && d.grade === "" && d.doneAt * 1000 < today.getTime()
-  })
-  if (grading.length > 0) {
-    if (!s.showGrading) rows.push({ kind: "grading", count: grading.length })
+  return rows
+}
+
+// By date (2026-11-03): one timeline across the courses — every deadline
+// and every box with a day, by that day, banded by month — then what has
+// no day yet.
+function byDate(b, s, now) {
+  var dated = []
+  for (var i = 0; i < b.due.length; i++) dated.push({ ms: b.due[i].due * 1000, row: { kind: "deadline", deadline: b.due[i] } })
+  for (var w = 0; w < b.waiting.length; w++) dated.push({ ms: b.waiting[w].due * 1000, row: { kind: "deadline", deadline: b.waiting[w] } })
+  for (var d = 0; d < b.doing.length; d++) dated.push({ ms: Say.taskMs(b.doing[d]), row: { kind: "task", task: b.doing[d] } })
+  dated.sort(function (x, y) { return x.ms - y.ms })
+  var rows = [], month = ""
+  for (var k = 0; k < dated.length; k++) {
+    var lbl = Say.monthLabel(dated[k].ms, now)
+    if (lbl !== month) { rows.push({ kind: "head", text: lbl.toUpperCase(), tag: "" }); month = lbl }
+    rows.push(dated[k].row)
+  }
+  var rest = b.later.concat(b.notes)
+  if (rest.length > 0) {
+    rows.push({ kind: "head", text: "NO DAY YET", tag: "" })
+    for (var r = 0; r < rest.length; r++) rows.push({ kind: "task", task: rest[r] })
+  }
+  return rows
+}
+
+// What is away and what is owed a grade, each folded into one row until
+// asked for: there to be found, never in the way. Then what the agent
+// raised.
+function folded(rows, b, s) {
+  if (b.shelf.length > 0) {
+    if (!s.showShelf) rows.push({ kind: "shelf", count: b.shelf.length })
     else {
-      grading.sort(function (a, b) { return b.doneAt - a.doneAt })
+      rows.push({ kind: "head", text: "SET ASIDE", tag: "" })
+      for (var sh = 0; sh < b.shelf.length; sh++) rows.push({ kind: "task", task: b.shelf[sh] })
+    }
+  }
+  if (b.grading.length > 0) {
+    if (!s.showGrading) rows.push({ kind: "grading", count: b.grading.length })
+    else {
       rows.push({ kind: "head", text: "WAITING FOR A GRADE", tag: "" })
-      for (var gr = 0; gr < grading.length; gr++) rows.push({ kind: "deadline", deadline: grading[gr] })
+      for (var gr = 0; gr < b.grading.length; gr++) rows.push({ kind: "deadline", deadline: b.grading[gr] })
     }
   }
   var raised = s.raised || []
@@ -157,7 +213,152 @@ function rows(s) {
     rows.push({ kind: "head", text: "FROM THE AGENT", tag: "" })
     for (var j = 0; j < raised.length; j++) rows.push({ kind: "raised", item: raised[j] })
   }
-  return withProposals(rows, s.proposals, s.tasks)
+}
+
+// Note boxes under the project that claims them, in the order first met.
+function byProject(items, projects) {
+  var groups = [], seen = ({})
+  for (var n = 0; n < items.length; n++) {
+    var key = items[n].project || ""
+    if (seen[key] === undefined) { seen[key] = groups.length; groups.push({ key: key, items: [] }) }
+    groups[seen[key]].items.push(items[n])
+  }
+  return groups
+}
+
+// The course's own name, not its tag: a band that reads "Interdisciplinary
+// Seminar" says more than #intsem. The sidebar knows the names from the
+// curriculum; for a tag it does not know, the heading the notes themselves
+// use is the next best name — from a box under its own course's headings,
+// never one written inside another course's section.
+function bandName(key, items, projects) {
+  if (key === "") return "No project"
+  var named = Say.courseName(key, projects)
+  if (named !== key) return named
+  for (var h = 0; h < items.length; h++) {
+    if (!Say.inOwnCourse(items[h], key)) continue
+    var path0 = (items[h].path || [])[0]
+    if (path0) return path0
+  }
+  return named
+}
+
+// The courses there is something for, in the sidebar's order (the soonest
+// session first), then tags it does not know as they come, then no project.
+function courseKeys(s, lists) {
+  var have = {}, extra = [], keys = []
+  for (var l = 0; l < lists.length; l++)
+    for (var i = 0; i < lists[l].length; i++) {
+      var k = lists[l][i].project || ""
+      if (have[k]) continue
+      have[k] = true
+      if (k !== "" && !(s.projects || []).some(function (p) { return p.tag === k })) extra.push(k)
+    }
+  for (var p = 0; p < (s.projects || []).length; p++) if (have[s.projects[p].tag]) keys.push(s.projects[p].tag)
+  keys = keys.concat(extra)
+  if (have[""]) keys.push("")
+  return keys
+}
+
+// ------------------------------------------------------- the course strip
+
+// What is typed into the strip's ⌕ (2026-11-03): words, each of which a
+// row must hold — in its words, the section it was written in or its
+// course — and #tags, each a course as its chip would pick it (the first
+// whose tag starts so; one that matches none matches nothing).
+function query(text, tags) {
+  var out = { words: [], tags: [] }
+  var parts = String(text || "").toLowerCase().split(/\s+/)
+  for (var i = 0; i < parts.length; i++) {
+    var w = parts[i]
+    if (w === "" || w === "#") continue
+    if (w.charAt(0) !== "#") { out.words.push(w); continue }
+    var t = w.substring(1), hit = "\u0000"
+    for (var k = 0; k < tags.length; k++) if (tags[k] === t) hit = t
+    if (hit === "\u0000") for (var j = 0; j < tags.length; j++) if (tags[j] !== "" && tags[j].indexOf(t) === 0) { hit = tags[j]; break }
+    if (out.tags.indexOf(hit) < 0) out.tags.push(hit)
+  }
+  return out
+}
+
+function allTags(s) {
+  var seen = {}, out = []
+  function add(t) { t = t || ""; if (!seen[t]) { seen[t] = true; out.push(t) } }
+  for (var p = 0; p < (s.projects || []).length; p++) add(s.projects[p].tag)
+  for (var i = 0; i < s.deadlines.length; i++) add(s.deadlines[i].project)
+  for (var j = 0; j < s.tasks.length; j++) add(s.tasks[j].project)
+  return out
+}
+
+function said(x, projects) {
+  var p = x.project || ""
+  return [x.title || "", x.question || "", x.name || "", (x.path || []).join(" "), p, p ? Say.courseName(p, projects) : ""]
+    .join(" ").toLowerCase()
+}
+
+// The state with only what the lens and the words keep: the courses picked
+// on the strip (`lens`, "" for no project) and those typed as #tags, and
+// every word typed. A box bound to a deadline stays, for finding its line.
+// What the agent raised is about no course: it goes while a course is
+// picked, and stays for words it holds.
+function narrowed(s) {
+  var q = query(s.query, allTags(s))
+  var lens = (s.lens || []).concat(q.tags)
+  if (lens.length === 0 && q.words.length === 0) return s
+  function keeps(project, text) {
+    if (lens.length > 0 && lens.indexOf(project || "") < 0) return false
+    for (var w = 0; w < q.words.length; w++) if (text.indexOf(q.words[w]) < 0) return false
+    return true
+  }
+  var out = {}
+  for (var k in s) out[k] = s[k]
+  out.deadlines = s.deadlines.filter(function (d) { return keeps(d.project, said(d, s.projects)) })
+  out.tasks = s.tasks.filter(function (t) { return t.anchor > 0 || keeps(t.project, said(t, s.projects)) })
+  out.proposals = (s.proposals || []).filter(function (x) {
+    var t = taskOfKey(s.tasks, x.key)
+    return keeps(x.project || (t ? t.project : ""), said(x, s.projects) + " " + (t ? said(t, s.projects) : ""))
+  })
+  out.raised = lens.length > 0 ? [] : (s.raised || []).filter(function (x) {
+    return keeps("", String(x.text || "").toLowerCase())
+  })
+  return out
+}
+
+// What is open: deadlines not met, and boxes not set aside.
+function openOf(s) {
+  var due = s.deadlines.filter(function (d) { return d.status === "open" })
+  var boxes = s.tasks.filter(function (t) { return !(t.anchor > 0) && !t.away && !t.done })
+  return { due: due, boxes: boxes }
+}
+
+// The strip's chips: a course for each that has something open, in the
+// order of the course bands, with how much it holds of what the words
+// keep — and any course picked though nothing is open in it. With them,
+// how much the list holds now (`shown`) against all that is open
+// (`total`), and the agent's proposals the lens leaves out (`outside`).
+// Each chip says too what it holds by what it asks, and its next
+// deadline, for the strip unfolded.
+function courses(s) {
+  var all = openOf(s)
+  var keys = courseKeys(s, [all.due, all.boxes])
+  for (var l = 0; l < (s.lens || []).length; l++) if (keys.indexOf(s.lens[l]) < 0) keys.push(s.lens[l])
+  var worded = openOf(narrowed({ deadlines: s.deadlines, tasks: s.tasks, projects: s.projects, proposals: [], raised: [],
+                                 query: String(s.query || "").split(/\s+/).filter(function (w) { return w.charAt(0) !== "#" }).join(" ") }))
+  var chips = []
+  for (var c = 0; c < keys.length; c++) {
+    var key = keys[c]
+    var mine = function (x) { return (x.project || "") === key }
+    var due = worded.due.filter(mine), boxes = worded.boxes.filter(mine)
+    var doing = boxes.filter(function (t) { return t.when !== "" || t.due !== "" }).length
+    var next = due.slice().sort(function (a, b) { return a.due - b.due })[0] || null
+    chips.push({ tag: key, label: key === "" ? "none" : key, name: bandName(key, all.boxes.filter(mine), s.projects),
+                 count: due.length + boxes.length, due: due.length, doing: doing, later: boxes.length - doing,
+                 next: next ? { title: next.title, due: next.due } : null })
+  }
+  var now = openOf(narrowed(s))
+  var props = s.proposals || []
+  return { chips: chips, total: all.due.length + all.boxes.length, shown: now.due.length + now.boxes.length,
+           outside: props.length - narrowed(s).proposals.length }
 }
 
 // The agent's proposals and questions, as rows (docs/agent.md): each right

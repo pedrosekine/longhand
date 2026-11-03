@@ -28,6 +28,7 @@ var places = {
   cue: "while a box's date lights up as it is typed",
   search: "in find",
   dash: "in the dashboard",
+  strip: "on the dashboard's course strip",
   calendar: "in the calendar",
   lists: "in the sidebar's lists",
   files: "in the files",
@@ -217,6 +218,22 @@ var actions = [
   { id: "dashTalk", group: "dash", places: ["dash"], does: "Chat about it (the agent's pane opens on it)", keys: ["C", "Ctrl+Enter"] },
   { id: "dashUndo", group: "dash", places: ["dash"], does: "Take the last tick back", keys: ["Ctrl+Z"] },
   { id: "dashBack", group: "dash", places: ["dash"], does: "Back to the note", keys: ["Esc"] },
+  // The course strip above the list (2026-11-03): ↑ from the first row
+  // climbs onto it. Its ⌕ takes what is typed while the strip's cursor is
+  // on it, as a box would; the rest of the strip is keys.
+  { id: "dashSearch", group: "dash", places: ["dash", "strip"], does: "Search the list: the strip's ⌕, typing (words, or a #tag)", keys: ["/"] },
+  { id: "dashStrip", group: "dash", places: ["dash"], does: "The course strip, on the course picked", keys: ["#"] },
+  { id: "dashCourse", group: "dash", places: ["dash", "strip"], does: "Only that course: the strip's first, second… (0: all)",
+    keys: ["1", "2", "3", "4", "5", "6", "7", "8", "9"] },
+  { id: "dashAll", group: "dash", places: ["dash", "strip"], does: "Every course again", keys: ["0"] },
+  { id: "dashOrder", group: "dash", places: ["dash", "strip"], does: "Order: by what it asks, by course, by date", keys: ["O"] },
+  { id: "stripPrev", group: "dash", places: ["strip"], does: "The chip before (its course shown at once, until Space keeps one)", keys: ["Left"] },
+  { id: "stripNext", group: "dash", places: ["strip"], does: "The chip after", keys: ["Right"] },
+  { id: "stripAdd", group: "dash", places: ["strip"], does: "Keep this course, so the next Space adds another (again: take it out)", keys: ["Space"] },
+  { id: "stripUnfold", group: "dash", places: ["strip"], does: "Unfold the strip: every course with what it holds; in it, only this one", keys: ["Enter"] },
+  { id: "stripUp", group: "dash", places: ["strip"], does: "Unfolded: the row above", keys: ["Up"] },
+  { id: "stripDown", group: "dash", places: ["strip"], does: "Down to the list; unfolded: the row below", keys: ["Down"] },
+  { id: "stripClear", group: "dash", places: ["strip"], does: "Clear what is typed, then the courses; then back to the list (unfolded: fold)", keys: ["Esc"] },
 
   { id: "calPrevDay", group: "calendar", places: ["calendar"], does: "Previous day", keys: ["Left"] },
   { id: "calNextDay", group: "calendar", places: ["calendar"], does: "Next day", keys: ["Right"] },

@@ -679,6 +679,22 @@ this list, with *Open, in order* above. Each says why it waits.
 No work unless they bite; each says what would tell. The first four came
 from 2026-09/10 and still stand.
 
+- **The course strip** (built 2026-11-03, `plugin-page/Next.js`
+  `narrowed` and `courses`; the dashboard's keys in `docs/keys.md`):
+  - Is it used, and which way in: `strip` `search` / `chips` / `unfold`
+    and `dash-order` in the usage log?
+  - Showing each course as the cursor lands on it: does the list flash too
+    much on the way to the fifth chip, so that applying on Enter would be
+    better?
+  - Space keeps a course before the next Space can add one (found writing
+    its test: moving shows only the course under the cursor). Understood
+    without the hint line?
+  - Chips name a course by its tag (`respro`): readable, or does a course
+    want a short name in the curriculum?
+  - The courses picked and the order are kept between visits (page.json):
+    welcome, or does a narrowed list surprise the next time?
+  - Words match a course's name too ("seminar" is the whole seminar):
+    useful, or noise?
 - **Chat on a task** (built 2026-10-28, `docs/keys-proposal.md`, slice 1):
   - Is a task's chat opened from the dashboard now (`talk` `task` in the
     usage log; `talk` and a kind for a proposal's)?

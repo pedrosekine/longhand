@@ -121,6 +121,18 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | Chat about it (the agent's pane opens on it) | `c` · `Ctrl+Enter` | in the dashboard |
 | Take the last tick back | `Ctrl+Z` | in the dashboard |
 | Back to the note | `Esc` | in the dashboard |
+| Search the list: the strip's ⌕, typing (words, or a #tag) | `/` | in the dashboard, on the dashboard's course strip |
+| The course strip, on the course picked | `#` | in the dashboard |
+| Only that course: the strip's first, second… (0: all) | `1` · `2` · `3` · `4` · `5` · `6` · `7` · `8` · `9` | in the dashboard, on the dashboard's course strip |
+| Every course again | `0` | in the dashboard, on the dashboard's course strip |
+| Order: by what it asks, by course, by date | `o` | in the dashboard, on the dashboard's course strip |
+| The chip before (its course shown at once, until Space keeps one) | `←` | on the dashboard's course strip |
+| The chip after | `→` | on the dashboard's course strip |
+| Keep this course, so the next Space adds another (again: take it out) | `Space` | on the dashboard's course strip |
+| Unfold the strip: every course with what it holds; in it, only this one | `Enter` | on the dashboard's course strip |
+| Unfolded: the row above | `↑` | on the dashboard's course strip |
+| Down to the list; unfolded: the row below | `↓` | on the dashboard's course strip |
+| Clear what is typed, then the courses; then back to the list (unfolded: fold) | `Esc` | on the dashboard's course strip |
 
 ## Calendar
 
