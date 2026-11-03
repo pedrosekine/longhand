@@ -588,6 +588,29 @@ Small, when passing by:
     look, from six mockups: keycaps for the mouse (with E, a hint that
     fits) and Hold Ctrl for the keyboard (F), both built the same day.
     Left: hints that graduate (G), which wait on use.
+12. **An agent's line says where it came from** (grilled 2026-11-03; the
+    design is `docs/agent.md`, "Where it came from"): an accepted #thesis
+    deadline was written at the end of the day's note, inside the #dtm
+    section, which then counted it; #thesis found nothing; and nothing said
+    why it was there. Faults first, no decision needed — *built
+    2026-11-03*: a deadline's line goes where a step's does, and the
+    fallback is the top of the note, never the end (`Bound.placeAt`, which
+    `insertAt` and `doPendingWrite` now share; `tests/tst_bound.qml`); the
+    place line says "Master Thesis · in Speculative Environments › Watch and
+    read list" rather than naming the thesis over #dtm's headings, and a
+    band never takes its name from such a box (`Say.inOwnCourse`;
+    `tst_say.qml`, `tst_next.qml`); a section no longer counts another
+    course's box, and the sidebar's sections also find a box by its own
+    `#tag` (`tagged_sections(boxes=True)` — the model's project context is
+    unchanged; `tests/test_agent.py`). One test leaned on the fault: a
+    declined do-date was offered again only because writing its line at the
+    end moved it into #intsem and changed its key. Left: the design: the
+    ledger records the chat a proposal was accepted from; every
+    agent line's origin shown in a dim line under it with the cursor or the
+    hand, and on the dashboard row; kept through rewording and, for a
+    deadline, through Obsidian edits by its `^dN`; a task born in another
+    chat starts its own conversation from it (first line, Enter, read as
+    background); the chat's name a link to the agent's pane.
 
 - ~~**Tag suggestions while typing**~~ *done 2026-10-18*: `#` and a letter
   offer the tags that exist — the projects', then those written in the

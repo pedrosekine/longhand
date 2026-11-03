@@ -82,7 +82,58 @@ The daily note is the home of notes.
 - **Accepted, or done at "do it and tell me":** a step goes under its parent
   box, in whatever day's note that box lives in; anything without a parent
   goes into today's note, under the course's heading if today has one, else
-  at the end. Accepting is what writes it, so the act is the person's.
+  at the top — above the first heading, after the loose boxes already there,
+  in the order accepted. Never at the end: the end of a note is inside its
+  last section, so the line is claimed by a course it does not belong to
+  (2026-11-03, below). Accepting is what writes it, so the act is the
+  person's; the words stay the agent's (◇) until the person rewords them
+  (together).
+- **Taken back:** Ctrl+Z in the note removes the line only; a deadline goes
+  back to the dashboard with no line, as before Enter wrote it. Cancelling
+  it is still Del on its row.
+
+### Where it came from (grilled 2026-11-03)
+
+The case: a #thesis deadline proposed in the chat on another task
+(Themenvorschlag draft, #36) was accepted, and Enter wrote its line at the
+end of the day's note — inside `# Speculative Environments #dtm › ## Watch
+and read list`. The #dtm section counted it as one of its open boxes, the
+#thesis view found nothing (a project's sections are found by tagged
+headings), the dashboard said "Master Thesis › Watch and read list" (a
+section that does not exist), and nothing said why the line was there. The
+placement rule above fixes where; this is the rest.
+
+- **Every line the agent writes says where it came from** — a deadline from
+  a chat, a step from a plan, what was done at "do it and tell me" — each
+  with its own source: "from the chat on Themenvorschlag draft · 19 Oct ·
+  accepted today 20:35", "from the plan of 3 Nov", "done by the agent,
+  3 Nov". One rule, so a ◇ always explains itself.
+- **In the layer, never in the file.** Kept beside authorship: the ledger
+  records the chat (its day and block) a proposal was accepted from, at the
+  moment it is accepted. Obsidian sees the line and nothing else.
+- **Shown when looked for.** In the note, a dim line under the box while the
+  cursor is on it or the hand is over it; otherwise the box with its ◇ and
+  nothing more. Accepting lands the cursor on the line, so it is seen once
+  as the line arrives. On the dashboard, the row's second line says it:
+  "Master Thesis · from the agent, in the chat on Themenvorschlag draft".
+- **It outlives rewording.** A reworded line is together (the seal), and
+  its origin stays, with "· reworded by you".
+- **And outside edits, for a deadline.** Like authorship, it is kept by the
+  line's words, so an edit in Obsidian drops it — except a deadline's line,
+  whose `^dN` ties it to the deadline whatever its words become.
+- **The way back to the chat that made it.** A task gets its own
+  conversation (`c` on the row, Ctrl+Enter on the line); a task born in
+  another chat starts it with "born in the chat on Themenvorschlag draft" as
+  its first line, Enter opening that chat, and the agent reads the earlier
+  conversation as background on the first message, so nothing is said
+  twice. Two tasks never share one conversation. With the hand: the chat's
+  name in the dim line is a link, underlined under the hand, opening the
+  chat in the agent's pane beside the note; the hints then name the keys
+  once, as after any click.
+
+Fixed with it: the dashboard's place line no longer puts the course's name
+over a box's first heading when they differ, and a project's sections also
+find a box by its own `#tag`, not only by the heading above it.
 
 ## When it acts
 

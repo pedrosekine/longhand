@@ -59,6 +59,17 @@ TestCase {
     compare(Say.taskWhere({ path: [], project: "bikes", age: 0, details: 1 }, undefined, projects), "#bikes   ·   written today   ·   1 line of detail")
     compare(Say.taskWhere({ age: 3, details: 2, warn: true, left: 2 }, undefined, projects),
             "written 3 days ago   ·   2 lines of detail   ·   goes quiet in 2 days")
+    // Written inside another course's section (2026-11-03): the course,
+    // then the headings it is really under — never its name over theirs.
+    var stray = { path: ["Speculative Environments", "Watch and read list"], project: "intsem", claimed: "dtm", age: 0 }
+    compare(Say.taskWhere(stray, undefined, projects),
+            "Interdisciplinary Seminar   ·   in Speculative Environments › Watch and read list   ·   written today")
+    compare(Say.taskWhere(stray, "Interdisciplinary Seminar", projects), "Speculative Environments › Watch and read list   ·   written today")
+    compare(Say.taskWhere({ path: ["Speculative Environments"], project: "bikes", claimed: "dtm", age: 0 }, "bikes", projects),
+            "Speculative Environments   ·   written today")      // a band named by the tag alone
+    // Claimed by its own course, whatever the case of the tag: as before.
+    compare(Say.taskWhere({ path: ["IntSem", "Essay 2"], project: "intsem", claimed: "INTSEM", age: 0 }, undefined, projects),
+            "Interdisciplinary Seminar › Essay 2   ·   written today")
   }
 
   function test_months_and_order() {
@@ -106,6 +117,10 @@ TestCase {
     compare(Say.deadlineWhere(d, null, projects, { origin: "you" }, { moves: 2, firstDue: at }, now),
             "Interdisciplinary Seminar   ·   moved twice, first due " + Qt.formatDate(now, "d MMM"))
     compare(Say.deadlineWhere(d, null, projects, null, { moves: 3 }, now), "Interdisciplinary Seminar   ·   moved 3 times")
+    // Its line inside another course's section: the course, then where.
+    var stray = { path: ["Speculative Environments", "Watch and read list"], claimed: "dtm", details: 0 }
+    compare(Say.deadlineWhere(d, stray, projects, { origin: "agent" }, null, now),
+            "Interdisciplinary Seminar   ·   in Speculative Environments › Watch and read list   ·   from the agent")
   }
 
   function test_what_a_section_says_under_it() {

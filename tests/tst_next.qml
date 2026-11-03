@@ -38,6 +38,16 @@ TestCase {
     return s
   }
 
+  // A band for a tag the curriculum does not name takes its heading from a
+  // box under its own course — never from one written inside another's.
+  function test_a_band_named_by_its_own_heading() {
+    var stray = task("confirm the scope", { kind: "bullet", project: "thesis", claimed: "dtm", path: ["Speculative Environments"] })
+    var own = task("read Martin's thesis", { kind: "bullet", project: "thesis", claimed: "thesis", path: ["Master Thesis"] })
+    function heads(ts) { return Next.rows(state({ tasks: ts })).filter(function (r) { return r.kind === "head" }).map(function (r) { return r.text }) }
+    compare(heads([stray, own]), ["Master Thesis"])
+    compare(heads([stray]), ["thesis"])
+  }
+
   function test_nothing_is_nothing() {
     compare(Next.rows(state({})), [])
   }

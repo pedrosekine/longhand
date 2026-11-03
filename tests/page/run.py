@@ -1946,8 +1946,16 @@ def main() -> int:
                      and "agent: stub answer to: help me think it through" in p.call("noteTurns")),
               f"the note's margin on the box shows the same one conversation ({p.call('noteTurns')}; chat {p.call('chat')}; line {p.call('cursorLine')})")
         p.call("dash")
+        # A box never proposed about. The first candidate by date is the
+        # deadline whose do-date was declined; until 2026-11-03 its line was
+        # written at the note's end, inside #intsem's section, which changed
+        # its key and let the planner offer the declined proposal again.
+        (p.stub / "plan-reply.json").write_text(json.dumps({"proposals": [
+            {"kind": "do-date", "key_of": "read the paper", "date": (dt.date.today() + dt.timedelta(days=1)).isoformat(),
+             "why": "Tomorrow is free."}], "questions": [], "knowledge": []}))
         p.call("plan", "true")
         check(p.wait(lambda: any(r["kind"] == "proposal" and r["id"] not in settled for _, r in asks()), timeout=15), "another proposal")
+        (p.stub / "plan-reply.json").unlink()
         p.call("dashFocus", next(n for n, r in asks() if r["kind"] == "proposal" and r["id"] not in settled))
         p.call("dashKey", KEY_RETURN, 0)
         other = json.loads(p.call("talk"))["id"]

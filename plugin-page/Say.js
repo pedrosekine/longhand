@@ -33,6 +33,15 @@ function courseLabel(tag, projects) {
   return name === tag ? "#" + tag : name
 }
 
+// Whether the headings above a box are its own course's. By the convention
+// in use (`# Course #tag`) they are — unless the heading that claims the
+// box carries another course's tag: a #thesis box written inside #dtm's
+// section sits under #dtm's headings, and putting the thesis's name over
+// them names a section that does not exist (2026-11-03).
+function inOwnCourse(t, project) {
+  return !t.claimed || String(t.claimed).toLowerCase() === String(project || "").toLowerCase()
+}
+
 // Where it came from, under the words: the course in full, then the
 // section it was written in, then how long ago. The line that makes
 // "draft the intro" mean something again three days later. The dates are
@@ -40,9 +49,13 @@ function courseLabel(tag, projects) {
 function taskWhere(t, under, projects) {
   var path = (t.path || []).slice()
   var full = t.project ? courseName(t.project, projects) : ""
+  // Written inside another course's section: the course, then where.
+  var course = t.project && !inOwnCourse(t, t.project) ? courseLabel(t.project, projects) : ""
+  if (course !== "") {
+    if (under !== undefined && (course === under || full === under)) course = ""
   // The first heading is the course itself by the convention in use, so
   // its full name belongs there when the list knows it.
-  if (full !== "" && full !== t.project) {
+  } else if (full !== "" && full !== t.project) {
     if (path.length > 0) path[0] = full
     else path = [full]
   } else if (path.length === 0 && t.project) {
@@ -51,7 +64,8 @@ function taskWhere(t, under, projects) {
   // Under a band that already names the course, the course is noise.
   if (under !== undefined && under !== "" && path.length > 0 && path[0] === under) path.shift()
   var bits = []
-  if (path.length > 0) bits.push(path.join(" › "))
+  if (course !== "") bits.push(course)
+  if (path.length > 0) bits.push((course !== "" ? "in " : "") + path.join(" › "))
   bits.push(sayAge(t.age))
   if (t.details > 0) bits.push(t.details === 1 ? "1 line of detail" : t.details + " lines of detail")
   var life = sayLife(t)
@@ -133,9 +147,15 @@ function deadlineWhere(d, t, projects, origin, moves, now) {
   var bits = []
   var place = t ? (t.path || []).slice() : []
   var full = d.project ? courseName(d.project, projects) : ""
-  if (full !== "" && full !== d.project && place.length > 0) place[0] = full
-  if (place.length > 0) bits.push(place.join(" › "))
-  else if (d.project) bits.push(courseLabel(d.project, projects))
+  if (t && d.project && !inOwnCourse(t, d.project)) {
+    // Its line is inside another course's section: the course, then where.
+    bits.push(courseLabel(d.project, projects))
+    if (place.length > 0) bits.push("in " + place.join(" › "))
+  } else {
+    if (full !== "" && full !== d.project && place.length > 0) place[0] = full
+    if (place.length > 0) bits.push(place.join(" › "))
+    else if (d.project) bits.push(courseLabel(d.project, projects))
+  }
   if (d.status === "cancelled") bits.push("cancelled")
   var aside = asideIn(d, now)
   if (aside > 0) bits.push(aside === 1 ? "steps aside tomorrow" : "steps aside in " + aside + " days")

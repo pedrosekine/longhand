@@ -1295,7 +1295,7 @@ def cmd_accept(cfg: dict, args) -> int:
 HEADING = re.compile(r"^(#{1,6})\s+(\S.*?)\s*$")
 
 
-def tagged_sections(cfg: dict, tag: str, days: int) -> list[dict]:
+def tagged_sections(cfg: dict, tag: str, days: int, boxes: bool = False) -> list[dict]:
     """Every section of one project's tag across the daily notes, newest day
     first — class notes found by their course instead of by the date they
     happened on.
@@ -1304,7 +1304,15 @@ def tagged_sections(cfg: dict, tag: str, days: int) -> list[dict]:
     class with the notes under it, so the rule is: a tagged heading claims
     everything under it until the next heading of the same or a higher level.
     An H2 never ends an H1. A tagged heading inside a section of the same tag
-    is part of it, not a second copy of it."""
+    is part of it, not a second copy of it.
+
+    A box is its own tag's before its heading's (docs/tasks.md), so a
+    section's counts leave out a box tagged for another course. With
+    `boxes`, the days whose boxes carry the tag outside any of its sections
+    come too, one entry a day (`boxes` its lines, no heading) — a #thesis
+    deadline written inside #dtm's section was the thesis's, and its view
+    showed nothing (2026-11-03). Only the sidebar asks for them: what reaches
+    the model (project_context) stays the tag's own sections."""
     fmt = moment_to_strftime(cfg["daily"].get("format", "YYYY-MM-DD"))
     daily = Path(cfg["vault"]) / cfg["daily"]["dir"]
     today = dt.date.today()
@@ -1342,7 +1350,7 @@ def tagged_sections(cfg: dict, tag: str, days: int) -> list[dict]:
             opens, done, words = 0, 0, 0
             for line in body:
                 box = tasklib.parse(line)
-                if box:
+                if box and (box["project"] or want).lower() == want:
                     done += box["done"]
                     opens += box["state"] == " "
                 if not HEADING.match(line):
@@ -1357,6 +1365,15 @@ def tagged_sections(cfg: dict, tag: str, days: int) -> list[dict]:
                         "title": title, "heading": text, "age": age, "words": words,
                         "open": opens, "done": done, "sub": inside, "preview": preview,
                         "text": "\n".join(body)})
+        if boxes:
+            stray = [t for t in tasklib.scan("\n".join(lines))
+                     if t["project"].lower() == want and t["claimed"].lower() != want]
+            if stray:
+                out.append({"date": f.stem, "file": str(f), "line": stray[0]["line"], "level": 0, "tag": want,
+                            "title": stray[0]["title"] or stray[0]["text"], "heading": "", "age": age, "words": 0,
+                            "open": sum(t["state"] == " " for t in stray), "done": sum(t["done"] for t in stray),
+                            "sub": [], "preview": [t["title"] or t["text"] for t in stray][:2],
+                            "boxes": [{"line": t["line"], "text": t["text"]} for t in stray], "text": ""})
     out.sort(key=lambda r: (r["age"], r["line"]))
     return out
 
@@ -1425,7 +1442,7 @@ def project_context(cfg: dict, paths: Paths, tag: str, full: int = 3) -> list[st
 
 
 def cmd_sections(cfg: dict, args) -> int:
-    print(json.dumps(tagged_sections(cfg, args.tag, int(args.days)), ensure_ascii=False))
+    print(json.dumps(tagged_sections(cfg, args.tag, int(args.days), boxes=True), ensure_ascii=False))
     return 0
 
 

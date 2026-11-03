@@ -114,11 +114,14 @@ function rows(s) {
     // The course's own name, not its tag: a band that reads
     // "Interdisciplinary Seminar" says more than #intsem. The sidebar
     // knows the names from the curriculum; for a tag it does not know,
-    // the heading the notes themselves use is the next best name.
+    // the heading the notes themselves use is the next best name — from a
+    // box under its own course's headings, never one written inside
+    // another course's section.
     var gk = groups[g].key
     var named = gk === "" ? "No project" : Say.courseName(gk, s.projects)
     if (gk !== "" && named === gk) {
       for (var h = 0; h < groups[g].items.length; h++) {
+        if (!Say.inOwnCourse(groups[g].items[h], gk)) continue
         var path0 = (groups[g].items[h].path || [])[0]
         if (path0) { named = path0; break }
       }

@@ -509,6 +509,25 @@ def main() -> int:
         check(json.loads(t.agent("sections", "--tag", "nothing").stdout) == [], "a tag nobody wrote: nothing")
         check(len(json.loads(t.agent("sections", "--tag", "intsem", "--days", "7").stdout)) == 1,
               "--days leaves the old day out")
+        # A box is its own tag's before its heading's (2026-11-03): written
+        # inside another course's section, it is not counted there, and its
+        # own tag's list finds it — the sidebar's list, not the model's.
+        (t.daily / f"{DAY}.md").write_text(
+            "- [ ] loose, untagged\n"
+            "# Speculative Environments #dtm\n"
+            "## Watch and read list\n"
+            "- [ ] Our Friends Electric\n"
+            "- [ ] Confirm thesis scope #thesis 📅 2026-11-05 ^d49\n")
+        dtm = json.loads(t.agent("sections", "--tag", "dtm").stdout)
+        check(dtm[0]["open"] == 1, f"another course's box is not counted in the section ({dtm[0]['open']})")
+        th = json.loads(t.agent("sections", "--tag", "thesis").stdout)
+        check(len(th) == 1 and th[0]["heading"] == "" and th[0]["level"] == 0, f"the day comes with no heading ({th})")
+        check(th[0]["open"] == 1 and th[0]["line"] == 4 and th[0]["preview"] == ["Confirm thesis scope"],
+              f"its box, counted and named ({th[0]})")
+        check(th[0]["boxes"] == [{"line": 4, "text": "Confirm thesis scope #thesis 📅 2026-11-05 ^d49"}],
+              f"the box's words, to land on ({th[0]['boxes']})")
+        check(json.loads(t.agent("sections", "--tag", "intsem").stdout)[-1]["date"] == OLD_DAY,
+              "a tag with no box of its own today: its sections only")
 
         # 16. a sent block carries its project's earlier notes — and only
         # those. What is kept out of today's note is kept out of these.

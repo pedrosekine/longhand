@@ -3551,6 +3551,9 @@ Item {
   // the next section is one key away.
   function openSection(s) {
     if (!s) return
+    // Boxes of the tag written outside its sections have no heading to
+    // land on: the first of them, found by its words.
+    if (s.boxes && s.boxes.length > 0) { root.goToTask({ text: s.boxes[0].text, line: s.boxes[0].line, date: s.date }); return }
     root.pendingSection = s
     if (s.date === svc.noteDate && svc.ready) root.landOnSection()
     else root.openNote(s.date)
@@ -3908,25 +3911,20 @@ Item {
   }
 
   // Where a new box goes in today's note: at the end of its course's
-  // section when today has one, else at the end of the note.
+  // section when today has one, else at the top (Bound.placeAt).
   function insertAt(lines, tag) {
-    var end = lines.length
-    if (tag) {
-      var re = new RegExp("^(#{1,6}) .*#" + tag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(\\b|$)")
-      for (var i = 0; i < lines.length; i++) {
-        var m = re.exec(lines[i])
-        if (!m) continue
-        var level = m[1].length
-        end = lines.length
-        for (var j = i + 1; j < lines.length; j++) {
-          var h = /^(#{1,6}) /.exec(lines[j])
-          if (h && h[1].length <= level) { end = j; break }
-        }
-        break
-      }
-    }
-    while (end > 0 && lines[end - 1].trim() === "") end--
-    return end
+    return Bound.placeAt(lines, tag)
+  }
+
+  // A line written into the open note where it goes, as one undo step.
+  function placeLine(line, tag) {
+    var lines = editor.text.split("\n")
+    var at = root.insertAt(lines, tag)
+    var pos = lines.slice(0, at).join("\n").length
+    editor.snapshot(true)
+    root.quiet = true
+    editor.insert(pos, (at > 0 ? "\n" : "") + line + (at === 0 && editor.text !== "" ? "\n" : ""))
+    root.quiet = false
   }
 
   // Today's note open but being read again (a check just rewrote it): wait
@@ -3950,13 +3948,7 @@ Item {
       return
     }
     if (svc.isToday && svc.ready) {
-      var lines = editor.text.split("\n")
-      var at = root.insertAt(lines, tag)
-      var pos = lines.slice(0, at).join("\n").length
-      editor.snapshot(true)
-      root.quiet = true
-      editor.insert(pos, (at > 0 ? "\n" : "") + line + (at === 0 && lines.length > 0 && editor.text !== "" ? "\n" : ""))
-      root.quiet = false
+      root.placeLine(line, tag)
       Qt.callLater(root.flush)
       Qt.callLater(root.refreshTasks)
       root.scheduleCheck()
@@ -4418,7 +4410,8 @@ Item {
     if (r) root.writeLine(r, Bound.ticked(r.raw, done, Qt.formatDate(new Date(), "yyyy-MM-dd")))
   }
 
-  // A deadline no line stands for gets one, at the end of today's note.
+  // A deadline no line stands for gets one in today's note, where a step's
+  // would go (Bound.placeAt).
   property var pendingWrite: null
   function writeIntoToday(d) {
     root.pendingWrite = d
@@ -4431,12 +4424,9 @@ Item {
     var d = root.pendingWrite
     if (!d || !svc.isToday || !svc.ready) return
     root.pendingWrite = null
-    var line = Bound.lineFor(d)
-    var t = editor.text
-    editor.snapshot(true)
-    root.quiet = true
-    editor.insert(t.length, (t === "" || t.charAt(t.length - 1) === "\n" ? "" : "\n") + line)
-    root.quiet = false
+    // Where a step's line goes, not at the end: the end of a note is inside
+    // its last section, which then claims the line (2026-11-03).
+    root.placeLine(Bound.lineFor(d), d.project)
     root.bound = Bound.anchors(editor.text)
     Qt.callLater(root.flush)
     dl.set(d.id, ["--link", Bound.link(svc.noteDate, d.id)])

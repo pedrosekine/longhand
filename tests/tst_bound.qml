@@ -158,4 +158,23 @@ TestCase {
     // The store has no such deadline: the date stays, the number goes.
     compare(Bound.caughtUp(r, undefined), "- [ ] essay draft #intsem 📅 2026-10-16 17:00")
   }
+
+  // Where a line the page writes goes (2026-11-03): its course's section,
+  // else the top — never the end, inside the last section.
+  function test_where_a_written_line_goes() {
+    var day = ["[[agents/longhand/daily/2026-11-03|agent]]", "", "- [x] the cup club ^d48",
+               "# Own your Strength #coach", "a question", "",
+               "# Speculative Environments #dtm", "## Watch and read list", "- [ ] Our Friends Electric", ""]
+    compare(Bound.placeAt(day, "thesis"), 3)          // no #thesis section: after the loose box, above the first heading
+    compare(Bound.placeAt(day, "coach"), 5)           // the end of its section, before the blank line
+    compare(Bound.placeAt(day, "dtm"), 9)             // an H2 does not end the H1
+    compare(Bound.placeAt(day, "DTM"), 9)             // a tag is a tag whatever its case
+    compare(Bound.placeAt(day, ""), 3)
+    compare(Bound.placeAt(["# Notes #dtm-old", "x"], "dtm"), 0)   // another tag that starts the same is not it
+    compare(Bound.placeAt(["# Only a heading", "words"], "thesis"), 0)
+    compare(Bound.placeAt(["just words", "more", ""], "thesis"), 2)  // no heading: loose throughout, so the end
+    compare(Bound.placeAt([""], "thesis"), 0)
+    compare(Bound.placeAt(["---", "agent: false", "---", "# Day #dtm"], "thesis"), 3)  // after the frontmatter
+    compare(Bound.placeAt(["- [ ] loose", "```", "# not a heading", "```", "# Real #dtm"], "thesis"), 4)
+  }
 }

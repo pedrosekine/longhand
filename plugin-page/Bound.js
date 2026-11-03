@@ -156,11 +156,47 @@ function parseLink(s) {
 // split's third pass). The note comes in as its rows and the store as its
 // items; the page does the writing.
 
-// A deadline's line, for one no line stands for yet: written at the end of
-// today's note.
+// A deadline's line, for one no line stands for yet: written into today's
+// note where placeAt says.
 function lineFor(d) {
   var tag = /^[\w\/-]+$/.test(d.project) ? " #" + d.project : ""
   return "- [" + (d.status === "open" ? " " : "x") + "] " + d.title + tag + tail(d.due * 1000, d.id)
+}
+
+// Where a line the page writes into a note goes (docs/agent.md, "Where the
+// agent's boxes go"): the index of the line to write it before. At the end
+// of the section its tag heads; else at the top, after the loose lines
+// above the first heading. Never at the end of a note that has headings:
+// the end is inside the last section, which then claims the line — a
+// #thesis deadline written there was counted as #dtm's (2026-11-03). A note
+// with no heading is loose throughout, so there it is the end. Blank lines
+// it would come after are stepped back over; the frontmatter and fences
+// are not headings.
+function placeAt(lines, tag) {
+  var heads = []
+  var start = 0
+  var front = lines.length > 0 && lines[0].replace(/\s+$/, "") === "---"
+  var fence = false
+  for (var i = front ? 1 : 0; i < lines.length; i++) {
+    var l = lines[i]
+    if (front) { if (l.replace(/\s+$/, "") === "---") { front = false; start = i + 1 } continue }
+    if (/^\s*(```|~~~)/.test(l)) { fence = !fence; continue }
+    if (fence) continue
+    var h = /^(#{1,6}) +(.*)$/.exec(l)
+    if (h) heads.push({ at: i, level: h[1].length, text: h[2] })
+  }
+  var want = String(tag || "").toLowerCase()
+  var end = -1
+  for (var k = 0; want !== "" && k < heads.length && end < 0; k++) {
+    var re = /(^|\s)#([\w\/-]+)/g, m
+    while ((m = re.exec(heads[k].text)) !== null) if (m[2].toLowerCase() === want) break
+    if (!m) continue
+    end = lines.length
+    for (var j = k + 1; j < heads.length; j++) if (heads[j].level <= heads[k].level) { end = heads[j].at; break }
+  }
+  if (end < 0) end = heads.length > 0 ? heads[0].at : lines.length
+  while (end > start && lines[end - 1].trim() === "") end--
+  return end
 }
 
 // A bound line ticked, with the day it was done, or unticked, without it —
