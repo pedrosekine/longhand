@@ -60,6 +60,12 @@ def main() -> int:
     for phrase in ("19th of Feb", "the 8th of Feb", "1st march", "1 march"):
         r = pomo("when", *phrase.split())
         check(r.returncode == 0 and r.stdout.strip().endswith("23:59"), f"when {phrase!r} reads as a day ({r.stdout.strip() or r.stderr.strip()})")
+    # "at" before the time, as the agent's cards write it (2026-11-03).
+    for phrase, want in (("6 Nov 2026 at 23:59", "2026-11-06 23:59"), ("4 Feb 2027 at 10:30", "2027-02-04 10:30"),
+                         ("friday at 5pm", "17:00")):
+        r = pomo("when", *phrase.split())
+        got = dt.datetime.fromtimestamp(int(r.stdout.split("\t")[0])).strftime("%Y-%m-%d %H:%M") if r.returncode == 0 else ""
+        check(got.endswith(want), f"when {phrase!r} is {want} ({got or r.stderr.strip()})")
     r = pomo("when", "22nd")
     check(r.returncode != 0, "a bare ordinal is refused, not read as 22:00")
     r = pomo("when", "3d")
