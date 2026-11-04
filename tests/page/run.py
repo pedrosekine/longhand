@@ -867,6 +867,20 @@ def main() -> int:
         check(json.loads(p.call("panel"))["project"] is False and p.call("keyPage", 0x5c, CTRL) == "true",
               "Ctrl+\\ is taken too")
         check(p.wait(lambda: "**chapter**" in p.call("text")), "…and does not touch the words")
+        # Words selected inside one line are the field's own selection, not
+        # the editor's: they are what is wrapped, never the word after them
+        # (2026-11-04), and a space at the edge stays outside the markers.
+        (p.daily / f"{TODAY}.md").write_text(header(TODAY) + "Many biases are available\n")
+        p.open_fresh()
+        at = p.offset_of_line(p.line_of("Many biases"))
+        p.call("selectInLine", at + 5, at + 16)
+        p.call("keyPage", KEY_B, CTRL)
+        check(p.wait(lambda: "Many **biases are** available" in p.call("text")),
+              f"Ctrl+B bolds the words selected in a line, its space left out ({p.call('text')!r})")
+        p.call("selectInLine", at, at + 5)
+        p.call("keyPage", 0x49, CTRL)
+        check(p.wait(lambda: "*Many* **biases are** available" in p.call("text")),
+              f"…and Ctrl+I makes them italic the same way ({p.call('text')!r})")
 
         # 11e'. Ctrl+K makes a link (2026-10-28): words selected become its
         # text and the cursor waits between the parentheses for the address;
@@ -884,6 +898,13 @@ def main() -> int:
         p.call("keyPage", KEY_K, CTRL)
         check(p.wait(lambda: p.call("text")[end:end + 4] == "[]()") and int(p.call("cursorAt")) == end + 1,
               f"…with nothing selected, an empty one and the cursor between the brackets ({p.call('text')[-12:]!r}, {p.call('cursorAt')})")
+        p.call("closeAll")                 # closing saves the link just made: write after it
+        (p.daily / f"{TODAY}.md").write_text(header(TODAY) + "see the reading list\n")
+        p.open_fresh()
+        p.call("selectInLine", at + 8, at + 20)
+        p.call("keyPage", KEY_K, CTRL)
+        check(p.wait(lambda: "see the [reading list]()" in p.call("text")) and int(p.call("cursorAt")) == at + 23,
+              f"…and words selected inside one line are its text too ({p.call('text')!r}, {p.call('cursorAt')})")
 
         # 11f. emphasis, drawn: the markers go to nothing and the words
         # carry the weight, while the field underneath still holds the line

@@ -296,8 +296,14 @@ Item {
     var t = ed.text
     var n = marker.length
     var a, b
-    if (ed.spanning) { a = ed.selStart; b = ed.selEnd }
-    else {
+    var sel = ed.selected()
+    if (sel) {
+      // Spaces at a selection's edges stay outside the markers: `**word **`
+      // is no emphasis (Emph.js), and a drag easily takes the space.
+      a = sel.a; b = sel.b
+      while (a < b && /\s/.test(t.charAt(a))) a++
+      while (b > a && /\s/.test(t.charAt(b - 1))) b--
+    } else {
       // The word under the cursor; `\s` stops at the line's edges too.
       a = b = ed.cursorPosition
       while (a > 0 && !/\s/.test(t.charAt(a - 1))) a--
@@ -329,8 +335,9 @@ Item {
   // with none, `[]()` and the cursor between the brackets for the words.
   function makeLink() {
     if (ed.readOnly) return
-    if (ed.spanning) {
-      var a = ed.selStart, b = ed.selEnd
+    var sel = ed.selected()
+    if (sel) {
+      var a = sel.a, b = sel.b
       ed.insert(b, "]()")              // the far end first: the near offset holds
       ed.insert(a, "[")
       ed.clearSelection()
@@ -960,6 +967,15 @@ Item {
     var r = ed.rows[item.index]
     var f = item.field
     return { a: r.start + r.prefixLen + f.selectionStart, b: r.start + r.prefixLen + f.selectionEnd }
+  }
+
+  // What is selected, as text offsets ({ a, b }), however it was made: a
+  // selection across lines is the editor's, one inside a line is its
+  // field's own. null when nothing is.
+  function selected() {
+    if (ed.spanning) return { a: ed.selStart, b: ed.selEnd }
+    var item = ed.rowItem(ed.focusedRow)
+    return item && item.field.selectedText !== "" ? ed.selectionRange(item) : null
   }
 
   function returnKey(item, soft) {

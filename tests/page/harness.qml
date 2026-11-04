@@ -248,6 +248,8 @@ ShellRoot {
     function palette(): string { var p = page.palette; return "keys=" + Object.keys(p.keys).length + " accent=" + p.accent + " dim=" + p.dim + " faint=" + p.faint + " h=" + p.headings.join(",") + " eh=" + page.editorItem.headingColors + " bullet=" + page.editorItem.bulletColor + " fg=" + page.foreground + " bg=" + page.background }
     function search(q: string): void { page.openSearch(); page.searchInput.text = q }
     function selectSpan(a: int, b: int): void { page.editorItem.selectSpan(a, b) }
+    // Inside one line, the way a drag selects: the field's own selection.
+    function selectInLine(a: int, b: int): void { page.editorItem.select(a, b) }
     function projects(): string { return JSON.stringify(page.projects.map(function (p) { return p.tag + "|" + page.sessionLabel(p.next) })) }
     function startClass(i: int): void { page.startClass(page.projects[i]) }
     function openProject(i: int): void { page.openProject(page.projects[i]) }
