@@ -645,8 +645,18 @@ Small, when passing by:
     block's own count in `--list`). The note is saved before the runner
     reads it; the PDF opens in the PDF pane, which now takes a path
     outside the vault. Live checks 12y in `tests/page/run.py`. **(3)** from a
-    deadline's row on the dashboard: its section picked, the file named
-    after it; never closing the deadline, which stays the person's step.
+    deadline's row on the dashboard — *built 2026-11-04*: `Ctrl+Shift+E`
+    on a deadline, or a box with a date. A deadline's line is rarely in
+    the section that does its work (Diary 2's box sits at the top of the
+    3 Nov note), so the section is found: its course's headed sections
+    written by its day, those whose heading shares the most words with
+    its name first, then the newest (`export.candidates`; `export --for
+    NAME --tag T --due D --pick N`). The sheet says which day it took and
+    of how many, ← → for another, and warns when that day was made into a
+    PDF before — Diary 2 found Diary 1's section the day it was built, as
+    Diary 2 was not written yet. Named after the deadline; never closing
+    it, which stays the person's step; Esc back to the dashboard. Live
+    checks in 12y.
     Waiting inside it: remembering per project what was left out (the
     diary repeats ten times), once the sheet is in use.
 14. **A `/` menu in the note** (2026-11-04, asked with item 13): `/` at a
@@ -723,6 +733,10 @@ this list, with *Open, in order* above. Each says why it waits.
 No work unless they bite; each says what would tell. The first four came
 from 2026-09/10 and still stand.
 
+- **Export from a deadline** (built 2026-11-04, item 13's third slice):
+  - Does it find the right section (`export` `deadline`), or is ← → needed?
+  - Is the "already made into a PDF" warning enough to stop last week's
+    diary going in under this week's name?
 - **Export, the sheet** (built 2026-11-04, item 13's second slice):
   - Is it opened with the cursor in the section (`export` `section`) or
     with a selection (`export` `selection`)?
@@ -811,11 +825,14 @@ from 2026-09/10 and still stand.
   used (`cue` `tab` against `bound` in the usage log), and does anything
   get written after it? The number comes a moment later from the store;
   a note left in that moment keeps its date as a plain `📅`, unbound.
-- **Two flaky checks:**
+- **Three flaky checks:**
   - `test_day.py` "…only what is new in the other conversations" fails
     between midnight and 09:05: a fixture turn is stamped 09:05 today.
   - The live check "…the block goes with the message" waits 12 s for the
     day's answer, and failed 3 times in about 12 runs.
+  - The live check "four kinds arrive as rows" missed the priority
+    proposal applied on its own ("told") once in four runs on 2026-11-04;
+    the next line then stops the suite (StopIteration on `acts()`).
 
 - ~~Whether **"ask"** is the right word for sending a block.~~ Answered
   2026-10-27: "chat", one word in every state (`docs/keys-proposal.md`).

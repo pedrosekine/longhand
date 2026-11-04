@@ -3070,6 +3070,33 @@ def main() -> int:
         p.call("exportKey", KEY_ESC, 0)
         check(not ex()["open"] and ex()["here"] == "center" and p.call("text") == before, "Esc closes it, back to the note")
 
+        # …and from a deadline's row on the dashboard (slice 3): its section
+        # found by its name among its course's, the PDF named after it, the
+        # box left open; Esc goes back to the dashboard.
+        due = (dt.date.today() + dt.timedelta(days=5)).isoformat()
+        (p.daily / f"{TODAY}.md").write_text(header(TODAY) + "# Diary #studio\nWe met twice.\n\n"
+                                             f"- [ ] Diary 2 #studio 📅 {due}\n\n# Other\nNot this.\n")
+        p.wait(lambda: "Diary 2" in p.call("text"))
+        p.call("pageKey", KEY_2, CTRL)
+
+        def diary_row():
+            return next((n for n, r in enumerate(json.loads(p.call("dashRows")))
+                         if r.get("kind") == "task" and r.get("text") == "Diary 2"), -1)
+        check(p.wait(lambda: panes()["center"] == "dash" and diary_row() >= 0, 10), "the deadline's row on the dashboard")
+        p.call("dashFocus", diary_row())
+        p.call("dashKey", KEY_E, CTRL | SHIFT)
+        check(p.wait(lambda: ex()["open"] and not ex()["busy"] and ex()["from"], 15)
+              and ex()["title"] == "Diary 2" and ex()["from"]["heading"] == "Diary" and panes()["center"] == "note",
+              f"Ctrl+Shift+E on it: its section, titled after it ({ex()['title']!r}, {ex()['from']})")
+        check([r["text"] for r in ex()["rows"]] == ["We met twice.", f"- [ ] Diary 2 #studio 📅 {due}"]
+              and [r["in"] for r in ex()["rows"]] == [True, False],
+              "…the section's blocks, the deadline's own box out")
+        p.call("exportKey", KEY_ESC, 0)
+        check(p.wait(lambda: not ex()["open"] and panes()["center"] == "dash"), f"Esc: back to the dashboard ({panes()})")
+        check("- [ ] Diary 2" in p.note(), "…and the deadline is still open")
+        p.call("dashKey", KEY_ESC, 0)
+        p.wait(lambda: panes()["center"] == "note")
+
         # 13. the usage log: written on close, event names only
         p.call("closeAll")
         usage = p.state / "longhand" / "usage.tsv"

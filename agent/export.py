@@ -277,5 +277,38 @@ def render(body: str, meta: dict, look: str, colors: dict, face: str, out: Path,
         part.replace(out)
 
 
+NAME_WORD = re.compile(r"[^\W\d_]{3,}")
+
+
+def name_words(text: str) -> set[str]:
+    """What a name is about: its words of three letters or more, without
+    tags, numbers or dates ("Reflective Research Diary 2" and "Reflective
+    Research Diary - 2026.11.02 #studio" share three)."""
+    return {w.lower() for w in NAME_WORD.findall(TAG.sub(" ", text))}
+
+
+def candidates(sections: list[dict], title: str, due: dt.date | None, fmt: str) -> list[dict]:
+    """The sections a deadline's work may be in: its course's headed
+    sections written by its day, those whose heading shares the most words
+    with its name first, then the newest. None share a word: all of them,
+    newest first — the sheet says which it took, and ← → step to another."""
+    want = name_words(title)
+    out = []
+    for sec in sections:
+        if not sec.get("level"):
+            continue                                   # a day's stray boxes, no heading
+        try:
+            day = dt.datetime.strptime(sec["date"], fmt).date()
+        except ValueError:
+            continue
+        if due and day > due:
+            continue
+        out.append(dict(sec, day=day, score=len(want & name_words(sec.get("heading", "")))))
+    if any(c["score"] for c in out):
+        out = [c for c in out if c["score"]]
+    out.sort(key=lambda c: (-c["score"], -c["day"].toordinal(), c["line"]))
+    return out
+
+
 def day_words(date: dt.date) -> str:
     return f"{date.day} {date:%B %Y}"

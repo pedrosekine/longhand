@@ -8,6 +8,7 @@ xelatex are installed).
 
 Run: python3 tests/test_export.py
 """
+import datetime as dt
 import json
 import os
 import pathlib
@@ -102,6 +103,20 @@ def units() -> None:
     check(export.clean(blocks.split("![[a picture.png]]")[0], 0, lambda n: pic) == f"![](<{pic}>)"
           and export.clean(blocks.split("![[gone.png]]")[0], 0, lambda n: None) == "",
           "a picture by its path, and one not found is left out")
+
+    check(export.name_words("Reflective Research Diary - 2026.11.02 #studio") == {"reflective", "research", "diary"},
+          "a name's words: no tags, numbers or dates")
+    secs = [{"date": "2026-11-09", "line": 3, "level": 1, "heading": "Reflective Research Diary - 2026.11.09 #studio"},
+            {"date": "2026-11-02", "line": 2, "level": 1, "heading": "Reflective Research Diary - 2026.11.02 #studio"},
+            {"date": "2026-11-03", "line": 0, "level": 1, "heading": "Team meeting #studio"},
+            {"date": "2026-11-16", "line": 1, "level": 1, "heading": "Reflective Research Diary - 2026.11.16 #studio"},
+            {"date": "2026-11-04", "line": 5, "level": 0, "heading": ""}]
+    got = export.candidates(secs, "Reflective Research Diary 2", dt.date(2026, 11, 13), "%Y-%m-%d")
+    check([c["date"] for c in got] == ["2026-11-09", "2026-11-02"],
+          "a deadline's section: the headings that share its words, newest first, none after its day")
+    got = export.candidates(secs, "Pilot study", dt.date(2026, 11, 13), "%Y-%m-%d")
+    check([c["date"] for c in got] == ["2026-11-09", "2026-11-03", "2026-11-02"],
+          "…and when none does, every headed section by its day, newest first")
 
     projects = [{"name": "Design Studio", "tag": "studio"}, {"name": "Master Thesis", "tag": "thesis"}]
     check(export.course_of(bl, first, end, title, projects) == "Design Studio", "the course from the title's tag")
@@ -201,6 +216,17 @@ def end_to_end() -> None:
           "never into the notes, wherever Settings points")
     cfg.write_text(json.dumps(dict(json.loads(cfg.read_text()), export={"author": "A. Student", "dir": str(out)})))
 
+    (vault / "Daily" / "2026-11-03.md").write_text("# Reflective Research Diary - 2026.11.03 #studio\nThe second week.\n")
+    got = json.loads(agent("export", "--for", "Reflective Research Diary 2", "--tag", "studio", "--due", "2026-11-13", "--list").stdout)
+    check(got["from"]["date"] == "2026-11-03" and got["from"]["of"] == 2 and got["title"] == "Reflective Research Diary 2"
+          and got["pdf"].endswith("Reflective Research Diary 2.pdf") and got["date"] == "3 November 2026",
+          f"--for a deadline: its likeliest section, named after it ({got.get('from')})")
+    got = json.loads(agent("export", "--for", "Reflective Research Diary 2", "--tag", "studio", "--due", "2026-11-13",
+                           "--pick", "1", "--list").stdout)
+    check(got["from"]["date"] == "2026-11-02" and got["from"]["pick"] == 1, "--pick: the next one found")
+    r = agent("export", "--for", "Reflective Research Diary 2", "--tag", "studio", "--due", "2026-10-01", ok=False)
+    check(r.returncode == 2 and "no section" in r.stderr, "nothing written by its day: said, not guessed")
+
     if not (shutil.which("pandoc") and shutil.which("xelatex")):
         print("skip the PDF itself: pandoc or xelatex is not installed")
         return
@@ -219,6 +245,10 @@ def end_to_end() -> None:
     record = json.loads((state / "longhand" / "exports.json").read_text())["files"]
     check(len(record) == 1 and record[0]["sha256"] == doclib.content_hash(pdf), "…and the record holds what it is now")
     check(not list(out.glob(".*")), "no half-written file is left beside it")
+    got = json.loads(agent("export", "--for", "Reflective Research Diary 9", "--tag", "studio", "--due", "2026-11-02",
+                           "--list").stdout)
+    check(got["from"]["before"] == ["Reflective Research Diary - 2026.11.02"],
+          f"…and a deadline's export says that day was exported before, and as what ({got['from']['before']})")
 
 
 def main() -> int:

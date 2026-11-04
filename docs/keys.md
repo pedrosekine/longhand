@@ -124,6 +124,7 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | Next thing from the agent to settle (round again at the end) | `n` | in the dashboard |
 | The one before it | `Shift+N` | in the dashboard |
 | Chat about it (the agent's pane opens on it) | `c` · `Ctrl+Enter` | in the dashboard |
+| Export its section as a PDF, named after it (it stays open) | `Ctrl+Shift+E` | in the dashboard |
 | Take the last tick back | `Ctrl+Z` | in the dashboard |
 | Back to the note | `Esc` | in the dashboard |
 | Search the list: the strip's ⌕, typing (words, or a #tag) | `/` | in the dashboard, on the dashboard's course strip |
@@ -204,10 +205,12 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | The next block | `↓` · `j` | in the export |
 | The block before | `↑` · `k` | in the export |
 | Put the block in, or leave it out | `Space` | in the export |
+| From a deadline: the section found before (its likelier one) | `←` | in the export |
+| From a deadline: the next section found | `→` | in the export |
 | The look: minimal or your Omarchy theme | `l` | in the export |
 | Edit the title (Enter or Esc: back to the blocks) | `Tab` | in the export |
 | Write the PDF and open it | `Enter` | in the export |
-| Close it, back to the note | `Esc` | in the export |
+| Close it, back to the note (or the dashboard it came from) | `Esc` | in the export |
 
 ## The margin
 

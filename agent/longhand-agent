@@ -3816,11 +3816,30 @@ def cmd_export(cfg: dict, args) -> int:
     neither: the whole note. `--blocks` names the ticked blocks by hash
     instead. `--list` says what would go, as JSON, for the sheet; without
     it the PDF is made. Settings → `export`: author, dir (~/Downloads),
-    look, font."""
+    look, font.
+
+    From a deadline (`--for` its name, `--tag`, `--due` its day): the
+    section is found among its course's (export.candidates), `--pick` the
+    n-th of them, and the PDF is named after the deadline. Never closes it."""
     opts = cfg.get("export") if isinstance(cfg.get("export"), dict) else {}
     today = dt.date.today()
     paths = Paths(cfg, today)
     day = None
+    found, pick = [], 0
+    if args.for_:
+        if not args.tag:
+            raise Fail("--for needs --tag, the deadline's course")
+        fmt = moment_to_strftime(cfg["daily"].get("format", "YYYY-MM-DD"))
+        try:
+            due = dt.date.fromisoformat(args.due) if args.due else None
+        except ValueError:
+            raise Fail("--due is YYYY-MM-DD")
+        found = exportlib.candidates(tagged_sections(cfg, args.tag, 0), args.for_, due, fmt)
+        if not found:
+            raise Fail(f"no section of #{args.tag.lstrip('#')} written by then")
+        pick = max(0, min(len(found) - 1, args.pick))
+        args.file, args.date, args.line, args.select = "", found[pick]["date"], found[pick]["line"], ""
+        args.title = args.title or args.for_
     if args.file:
         note = (paths.vault / args.file).resolve()
         if paths.vault.resolve() not in note.parents:
@@ -3881,6 +3900,12 @@ def cmd_export(cfg: dict, args) -> int:
     out = exportlib.place(folder, title, {x["path"] for x in done})
     report = {"title": title, "author": author, "course": course, "date": when, "look": look,
               "words": exportlib.words(body), "pdf": str(out)}
+    if found:
+        # Which section a deadline's export took, the others, and whether a
+        # PDF was made from that day before (a diary already handed in).
+        report["from"] = {"pick": pick, "of": len(found), "date": found[pick]["date"],
+                          "heading": exportlib.title_of("# " + found[pick]["heading"]),
+                          "before": sorted({x["title"] for x in done if x.get("note") == str(note) and x["title"] != title})}
     if args.list:
         print(json.dumps(dict(report, blocks=rows), ensure_ascii=False))
         return 0
@@ -4049,6 +4074,10 @@ def main(argv: list[str]) -> int:
     p.add_argument("--look", default="", help="minimal (the default) or omarchy")
     p.add_argument("--out", default="", help="the folder (default: Settings, else ~/Downloads)")
     p.add_argument("--list", action="store_true", help="what would go, as JSON; no PDF")
+    p.add_argument("--for", dest="for_", default="", help="a deadline's name: its section is found")
+    p.add_argument("--tag", default="", help="with --for: the deadline's course")
+    p.add_argument("--due", default="", help="with --for: its day, YYYY-MM-DD (later sections are not it)")
+    p.add_argument("--pick", type=int, default=0, help="with --for: the n-th section found (0: the likeliest)")
     p = sub.add_parser("project")
     p.add_argument("--tag", required=True)
     p.add_argument("--name", default="", help="its name; the tag when left out")

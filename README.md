@@ -337,6 +337,9 @@ the dashboard is where the work gets done.
 `Ctrl+Shift+E` in a note opens the export in the note's place: the section
 you are in (or only the blocks a selection touches), each block in or out,
 the title, the look and the word count; Enter writes the PDF and opens it.
+On a deadline in the dashboard, `Ctrl+Shift+E` finds its section among the
+course's (by its name, written by its day; ← → for another) and names the PDF
+after it, leaving the deadline open.
 Underneath, `longhand-agent export` makes a PDF of a section of a note — for a weekly
 diary, say, where the note holds more than the teachers should get. The
 section is the one a line is in, from its upmost heading to the next heading

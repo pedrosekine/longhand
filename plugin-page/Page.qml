@@ -481,6 +481,7 @@ Item {
   property bool exportAfterSave: false
   property var exportArgs: []           // the note and where in it, for both runs
   property string exportFor: ""         // the note it was opened on
+  property bool exportFromDash: false   // a deadline's: Esc goes back to the dashboard
   // The title row is the title field, not a block to pick.
   readonly property var exportRows: root.exportData && root.exportData.blocks
     ? root.exportData.blocks.filter(function (b) { return b.why !== "the title" }) : []
@@ -510,7 +511,29 @@ Item {
       where = ["--select", a + ":" + b]
     } else where = ["--line", String(Where.lineAt(t, before.length + editor.cursorPosition) - 1)]
     if (root.searchOpen) root.closeSearch("back")
-    root.exportArgs = (root.dayNote ? ["--date", svc.noteDate] : ["--file", svc.filePath]).concat(where)
+    root.exportFromDash = false
+    root.startExport((root.dayNote ? ["--date", svc.noteDate] : ["--file", svc.filePath]).concat(where),
+                     where[0] === "--select" ? "selection" : "section")
+  }
+  // From a deadline's row on the dashboard (slice 3): its section found
+  // among its course's by its name and day, the PDF named after it. A box
+  // with a date is a deadline here too; the deadline is never closed.
+  function exportFocused() {
+    var row = root.taskRows[root.taskFocus]
+    var d = row && row.kind === "deadline" ? row.deadline : null
+    var t = row && row.kind === "task" ? row.task : null
+    var title = d ? d.title : t ? t.title : ""
+    var tag = d ? d.project : t ? t.project : ""
+    var due = d ? Qt.formatDate(new Date(d.due * 1000), "yyyy-MM-dd") : t ? (t.due || "") : ""
+    if (title === "") { root.showHint("a deadline or a task to export for"); return }
+    if (!tag) { root.showHint("no course on it (#tag) to find its section in"); return }
+    root.closePdf()
+    root.toNote()
+    root.exportFromDash = true
+    root.startExport(["--for", title, "--tag", tag].concat(due !== "" ? ["--due", due] : [], ["--pick", "0"]), "deadline")
+  }
+  function startExport(args, how) {
+    root.exportArgs = args
     root.exportFor = root.noteRel
     root.exportData = null
     root.exportPicks = ({})
@@ -518,7 +541,7 @@ Item {
     root.exportFocus = 0
     root.exportBusy = true
     root.exportOpen = true
-    root.used("export", where[0] === "--select" ? "selection" : "section")
+    root.used("export", how)
     root.focusCenter()
     root.flush()
     if (svc.saving) root.exportAfterSave = true
@@ -536,9 +559,10 @@ Item {
     if (code !== 0 || !got) { root.exportError = err.trim().replace(/^longhand-agent: /, "") || "the note could not be read"; return }
     var picks = {}
     got.blocks.forEach(function (b) { if (b.in) picks[b.hash] = true })
+    var kept = root.exportData && root.exportData.from ? root.exportTitle : ""   // a title written over stays
     root.exportData = got
     root.exportPicks = picks
-    root.exportTitle = got.title || ""
+    root.exportTitle = kept || got.title || ""
     root.exportLook = got.look === "omarchy" ? "omarchy" : "minimal"
   }
   function closeExport() {
@@ -546,7 +570,21 @@ Item {
     root.exportOpen = false
     root.exportAfterSave = false
     root.exportBusy = false
-    root.focusCenter()
+    if (root.exportFromDash) { root.exportFromDash = false; root.showDash() }
+    else root.focusCenter()
+  }
+  // A deadline's other sections (← →): listed again, the picks with it.
+  function exportSection(dir) {
+    var f = root.exportData && root.exportData.from
+    if (!f || root.exportBusy) return
+    var k = Math.max(0, Math.min(f.of - 1, f.pick + dir))
+    if (k === f.pick) return
+    var a = root.exportArgs.slice()
+    a[a.indexOf("--pick") + 1] = String(k)
+    root.exportArgs = a
+    root.exportBusy = true
+    root.exportFocus = 0
+    root.listExport()
   }
   function exportToggle(i) {
     var r = root.exportRows[i]
@@ -563,6 +601,8 @@ Item {
     if (Sc.hit(event, "exportDown")) root.exportFocus = Math.max(0, Math.min(n - 1, root.exportFocus + 1))
     else if (Sc.hit(event, "exportUp")) root.exportFocus = Math.max(0, root.exportFocus - 1)
     else if (Sc.hit(event, "exportPick")) root.exportToggle(root.exportFocus)
+    else if (Sc.hit(event, "exportPrevSection")) root.exportSection(-1)
+    else if (Sc.hit(event, "exportNextSection")) root.exportSection(1)
     else if (Sc.hit(event, "exportLook")) root.exportLook = root.exportLook === "omarchy" ? "minimal" : "omarchy"
     else if (Sc.hit(event, "exportTitle")) exportSheet.titleRef.forceActiveFocus()
     else if (Sc.hit(event, "exportWrite")) root.writeExport()
@@ -586,6 +626,7 @@ Item {
     try { got = JSON.parse(out) } catch (e) {}
     if (code !== 0 || !got || !got.pdf) { root.exportError = err.trim().replace(/^longhand-agent: /, "") || "the PDF could not be made"; return }
     root.used("export", root.exportLook)
+    root.exportFromDash = false
     root.openPdf(got.pdf)
     root.showHint("written to " + got.pdf.replace(Quickshell.env("HOME") + "/", "~/"))
   }
@@ -4572,6 +4613,7 @@ Item {
     if (Sc.hit(e, "dashGrade")) { root.startDashGrade(); return true }
     if (Sc.hit(e, "dashPlan")) { root.runPlan(true); return true }
     if (Sc.hit(e, "dashTalk")) { root.talkFocused(); return true }
+    if (Sc.hit(e, "dashExport")) { root.exportFocused(); return true }
     if (Sc.hit(e, "dashNextAsk")) { root.focusAsk(1); return true }
     if (Sc.hit(e, "dashPrevAsk")) { root.focusAsk(-1); return true }
     if (Sc.hit(e, "keysHere")) { root.toggleKeys(); return true }

@@ -3,6 +3,7 @@ import QtQuick
 import qs.Commons
 import qs.Ui
 import "Shortcuts.js" as Sc
+import "Days.js" as Days
 
 // Export as a PDF (docs/plan.md item 13, slice 2, 2026-11-04): a section
 // of the note, block by block, in the note's place — as a PDF is. Each
@@ -84,9 +85,35 @@ Item {
     font.pixelSize: page.fs(Style.font.bodySmall)
   }
 
+  // From a deadline: which day's section it took, of how many (← →), and
+  // whether that day was made into a PDF before — last week's diary, say.
+  Text {
+    id: fromLine
+    anchors.top: byline.bottom
+    anchors.topMargin: visible ? page.sp(6) : 0
+    anchors.left: parent.left
+    anchors.right: parent.right
+    visible: !!(sheet.info && sheet.info.from)
+    height: visible ? implicitHeight : 0
+    textFormat: Text.PlainText
+    wrapMode: Text.WordWrap
+    text: {
+      var f = sheet.info && sheet.info.from
+      if (!f) return ""
+      var day = Days.longLabel(f.date, page.noteService.dailyFormat())
+      return "from " + day + ", " + f.heading
+        + (f.of > 1 ? "   ·   " + (f.pick + 1) + " of " + f.of + ", " + page.keyName("exportPrevSection") + " " + page.keyName("exportNextSection") + " for another" : "")
+        + (f.before.length > 0 ? "\nalready made into a PDF from that day, as “" + f.before.join("”, “") + "”" : "")
+    }
+    color: sheet.info && sheet.info.from && sheet.info.from.before.length > 0 ? page.accent : page.dim
+    font.family: page.fontFamily
+    font.styleName: page.fontStyle
+    font.pixelSize: page.fs(Style.font.bodySmall)
+  }
+
   Flickable {
     id: flick
-    anchors.top: byline.bottom
+    anchors.top: fromLine.bottom
     anchors.topMargin: page.sp(18)
     anchors.left: parent.left
     anchors.right: parent.right
