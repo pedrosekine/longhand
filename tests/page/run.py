@@ -156,7 +156,8 @@ class Page:
         (cfg / "longhand" / "config.json").write_text(json.dumps({
             "vault": str(self.vault), "daily": {"dir": "Daily", "format": "YYYY.MM.DD"}, "horizon": "2000-01-01",
             "runner": str(self.runner), "check": str(ROOT / "cli" / "longhand-check"), "weekStart": "monday",
-            "inbox": str(self.tmp / "Downloads")}))
+            "inbox": str(self.tmp / "Downloads"),
+            "export": {"author": "A. Student", "dir": str(self.tmp / "Downloads")}}))
         (self.tmp / "Downloads").mkdir()
         bindir = self.tmp / "bin"
         bindir.mkdir()
@@ -202,7 +203,7 @@ if [ "$1" = projects ]; then
   exit $rc
 fi
 case "$1" in
-  accept|projects|project|sections|next|tasks|box|timetable|plan|proposals|proposal|talk|thread|rate|notebook|autonomy|day|search|horizon|note) exec "{ROOT}/agent/longhand-agent" "$@" ;;
+  accept|projects|project|sections|next|tasks|box|timetable|plan|proposals|proposal|talk|thread|rate|notebook|autonomy|day|search|horizon|note|export) exec "{ROOT}/agent/longhand-agent" "$@" ;;
   run) sleep 2; exit 0 ;;
   chat) sleep 2; exec python3 "{chatstub}" "{self.vault}/agents/longhand/daily" "$@" ;;
 esac
@@ -3016,6 +3017,58 @@ def main() -> int:
         check(p.wait(lambda: json.loads(taught.read_text())["today"]["said"] == TODAY_ISO
                      and json.loads(taught.read_text())["sidebar"]["keys"] >= 3),
               "…kept in the state folder (taught.json)")
+
+        # 12y. export as a PDF (ExportSheet.qml; plan.md item 13): Ctrl+Shift+E
+        # in a section lists its blocks in the note's place, a checkbox out;
+        # Space, L and the title change what is written; Enter writes it to
+        # Settings' folder and opens it where the note was.
+        KEY_E, KEY_L, KEY_SPACE, KEY_DOWN, KEY_RETURN, KEY_ESC = 0x45, 0x4c, 0x20, 0x01000015, 0x01000004, 0x01000000
+        (p.daily / f"{TODAY}.md").write_text(header(TODAY) + "# Diary #studio\n- [ ] hand it in\n## What happened\n"
+                                             "We met twice.\n\n# Other\nNot this.\n")
+        p.wait(lambda: "We met twice." in p.call("text"))
+        before = p.call("text")
+        p.call("cursor", p.offset_of_line(p.line_of("We met twice.")))
+
+        def ex():
+            return json.loads(p.call("exportState"))
+        check(p.call("keyPage", KEY_E, CTRL | SHIFT) == "true"
+              and p.wait(lambda: ex()["open"] and not ex()["busy"] and len(ex()["rows"]) > 0, 15),
+              f"Ctrl+Shift+E opens the export with the section's blocks ({ex()})")
+        e = ex()
+        check(e["title"] == "Diary" and [r["text"] for r in e["rows"]] == ["- [ ] hand it in", "## What happened", "We met twice."],
+              f"…titled by its upmost heading, without the next section ({e['title']!r}, {[r['text'] for r in e['rows']]})")
+        check([r["in"] for r in e["rows"]] == [False, True, True] and e["rows"][0]["why"] == "a checkbox" and e["words"] == 3,
+              f"…the checkbox out and why, the words counted ({e['words']})")
+        check(e["here"] == "center" and json.loads(p.call("pdf"))["shown"] is False, "…in the note's place, with the keys")
+        p.call("exportKey", KEY_SPACE, 0)
+        check(ex()["rows"][0]["in"] and ex()["words"] == 6, f"Space puts the checkbox in, and its words count ({ex()['words']})")
+        p.call("exportKey", KEY_SPACE, 0)
+        p.call("exportKey", KEY_DOWN, 0)
+        check(ex()["focus"] == 1, "↓ moves to the next block")
+        p.call("exportKey", KEY_L, 0)
+        check(ex()["look"] == "omarchy", "L: the Omarchy look")
+        p.call("exportKey", KEY_L, 0)
+        check(ex()["look"] == "minimal", "…and back to minimal")
+        p.call("exportTitle", "Diary 1")
+        p.call("exportKey", KEY_RETURN, 0)
+        out = p.tmp / "Downloads" / "Diary 1.pdf"
+        check(p.wait(lambda: json.loads(p.call("pdf"))["shown"] and out.is_file(), 60),
+              f"Enter writes the PDF under its title, in Settings' folder ({ex()['error']!r})")
+        check(p.wait(lambda: json.loads(p.call("pdf"))["ready"]) and json.loads(p.call("pdf"))["label"] == "Diary 1.pdf"
+              and not ex()["open"], "…and it opens where the note was, the export closed")
+        check(p.call("hint").startswith("written to "), f"…saying where it went ({p.call('hint')!r})")
+        p.call("pdfKey", KEY_ESC, 0)
+        check(p.wait(lambda: not json.loads(p.call("pdf"))["shown"]) and p.call("text") == before,
+              "Esc: back to the note, its words untouched")
+        sel_from = p.offset_of_line(p.line_of("- [ ] hand it in"))
+        p.call("selectInLine", sel_from + 6, sel_from + 10)
+        p.call("keyPage", KEY_E, CTRL | SHIFT)
+        check(p.wait(lambda: ex()["open"] and not ex()["busy"] and len(ex()["rows"]) > 0, 15)
+              and [r["in"] for r in ex()["rows"]] == [True, False, False]
+              and ex()["rows"][1]["why"] == "outside the selection",
+              f"a selection inside one line: only its block is in, a checkbox too ({[(r['in'], r['why']) for r in ex()['rows']]})")
+        p.call("exportKey", KEY_ESC, 0)
+        check(not ex()["open"] and ex()["here"] == "center" and p.call("text") == before, "Esc closes it, back to the note")
 
         # 13. the usage log: written on close, event names only
         p.call("closeAll")

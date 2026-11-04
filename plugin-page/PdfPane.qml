@@ -32,8 +32,10 @@ Item {
   onRelChanged: { pane.zoom = 1; pane.finding = false; findField.text = "" }
 
   function url() {
+    // A path in the vault, or a whole one: an export written to Downloads.
     var v = pane.page.noteService.config.vault
-    return "file://" + (v + "/" + pane.rel).split("/").map(encodeURIComponent).join("/")
+    var path = pane.rel.charAt(0) === "/" ? pane.rel : v + "/" + pane.rel
+    return "file://" + path.split("/").map(encodeURIComponent).join("/")
   }
 
   // The view keeps its scroller to itself; it is the child that scrolls.

@@ -449,6 +449,7 @@ Item {
     root.leftLine(root.lastLine)
     root.flush()
     root.used("pdf", "open")
+    root.exportOpen = false
     root.marginOpen = false
     root.closeTalk(false)
     root.dayOpen = false
@@ -462,6 +463,131 @@ Item {
     if (!root.pdfShown) return
     root.pdfRel = ""
     root.showNote()
+  }
+
+  // Export as a PDF (ExportSheet.qml; docs/plan.md item 13, slice 2): in
+  // the note's place, the section the cursor is in — or the blocks a
+  // selection touches — each block in or out. The runner lists them and
+  // writes the PDF (`longhand-agent export`); it reads the note from disk,
+  // so the note is saved first. Written, the PDF opens where the note was.
+  property bool exportOpen: false
+  property var exportData: null         // `export --list`: title, author, course, date, look, pdf, blocks
+  property var exportPicks: ({})        // hash → true: the blocks in
+  property int exportFocus: 0
+  property string exportTitle: ""
+  property string exportLook: "minimal"
+  property string exportError: ""
+  property bool exportBusy: false
+  property bool exportAfterSave: false
+  property var exportArgs: []           // the note and where in it, for both runs
+  property string exportFor: ""         // the note it was opened on
+  // The title row is the title field, not a block to pick.
+  readonly property var exportRows: root.exportData && root.exportData.blocks
+    ? root.exportData.blocks.filter(function (b) { return b.why !== "the title" }) : []
+  readonly property int exportWords: {
+    var n = 0, p = root.exportPicks
+    root.exportRows.forEach(function (r) { if (p[r.hash]) n += r.words || 0 })
+    return n
+  }
+  readonly property string exportWhere: root.exportData && root.exportData.pdf
+    ? root.exportData.pdf.replace(Quickshell.env("HOME") + "/", "~/").replace(/\/[^\/]*$/, "") : ""
+  onNoteRelChanged: if (root.exportOpen && root.noteRel !== root.exportFor) root.closeExport()
+
+  function openExport() {
+    if (!svc.ready || root.pdfShown || root.noteRel === "" || root.problem !== "") { root.showHint("nothing here to export"); return }
+    var body = editor.text
+    var whole = svc.joinHeader(body)
+    var before = whole.substring(0, whole.length - body.length)
+    var t = before + body
+    var where
+    var sel = editor.selected()              // across lines, or inside one
+    if (sel && sel.b > sel.a) {
+      // The file's lines (0-based), as Where.at counts them for a path.
+      var a = Where.lineAt(t, before.length + sel.a) - 1
+      var end = before.length + sel.b
+      var b = Where.lineAt(t, end) - 1
+      if (b > a && t.charAt(end - 1) === "\n") b--
+      where = ["--select", a + ":" + b]
+    } else where = ["--line", String(Where.lineAt(t, before.length + editor.cursorPosition) - 1)]
+    if (root.searchOpen) root.closeSearch("back")
+    root.exportArgs = (root.dayNote ? ["--date", svc.noteDate] : ["--file", svc.filePath]).concat(where)
+    root.exportFor = root.noteRel
+    root.exportData = null
+    root.exportPicks = ({})
+    root.exportError = ""
+    root.exportFocus = 0
+    root.exportBusy = true
+    root.exportOpen = true
+    root.used("export", where[0] === "--select" ? "selection" : "section")
+    root.focusCenter()
+    root.flush()
+    if (svc.saving) root.exportAfterSave = true
+    else root.listExport()
+  }
+  function listExport() {
+    exportListProc.command = [svc.runner, "export"].concat(root.exportArgs, ["--list"])
+    exportListProc.running = true
+  }
+  function exportListed(code, out, err) {
+    root.exportBusy = false
+    if (!root.exportOpen) return
+    var got = null
+    try { got = JSON.parse(out) } catch (e) {}
+    if (code !== 0 || !got) { root.exportError = err.trim().replace(/^longhand-agent: /, "") || "the note could not be read"; return }
+    var picks = {}
+    got.blocks.forEach(function (b) { if (b.in) picks[b.hash] = true })
+    root.exportData = got
+    root.exportPicks = picks
+    root.exportTitle = got.title || ""
+    root.exportLook = got.look === "omarchy" ? "omarchy" : "minimal"
+  }
+  function closeExport() {
+    if (!root.exportOpen) return
+    root.exportOpen = false
+    root.exportAfterSave = false
+    root.exportBusy = false
+    root.focusCenter()
+  }
+  function exportToggle(i) {
+    var r = root.exportRows[i]
+    if (!r) return
+    var p = Object.assign({}, root.exportPicks)
+    if (p[r.hash]) delete p[r.hash]
+    else p[r.hash] = true
+    root.exportPicks = p
+    root.exportError = ""
+  }
+  function exportKey(event) {
+    if (root.anywhereKey(event)) return true
+    var n = root.exportRows.length
+    if (Sc.hit(event, "exportDown")) root.exportFocus = Math.max(0, Math.min(n - 1, root.exportFocus + 1))
+    else if (Sc.hit(event, "exportUp")) root.exportFocus = Math.max(0, root.exportFocus - 1)
+    else if (Sc.hit(event, "exportPick")) root.exportToggle(root.exportFocus)
+    else if (Sc.hit(event, "exportLook")) root.exportLook = root.exportLook === "omarchy" ? "minimal" : "omarchy"
+    else if (Sc.hit(event, "exportTitle")) exportSheet.titleRef.forceActiveFocus()
+    else if (Sc.hit(event, "exportWrite")) root.writeExport()
+    else if (Sc.hit(event, "exportClose")) root.closeExport()
+    else return false
+    return true
+  }
+  function writeExport() {
+    if (root.exportBusy || !root.exportData) return
+    var picked = root.exportRows.filter(function (r) { return root.exportPicks[r.hash] }).map(function (r) { return r.hash })
+    if (picked.length === 0) { root.exportError = "nothing is in: " + root.keyName("exportPick") + " puts a block in"; return }
+    root.exportError = ""
+    root.exportBusy = true
+    exportProc.command = [svc.runner, "export"].concat(root.exportArgs, ["--blocks", picked.join(","),
+      "--title=" + (root.exportTitle.trim() || root.exportData.title), "--look", root.exportLook])
+    exportProc.running = true
+  }
+  function exportWritten(code, out, err) {
+    root.exportBusy = false
+    var got = null
+    try { got = JSON.parse(out) } catch (e) {}
+    if (code !== 0 || !got || !got.pdf) { root.exportError = err.trim().replace(/^longhand-agent: /, "") || "the PDF could not be made"; return }
+    root.used("export", root.exportLook)
+    root.openPdf(got.pdf)
+    root.showHint("written to " + got.pdf.replace(Quickshell.env("HOME") + "/", "~/"))
   }
   // The header's name for what is in the sheet: the day, or the file's
   // name (where it is, the Files tree shows).
@@ -1547,7 +1673,7 @@ Item {
       return row && row.kind === "task" && row.task.file ? row.task.file + ":" + (row.task.line + 1) : ""
     }
     if (root.centerView !== "note") return ""
-    if (root.pdfShown) return vault !== "" ? vault + "/" + root.pdfRel : ""
+    if (root.pdfShown) return root.pdfRel.charAt(0) === "/" ? root.pdfRel : vault !== "" ? vault + "/" + root.pdfRel : ""
     if (svc.notePath === "" || !svc.ready) return ""
     var body = editor.text
     var whole = svc.joinHeader(body)
@@ -1659,6 +1785,7 @@ Item {
     else if (root.searchOpen) searchField.forceActiveFocus()
     else if (root.whenFor) whenField.forceActiveFocus()
     else if (root.newProject) nameField.forceActiveFocus()
+    else if (root.exportOpen) exportSheet.keysRef.forceActiveFocus()
     else if (root.pdfShown) (pdfPane.finding ? pdfPane.findRef : pdfPane.keysRef).forceActiveFocus()
     else editor.focusNote()
   }
@@ -2414,6 +2541,7 @@ Item {
     if (Sc.hit(event, "close")) { if (!root.alongside) root.dismiss(); return true }
     if (Sc.hit(event, "private")) { root.togglePrivate(); return true }
     if (Sc.hit(event, "privateBlock")) { root.togglePrivateBlock(); return true }
+    if (Sc.hit(event, "exportPdf")) { root.openExport(); return true }
     if (Sc.hit(event, "ask")) { root.sendCurrent(); return true }
     // Selecting to the same edges is the editor's (selectToBlockEdge).
     if (Sc.hit(event, "blockStart")) { root.walkBlocks(-1); return true }
@@ -5739,6 +5867,7 @@ Item {
     onExternalChange: { root.applyText(svc.body, true); root.reconcilePending = true; root.startCheck(); root.reconcile() }
     onSavedNow: {
       if (root.tasksAfterSave) { root.tasksAfterSave = false; root.refreshTasks() }
+      if (root.exportAfterSave) { root.exportAfterSave = false; root.listExport() }
       root.runCheck()
       if (root.pendingStamp !== "") {
         var s = root.pendingStamp
@@ -5833,6 +5962,28 @@ Item {
         root.taskFocus = Math.min(root.taskFocus, Math.max(0, root.taskRows.length - 1))
         if (root.tasksAgain) { root.tasksAgain = false; Qt.callLater(root.refreshTasks) }
       }
+    }
+  }
+
+  // Export as a PDF: the blocks listed, then the PDF written (openExport).
+  Process {
+    id: exportListProc
+    property int code: 0
+    stdout: StdioCollector { id: exportListOut }
+    stderr: StdioCollector { id: exportListErr }
+    onExited: function (code, status) {
+      exportListProc.code = code
+      Qt.callLater(function () { root.exportListed(exportListProc.code, exportListOut.text, exportListErr.text) })
+    }
+  }
+  Process {
+    id: exportProc
+    property int code: 0
+    stdout: StdioCollector { id: exportOut }
+    stderr: StdioCollector { id: exportErr }
+    onExited: function (code, status) {
+      exportProc.code = code
+      Qt.callLater(function () { root.exportWritten(exportProc.code, exportOut.text, exportErr.text) })
     }
   }
 
@@ -6967,6 +7118,17 @@ Item {
           font.pixelSize: root.fs(Style.font.body)
         }
 
+        // Export as a PDF, in the note's place too (ExportSheet.qml).
+        ExportSheet {
+          id: exportSheet
+          page: root
+          anchors.top: searchBar.bottom
+          anchors.topMargin: root.sp(24)
+          anchors.left: parent.left
+          anchors.right: parent.right
+          anchors.bottom: parent.bottom
+        }
+
         // A PDF, in the note's place (PdfPane.qml).
         PdfPane {
           id: pdfPane
@@ -6981,7 +7143,7 @@ Item {
 
         Flickable {
           id: flick
-          visible: root.problem === "" && !root.pdfShown
+          visible: root.problem === "" && !root.pdfShown && !root.exportOpen
           anchors.top: searchBar.bottom
           anchors.topMargin: root.sp(24)
           anchors.left: parent.left

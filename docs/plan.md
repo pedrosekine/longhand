@@ -635,10 +635,16 @@ Small, when passing by:
     but never a file it did not make, `exports.json` the record that the
     inbox's filing skips (`documents.proposals(skip=…)`);
     `tests/test_export.py`. Diary 1 made with it the same day.
-    **(2)** the sheet: `Ctrl+Shift+E` beside the note, the section's
-    blocks with ↑↓ and Space, a selection's blocks ticked, the title
-    editable, the live word count, a key between the looks, Enter writes
-    and opens it in the PDF pane (`o`, copy-path). **(3)** from a
+    **(2)** the sheet — *built 2026-11-04*: `Ctrl+Shift+E` in the note
+    (`plugin-page/ExportSheet.qml`), in the note's place as a PDF is
+    rather than beside it — the right pane is the agent's, and export has
+    no agent in it. The section's blocks, each ● in or ○ out with why;
+    ↑↓ (j/k), Space in or out, L the look, Tab the title, Enter writes,
+    Esc back. A selection, across lines or inside one, ticks only the
+    blocks it touches. The words counted as blocks go in and out (each
+    block's own count in `--list`). The note is saved before the runner
+    reads it; the PDF opens in the PDF pane, which now takes a path
+    outside the vault. Live checks 12y in `tests/page/run.py`. **(3)** from a
     deadline's row on the dashboard: its section picked, the file named
     after it; never closing the deadline, which stays the person's step.
     Waiting inside it: remembering per project what was left out (the
@@ -717,6 +723,11 @@ this list, with *Open, in order* above. Each says why it waits.
 No work unless they bite; each says what would tell. The first four came
 from 2026-09/10 and still stand.
 
+- **Export, the sheet** (built 2026-11-04, item 13's second slice):
+  - Is it opened with the cursor in the section (`export` `section`) or
+    with a selection (`export` `selection`)?
+  - Are blocks ticked in or out, or is what starts in always right?
+  - Is the title written over, and to what — the deadline's name?
 - **Export, the command** (built 2026-11-04, item 13's first slice):
   - Is the diary handed in from it each week, or from Obsidian?
   - Does the iA Writer face read as a deliverable, or does a hand-in want

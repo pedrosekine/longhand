@@ -3811,7 +3811,8 @@ def cmd_export(cfg: dict, args) -> int:
     """Blocks of a note as a PDF to hand in (export.py). The note is a day
     (`--date`, today when left out) or a file in the vault (`--file`). The
     section is the one `--line` (0-based) is in, or the one a selection
-    `--select A:B` starts in, with only the blocks it touches ticked;
+    `--select A:B` starts in, with only the blocks it touches ticked (a
+    checkbox too: selected, it is meant);
     neither: the whole note. `--blocks` names the ticked blocks by hash
     instead. `--list` says what would go, as JSON, for the sheet; without
     it the PDF is made. Settings → `export`: author, dir (~/Downloads),
@@ -3857,10 +3858,14 @@ def cmd_export(cfg: dict, args) -> int:
             keep, why = False, "outside the selection"
         else:
             keep, why = exportlib.starts_in(b)
+            if sel and why == "a checkbox":       # selected on purpose; private and the agent link stay out
+                keep, why = True, ""
         rows.append({"hash": b["hash"], "kind": b["kind"], "start": b["start"], "end": b["end"],
                      "text": b["text"], "in": keep, "why": why})
     title = (args.title or "").strip() or (exportlib.title_of(bl[title_at]["text"]) if title_at is not None else note.stem)
     shift = exportlib.level(bl[title_at]) - 1 if title_at is not None else 0
+    for r, b in zip(rows, bl[first:end]):          # each block's own count, for the sheet's sum
+        r["words"] = exportlib.words(exportlib.clean(b, shift, lambda name: None))
     image = exportlib.finder(note, paths.vault, paths.vault / paths.notes_root if paths.notes_root else paths.vault)
     kept = [bl[first + n] for n, r in enumerate(rows) if r["in"]]
     body = exportlib.assemble(kept, shift, image)

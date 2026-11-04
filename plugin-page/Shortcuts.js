@@ -33,6 +33,7 @@ var places = {
   lists: "in the sidebar's lists",
   files: "in the files",
   pdf: "in a PDF",
+  export: "in the export",
   margin: "in the margin",
   chat: "in the chat's box",
   settings: "in settings",
@@ -56,6 +57,7 @@ var groups = [
   { id: "lists", title: "Deadlines, projects and sections in the sidebar" },
   { id: "files", title: "Files in the sidebar" },
   { id: "pdf", title: "A PDF" },
+  { id: "export", title: "Export as a PDF" },
   { id: "margin", title: "The margin" },
   { id: "settings", title: "Settings" },
   { id: "typing", title: "Typing (the text field's own, not changeable)" },
@@ -108,6 +110,9 @@ var actions = [
   { id: "close", group: "page", places: ["note"], does: "Close the overlay", keys: ["Esc"] },
   { id: "private", group: "page", places: ["note"], does: "Make the whole note private (the agent sees nothing)", keys: ["Ctrl+Shift+P"] },
   { id: "privateBlock", group: "page", places: ["note"], does: "Make the block private, or the blocks selected (again: not private)", keys: ["Ctrl+P"] },
+  // A section of the note as a PDF to hand in (2026-11-04, ExportSheet.qml):
+  // E for export, with Shift as Ctrl+Shift+P is the note's larger Ctrl+P.
+  { id: "exportPdf", group: "page", places: ["note"], does: "Export as a PDF: the section you are in, or the blocks selected", keys: ["Ctrl+Shift+E"] },
 
   { id: "bold", group: "write", places: ["note"], does: "Bold", keys: ["Ctrl+B"] },
   { id: "italic", group: "write", places: ["note"], does: "Italic", keys: ["Ctrl+I"] },
@@ -284,6 +289,14 @@ var actions = [
   { id: "pdfFind", group: "pdf", places: ["pdf"], does: "Find in it (Enter: next, Shift+Enter: before)", keys: ["Ctrl+F", "/"] },
   { id: "pdfOpen", group: "pdf", places: ["pdf"], does: "Open it in its own application", keys: ["O"] },
   { id: "pdfClose", group: "pdf", places: ["pdf"], does: "Close it, back to the note", keys: ["Esc"] },
+
+  { id: "exportDown", group: "export", places: ["export"], does: "The next block", keys: ["Down", "J"] },
+  { id: "exportUp", group: "export", places: ["export"], does: "The block before", keys: ["Up", "K"] },
+  { id: "exportPick", group: "export", places: ["export"], does: "Put the block in, or leave it out", keys: ["Space"] },
+  { id: "exportLook", group: "export", places: ["export"], does: "The look: minimal or your Omarchy theme", keys: ["L"] },
+  { id: "exportTitle", group: "export", places: ["export"], does: "Edit the title (Enter or Esc: back to the blocks)", keys: ["Tab"] },
+  { id: "exportWrite", group: "export", places: ["export"], does: "Write the PDF and open it", keys: ["Enter"] },
+  { id: "exportClose", group: "export", places: ["export"], does: "Close it, back to the note", keys: ["Esc"] },
 
   { id: "marginUp", group: "margin", places: ["margin", "chat"], does: "Previous proposal (from an empty box: into the proposals)", keys: ["Up"] },
   { id: "marginDown", group: "margin", places: ["margin"], does: "Next proposal, then the box", keys: ["Down"] },

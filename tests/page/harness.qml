@@ -194,6 +194,14 @@ ShellRoot {
         found: p.view && p.view.searchModel ? p.view.searchModel.count : 0, here: page.here })
     }
     function pdfKey(key: int, mods: int): bool { return page.pdfItem.key({ key: key, text: "", modifiers: mods }) }
+    // Export as a PDF (ExportSheet.qml): the sheet as its keys see it.
+    function exportState(): string {
+      return JSON.stringify({ open: page.exportOpen, busy: page.exportBusy, error: page.exportError, title: page.exportTitle,
+        look: page.exportLook, words: page.exportWords, focus: page.exportFocus, here: page.here,
+        rows: page.exportRows.map(function (r) { return { text: r.text.split("\n")[0], in: !!page.exportPicks[r.hash], why: r.why } }) })
+    }
+    function exportKey(key: int, mods: int): bool { return page.exportKey({ key: key, text: "", modifiers: mods }) }
+    function exportTitle(s: string): void { page.exportTitle = s }
     function pdfFind(text: string): void { page.pdfItem.findRef.text = text }
     // The read view (docs/files.md): what each line is drawn as.
     function rowKinds(): string { return JSON.stringify(page.editorItem.rows.map(function (r) { return r.kind })) }

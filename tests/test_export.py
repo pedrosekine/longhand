@@ -172,12 +172,20 @@ def end_to_end() -> None:
           and not any("Project brief" in t or "Something else" in t for t in ins),
           "…and the section's blocks, each in or out")
     check(not out.exists(), "--list writes nothing")
+    check(sum(r["words"] for r in got["blocks"] if r["in"]) == got["words"],
+          "each block's words add up to the whole, for the sheet's count")
 
     sel = NOTE.splitlines().index("- first point 📅 2026-11-13 ^d58")
     got = json.loads(agent("export", "--date", "2026-11-02", "--select", f"{sel}:{sel + 1}", "--list").stdout)
     check([r["text"].splitlines()[0] for r in got["blocks"] if r["in"]] == ["- first point 📅 2026-11-13 ^d58", "- second point"]
           and any(r["why"] == "outside the selection" for r in got["blocks"]),
           "a selection: only the blocks it touches, in its section")
+    box = NOTE.splitlines().index("- [x] one diary a week until Feb 4th ✅ 2026-11-04")
+    got = json.loads(agent("export", "--date", "2026-11-02", "--select", f"{box}:{box + 5}", "--list").stdout)
+    ins = {r["text"].splitlines()[0][:12]: r["in"] for r in got["blocks"]}
+    why = {r["text"].splitlines()[0][:12]: r["why"] for r in got["blocks"]}
+    check(ins["- [x] one di"] and not ins["> [!private]"] and why["> [!private]"] == "private",
+          "…a checkbox selected goes in; a private block selected stays out")
     pick = next(r["hash"] for r in got["blocks"] if r["text"].startswith("> [!private]"))
     got = json.loads(agent("export", "--date", "2026-11-02", "--line", line, "--blocks", pick, "--list").stdout)
     check([r["kind"] for r in got["blocks"] if r["in"]] == ["callout"], "--blocks: the person's picks, a private one too")

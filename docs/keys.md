@@ -32,6 +32,7 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | Close the overlay | `Esc` | in the note |
 | Make the whole note private (the agent sees nothing) | `Ctrl+Shift+P` | in the note |
 | Make the block private, or the blocks selected (again: not private) | `Ctrl+P` | in the note |
+| Export as a PDF: the section you are in, or the blocks selected | `Ctrl+Shift+E` | in the note |
 
 ## Writing
 
@@ -195,6 +196,18 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | Find in it (Enter: next, Shift+Enter: before) | `Ctrl+F` · `/` | in a PDF |
 | Open it in its own application | `o` | in a PDF |
 | Close it, back to the note | `Esc` | in a PDF |
+
+## Export as a PDF
+
+| | Keys | Works |
+|---|---|---|
+| The next block | `↓` · `j` | in the export |
+| The block before | `↑` · `k` | in the export |
+| Put the block in, or leave it out | `Space` | in the export |
+| The look: minimal or your Omarchy theme | `l` | in the export |
+| Edit the title (Enter or Esc: back to the blocks) | `Tab` | in the export |
+| Write the PDF and open it | `Enter` | in the export |
+| Close it, back to the note | `Esc` | in the export |
 
 ## The margin
 

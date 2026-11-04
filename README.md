@@ -334,7 +334,10 @@ the dashboard is where the work gets done.
 
 ## Handing a note in as a PDF
 
-`longhand-agent export` makes a PDF of a section of a note — for a weekly
+`Ctrl+Shift+E` in a note opens the export in the note's place: the section
+you are in (or only the blocks a selection touches), each block in or out,
+the title, the look and the word count; Enter writes the PDF and opens it.
+Underneath, `longhand-agent export` makes a PDF of a section of a note — for a weekly
 diary, say, where the note holds more than the teachers should get. The
 section is the one a line is in, from its upmost heading to the next heading
 as high, titled by that heading's words. Longhand's agent link, checkboxes
