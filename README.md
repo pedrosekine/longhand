@@ -332,6 +332,29 @@ agent's: `Ctrl+E` lets you write over its words, Enter writes it into
 today's note. The bar's deadline popup (`SUPER+ALT+D`) stays the glance;
 the dashboard is where the work gets done.
 
+## Handing a note in as a PDF
+
+`longhand-agent export` makes a PDF of a section of a note — for a weekly
+diary, say, where the note holds more than the teachers should get. The
+section is the one a line is in, from its upmost heading to the next heading
+as high, titled by that heading's words. Longhand's agent link, checkboxes
+and private blocks are left out unless you pick them; what goes loses the
+tags, task dates, block ids and wikilink brackets and keeps every word. Your
+name, the project's name and the note's day make the header. Two looks:
+`minimal` (white, black headings, the default) and `omarchy` (your current
+theme's colours). It goes to `~/Downloads`, replacing an earlier export of the
+same title but never a file it did not make, and the Downloads inbox never
+takes it for a course document. Needs `pandoc` and `xelatex` (texlive).
+
+```bash
+longhand-agent export --date 2026-11-02 --line 10 --list    # what would go, block by block (JSON)
+longhand-agent export --date 2026-11-02 --line 10           # the PDF
+longhand-agent export --date 2026-11-02 --select 12:14 --look omarchy --title "Diary 1"
+```
+
+In `config.json`: `"export": {"author": "Your Name", "dir": "~/Downloads", "look": "minimal", "font": ""}`
+(the font defaults to the page's, iA Writer Quattro S, when installed).
+
 ## How it is used
 
 `longhand-agent stats [--days 14 | --since 2026-10-11] [--json]` prints, day

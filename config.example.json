@@ -19,5 +19,11 @@
   "font": "iA Writer Quattro S",
   "codeFont": "",
   "variant": "high",
-  "timetable": ""
+  "timetable": "",
+  "export": {
+    "author": "",
+    "dir": "~/Downloads",
+    "look": "minimal",
+    "font": ""
+  }
 }

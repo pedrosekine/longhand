@@ -613,6 +613,42 @@ Small, when passing by:
     deadline, through Obsidian edits by its `^dN`; a task born in another
     chat starts its own conversation from it (first line, Enter, read as
     background); the chat's name a link to the agent's pane.
+13. **A note's blocks as a PDF to hand in** (2026-11-04, the student's
+    need: Reflective Research Diary 1 for #studio, due 6 Nov, from the
+    2 Nov note but not all of it — Longhand's agent link, the "one diary a
+    week" checkbox and the `#studio` tag would make it not delivery-ready;
+    Obsidian's own export takes the note whole). Decided that day: the
+    section under the cursor, from its upmost heading (the title) to the
+    next heading as high; blocks ticked in or out, the agent link,
+    checkboxes and private blocks out to start; the layer's marks gone
+    (tags, task dates, block ids, wikilink brackets), the words never
+    changed; name, project and day in the header; `~/Downloads` by
+    default, which the Downloads inbox must then never take for a course
+    document; two looks, minimal (white, black headings) by default and
+    omarchy (the theme's colours as it is made); `Ctrl+Shift+E`; pandoc
+    and xelatex on demand, nothing resident. In slices:
+    **(1)** the command — *built 2026-11-04*: `longhand-agent export`
+    (`agent/export.py`; `--line`, `--select A:B`, `--blocks`, `--title`,
+    `--look`, `--list` for the sheet), Settings' `export` (author, dir,
+    look, font) read from config.json until the sheet writes it, the PDF
+    moved into place whole, an earlier export of the same title replaced
+    but never a file it did not make, `exports.json` the record that the
+    inbox's filing skips (`documents.proposals(skip=…)`);
+    `tests/test_export.py`. Diary 1 made with it the same day.
+    **(2)** the sheet: `Ctrl+Shift+E` beside the note, the section's
+    blocks with ↑↓ and Space, a selection's blocks ticked, the title
+    editable, the live word count, a key between the looks, Enter writes
+    and opens it in the PDF pane (`o`, copy-path). **(3)** from a
+    deadline's row on the dashboard: its section picked, the file named
+    after it; never closing the deadline, which stays the person's step.
+    Waiting inside it: remembering per project what was left out (the
+    diary repeats ten times), once the sheet is in use.
+14. **A `/` menu in the note** (2026-11-04, asked with item 13): `/` at a
+    line's start or after a space lists what can be done to the block or
+    the selection, narrowing as you type — export first, then the
+    block's other actions (private, chat, a deadline). It would reuse the
+    `@` list. Not built: `Ctrl+Shift+E` with a selection already exports
+    a block or what is selected, and the menu is bigger than export.
 
 - ~~**Tag suggestions while typing**~~ *done 2026-10-18*: `#` and a letter
   offer the tags that exist — the projects', then those written in the
@@ -680,6 +716,12 @@ this list, with *Open, in order* above. Each says why it waits.
 
 No work unless they bite; each says what would tell. The first four came
 from 2026-09/10 and still stand.
+
+- **Export, the command** (built 2026-11-04, item 13's first slice):
+  - Is the diary handed in from it each week, or from Obsidian?
+  - Does the iA Writer face read as a deliverable, or does a hand-in want
+    a serif (`export.font`)?
+  - Is an omarchy-look PDF ever made, and for what?
 
 - **The course strip** (built 2026-11-03, `plugin-page/Next.js`
   `narrowed` and `courses`; the dashboard's keys in `docs/keys.md`):

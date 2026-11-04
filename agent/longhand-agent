@@ -31,6 +31,8 @@
     longhand-agent search [--folders | --words W [--folder F] | --file F]   # what the day's agent may search, JSON
     longhand-agent day --message M [--block HASH]               # the day's conversation: talk to the day, not a line
     longhand-agent install [--force]                            # opencode agent defs (checked by their evals) + dirs
+    longhand-agent export [--date D | --file F] [--line N | --select A:B] [--blocks H,…] [--title T]
+                          [--look minimal|omarchy] [--out DIR] [--list]   # blocks of a note as a PDF (export.py)
 
 One pass, then exit. Nothing is resident. The model gets no tools: everything
 it may see is assembled here from an allowlist (today's note minus private
@@ -69,6 +71,7 @@ import search as searchlib  # noqa: E402
 import timetable  # noqa: E402
 import task as tasklib  # noqa: E402
 import projects as projlib  # noqa: E402
+import export as exportlib  # noqa: E402
 
 TRIGGERS = ("checkbox", "mention", "question", "tick", "open")
 LINK_LINE = re.compile(r"^\[\[[^\]\n]*\|agent\]\]$")
@@ -92,6 +95,9 @@ SEARCH_TEXT = STATE_HOME / "search-text"         # the vault's PDFs as text, for
 # Every rating the student gave a reply: helpful or not, with the prompt and
 # model that made it (the improvement loop, docs/agent.md).
 FEEDBACK = STATE_HOME / "feedback.tsv"
+# The PDFs `export` wrote, by path and contents: so a new export replaces its
+# own file, and the Downloads inbox never takes one for a course document.
+EXPORTS = STATE_HOME / "exports.json"
 
 
 class Fail(Exception):
@@ -103,7 +109,7 @@ class Fail(Exception):
 # What the page's Settings sheet may set (settings.json, beside the config,
 # written by the page only). Read over config.json, and nothing else: a
 # file the page writes never moves the vault or the daily folder.
-SETTABLE = ("timetable", "calendars", "autonomy", "searchFolders", "horizon")
+SETTABLE = ("timetable", "calendars", "autonomy", "searchFolders", "horizon", "export")
 
 
 def load_config() -> dict:
@@ -2269,7 +2275,8 @@ def inbox_pass(cfg: dict, ledger: dict, at: str) -> int:
     found = doclib.scan(inbox, courses, events, cache, now, timetable.matches)
     doclib.save_cache(INBOX_CACHE, cache)
     paths = Paths(cfg, now.date())
-    new = doclib.proposals(found, ledger["items"], paths.vault, cfg.get("projectsDir", "projects"))
+    new = doclib.proposals(found, ledger["items"], paths.vault, cfg.get("projectsDir", "projects"),
+                           skip={x["sha256"] for x in load_exports()})
     for item in planlib.record(ledger, new, [], at):
         if level != "do":
             continue
@@ -3792,6 +3799,106 @@ def cmd_review(cfg: dict, args) -> int:
     return 0
 
 
+def load_exports() -> list[dict]:
+    try:
+        got = json.loads(EXPORTS.read_text()).get("files", [])
+        return [x for x in got if isinstance(x, dict) and x.get("path") and x.get("sha256")]
+    except (OSError, ValueError, AttributeError):
+        return []
+
+
+def cmd_export(cfg: dict, args) -> int:
+    """Blocks of a note as a PDF to hand in (export.py). The note is a day
+    (`--date`, today when left out) or a file in the vault (`--file`). The
+    section is the one `--line` (0-based) is in, or the one a selection
+    `--select A:B` starts in, with only the blocks it touches ticked;
+    neither: the whole note. `--blocks` names the ticked blocks by hash
+    instead. `--list` says what would go, as JSON, for the sheet; without
+    it the PDF is made. Settings → `export`: author, dir (~/Downloads),
+    look, font."""
+    opts = cfg.get("export") if isinstance(cfg.get("export"), dict) else {}
+    today = dt.date.today()
+    paths = Paths(cfg, today)
+    day = None
+    if args.file:
+        note = (paths.vault / args.file).resolve()
+        if paths.vault.resolve() not in note.parents:
+            raise Fail("--file is outside the vault")
+    else:
+        fmt = moment_to_strftime(cfg["daily"].get("format", "YYYY-MM-DD"))
+        try:
+            day = dt.datetime.strptime(args.date, fmt).date() if args.date else today
+        except ValueError:
+            raise Fail(f"--date is not {cfg['daily'].get('format', 'YYYY-MM-DD')}")
+        note = Paths(cfg, day).note
+    try:
+        text = note.read_text()
+    except OSError:
+        raise Fail(f"no note at {note}")
+    bl = blocklib.split(text)
+    sel = None
+    if args.select:
+        try:
+            a, b = (int(x) for x in args.select.split(":"))
+        except ValueError:
+            raise Fail("--select is A:B, two line numbers")
+        sel = (min(a, b), max(a, b))
+    line = sel[0] if sel else (args.line if args.line >= 0 else None)
+    first, end, title_at = exportlib.section(bl, line)
+    picked = {h for h in args.blocks.split(",") if h} if args.blocks else None
+    rows = []
+    for i in range(first, end):
+        b = bl[i]
+        if i == title_at:
+            keep, why = False, "the title"
+        elif picked is not None:
+            keep, why = b["hash"] in picked, "" if b["hash"] in picked else "not picked"
+        elif sel and not (b["start"] <= sel[1] and b["end"] > sel[0]):
+            keep, why = False, "outside the selection"
+        else:
+            keep, why = exportlib.starts_in(b)
+        rows.append({"hash": b["hash"], "kind": b["kind"], "start": b["start"], "end": b["end"],
+                     "text": b["text"], "in": keep, "why": why})
+    title = (args.title or "").strip() or (exportlib.title_of(bl[title_at]["text"]) if title_at is not None else note.stem)
+    shift = exportlib.level(bl[title_at]) - 1 if title_at is not None else 0
+    image = exportlib.finder(note, paths.vault, paths.vault / paths.notes_root if paths.notes_root else paths.vault)
+    kept = [bl[first + n] for n, r in enumerate(rows) if r["in"]]
+    body = exportlib.assemble(kept, shift, image)
+    course = exportlib.course_of(bl, first, end, title_at, projlib.read(paths.knowledge / "projects"))
+    look = args.look or opts.get("look") or "minimal"
+    if look not in exportlib.LOOKS:
+        raise Fail(f"--look is one of {', '.join(exportlib.LOOKS)}")
+    folder = Path(args.out or opts.get("dir") or "~/Downloads").expanduser()
+    author = str(opts.get("author") or "").strip()
+    when = exportlib.day_words(day) if day else ""
+    meta = {"title": title, "author": author, "date": " · ".join(x for x in (course, when) if x)}
+    done = load_exports()
+    out = exportlib.place(folder, title, {x["path"] for x in done})
+    report = {"title": title, "author": author, "course": course, "date": when, "look": look,
+              "words": exportlib.words(body), "pdf": str(out)}
+    if args.list:
+        print(json.dumps(dict(report, blocks=rows), ensure_ascii=False))
+        return 0
+    if not body.strip():
+        raise Fail("nothing is picked")
+    guard_write(paths, out)
+    try:
+        exportlib.render(body, meta, look, exportlib.theme_colors(), exportlib.font(str(opts.get("font") or "")),
+                         out, note.parent)
+    except (RuntimeError, subprocess.SubprocessError) as e:
+        raise Fail(str(e))
+    sha = doclib.content_hash(out)
+    done = [x for x in done if x["path"] != str(out)][-199:]
+    done.append({"path": str(out), "sha256": sha, "title": title, "note": str(note),
+                 "at": dt.datetime.now().isoformat(timespec="seconds")})
+    STATE_HOME.mkdir(parents=True, exist_ok=True)
+    tmp = EXPORTS.with_suffix(".tmp")
+    tmp.write_text(json.dumps({"files": done}, ensure_ascii=False, indent=1))
+    tmp.replace(EXPORTS)
+    print(json.dumps(report, ensure_ascii=False))
+    return 0
+
+
 def cmd_install(cfg: dict, args) -> int:
     here = Path(__file__).resolve().parent
     agents = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "opencode" / "agent"
@@ -3927,6 +4034,16 @@ def main(argv: list[str]) -> int:
     p.add_argument("--verbose", action="store_true")
     p.add_argument("--json", action="store_true")
     sub.add_parser("projects").add_argument("--now", default="", help="YYYY-MM-DDTHH:MM (tests)")
+    p = sub.add_parser("export")
+    p.add_argument("--date", default="", help="the day's note (the daily format); today when left out")
+    p.add_argument("--file", default="", help="or a note's path in the vault")
+    p.add_argument("--line", type=int, default=-1, help="a line (0-based) in the section to export")
+    p.add_argument("--select", default="", help="A:B, the selected lines: only the blocks they touch")
+    p.add_argument("--blocks", default="", help="the picked blocks' hashes, comma-separated")
+    p.add_argument("--title", default="", help="in place of the section's upmost heading")
+    p.add_argument("--look", default="", help="minimal (the default) or omarchy")
+    p.add_argument("--out", default="", help="the folder (default: Settings, else ~/Downloads)")
+    p.add_argument("--list", action="store_true", help="what would go, as JSON; no PDF")
     p = sub.add_parser("project")
     p.add_argument("--tag", required=True)
     p.add_argument("--name", default="", help="its name; the tag when left out")
@@ -3940,7 +4057,7 @@ def main(argv: list[str]) -> int:
         return {"run": cmd_run, "chat": cmd_chat, "ack": cmd_ack, "accept": cmd_accept, "tasks": cmd_tasks, "sections": cmd_sections,
                 "next": cmd_next, "box": cmd_box, "rate": cmd_rate, "eval": cmd_eval, "review": cmd_review, "plan": cmd_plan, "proposals": cmd_proposals, "proposal": cmd_proposal, "talk": cmd_talk, "thread": cmd_thread, "timetable": cmd_timetable, "notebook": cmd_notebook, "documents": cmd_documents, "day": cmd_day, "search": cmd_search, "horizon": cmd_horizon, "note": cmd_note, "autonomy": cmd_autonomy, "dismiss": cmd_dismiss, "curriculum": cmd_curriculum,
                 "context": cmd_context, "state": cmd_state, "install": cmd_install, "stats": cmd_stats,
-                "projects": cmd_projects, "project": cmd_project}[args.cmd](cfg, args)
+                "projects": cmd_projects, "project": cmd_project, "export": cmd_export}[args.cmd](cfg, args)
     except Fail as e:
         print(f"longhand-agent: {e}", file=sys.stderr)
         return 2

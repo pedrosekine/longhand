@@ -175,9 +175,11 @@ def docs_dir(vault: Path, projects_dir: str, tag: str) -> Path:
     return vault / projects_dir / tag / "docs"
 
 
-def proposals(found: list[dict], ledger_items: list[dict], vault: Path, projects_dir: str) -> list[dict]:
+def proposals(found: list[dict], ledger_items: list[dict], vault: Path, projects_dir: str,
+              skip: set[str] = frozenset()) -> list[dict]:
     """What is new to propose: one per document (by its contents), none for
-    one already filed, declined, or waiting."""
+    one already filed, declined, or waiting, nor for one of the person's
+    own exports (`skip`, their contents' hashes)."""
     known = {x.get("doc") for x in ledger_items if x.get("kind") == "file"
              and x.get("status") in ("open", "declined", "accepted")}
     out, seen = [], set()
@@ -189,7 +191,7 @@ def proposals(found: list[dict], ledger_items: list[dict], vault: Path, projects
             doc = content_hash(p)
         except OSError:
             continue
-        if doc in known or doc in seen:
+        if doc in known or doc in seen or doc in skip:
             continue
         folder = docs_dir(vault, projects_dir, f["tag"])
         if folder.is_dir() and any(content_hash(q) == doc for q in folder.glob("*.pdf")):
