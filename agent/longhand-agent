@@ -783,6 +783,32 @@ def run_model(cfg: dict, paths: Paths, payload: str, session: str = "", message:
     return out
 
 
+LEDGER_HEAD = "at\tdate\ttrigger\tblock\tcost\tinput\toutput\treasoning\tsession\tprompt\tmodel\terror\n"
+
+
+def record_cost(ledger: Path, at: str, stamp: str, trigger: str, block: str, result: dict) -> None:
+    """One line per run in the cost ledger, never synced. A run that failed
+    says why in the last column, so a $0 line is never read as a run that
+    reached the model (2026-11-07..09: "Model unavailable" logged as three
+    free plans). A ledger from before the column gets it added to its head."""
+    ledger.parent.mkdir(parents=True, exist_ok=True)
+    if not ledger.exists() or not ledger.stat().st_size:
+        ledger.write_text(LEDGER_HEAD)
+    else:
+        text = ledger.read_text()
+        head, _, rest = text.partition("\n")
+        if head.split("\t")[-1] != "error":
+            tmp = ledger.with_name(ledger.name + ".tmp")
+            tmp.write_text(head + "\terror\n" + rest)
+            os.replace(tmp, ledger)
+    tk = result.get("tokens") or {}
+    error = " ".join(str(result.get("error") or "").split())[:300]   # one line, no tabs
+    with open(ledger, "a") as f:
+        f.write(f"{at}\t{stamp}\t{trigger}\t{block}\t{float(result.get('cost') or 0):.6f}"
+                f"\t{tk.get('input', 0)}\t{tk.get('output', 0)}\t{tk.get('reasoning', 0)}"
+                f"\t{result.get('session', '')}\t{result.get('prompt', '')}\t{result.get('model', '')}\t{error}\n")
+
+
 def parse_reply(text: str) -> dict:
     """The contract is one fenced JSON block; anything else becomes the reply."""
     empty = {"reply": "", "proposals": [], "suggestions": [], "knowledge": [], "read": [], "search": []}
@@ -957,11 +983,7 @@ def apply(cfg: dict, paths: Paths, trigger: str, fired: list[dict], visible: lis
     append_text(paths, paths.transcript, "\n".join(sec))
 
     # Ledger: one line per run, never synced.
-    paths.ledger.parent.mkdir(parents=True, exist_ok=True)
-    if not paths.ledger.exists():
-        paths.ledger.write_text("at\tdate\ttrigger\tblock\tcost\tinput\toutput\treasoning\tsession\tprompt\tmodel\n")
-    with open(paths.ledger, "a") as f:
-        f.write(f"{at}\t{paths.stamp}\t{trigger}\t{hash_}\t{result['cost']:.6f}\t{tk['input']}\t{tk['output']}\t{tk['reasoning']}\t{result['session']}\t{result.get('prompt', '')}\t{result.get('model', '')}\n")
+    record_cost(paths.ledger, at, paths.stamp, trigger, hash_, result)
     return state
 
 
@@ -1668,7 +1690,7 @@ def cmd_stats(cfg: dict, args) -> int:
     span = [start + dt.timedelta(days=i) for i in range((today - start).days + 1)]
     day = {d: {"words": 0, "written": 0, "ticked": 0, "bound": 0, "tags": [], "langs": {},
                "commitments": 0, "commitments_closed": 0, "note_boxes": 0,
-               "opens": 0, "minutes": 0.0, "features": {}, "runs": 0, "cost": 0.0, "triggers": {},
+               "opens": 0, "minutes": 0.0, "features": {}, "runs": 0, "failed": 0, "cost": 0.0, "triggers": {},
                "focus": 0, "added": 0, "done": 0} for d in span}
     langs = languages(cfg)
 
@@ -1730,7 +1752,9 @@ def cmd_stats(cfg: dict, args) -> int:
                 d = dt.date.fromisoformat(f[0][:10])
             except (ValueError, IndexError):
                 continue
-            if d in day:
+            if d in day and len(f) > 11 and f[11]:
+                day[d]["failed"] += 1          # did not reach the model: not a run
+            elif d in day:
                 day[d]["runs"] += 1
                 day[d]["cost"] += float(f[4] or 0)
                 day[d]["triggers"][f[2]] = day[d]["triggers"].get(f[2], 0) + 1
@@ -1809,6 +1833,7 @@ def cmd_stats(cfg: dict, args) -> int:
         "page_minutes": round(sum(r["minutes"] for r in rows)),
         "features": {},
         "agent_runs": sum(r["runs"] for r in rows),
+        "agent_failed": sum(r["failed"] for r in rows),
         "agent_cost": round(sum(r["cost"] for r in rows), 4),
         "focus_sessions": sum(r["focus"] for r in rows),
         "deadlines_added": sum(r["added"] for r in rows),
@@ -1842,7 +1867,9 @@ def cmd_stats(cfg: dict, args) -> int:
           f"{t['closed_after_a_move']} after their date moved, {t['closed_from_a_note']} from a note line)"
           + (f", {t['deadlines_missed']} missed (stepped aside a fortnight late)" if t["deadlines_missed"] else "")
           + (f"; dates moved later {t['dates_postponed']} times." if t["dates_postponed"] else "."))
-    print(f"Agent: {t['agent_runs']} runs, ${t['agent_cost']:.4f}. Focus sessions: {t['focus_sessions']}.")
+    print(f"Agent: {t['agent_runs']} runs, ${t['agent_cost']:.4f}"
+          + (f", {t['agent_failed']} failed" if t["agent_failed"] else "")
+          + f". Focus sessions: {t['focus_sessions']}.")
     pr = t["proposals"]
     if pr:
         bits = []
@@ -2234,12 +2261,7 @@ def cmd_plan(cfg: dict, args) -> int:
     written = []
     write_knowledge(paths, reply["knowledge"], written)
 
-    tk = result["tokens"]
-    paths.ledger.parent.mkdir(parents=True, exist_ok=True)
-    if not paths.ledger.exists():
-        paths.ledger.write_text("at\tdate\ttrigger\tblock\tcost\tinput\toutput\treasoning\tsession\tprompt\tmodel\n")
-    with open(paths.ledger, "a") as f:
-        f.write(f"{at}\t{paths.stamp}\tplan\t\t{result['cost']:.6f}\t{tk['input']}\t{tk['output']}\t{tk['reasoning']}\t{result['session']}\t{result.get('prompt', '')}\t{result.get('model', '')}\n")
+    record_cost(paths.ledger, at, paths.stamp, "plan", "", result)
     # A plan that failed is not today's plan: the next opening tries again,
     # and the page says why it could not (an expired key, no network).
     if result["error"]:
@@ -3046,18 +3068,12 @@ def cmd_day(cfg: dict, args) -> int:
                                          "prompt": result.get("prompt", ""), "model": result.get("model", ""),
                                          "knowledge": written, "error": result["error"]})
     write_atomic(paths, paths.state, json.dumps(state, indent=2, ensure_ascii=False) + "\n")
-    tk = result["tokens"]
-    paths.ledger.parent.mkdir(parents=True, exist_ok=True)
-    if not paths.ledger.exists():
-        paths.ledger.write_text("at\tdate\ttrigger\tblock\tcost\tinput\toutput\treasoning\tsession\tprompt\tmodel\n")
-    with open(paths.ledger, "a") as f:
-        f.write(f"{at}\t{paths.stamp}\tday\t{args.block or ''}\t{result['cost']:.6f}\t{tk.get('input', 0)}\t{tk.get('output', 0)}"
-                f"\t{tk.get('reasoning', 0)}\t{result['session']}\t{result.get('prompt', '')}\t{result.get('model', '')}\n")
+    record_cost(paths.ledger, at, paths.stamp, "day", args.block or '', result)
     if result["error"]:
         print(f"error: {result['error']}", file=sys.stderr)
         return 1
     print(f"day: {'reply' if reply['reply'] else 'silent'}" + (f" · {len(proposed)} proposed" if proposed else "")
-          + f" · ${result['cost']:.4f} · {tk.get('total', 0)} tokens")
+          + f" · ${result['cost']:.4f} · {result['tokens'].get('total', 0)} tokens")
     return 0
 
 
@@ -3183,17 +3199,11 @@ def cmd_note(cfg: dict, args) -> int:
     written = []
     write_knowledge(paths, reply.get("knowledge") or [], written)
     write_atomic(paths, where, json.dumps(talk, indent=2, ensure_ascii=False) + "\n")
-    tk = result["tokens"]
-    paths.ledger.parent.mkdir(parents=True, exist_ok=True)
-    if not paths.ledger.exists():
-        paths.ledger.write_text("at\tdate\ttrigger\tblock\tcost\tinput\toutput\treasoning\tsession\tprompt\tmodel\n")
-    with open(paths.ledger, "a") as f:
-        f.write(f"{at}\t{paths.stamp}\tnote\t{args.block or ''}\t{result['cost']:.6f}\t{tk.get('input', 0)}\t{tk.get('output', 0)}"
-                f"\t{tk.get('reasoning', 0)}\t{result['session']}\t{result.get('prompt', '')}\t{result.get('model', '')}\n")
+    record_cost(paths.ledger, at, paths.stamp, "note", args.block or '', result)
     if result["error"]:
         print(f"error: {result['error']}", file=sys.stderr)
         return 1
-    print(f"note: {'reply' if reply['reply'] else 'silent'} · ${result['cost']:.4f} · {tk.get('total', 0)} tokens")
+    print(f"note: {'reply' if reply['reply'] else 'silent'} · ${result['cost']:.4f} · {result['tokens'].get('total', 0)} tokens")
     return 0
 
 
@@ -3272,12 +3282,7 @@ def ensure_briefs(cfg: dict) -> list[str]:
                                 "cost": result["cost"], "payload": str(payload_file),
                                 "prompt": result.get("prompt", ""), "model": result.get("model", "")}
                 write_atomic(paths, paths.state, json.dumps(state, indent=2, ensure_ascii=False) + "\n")
-            tk = result["tokens"]
-            if not now.ledger.exists():
-                now.ledger.write_text("at\tdate\ttrigger\tblock\tcost\tinput\toutput\treasoning\tsession\tprompt\tmodel\n")
-            with open(now.ledger, "a") as f:
-                f.write(f"{at}\t{paths.stamp}\tbrief\t\t{result['cost']:.6f}\t{tk.get('input', 0)}\t{tk.get('output', 0)}"
-                        f"\t{tk.get('reasoning', 0)}\t{result['session']}\t{result.get('prompt', '')}\t{result.get('model', '')}\n")
+            record_cost(now.ledger, at, paths.stamp, "brief", "", result)
     return written
 
 
@@ -3400,12 +3405,7 @@ def cmd_talk(cfg: dict, args) -> int:
     written = []
     if not result["error"]:
         write_knowledge(paths, reply["knowledge"], written)
-    tk = result["tokens"]
-    paths.ledger.parent.mkdir(parents=True, exist_ok=True)
-    if not paths.ledger.exists():
-        paths.ledger.write_text("at\tdate\ttrigger\tblock\tcost\tinput\toutput\treasoning\tsession\tprompt\tmodel\n")
-    with open(paths.ledger, "a") as f:
-        f.write(f"{at}\t{paths.stamp}\ttalk\t{item['id']}\t{result['cost']:.6f}\t{tk['input']}\t{tk['output']}\t{tk['reasoning']}\t{result['session']}\t{result.get('prompt', '')}\t{result.get('model', '')}\n")
+    record_cost(paths.ledger, at, paths.stamp, "talk", item['id'], result)
     print(json.dumps({"id": item["id"], "current": current["id"], "thread": key, "reply": reply["reply"],
                       "revised": bool(revised), "settle": settled, "kind": current["kind"], "resolved": resolved,
                       # The conversation as it stands, for the margin: once settled, the

@@ -35,6 +35,11 @@ if sys.argv[1:2] == ["session"]:
 if os.environ.get("STUB_DEAF"):
     print("DESCRIPTION\\n  Run OpenCode with a message\\nERRORS\\n  Unrecognized flag")
     sys.exit(0)
+if os.environ.get("STUB_UNAVAILABLE"):
+    # opencode 2.2 with a model it cannot route to: a session, an error, exit 1
+    print(json.dumps({"type": "error", "sessionID": "ses_stub",
+                      "error": {"type": "provider.no-route", "message": "Model unavailable: openai/gone"}}))
+    sys.exit(1)
 payload = sys.stdin.read()
 open(os.path.join(os.environ["STUB_DIR"], "last_payload.md"), "w").write(payload)
 reply = json.loads(open(os.path.join(os.environ["STUB_DIR"], "reply.json")).read())
@@ -615,6 +620,28 @@ def main() -> int:
         check(r.returncode != 0, "the runner exits non-zero")
         last = json.loads((t.vault / "agents" / "longhand" / "daily" / f"{DAY}.json").read_text())["runs"][-1]
         check("Unrecognized flag" in last["error"], "what opencode said is kept")
+
+        # 2026-11-07..09: a model opencode could not route to was logged in
+        # the cost ledger as three free runs, told apart from real ones by nothing.
+        print("-- a failed run says so in the cost ledger")
+        led = t.state_home / "longhand" / "cost.tsv"
+        rows = led.read_text().splitlines()
+        old_head = "\t".join(rows[0].split("\t")[:11])
+        led.write_text("\n".join([old_head] + rows[1:]) + "\n")        # a ledger from before the column
+        t.env["STUB_UNAVAILABLE"] = "1"
+        r = t.agent("run", "--trigger", "mention", "--hash", at_block["hash"], "--date", DAY)
+        t.env.pop("STUB_UNAVAILABLE")
+        check(r.returncode != 0, "an unavailable model exits non-zero")
+        after = led.read_text().splitlines()
+        check(after[0].split("\t")[-1] == "error" and after[1:len(rows)] == rows[1:], "old ledger gains the column, its runs kept")
+        f = after[-1].split("\t")
+        check(len(f) == 12 and "Model unavailable: openai/gone" in f[11], "the failed run's line names the error")
+        good = [l.split("\t") for l in after[1:] if len(l.split("\t")) == 12 and not l.split("\t")[11]]
+        check(good and all(len(g) == 12 for g in good), "a run that worked has an empty error column")
+        st = json.loads(t.agent("stats", "--days", "2", "--json").stdout)["totals"]
+        failed = sum(1 for l in after[1:] if len(l.split("\t")) > 11 and l.split("\t")[11])
+        check(st["agent_failed"] == failed >= 2, f"stats counts failed runs apart ({st['agent_failed']})")
+        check(st["agent_runs"] == len(after) - 1 - failed, "…and not as runs")
 
         # The ledger when the events carry no price: asked of the session.
         print("-- the price, asked of the session")
