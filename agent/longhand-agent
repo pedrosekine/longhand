@@ -790,16 +790,18 @@ def record_cost(ledger: Path, at: str, stamp: str, trigger: str, block: str, res
     """One line per run in the cost ledger, never synced. A run that failed
     says why in the last column, so a $0 line is never read as a run that
     reached the model (2026-11-07..09: "Model unavailable" logged as three
-    free plans). A ledger from before the column gets it added to its head."""
+    free plans). An older ledger gets today's head in place of its own: its
+    lines were always written in this order, but a head kept from before
+    prompt and model were added named fewer columns than they carry."""
     ledger.parent.mkdir(parents=True, exist_ok=True)
     if not ledger.exists() or not ledger.stat().st_size:
         ledger.write_text(LEDGER_HEAD)
     else:
         text = ledger.read_text()
         head, _, rest = text.partition("\n")
-        if head.split("\t")[-1] != "error":
+        if head + "\n" != LEDGER_HEAD:
             tmp = ledger.with_name(ledger.name + ".tmp")
-            tmp.write_text(head + "\terror\n" + rest)
+            tmp.write_text(LEDGER_HEAD + rest)
             os.replace(tmp, ledger)
     tk = result.get("tokens") or {}
     error = " ".join(str(result.get("error") or "").split())[:300]   # one line, no tabs

@@ -626,14 +626,18 @@ def main() -> int:
         print("-- a failed run says so in the cost ledger")
         led = t.state_home / "longhand" / "cost.tsv"
         rows = led.read_text().splitlines()
-        old_head = "\t".join(rows[0].split("\t")[:11])
-        led.write_text("\n".join([old_head] + rows[1:]) + "\n")        # a ledger from before the column
+        new_head = rows[0]
+        # a ledger whose head is older than its lines: it stops at session,
+        # as the author's did, though prompt and model follow it on every line
+        old_head = "\t".join(rows[0].split("\t")[:9])
+        led.write_text("\n".join([old_head] + rows[1:]) + "\n")
         t.env["STUB_UNAVAILABLE"] = "1"
         r = t.agent("run", "--trigger", "mention", "--hash", at_block["hash"], "--date", DAY)
         t.env.pop("STUB_UNAVAILABLE")
         check(r.returncode != 0, "an unavailable model exits non-zero")
         after = led.read_text().splitlines()
-        check(after[0].split("\t")[-1] == "error" and after[1:len(rows)] == rows[1:], "old ledger gains the column, its runs kept")
+        check(after[0] == new_head and new_head.split("\t")[-3:] == ["prompt", "model", "error"]
+              and after[1:len(rows)] == rows[1:], "an old head is made today's whole, its runs kept")
         f = after[-1].split("\t")
         check(len(f) == 12 and "Model unavailable: openai/gone" in f[11], "the failed run's line names the error")
         good = [l.split("\t") for l in after[1:] if len(l.split("\t")) == 12 and not l.split("\t")[11]]
