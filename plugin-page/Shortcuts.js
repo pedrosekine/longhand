@@ -138,8 +138,8 @@ var actions = [
   // Alt+Up/Down can move a line, as in VS Code (2026-10-16).
   { id: "blockStart", group: "move", places: ["note"], does: "Start of the block (again: the block before)", keys: ["Ctrl+Up"] },
   { id: "blockEnd", group: "move", places: ["note"], does: "End of the block (again: the block after)", keys: ["Ctrl+Down"] },
-  { id: "selectBlockStart", group: "move", places: ["note"], does: "Select to the block's start (again: a block more)", keys: ["Ctrl+Shift+Up"] },
-  { id: "selectBlockEnd", group: "move", places: ["note"], does: "Select to the block's end (again: a block more)", keys: ["Ctrl+Shift+Down"] },
+  { id: "selectBlockStart", group: "move", places: ["note"], does: "Select to the block's start; with a selection, take the block above too", keys: ["Ctrl+Shift+Up"] },
+  { id: "selectBlockEnd", group: "move", places: ["note"], does: "Select to the block's end; with a selection, take the block below too", keys: ["Ctrl+Shift+Down"] },
   { id: "noteStart", group: "move", places: ["note"], does: "Top of the note", keys: ["Ctrl+Home"] },
   { id: "noteEnd", group: "move", places: ["note"], does: "End of the note", keys: ["Ctrl+End"] },
   // Days, the way Obsidian's daily notes step them: the next day that has
@@ -338,7 +338,7 @@ var fixed = [
   // In the note Ctrl+A climbs (NoteEditor.selectAllStep); the one-line boxes
   // take it as select all. Esc in the note lets go of a selection before it
   // closes anything, so it is shown here and reserved by "close" above.
-  { group: "typing", places: ["note"], does: "Select the line; again: its block; again: the note", show: ["Ctrl+A"], keys: ["Ctrl+A"] },
+  { group: "typing", places: ["note"], does: "Select the line; again: its item, list, block, section, a step wider each time, up to the note", show: ["Ctrl+A"], keys: ["Ctrl+A"] },
   { group: "typing", places: ["search", "chat"], does: "Select all", show: ["Ctrl+A"], keys: ["Ctrl+A"] },
   { group: "typing", places: ["note"], does: "Let go of a selection (Esc again: close the overlay)", show: ["Esc"], keys: [] },
   { group: "typing", places: ["note", "search", "chat"], does: "Copy, cut, paste", show: ["Ctrl+C", "Ctrl+X", "Ctrl+V"], keys: ["Ctrl+C", "Ctrl+X", "Ctrl+V"] },

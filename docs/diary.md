@@ -1486,3 +1486,20 @@ only the window and the panels around it differ.
   — Notion's and Docs' way), for anything else an empty line, inside
   the quote it is in. Mid-line and at the end Enter is as before.
   `returnKey` in `NoteEditor.qml`; `tests/tst_editor.qml`.
+- **2026-11-11: Ctrl+A climbs lists and sections; Ctrl+Shift+arrows grow a
+  selection by blocks.** Ctrl+A had three steps — the line, the block, the
+  note — and a list's items are a block each, so a one-line bullet went
+  from its words to the whole note in one press, and a paragraph from its
+  block to the whole note, past its section. Now each press takes the
+  next step out that holds more: the words; a list item with what hangs
+  under it, the item it hangs from, the whole list (to a blank line);
+  the block; the section under each heading above, the nearest first;
+  the note (in the focus view, the project's part). And with a selection,
+  `Ctrl+Shift+Up` takes its top edge up to the block above and
+  `Ctrl+Shift+Down` its bottom edge to the block below, whichever end the
+  cursor is at — before, the cursor's end moved, so Ctrl+Shift+Up after
+  Ctrl+A shrank the selection to its last block. Shift+arrows still move
+  the cursor's end a line at a time, to take some back. One rule for
+  both: within one line a selection is its words; across lines it takes
+  whole lines, their hidden marks too, so what is copied or cut is whole
+  markdown (a list's first `- `, a heading's `## `).

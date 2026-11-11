@@ -173,7 +173,10 @@ answered. A pass that fails says so in a line under the cursor; it never
 looks like an agent with nothing to say. `Ctrl+Up/Down`
 go to a block's start or end and, pressed again, on through the blocks
 before or after, the way Word walks paragraphs (`Ctrl+Shift+Up/Down` select
-the same way); `Alt+Up/Down` move the line, or every line selected, up or
+the same way, and with a selection take the block above or below into it);
+`Ctrl+A` takes the line, then a step wider at each press — the list item,
+the list, the block, the section under each heading — up to the whole note;
+`Alt+Up/Down` move the line, or every line selected, up or
 down, as in VS Code;
 `Ctrl+Enter` on an answered block opens its margin — proposals first (Enter
 accepts one and runs it through `pomo`), then the chat — and `Esc` comes back

@@ -718,11 +718,18 @@ Item {
   // Esc can hand it back instead of leaving it at the end of what was taken.
   property int ladderFrom: -1
 
-  // Ctrl+A climbs a step at a time: the line's words, then the block (the
-  // one the agent answers), then the whole note. Each press takes the
-  // nearest step that holds more than what is selected now, so a step that
-  // would change nothing (a one-line block, an empty line) is passed over,
-  // and a selection made by hand starts the climb from where it is.
+  // Ctrl+A climbs a step at a time, each step the next one out that holds
+  // the cursor (2026-11-11): the line's words; a list item with what is
+  // under it, then the item it hangs from, then the whole list; the block
+  // (a paragraph, a quote, a table); the section under each heading above
+  // it, the nearest first; the whole note. Each press takes the nearest
+  // step that holds more than what is selected now, so a step that would
+  // change nothing (a one-line item, a one-line paragraph) is passed over,
+  // and a selection made by hand starts the climb from where it is. Until
+  // then the steps were the line, the block and the note, and a list's
+  // items are one block each: a bullet went from its line to the whole
+  // note in one press. The wider steps take whole lines, their marks too,
+  // so what is copied or cut is whole markdown.
   function selectAllStep(item) {
     var a = ed.cursorPosition, b = a
     if (ed.spanning) { a = ed.selStart; b = ed.selEnd }
@@ -734,23 +741,87 @@ Item {
     var i = Rows.rowAt(ed.rows, a)
     var r = ed.rows[i]
     var steps = [[r.start + r.prefixLen, r.bodyEnd]]
-    var blocks = Blocks.split(ed.text)
-    for (var x = 0; x < blocks.length; x++) {
-      if (i < blocks[x].start || i >= blocks[x].end) continue
-      var first = ed.rows[blocks[x].start]
-      var last = ed.rows[blocks[x].end - 1]
-      if (first && last) steps.push([first.start + first.prefixLen, last.bodyEnd])
+    var spans = ed.ladder(i)
+    for (var x = 0; x < spans.length; x++) {
+      var first = ed.rows[spans[x][0]], last = ed.rows[spans[x][1]]
+      steps.push([first.start, last.start + last.raw.length])
     }
-    if (ed.shown !== null) { var run = ed.runAround(a); steps.push([run.a, run.b]) }
-    else steps.push([0, ed.text.length])
+    if (ed.shown !== null) {
+      var run = ed.runAround(a)
+      steps = steps.filter(function (st) { return st[0] >= run.a && st[1] <= run.b })
+      steps.push([run.a, run.b])
+    } else steps.push([0, ed.text.length])
     for (var s = 0; s < steps.length; s++) {
       var lo = steps[s][0], hi = steps[s][1]
-      if (lo > a || hi < b || hi - lo <= b - a) continue
+      if (lo > a || hi < b) continue
+      if (ed.shownFrom(lo) === ed.shownFrom(a) && ed.shownTo(hi) === ed.shownTo(b)) continue
       var from = ed.spanning ? ed.ladderFrom : ed.cursorPosition
       ed.selectSpan(lo, hi)
       ed.ladderFrom = from
       return
     }
+  }
+
+  // The steps out from row i, as [first, last] rows, the smallest first;
+  // only those of more than one line (the words' step holds one).
+  function ladder(i) {
+    var rows = ed.rows, n = rows.length
+    var spans = []
+    function blank(k) { return rows[k].kind === "blank" }
+    // The list item the row is, or the one it is written under.
+    var j = -1
+    if (Rows.listy(rows[i])) j = i
+    else if (Rows.inList(rows[i]))
+      for (var u = i - 1; u >= 0 && !blank(u) && Rows.inList(rows[u]); u--)
+        if (Rows.listy(rows[u]) && rows[u].level < rows[i].level) { j = u; break }
+    var top = -1
+    while (j >= 0) {
+      var L = rows[j].level, e = j
+      for (var d = j + 1; d < n && !blank(d) && Rows.inList(rows[d]) && rows[d].level > L; d++) e = d
+      spans.push([j, e])
+      top = j
+      var p = -1
+      for (var w = j - 1; w >= 0 && !blank(w) && Rows.inList(rows[w]); w--)
+        if (Rows.listy(rows[w]) && rows[w].level < L) { p = w; break }
+      j = p
+    }
+    if (top >= 0) {
+      var l0 = top, l1 = top
+      while (l0 > 0 && !blank(l0 - 1) && Rows.inList(rows[l0 - 1])) l0--
+      while (l1 < n - 1 && !blank(l1 + 1) && Rows.inList(rows[l1 + 1])) l1++
+      spans.push([l0, l1])
+    }
+    var blocks = Blocks.split(ed.text)
+    for (var x = 0; x < blocks.length; x++)
+      if (i >= blocks[x].start && i < blocks[x].end) spans.push([blocks[x].start, blocks[x].end - 1])
+    // Sections: a heading's lines until the next heading of its level or
+    // higher, without the blank lines at its end; the nearest first.
+    var heads = Focus.headings(ed.text.split("\n"))
+    var secs = []
+    for (var h = 0; h < heads.length && heads[h].line <= i; h++) {
+      var end = n
+      for (var k = h + 1; k < heads.length; k++) if (heads[k].level <= heads[h].level) { end = heads[k].line; break }
+      if (i >= end) continue
+      var last = end - 1
+      while (last > heads[h].line && blank(last)) last--
+      secs.unshift([heads[h].line, last])
+    }
+    spans = spans.concat(secs).filter(function (sp) { return sp[1] > sp[0] })
+    // Smallest first; each holds the ones before it.
+    spans.sort(function (x1, x2) { return (x1[1] - x1[0]) - (x2[1] - x2[0]) || x2[0] - x1[0] })
+    return spans
+  }
+
+  // A text offset as the selection is drawn: a line's hidden mark is not
+  // drawn, so an end inside it is where its words start; a bound line's
+  // date is not drawn either, so an end past its words is where they end.
+  function shownFrom(pos) {
+    var r = ed.rows[Rows.rowAt(ed.rows, pos)]
+    return r ? Math.max(pos, r.start + r.prefixLen) : pos
+  }
+  function shownTo(pos) {
+    var r = ed.rows[Rows.rowAt(ed.rows, pos)]
+    return r ? Math.max(r.start + r.prefixLen, Math.min(pos, r.bodyEnd)) : pos
   }
 
   // Esc with something selected lets go of it and nothing more; the next
@@ -778,7 +849,11 @@ Item {
     }
     ed.setCursor(pos, true)
     ed.selAnchor = anchor
-    ed.selCursor = ed.cursorPosition
+    // The cursor cannot stand in a line's hidden mark, so it is put where
+    // the words start; the selection still starts at the line's start, so
+    // what is copied or cut is the whole line, its mark too.
+    var landed = ed.cursorPosition
+    ed.selCursor = pos < landed && Rows.rowAt(ed.rows, pos) === Rows.rowAt(ed.rows, landed) ? pos : landed
     var item = ed.rowItem(ed.focusedRow)
     if (item) item.field.deselect()
   }
@@ -894,26 +969,41 @@ Item {
     }
   }
 
-  // Ctrl+Shift+Up / Down: select from the cursor to the start / end of its
-  // block — the same block the agent answers. Again at the edge, the
-  // selection takes the block before / after too. A selection already
-  // there keeps its anchor.
+  // Ctrl+Shift+Up / Down (2026-11-11): from the cursor, select to the
+  // start / end of its block — the same blocks the agent answers, a list
+  // item each. With a selection, its top edge goes up to the block above
+  // (Down: its bottom edge to the block below), so a block taken with
+  // Ctrl+A grows a block at a time either way, whatever end the cursor
+  // was at. Until then a selection's moving end went, and Ctrl+Shift+Up
+  // after Ctrl+A shrank it to its last block. Shift+arrows still move the
+  // cursor's end a line at a time, to take some back.
   function selectToBlockEdge(dir, item) {
-    var blocks = Blocks.split(ed.text)
-    var cur = ed.spanning ? ed.selCursor : ed.cursorPosition
-    var anchor = ed.spanning ? ed.selAnchor : (item ? ed.nativeAnchor(item) : ed.cursorPosition)
-    var to = -1
-    for (var b = 0; b < blocks.length; b++) {
-      var first = ed.rows[blocks[b].start]
-      var last = ed.rows[blocks[b].end - 1]
-      if (!first || !last) continue
-      var startAt = first.start + first.prefixLen
-      var endAt = last.bodyEnd
-      if (dir < 0 && startAt < cur) to = startAt                    // the nearest start before
-      if (dir > 0 && endAt > cur && to < 0) to = endAt              // the nearest end after
+    var a = ed.cursorPosition, b = a
+    if (ed.spanning) { a = ed.selStart; b = ed.selEnd }
+    else if (item && item.field.selectedText !== "") {
+      var anc = ed.nativeAnchor(item)
+      a = Math.min(anc, ed.cursorPosition); b = Math.max(anc, ed.cursorPosition)
     }
-    if (to < 0 || to === anchor) return
-    ed.selectSpan(anchor, to)
+    var blocks = Blocks.split(ed.text)
+    var to = -1
+    for (var k = 0; k < blocks.length; k++) {
+      var first = ed.rows[blocks[k].start]
+      var last = ed.rows[blocks[k].end - 1]
+      if (!first || !last) continue
+      if (ed.shown !== null && !ed.isShown(blocks[k].start) && !ed.isShown(blocks[k].end - 1)) continue
+      var startAt = first.start, endAt = last.start + last.raw.length
+      if (dir < 0 && ed.shownFrom(startAt) < ed.shownFrom(a)) to = startAt          // the nearest start above
+      if (dir > 0 && to < 0 && ed.shownTo(endAt) > ed.shownTo(b)) to = endAt        // the nearest end below
+    }
+    if (to < 0) return
+    // Within one line the selection is its words, as the line's own step
+    // is; across lines it takes them whole, their marks too.
+    var keep = dir < 0 ? b : a
+    var tr = ed.rows[Rows.rowAt(ed.rows, to)]
+    if (Rows.rowAt(ed.rows, to) === Rows.rowAt(ed.rows, keep)) to = dir < 0 ? tr.start + tr.prefixLen : tr.bodyEnd
+    var from = ed.spanning ? ed.ladderFrom : -1
+    ed.selectSpan(keep, to)
+    ed.ladderFrom = from
   }
 
   // Keys while a selection crosses lines. True when the key was used.

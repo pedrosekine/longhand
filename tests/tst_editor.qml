@@ -1192,8 +1192,11 @@ Item {
       keyClick(Qt.Key_Down, Qt.ControlModifier | Qt.ShiftModifier)   // on through the second block
       compare(ed.selStart, 2)
       compare(ed.selEnd, ed.text.indexOf("\n\nthird"))
-      keyClick(Qt.Key_Up, Qt.ControlModifier | Qt.ShiftModifier)     // back to the second block's start
-      compare(ed.selEnd, ed.text.indexOf("second block"))
+      // Up takes the top edge up, to its block's start; the bottom stays
+      // (2026-11-11: it had moved the cursor's end, shrinking it).
+      keyClick(Qt.Key_Up, Qt.ControlModifier | Qt.ShiftModifier)
+      compare(ed.selStart, 1)
+      compare(ed.selEnd, ed.text.indexOf("\n\nthird"))
     }
 
     function test_ctrl_shift_up_on_a_list_item_stops_at_its_text() {
@@ -1235,6 +1238,52 @@ Item {
       compare(picked(), t)
       keyClick(Qt.Key_A, Qt.ControlModifier)
       compare(picked(), t)
+    }
+
+    // Ctrl+A climbs through lists and sections (2026-11-11): a bullet had
+    // gone from its line to the whole note in one press.
+    readonly property string ladderDay: "# Day\nintro words\n\n## Seminar\nfirst para\nstill para\n\n- one\n- two\n  - two.a\n  - two.b\n- three\n\nlast para\n## Other\nx"
+    function climb(needle, n) {
+      start(ladderDay, ladderDay.indexOf(needle) + 1)
+      var out = []
+      for (var k = 0; k < n; k++) {
+        keyClick(Qt.Key_A, Qt.ControlModifier)
+        out.push(ed.spanning ? ed.text.slice(ed.selStart, ed.selEnd) : focused().selectedText)
+      }
+      return out
+    }
+    function test_ctrl_a_climbs_a_list_then_its_section() {
+      var list = "- one\n- two\n  - two.a\n  - two.b\n- three"
+      var seminar = "## Seminar\nfirst para\nstill para\n\n" + list + "\n\nlast para"
+      compare(climb("one", 4), ["one", list, seminar, ladderDay])
+      compare(climb("two.a", 5), ["two.a", "- two\n  - two.a\n  - two.b", list, seminar, ladderDay])
+      compare(climb("still", 4), ["still para", "first para\nstill para", seminar, ladderDay])
+      // On a heading: its words, then its section.
+      compare(climb("Seminar", 2), ["Seminar", seminar])
+    }
+
+    // With a block selected, Ctrl+Shift+Up / Down grow it a block at a time
+    // at that edge, whichever end the cursor is at; Shift+arrows still take
+    // some back from the cursor's end.
+    function test_ctrl_shift_arrows_grow_a_selected_block() {
+      start(ladderDay, ladderDay.indexOf("still"))
+      keyClick(Qt.Key_A, Qt.ControlModifier)
+      keyClick(Qt.Key_A, Qt.ControlModifier)
+      compare(ed.text.slice(ed.selStart, ed.selEnd), "first para\nstill para")
+      keyClick(Qt.Key_Down, Qt.ControlModifier | Qt.ShiftModifier)
+      compare(ed.text.slice(ed.selStart, ed.selEnd), "first para\nstill para\n\n- one")
+      keyClick(Qt.Key_Up, Qt.ControlModifier | Qt.ShiftModifier)
+      compare(ed.text.slice(ed.selStart, ed.selEnd), "## Seminar\nfirst para\nstill para\n\n- one")   // the heading whole
+      keyClick(Qt.Key_Up, Qt.ControlModifier | Qt.ShiftModifier)
+      compare(ed.text.slice(ed.selStart, ed.selEnd), "intro words\n\n## Seminar\nfirst para\nstill para\n\n- one")
+      var top = ed.selStart, bottom = ed.selEnd
+      keyClick(Qt.Key_Down, Qt.ShiftModifier)                          // the cursor's end is the top one now
+      verify(ed.selStart > top)
+      compare(ed.selEnd, bottom)
+      // Esc after a Ctrl+A climb puts the cursor back where it was.
+      keyClick(Qt.Key_Escape)
+      verify(!ed.spanning)
+      compare(ed.cursorPosition, ladderDay.indexOf("still"))
     }
 
     function test_ctrl_a_passes_a_step_that_changes_nothing() {

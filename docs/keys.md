@@ -58,8 +58,8 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 |---|---|---|
 | Start of the block (again: the block before) | `Ctrl+↑` | in the note |
 | End of the block (again: the block after) | `Ctrl+↓` | in the note |
-| Select to the block's start (again: a block more) | `Ctrl+Shift+↑` | in the note |
-| Select to the block's end (again: a block more) | `Ctrl+Shift+↓` | in the note |
+| Select to the block's start; with a selection, take the block above too | `Ctrl+Shift+↑` | in the note |
+| Select to the block's end; with a selection, take the block below too | `Ctrl+Shift+↓` | in the note |
 | Top of the note | `Ctrl+Home` | in the note |
 | End of the note | `Ctrl+End` | in the note |
 | Home: today's note, the keys in it (the side panes stay open) | `Ctrl+H` · `Alt+Home` | everywhere |
@@ -248,7 +248,7 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | Nest or un-nest the line (or every line selected) | `Tab` · `Shift+Tab` | |
 | Move; by word with Ctrl | `←` · `→` · `↑` · `↓` · `Ctrl+←` · `Ctrl+→` | |
 | Select, across lines too; by word with Ctrl | `Shift+←` · `Shift+→` · `Shift+↑` · `Shift+↓` | |
-| Select the line; again: its block; again: the note | `Ctrl+A` | |
+| Select the line; again: its item, list, block, section, a step wider each time, up to the note | `Ctrl+A` | |
 | Select all | `Ctrl+A` | |
 | Let go of a selection (Esc again: close the overlay) | `Esc` | |
 | Copy, cut, paste | `Ctrl+C` · `Ctrl+X` · `Ctrl+V` | |
