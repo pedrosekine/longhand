@@ -113,6 +113,9 @@ var actions = [
   // A section of the note as a PDF to hand in (2026-11-04, ExportSheet.qml):
   // E for export, with Shift as Ctrl+Shift+P is the note's larger Ctrl+P.
   { id: "exportPdf", group: "page", places: ["note"], does: "Export as a PDF: the section you are in, or the blocks selected", keys: ["Ctrl+Shift+E"] },
+  // One project's part of the day (2026-11-11, Focus.js): F for focus;
+  // Esc gives the whole day back too.
+  { id: "focusSection", group: "page", places: ["note"], does: "Only this project's part of the day: the section you are in (again: the whole day)", keys: ["Ctrl+Shift+F"] },
 
   { id: "bold", group: "write", places: ["note"], does: "Bold", keys: ["Ctrl+B"] },
   { id: "italic", group: "write", places: ["note"], does: "Italic", keys: ["Ctrl+I"] },

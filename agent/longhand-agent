@@ -1406,7 +1406,8 @@ def tagged_sections(cfg: dict, tag: str, days: int, boxes: bool = False) -> list
                             "title": stray[0]["title"] or stray[0]["text"], "heading": "", "age": age, "words": 0,
                             "open": sum(t["state"] == " " for t in stray), "done": sum(t["done"] for t in stray),
                             "sub": [], "preview": [t["title"] or t["text"] for t in stray][:2],
-                            "boxes": [{"line": t["line"], "text": t["text"]} for t in stray], "text": ""})
+                            "boxes": [{"line": t["line"], "text": t["text"], "state": t["state"]} for t in stray],
+                            "text": ""})
     out.sort(key=lambda r: (r["age"], r["line"]))
     return out
 

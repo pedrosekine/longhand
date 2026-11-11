@@ -21,6 +21,7 @@ import "Tags.js" as Tags
 import "Where.js" as Where
 import "Shortcuts.js" as Sc
 import "Say.js" as Say
+import "Focus.js" as Focus
 import "Layout.js" as Layout
 import "Links.js" as Links
 
@@ -2332,6 +2333,7 @@ Item {
     var pos = editor.cursorPosition
     var to = -1
     for (var i = 0; i < blocks.length; i++) {
+      if (!editor.isShown(blocks[i].start)) continue      // folded away (Focus.js)
       var edge
       if (direction < 0) {
         edge = root.positionOfLine(blocks[i].start)
@@ -2579,7 +2581,12 @@ Item {
     if (root.mentionKey(event)) return true
     if (root.anywhereKey(event)) return true
     if (Sc.hit(event, "cueAccept") && root.acceptCue()) return true
-    if (Sc.hit(event, "close")) { if (!root.alongside) root.dismiss(); return true }
+    if (Sc.hit(event, "close")) {
+      if (editor.focusTag !== "") root.unfocus()
+      else if (!root.alongside) root.dismiss()
+      return true
+    }
+    if (Sc.hit(event, "focusSection")) { root.toggleFocus(); return true }
     if (Sc.hit(event, "private")) { root.togglePrivate(); return true }
     if (Sc.hit(event, "privateBlock")) { root.togglePrivateBlock(); return true }
     if (Sc.hit(event, "exportPdf")) { root.openExport(); return true }
@@ -3754,14 +3761,65 @@ Item {
   // the next section is one key away.
   function openSection(s) {
     if (!s) return
+    // Only the project's part of that day is drawn (Focus.js), once the
+    // day is in the sheet and the cursor is on it.
+    root.pendingFocus = { tag: s.tag, date: s.date }
     // Boxes of the tag written outside its sections have no heading to
     // land on: the first of them, found by its words.
-    if (s.boxes && s.boxes.length > 0) { root.goToTask({ text: s.boxes[0].text, line: s.boxes[0].line, date: s.date }); return }
+    if (s.boxes && s.boxes.length > 0) {
+      root.goToTask({ text: s.boxes[0].text, line: s.boxes[0].line, date: s.date })
+      if (s.date === svc.noteDate && svc.ready) root.landOnFocus()
+      return
+    }
     root.pendingSection = s
-    if (s.date === svc.noteDate && svc.ready) root.landOnSection()
+    if (s.date === svc.noteDate && svc.ready) { root.landOnSection(); root.landOnFocus() }
     else root.openNote(s.date)
     root.showNote()
   }
+
+  // ------------------------------------------------- one project's part of the day
+  //
+  // The sheet drawing only the lines one project's tag claims in the day
+  // (Focus.js, 2026-11-11): opened from a project's list, or with its key
+  // on any line of a tagged section. The rest of the day folds to a line
+  // saying how much, and the note is the whole note underneath — saved,
+  // sent and synced as ever. Esc, the band's "whole day", a fold's mark or
+  // a cursor sent into a folded line (a search, a link) give the whole day
+  // back; another note does too.
+  property var pendingFocus: null     // { tag, date }: to focus on once that day is in the sheet
+
+  function landOnFocus() {
+    var f = root.pendingFocus
+    if (!f || !svc.ready || f.date !== svc.noteDate) return
+    root.pendingFocus = null
+    root.focusOn(f.tag)
+  }
+
+  function focusOn(tag) {
+    editor.focusTag = tag
+    if (editor.focusTag === "") { root.showHint("nothing under #" + tag + " in this note"); return }
+    root.used("focus", "on")
+    // The cursor stays where it was when that is drawn; else the first line drawn.
+    var i = root.lineIndexAt(editor.cursorPosition)
+    if (!editor.isShown(i)) editor.setCursor(editor.rows[editor.nearestShown(i, 1)].bodyEnd, true)
+    root.scheduleRepaint()
+  }
+
+  function unfocus() {
+    if (editor.focusTag === "") return
+    editor.focusTag = ""
+    root.scheduleRepaint()
+  }
+
+  // The key: the section the cursor is in, or the whole day again.
+  function toggleFocus() {
+    if (editor.focusTag !== "") { root.unfocus(); return }
+    var tag = Focus.tagAt(editor.text, root.lineIndexAt(editor.cursorPosition))
+    if (tag === "") { root.showHint("not in a project's section — a “# Heading #tag” starts one"); return }
+    root.focusOn(tag)
+  }
+
+  readonly property string focusName: editor.focusTag === "" ? "" : Say.courseLabel(editor.focusTag, root.projects)
 
   // By its words, not its line number: the note may have been written in
   // since the list was gathered (the same reason tasks are found by words).
@@ -3774,12 +3832,13 @@ Item {
     if (m) editor.setCursor(m.index + m[0].length, true)
   }
 
-  // A section's second line in the list: what is under it, or its first
-  // words when it has no headings of its own.
+  // When a section was written, for its row in a project's list: the
+  // day, the year too when it is not this one's.
   function sectionWhen(s) {
     var p = svc.configured ? Days.parse(s.date, svc.dailyFormat()) : null
     if (!p) return s.date
-    return Qt.formatDate(p.date, "ddd d MMM") + (s.age === 0 ? " · today" : s.age === 1 ? " · yesterday" : "")
+    var fmt = p.date.getFullYear() === new Date().getFullYear() ? "ddd d MMM" : "ddd d MMM yyyy"
+    return Qt.formatDate(p.date, fmt) + (s.age === 0 ? " · today" : s.age === 1 ? " · yesterday" : "")
   }
 
   // The line that stands for a deadline, as a task the edit path can find —
@@ -5322,6 +5381,7 @@ Item {
     root.landOnGoto()
     root.landOnTask()
     root.landOnSection()
+    root.landOnFocus()
     root.landOnLine()
     root.landOnLink()
     root.doPendingWrite()
@@ -5905,6 +5965,9 @@ Item {
 
   Service {
     id: svc
+    // Another note in the sheet: the whole of it (a project's part is
+    // asked for again by openSection, once it has loaded).
+    onFilePathChanged: editor.focusTag = ""
     onLoaded: { root.applyText(svc.body); root.reconcilePending = true; root.startCheck(); root.reconcile(); root.openPass() }
     onExternalChange: { root.applyText(svc.body, true); root.reconcilePending = true; root.startCheck(); root.reconcile() }
     onSavedNow: {
@@ -7183,10 +7246,62 @@ Item {
           anchors.bottom: parent.bottom
         }
 
+        // One project's part of the day (Focus.js): which, and the way back
+        // to the whole day.
+        Item {
+          id: focusBand
+          visible: editor.focusTag !== "" && root.problem === "" && !root.pdfShown && !root.exportOpen
+          anchors.top: searchBar.bottom
+          anchors.topMargin: visible ? root.sp(16) : 0
+          anchors.left: parent.left
+          anchors.right: parent.right
+          height: visible ? bandWhat.implicitHeight : 0
+          Text {
+            id: bandWhat
+            anchors.left: parent.left
+            anchors.right: bandBack.left
+            anchors.rightMargin: root.sp(12)
+            textFormat: Text.PlainText
+            elide: Text.ElideRight
+            text: root.focusName + (root.focusName === "#" + editor.focusTag ? "" : "  ·  #" + editor.focusTag) + "  ·  only its part of this day"
+            color: root.dim
+            font.family: root.fontFamily
+            font.styleName: root.fontStyle
+            font.pixelSize: root.fs(Style.font.bodySmall)
+          }
+          Text {
+            id: bandBack
+            anchors.right: parent.right
+            anchors.verticalCenter: bandWhat.verticalCenter
+            textFormat: Text.PlainText
+            text: "the whole day"
+            color: bandArea.containsMouse && root.handOn ? root.accent : root.faint
+            font.family: root.fontFamily
+            font.styleName: root.fontStyle
+            font.pixelSize: root.fs(Style.font.bodySmall)
+            KeyBadge {
+              host: root
+              act: "focusSection"
+              anchors.top: parent.bottom
+              anchors.topMargin: root.sp(6)
+              anchors.horizontalCenter: parent.horizontalCenter
+            }
+            MouseArea {
+              id: bandArea
+              anchors.fill: parent
+              anchors.margins: -root.sp(6)
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: { root.unfocus(); editor.focusNote() }
+              Tip { host: root; act: "focusSection"; shown: parent.containsMouse; text: root.tips([["The whole day again", "close"], ["Again: only this project's part", "focusSection"]]) }
+            }
+          }
+        }
+
         Flickable {
           id: flick
           visible: root.problem === "" && !root.pdfShown && !root.exportOpen
-          anchors.top: searchBar.bottom
+          anchors.top: focusBand.bottom
           anchors.topMargin: root.sp(24)
           anchors.left: parent.left
           anchors.leftMargin: -root.gutter
@@ -7315,6 +7430,8 @@ Item {
             linkColor: pal.blue
             linkKnown: root.linkKnown
             onLinkActivated: function (i, l) { root.followLink(l) }
+            onFoldClicked: root.scheduleRepaint()
+            onFocusTagChanged: root.scheduleRepaint()
             viewTop: flick.contentY - y
             viewBottom: flick.contentY - y + flick.height
             // 0 until the item is on a screen; a picture is decoded for 1 then.

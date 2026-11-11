@@ -393,11 +393,14 @@ function columnIn(row, pos) {
 // The next row a cursor moving `dir` (+1 / -1) lands on: blank lines are
 // space, not places, so they are skipped — unless nothing but blank lines
 // lies below, which is where a new block is being started.
-function nextTextRow(rows, i, dir) {
+// `shown` (optional): a flag per row, false for a folded one (Focus.js),
+// which is passed over as a blank one is.
+function nextTextRow(rows, i, dir, shown) {
+  var out = function (k) { return !!shown && !shown[k] }
   var j = i + dir
-  while (j >= 0 && j < rows.length && rows[j].blank) j += dir
+  while (j >= 0 && j < rows.length && (rows[j].blank || out(j))) j += dir
   if (j >= 0 && j < rows.length) return j
-  if (dir > 0 && i + 1 < rows.length) return i + 1
+  if (dir > 0 && i + 1 < rows.length && !out(i + 1)) return i + 1
   return -1
 }
 

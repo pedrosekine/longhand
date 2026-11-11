@@ -33,6 +33,7 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | Make the whole note private (the agent sees nothing) | `Ctrl+Shift+P` | in the note |
 | Make the block private, or the blocks selected (again: not private) | `Ctrl+P` | in the note |
 | Export as a PDF: the section you are in, or the blocks selected | `Ctrl+Shift+E` | in the note |
+| Only this project's part of the day: the section you are in (again: the whole day) | `Ctrl+Shift+F` | in the note |
 
 ## Writing
 

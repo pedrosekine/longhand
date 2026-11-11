@@ -719,6 +719,18 @@ BorderSurface {
         font.styleName: page.fontStyle
         font.pixelSize: page.fs(Style.font.bodySmall)
       }
+      // How much there is, and what is still open, before the list.
+      Text {
+        width: parent.width
+        visible: text !== ""
+        textFormat: Text.PlainText
+        elide: Text.ElideRight
+        text: Say.projectSummary(page.sections)
+        color: page.faint
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.caption)
+      }
 
       // Its documents, filed from the inbox: opened in the PDF viewer.
       Text {
@@ -796,6 +808,8 @@ BorderSurface {
           height: secCol.implicitHeight + page.sp(8)
           radius: Style.cornerRadius
           color: hot ? Style.selectedFill : secArea.containsMouse && page.handOn ? Style.hoverFill : "transparent"
+          readonly property string title: Say.sectionTitle(modelData, page.projectName)
+          readonly property string under: Say.sectionUnder(modelData)
           Column {
             id: secCol
             anchors.left: parent.left
@@ -803,27 +817,46 @@ BorderSurface {
             anchors.leftMargin: page.sp(4)
             anchors.rightMargin: page.sp(4)
             anchors.verticalCenter: parent.verticalCenter
+            spacing: page.sp(1)
+            // When, and its boxes; in the accent while it is the note in
+            // the sheet.
             Text {
               width: parent.width
               textFormat: Text.PlainText
               elide: Text.ElideRight
               text: page.sectionWhen(modelData)
-                + (modelData.open > 0 ? "   ○ " + modelData.open : "")
-                + (modelData.done > 0 ? "   ✓ " + modelData.done : "")
+                + (Say.sectionCounts(modelData) !== "" ? "  ·  " + Say.sectionCounts(modelData) : "")
               color: modelData.date === svc.noteDate ? page.accent : page.dim
               font.family: page.fontFamily
               font.styleName: page.fontStyle
               font.pixelSize: page.fs(Style.font.caption)
             }
+            // The tagged line itself — what the section is — unless it only
+            // names the project again.
             Text {
               width: parent.width
-              visible: text !== ""
-              textFormat: Text.PlainText
+              visible: secCell.title !== ""
+              textFormat: Text.StyledText
               wrapMode: Text.WordWrap
               maximumLineCount: 2
               elide: Text.ElideRight
-              text: Say.sectionUnder(modelData)
+              text: Say.quietTag(secCell.title, modelData.tag, page.faint)
               color: page.foreground
+              font.family: page.fontFamily
+              font.styleName: page.fontStyle
+              font.pixelSize: page.fs(Style.font.bodySmall)
+            }
+            // What it holds: its sub-headings, or its first lines as words.
+            // Quiet under a heading; the row's words when there is none.
+            Text {
+              width: parent.width
+              visible: secCell.under !== ""
+              textFormat: Text.StyledText
+              wrapMode: Text.WordWrap
+              maximumLineCount: 2
+              elide: Text.ElideRight
+              text: Say.quietTag(secCell.under, modelData.tag, page.faint)
+              color: secCell.title !== "" ? page.dim : page.foreground
               font.family: page.fontFamily
               font.styleName: page.fontStyle
               font.pixelSize: page.fs(Style.font.caption)
@@ -835,7 +868,7 @@ BorderSurface {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: { page.docFocus = -1; page.sectionFocus = index; page.openSection(modelData) }
-            Tip { host: page; shown: parent.containsMouse; text: page.tip("Open the section", "listOpen") }
+            Tip { host: page; shown: parent.containsMouse; text: page.tip(modelData.heading ? "Open the section, on its heading" : "Go to the box", "listOpen") }
           }
         }
       }

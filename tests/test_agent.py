@@ -553,8 +553,8 @@ def main() -> int:
         check(len(th) == 1 and th[0]["heading"] == "" and th[0]["level"] == 0, f"the day comes with no heading ({th})")
         check(th[0]["open"] == 1 and th[0]["line"] == 4 and th[0]["preview"] == ["Confirm thesis scope"],
               f"its box, counted and named ({th[0]})")
-        check(th[0]["boxes"] == [{"line": 4, "text": "Confirm thesis scope #thesis 📅 2026-11-05 ^d49"}],
-              f"the box's words, to land on ({th[0]['boxes']})")
+        check(th[0]["boxes"] == [{"line": 4, "text": "Confirm thesis scope #thesis 📅 2026-11-05 ^d49", "state": " "}],
+              f"the box's words, to land on, and its state ({th[0]['boxes']})")
         check(json.loads(t.agent("sections", "--tag", "intsem").stdout)[-1]["date"] == OLD_DAY,
               "a tag with no box of its own today: its sections only")
 

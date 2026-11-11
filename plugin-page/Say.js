@@ -4,6 +4,7 @@
 // course's name, and `now`, for how far off a date is (the moment it is
 // asked, when not given).
 .pragma library
+.import "Task.js" as Task
 
 // What a row says. The title is the words alone: the dates and the
 // priority a line carries are drawn as marks, so the metadata is on disk
@@ -169,13 +170,102 @@ function deadlineWhere(d, t, projects, origin, moves, now) {
   return bits.join("   ·   ")
 }
 
+// ------------------------------------------------- a project's sections
+//
+// A project's list in the sidebar (2026-11-11): each section says what its
+// tagged line says — the heading it was written under, unless that is the
+// project's own name again — then when, then what it holds, as words and
+// not as markdown. Until then the heading was never shown and a box read
+// `- [x] … ✅ 2026-10-30`.
+
+function _esc(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+}
+
+function _tagRe(tag) {
+  return new RegExp("(^|\\s)#" + String(tag).replace(/[^\w\/-]/g, "") + "(?![\\w\\/-])", "gi")
+}
+
+// Emphasis, highlights, code and links as their words.
+function plainWords(text) {
+  return String(text || "")
+    .replace(/\[\[[^\]|]*\|([^\]]*)\]\]/g, "$1")
+    .replace(/\[\[([^\]]*)\]\]/g, "$1")
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/(\*\*|__)(.+?)\1/g, "$2")
+    .replace(/\*([^*\s][^*]*?)\*/g, "$1")
+    .replace(/~~(.+?)~~/g, "$1")
+    .replace(/==(.+?)==/g, "$1")
+    .replace(/`([^`]*)`/g, "$1")
+    .replace(/\s+/g, " ").trim()
+}
+
+// One line of a note as plain words: a box as ○ (✓ done, ✗ cancelled) and
+// its words without the dates, priority and block id it carries; a bullet,
+// number or quote without its mark.
+function plainLine(line) {
+  var s = String(line || "")
+  var box = Task.parse(s)
+  if (!box) return plainWords(s.replace(/^\s*(?:>[ \t]?)*/, "").replace(/^\s*(?:[-*+]|\d+[.)])\s+/, ""))
+  var words = box.text.replace(Task.ANCHOR_RE, "")
+  Task.MARK_RE.lastIndex = 0
+  var m = Task.MARK_RE.exec(words)
+  if (m) words = words.slice(0, m.index)
+  words = plainWords(words.replace(Task.FIELD_RE, " "))
+  return (box.done ? "✓ " : box.cancelled ? "✗ " : "○ ") + words
+}
+
+// The section's tagged line, as written — "" when it only says the
+// project again (`# Design Studio #studio`, `# #studio`), or when the
+// section is the day's boxes and has no heading.
+function sectionTitle(s, name) {
+  if (!s || !s.heading) return ""
+  var text = plainWords(s.heading)
+  var bare = text.replace(_tagRe(s.tag || ""), "$1").replace(/\s+/g, " ").trim().toLowerCase()
+  if (bare === "" || bare === String(name || "").toLowerCase() || bare === String(s.tag || "").toLowerCase()) return ""
+  return text
+}
+
+// The same, ready for a styled Text: the project's own tag drawn quiet,
+// since every row in the list has it.
+function quietTag(text, tag, color) {
+  var re = _tagRe(tag)
+  return _esc(text).replace(re, function (all, lead) {
+    return lead + '<font color="' + color + '">' + all.slice(lead.length) + "</font>"
+  })
+}
+
 // What a section in the sidebar says under its heading: its first few
-// sub-headings, without their tags, or the first lines of what it holds.
+// sub-headings, without their tags, or the first lines of what it holds;
+// the day's boxes, when it is those.
 function sectionUnder(s) {
+  if (s.boxes && s.boxes.length > 0)
+    return s.boxes.map(function (b) { return plainLine("- [" + (b.state || " ") + "] " + b.text) }).join(" · ")
   if (s.sub && s.sub.length > 0) {
     var names = []
-    for (var i = 0; i < s.sub.length && i < 4; i++) names.push(s.sub[i].text.replace(/\s*#[\w\/-]+/g, ""))
+    for (var i = 0; i < s.sub.length && i < 4; i++) names.push(plainWords(s.sub[i].text.replace(/\s*#[\w\/-]+/g, "")))
     return names.join(" · ") + (s.sub.length > 4 ? " · +" + (s.sub.length - 4) : "")
   }
-  return (s.preview || []).join(" · ")
+  return (s.preview || []).map(plainLine).filter(function (l) { return l !== "" }).join(" · ")
+}
+
+// Its boxes, counted in words: "1 open · 2 done".
+function sectionCounts(s) {
+  var bits = []
+  if (s.open > 0) bits.push(s.open + " open")
+  if (s.done > 0) bits.push(s.done + " done")
+  return bits.join(" · ")
+}
+
+// Under the project's name: how much there is, and what is still open.
+function projectSummary(sections) {
+  var n = (sections || []).length
+  if (n === 0) return ""
+  var days = {}, open = 0, count = 0
+  for (var i = 0; i < n; i++) {
+    if (!days[sections[i].date]) { days[sections[i].date] = true; count++ }
+    open += sections[i].open || 0
+  }
+  return (n === 1 ? "1 section" : n + " sections") + (count < n ? " on " + count + " days" : "")
+    + (open > 0 ? " · " + open + " open" : "")
 }

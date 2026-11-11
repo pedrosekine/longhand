@@ -117,9 +117,14 @@ in the agent's `knowledge/projects/`) with their next session. Enter or a
 click **opens that project's notes** in the sidebar itself: every section you
 wrote under its tag, newest first, with the headings under each as its index,
 so a class note is found by its course instead of by the date it happened on.
-Enter opens a section in the sheet with the cursor on its heading, editable
-like any other day, and the list stays where it is; `←` or Esc goes back to
-the projects. A tagged heading claims everything under it until the next
+Each section says what its tagged heading says, when it was written and
+how many of its boxes are open. Enter opens a section in the sheet with the
+cursor on its heading and **only that project's part of the day drawn**: the
+rest folds to a line saying how many lines it holds, and a band above the
+note names the project. It is the same daily note underneath, editable and
+saved whole; Esc, the band's "the whole day" or a click on a fold gives the
+rest back, and `Ctrl+Shift+F` does the same on any tagged section. The list
+stays where it is; `←` or Esc goes back to the projects. A tagged heading claims everything under it until the next
 heading of the same or a higher level, so an `## H2` never ends a `# Course`.
 Writing a project into the note is the shifted pair: Shift+Enter starts a
 class (`# Course #tag`), Ctrl+Enter puts just the tag at the cursor.

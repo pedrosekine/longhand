@@ -66,7 +66,10 @@ same. The
 sidebar ({key:sidebar} opens or closes it; {key:pane1} goes there, and in it
 switches between Time and Files) shows a month calendar, the day's deadlines
 and the projects with their next session; a project opens its notes from
-every day, newest first, and its documents. The page is three panes, left to
+every day, newest first, and its documents. A section opened from there
+shows only that project's part of the day, the rest folded to a line saying
+how much; {key:focusSection} does the same on any tagged section, and Esc
+(or {key:focusSection} again) gives the whole day back. The page is three panes, left to
 right, and the digits are their keys: {key:pane1} the sidebar, {key:pane2}
 the middle, {key:pane3} the agent's pane. {key:linkBack} goes back to where
 the middle was before (a link followed, a day, the dashboard, a file), and

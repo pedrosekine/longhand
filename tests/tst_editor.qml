@@ -1277,5 +1277,91 @@ Item {
       compare(r.y, ed.rowItem(1).y)
       compare(r.h, ed.rowItem(2).y + ed.rowItem(2).height - ed.rowItem(1).y)
     }
+
+    // One project's part of the day (Focus.js, 2026-11-11): only the lines
+    // its tag claims are drawn, and nothing typed reaches a folded one.
+    readonly property string day: "Morning notes.\n\n# Design Studio #studio\nthe crit\n- [ ] sketch\n\n# Thesis #thesis\n- [ ] ask Chris #studio\n- [ ] read ch.2\n# Team #studio\nnotes"
+    function row() { return Rows.rowAt(ed.rows, ed.cursorPosition) }
+    function lineEnd(i) { return ed.rows[i].bodyEnd }
+
+    function test_focus_draws_only_the_project() {
+      start(day); ed.setCursor(lineEnd(3), true)
+      ed.focusTag = "studio"
+      verify(!ed.rowItem(0).visible); compare(ed.rowItem(0).height, 0)
+      verify(ed.rowItem(2).visible); verify(ed.rowItem(3).visible)
+      verify(!ed.rowItem(6).visible); verify(ed.rowItem(7).visible); verify(!ed.rowItem(8).visible)
+      compare(ed.foldAbove[2], 1); compare(ed.foldAbove[7], 1); compare(ed.foldAbove[9], 1)
+      verify(ed.rowItem(2).foldTop > 0)
+      compare(ed.blockRect(0, 1), null)          // nothing to mark where nothing is drawn
+      ed.focusTag = ""
+      verify(ed.rowItem(0).visible); compare(ed.shown, null)
+    }
+
+    function test_focus_keys_pass_over_the_folds() {
+      start(day); ed.setCursor(lineEnd(4), true)
+      ed.focusTag = "studio"
+      ed.setCursor(lineEnd(4), true)
+      keyClick(Qt.Key_Down)
+      compare(row(), 7)                           // past the blank and the thesis heading
+      keyClick(Qt.Key_Down)
+      compare(row(), 9)
+      keyClick(Qt.Key_Up)
+      compare(row(), 7)
+      keyClick(Qt.Key_Home)
+      keyClick(Qt.Key_Left)
+      compare(row(), 4)
+      // Backspace at a run's first line never joins it to a folded one.
+      ed.setCursor(ed.rows[7].start + ed.rows[7].prefixLen, true)
+      keyClick(Qt.Key_Backspace)                  // takes the box off, as anywhere
+      keyClick(Qt.Key_Backspace)
+      compare(ed.text.split("\n")[6], "# Thesis #thesis")
+      compare(ed.focusTag, "studio")
+    }
+
+    function test_focus_keeps_what_is_typed_in_view() {
+      start(day); ed.setCursor(lineEnd(4), true)
+      ed.focusTag = "studio"
+      ed.setCursor(lineEnd(4), true)
+      keyClick(Qt.Key_Return)
+      keyClick(Qt.Key_Return)                     // an empty item ends the list
+      type("# New idea")
+      var i = row()
+      compare(ed.rows[i].raw, "# New idea")
+      verify(ed.isShown(i), "a heading typed in the view stays in it")
+      verify(ed.rowItem(i).visible)
+      compare(ed.focusTag, "studio")
+    }
+
+    function test_focus_gives_the_day_back_for_a_folded_line() {
+      start(day); ed.setCursor(lineEnd(3), true)
+      ed.focusTag = "studio"
+      ed.setCursor(3, true)                       // a search or a link landing in "Morning notes."
+      compare(ed.focusTag, "")
+      verify(ed.rowItem(0).visible)
+      // A tag with nothing in the note is the whole day.
+      ed.focusTag = "nothing"
+      compare(ed.focusTag, "")
+    }
+
+    function test_focus_selection_stays_in_the_run() {
+      start(day); ed.setCursor(lineEnd(3), true)
+      ed.focusTag = "studio"
+      ed.setCursor(ed.rows[2].start, true)
+      keyClick(Qt.Key_End, Qt.ControlModifier | Qt.ShiftModifier)
+      verify(ed.selEnd <= ed.rows[4].start + ed.rows[4].raw.length, "the selection ends where the run does")
+      ed.clearSelection()
+      ed.setCursor(lineEnd(3), true)
+      keyClick(Qt.Key_End, Qt.ControlModifier)
+      compare(row(), 4)
+    }
+
+    function test_focus_survives_a_reload_of_the_same_note() {
+      start(day); ed.setCursor(lineEnd(3), true)
+      ed.focusTag = "studio"
+      ed.load(day + "\nmore notes")
+      compare(ed.focusTag, "studio")
+      verify(ed.isShown(Rows.rowAt(ed.rows, ed.cursorPosition)), "the cursor is put on a drawn line")
+      ed.focusTag = ""
+    }
   }
 }

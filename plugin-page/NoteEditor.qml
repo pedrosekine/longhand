@@ -5,6 +5,7 @@ import "Emph.js" as Emph
 import "Links.js" as Links
 import "Shortcuts.js" as Sc
 import "Task.js" as Task
+import "Focus.js" as Focus
 
 // The sheet's editor: the note drawn, not shown as markdown.
 //
@@ -237,6 +238,71 @@ Item {
   // A link clicked (docs/files.md): the page follows it.
   signal linkActivated(int lineIndex, var link)
 
+  // One project's part of the day (Focus.js, 2026-11-11): with a tag here
+  // only the lines it claims are drawn, and the rest of the day is folded
+  // to a line saying how much. The text is the whole note all the same;
+  // only the drawing changes. `shown` has a flag per line (null: all of
+  // them); a cursor sent into a folded line (a search, a link, an undo)
+  // opens the whole day again rather than edit what cannot be seen.
+  property string focusTag: ""
+  property var shown: null
+  property var foldAbove: []
+  property var foldBelow: []
+  property bool loading: false
+  // Which fold mark the mouse is on: its row and "top" or "bottom" ("": none).
+  property string foldHot: ""
+  readonly property int foldSize: Math.round(textSize * 2.2)
+  signal foldClicked()
+  onFocusTagChanged: ed.refold(null)
+
+  function isShown(i) { return ed.shown === null || !!ed.shown[i] }
+
+  // The flags for the text as it is: carried from before an edit when
+  // `carried` is given, and whatever the tag claims now added to them.
+  function refold(carried) {
+    if (ed.focusTag === "") {
+      ed.shown = null
+      ed.foldAbove = []
+      ed.foldBelow = []
+      return
+    }
+    var lines = ed.text.split("\n")
+    var m = Focus.mask(lines.length, Focus.claims(ed.text, ed.focusTag))
+    if (carried && carried.length === m.length) for (var i = 0; i < m.length; i++) m[i] = m[i] || carried[i]
+    if (!Focus.any(m)) { ed.focusTag = ""; return }       // nothing of it left: the whole day
+    var f = Focus.folds(m, lines)
+    ed.shown = m
+    ed.foldAbove = f.above
+    ed.foldBelow = f.below
+  }
+
+  // The drawn line nearest to i (i itself when drawn), looking `dir` first.
+  function nearestShown(i, dir) {
+    if (ed.isShown(i)) return i
+    for (var d = 1; d < ed.rows.length; d++) {
+      var x = i + d * dir, y = i - d * dir
+      if (x >= 0 && x < ed.rows.length && ed.isShown(x)) return x
+      if (y >= 0 && y < ed.rows.length && ed.isShown(y)) return y
+    }
+    return i
+  }
+
+  // The next line the cursor may stand on: past blank lines and folded ones.
+  function nextRow(i, dir) {
+    var j = Rows.nextTextRow(ed.rows, i, dir, ed.shown)
+    return j >= 0 && ed.isShown(j) ? j : -1
+  }
+
+  // The drawn run of lines around offset `pos`, as offsets: a selection
+  // never reaches across a fold.
+  function runAround(pos) {
+    var i = Rows.rowAt(ed.rows, pos)
+    var a = i, b = i
+    while (a > 0 && ed.isShown(a - 1)) a--
+    while (b + 1 < ed.rows.length && ed.isShown(b + 1)) b++
+    return { a: ed.rows[a].start, b: ed.rows[b].start + ed.rows[b].raw.length }
+  }
+
   implicitHeight: column.height
 
   property var rows: []          // Rows.derive(text), kept in step with the model
@@ -250,6 +316,8 @@ Item {
   // Replace everything (a load from disk). The cursor goes to the end and
   // the undo history starts over.
   function load(t) {
+    ed.loading = true
+    ed.shown = null
     ed.clearSelection()
     pointer.clicks = 0
     ed.typedRaw = ""
@@ -258,6 +326,7 @@ Item {
     ed.redoStack = []
     ed.commit(t, t.length)
     ed.placeCursor(false)
+    ed.loading = false
   }
 
   // Programmatic edits, with the cursor carried along the way TextEdit
@@ -366,6 +435,11 @@ Item {
     var end = t.indexOf("\n", b)
     if (end < 0) end = t.length
     var lines = t.slice(first, end)
+    // A line never trades places with one folded away (Focus.js).
+    if (ed.shown !== null) {
+      var ia = Rows.rowAt(ed.rows, first), ib = Rows.rowAt(ed.rows, end)
+      if (dir < 0 ? !ed.isShown(ia - 1) : !ed.isShown(ib + 1)) return
+    }
     var out, shift
     if (dir < 0) {
       if (first === 0) return
@@ -490,6 +564,8 @@ Item {
     var oldMid = prev.length - a - b
     var newMid = next.length - a - b
     ed.syncing = true
+    if (ed.focusTag !== "")
+      ed.refold(ed.shown && ed.shown.length === prev.length ? Focus.carry(ed.shown, a, oldMid, newMid) : null)
     ed.rows = next
     // A row that no longer exists cannot be the focused one. When the rows
     // shrink — a shorter note opened, lines deleted — the old index would
@@ -549,6 +625,14 @@ Item {
   function placeCursor(focus) {
     if (ed.rows.length === 0) return
     var i = Rows.rowAt(ed.rows, ed.cursorPosition)
+    if (!ed.isShown(i)) {
+      if (ed.loading) {
+        i = ed.nearestShown(i, -1)
+        ed.cursorPosition = ed.rows[i].bodyEnd
+      } else {
+        ed.focusTag = ""
+      }
+    }
     var r = ed.rows[i]
     var col = ed.restCol(i, Rows.columnIn(r, ed.cursorPosition), 0)
     ed.cursorPosition = r.start + r.prefixLen + col
@@ -657,7 +741,8 @@ Item {
       var last = ed.rows[blocks[x].end - 1]
       if (first && last) steps.push([first.start + first.prefixLen, last.bodyEnd])
     }
-    steps.push([0, ed.text.length])
+    if (ed.shown !== null) { var run = ed.runAround(a); steps.push([run.a, run.b]) }
+    else steps.push([0, ed.text.length])
     for (var s = 0; s < steps.length; s++) {
       var lo = steps[s][0], hi = steps[s][1]
       if (lo > a || hi < b || hi - lo <= b - a) continue
@@ -687,6 +772,10 @@ Item {
   // Select from `anchor` to `pos`, the cursor (and keyboard) at `pos`.
   function selectSpan(anchor, pos) {
     pos = Math.max(0, Math.min(ed.text.length, pos))
+    if (ed.shown !== null) {
+      var run = ed.runAround(anchor)
+      pos = Math.max(run.a, Math.min(run.b, pos))
+    }
     ed.setCursor(pos, true)
     ed.selAnchor = anchor
     ed.selCursor = ed.cursorPosition
@@ -696,17 +785,17 @@ Item {
 
   // Where a selection's moving end goes for a navigation key.
   function stepPos(pos, k, ctrl) {
-    if (ctrl && k === Qt.Key_Home) return 0
-    if (ctrl && k === Qt.Key_End) return ed.text.length
+    if (ctrl && k === Qt.Key_Home) return ed.shown !== null ? ed.runAround(pos).a : 0
+    if (ctrl && k === Qt.Key_End) return ed.shown !== null ? ed.runAround(pos).b : ed.text.length
     var i = Rows.rowAt(ed.rows, pos)
     var r = ed.rows[i]
     var col = Rows.columnIn(r, pos)
     var n = ed.rows.length
     // With Ctrl, a word at a time; at a line's edge, into the next line.
     if (k === Qt.Key_Left) return col > 0 ? ed.absOf(i, ed.restCol(i, ctrl ? Rows.wordStep(r.body, col, -1) : col - 1, -1))
-      : (i > 0 ? ed.absOf(i - 1, ed.rows[i - 1].body.length) : pos)
+      : (i > 0 && ed.isShown(i - 1) ? ed.absOf(i - 1, ed.rows[i - 1].body.length) : pos)
     if (k === Qt.Key_Right) return col < r.body.length ? ed.absOf(i, ed.restCol(i, ctrl ? Rows.wordStep(r.body, col, 1) : col + 1, 1))
-      : (i + 1 < n ? ed.absOf(i + 1, 0) : pos)
+      : (i + 1 < n && ed.isShown(i + 1) ? ed.absOf(i + 1, 0) : pos)
     if (k === Qt.Key_Home) return ed.absOf(i, 0)
     if (k === Qt.Key_End) return ed.absOf(i, r.body.length)
     var dir = k === Qt.Key_Up ? -1 : 1
@@ -716,7 +805,7 @@ Item {
     // A wrapped line first moves within itself.
     if (dir > 0 && c.y < f.positionToRectangle(f.length).y - 1) return ed.absOf(i, ed.restCol(i, f.positionAt(c.x, c.y + c.height * 1.5), 0))
     if (dir < 0 && c.y > f.positionToRectangle(0).y + 1) return ed.absOf(i, ed.restCol(i, f.positionAt(c.x, c.y - c.height * 0.5), 0))
-    var j = Rows.nextTextRow(ed.rows, i, dir)
+    var j = ed.nextRow(i, dir)
     if (j < 0) return dir < 0 ? ed.absOf(i, 0) : ed.absOf(i, r.body.length)
     var t = ed.rowItem(j).field
     return ed.absOf(j, ed.restCol(j, t.positionAt(f.x + c.x - t.x, dir > 0 ? 1 : t.contentHeight - 1), 0))
@@ -894,9 +983,12 @@ Item {
     var n = ed.rows.length
     var i = 0
     while (i < n - 1 && y >= ed.rowItem(i).y + ed.rowItem(i).height) i++
+    i = ed.nearestShown(i, -1)
     var item = ed.rowItem(i)
     var r = ed.rows[i]
     if (!item || !r) return { i: 0, col: 0, box: false }
+    if (item.foldTop > 0 && y < item.y + item.foldTop) return { i: i, col: 0, box: false, fold: true }
+    if (item.foldBottom > 0 && y >= item.y + item.height - item.foldBottom) return { i: i, col: r.body.length, box: false, fold: true }
     if (y >= item.y + item.height) return { i: i, col: r.body.length, box: false }
     if (r.blank) return { i: i, col: 0, box: false }
     var b = item.box
@@ -921,9 +1013,9 @@ Item {
     column.forceLayout()
     var a = ed.rowItem(startLine)
     var b = ed.rowItem(endLine - 1)
-    if (!a || !b) return null
+    if (!a || !b || !ed.isShown(startLine) || !ed.isShown(endLine - 1)) return null
     var y = a.y + a.gapTop
-    return { y: y, h: b.y + b.height - b.room - y }
+    return { y: y, h: b.y + b.height - b.room - b.foldBottom - y }
   }
 
   // ------------------------------------------------------------ editing
@@ -1045,7 +1137,7 @@ Item {
       ed.remove(r.start + r.indent.length + Math.max(0, from), r.start + r.prefixLen)
     } else if (r.indent !== "") {
       ed.outdent(i)
-    } else if (i > 0) {
+    } else if (i > 0 && ed.isShown(i - 1)) {
       var p = ed.rows[i - 1]
       if (p.suffix !== "") {
         var at = p.bodyEnd
@@ -1061,7 +1153,7 @@ Item {
   // Delete at the end of a line pulls the next line's words up, without
   // its markdown.
   function deleteAtEnd(i) {
-    if (i + 1 >= ed.rows.length) return
+    if (i + 1 >= ed.rows.length || !ed.isShown(i + 1)) return
     var r = ed.rows[i]
     var n = ed.rows[i + 1]
     ed.snapshot(true)
@@ -1139,7 +1231,7 @@ Item {
   // Up / Down past the edge of a field: the neighbouring line, at the same
   // horizontal place.
   function moveVertical(item, dir) {
-    var j = Rows.nextTextRow(ed.rows, item.index, dir)
+    var j = ed.nextRow(item.index, dir)
     if (j < 0) {
       ed.placeAt(item.index, dir < 0 ? 0 : ed.rows[item.index].body.length)
       return
@@ -1295,10 +1387,10 @@ Item {
     } else if (k === Qt.Key_Down && !ctrl && !alt && !shift && ed.atLastLine(f)) {
       ed.moveVertical(item, 1)
     } else if (k === Qt.Key_Left && !alt && !shift && noSel && f.cursorPosition === 0) {
-      var p = Rows.nextTextRow(ed.rows, i, -1)
+      var p = ed.nextRow(i, -1)
       if (p >= 0) ed.placeAt(p, ed.rows[p].body.length)
     } else if (k === Qt.Key_Right && !alt && !shift && noSel && f.cursorPosition === f.length) {
-      var n = Rows.nextTextRow(ed.rows, i, 1)
+      var n = ed.nextRow(i, 1)
       if (n >= 0) ed.placeAt(n, 0)
     } else if (k === Qt.Key_Tab && !ctrl && !alt) {
       ed.indent(i, false)
@@ -1311,9 +1403,9 @@ Item {
     } else if (Sc.hit(event, "checkbox")) {
       ed.toggleCheckbox(i)
     } else if (Sc.hit(event, "noteStart")) {
-      ed.setCursor(0, true)
+      ed.setCursor(ed.shown !== null ? ed.runAround(ed.cursorPosition).a : 0, true)
     } else if (Sc.hit(event, "noteEnd")) {
-      ed.setCursor(ed.text.length, true)
+      ed.setCursor(ed.shown !== null ? ed.runAround(ed.cursorPosition).b : ed.text.length, true)
     } else if (Sc.fieldWouldTake(event)) {
       // Moved to other keys: the field's own undo or jump must not take
       // the old ones back.
@@ -1404,7 +1496,15 @@ Item {
         readonly property bool pending: ed.cues && !priv && kind === "task" && cueAt >= 0 && ed.typedRaw !== "" && raw === ed.typedRaw && !ed.declined[raw]
         // Bound with Tab, its number on its way: the same pill, its date.
         readonly property bool binding: kind === "task" && deadline <= 0 && dueAt > 0 && !!ed.bindingAt[Math.floor(dueAt / 60000)]
-        readonly property int gapTop: blank ? 0 : Math.round(space * ed.textSize)
+        // Folded away (Focus.js): no room at all. A drawn line with folded
+        // lines before it carries their mark above its words; the last
+        // drawn line, the mark for those after it.
+        readonly property bool folded: !ed.isShown(index)
+        readonly property int foldTop: !folded && (ed.foldAbove[index] || 0) > 0 ? ed.foldSize : 0
+        readonly property int foldBottom: !folded && (ed.foldBelow[index] || 0) > 0 ? ed.foldSize : 0
+        visible: !folded
+        readonly property int baseGap: blank ? 0 : Math.round(space * ed.textSize)
+        readonly property int gapTop: foldTop + baseGap
         readonly property real indentX: outerLevel * ed.markerWidth + (quoteRow ? 0 : quoteSpace) + (level - outerLevel) * ed.markerWidth
         readonly property real labelWidth: kind === "calloutHead" && !priv ? label.implicitWidth + Math.round(ed.textSize * 0.4) : 0
         readonly property real fieldX: indentX + (listy ? ed.markerWidth : (quoteRow ? quoteSpace : 0)) + labelWidth
@@ -1416,10 +1516,44 @@ Item {
         // but not under a selection or a press: a drag passing over it
         // would move every line below by that much and back (2026-10-19).
         readonly property bool opened: !blank || field.activeFocus && !ed.spanning && !pointer.pressed
-        height: sunkHead ? Math.round(ed.textSize * 0.35) + room : (tableDrawn ? (tableRow === 1 ? Math.round(ed.textSize * 0.5) : gapTop + cellRow.height + Math.round(ed.textSize * 0.5))
-                 : img ? gapTop + (reveal ? field.height + imgGap : 0) + picture.height
-                 : opened ? gapTop + field.height : Math.round(space * ed.textSize)) + room
-        Binding { when: row.index === ed.roomRow; target: ed; property: "roomTop"; value: row.y + row.height - row.room }
+        height: folded ? 0 : foldTop + foldBottom + room
+                 + (sunkHead ? Math.round(ed.textSize * 0.35) : (tableDrawn ? (tableRow === 1 ? Math.round(ed.textSize * 0.5) : baseGap + cellRow.height + Math.round(ed.textSize * 0.5))
+                 : img ? baseGap + (reveal ? field.height + imgGap : 0) + picture.height
+                 : opened ? baseGap + field.height : Math.round(space * ed.textSize)))
+        Binding { when: row.index === ed.roomRow; target: ed; property: "roomTop"; value: row.y + row.height - row.room - row.foldBottom }
+
+        // The folds' marks: how many written lines of the day are folded
+        // there. A click (the pointer's, see hitTest) opens the whole day.
+        Repeater {
+          model: [{ at: "top", n: row.foldTop > 0 ? ed.foldAbove[row.index] : 0 },
+                  { at: "bottom", n: row.foldBottom > 0 ? ed.foldBelow[row.index] : 0 }]
+          Item {
+            required property var modelData
+            visible: modelData.n > 0
+            width: row.width
+            height: ed.foldSize
+            y: modelData.at === "top" ? 0 : row.height - ed.foldSize
+            readonly property bool hot: ed.foldHot === row.index + modelData.at
+            readonly property color ink: hot ? ed.accent : ed.faint
+            Rectangle { anchors.verticalCenter: parent.verticalCenter; x: 0; width: foldWords.x - Math.round(ed.textSize * 0.6); height: 1; color: parent.ink; opacity: 0.6 }
+            Text {
+              id: foldWords
+              anchors.verticalCenter: parent.verticalCenter
+              x: Math.round(ed.textSize * 1.5)
+              textFormat: Text.PlainText
+              text: modelData.n === 1 ? "1 line of the day" : modelData.n + " lines of the day"
+              color: parent.ink
+              font.family: ed.fontFamily
+              font.styleName: ed.fontStyle
+              font.pixelSize: Math.round(ed.textSize * 0.75)
+            }
+            Rectangle {
+              anchors.verticalCenter: parent.verticalCenter
+              x: foldWords.x + foldWords.width + Math.round(ed.textSize * 0.6)
+              width: Math.max(0, parent.width - x); height: 1; color: parent.ink; opacity: 0.6
+            }
+          }
+        }
 
         // What the field holds, read and written as the body: with emphasis
         // in it the field is rich text (Emph.js), and then its `text` is
@@ -1856,7 +1990,7 @@ Item {
     anchors.fill: column
     // Over the lines it is on top, so its cursor is the one shown: a
     // hand on a checkbox (which takes the click), a text cursor elsewhere.
-    cursorShape: ed.boxHover >= 0 || ed.linkHover ? Qt.PointingHandCursor : Qt.IBeamCursor
+    cursorShape: ed.boxHover >= 0 || ed.linkHover || ed.foldHot !== "" ? Qt.PointingHandCursor : Qt.IBeamCursor
     hoverEnabled: true
     // A press on a link follows it on release, unless it became a drag.
     property var linkDown: null
@@ -1902,6 +2036,7 @@ Item {
 
     onPressed: function (mouse) {
       var h = ed.hitTest(mouse.x, mouse.y)
+      if (h.fold) { ed.foldHot = ""; ed.focusTag = ""; ed.foldClicked(); return }
       if (h.box) { mouse.accepted = false; return }
       var pos = ed.absOf(h.i, h.col)
       var now = Date.now()
@@ -1931,7 +2066,8 @@ Item {
         // Hovering is this area's now (for links), so a box's hand is
         // decided here too: the box's own area no longer hears the hover.
         var hv = ed.hitTest(mouse.x, mouse.y)
-        ed.linkHover = !hv.box && !!ed.linkAtHit(hv)
+        ed.foldHot = hv.fold ? hv.i + (ed.isShown(hv.i) && ed.rowItem(hv.i).foldTop > 0 && mouse.y < ed.rowItem(hv.i).y + ed.rowItem(hv.i).foldTop ? "top" : "bottom") : ""
+        ed.linkHover = !hv.box && !hv.fold && !!ed.linkAtHit(hv)
         if (hv.box) ed.boxHover = hv.i
         else if (ed.boxHover >= 0) ed.boxHover = -1
         return
@@ -1957,6 +2093,6 @@ Item {
       pointer.downAt = -1
       if (pointer.linkDown) { var d = pointer.linkDown; pointer.linkDown = null; ed.linkActivated(d.i, d.link) }
     }
-    onExited: { ed.linkHover = false; ed.boxHover = -1 }
+    onExited: { ed.linkHover = false; ed.boxHover = -1; ed.foldHot = "" }
   }
 }

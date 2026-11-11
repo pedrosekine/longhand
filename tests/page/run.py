@@ -732,6 +732,17 @@ def main() -> int:
               f"…with the cursor on that section's heading ({p.lines()[int(p.call('cursorLine'))]!r})")
         check(json.loads(p.call("panel"))["project"] is True,
               "…and the list stays, as the calendar does after opening a day")
+        # Only the project's part of that day is drawn (Focus.js, 2026-11-11).
+        check(p.wait(lambda: p.call("focusTag") == "intsem"), f"…and only #intsem's part of it is drawn ({p.call('focusTag')!r})")
+        shown = json.loads(p.call("shownLines"))
+        check("# Interdisciplinary Seminar #intsem" in shown and "- [ ] send the email" in shown
+              and "## Methods" not in shown and "not intsem's" not in shown,
+              f"…its section, not the other course's ({shown})")
+        p.call("unfocus")
+        check(p.call("focusTag") == "" and "## Methods" in json.loads(p.call("shownLines")), "…and the whole day comes back")
+        p.call("toggleFocus")
+        check(p.call("focusTag") == "intsem", "the key focuses on the section the cursor is in")
+        p.call("unfocus")
         p.call("leaveProject")
         check(p.wait(lambda: json.loads(p.call("sections")) == []), "← goes back to the projects")
         before = p.note()

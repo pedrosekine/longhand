@@ -1443,3 +1443,19 @@ only the window and the panels around it differ.
   and the agent link line never enter the editor but are counted
   (`Where.js`, `tests/tst_where.qml`). The key is in the manual, so the
   agent in the page can say so.
+- **2026-11-11: a project's part of the day, the rest folded.** The
+  project list in the sidebar now says what each section's tagged line
+  says (the heading had been gathered and never drawn) and its lines as
+  words, not markdown. Opening a section then draws only the lines the
+  tag claims in that day — the runner's rule, so the list and the sheet
+  agree — with the rest of the day folded to "N lines of the day" and a
+  band naming the project. A view, not a page of its own: the note is
+  still the one daily file, saved, sent and synced whole, so deadlines,
+  authorship and the agent's threads need nothing new. What it shows
+  only grows while it is open (a heading typed in it stays in it), the
+  cursor and selections never reach a folded line, and anything sent
+  into one — a search, a link, an undo — opens the whole day rather than
+  edit what cannot be seen. `Ctrl+Shift+F` on any tagged section; Esc
+  leaves. `Focus.js`, `tests/tst_focus.qml`, the focus tests in
+  `tests/tst_editor.qml`. A page that stacks every day's sections of a
+  project is the larger form of it, left for later.

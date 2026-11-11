@@ -264,6 +264,14 @@ ShellRoot {
     function openProject(i: int): void { page.openProject(page.projects[i]) }
     function sections(): string { return JSON.stringify(page.sections.map(function (s) { return s.date + "|" + s.title + "|" + Say.sectionUnder(s) })) }
     function openSection(i: int): void { page.sectionFocus = i; page.openSection(page.sections[i]) }
+    // One project's part of the day (Focus.js): its tag, and the lines drawn.
+    function focusTag(): string { return page.editorItem.focusTag }
+    function shownLines(): string {
+      var ed = page.editorItem
+      return JSON.stringify(ed.rows.filter(function (r, i) { return ed.isShown(i) }).map(function (r) { return r.raw }))
+    }
+    function toggleFocus(): void { page.toggleFocus() }
+    function unfocus(): void { page.unfocus() }
     function projectDocs(): string { return JSON.stringify(page.projectDocs()) }
     function docFocus(): int { return page.docFocus }
     function moveSectionFocus(d: int): void { page.moveSectionFocus(d) }

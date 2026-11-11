@@ -129,4 +129,51 @@ TestCase {
     compare(Say.sectionUnder({ sub: [], preview: ["first line", "second"] }), "first line · second")
     compare(Say.sectionUnder({}), "")
   }
+
+  // A project's list says what each section's tagged line says, and its
+  // lines as words, not markdown (2026-11-11).
+  function test_a_section_says_its_tagged_line() {
+    compare(Say.sectionTitle({ heading: "Team meeting #studio", tag: "studio" }, "Design Studio"), "Team meeting #studio")
+    compare(Say.sectionTitle({ heading: "Ideation solo for #studio", tag: "studio" }, "Design Studio"), "Ideation solo for #studio")
+    // Only the project again: nothing to add to the list's own header.
+    compare(Say.sectionTitle({ heading: "Design Studio #studio", tag: "studio" }, "Design Studio"), "")
+    compare(Say.sectionTitle({ heading: "design studio #Studio", tag: "studio" }, "Design Studio"), "")
+    compare(Say.sectionTitle({ heading: "#studio", tag: "studio" }, "Design Studio"), "")
+    compare(Say.sectionTitle({ heading: "", tag: "studio", level: 0 }, "Design Studio"), "")
+    compare(Say.sectionTitle({ heading: "**Crit** with [[Chris|Chris F.]] #studio", tag: "studio" }, "Design Studio"),
+            "Crit with Chris F. #studio")
+    // The project's tag drawn quiet, another tag and the words as they are.
+    compare(Say.quietTag("Team meeting #studio <draft>", "studio", "#777"),
+            'Team meeting <font color="#777">#studio</font> &lt;draft&gt;')
+    compare(Say.quietTag("#studio at start, #studios not", "studio", "#777"),
+            '<font color="#777">#studio</font> at start, #studios not')
+  }
+
+  function test_a_line_as_words() {
+    compare(Say.plainLine("- [x] Innovation and Market of AI Agents and hardware - Pedro ✅ 2026-10-30"),
+            "✓ Innovation and Market of AI Agents and hardware - Pedro")
+    compare(Say.plainLine("- [ ] Reflective Research Diary 2 #studio ⏳ 2026-11-12 📅 2026-11-13 ^d58"),
+            "○ Reflective Research Diary 2 #studio")
+    compare(Say.plainLine("- [-] dropped ⏫ [est:: 1h]"), "✗ dropped")
+    compare(Say.plainLine("- Candlelight AI: light signals it is on"), "Candlelight AI: light signals it is on")
+    compare(Say.plainLine("  2. the *second* `step`"), "the second step")
+    compare(Say.plainLine("> quoted ==bright== words"), "quoted bright words")
+    compare(Say.plainLine("see [the brief](https://x.y) and ~~old~~"), "see the brief and old")
+  }
+
+  function test_what_a_section_holds() {
+    compare(Say.sectionUnder({ preview: ["- [x] Ask Chris ✅ 2026-11-04", "- [x] More research #studio ✅ 2026-11-04"] }),
+            "✓ Ask Chris · ✓ More research #studio")
+    // The day's boxes outside the section: each with its own state.
+    compare(Say.sectionUnder({ level: 0, preview: ["Diary 2"],
+                               boxes: [{ text: "Diary 2 #studio 📅 2026-11-13 ^d58", state: " " }, { text: "Sent it", state: "x" }] }),
+            "○ Diary 2 #studio · ✓ Sent it")
+    compare(Say.sectionCounts({ open: 1, done: 2 }), "1 open · 2 done")
+    compare(Say.sectionCounts({ open: 0, done: 0 }), "")
+    compare(Say.projectSummary([]), "")
+    compare(Say.projectSummary([{ date: "a", open: 1 }]), "1 section · 1 open")
+    compare(Say.projectSummary([{ date: "a", open: 1 }, { date: "a", open: 0 }, { date: "b", open: 2 }]),
+            "3 sections on 2 days · 3 open")
+    compare(Say.projectSummary([{ date: "a", open: 0 }, { date: "b", open: 0 }]), "2 sections")
+  }
 }
