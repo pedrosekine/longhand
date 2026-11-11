@@ -1095,7 +1095,24 @@ Item {
       ed.insert(pos, "\n" + under)
       return
     }
-    if (carry !== "" && r.body === "" && r.suffix === "" && pos >= lineEnd && r.kind !== "calloutHead" && r.kind !== "code") {
+    // Enter before a line's first word makes room above it, and the line
+    // stays whole (2026-11-11). Split there, the hidden mark stayed behind
+    // on an empty line and the words went down without it: a heading left
+    // `## ` and became plain words, a ticked box came back unticked, a
+    // callout's title became its body. What goes above is the line's own
+    // kind emptied — an open box, a bullet, the next number, a quote's
+    // marker — as Notion and Docs do for lists; for a heading, a callout
+    // or plain words, an empty line, inside the quote it is in.
+    if (r.body !== "" && pos === r.start + r.prefixLen && r.kind !== "code" && r.kind !== "front") {
+      var above = r.kind === "task" ? r.indent + r.marker.replace(/\[[^\]]\]/, "[ ]")
+        : (r.kind === "bullet" || r.kind === "ordered" || r.kind === "quote") ? r.indent + r.marker
+        : (r.quoteLead || "")
+      ed.insert(r.start, above + "\n")
+      if (r.kind === "ordered") ed.relist([i + 1], true)
+      ed.setCursor(ed.rows[i + 1].start + ed.rows[i + 1].prefixLen, true)
+      return
+    }
+    if (carry !== "" && r.body === ""&& r.suffix === "" && pos >= lineEnd && r.kind !== "calloutHead" && r.kind !== "code") {
       // Enter on an empty item steps out one level, as Shift+Tab does
       // (and Notion); at the outermost level it leaves the list (or the
       // quote). 2026-10-19.

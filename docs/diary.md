@@ -1475,3 +1475,14 @@ only the window and the panels around it differ.
   sheet is modal. Notes changed outside the page on other days
   (Obsidian, sync) are still only seen at those moments; a watch on the
   whole folder is left for later.
+- **2026-11-11: Enter before a line's words makes room above it.** It
+  split the line where the cursor was, so with the cursor before the
+  first word the hidden mark stayed behind on an empty line and the
+  words went down without it: a heading left `## ` and became plain
+  words, a ticked box came back unticked, a callout's title became its
+  body, an indented line lost its indent. Now the line stays whole and
+  a line opens above it, the cursor still on its words: for a list or
+  a quote an empty item of the same kind (an open box, the next number
+  — Notion's and Docs' way), for anything else an empty line, inside
+  the quote it is in. Mid-line and at the end Enter is as before.
+  `returnKey` in `NoteEditor.qml`; `tests/tst_editor.qml`.

@@ -438,6 +438,42 @@ Item {
       compare(focused().cursorPosition, 0)
     }
 
+    // Enter before a line's first word makes room above it; the line stays
+    // whole, its hidden mark with it, and the cursor stays on its words
+    // (2026-11-11: a heading had left `## ` behind and gone down as plain
+    // words; a ticked box had come back unticked).
+    function enterAtWords(t, line) {
+      ed.load(t)
+      ed.setCursor(ed.rows[line].start + ed.rows[line].prefixLen, true)
+      keyClick(Qt.Key_Return)
+      type("A")
+      return ed.text
+    }
+    function test_enter_before_the_words_makes_room_above() {
+      compare(enterAtWords("\n## Title here\nx", 1), "\n\n## ATitle here\nx")
+      compare(enterAtWords("\n- [x] done thing\nx", 1), "\n- [ ] \n- [x] Adone thing\nx")
+      compare(enterAtWords("\n- [ ] due 📅 2026-11-12 ^d1\nx", 1), "\n- [ ] \n- [ ] Adue 📅 2026-11-12 ^d1\nx")
+      compare(enterAtWords("\n3. third\n4. fourth", 1), "\n3. \n4. Athird\n5. fourth")
+      compare(enterAtWords("\n\t- nested\nx", 1), "\n\t- \n\t- Anested\nx")
+      compare(enterAtWords("\n> quoted\nx", 1), "\n> \n> Aquoted\nx")
+      compare(enterAtWords("\n> # quoted heading\nx", 1), "\n> \n> # Aquoted heading\nx")
+      compare(enterAtWords("\n> [!note] Title\n> body", 1), "\n\n> [!note] ATitle\n> body")
+      compare(enterAtWords("\n  indented\nx", 1), "\n\n  Aindented\nx")
+      compare(enterAtWords("\nplain\nx", 1), "\n\nAplain\nx")
+      // At the end, Enter opens a line below as before.
+      ed.load("\n## Title here")
+      ed.setCursor(ed.text.length, true)
+      keyClick(Qt.Key_Return)
+      compare(ed.text, "\n## Title here\n")
+      // One undo takes it back.
+      ed.load("\n## Title")
+      ed.setCursor(4, true)
+      keyClick(Qt.Key_Return)
+      compare(ed.text, "\n\n## Title")
+      ed.undo()
+      compare(ed.text, "\n## Title")
+    }
+
     function test_two_enters_make_a_new_block() {
       start("\nfirst")
       keyClick(Qt.Key_Return)
