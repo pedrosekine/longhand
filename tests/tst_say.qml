@@ -176,4 +176,20 @@ TestCase {
             "3 sections on 2 days · 3 open")
     compare(Say.projectSummary([{ date: "a", open: 0 }, { date: "b", open: 0 }]), "2 sections")
   }
+
+  function test_the_section_picked_is_found_again() {
+    var was = { date: "2026-11-10", line: 4, heading: "Seminar #s" }
+    var list = [
+      { date: "2026-11-11", line: 2, heading: "Seminar #s" },
+      { date: "2026-11-10", line: 0, heading: "Week 2 #s" },
+      { date: "2026-11-10", line: 7, heading: "Seminar #s" }]
+    // Its day and heading, though lines were typed above it.
+    compare(Say.sameSection(list, was), 2)
+    // Its heading renamed (its line stays): the nearest on its day.
+    compare(Say.sameSection([list[0], list[1], { date: "2026-11-10", line: 4, heading: "Seminar, week 3 #s" }], was), 2)
+    // Its day gone from the list, or nothing picked: -1.
+    compare(Say.sameSection([list[0]], was), -1)
+    compare(Say.sameSection(list, undefined), -1)
+  }
+
 }

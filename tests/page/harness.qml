@@ -265,6 +265,8 @@ ShellRoot {
     function sections(): string { return JSON.stringify(page.sections.map(function (s) { return s.date + "|" + s.title + "|" + Say.sectionUnder(s) })) }
     function openSection(i: int): void { page.sectionFocus = i; page.openSection(page.sections[i]) }
     // One project's part of the day (Focus.js): its tag, and the lines drawn.
+    function sectionFocus(): int { return page.sectionFocus }
+    function sectionCounts(): string { return JSON.stringify(page.sections.map(function (s) { return Say.sectionCounts(s) })) }
     function focusTag(): string { return page.editorItem.focusTag }
     function shownLines(): string {
       var ed = page.editorItem

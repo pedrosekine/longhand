@@ -1459,3 +1459,19 @@ only the window and the panels around it differ.
   leaves. `Focus.js`, `tests/tst_focus.qml`, the focus tests in
   `tests/tst_editor.qml`. A page that stacks every day's sections of a
   project is the larger form of it, left for later.
+- **2026-11-11: the project list follows the note.** It was read once,
+  when the project was opened, so a box ticked or a heading renamed in
+  the note showed only after leaving and opening it again. Now the page
+  asks the runner again after each of its saves, when the open note
+  changes on disk, after the dashboard's list is read (a box ticked or
+  moved there), and when the sidebar is shown again. The save comes
+  300 ms after the typing stops and `sections` answers in about a
+  quarter second, so it follows as you write; asked while a read is
+  under way, it reads once more after. The highlight stays on the
+  section it was on (by day and heading, `Say.sameSection`), not on its
+  old place in the list. The other side lists were looked at and need
+  nothing: the calendar's days and the deadlines watch their files, the
+  dashboard takes the note's place and reads on opening, the export
+  sheet is modal. Notes changed outside the page on other days
+  (Obsidian, sync) are still only seen at those moments; a watch on the
+  whole folder is left for later.

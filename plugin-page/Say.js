@@ -269,3 +269,20 @@ function projectSummary(sections) {
   return (n === 1 ? "1 section" : n + " sections") + (count < n ? " on " + count + " days" : "")
     + (open > 0 ? " · " + open + " open" : "")
 }
+
+// The list read again after an edit (2026-11-11): where the one picked
+// before is now, so the highlight stays on it — by its day and heading,
+// the nearest of those to where it was, since typing above it moves its
+// line; else the nearest on its day. -1 when its day has none left.
+function sameSection(sections, prev) {
+  if (!prev) return -1
+  var best = -1, bestHead = false, gap = 0
+  for (var i = 0; i < (sections || []).length; i++) {
+    var s = sections[i]
+    if (s.date !== prev.date) continue
+    var head = (s.heading || "") === (prev.heading || "")
+    var d = Math.abs((s.line || 0) - (prev.line || 0))
+    if (best < 0 || (head && !bestHead) || (head === bestHead && d < gap)) { best = i; bestHead = head; gap = d }
+  }
+  return best
+}

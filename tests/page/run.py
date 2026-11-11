@@ -742,6 +742,14 @@ def main() -> int:
         check(p.call("focusTag") == "" and "## Methods" in json.loads(p.call("shownLines")), "…and the whole day comes back")
         p.call("toggleFocus")
         check(p.call("focusTag") == "intsem", "the key focuses on the section the cursor is in")
+        # The list follows the note (2026-11-11): what is written in the
+        # section shows in its row once saved, the highlight still on it.
+        t = p.call("text")
+        p.call("cursor", t.index("- [ ] send the email") + len("- [ ] send the email"))
+        p.call("insert", "\n- [ ] read the paper")
+        check(p.wait(lambda: json.loads(p.call("sectionCounts"))[1:] == ["2 open"]),
+              f"a box written in the section is counted in the project's list ({p.call('sectionCounts')})")
+        check(p.call("sectionFocus") == "1", f"…the highlight still on that day's section ({p.call('sectionFocus')})")
         p.call("unfocus")
         p.call("leaveProject")
         check(p.wait(lambda: json.loads(p.call("sections")) == []), "← goes back to the projects")

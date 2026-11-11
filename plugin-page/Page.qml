@@ -3667,10 +3667,31 @@ Item {
     root.docFocus = -1
     root.sidebarOpen = true
     root.projectOpen = true
-    sectionsProc.command = [svc.runner, "sections", "--tag", pr.tag]
-    sectionsProc.running = true
+    root.refreshSections()
     sidebar.sidebarKeysRef.forceActiveFocus()
   }
+
+  // The project's list read again whenever a note may have changed under
+  // it (2026-11-11): the page's own save, the open note changed outside,
+  // a box ticked or moved from the dashboard, the sidebar shown again. It
+  // was read only when the project was opened, so a heading renamed or a
+  // box ticked in the note stayed as it was until the list was opened
+  // again. A save comes 300 ms after the typing stops and the runner
+  // answers in about a quarter second, so the list follows as you write.
+  function notesChanged() {
+    if (root.projectOpen) sectionsAgainTimer.restart()
+  }
+  Timer { id: sectionsAgainTimer; interval: 120; onTriggered: root.refreshSections() }
+  property bool sectionsAgain: false
+  function refreshSections() {
+    if (!root.projectOpen || root.projectTag === "" || !svc.configured) return
+    // Asked again while a read is under way: once more when it ends.
+    if (sectionsProc.running) { root.sectionsAgain = true; return }
+    sectionsProc.tag = root.projectTag
+    sectionsProc.command = [svc.runner, "sections", "--tag", root.projectTag]
+    sectionsProc.running = true
+  }
+  onSidebarOpenChanged: if (root.sidebarOpen) root.notesChanged()
 
   // The day's deadline list in the sidebar; false for a key it does not
   // use. A function, as projectsKey is, so the page can be driven without
@@ -5969,8 +5990,9 @@ Item {
     // asked for again by openSection, once it has loaded).
     onFilePathChanged: editor.focusTag = ""
     onLoaded: { root.applyText(svc.body); root.reconcilePending = true; root.startCheck(); root.reconcile(); root.openPass() }
-    onExternalChange: { root.applyText(svc.body, true); root.reconcilePending = true; root.startCheck(); root.reconcile() }
+    onExternalChange: { root.applyText(svc.body, true); root.reconcilePending = true; root.startCheck(); root.reconcile(); root.notesChanged() }
     onSavedNow: {
+      root.notesChanged()
       if (root.tasksAfterSave) { root.tasksAfterSave = false; root.refreshTasks() }
       if (root.exportAfterSave) { root.exportAfterSave = false; root.listExport() }
       root.runCheck()
@@ -6065,6 +6087,9 @@ Item {
         root.doneNow = ({})
         root.justTicked = ""
         root.taskFocus = Math.min(root.taskFocus, Math.max(0, root.taskRows.length - 1))
+        // Read after a box ticked, moved or put aside from the dashboard:
+        // the project's list beside it counts them too.
+        root.notesChanged()
         if (root.tasksAgain) { root.tasksAgain = false; Qt.callLater(root.refreshTasks) }
       }
     }
@@ -6094,12 +6119,20 @@ Item {
 
   Process {
     id: sectionsProc
+    property string tag: ""
     stdout: StdioCollector {
       onStreamFinished: {
-        try { root.sections = JSON.parse(text) || [] } catch (e) { root.sections = [] }
-        root.sectionFocus = Math.min(root.sectionFocus, Math.max(0, root.sections.length - 1))
+        // An answer for a project already left, or another one: not drawn.
+        if (!root.projectOpen || sectionsProc.tag !== root.projectTag) return
+        var prev = root.sections[root.sectionFocus]
+        var got = []
+        try { got = JSON.parse(text) || [] } catch (e) { got = [] }
+        root.sections = got
+        var at = Say.sameSection(got, prev)
+        root.sectionFocus = at >= 0 ? at : Math.min(root.sectionFocus, Math.max(0, got.length - 1))
       }
     }
+    onExited: function (code, status) { if (root.sectionsAgain) { root.sectionsAgain = false; Qt.callLater(root.refreshSections) } }
     stderr: StdioCollector { onStreamFinished: if (text.trim() !== "") console.warn("longhand.page sections: " + text.trim()) }
   }
 
