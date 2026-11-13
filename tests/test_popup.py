@@ -18,6 +18,8 @@ import sys
 import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "tests"))
+import desktop  # noqa: E402
 SHELL = "/usr/share/omarchy/shell"
 failures = 0
 
@@ -72,6 +74,7 @@ def run(tmp: pathlib.Path, env: dict) -> str:
 
 
 def main() -> int:
+    desktop.reach("the popup")
     tmp = pathlib.Path(tempfile.mkdtemp(prefix="popup-test-"))
     shell = tmp / "shell"
     shell.mkdir()

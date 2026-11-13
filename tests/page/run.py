@@ -26,6 +26,8 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "agent"))
 import blocks  # noqa: E402
 import lifespan  # noqa: E402
+sys.path.insert(0, str(ROOT / "tests"))
+import desktop  # noqa: E402
 
 # What the runner writes when the student talks to a block: both turns, the
 # way `longhand-agent chat` records them. Enough for the page to settle the
@@ -368,6 +370,7 @@ def theme_switch() -> None:
 
 
 def main() -> int:
+    desktop.reach("the page")
     theme_switch()
     p = Page()
     try:

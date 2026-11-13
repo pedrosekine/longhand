@@ -99,7 +99,7 @@ def units() -> None:
     check(export.words("## Not counted\nOne two three.\n- four five") == 5, "words: the prose, not the headings")
     callout = export.clean(blocks.split("> [!note] A title\n> words")[0], 0, lambda n: None)
     check(callout == "> **A title**\n> words", "a callout's kind becomes its title in bold")
-    pic = pathlib.Path("/tmp/a picture.png")
+    pic = pathlib.Path("/vault/a picture.png")         # a path only: never written
     check(export.clean(blocks.split("![[a picture.png]]")[0], 0, lambda n: pic) == f"![](<{pic}>)"
           and export.clean(blocks.split("![[gone.png]]")[0], 0, lambda n: None) == "",
           "a picture by its path, and one not found is left out")

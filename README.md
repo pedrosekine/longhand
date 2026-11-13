@@ -274,12 +274,35 @@ Hyprland reports a new config error, the old file is put back.
 ### Tests
 
 ```bash
-python3 tests/run_all.py                    # every test file and the QML tests, offscreen (under a minute)
+python3 tests/run_all.py                    # every test file and the QML tests, offscreen, side by side (about 12s)
+python3 tests/run_all.py plan agent         # only these (test_plan.py, test_agent.py); 'day*' and editor (tst_editor.qml) work too
+python3 tests/run_all.py --failed           # only what failed last time
+python3 tests/run_all.py --list             # the names it knows
 python3 tests/run_all.py --page             # and the page itself, live, in the window shape
 python3 tests/run_all.py --page --overlay   # and the overlay, which takes the screen for a few seconds
 ```
 
-Each file also runs alone (`python3 tests/test_check.py`). The offscreen ones
+The runner starts one file per core at once (`-j 1` for one at a time); the
+live page test runs after them, alone. Each file also runs alone
+(`python3 tests/test_check.py`).
+
+**Every test runs beside the others**, so a new one keeps to itself:
+
+- its folders come from `tempfile` (`mkdtemp`), never a fixed path such as
+  `/tmp/longhand-test`, which another file or a second run would share;
+- anything it starts gets `XDG_STATE_HOME`, `XDG_CONFIG_HOME` (or
+  `LONGHAND_CONFIG`) pointing into those folders, and Hyprland is played by
+  `tests/fakes.py` → `fake_hyprctl.py`; never the home folder;
+- nothing is written into the repo, which every file shares;
+- no fixed port, lock or shared file name between files;
+- it never reads the terminal: the runner gives every file empty input, and a
+  program it starts that might read input gets `stdin=subprocess.DEVNULL`;
+- it waits on a condition, not on a long fixed sleep.
+
+`tests/test_parallel.py` checks the first three from the source. A file that
+truly cannot run beside the others goes in `SERIAL` in `tests/run_all.py`
+with its reason, and runs alone after the rest; fix the test before adding
+to it. The offscreen ones
 build a throwaway vault, state and config, and play Hyprland with
 `tests/fake_hyprctl.py`, so they never read or write yours. Some need node
 (the JS and Python halves of the block splitter and the checkbox grammar are
@@ -288,6 +311,11 @@ compared), PyQt6 (`test_cursors`) or quickshell (`test_popup`).
 scratch" that never takes focus; it runs in the window shape, the one used
 most, and the overlay only with `--overlay`, because the overlay covers the
 screen and holds the keyboard while it is up.
+
+The two that open a real window (`test_popup` and the page) find the running
+Hyprland themselves (`tests/desktop.py`), so they also run from a shell
+without the desktop's settings, such as a session over SSH; with no
+Hyprland running they say so and stop.
 
 ## Deadlines in the notes
 
