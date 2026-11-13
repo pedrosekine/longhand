@@ -23,6 +23,21 @@ BorderSurface {
   readonly property var content: page.contentItem
   readonly property var pal: page.palette
   property alias dashKeysRef: dashKeys
+  property alias searchFieldRef: searchChip.field
+  // The dashboard has the keys: its list and strip, or ⌕'s line of text.
+  readonly property bool keysHere: dashKeys.activeFocus || searchChip.field.activeFocus
+  // ⌕ has the keys whenever the strip's cursor is on it, folded.
+  function syncSearchFocus() {
+    var want = page.stripAt === 0 && !page.stripOpen && page.dashOpen
+    if (want && dashKeys.activeFocus) searchChip.field.forceActiveFocus()
+    else if (!want && searchChip.field.activeFocus) dashKeys.forceActiveFocus()
+  }
+  Connections {
+    target: page
+    function onStripAtChanged() { dash.syncSearchFocus() }
+    function onStripOpenChanged() { dash.syncSearchFocus() }
+    function onDashQueryChanged() { if (searchChip.field.text !== page.dashQuery && !page.dashSearchPending) searchChip.field.text = page.dashQuery }
+  }
   property alias dashWhenFieldRef: dashWhenField
   property alias dashColumnRef: dashColumn    // the drawn rows, for the tests
 
@@ -41,8 +56,11 @@ BorderSurface {
   MouseArea { anchors.fill: parent; onClicked: dashKeys.forceActiveFocus() }
 
   // A chip on the course strip: lit where the strip's cursor is, outlined
-  // when the list shows its course. The ⌕ chip shows what is typed into it,
-  // and a caret while the cursor is on it.
+  // when the list shows its course. The ⌕ chip holds a line of text of its
+  // own (2026-11-13), with every key a line of text has — Ctrl+A, paste,
+  // the arrows, Shift to select, Ctrl+Backspace, undo — and its own caret,
+  // right after the last letter. It was drawn words and a drawn caret
+  // beside them, a space away, and took only letters and Backspace.
   component Chip: Rectangle {
     id: chip
     required property Item page
@@ -53,6 +71,7 @@ BorderSurface {
     property bool on: false
     property bool search: false
     readonly property bool cur: page.stripAt === at && !page.stripOpen && keys
+    property alias field: searchField
     onCurChanged: page.selected(chip, "center", cur)
     width: chipRow.implicitWidth + page.sp(16)
     height: chipRow.implicitHeight + Math.round(page.textSize * 0.3)
@@ -65,6 +84,9 @@ BorderSurface {
       id: chipRow
       anchors.centerIn: parent
       spacing: page.sp(5)
+      // A key the line of text left alone stops here: passed on to the
+      // dashboard, ⌕'s old keys would type it a second time.
+      Keys.onPressed: function (event) { event.accepted = chip.search }
       Text {
         anchors.verticalCenter: parent.verticalCenter
         textFormat: Text.PlainText
@@ -74,14 +96,28 @@ BorderSurface {
         font.styleName: page.fontStyle
         font.pixelSize: page.fs(Style.font.bodySmall)
       }
-      Rectangle {
-        id: caret
-        visible: chip.search && chip.cur
+      // What is typed into ⌕: its own words at once, the list narrowed a
+      // moment after (page.dashSearchEdited), so a letter is never waiting on
+      // the list to show.
+      TextInput {
+        id: searchField
+        visible: chip.search && (chip.cur || activeFocus || text !== "")
+        enabled: chip.search
         anchors.verticalCenter: parent.verticalCenter
-        width: 1
-        height: Math.round(page.textSize * 0.8)
-        color: page.accent
-        Timer { interval: 530; repeat: true; running: caret.visible; onTriggered: caret.opacity = caret.opacity > 0 ? 0 : 1 }
+        width: Math.max(1, contentWidth + (activeFocus ? cursorRectangle.width : 0))
+        clip: false
+        color: chip.on ? page.accent : page.foreground
+        selectionColor: page.palette.selection
+        selectedTextColor: page.foreground
+        selectByMouse: true
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.bodySmall)
+        onTextChanged: if (text !== page.dashQuery || page.dashSearchPending) page.dashSearchEdited(text)
+        onActiveFocusChanged: if (activeFocus && page.stripAt !== chip.at) page.stripAt = chip.at
+        // The strip's own keys first (Esc, ↓, Enter, → past the last
+        // letter, the page's global keys); the rest are the line's.
+        Keys.onPressed: function (event) { if (page.dashSearchKey(event, searchField)) event.accepted = true }
       }
       Text {
         visible: chip.count !== ""
@@ -94,7 +130,13 @@ BorderSurface {
         font.pixelSize: page.fs(Style.font.caption)
       }
     }
-    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: page.clickChip(chip.at) }
+    MouseArea {
+      anchors.fill: parent
+      // On ⌕ the pointer reaches the words, to place the caret and select.
+      enabled: !(chip.search && searchField.activeFocus)
+      cursorShape: chip.search ? Qt.IBeamCursor : Qt.PointingHandCursor
+      onClicked: page.clickChip(chip.at)
+    }
   }
 
   // A row of the strip unfolded: a course with what it holds, or an order.
@@ -205,6 +247,9 @@ BorderSurface {
       if (page.anywhereKey(event)) { event.accepted = true; return }
       if (page.dashKey(event)) event.accepted = true
     }
+    // The keys given back to the dashboard while the strip's cursor is on
+    // ⌕ (the pane keys, a sheet closed): on to its line of text.
+    onActiveFocusChanged: if (activeFocus) Qt.callLater(dash.syncSearchFocus)
 
     Text {
       id: dashTitle
@@ -247,28 +292,32 @@ BorderSurface {
             anchors.rightMargin: page.sp(8)
             spacing: page.sp(4)
             Chip {
+              id: searchChip
               page: dash.page
-              keys: dashKeys.activeFocus
+              keys: dash.keysHere
               at: 0
               search: true
-              label: "⌕" + (page.dashQuery !== "" ? " " + page.dashQuery : "")
+              label: "⌕"
               on: page.dashQuery !== ""
             }
             Chip {
               page: dash.page
-              keys: dashKeys.activeFocus
+              keys: dash.keysHere
               at: 1
               label: "All"
               count: String(page.dashCourses.total)
               on: page.dashLens.length === 0
             }
             Repeater {
-              model: page.stripChips
+              // By the courses' tags, which typing does not change: the
+              // chips stay, only their counts move (2026-11-13). Drawn
+              // from stripChips itself, every letter drew them anew.
+              model: page.stripChipTags
               Chip {
-                required property var modelData
                 required property int index
+                readonly property var modelData: page.stripChips[index] || ({ tag: "", label: "", count: 0 })
                 page: dash.page
-                keys: dashKeys.activeFocus
+                keys: dash.keysHere
                 at: index + 2
                 label: modelData.label
                 count: String(modelData.count)
@@ -279,7 +328,7 @@ BorderSurface {
           Chip {
             id: orderChip
             page: dash.page
-            keys: dashKeys.activeFocus
+            keys: dash.keysHere
             anchors.right: parent.right
             anchors.top: parent.top
             at: page.stripEnd
@@ -356,7 +405,7 @@ BorderSurface {
             spacing: 0
             Unfolded {
               page: dash.page
-              keys: dashKeys.activeFocus
+              keys: dash.keysHere
               pick: 0
               name: "⌕ " + (page.dashQuery !== "" ? page.dashQuery : "")
               holds: page.dashQuery === "" ? "type words, or a #tag" : ""
@@ -374,12 +423,12 @@ BorderSurface {
               font.letterSpacing: 0.8
             }
             Repeater {
-              model: page.stripChips
+              model: page.stripChipTags
               Unfolded {
-                required property var modelData
                 required property int index
+                readonly property var modelData: page.stripChips[index] || ({ tag: "", name: "", due: 0, doing: 0, later: 0, next: null })
                 page: dash.page
-                keys: dashKeys.activeFocus
+                keys: dash.keysHere
                 pick: index + 1
                 digit: index < 9 ? String(index + 1) : ""
                 on: page.dashLens.indexOf(modelData.tag) >= 0
@@ -408,7 +457,7 @@ BorderSurface {
                 required property var modelData
                 required property int index
                 page: dash.page
-                keys: dashKeys.activeFocus
+                keys: dash.keysHere
                 pick: page.stripChips.length + 1 + index
                 digit: page.keyName("dashOrder")
                 on: page.dashOrder === modelData
@@ -520,7 +569,10 @@ BorderSurface {
             // Lit only while the dashboard has the keys: one place is lit
             // at a time, in the pane the focus frame is around
             // (docs/navigation.md). The pointer follows it (page.selected).
-            readonly property bool hot: page.taskFocus === index && !isHead && page.here === "center" && page.stripAt < 0
+            // Which row has the cursor goes by its key, not its place: a
+            // row moved up by the words is not worked out again for it.
+            readonly property bool focusHere: page.dashFocusId === rowId
+            readonly property bool hot: focusHere && !isHead && page.here === "center" && page.stripAt < 0
             onHotChanged: page.selected(dashRow, "center", hot)
             Component.onCompleted: if (hot) page.selected(dashRow, "center", true)
             // A click on it does something (activateTask): a hand, and a
@@ -538,7 +590,7 @@ BorderSurface {
             height: inner.implicitHeight + page.sp(16)
               + (kind === "head" ? page.sp(30) : kind === "month" ? page.sp(16)
                  // A run of folded bands reads as one list of headings.
-                 : kind === "band" ? (index > 0 && page.taskRows[index - 1].kind === "band" ? page.sp(10) : page.sp(30)) : 0)
+                 : kind === "band" ? (entry && entry.afterBand ? page.sp(10) : page.sp(30)) : 0)
             color: "transparent"
 
             Rectangle {
@@ -551,7 +603,7 @@ BorderSurface {
               // The row talked about beside, while the keys are there: still
               // marked, faintly, so the list says which one it is.
               color: dashRow.hot ? Style.selectedFill
-                : rowHover.hovered && page.handOn || (page.taskFocus === index && !isHead && page.talkOpen) ? Style.hoverFill : "transparent"
+                : rowHover.hovered && page.handOn || (dashRow.focusHere && !isHead && page.talkOpen) ? Style.hoverFill : "transparent"
             }
 
             // The gutter bar, as the note draws one beside a block: the

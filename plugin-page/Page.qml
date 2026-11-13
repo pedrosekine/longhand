@@ -1531,6 +1531,7 @@ Item {
                                                     proposals: root.proposals, raised: root.raised,
                                                     lens: root.dashLens, query: root.dashQuery })
   readonly property var stripChips: root.dashCourses.chips
+  readonly property var stripChipTags: root.stripChips.map(function (c) { return c.tag })
   readonly property int stripEnd: root.stripChips.length + 2      // the order, last
   readonly property bool dashNarrowed: root.dashLens.length > 0 || root.dashQuery.trim() !== ""
   // The dashboard's cursor stays on the same row when the list is drawn
@@ -1554,6 +1555,8 @@ Item {
   property var dashEntries: ({})      // key -> { row, i }: the row, and where it is in taskRows
   property var dashSeen: ({})         // key -> { js, row }: each row drawn, hidden ones too, to keep one that did not change
   property var dashKeys: []           // the model's keys, in its order
+  property var dashRowIds: []         // taskRows' keys, in its order
+  readonly property string dashFocusId: root.dashRowIds[root.taskFocus] || ""
   function dashKeyOf(row) {
     var k = root.rowKey(row)
     if (k !== "") return k
@@ -1576,8 +1579,10 @@ Item {
       var row = was && js !== "" && was.js === js ? was.row : rows[i]
       seen[k] = { js: js, row: row }
       var old = root.dashEntries[k]
-      entries[k] = old && old.row === row && old.i === i ? old : { row: row, i: i }
+      var afterBand = i > 0 && rows[i - 1].kind === "band"
+      entries[k] = old && old.row === row && old.i === i && old.afterBand === afterBand ? old : { row: row, i: i, afterBand: afterBand }
     }
+    root.dashRowIds = keys
     root.dashEntries = entries
     // The model: every key in taskRows, in its order; keys it no longer
     // has stay (hidden) where they were, while the list is narrowed.
@@ -4858,6 +4863,62 @@ Item {
     if (e.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier)) return ""
     var t = e.text || ""
     return t.length === 1 && t >= " " ? t : ""
+  }
+  // ⌕'s line of text (Dashboard.qml, 2026-11-13): what it holds is shown
+  // at once, and the list narrowed to it a moment later, so the frame with
+  // the letter is drawn before the list is worked out — the first letter
+  // waited on the whole list to be narrowed before it was seen. Letters
+  // typed quicker than that are taken together.
+  property bool dashSearchPending: false
+  property string dashSearchTyped: ""
+  // After the frame that shows the letter (the timer only in case no frame
+  // comes, the window hidden): a fixed delay was sometimes shorter than the
+  // wait for the next frame, and the letter waited on the list again.
+  Timer { id: dashSearchApply; interval: 60; onTriggered: root.applyDashSearch() }
+  // A frame synchronised since the letter came holds it; once that one is
+  // on screen, the list.
+  property bool dashSearchSynced: false
+  Connections {
+    target: root.Window.window
+    enabled: root.dashSearchPending
+    function onAfterSynchronizing() { root.dashSearchSynced = true }
+    function onFrameSwapped() { if (root.dashSearchSynced) Qt.callLater(root.applyDashSearch) }
+  }
+  function dashSearchEdited(text) {
+    root.dashSearchTyped = text
+    if (!root.dashSearchPending) root.dashSearchSynced = false
+    root.dashSearchPending = true
+    if (!dashSearchApply.running) dashSearchApply.start()
+  }
+  function applyDashSearch() {
+    if (!root.dashSearchPending) return
+    dashSearchApply.stop()
+    root.dashSearchPending = false
+    if (root.dashQuery === root.dashSearchTyped) return
+    root.dashQuery = root.dashSearchTyped
+    root.taskFocus = 0
+    root.moveTaskFocus(0)
+  }
+  // A key in ⌕'s line before the line has it: the page's own keys, and the
+  // strip's — Esc clears, then gives the list back; ↓ or Enter goes down
+  // to the list; → past the last letter goes on to All. True when taken.
+  function dashSearchKey(e, field) {
+    if (root.anywhereKey(e)) return true
+    var k = e.key, plain = !(e.modifiers & (Qt.ShiftModifier | Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier))
+    if (Sc.hit(e, "stripClear")) {
+      root.applyDashSearch()
+      if (root.dashQuery !== "") root.dashQuery = ""
+      else root.leaveStrip()
+      return true
+    }
+    if (k === Qt.Key_Down || k === Qt.Key_Return || k === Qt.Key_Enter) { root.applyDashSearch(); root.leaveStrip(); return true }
+    if (k === Qt.Key_Right && plain && field.selectedText === "" && field.cursorPosition === field.text.length) {
+      root.applyDashSearch()
+      root.stripAt = 1
+      root.stripMoved()
+      return true
+    }
+    return false
   }
   function typeInto(e) {
     // Ctrl+Backspace takes the word before the cursor, as in the note

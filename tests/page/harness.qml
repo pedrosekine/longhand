@@ -415,6 +415,17 @@ ShellRoot {
       }
       return JSON.stringify({ shown: shown, fresh: fresh })
     }
+    // ⌕'s line of text (2026-11-13): whether it has the keys, what it
+    // holds and where its caret is; and words put into it as typing does.
+    function dashSearchField(): string {
+      var f = page.dashItem.searchFieldRef
+      return JSON.stringify({ focus: f.activeFocus, text: f.text, cursor: f.cursorPosition, query: page.dashQuery, pending: page.dashSearchPending })
+    }
+    function dashSearchInsert(s: string): void { var f = page.dashItem.searchFieldRef; f.insert(f.cursorPosition, s) }
+    function dashSearchCursor(pos: int): void { page.dashItem.searchFieldRef.cursorPosition = pos }
+    function dashSearchKey(key: int, mods: int): bool {
+      return page.dashSearchKey({ key: key, text: "", modifiers: mods }, page.dashItem.searchFieldRef)
+    }
     function dashRows(): string {
       return JSON.stringify(page.taskRows.map(function (r) {
         return r.kind === "head" ? { kind: "head", text: r.text, tag: r.tag || "" }

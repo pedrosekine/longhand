@@ -1544,3 +1544,19 @@ only the window and the panels around it differ.
   the cursor, as in the note; it took one letter. `Page.qml`,
   `Dashboard.qml`, `Shortcuts.js`; `tests/page/run.py` checks that typing
   draws no row anew.
+- **2026-11-13: ⌕ is a line of text.** It was drawn words with a drawn
+  caret beside them (a space away, so the caret seemed to sit after a
+  space), and it took letters and Backspace only: no Ctrl+A, no paste,
+  no moving the caret. It is now a TextInput of its own, with every key
+  a line of text has; the strip's keys go first (Esc clears, then leaves;
+  ↓ or Enter goes to the list; → past the last letter goes on to All, ←
+  from All comes back into it). The words show at once and the list is
+  narrowed once the frame with the letter is on screen, so a letter never
+  waits on the list — before, the first letter took as long to appear as
+  the whole list took to narrow. The rows keep their cursor by key, not by
+  place, and the course chips are drawn by their tags, so a letter no
+  longer works out every row's place or draws the chips anew: a letter's
+  narrowing is now ~10–20 ms once the shell has run it once (the first
+  in a new shell, ~60–90). In the unfolded strip, typing still goes into
+  ⌕ letter by letter. `?` in ⌕ is now a question mark; the keys are
+  Ctrl+/ there.

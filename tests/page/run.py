@@ -1324,6 +1324,22 @@ def main() -> int:
         p.call("dashKey", KEY_ESC, 0)
         check(strip()["at"] == -1 and p.call("dashOpen") == "true", "…then gives the keys back to the list, the dashboard still open")
         check(p.call("dashType", "/") == "true" and strip()["at"] == 0, "/ goes to the strip's ⌕")
+        # ⌕ is a line of text of its own (2026-11-13): it has the keys, its
+        # words narrow the list a frame later, → past the last letter goes
+        # on to All and ← comes back into it, Esc clears it.
+        sf = lambda: json.loads(p.call("dashSearchField"))
+        check(p.wait(lambda: sf()["focus"], 2), f"…and gives the keys to its line of text ({sf()})")
+        p.call("dashSearchInsert", "rub")
+        check(p.wait(lambda: strip()["query"] == "rub" and not sf()["pending"], 2), f"what is typed there narrows the list ({sf()})")
+        p.call("dashSearchCursor", 1)
+        check(p.call("dashSearchKey", KEY_RIGHT, 0) == "false" and strip()["at"] == 0, "→ inside the words moves the caret, not the strip")
+        p.call("dashSearchCursor", 3)
+        check(p.call("dashSearchKey", KEY_RIGHT, 0) == "true" and strip()["at"] == 1 and p.wait(lambda: not sf()["focus"], 2),
+              f"→ past the last letter goes on to All ({strip()}, {sf()})")
+        p.call("dashKey", KEY_LEFT, 0)
+        check(p.wait(lambda: sf()["focus"] and sf()["text"] == "rub", 2), f"← comes back into the words ({sf()})")
+        p.call("dashSearchKey", KEY_ESC, 0)
+        check(strip()["query"] == "" and sf()["text"] == "" and strip()["at"] == 0, f"Esc there clears them ({sf()})")
         drawn = lambda: json.loads(p.call("dashDrawn"))
         everything = drawn()["shown"]
         for ch in "rubric":
