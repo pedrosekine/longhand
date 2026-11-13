@@ -298,7 +298,9 @@ BorderSurface {
               at: 0
               search: true
               label: "⌕"
-              on: page.dashQuery !== ""
+              // Lit by what is in the line, with the letter itself: by the
+              // query it lit a frame later, when the list was narrowed.
+              on: searchChip.field.text !== "" || page.dashQuery !== ""
             }
             Chip {
               page: dash.page

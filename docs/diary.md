@@ -1560,3 +1560,7 @@ only the window and the panels around it differ.
   in a new shell, ~60–90). In the unfolded strip, typing still goes into
   ⌕ letter by letter. `?` in ⌕ is now a question mark; the keys are
   Ctrl+/ there.
+- **2026-11-13: ⌕ lights with the letter.** Its outline and accent
+  followed the query, which is applied a frame after the letter shows,
+  so the chip turned orange a beat late. It now follows what is in the
+  line. `Dashboard.qml`.
