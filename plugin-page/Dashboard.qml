@@ -24,6 +24,7 @@ BorderSurface {
   readonly property var pal: page.palette
   property alias dashKeysRef: dashKeys
   property alias dashWhenFieldRef: dashWhenField
+  property alias dashColumnRef: dashColumn    // the drawn rows, for the tests
 
   visible: page.dashOpen && !page.keysOpen && !page.settingsOpen
   x: page.wideX
@@ -468,12 +469,21 @@ BorderSurface {
           font.pixelSize: page.fs(Style.font.bodySmall)
         }
 
+        // Drawn from the page's keyed model (Page.syncDash, 2026-11-13): a
+        // row the words leave out is hidden, not thrown away, so typing
+        // into ⌕ never draws the list anew. `index` is the row's place in
+        // page.taskRows, -1 while hidden.
         Repeater {
-          model: page.taskRows
+          model: page.dashModel
           Rectangle {
             id: dashRow
-            required property var modelData
-            required property int index
+            required property string rowId
+            readonly property var entry: page.dashEntries[rowId] || null
+            readonly property int index: entry ? entry.i : -1
+            property var lastRow: null
+            readonly property var modelData: entry ? entry.row : (lastRow || ({ kind: "" }))
+            onEntryChanged: if (entry) lastRow = entry.row
+            visible: entry !== null
             readonly property string kind: modelData.kind
             readonly property bool isHead: kind === "head" || kind === "month"
             readonly property var task: kind === "task" ? modelData.task : null

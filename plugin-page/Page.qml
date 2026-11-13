@@ -1539,7 +1539,78 @@ Item {
   // cursor keep its place in the list.
   property string taskFocusKey: ""
   onTaskFocusChanged: root.taskFocusKey = root.rowKey(root.taskRows[root.taskFocus])
+  // The list as the dashboard draws it (2026-11-13): a model of keys, kept
+  // in step with `taskRows` by key, so a row that is still there keeps its
+  // drawn row. Drawn straight from `taskRows`, every letter typed into ⌕ —
+  // or every course passed on the strip — threw every row away and drew
+  // the list anew, about 1.6 ms a row: a quarter of a second a key for a
+  // term's work. Now what the words leave out is only hidden, and comes
+  // back as it was when they let it in again; the rows themselves are
+  // compared as they are, so a row whose facts did not change is not
+  // drawn again either. What is hidden is let go once nothing narrows the
+  // list.
+  ListModel { id: dashModelObj }
+  property alias dashModel: dashModelObj
+  property var dashEntries: ({})      // key -> { row, i }: the row, and where it is in taskRows
+  property var dashSeen: ({})         // key -> { js, row }: each row drawn, hidden ones too, to keep one that did not change
+  property var dashKeys: []           // the model's keys, in its order
+  function dashKeyOf(row) {
+    var k = root.rowKey(row)
+    if (k !== "") return k
+    var it = row.item || {}
+    return row.kind + "|" + (row.text || "") + "|" + (row.tag || "") + "|" + (it.id !== undefined ? it.id : (it.text || ""))
+  }
+  function syncDash() {
+    var rows = root.taskRows
+    var keys = [], count = {}
+    var entries = {}
+    var seen = root.dashSeen
+    for (var i = 0; i < rows.length; i++) {
+      var base = root.dashKeyOf(rows[i])
+      var n = count[base] = (count[base] || 0) + 1
+      var k = n > 1 ? base + "#" + n : base
+      keys.push(k)
+      var js = ""
+      try { js = JSON.stringify(rows[i]) } catch (e) { js = "" }
+      var was = seen[k]
+      var row = was && js !== "" && was.js === js ? was.row : rows[i]
+      seen[k] = { js: js, row: row }
+      var old = root.dashEntries[k]
+      entries[k] = old && old.row === row && old.i === i ? old : { row: row, i: i }
+    }
+    root.dashEntries = entries
+    // The model: every key in taskRows, in its order; keys it no longer
+    // has stay (hidden) where they were, while the list is narrowed.
+    var mk = root.dashKeys.slice()
+    var pos = 0
+    for (var j = 0; j < keys.length; j++) {
+      var key = keys[j]
+      var at = mk.indexOf(key, pos)
+      if (at >= 0) { pos = at + 1; continue }
+      var before = mk.indexOf(key)
+      if (before >= 0) {
+        dashModelObj.move(before, pos - 1, 1)
+        mk.splice(before, 1)
+        mk.splice(pos - 1, 0, key)
+        continue
+      }
+      dashModelObj.insert(pos, { rowId: key })
+      mk.splice(pos, 0, key)
+      pos++
+    }
+    // Read from the lens and the words themselves: `dashNarrowed` may not
+    // have caught up yet while taskRows tells of a letter just typed.
+    var narrowedNow = root.dashLens.length > 0 || root.dashQuery.trim() !== ""
+    if (!narrowedNow || mk.length > keys.length + 400) {
+      for (var r = mk.length - 1; r >= 0; r--)
+        if (!entries[mk[r]]) { dashModelObj.remove(r, 1); delete seen[mk[r]]; mk.splice(r, 1) }
+    }
+    root.dashKeys = mk
+  }
+  Component.onCompleted: root.syncDash()
+  onDashNarrowedChanged: if (!root.dashNarrowed) Qt.callLater(root.syncDash)
   onTaskRowsChanged: {
+    root.syncDash()
     if (root.taskFocusKey === "") return
     for (var i = 0; i < root.taskRows.length; i++) {
       if (root.rowKey(root.taskRows[i]) === root.taskFocusKey) {
@@ -4789,6 +4860,12 @@ Item {
     return t.length === 1 && t >= " " ? t : ""
   }
   function typeInto(e) {
+    // Ctrl+Backspace takes the word before the cursor, as in the note
+    // (2026-11-13: it took a letter, so a search went letter by letter).
+    if (e.key === Qt.Key_Backspace && (e.modifiers & (Qt.ControlModifier | Qt.AltModifier))) {
+      root.dashQuery = root.dashQuery.replace(/\S+\s*$|\s+$/, "")
+      return true
+    }
     if (e.key === Qt.Key_Backspace) { root.dashQuery = root.dashQuery.slice(0, -1); return true }
     var t = root.typedChar(e)
     if (t === "") return false

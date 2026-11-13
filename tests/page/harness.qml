@@ -17,6 +17,7 @@ ShellRoot {
   QtObject {
     id: fakeShell
     function hide(id) { page.close(); return true }
+    property var seenRows: []    // dashDrawn's: the drawn rows seen so far
   }
   Page { id: page; shell: fakeShell; windowTitle: "Page scratch" }
   IpcHandler {
@@ -397,6 +398,23 @@ ShellRoot {
     function dashWhen(phrase: string): void { page.dashWhenText = phrase; page.commitDashWhen() }
     function dashWhenStart(): void { page.startDashWhen() }
     function dashWhenField(): string { var f = page.dashItem.dashWhenFieldRef; return JSON.stringify({ focus: f.focus, text: f.text }) }
+    // The rows as drawn: each shown one's words, in the order on screen,
+    // and how many drawn rows were made anew since the last call (a mark
+    // left on each one seen) — typing into ⌕ makes none (2026-11-13).
+    function dashDrawn(): string {
+      page.dashItem.dashColumnRef.forceLayout()
+      var kids = page.dashItem.dashColumnRef.children, shown = [], fresh = 0
+      var rows = kids.filter(function (k) { return k.rowId !== undefined })
+      rows.sort(function (a, b) { return a.y - b.y })
+      for (var i = 0; i < rows.length; i++) {
+        var k = rows[i]
+        if (fakeShell.seenRows.indexOf(k) < 0) { fresh++; fakeShell.seenRows.push(k) }
+        if (!k.visible) continue
+        var d = k.modelData
+        shown.push(d.kind === "task" ? d.task.text : d.kind === "deadline" ? d.deadline.title : d.kind + ":" + (d.text || d.id || ""))
+      }
+      return JSON.stringify({ shown: shown, fresh: fresh })
+    }
     function dashRows(): string {
       return JSON.stringify(page.taskRows.map(function (r) {
         return r.kind === "head" ? { kind: "head", text: r.text, tag: r.tag || "" }

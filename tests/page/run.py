@@ -1324,10 +1324,23 @@ def main() -> int:
         p.call("dashKey", KEY_ESC, 0)
         check(strip()["at"] == -1 and p.call("dashOpen") == "true", "…then gives the keys back to the list, the dashboard still open")
         check(p.call("dashType", "/") == "true" and strip()["at"] == 0, "/ goes to the strip's ⌕")
+        drawn = lambda: json.loads(p.call("dashDrawn"))
+        everything = drawn()["shown"]
         for ch in "rubric":
             p.call("dashType", ch)
         check(p.wait(lambda: [r.get("text") for r in json.loads(p.call("dashRows")) if r["kind"] == "task"] == ["ask about the rubric"]),
               f"typed there, words narrow the list ({strip()}, {[r.get('text') for r in json.loads(p.call('dashRows'))]})")
+        # Typing never draws the list anew (2026-11-13): what the words
+        # leave out is hidden, and comes back as it was.
+        now = drawn()
+        check(any(x.startswith("ask about the rubric") for x in now["shown"]) and len(now["shown"]) < len(everything) and now["fresh"] == 0,
+              f"…the rows it keeps are the ones drawn before, none made anew ({now})")
+        p.call("dashKey", 0x01000003, CTRL)                # Ctrl+Backspace
+        check(strip()["query"] == "", f"Ctrl+Backspace takes the word typed, not a letter ({strip()})")
+        now = drawn()
+        check(now["shown"] == everything and now["fresh"] == 0, f"…and the whole list is back, the same rows ({now})")
+        for ch in "rubric":
+            p.call("dashType", ch)
         p.call("dashKey", KEY_ESC, 0)
         check(strip()["query"] == "" and strip()["at"] == 0, "Esc clears what was typed")
         p.call("dashKey", KEY_ESC, 0)

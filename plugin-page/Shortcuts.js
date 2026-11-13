@@ -342,7 +342,7 @@ var fixed = [
   { group: "typing", places: ["search", "chat"], does: "Select all", show: ["Ctrl+A"], keys: ["Ctrl+A"] },
   { group: "typing", places: ["note"], does: "Let go of a selection (Esc again: close the overlay)", show: ["Esc"], keys: [] },
   { group: "typing", places: ["note", "search", "chat"], does: "Copy, cut, paste", show: ["Ctrl+C", "Ctrl+X", "Ctrl+V"], keys: ["Ctrl+C", "Ctrl+X", "Ctrl+V"] },
-  { group: "typing", places: ["note", "search", "chat"], does: "Delete a letter; a word with Ctrl", show: ["Backspace", "Del", "Ctrl+Backspace"],
+  { group: "typing", places: ["note", "search", "chat", "strip"], does: "Delete a letter; a word with Ctrl", show: ["Backspace", "Del", "Ctrl+Backspace"],
     keys: ["Backspace", "Del", "Ctrl+Backspace", "Ctrl+Del"] },
   { group: "typing", places: [], does: "In a box that asks \"when?\": confirm, or leave it", show: ["Enter", "Esc"], keys: [] }
 ]

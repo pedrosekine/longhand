@@ -1527,3 +1527,20 @@ only the window and the panels around it differ.
   and a click pass over that hidden line instead of opening an empty
   line at the top of the paper. `NoteEditor.qml`, `Rows.js`,
   `Page.qml`; `tests/tst_editor.qml`.
+- **2026-11-13: the dashboard's search keeps up with the keys.** Each
+  letter typed into ⌕ took about a quarter of a second with a term's
+  work open (145 boxes and deadlines). The rows themselves took a
+  millisecond or two to work out (Next.js); the time went into drawing:
+  the list was a Repeater over `taskRows`, so every change to it threw
+  every drawn row away and drew them all again, about 1.6 ms a row. Now
+  the list is a model of keys kept in step with `taskRows`
+  (`Page.syncDash`): a row still there keeps its drawn row, one the
+  words leave out is hidden rather than thrown away and comes back as
+  it was, and a row whose facts did not change keeps its object, so
+  nothing in it is worked out again. What is hidden is let go once
+  nothing narrows the list. A letter now takes 3–15 ms, the worst about
+  30 ms; the same holds for passing along the course strip, which
+  narrows the same way. And Ctrl+Backspace in ⌕ takes the word before
+  the cursor, as in the note; it took one letter. `Page.qml`,
+  `Dashboard.qml`, `Shortcuts.js`; `tests/page/run.py` checks that typing
+  draws no row anew.
