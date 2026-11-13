@@ -505,7 +505,9 @@ BorderSurface {
         // Wider than the note's measure, because a row is a title, a
         // place and a date rather than prose — but still a column, not
         // the whole wall.
-        width: Math.min(parent.width, Math.round(page.measure * 1.45))
+        // A gutter is kept on each side even in a narrow window, for the
+        // chat key that stands left of the selected row (chatKey).
+        width: Math.min(parent.width - 2 * page.sp(28), Math.round(page.measure * 1.45))
         x: Math.round((parent.width - width) / 2)
         spacing: 0
 
@@ -581,10 +583,14 @@ BorderSurface {
             // faint fill while the mouse is over it (2026-10-19).
             readonly property bool acts: ["task", "deadline", "shelf", "grading", "raised", "proposal", "question", "told"].indexOf(kind) >= 0
                                          || (kind === "band" && modelData.count > 0 && !modelData.fixed)
-            // Its chat, in brief: the gutter bar's state and, on the row the
-            // keys are on, the last thing said (page.chatState).
+            // Its chat, in brief: the gutter bar's state and the last thing
+            // said, on every row that has one (page.chatState).
             readonly property var chat: page.chatOf(modelData)
             readonly property string chatState: page.chatState(modelData)
+            // A chat can be opened on it: nothing on a private box, which
+            // offers nothing of the agent's.
+            readonly property bool chatCan: (kind === "task" || kind === "deadline" || asks)
+              && !(line && line.private)
             HoverHandler { id: rowHover; enabled: dashRow.acts }
             width: dashColumn.width
             // The space above a row comes from what it is and what came
@@ -643,6 +649,46 @@ BorderSurface {
                   loops: Animation.Infinite
                   NumberAnimation { from: -chatSpark.height; to: chatSpark.parent.height; duration: 1500; easing.type: Easing.InOutSine }
                 }
+              }
+            }
+
+            // The chat key, in the gutter left of the bar (2026-11-13, B1 of
+            // the selected-row studies): on the row the keys are on and the
+            // one under the mouse. Filled in the accent while a reply waits,
+            // as the bar is. Outside the row, so selecting a row moves
+            // nothing in it or around it: no row's size or place ever
+            // depends on which row is selected (docs/navigation.md).
+            Rectangle {
+              id: chatKey
+              visible: dashRow.chatCan && (dashRow.hot || rowHover.hovered && page.handOn || chatKeyArea.containsMouse)
+              readonly property bool waits: dashRow.chatState === "unread"
+              x: -width - page.sp(5)
+              y: inner.y + Math.round((inner.lineH - height) / 2)
+              width: Math.max(height, chatKeyText.implicitWidth + page.sp(8))
+              height: chatKeyText.implicitHeight + page.sp(2)
+              radius: Math.max(2, Math.round(height * 0.2))
+              color: waits ? page.accent : page.sunk
+              border.width: 1
+              border.color: waits ? page.accent
+                : chatKeyArea.containsMouse && page.handOn ? page.accent : Qt.rgba(page.dim.r, page.dim.g, page.dim.b, 0.6)
+              Text {
+                id: chatKeyText
+                anchors.centerIn: parent
+                textFormat: Text.PlainText
+                text: page.keyName("dashTalk")
+                color: chatKey.waits ? page.background : page.foreground
+                font.family: page.fontFamily
+                font.styleName: page.fontStyle
+                font.pixelSize: Math.round(page.fs(Style.font.bodySmall) * 0.92)
+              }
+              MouseArea {
+                id: chatKeyArea
+                anchors.fill: parent
+                anchors.margins: -page.sp(4)
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: { page.taskFocus = dashRow.index; page.talkFocused() }
+                Tip { host: page; shown: parent.containsMouse; text: page.tip("Chat about it", "dashTalk") }
               }
             }
 
@@ -858,56 +904,9 @@ BorderSurface {
                 font.pixelSize: page.fs(Style.font.caption)
               }
 
-              // "chat c": this row's chat, on the row the keys are on and the
-              // one under the mouse (docs/keys-proposal.md, 2026-10-27). One
-              // word whatever the chat holds; nothing on a private box, which
-              // offers nothing of the agent's.
-              Item {
-                id: chatWord
-                readonly property bool can: (dashRow.kind === "task" || dashRow.kind === "deadline" || dashRow.asks)
-                  && !(dashRow.line && dashRow.line.private)
-                visible: can && (dashRow.hot || rowHover.hovered && page.handOn)
-                anchors.right: parent.right
-                y: Math.round((inner.lineH - height) / 2)
-                width: chatRow.implicitWidth
-                height: chatRow.implicitHeight
-                Row {
-                  id: chatRow
-                  spacing: page.sp(4)
-                  Text {
-                    anchors.baseline: chatKey.baseline
-                    textFormat: Text.PlainText
-                    text: "chat"
-                    color: chatArea.containsMouse && page.handOn ? page.accent : page.dim
-                    font.family: page.fontFamily
-                    font.styleName: page.fontStyle
-                    font.pixelSize: page.fs(Style.font.bodySmall)
-                  }
-                  Text {
-                    id: chatKey
-                    textFormat: Text.PlainText
-                    text: page.keyName("dashTalk")
-                    color: page.faint
-                    font.family: page.fontFamily
-                    font.styleName: page.fontStyle
-                    font.pixelSize: page.fs(Style.font.caption)
-                  }
-                }
-                MouseArea {
-                  id: chatArea
-                  anchors.fill: parent
-                  anchors.margins: -page.sp(4)
-                  hoverEnabled: true
-                  cursorShape: Qt.PointingHandCursor
-                  onClicked: { page.taskFocus = dashRow.index; page.talkFocused() }
-                  Tip { host: page; shown: parent.containsMouse; text: page.tip("Chat about it", "dashTalk") }
-                }
-              }
-
               Row {
                 id: pills
-                anchors.right: chatWord.visible ? chatWord.left : parent.right
-                anchors.rightMargin: chatWord.visible ? page.sp(10) : 0
+                anchors.right: parent.right
                 y: Math.round((inner.lineH - height) / 2)
                 spacing: page.sp(6)
                 Repeater {
@@ -1084,13 +1083,16 @@ BorderSurface {
                   }
                 }
 
-                // Where its chat left off, on the row the keys are on: the
-                // agent's last word (◇, as its marks are), or yours.
+                // Where its chat left off, on every row that has one, never
+                // only the selected one (2026-11-13): the agent's last word
+                // (◇, as its marks are), or yours. One line, so a long or
+                // many-lined turn never makes the row taller.
                 Text {
-                  visible: dashRow.hot && !!dashRow.chat
+                  visible: !!dashRow.chat
                   width: parent.width
                   textFormat: Text.PlainText
                   elide: Text.ElideRight
+                  maximumLineCount: 1
                   text: dashRow.chat ? (dashRow.chat.role === "agent" ? "◇ " : "you: ") + dashRow.chat.text : ""
                   color: dashRow.chatState === "unread" ? page.foreground : page.dim
                   font.family: page.fontFamily
@@ -1115,9 +1117,9 @@ BorderSurface {
                 // The four a row is most used for, then the sheet for the rest
                 // (2026-10-30, the canvas's keycaps: ten lines hid the list).
                 text: kind === "task" ? page.tips([["Go to the line", "dashOpen"], ["Done", "dashDone"], ["Reschedule", "dashWhen"]]
-                                                  .concat(chatWord.can ? [["Chat about it", "dashTalk"]] : []).concat([["—"], ["Every key here", "keysHere"]]))
+                                                  .concat(dashRow.chatCan ? [["Chat about it", "dashTalk"]] : []).concat([["—"], ["Every key here", "keysHere"]]))
                   : kind === "deadline" ? page.tips([["Go to its line", "dashOpen"], ["Done", "dashDone"], ["The day to work on it", "dashWhen"]]
-                                                   .concat(chatWord.can ? [["Chat about it", "dashTalk"]] : []).concat([["—"], ["Every key here", "keysHere"]]))
+                                                   .concat(dashRow.chatCan ? [["Chat about it", "dashTalk"]] : []).concat([["—"], ["Every key here", "keysHere"]]))
                   : kind === "told" ? page.tips([["Let it stand", "dashDone"], ["Undo it", "dashDrop"], ["Chat about it", "dashOpen"]])
                   : kind === "proposal" && dashRow.modelData.item.kind === "file"
                     ? page.tips([["File it: moved from Downloads into the course's documents", "dashDone"], ["Decline", "dashDrop"], ["Open it first", "dashOpen"]])

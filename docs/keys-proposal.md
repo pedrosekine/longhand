@@ -172,7 +172,11 @@ opened view after the day's note (85 times, 15–28 October).
   and the row under the mouse only ("chat C"). Once a task has a chat, its
   selected row also shows the chat's last line under the task; a row with
   no chat stays one line. Every other row says only what its gutter bar
-  says.
+  says. *Changed 2026-11-13:* selecting a row moves nothing
+  ([navigation.md](navigation.md)), so the key now stands in the left
+  gutter, beside the chat bar (filled in the accent while a reply waits), on
+  the selected row and the one under the mouse, and the chat's last line is
+  shown on every row that has a chat, selected or not.
 - **`Alt+→` in the note, with nothing to its right, still opens the
   block's chat:** the pane to the right is where the chat lives.
 

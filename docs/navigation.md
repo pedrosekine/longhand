@@ -39,6 +39,15 @@ the middle. Only the pane with the keys draws its selection (the row, the day, t
 card), so one place is lit at a time; the one exception is the dashboard row
 being talked about beside it, which stays faintly marked.
 
+**Selecting never moves anything** (2026-11-13). Lighting a row, a day or a
+card changes its fill and may show a key beside it, but never its size nor
+the size or place of anything around it: what a row shows is decided by what
+it holds, not by whether the keys are on it. So a key a selection offers is
+drawn outside the row (the dashboard's chat key stands in the left gutter),
+and a line a row has, such as its chat's last word, is there whether or not
+it is selected. Keys named while Ctrl is held float over the rows for the same
+reason.
+
 ## Moving
 
 - **A pane's number** takes you to it, opening it if it is closed. Pressed

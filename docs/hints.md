@@ -127,7 +127,7 @@ hidden pointer then never paints a second, mouse-coloured row. This keeps
 the 2026-10-19 rule that mouse and keys never read as the same thing, even
 when the mouse isn't moving. Built wider than fills: every mark the mouse
 paints, which also covers a button word's accent, a box's accent edge (in
-the note and on the dashboard), the dashboard row's "chat c", and the chat
+the note and on the dashboard), the dashboard row's chat key, and the chat
 field's hover border. In the note this matters most: a box that slides
 under a still pointer is no longer lit. The editor gets `handOn` from the
 page.
