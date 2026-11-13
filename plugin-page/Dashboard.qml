@@ -591,6 +591,12 @@ BorderSurface {
             // offers nothing of the agent's.
             readonly property bool chatCan: (kind === "task" || kind === "deadline" || asks)
               && !(line && line.private)
+            // The bar's colour, which its key shares: the accent while a
+            // reply waits, dim once read, and for a row not talked about yet
+            // a faint one, opaque so the bar and the key that grows from it
+            // never show where they overlap.
+            readonly property color chatTone: chatState === "unread" ? page.accent : chatState !== "" ? page.dim
+              : Qt.tint(page.background, Qt.rgba(page.dim.r, page.dim.g, page.dim.b, 0.55))
             HoverHandler { id: rowHover; enabled: dashRow.acts }
             width: dashColumn.width
             // The space above a row comes from what it is and what came
@@ -616,19 +622,22 @@ BorderSurface {
 
             // The gutter bar, as the note draws one beside a block: the
             // accent while a reply waits unread, dim once read, a light
-            // travelling down it while the agent answers; nothing for a
-            // box never talked about.
+            // travelling down it while the agent answers; for a box never
+            // talked about, only a faint one while its chat key shows, so
+            // the key always grows from a bar. As tall as the row's fill,
+            // and cornered as the shell is (Style.cornerRadius, Hyprland's
+            // rounding; square by default).
             Item {
-              visible: dashRow.chatState !== ""
+              visible: dashRow.chatState !== "" || chatKey.visible
               x: page.sp(1)
-              y: inner.y - page.sp(3)
+              y: inner.y - page.sp(7)
               width: page.sp(3)
-              height: inner.height + page.sp(6)
+              height: inner.height + page.sp(13)
               clip: true
               Rectangle {
                 anchors.fill: parent
-                radius: width
-                color: dashRow.chatState === "unread" ? page.accent : page.dim
+                radius: Style.cornerRadius
+                color: dashRow.chatTone
                 opacity: dashRow.chatState === "thinking" ? 0.3 : 1
                 Behavior on color { ColorAnimation { duration: 240 } }
                 Behavior on opacity { NumberAnimation { duration: 240 } }
@@ -652,34 +661,39 @@ BorderSurface {
               }
             }
 
-            // The chat key, in the gutter left of the bar (2026-11-13, B1 of
-            // the selected-row studies): on the row the keys are on and the
-            // one under the mouse. Filled in the accent while a reply waits,
-            // as the bar is. Outside the row, so selecting a row moves
-            // nothing in it or around it: no row's size or place ever
-            // depends on which row is selected (docs/navigation.md).
+            // The chat key, grown from the gutter bar as a tab (2026-11-13,
+            // A of the bar-grows studies): on the row the keys are on and the
+            // one under the mouse, beside the box, in the bar's colour, its
+            // letter centred by its ink rather than its line. Outside the
+            // row, so selecting a row moves nothing in it or around it: no
+            // row's size or place ever depends on which row is selected
+            // (docs/navigation.md).
             Rectangle {
               id: chatKey
               visible: dashRow.chatCan && (dashRow.hot || rowHover.hovered && page.handOn || chatKeyArea.containsMouse)
-              readonly property bool waits: dashRow.chatState === "unread"
-              x: -width - page.sp(5)
-              y: inner.y + Math.round((inner.lineH - height) / 2)
-              width: Math.max(height, chatKeyText.implicitWidth + page.sp(8))
-              height: chatKeyText.implicitHeight + page.sp(2)
-              radius: Math.max(2, Math.round(height * 0.2))
-              color: waits ? page.accent : page.sunk
-              border.width: 1
-              border.color: waits ? page.accent
-                : chatKeyArea.containsMouse && page.handOn ? page.accent : Qt.rgba(page.dim.r, page.dim.g, page.dim.b, 0.6)
+              x: page.sp(4) - width        // its right edge is the bar's
+              y: inner.y + box.y + Math.round((box.size - height) / 2)
+              height: box.size + page.sp(6)
+              width: Math.max(height, Math.ceil(chatKeyInk.tightBoundingRect.width) + page.sp(10)) + page.sp(3)
+              radius: Style.cornerRadius
+              color: dashRow.chatTone
+              TextMetrics {
+                id: chatKeyInk
+                font: chatKeyText.font
+                text: chatKeyText.text
+              }
               Text {
                 id: chatKeyText
-                anchors.centerIn: parent
+                // Centred in the part of the tab left of the bar it grows from.
+                x: Math.round((parent.width - page.sp(3)) / 2 - chatKeyInk.tightBoundingRect.x - chatKeyInk.tightBoundingRect.width / 2)
+                y: Math.round(parent.height / 2 - baselineOffset - chatKeyInk.tightBoundingRect.y - chatKeyInk.tightBoundingRect.height / 2)
                 textFormat: Text.PlainText
                 text: page.keyName("dashTalk")
-                color: chatKey.waits ? page.background : page.foreground
+                color: page.background
                 font.family: page.fontFamily
                 font.styleName: page.fontStyle
-                font.pixelSize: Math.round(page.fs(Style.font.bodySmall) * 0.92)
+                font.pixelSize: page.fs(Style.font.caption)
+                font.bold: true
               }
               MouseArea {
                 id: chatKeyArea
