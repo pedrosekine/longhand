@@ -390,7 +390,72 @@ Item {
       keyClick(Qt.Key_Return)
       compare(ed.text, "> [!private]\n> - [ ] one\n> ", "an empty item leaves the list, not the quote")
       keyClick(Qt.Key_Return)
-      compare(ed.text, "> [!private]\n> - [ ] one\n", "then an empty quote line leaves the quote")
+      compare(ed.text, "> [!private]\n> - [ ] one\n\n", "then an empty quote line leaves the quote, a blank line between")
+      compare(ed.cursorPosition, ed.text.length, "…the cursor on a line of its own below it")
+    }
+
+    // In a private block (2026-11-13): Enter after a heading stays in the
+    // block; an empty line with more of the block below is a line of it;
+    // leaving uses the blank line already there.
+    function test_enter_after_a_heading_in_a_callout_stays_in_it() {
+      start("> [!private]\n> # Tonight")
+      keyClick(Qt.Key_Return)
+      compare(ed.text, "> [!private]\n> # Tonight\n> ")
+      compare(ed.rows[2].priv, true)
+    }
+
+    function test_an_empty_line_inside_a_callout_does_not_split_it() {
+      start("> [!private]\n> one\n> \n> two", "> [!private]\n> one\n> ".length)
+      keyClick(Qt.Key_Return)
+      compare(ed.text, "> [!private]\n> one\n> \n> \n> two")
+      compare(ed.rows[4].priv, true, "the block's last line is still private")
+    }
+
+    function test_leaving_a_callout_uses_the_blank_lines_there() {
+      start("> [!private]\n> one\n> \n\nafter", "> [!private]\n> one\n> ".length)
+      keyClick(Qt.Key_Return)
+      compare(ed.text, "> [!private]\n> one\n\n\n\nafter", "a blank line on each side of the new one")
+      compare(ed.cursorPosition, "> [!private]\n> one\n\n".length)
+      start("> [!private]\n> one\n> \n\n\nafter", "> [!private]\n> one\n> ".length)
+      keyClick(Qt.Key_Return)
+      compare(ed.text, "> [!private]\n> one\n\n\n\nafter", "two there already: none added")
+      start("> [!private]\n> one\n> \nafter", "> [!private]\n> one\n> ".length)
+      keyClick(Qt.Key_Return)
+      compare(ed.text, "> [!private]\n> one\n\n\n\nafter", "none there: two")
+    }
+
+    // Backspace at a line's start in a private block joins it to the line
+    // above: taking its `> ` off split the block, and the lines below went
+    // public. On the first line, the page is asked to unwrap the block.
+    function test_backspace_in_a_callout_joins_never_splits() {
+      start("> [!private]\n> one\n> two\n> three", "> [!private]\n> one\n> ".length)
+      keyClick(Qt.Key_Backspace)
+      compare(ed.text, "> [!private]\n> onetwo\n> three")
+      compare(ed.cursorPosition, "> [!private]\n> one".length)
+      compare(ed.rows[2].priv, true)
+      var asked = 0
+      var conn = function () { asked++ }
+      ed.privateUnwrap.connect(conn)
+      ed.setCursor("> [!private]\n> ".length, true)
+      keyClick(Qt.Key_Backspace)
+      compare(asked, 1, "on the first line the block's mark goes, by the page")
+      compare(ed.text, "> [!private]\n> onetwo\n> three", "…nothing written here")
+      ed.privateUnwrap.disconnect(conn)
+    }
+
+    function test_arrows_pass_over_the_private_mark() {
+      start("before\n> [!private]\n> mine", 3)
+      keyClick(Qt.Key_Down)
+      compare(ed.focusedRow, 2, "down from the line above lands in the words")
+      keyClick(Qt.Key_Up)
+      compare(ed.focusedRow, 0, "and up goes back over it")
+    }
+
+    function test_rows_mark_the_papers_edges() {
+      var r = Rows.derive("a\n\n> [!private]\n> one\n\nb")
+      compare(r[1].paperBelow, true); compare(r[1].paperAbove, false)
+      compare(r[3].paperEnd, true); compare(r[2].paperEnd, false)
+      compare(r[4].paperAbove, true); compare(r[4].paperBelow, false)
     }
 
     function test_backspace_inside_a_quote_peels_a_layer_at_a_time() {
@@ -791,7 +856,7 @@ Item {
       type("mine")
       keyClick(Qt.Key_Return)
       keyClick(Qt.Key_Return)
-      compare(ed.text, "\n> [!private]\n> mine\n")
+      compare(ed.text, "\n> [!private]\n> mine\n\n")
       compare(ed.rows[2].priv, true)
     }
 
@@ -803,7 +868,7 @@ Item {
       keyClick(Qt.Key_Return)
       keyClick(Qt.Key_Return)
       type("after")
-      compare(ed.text, "\nq?\n> [!private]\n> secret\nafter")
+      compare(ed.text, "\nq?\n> [!private]\n> secret\n\nafter")
     }
 
     function test_soft_break_stays_in_item() {

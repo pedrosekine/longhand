@@ -2863,8 +2863,10 @@ def main() -> int:
         before = journal.read_text()
         p.call("cursor", p.call("text").index("Out loud again.") + 4)
         p.call("pageKey", 0x50, CTRL)                      # Ctrl+P
-        check(p.wait(lambda: "> [!private]\n> Out loud again.\n" in journal.read_text() and look()["blocks"] == 2),
-              f"Ctrl+P makes the block private ({journal.read_text()!r}, {look()})")
+        # Two private blocks, only a blank line between: one sheet, one
+        # lock (2026-11-13).
+        check(p.wait(lambda: "> [!private]\n> Out loud again.\n" in journal.read_text() and look()["blocks"] == 1),
+              f"Ctrl+P makes the block private, one sheet with the one above ({journal.read_text()!r}, {look()})")
         at = int(p.call("cursorAt"))
         check(p.call("text")[at - 4:at] == "Out ", f"…the cursor still in its words ({p.call('text')[at - 6:at + 6]!r})")
         p.call("pageKey", 0x50, CTRL)
@@ -2873,6 +2875,16 @@ def main() -> int:
         p.call("pageKey", 0x50, CTRL)
         check(p.wait(lambda: journal.read_text() == "Out loud.\n\nOnly for me.\n\nOut loud again.\n"),
               f"on a private block, Ctrl+P unwraps it ({journal.read_text()!r})")
+        p.call("undo")
+        check(p.wait(lambda: journal.read_text() == before), "…and one undo puts it back")
+        # Backspace at the start of its first line does the same (2026-11-13):
+        # taking that line's `> ` off used to leave the rest a quote of its
+        # own, no longer private.
+        p.call("cursor", p.call("text").index("Only for me."))
+        p.call("lineKey", KEY_BACKSPACE, 0)
+        check(p.wait(lambda: journal.read_text() == "Out loud.\n\nOnly for me.\n\nOut loud again.\n")
+              and p.call("hint").startswith("not private"),
+              f"Backspace on a private block's first line unwraps it, and says so ({journal.read_text()!r}, {p.call('hint')!r})")
         p.call("undo")
         check(p.wait(lambda: journal.read_text() == before), "…and one undo puts it back")
         p.call("openFile", "Studies/Course A/Locked.md", "false")

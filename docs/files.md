@@ -301,7 +301,12 @@ share a look.
   - A magenta `LockMark` stands left of it, in the gutter.
   - The editor no longer draws it as a quote: no bar, no label, its words
     aligned with the prose.
-  - An empty `> [!private]` line is only the paper's top edge.
+  - An empty `> [!private]` line is only the paper's top edge; the
+    arrows and a click pass over it (2026-11-13).
+  - The paper's margin is inside the block's first and last lines, so it
+    never reaches over a neighbour; private blocks with only blank lines
+    between them share one sheet and one lock, which stands by the first
+    line of words (2026-11-13).
 - **A private day, or a day before the horizon:** the whole sheet, and the
   window in the window shape, is that paper (`sheetSunk`). The header shows
   a magenta lock and "private", or a grey lock and "before the horizon".

@@ -184,6 +184,8 @@ function readCue(t) {
 //   blank      a whitespace-only line outside fences: drawn as space
 //   lead       a blank line before any text: drawn as nothing at all
 //   priv       inside a `> [!private]` callout
+//   paperEnd   the last line of one
+//   paperAbove, paperBelow   a blank line touching one, above it or below
 //   space      the air above the row, in body ems (spaceAbove)
 //   bodyEnd    offset where the words end (before a bound line's tail)
 function derive(text) {
@@ -241,6 +243,15 @@ function derive(text) {
     }
     out.push(r)
     pos += raw.length + 1
+  }
+  // The sunk paper's edges (2026-11-13): the last line of a private block,
+  // which carries the paper's bottom margin, and a blank line touching the
+  // paper above or below it, which keeps clear of it when opened.
+  for (var e = 0; e < out.length; e++) {
+    var below = e + 1 < out.length && out[e + 1].priv
+    out[e].paperEnd = out[e].priv && !below
+    out[e].paperAbove = out[e].blank && e > 0 && out[e - 1].priv
+    out[e].paperBelow = out[e].blank && below
   }
   markTables(out)
   return out
@@ -398,15 +409,25 @@ function columnIn(row, pos) {
 function nextTextRow(rows, i, dir, shown) {
   var out = function (k) { return !!shown && !shown[k] }
   var j = i + dir
-  while (j >= 0 && j < rows.length && (rows[j].blank || out(j))) j += dir
+  while (j >= 0 && j < rows.length && (rows[j].blank || sunkHead(rows[j]) || out(j))) j += dir
   if (j >= 0 && j < rows.length) return j
   if (dir > 0 && i + 1 < rows.length && !out(i + 1)) return i + 1
   return -1
 }
 
+// A private callout's own `> [!private]` line with nothing written on it:
+// drawn as the top edge of the sunk paper, not as a line (NoteEditor), so
+// the arrows pass over it as they pass over a blank line (2026-11-13) —
+// standing on it opened an empty line at the top of the paper.
+function sunkHead(r) {
+  return r.kind === "calloutHead" && !!r.priv && r.body.trim() === ""
+}
+
 // What Enter carries to the next line: the list marker (a ticked box comes
 // back unticked, a number counts up) or the quote marker. Empty when the
-// line is not a list item or a quote.
+// line is not a list item or a quote. Any other line inside a quote — a
+// heading in a private block, say — carries the quote, so Enter after
+// `> # Tonight` stays in the block (2026-11-13: it fell out of it).
 function continuation(row) {
   if (row.kind === "quote") return row.indent + row.marker
   if (row.kind === "task") return row.indent + row.marker.replace(/\[[xX]\]/, "[ ]")
@@ -416,7 +437,7 @@ function continuation(row) {
     return row.indent + (parseInt(m[1], 10) + 1) + m[2] + m[3]
   }
   if (row.kind === "calloutHead") return row.indent + "> "
-  return ""
+  return row.quoteLead || ""
 }
 
 // Ctrl+Left / Ctrl+Right inside a line's words: where the next word starts

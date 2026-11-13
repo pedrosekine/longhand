@@ -2442,14 +2442,41 @@ Item {
                  unread: !!rec && rec.state === "reply" && !rec.read })
     }
     root.paint = out
+    // Private blocks one after another, only blank lines between, are one
+    // sheet of paper with one lock (2026-11-13) — unless the cursor stands
+    // on a blank line between them: what is written there is not private,
+    // so it is never drawn on the paper. The lock stands by the first line
+    // of words, where a reader starts, not by the `> [!private]` line,
+    // which is only the paper's top edge.
     var priv = []
+    var run = null
     for (var k = 0; k < blocks.length; k++) {
-      if (!blocks[k].private || blocks[k].kind !== "callout") continue
+      if (!blocks[k].private || blocks[k].kind !== "callout") { run = null; continue }
       var pr = editor.blockRect(blocks[k].start, blocks[k].end)
-      if (pr) priv.push({ y: pr.y, h: pr.h })
+      if (!pr) { run = null; continue }
+      var cursorBetween = run && editor.focusedRow >= run.end && editor.focusedRow < blocks[k].start
+      if (run && !cursorBetween && root.onlyBlank(run.end, blocks[k].start)) {
+        run.h = pr.y + pr.h - run.y
+        run.end = blocks[k].end
+        continue
+      }
+      var first = blocks[k].start
+      var head = editor.rowItem(first)
+      if (head && head.sunkHead && first + 1 < blocks[k].end) first++
+      var it = editor.rowItem(first)
+      run = { y: pr.y, h: pr.h, end: blocks[k].end,
+              lockY: it ? it.y + it.gapTop + it.firstLine / 2 : pr.y + pr.h / 2 }
+      priv.push(run)
     }
     root.privatePaint = priv
     root.currentHash = root.hashNearLine(root.lineIndexAt(editor.cursorPosition))
+  }
+
+  // Lines [a, b) of the note are all blank, and drawn (none folded away).
+  function onlyBlank(a, b) {
+    var rows = editor.rows
+    for (var i = a; i < b; i++) if (!rows[i] || !rows[i].blank || !editor.isShown(i)) return false
+    return true
   }
 
   function hasUnreadInNote() {
@@ -7409,9 +7436,12 @@ Item {
             Item {
               required property var modelData
               x: 0
-              y: modelData.y - root.sp(8)
+              // Over exactly the block's lines: its margin above and below
+              // is inside them (NoteEditor's paperPad), so the paper never
+              // reaches over the line before or after it.
+              y: modelData.y
               width: flick.width
-              height: modelData.h + root.sp(16)
+              height: modelData.h
               // The gutter is narrow (the agent's marks live there): the
               // paper reaches a little into it, the lock stands left of it.
               Rectangle {
@@ -7423,7 +7453,7 @@ Item {
               }
               LockMark {
                 x: Math.max(0, root.gutter - root.sp(5) - width - root.sp(3))
-                y: root.sp(10)
+                y: Math.round(modelData.lockY - modelData.y - height / 2)
                 width: root.sp(10)
                 color: pal.magenta
               }
@@ -7521,6 +7551,7 @@ Item {
             onHeightChanged: root.scheduleRepaint()
             onReturnFinished: function (lineIndex, lineText) { root.lineFinished(lineIndex, lineText) }
             onListLeft: function (lineIndex) { root.listLeft(lineIndex) }
+            onPrivateUnwrap: root.togglePrivateBlock()
             declined: root.declined
             onCueDismissed: function (raw) { root.decline(raw); root.used("cue", "kept") }
             onTypedRawChanged: if (typedRaw !== "") root.autoBound = null

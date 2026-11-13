@@ -1503,3 +1503,27 @@ only the window and the panels around it differ.
   both: within one line a selection is its words; across lines it takes
   whole lines, their hidden marks too, so what is copied or cut is whole
   markdown (a list's first `- `, a heading's `## `).
+- **2026-11-13: private blocks, worked over.** Five things were off.
+  Enter after a heading inside a private block (`> # Tonight`) carried
+  nothing, so the next line fell out of the block; any line inside a
+  quote now carries the quote. Enter on the block's empty last line
+  left the block but kept the cursor where it was, on a line the paper
+  drew back from, so the cursor blinked on the paper's edge; it now
+  lands on a line of its own below the block, a blank line between
+  (which also keeps the line out of the callout in Obsidian, where a
+  line written straight under a quote is still the quote's). An empty
+  line with more of the block below it no longer splits the block, and
+  Backspace at a line's start inside one joins it to the line above
+  instead of taking its `> ` off: both used to cut the block in two and
+  leave the lower half a quote of its own, private no more. Backspace on
+  the block's first line takes the whole block out of private, as
+  Ctrl+P does, said and undoable. The paper's margin is now inside the
+  block's own lines (`paperPad`), so it never reaches over a neighbour,
+  and a blank line touching it keeps clear when opened. Private blocks
+  with only blank lines between them are one sheet with one lock,
+  except while the cursor is on a blank line between them. The lock
+  stands by the first line of words, not by the hidden
+  `> [!private]` line, so a one-line block has it centred. The arrows
+  and a click pass over that hidden line instead of opening an empty
+  line at the top of the paper. `NoteEditor.qml`, `Rows.js`,
+  `Page.qml`; `tests/tst_editor.qml`.

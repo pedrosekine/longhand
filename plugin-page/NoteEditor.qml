@@ -235,6 +235,9 @@ Item {
   // on an empty item left a list. The page decides what they mean.
   signal returnFinished(int lineIndex, string lineText)
   signal listLeft(int lineIndex)
+  // Backspace at the start of a private block's first line: the page takes
+  // the block out of private (Page.togglePrivateBlock).
+  signal privateUnwrap()
   // A link clicked (docs/files.md): the page follows it.
   signal linkActivated(int lineIndex, var link)
 
@@ -543,7 +546,7 @@ Item {
 
   // ------------------------------------------------------------ rows
 
-  readonly property var roles: ["kind", "body", "level", "checked", "cancelled", "ordinal", "headingLevel", "callout", "priv", "blank", "lead", "space", "deadline", "dueLabel", "dueAt", "raw", "cueAt", "cueLabel", "tableRow", "tableStart", "tableLen", "quoteDepth", "outerLevel"]
+  readonly property var roles: ["kind", "body", "level", "checked", "cancelled", "ordinal", "headingLevel", "callout", "priv", "blank", "lead", "space", "deadline", "dueLabel", "dueAt", "raw", "cueAt", "cueLabel", "tableRow", "tableStart", "tableLen", "quoteDepth", "outerLevel", "paperEnd", "paperAbove", "paperBelow"]
 
   function roleValues(r) {
     var o = {}
@@ -1074,6 +1077,9 @@ Item {
     var i = 0
     while (i < n - 1 && y >= ed.rowItem(i).y + ed.rowItem(i).height) i++
     i = ed.nearestShown(i, -1)
+    // The sliver at the top of a private block is the paper's edge, not a
+    // line: a click there lands at the start of the block's words.
+    if (ed.rows[i] && Rows.sunkHead(ed.rows[i]) && i + 1 < n && ed.isShown(i + 1)) return { i: i + 1, col: 0, box: false }
     var item = ed.rowItem(i)
     var r = ed.rows[i]
     if (!item || !r) return { i: 0, col: 0, box: false }
@@ -1104,7 +1110,7 @@ Item {
     var a = ed.rowItem(startLine)
     var b = ed.rowItem(endLine - 1)
     if (!a || !b || !ed.isShown(startLine) || !ed.isShown(endLine - 1)) return null
-    var y = a.y + a.gapTop
+    var y = a.y + a.gapTop - a.padTop
     return { y: y, h: b.y + b.height - b.room - b.foldBottom - y }
   }
 
@@ -1202,7 +1208,12 @@ Item {
       ed.setCursor(ed.rows[i + 1].start + ed.rows[i + 1].prefixLen, true)
       return
     }
-    if (carry !== "" && r.body === ""&& r.suffix === "" && pos >= lineEnd && r.kind !== "calloutHead" && r.kind !== "code") {
+    // An empty line inside a quote, with more of the quote below it, is a
+    // line of it like any other: Enter adds another (2026-11-13). Leaving
+    // there split the quote, and a private block's lower half became a
+    // quote of its own, private no more.
+    var quoteGoesOn = r.kind === "quote" && i + 1 < ed.rows.length && /^[ \t]*>/.test(ed.rows[i + 1].raw)
+    if (carry !== "" && r.body === ""&& r.suffix === "" && pos >= lineEnd && r.kind !== "calloutHead" && r.kind !== "code" && !quoteGoesOn) {
       // Enter on an empty item steps out one level, as Shift+Tab does
       // (and Notion); at the outermost level it leaves the list (or the
       // quote). 2026-10-19.
@@ -1219,14 +1230,31 @@ Item {
         ed.placeCursor(true)
         return
       }
+      if (r.kind === "quote") { ed.leaveQuote(i); return }
       ed.remove(r.start, lineEnd)
-      if (r.kind !== "quote") ed.listLeft(i)
+      ed.listLeft(i)
       return
     }
     ed.insert(pos, "\n" + carry)
     // A new number in the middle of a list: the items below count on.
     if (r.kind === "ordered") ed.relist([i + 1], true)
     ed.returnFinished(i, lineText)
+  }
+
+  // Enter on a quote's empty last line leaves the quote for a line of its
+  // own below it, a blank line between (2026-11-13). The cursor used to
+  // stay where it was, on a line now outside: the private paper drew back
+  // from under it and it blinked on the paper's edge. And a line written
+  // straight under a quote is, in markdown, still the quote's (Obsidian
+  // drew it inside the private block); the blank line keeps it apart. A
+  // blank line or two already there is used, not added to.
+  function leaveQuote(i) {
+    var r = ed.rows[i]
+    var n = ed.rows.length, k = 0, j = i + 1
+    while (j < n && k < 2 && ed.rows[j].blank) { k++; j++ }
+    var need = j >= n ? Math.max(0, 1 - k) : 2 - k
+    ed.replace(r.start, r.start + r.raw.length, new Array(need + 1).join("\n"))
+    ed.setCursor(r.start + 1, true)
   }
 
   // Backspace at the start of a line: first the kind goes, then the
@@ -1236,6 +1264,28 @@ Item {
   // onto a bound line slips the words in before that line's date.
   function backspaceAtStart(i) {
     var r = ed.rows[i]
+    // In a private block a line's `> ` is the block's, not the line's
+    // (2026-11-13): taking it off split the block there, and every line
+    // below became a quote of its own, private no more. The line joins the
+    // one above instead. On the block's first line it is the block's
+    // mark that goes — the whole block out of private, as Ctrl+P does it,
+    // said by the page, and one undo puts it back.
+    if (r.priv && r.kind === "quote" && r.quoteDepth === 1 && i > 0 && ed.rows[i - 1].priv) {
+      var above = ed.rows[i - 1]
+      if (Rows.sunkHead(above)) { ed.privateUnwrap(); return }
+      ed.snapshot(true)
+      var words = r.raw.substring(r.prefixLen)
+      if (above.suffix !== "") {
+        var at0 = above.bodyEnd
+        ed.replace(above.start, r.start + r.raw.length, above.raw.slice(0, above.raw.length - above.suffix.length) + words + above.suffix)
+        ed.setCursor(at0, true)
+      } else {
+        var at1 = above.start + above.raw.length
+        ed.remove(at1, r.start + r.prefixLen)
+        ed.setCursor(at1, true)
+      }
+      return
+    }
     ed.snapshot(true)
     if (r.marker !== "") {
       if (r.suffix !== "") ed.remove(r.bodyEnd, r.start + r.raw.length)
@@ -1580,6 +1630,9 @@ Item {
         required property int tableLen
         required property int quoteDepth
         required property int outerLevel
+        required property bool paperEnd
+        required property bool paperAbove
+        required property bool paperBelow
 
         property alias field: field
         property alias box: box
@@ -1610,7 +1663,18 @@ Item {
         readonly property int foldTop: !folded && (ed.foldAbove[index] || 0) > 0 ? ed.foldSize : 0
         readonly property int foldBottom: !folded && (ed.foldBelow[index] || 0) > 0 ? ed.foldSize : 0
         visible: !folded
-        readonly property int baseGap: blank ? 0 : Math.round(space * ed.textSize)
+        // The sunk paper's margin is inside its first and last lines
+        // (2026-11-13): the page draws the paper over exactly these rows,
+        // so it never reaches over a neighbour — the cursor on the line
+        // after a private block used to blink half on the paper. Its top is
+        // the `> [!private]` line, a sliver when empty and the margin over
+        // its words when written on; its bottom, room under the last line.
+        // A blank line touching the paper keeps that much clear when the
+        // cursor opens it.
+        readonly property int paperPad: Math.round(ed.textSize * 0.4)
+        readonly property int padTop: kind === "calloutHead" && priv && !sunkHead ? paperPad : 0
+        readonly property int padBottom: paperEnd || (blank && opened && paperBelow) ? paperPad : 0
+        readonly property int baseGap: blank ? (opened && paperAbove ? paperPad : 0) : Math.round(space * ed.textSize) + padTop
         readonly property int gapTop: foldTop + baseGap
         readonly property real indentX: outerLevel * ed.markerWidth + (quoteRow ? 0 : quoteSpace) + (level - outerLevel) * ed.markerWidth
         readonly property real labelWidth: kind === "calloutHead" && !priv ? label.implicitWidth + Math.round(ed.textSize * 0.4) : 0
@@ -1623,8 +1687,8 @@ Item {
         // but not under a selection or a press: a drag passing over it
         // would move every line below by that much and back (2026-10-19).
         readonly property bool opened: !blank || field.activeFocus && !ed.spanning && !pointer.pressed
-        height: folded ? 0 : foldTop + foldBottom + room
-                 + (sunkHead ? Math.round(ed.textSize * 0.35) : (tableDrawn ? (tableRow === 1 ? Math.round(ed.textSize * 0.5) : baseGap + cellRow.height + Math.round(ed.textSize * 0.5))
+        height: folded ? 0 : foldTop + foldBottom + room + padBottom
+                 + (sunkHead ? baseGap + paperPad : (tableDrawn ? (tableRow === 1 ? Math.round(ed.textSize * 0.5) : baseGap + cellRow.height + Math.round(ed.textSize * 0.5))
                  : img ? baseGap + (reveal ? field.height + imgGap : 0) + picture.height
                  : opened ? baseGap + field.height : Math.round(space * ed.textSize)))
         Binding { when: row.index === ed.roomRow; target: ed; property: "roomTop"; value: row.y + row.height - row.room - row.foldBottom }
