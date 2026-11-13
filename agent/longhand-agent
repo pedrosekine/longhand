@@ -669,7 +669,7 @@ def session_cost(cfg: dict, paths: Paths, session: str) -> tuple[float, dict]:
     if not session:
         return 0.0, tokens
     try:
-        proc = subprocess.run([cfg.get("opencode", "opencode"), "session", "export", session],
+        proc = subprocess.run([cfg.get("opencode", "opencode"), "session", "export", session], stdin=subprocess.DEVNULL,
                               capture_output=True, text=True, timeout=30, cwd=str(paths.cwd))
         info = (json.loads(proc.stdout) or {}).get("info") or {}
     except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError, AttributeError):
