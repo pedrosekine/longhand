@@ -56,11 +56,14 @@ Item {
     function test_vertical_rhythm() {
       var r = Rows.derive("para one\npara two\n\n\n## Section\n- a\n\n# Top\ntext")
       compare(r[1].space, 0.25)                    // the next line of text
-      compare(r[2].space, 0.75); compare(r[3].space, 0)   // blank lines: one paragraph's space
-      compare(r[4].space, 1.4 - 0.75)              // a heading: its own space, the blank counted
+      compare(r[2].space, 0.75); compare(r[2].extraBlank, false)   // a blank line: a paragraph's space
+      compare(r[3].extraBlank, true)               // each one after it: a whole empty line (2026-11-13)
+      compare(r[4].space, 0)                       // a heading: its own space, less what the blank lines gave
       compare(r[5].space, 0.35)                    // under it
       compare(r[7].space, 2.0 - 0.75)              // H1 after a list and a blank
       compare(r[8].space, 0.35)
+      r = Rows.derive("para\n\n## Section")
+      compare(r[2].space, 1.4 - 0.75)              // …one blank line counted
     }
 
     function test_fence_keeps_markdown() {
@@ -848,6 +851,19 @@ Item {
       ed.replace(1, 1 + was2.length, now2)
       keyClick(Qt.Key_Z, Qt.ControlModifier)
       compare(ed.text, "\n" + was + "\nnotes")
+    }
+
+    // Enter again and again on an empty line moves down each time, and
+    // Backspace comes back a line at a time (2026-11-13): from the third,
+    // nothing moved while empty lines piled up in the note.
+    function test_each_empty_line_is_drawn() {
+      start("hello\nnext", 5)
+      var ys = []
+      for (var i = 0; i < 4; i++) { keyClick(Qt.Key_Return); ys.push(ed.rowItem(ed.rows.length - 1).y) }
+      compare(ed.text, "hello\n\n\n\n\nnext")
+      for (var j = 1; j < ys.length; j++) verify(ys[j] > ys[j - 1], "Enter " + (j + 1) + " moved the next line down (" + ys + ")")
+      keyClick(Qt.Key_Backspace)
+      verify(ed.rowItem(ed.rows.length - 1).y < ys[3], "Backspace brings it back up")
     }
 
     function test_quote_continues_and_ends() {

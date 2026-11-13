@@ -546,7 +546,7 @@ Item {
 
   // ------------------------------------------------------------ rows
 
-  readonly property var roles: ["kind", "body", "level", "checked", "cancelled", "ordinal", "headingLevel", "callout", "priv", "blank", "lead", "space", "deadline", "dueLabel", "dueAt", "raw", "cueAt", "cueLabel", "tableRow", "tableStart", "tableLen", "quoteDepth", "outerLevel", "paperEnd", "paperAbove", "paperBelow"]
+  readonly property var roles: ["kind", "body", "level", "checked", "cancelled", "ordinal", "headingLevel", "callout", "priv", "blank", "lead", "space", "deadline", "dueLabel", "dueAt", "raw", "cueAt", "cueLabel", "tableRow", "tableStart", "tableLen", "quoteDepth", "outerLevel", "paperEnd", "paperAbove", "paperBelow", "extraBlank"]
 
   function roleValues(r) {
     var o = {}
@@ -1633,6 +1633,7 @@ Item {
         required property bool paperEnd
         required property bool paperAbove
         required property bool paperBelow
+        required property bool extraBlank
 
         property alias field: field
         property alias box: box
@@ -1690,7 +1691,7 @@ Item {
         height: folded ? 0 : foldTop + foldBottom + room + padBottom
                  + (sunkHead ? baseGap + paperPad : (tableDrawn ? (tableRow === 1 ? Math.round(ed.textSize * 0.5) : baseGap + cellRow.height + Math.round(ed.textSize * 0.5))
                  : img ? baseGap + (reveal ? field.height + imgGap : 0) + picture.height
-                 : opened ? baseGap + field.height : Math.round(space * ed.textSize)))
+                 : opened || extraBlank ? baseGap + field.height : Math.round(space * ed.textSize)))
         Binding { when: row.index === ed.roomRow; target: ed; property: "roomTop"; value: row.y + row.height - row.room - row.foldBottom }
 
         // The folds' marks: how many written lines of the day are folded

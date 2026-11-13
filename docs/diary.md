@@ -1564,3 +1564,13 @@ only the window and the panels around it differ.
   followed the query, which is applied a frame after the letter shows,
   so the chip turned orange a beat late. It now follows what is in the
   line. `Dashboard.qml`.
+- **2026-11-13: every empty line is drawn.** Blank lines were one
+  paragraph's space however many (the rhythm of 2026-10-12), so Enter
+  pressed again and again on an empty line moved the cursor once, a
+  little, and then not at all, while empty lines piled up in the note —
+  each needing a Backspace that also showed nothing. Now the first blank
+  line after text is still a paragraph's space, and each one after it is
+  a whole empty line: every Enter moves down a line, every Backspace back
+  up. A heading's space counts the empty lines above it, as before. A note
+  with runs of blank lines (from elsewhere) shows them now. `Rows.js`
+  (`extraBlank`), `NoteEditor.qml`; `tests/tst_editor.qml`.

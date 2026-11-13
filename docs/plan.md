@@ -1115,6 +1115,9 @@ a fix or a feature to decide first):
   above and 0.35 below, list items 0.25, lines of text 0.25, a change of
   kind 0.5, the lines of one quote / fence / frontmatter 0. Blank lines are
   one paragraph's space (0.75) however many, and count towards a heading's.
+  2026-11-13: the first blank line is a paragraph's space, each one after
+  it a whole empty line (Enter pressed again moved nothing, the empty lines
+  piling up unseen).
   Left: lines that wrap inside one row keep the font's own line height
   (~1.3) — Qt's TextEdit has no line-height setting.
 - **Numbered lists don't nest.** Fixed 2026-10-12: Tab / Shift+Tab move an

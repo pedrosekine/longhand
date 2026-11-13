@@ -182,6 +182,7 @@ function readCue(t) {
 //   raw        the line as it is on disk
 //   start      offset of the line in the text
 //   blank      a whitespace-only line outside fences: drawn as space
+//   extraBlank a blank line after another: drawn as a whole empty line
 //   lead       a blank line before any text: drawn as nothing at all
 //   priv       inside a `> [!private]` callout
 //   paperEnd   the last line of one
@@ -232,9 +233,16 @@ function derive(text) {
     r.priv = !!priv[i]
     r.blank = r.kind === "blank"
     r.lead = r.blank && !seenText
+    r.extraBlank = false
     if (r.blank) {
+      // The first blank line after text is a paragraph's space; each one
+      // after it is a whole empty line (2026-11-13), so Enter pressed again
+      // and again moves down each time and the page shows what the note
+      // holds. They were all one paragraph's space however many, and from
+      // the third Enter on nothing moved while empty lines piled up unseen.
+      r.extraBlank = !r.lead && blankGap > 0
       r.space = r.lead || blankGap > 0 ? 0 : SPACE.paragraph
-      blankGap += r.space
+      blankGap += r.extraBlank ? SPACE.emptyLine : r.space
     } else {
       r.space = lastText ? spaceAbove(lastText, r, blankGap) : 0
       lastText = r
@@ -314,7 +322,7 @@ function aligns(sep) {
 // and count towards a heading's. A title gets a clearing of its own (2.0
 // since 2026-10-15): air above is the quietest way to say "this starts
 // something", and it was doing none of that work before.
-var SPACE = { paragraph: 0.75, line: 0.25, item: 0.25, change: 0.5, belowHeading: 0.35,
+var SPACE = { paragraph: 0.75, emptyLine: 1.3, line: 0.25, item: 0.25, change: 0.5, belowHeading: 0.35,
               heading: [0, 2.0, 1.4, 1.1, 0.9, 0.9, 0.9] }
 
 function listy(r) { return r.kind === "task" || r.kind === "bullet" || r.kind === "ordered" }
