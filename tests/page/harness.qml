@@ -356,7 +356,9 @@ ShellRoot {
       return false
     }
     function dashAt(): int { return page.taskFocus }
-    function dashCount(): string { return page.dashCount }
+    function dashAgent(): string { return JSON.stringify(page.dashAgent) }
+    function dashStatus(): string { return page.dashStatus }
+    function clickAgentChip(): string { page.clickAgentChip(); return String(page.taskFocus) }
     function newSince(): string { return page.newAfterId + " | " + page.proposals.map(function (x) { return x.id }).join(",") }
     function ticksHeard(): int { return page.ticksHeard }
     function plan(force: bool): void { page.runPlan(force) }

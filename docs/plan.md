@@ -764,6 +764,10 @@ from 2026-09/10 and still stand.
     welcome, or does a narrowed list surprise the next time?
   - Words match a course's name too ("seminar" is the whole seminar):
     useful, or noise?
+  - The agent's chip (2026-11-14) sits among the filters but is not one:
+    a click goes to the next thing it asks, as `N`. Is it clicked expecting
+    a list of only the agent's rows? And is "done today", no longer
+    counted, missed?
 - **The date bands, folded** (built 2026-11-03, `plugin-page/Next.js`
   `byDate`, `bands` and `bandOpen`): by date is now where the dashboard
   opens, in bands that narrow as they come near (late, today, this week,

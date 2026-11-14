@@ -1258,7 +1258,6 @@ def checks() -> int:
               "…with the day it was done, as Obsidian Tasks writes it")
         check(p.wait(lambda: any(r.get("text") == "draft the intro" and r.get("done") for r in json.loads(p.call("dashRows")))),
               "…and it stays in the dashboard, done, rather than vanishing")
-        check(p.wait(lambda: "1 done today" in p.call("dashCount")), f"…counted as done today ({p.call('dashCount')})")
         row("draft the intro")
         p.call("dashKey", 0x4c, CTRL)
         check(p.wait(lambda: "- [ ] draft the intro\n" in (p.daily / f"{YDAY}.md").read_text()),
@@ -1983,9 +1982,9 @@ def checks() -> int:
         check(p.call("rowAuthor", i) == "agent", "…marked as the agent's")
 
         # Whose turn (2026-10-23): what arrived since the dashboard was last
-        # left is new, counted in its line; N walks the queue, round again.
-        check(all(r["fresh"] for _, r in asks()) and ", 2 new" in p.call("dashCount"),
-              f"what arrived since the last visit is new, and counted ({p.call('dashCount')!r}; {p.call('newSince')})")
+        # left is new, counted on the agent's chip; N walks the queue, round again.
+        check(all(r["fresh"] for _, r in asks()) and json.loads(p.call("dashAgent"))["fresh"] == 2,
+              f"what arrived since the last visit is new, and counted ({p.call('dashAgent')}; {p.call('newSince')})")
         ask_rows = [n for n, _ in asks()]
         p.call("dashFocus", 0)
         p.call("dashType", "n")
@@ -1996,10 +1995,12 @@ def checks() -> int:
         check(int(p.call("dashAt")) == ask_rows[0], "…and round again at the end")
         p.call("dashKey", 0x4e, SHIFT)
         check(int(p.call("dashAt")) == ask_rows[1], "Shift+N goes back")
+        p.call("dashFocus", 0)
+        check(int(p.call("clickAgentChip")) == ask_rows[0], f"the agent's chip, clicked, goes there as N does ({p.call('dashAt')} / {ask_rows})")
         p.call("dash")
         p.call("dash")
-        check(not any(r["fresh"] for _, r in asks()) and "new" not in p.call("dashCount"),
-              f"left and opened again: nothing is new ({p.call('dashCount')!r})")
+        check(not any(r["fresh"] for _, r in asks()) and json.loads(p.call("dashAgent"))["fresh"] == 0,
+              f"left and opened again: nothing is new ({p.call('dashAgent')})")
         ledger_file = p.state / "longhand" / "proposals.json"
         notes_before = {f.name: f.read_text() for f in p.daily.glob("*.md")}
         check(all(f.read_text() == notes_before[f.name] for f in p.daily.glob("*.md")), "proposing wrote nothing into a note")

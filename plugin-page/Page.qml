@@ -4493,24 +4493,25 @@ Item {
     else root.moveTaskFocus(1)
   }
 
-  // What the list adds up to, for the line beside its name.
-  readonly property string dashCount: {
-    var open = 0, due = 0, done = 0
-    var rows = root.taskRows
-    root.doneNow
-    for (var i = 0; i < rows.length; i++) {
-      var now = !!root.doneNow[root.rowKey(rows[i])]
-      if (rows[i].kind === "task" && !rows[i].task.away) { if (rows[i].task.done || now) done++; else open++ }
-      else if (rows[i].kind === "deadline" && rows[i].deadline.status === "open") { if (now) done++; else { due++; open++ } }
-      else if (rows[i].kind === "deadline" && rows[i].deadline.status === "done") done++
-    }
-    var asks = root.proposals.length
-    var fresh = root.proposals.filter(root.isNewAsk).length
-    if (open === 0 && done === 0 && asks === 0) return root.planning ? "planning…" : root.planError !== "" ? "the agent could not plan" : ""
-    return open + " open" + (due > 0 ? "   ·   " + due + " with a date to meet" : "")
-      + (done > 0 ? "   ·   " + done + " done today" : "")
-      + (asks > 0 ? "   ·   " + asks + " from the agent" + (fresh > 0 ? ", " + fresh + " new" : "") : "")
-      + (root.planning ? "   ·   planning…" : root.planError !== "" ? "   ·   the agent could not plan: " + root.planError : "")
+  // What the agent is doing, beside the dashboard's name: planning, or why
+  // it could not. Until 2026-11-14 the name had a line of counts too ("5
+  // open · 5 with a date to meet · 1 done today · 25 from the agent"),
+  // which read like a second row of chips and disagreed with them: it
+  // counted only the rows of unfolded bands, so "5 open" stood over "All
+  // 40". The chips are the counts now, and the agent has a chip of its own.
+  readonly property string dashStatus: root.planning ? "planning…"
+    : root.planError !== "" ? "the agent could not plan: " + root.planError : ""
+  // The agent's chip: what it asks or has done, of what the strip keeps,
+  // and how much of that arrived since the dashboard was last left.
+  readonly property var dashAgent: {
+    var asks = root.dashCourses.asks || []
+    return { asks: asks.length, fresh: asks.filter(root.isNewAsk).length }
+  }
+  // The agent's chip clicked: to the next thing it asks, as N.
+  function clickAgentChip() {
+    dash.dashKeysRef.forceActiveFocus()
+    if (root.stripAt >= 0) root.leaveStrip()
+    root.focusAsk(1)
   }
 
   // Enter: go to the task's line, on any day; the dashboard closes. A

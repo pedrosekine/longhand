@@ -393,7 +393,8 @@ function openOf(s) {
 // order of the course bands, with how much it holds of what the words
 // keep — and any course picked though nothing is open in it. With them,
 // how much the list holds now (`shown`) against all that is open
-// (`total`), and the agent's proposals the lens leaves out (`outside`).
+// (`total`), the agent's proposals the lens keeps (`asks`, for the
+// agent's chip) and those it leaves out (`outside`).
 // Each chip says too what it holds by what it asks, and its next
 // deadline, for the strip unfolded.
 function courses(s) {
@@ -413,10 +414,10 @@ function courses(s) {
                  count: due.length + boxes.length, due: due.length, doing: doing, later: boxes.length - doing,
                  next: next ? { title: next.title, due: next.due } : null })
   }
-  var now = openOf(narrowed(s))
-  var props = s.proposals || []
+  var kept = narrowed(s), now = openOf(kept)
+  var props = s.proposals || [], asks = kept.proposals || []
   return { chips: chips, total: all.due.length + all.boxes.length, shown: now.due.length + now.boxes.length,
-           outside: props.length - narrowed(s).proposals.length }
+           asks: asks, outside: props.length - asks.length }
 }
 
 // The agent's proposals and questions, as rows (docs/agent.md): each right

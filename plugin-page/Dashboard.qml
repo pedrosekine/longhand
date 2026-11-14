@@ -56,8 +56,9 @@ BorderSurface {
 
   MouseArea { anchors.fill: parent; onClicked: dashKeys.forceActiveFocus() }
 
-  // A chip on the course strip: lit where the strip's cursor is, outlined
-  // when the list shows its course. The ⌕ chip holds a line of text of its
+  // A chip on the course strip: lit where the strip's cursor is,
+  // underlined when the list shows its course (2026-11-14: outlined, it
+  // read as a warning, the one orange box on the page). The ⌕ chip holds a line of text of its
   // own (2026-11-13), with every key a line of text has — Ctrl+A, paste,
   // the arrows, Shift to select, Ctrl+Backspace, undo — and its own caret,
   // right after the last letter. It was drawn words and a drawn caret
@@ -71,6 +72,9 @@ BorderSurface {
     property string count: ""
     property bool on: false
     property bool search: false
+    property bool alert: false           // its words in the accent: something waits there
+    property string tip: ""
+    property var action: null            // a click does this, not what a chip picks
     readonly property bool cur: page.stripAt === at && !page.stripOpen && keys
     property alias field: searchField
     onCurChanged: page.selected(chip, "center", cur)
@@ -78,9 +82,16 @@ BorderSurface {
     height: chipRow.implicitHeight + Math.round(page.textSize * 0.3)
     radius: Style.cornerRadius
     color: cur ? Style.selectedFill : chipHover.hovered && page.handOn ? Style.hoverFill : "transparent"
-    border.width: on ? 1 : 0
-    border.color: page.accent
     HoverHandler { id: chipHover }
+    Tip { host: chip.page; shown: chip.tip !== "" && chipHover.hovered; text: chip.tip }
+    Rectangle {
+      visible: chip.on
+      anchors.bottom: parent.bottom
+      anchors.horizontalCenter: parent.horizontalCenter
+      width: chipRow.implicitWidth
+      height: Math.max(2, page.sp(2))
+      color: page.accent
+    }
     Row {
       id: chipRow
       anchors.centerIn: parent
@@ -92,7 +103,7 @@ BorderSurface {
         anchors.verticalCenter: parent.verticalCenter
         textFormat: Text.PlainText
         text: chip.label
-        color: chip.on ? page.accent : chip.cur ? page.foreground : page.dim
+        color: chip.on || chip.alert ? page.accent : chip.cur ? page.foreground : page.dim
         font.family: page.fontFamily
         font.styleName: page.fontStyle
         font.pixelSize: page.fs(Style.font.bodySmall)
@@ -136,7 +147,7 @@ BorderSurface {
       // On ⌕ the pointer reaches the words, to place the caret and select.
       enabled: !(chip.search && searchField.activeFocus)
       cursorShape: chip.search ? Qt.IBeamCursor : Qt.PointingHandCursor
-      onClicked: page.clickChip(chip.at)
+      onClicked: chip.action ? chip.action() : page.clickChip(chip.at)
     }
   }
 
@@ -252,23 +263,80 @@ BorderSurface {
     // ⌕ (the pane keys, a sheet closed): on to its line of text.
     onActiveFocusChanged: if (activeFocus) Qt.callLater(dash.syncSearchFocus)
 
-    Text {
+    // The name, and how the list is laid out: the bands folded or not, the
+    // order (2026-11-14). In the strip's column, so the page has one left
+    // edge; what narrows the list is the strip's row alone, under it.
+    Item {
       id: dashTitle
       anchors.top: parent.top
-      anchors.left: parent.left
-      anchors.right: parent.right
-      textFormat: Text.PlainText
-      text: "DASHBOARD" + (page.dashCount === "" ? "" : "   ·   " + page.dashCount)
-      color: page.dim
-      font.family: page.fontFamily
-      font.styleName: page.fontStyle
-      font.pixelSize: page.fs(Style.font.caption)
+      x: strip.x
+      width: strip.width
+      height: orderChip.height
+      Text {
+        x: page.sp(8)
+        width: Math.max(0, (foldAllRow.visible ? foldAllRow.x : orderChip.x) - x - page.sp(16))
+        anchors.verticalCenter: parent.verticalCenter
+        elide: Text.ElideRight
+        textFormat: Text.PlainText
+        text: "DASHBOARD" + (page.dashStatus === "" ? "" : "   ·   " + page.dashStatus)
+        color: page.dim
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.caption)
+        font.letterSpacing: 0.8
+      }
+      // By date: every band at once (2026-11-03). The word that would
+      // change nothing is faint.
+      Row {
+        id: foldAllRow
+        visible: page.dashOrder === "date" && page.taskRows.some(function (r) { return r.kind === "band" && r.count > 0 && !r.fixed })
+        readonly property bool anyShut: page.taskRows.some(function (r) { return r.kind === "band" && r.count > 0 && !r.fixed && !r.open })
+        readonly property bool anyOpen: page.taskRows.some(function (r) { return r.kind === "band" && r.count > 0 && !r.fixed && r.open })
+        anchors.right: orderChip.left
+        anchors.rightMargin: page.sp(14)
+        anchors.verticalCenter: parent.verticalCenter
+        spacing: page.sp(6)
+        Repeater {
+          model: [{ word: "expand all", open: true, key: "dashUnfoldAll" }, { word: "collapse all", open: false, key: "dashFoldAll" }]
+          Text {
+            required property var modelData
+            required property int index
+            readonly property bool live: modelData.open ? foldAllRow.anyShut : foldAllRow.anyOpen
+            textFormat: Text.PlainText
+            text: (index > 0 ? "·  " : "") + modelData.word
+            color: foldHover.containsMouse && live && page.handOn ? page.accent : live ? page.dim : page.faint
+            font.family: page.fontFamily
+            font.styleName: page.fontStyle
+            font.pixelSize: page.fs(Style.font.caption)
+            MouseArea {
+              id: foldHover
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: parent.live ? Qt.PointingHandCursor : Qt.ArrowCursor
+              onClicked: { dashKeys.forceActiveFocus(); page.foldAll(modelData.open) }
+              Tip { host: page; shown: parent.containsMouse; text: page.tip(modelData.open ? "Expand every band" : "Collapse every band", modelData.key) }
+            }
+          }
+        }
+      }
+      // The strip's last stop, though drawn up here: ← → and Enter reach
+      // it as before.
+      Chip {
+        id: orderChip
+        page: dash.page
+        keys: dash.keysHere
+        anchors.right: parent.right
+        anchors.verticalCenter: parent.verticalCenter
+        at: page.stripEnd
+        label: "by " + strip.orderWords[page.dashOrder] + (page.stripOpen ? "  ▴" : "  ▾")
+      }
     }
 
     // The course strip (2026-11-03): ⌕ to type into, All, a chip for each
-    // course with something open, the order at the end; under it, what the
-    // list shows when it is narrowed; unfolded, every course with what it
-    // holds and the orders. ↑ from the first row climbs onto it.
+    // course with something open, then the agent's chip; the order, its
+    // last stop, is drawn on the title row. Under it, what the list shows
+    // when it is narrowed; unfolded, every course with what it holds and
+    // the orders. ↑ from the first row climbs onto it.
     Item {
       id: strip
       readonly property var orderWords: ({ ask: "what it asks", course: "course", date: "date" })
@@ -285,12 +353,11 @@ BorderSurface {
 
         Item {
           width: parent.width
-          height: Math.max(chipFlow.implicitHeight, orderChip.height)
+          height: chipFlow.implicitHeight
           Flow {
             id: chipFlow
             anchors.left: parent.left
-            anchors.right: orderChip.left
-            anchors.rightMargin: page.sp(8)
+            anchors.right: parent.right
             spacing: page.sp(4)
             Chip {
               id: searchChip
@@ -327,15 +394,21 @@ BorderSurface {
                 on: page.dashLens.indexOf(modelData.tag) >= 0
               }
             }
-          }
-          Chip {
-            id: orderChip
-            page: dash.page
-            keys: dash.keysHere
-            anchors.right: parent.right
-            anchors.top: parent.top
-            at: page.stripEnd
-            label: "by " + strip.orderWords[page.dashOrder] + (page.stripOpen ? "  ▴" : "  ▾")
+            // The agent's: what it asks of the courses shown, and what is
+            // new since the last visit. Not a filter and not a stop of the
+            // strip: a click goes to the next thing it asks, as N does.
+            Item { width: page.sp(10); height: 1; visible: agentChip.visible }
+            Chip {
+              id: agentChip
+              page: dash.page
+              at: -2
+              visible: page.dashAgent.asks > 0
+              alert: page.dashAgent.fresh > 0
+              label: "◇ from the agent"
+              count: page.dashAgent.asks + (page.dashAgent.fresh > 0 ? " · " + page.dashAgent.fresh + " new" : "")
+              tip: page.tip("Go to the next thing the agent asks", "dashNextAsk")
+              action: page.clickAgentChip
+            }
           }
         }
 
@@ -357,40 +430,6 @@ BorderSurface {
           font.family: page.fontFamily
           font.styleName: page.fontStyle
           font.pixelSize: page.fs(Style.font.caption)
-        }
-
-        // By date: every band at once (2026-11-03). The word that would
-        // change nothing is faint.
-        Row {
-          id: foldAllRow
-          visible: page.dashOrder === "date" && !page.stripOpen && page.taskRows.some(function (r) { return r.kind === "band" && r.count > 0 && !r.fixed })
-          readonly property bool anyShut: page.taskRows.some(function (r) { return r.kind === "band" && r.count > 0 && !r.fixed && !r.open })
-          readonly property bool anyOpen: page.taskRows.some(function (r) { return r.kind === "band" && r.count > 0 && !r.fixed && r.open })
-          anchors.right: parent.right
-          anchors.rightMargin: page.sp(8)
-          spacing: page.sp(6)
-          Repeater {
-            model: [{ word: "expand all", open: true, key: "dashUnfoldAll" }, { word: "collapse all", open: false, key: "dashFoldAll" }]
-            Text {
-              required property var modelData
-              required property int index
-              readonly property bool live: modelData.open ? foldAllRow.anyShut : foldAllRow.anyOpen
-              textFormat: Text.PlainText
-              text: (index > 0 ? "·  " : "") + modelData.word
-              color: foldHover.containsMouse && live && page.handOn ? page.accent : live ? page.dim : page.faint
-              font.family: page.fontFamily
-              font.styleName: page.fontStyle
-              font.pixelSize: page.fs(Style.font.caption)
-              MouseArea {
-                id: foldHover
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: parent.live ? Qt.PointingHandCursor : Qt.ArrowCursor
-                onClicked: { dashKeys.forceActiveFocus(); page.foldAll(modelData.open) }
-                Tip { host: page; shown: parent.containsMouse; text: page.tip(modelData.open ? "Expand every band" : "Collapse every band", modelData.key) }
-              }
-            }
-          }
         }
 
         Rectangle {

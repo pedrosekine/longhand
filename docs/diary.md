@@ -1585,3 +1585,22 @@ only the window and the panels around it differ.
   shell module, so the page hands it `cornerRadius`. Seen before and after
   with `tests/page/shots.py`, which draws in a private Hyprland so it works
   with the Air's lid shut and the session locked.
+- **2026-11-14: the dashboard's head, one job a row.** The name had a line
+  of counts beside it ("5 open · 5 with a date to meet · 1 done today · 25
+  from the agent, 3 new") over the course chips, and the two fought: both
+  were words and numbers in the same grey, one row clickable and one not,
+  starting at two different left edges; and the counts disagreed with the
+  chips — "5 open" counted only the rows of unfolded bands, under "All
+  40". Three ways were drawn with `tests/page/shots.py` (the counts moved
+  under the chips and made to agree; the counts as tabs over the courses;
+  no counts) and the third was taken. Now the title row, in the list's
+  column, holds the name (and "planning…" or why the agent could not
+  plan) and how the list is laid out: expand all · collapse all, and the
+  order, still the strip's last stop for ← → and Enter. The row under it
+  is only what narrows the list: ⌕, All, the courses — the one shown
+  underlined, no longer boxed in orange — and the agent's chip, "◇ from
+  the agent 6 · 3 new", lit while something is new, counting what the
+  courses shown keep; a click goes to the next thing it asks, as `N`.
+  "Done today" is no longer counted: the day's ticked boxes stand struck
+  through in TODAY. `Dashboard.qml`, `Page.qml` (`dashStatus`,
+  `dashAgent`), `Next.js` (`courses` gives `asks`).
