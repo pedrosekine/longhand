@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Every test, one command: each tests/test_*.py and each tests/tst_*.qml
-(offscreen), side by side, and — asked for, since it opens a window — the
+(offscreen), side by side, and — asked for, since it takes minutes — the
 page itself, live, after them and alone.
 
 Run: python3 tests/run_all.py                    # every offscreen test, in parallel (about 12s)
@@ -10,7 +10,7 @@ Run: python3 tests/run_all.py                    # every offscreen test, in para
      python3 tests/run_all.py -j 1               # one at a time, as before
      python3 tests/run_all.py --list             # the names it knows
      python3 tests/run_all.py --page             # and the page, live, in the window shape
-     python3 tests/run_all.py --page --overlay   # and the overlay too: it takes the screen for a few seconds
+     python3 tests/run_all.py --page --overlay   # and the overlay too
 
 A name is a file's own without test_/tst_ and the extension; a QML file and
 a Python file may share one (threads), and then both run. `page` names the
@@ -111,15 +111,15 @@ def main() -> int:
     ap.add_argument("-j", "--jobs", type=int, default=os.cpu_count() or 4, help="how many at once (default: one per core)")
     ap.add_argument("--failed", action="store_true", help="only what failed last time")
     ap.add_argument("--list", action="store_true", help="the names, and stop")
-    ap.add_argument("--page", action="store_true", help="also the page, live (it opens a window)")
-    ap.add_argument("--overlay", action="store_true", help="with the page: the overlay too (it takes the screen)")
+    ap.add_argument("--page", action="store_true", help="also the page, live, in a private Hyprland (minutes)")
+    ap.add_argument("--overlay", action="store_true", help="with the page: the overlay too")
     a = ap.parse_args()
 
     known = jobs()
     if a.list:
         for name, *_ in known:
             print(f"{short(pathlib.Path(name)):<14} {name}")
-        print(f"{'page':<14} page/run.py (opens a window)")
+        print(f"{'page':<14} page/run.py (the page, live: minutes)")
         return 0
 
     wanted = list(a.names)
@@ -165,7 +165,7 @@ def main() -> int:
         results.append(run(j))
         report(*results[-1])
     if not a.page and not a.names and not a.failed:
-        print("skip page/run.py (it opens a window): --page")
+        print("skip page/run.py (the page, live: minutes): --page")
 
     failed = sorted(name for name, ok, _, _ in results if not ok)
     write_failed({name for name, *_ in results}, set(failed))

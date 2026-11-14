@@ -279,7 +279,7 @@ python3 tests/run_all.py plan agent         # only these (test_plan.py, test_age
 python3 tests/run_all.py --failed           # only what failed last time
 python3 tests/run_all.py --list             # the names it knows
 python3 tests/run_all.py --page             # and the page itself, live, in the window shape
-python3 tests/run_all.py --page --overlay   # and the overlay, which takes the screen for a few seconds
+python3 tests/run_all.py --page --overlay   # and the overlay too
 ```
 
 The runner starts one file per core at once (`-j 1` for one at a time); the
@@ -308,14 +308,19 @@ build a throwaway vault, state and config, and play Hyprland with
 (the JS and Python halves of the block splitter and the checkbox grammar are
 compared), PyQt6 (`test_cursors`) or quickshell (`test_popup`).
 `tests/page/run.py` drives the real page over IPC in a window titled "Page
-scratch" that never takes focus; it runs in the window shape, the one used
-most, and the overlay only with `--overlay`, because the overlay covers the
-screen and holds the keyboard while it is up.
+scratch", in a Hyprland of its own nested in yours and drawing on a headless
+output (`tests/desktop.py` → `Private`, which `tests/page/shots.py` uses
+too): nothing shows on your screen, and it runs whatever the session is
+doing — lid shut, screen off, locked — where a window on your screen would
+get no frames and the page would freeze. It runs in the window shape, the
+one used most, and the overlay only with `--overlay`. A question the page
+leaves unanswered for 30 seconds stops the run, saying so, instead of
+waiting forever.
 
-The two that open a real window (`test_popup` and the page) find the running
-Hyprland themselves (`tests/desktop.py`), so they also run from a shell
-without the desktop's settings, such as a session over SSH; with no
-Hyprland running they say so and stop.
+`test_popup` draws on your screen, briefly: it wakes the screen if it is
+off. Both find the running Hyprland themselves (`tests/desktop.py`), so they
+also run from a shell without the desktop's settings, such as a session over
+SSH; with no Hyprland running they say so and stop.
 
 ## Deadlines in the notes
 

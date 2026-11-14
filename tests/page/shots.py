@@ -25,81 +25,22 @@ import importlib.util
 import json
 import os
 import pathlib
-import shutil
 import subprocess
 import sys
-import tempfile
 import time
 
 HERE = pathlib.Path(__file__).resolve().parent
 TITLE = "Page shots"
 SIZE = (1100, 850)       # the window, in logical pixels
 MODE = "2400x1800"       # the output: 1200x900 logical at scale 2, room for the window
-OUTPUT = "SHOT"
 
 
 def hypr(*args):
     return subprocess.run(["hyprctl", *args], capture_output=True, text=True, timeout=10).stdout
 
 
-def lua(code):
-    out = hypr("eval", code).strip()
-    if out != "ok":
-        raise RuntimeError(f"hyprctl eval: {out}")
-
-
 def window():
     return next((c for c in json.loads(hypr("clients", "-j") or "[]") if c["title"] == TITLE), None)
-
-
-class Hyprland:
-    """A private Hyprland, nested in the running one, drawing on a headless
-    output; this process (and so the page it starts) is pointed at it."""
-
-    def __enter__(self):
-        self.dir = pathlib.Path(tempfile.mkdtemp(prefix="longhand-shots-"))
-        conf = self.dir / "hyprland.lua"
-        # Nothing of its own drawn around the window: no border, gap,
-        # rounding, shadow or animation.
-        conf.write_text("hl.config({ misc = { disable_hyprland_logo = true, disable_splash_rendering = true }, "
-                        "general = { border_size = 0, gaps_in = 0, gaps_out = 0 }, "
-                        "decoration = { rounding = 0, shadow = { enabled = false }, blur = { enabled = false } }, "
-                        "animations = { enabled = false } })\n")
-        env = dict(os.environ, HYPRLAND_NO_SD_NOTIFY="1", XDG_SESSION_TYPE="wayland")
-        env.pop("HYPRLAND_INSTANCE_SIGNATURE", None)
-        self.saved = {k: os.environ.get(k) for k in ("WAYLAND_DISPLAY", "HYPRLAND_INSTANCE_SIGNATURE")}
-        self.proc = subprocess.Popen(["Hyprland", "--config", str(conf)], env=env, cwd=self.dir,
-                                     stdout=open(self.dir / "log", "w"), stderr=subprocess.STDOUT,
-                                     start_new_session=True)
-        mine = None
-        deadline = time.time() + 15
-        while time.time() < deadline and not mine:
-            time.sleep(0.3)
-            inst = json.loads(hypr("instances", "-j") or "[]")
-            mine = next((i for i in inst if i.get("pid") == self.proc.pid), None)
-        if not mine:
-            self.__exit__()
-            raise RuntimeError(f"the private Hyprland did not start (log: {self.dir / 'log'})")
-        os.environ["WAYLAND_DISPLAY"] = mine["wl_socket"]
-        os.environ["HYPRLAND_INSTANCE_SIGNATURE"] = mine["instance"]
-        hypr("output", "create", "headless", OUTPUT)
-        lua(f'hl.monitor({{ output = "{OUTPUT}", mode = "{MODE}", scale = 2 }})')
-        lua('hl.monitor({ output = "WAYLAND-1", disabled = true })')    # its window in yours: gone
-        lua(f'hl.window_rule({{ match = {{ title = "^{TITLE}$" }}, float = true, size = {{ {SIZE[0]}, {SIZE[1]} }} }})')
-        return self
-
-    def __exit__(self, *exc):
-        self.proc.terminate()
-        try:
-            self.proc.wait(10)
-        except subprocess.TimeoutExpired:
-            self.proc.kill()
-        for k, v in self.saved.items():
-            if v is None:
-                os.environ.pop(k, None)
-            else:
-                os.environ[k] = v
-        shutil.rmtree(self.dir, ignore_errors=True)
 
 
 def load_run(root: pathlib.Path):
@@ -221,13 +162,14 @@ def main() -> int:
     a = ap.parse_args()
     sys.path.insert(0, str(HERE.parent))
     import desktop
-    desktop.reach("the page")
+    desktop.reach("the page", wake_screen=False)
     for kv in a.env:
         k, _, v = kv.partition("=")
         os.environ[k] = v
     a.out.mkdir(parents=True, exist_ok=True)
     m = load_run(a.root.resolve())
-    with Hyprland():
+    with desktop.Private(MODE, 2, [f'hl.window_rule({{ match = {{ title = "^{TITLE}$" }}, float = true, '
+                                   f'size = {{ {SIZE[0]}, {SIZE[1]} }} }})']):
         p = page(m, a.order)
         try:
             fixture(m, p)

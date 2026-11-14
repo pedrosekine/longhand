@@ -3,13 +3,15 @@
 the deadline store, outside edits, going to a line, agent accepts.
 
 Needs a Hyprland session with quickshell and the omarchy shell modules. It
-builds a throwaway config, vault and deadline store under /tmp, opens the
-page as a window titled "Page scratch" that never takes keyboard focus (a
-Hyprland rule for that title only), and talks to it over IPC — no key is
-ever pressed. Your notes, store and running shell are not touched.
+builds a throwaway config, vault and deadline store under /tmp, starts a
+Hyprland of its own nested in yours, drawing on a headless output
+(tests/desktop.py → Private), opens the page there as a window titled "Page
+scratch", and talks to it over IPC — no key is ever pressed. Nothing shows
+on your screen; your notes, store, running shell and Hyprland rules are not
+touched; and it runs with the lid shut, the screen off or the session locked.
 
 Run: python3 tests/page/run.py              # the window shape, as used most
-     python3 tests/page/run.py --overlay    # also the overlay: it covers the screen for a few seconds
+     python3 tests/page/run.py --overlay    # also the overlay
 """
 import datetime as dt
 import json
@@ -28,6 +30,15 @@ import blocks  # noqa: E402
 import lifespan  # noqa: E402
 sys.path.insert(0, str(ROOT / "tests"))
 import desktop  # noqa: E402
+
+# A question to the page answers in well under a second; one that takes
+# this long means the page has frozen, and every check after it would wait.
+CALL_TIMEOUT = 30
+
+
+class PageFrozen(Exception):
+    pass
+
 
 # What the runner writes when the student talks to a block: both turns, the
 # way `longhand-agent chat` records them. Enough for the page to settle the
@@ -238,8 +249,15 @@ esac
         self.wait(lambda: self.call("state").startswith("{"), 10)
 
     def call(self, fn, *args):
-        r = subprocess.run(["quickshell", "ipc", "-p", str(self.shell), "call", "page", fn, *map(str, args)],
-                           capture_output=True, text=True, env=self.env)
+        try:
+            r = subprocess.run(["quickshell", "ipc", "-p", str(self.shell), "call", "page", fn, *map(str, args)],
+                               capture_output=True, text=True, env=self.env, timeout=CALL_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            # Not asked again: a frozen page may still act on it once it
+            # wakes, and a key would then be pressed twice.
+            off = desktop.screens_off()
+            raise PageFrozen(f"the page stopped answering ({fn} {' '.join(map(str, args))}, {CALL_TIMEOUT}s)"
+                             + (f": the screen is off ({', '.join(off)}), so it gets no frames" if off else "")) from None
         out = r.stdout
         return out[:-1] if out.endswith("\n") else out   # only IPC's own newline: a note may start with one
 
@@ -370,7 +388,15 @@ def theme_switch() -> None:
 
 
 def main() -> int:
-    desktop.reach("the page")
+    # The page draws in a Hyprland of its own, on a headless output: never on
+    # your screen, and drawn whatever the session is doing (lid shut, screen
+    # off, locked: then a window on it gets no frames and the page freezes).
+    desktop.reach("the page", wake_screen=False)
+    with desktop.Private():
+        return checks()
+
+
+def checks() -> int:
     theme_switch()
     p = Page()
     try:
@@ -2647,7 +2673,7 @@ def main() -> int:
                   f"Esc in the note closes the overlay ({shape()})")
             check(shape()["window"], "…and the window under it stays")
         else:
-            print("skip the overlay (it takes the screen): python3 tests/page/run.py --overlay")
+            print("skip the overlay: python3 tests/page/run.py --overlay")
 
         # 15. coming back where you left (docs/navigation.md, "Checkpoints"):
         # a pane closing gives the keys back to the pane they came from, at
@@ -3174,4 +3200,9 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except PageFrozen as e:
+        print(f"FAIL {e}; stopped here, as every check after it would wait too")
+        print("1 FAILED" if failures == 0 else f"{failures + 1} FAILED")
+        sys.exit(1)
