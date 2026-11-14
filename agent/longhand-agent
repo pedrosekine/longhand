@@ -486,6 +486,47 @@ def open_tasks(cfg: dict, recent_days: int) -> list[dict]:
     return rows
 
 
+def dated(cfg: dict) -> dict[str, list[dict]]:
+    """Every box given a day, under the day it is for (2026-11-14): a task
+    written on Saturday "for Monday" belongs to Monday's page too, not only
+    to Saturday's. A box is for its due day (📅, "due") and for its do-day
+    (⏳, "do"); one with both, on two days, is on each. Every note is read,
+    whatever its age, a future day's too. A cancelled box is an answer, not
+    a task, and is left out. Keys are ISO days, as the marks are written."""
+    fmt = moment_to_strftime(cfg["daily"].get("format", "YYYY-MM-DD"))
+    daily = Path(cfg["vault"]) / cfg["daily"]["dir"]
+    out: dict[str, list[dict]] = {}
+    for f in sorted(daily.glob("*.md")):
+        try:
+            d = dt.datetime.strptime(f.stem, fmt).date()
+            text = f.read_text()
+        except (ValueError, OSError):
+            continue
+        whole = before_horizon(cfg, d) or (text.startswith("---") and note_is_private(blocklib.split(text)))
+        for box in tasklib.scan(text):
+            if box["cancelled"]:
+                continue
+            row = {"date": f.stem, "written": d.isoformat(), "line": box["line"], "text": box["text"],
+                   "title": box["title"], "project": box["project"], "done": box["done"],
+                   "due": box["due"], "when": box["when"], "anchor": box["anchor"],
+                   "private": box["private"] or whole}
+            days = []
+            for how, at in (("due", box["due"][:10]), ("do", box["when"][:10])):
+                if at and at not in days:
+                    days.append(at)
+                    out.setdefault(at, []).append(dict(row, how=how))
+    for rows in out.values():
+        # Open first, then due before do, then by the hour, then as written.
+        rows.sort(key=lambda r: (r["done"], r["how"] != "due", r["due"][11:] or "99", r["written"], r["line"]))
+    return out
+
+
+def cmd_dated(cfg: dict, args) -> int:
+    """The tasks each day is for, for the band above a day's note."""
+    print(json.dumps({"days": dated(cfg)}, ensure_ascii=False))
+    return 0
+
+
 def outcomes_section(cfg: dict) -> list[str]:
     rows = outcomes(cfg, visible_only=True)
     if not rows:
@@ -3995,6 +4036,7 @@ def main(argv: list[str]) -> int:
     p.add_argument("--days", default="0", help="0: every day there is")
     p = sub.add_parser("next")
     p.add_argument("--days", default="7")
+    sub.add_parser("dated")
     p = sub.add_parser("timetable")
     p.add_argument("--fetch", action="store_true", help="ask the university now")
     p.add_argument("--index", type=int, default=-1, help="with --fetch: only this calendar")
@@ -4092,7 +4134,7 @@ def main(argv: list[str]) -> int:
     try:
         cfg = load_config()
         return {"run": cmd_run, "chat": cmd_chat, "ack": cmd_ack, "accept": cmd_accept, "tasks": cmd_tasks, "sections": cmd_sections,
-                "next": cmd_next, "box": cmd_box, "rate": cmd_rate, "eval": cmd_eval, "review": cmd_review, "plan": cmd_plan, "proposals": cmd_proposals, "proposal": cmd_proposal, "talk": cmd_talk, "thread": cmd_thread, "timetable": cmd_timetable, "notebook": cmd_notebook, "documents": cmd_documents, "day": cmd_day, "search": cmd_search, "horizon": cmd_horizon, "note": cmd_note, "autonomy": cmd_autonomy, "dismiss": cmd_dismiss, "curriculum": cmd_curriculum,
+                "next": cmd_next, "dated": cmd_dated, "box": cmd_box, "rate": cmd_rate, "eval": cmd_eval, "review": cmd_review, "plan": cmd_plan, "proposals": cmd_proposals, "proposal": cmd_proposal, "talk": cmd_talk, "thread": cmd_thread, "timetable": cmd_timetable, "notebook": cmd_notebook, "documents": cmd_documents, "day": cmd_day, "search": cmd_search, "horizon": cmd_horizon, "note": cmd_note, "autonomy": cmd_autonomy, "dismiss": cmd_dismiss, "curriculum": cmd_curriculum,
                 "context": cmd_context, "state": cmd_state, "install": cmd_install, "stats": cmd_stats,
                 "projects": cmd_projects, "project": cmd_project, "export": cmd_export}[args.cmd](cfg, args)
     except Fail as e:

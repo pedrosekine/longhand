@@ -12,7 +12,7 @@ in your session, your windows and rules are not touched, and the private
 Hyprland is stopped when it is done.
 
 Run: python3 tests/page/shots.py OUT                         every scene
-     python3 tests/page/shots.py OUT --scene dashboard        one of: dashboard, note, keys, chat
+     python3 tests/page/shots.py OUT --scene dashboard        one of: dashboard, note, day, keys, chat
      python3 tests/page/shots.py OUT --order date             the dashboard's order (ask, course, date)
      python3 tests/page/shots.py OUT --root DIR               draw another checkout (a variant study)
      python3 tests/page/shots.py OUT --env NAME=VALUE         an environment variable for the page
@@ -101,6 +101,9 @@ def fixture(m, p):
          "question": "Does the draft clinic require a half-page submission or a longer one?",
          "recommended": "A half-page building block using the current thesis draft, not a new text."}]}))
     (p.daily / f"{m.TODAY}.md").write_text(m.header(m.TODAY) + "Plans for the day.\n\n" + "\n\n".join(lines) + "\n")
+    # Written yesterday for today: the band above today's note counts it.
+    (p.daily / f"{m.YDAY}.md").write_text(m.header(m.YDAY) + f"- [ ] Print the A0 poster #studio 📅 {d0} 16:00\n"
+                                          f"- [x] Book the plotter #studio ⏳ {d0} ✅ {d0}\n")
 
 
 def grab(path):
@@ -145,6 +148,13 @@ def scenes(m, p, out, which):
         p.open_fresh()
         p.call("cursorLine", 2)
         shot("note-0")
+    if which in ("all", "day"):
+        p.open_fresh()
+        p.wait(lambda: len(json.loads(p.call("dayTasks"))["titles"]) >= 4, 8)
+        shot("day-0")
+        p.call("keyPage", 0x54, 0x04000000 | 0x02000000)   # Ctrl+Shift+T: the list
+        shot("day-1")
+        p.call("keyPage", 0x54, 0x04000000 | 0x02000000)
     if which in ("all", "keys"):
         p.call("keys")
         shot("keys-0")
@@ -155,7 +165,7 @@ def scenes(m, p, out, which):
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("out", type=pathlib.Path)
-    ap.add_argument("--scene", default="all", choices=["all", "dashboard", "note", "keys", "chat"])
+    ap.add_argument("--scene", default="all", choices=["all", "dashboard", "note", "day", "keys", "chat"])
     ap.add_argument("--order", default="ask", choices=["ask", "course", "date"])
     ap.add_argument("--root", type=pathlib.Path, default=HERE.parent.parent)
     ap.add_argument("--env", action="append", default=[])

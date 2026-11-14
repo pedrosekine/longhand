@@ -108,6 +108,9 @@ ShellRoot {
       return it ? JSON.stringify({ rich: it.rich, plain: it.plain(), len: it.field.length }) : "null"
     }
     function shown(line: int): string { var it = page.editorItem.rowItem(line); return it ? it.field.shown : "" }
+    // The band above a day's note: the tasks the day is for, from any note.
+    function refreshDated(): void { page.refreshDated() }
+    function dayTasks(): string { return JSON.stringify({ open: page.dayTasksOpen, done: page.dayTasksDone, titles: page.dayTasks.map(function (t) { return t.title }) }) }
     // Typing straight into a drawn line's field, as keys do: what it holds
     // is read back through `plain()`. Only for text with no html in it.
     function typeField(s: string): void {

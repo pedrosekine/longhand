@@ -345,7 +345,16 @@ Deleting the line, or a whole block, cancels its deadlines and says so
 under the cursor; pasting the line anywhere or `Ctrl+Z` brings them back.
 Nothing is asked, and nothing is erased: cancelled is history. The
 calendar marks deadline days, `Ctrl+T` lists deadlines first, and in the
-bar popup `o` opens a deadline's line. How it all holds together, and why:
+bar popup `o` opens a deadline's line.
+
+A day's note shows what it is for, whatever day it was written on. A box
+due on a day (📅) or planned for it (⏳) is counted on that day's page, in
+a quiet line above the note: "For today · 4 tasks · 1 done · 3 to do" (on a
+day gone by, what is left reads "still open", in the urgent colour). A
+click on it, or `Ctrl+Shift+T`, unfolds the list: open ones first, each with
+its hour, its project and the day it was written; a click goes to its line.
+A cancelled box is not counted. The list is `longhand-agent dated`, read
+again whenever a note opens or is saved. How it all holds together, and why:
 [docs/tasks.md](docs/tasks.md).
 
 ## The dashboard

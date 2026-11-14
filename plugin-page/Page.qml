@@ -2,6 +2,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import QtQuick
+import QtQuick.Shapes
 import Qt.labs.folderlistmodel
 import qs.Commons
 // Qt 6.12's QtQuick has a `Color` of its own that shadows the shell's
@@ -839,6 +840,19 @@ Item {
     return m
   }
   readonly property var focusDue: root.dueByDay[Days.key(root.calFocus)] || []
+  // The tasks the open note's day is for, written on any day (2026-11-14):
+  // a box given a due day (📅) or a do-day (⏳) is shown on that day's
+  // page too, not only on the page it was written on. `longhand-agent
+  // dated`, read when a note opens or is saved and after the dashboard's
+  // list is read again: { "2026-11-16": [rows] }, rows open first.
+  property var dated: ({})
+  readonly property string noteIso: {
+    var p = svc.configured && svc.noteDate !== "" ? Days.parse(svc.noteDate, svc.dailyFormat()) : null
+    return p ? Days.format(p.date, "YYYY-MM-DD") : ""
+  }
+  readonly property var dayTasks: root.noteIso !== "" ? (root.dated[root.noteIso] || []) : []
+  readonly property int dayTasksDone: root.dayTasks.filter(function (t) { return t.done }).length
+  property bool dayTasksOpen: false
   property int dueFocus: -1          // in the list under the calendar (-1: the grid has the keys)
   property int projFocus: -1         // in the projects list (-1: not there)
   property var projects: []          // [{ tag, name, next: { at, room } }]
@@ -2690,6 +2704,7 @@ Item {
       return true
     }
     if (Sc.hit(event, "focusSection")) { root.toggleFocus(); return true }
+    if (Sc.hit(event, "dayTasks")) { if (root.dayTasks.length > 0) root.dayTasksOpen = !root.dayTasksOpen; else root.showHint("no task is for this day"); return true }
     if (Sc.hit(event, "private")) { root.togglePrivate(); return true }
     if (Sc.hit(event, "privateBlock")) { root.togglePrivateBlock(); return true }
     if (Sc.hit(event, "exportPdf")) { root.openExport(); return true }
@@ -3715,6 +3730,14 @@ Item {
   }
   property bool tasksAfterSave: false
   property bool tasksAgain: false
+
+  function refreshDated() {
+    if (!svc.configured) return
+    if (datedProc.running) { root.datedAgain = true; return }
+    datedProc.command = [svc.runner, "dated"]
+    datedProc.running = true
+  }
+  property bool datedAgain: false
 
   Timer { id: tasksHold; onTriggered: root.refreshTasks() }
 
@@ -5814,6 +5837,8 @@ Item {
     // (reconcile runs when the store's items arrive).
     root.reconcilePending = true
     dl.reload()
+    // The check may have ticked lines in other notes (the bar popup, pomo).
+    root.refreshDated()
     if (root.checkWanted) root.runCheck()
   }
 
@@ -6154,10 +6179,11 @@ Item {
     // Another note in the sheet: the whole of it (a project's part is
     // asked for again by openSection, once it has loaded).
     onFilePathChanged: editor.focusTag = ""
-    onLoaded: { root.applyText(svc.body); root.reconcilePending = true; root.startCheck(); root.reconcile(); root.openPass() }
-    onExternalChange: { root.applyText(svc.body, true); root.reconcilePending = true; root.startCheck(); root.reconcile(); root.notesChanged() }
+    onLoaded: { root.applyText(svc.body); root.reconcilePending = true; root.startCheck(); root.reconcile(); root.openPass(); root.refreshDated() }
+    onExternalChange: { root.applyText(svc.body, true); root.reconcilePending = true; root.startCheck(); root.reconcile(); root.notesChanged(); root.refreshDated() }
     onSavedNow: {
       root.notesChanged()
+      root.refreshDated()
       if (root.tasksAfterSave) { root.tasksAfterSave = false; root.refreshTasks() }
       if (root.exportAfterSave) { root.exportAfterSave = false; root.listExport() }
       root.runCheck()
@@ -6240,6 +6266,16 @@ Item {
   }
 
   Process {
+    id: datedProc
+    stdout: StdioCollector {
+      onStreamFinished: {
+        try { root.dated = JSON.parse(text).days || ({}) } catch (e) { }
+        if (root.datedAgain) { root.datedAgain = false; Qt.callLater(root.refreshDated) }
+      }
+    }
+  }
+
+  Process {
     id: tasksProc
     stdout: StdioCollector {
       onStreamFinished: {
@@ -6255,6 +6291,7 @@ Item {
         // Read after a box ticked, moved or put aside from the dashboard:
         // the project's list beside it counts them too.
         root.notesChanged()
+        root.refreshDated()
         if (root.tasksAgain) { root.tasksAgain = false; Qt.callLater(root.refreshTasks) }
       }
     }
@@ -7496,10 +7533,161 @@ Item {
           }
         }
 
+        // The tasks this day is for, written on any day (2026-11-14): a
+        // task written on Saturday "for Monday" is seen on Monday's page,
+        // counted, and one click from its line. Folded it is one quiet line;
+        // the arrow, a click or Ctrl+Shift+T unfolds the list.
+        Column {
+          id: dayBand
+          readonly property int count: root.dayTasks.length
+          readonly property int undone: count - root.dayTasksDone
+          readonly property bool past: root.noteIso !== "" && root.noteIso < Days.format(new Date(), "YYYY-MM-DD")
+          visible: count > 0 && editor.focusTag === "" && root.problem === "" && !root.pdfShown && !root.exportOpen
+          anchors.top: focusBand.bottom
+          anchors.topMargin: visible ? root.sp(16) : 0
+          anchors.left: parent.left
+          anchors.right: parent.right
+          height: visible ? implicitHeight : 0
+          spacing: root.sp(4)
+
+          Item {
+            width: parent.width
+            height: dayWhat.implicitHeight
+            Item {
+              id: dayMark
+              width: Math.round(root.fs(Style.font.bodySmall) * 0.72)
+              height: width
+              anchors.left: parent.left
+              anchors.verticalCenter: dayWhat.verticalCenter
+              Shape {
+                id: dayArrow
+                anchors.fill: parent
+                rotation: root.dayTasksOpen ? 90 : 0
+                layer.enabled: true
+                layer.samples: 8
+                readonly property real s: width
+                ShapePath {
+                  strokeColor: "transparent"
+                  fillColor: dayHead.containsMouse && root.handOn ? root.accent : root.faint
+                  startX: dayArrow.s * 0.2; startY: dayArrow.s * 0.08
+                  PathLine { x: dayArrow.s * 0.88; y: dayArrow.s * 0.5 }
+                  PathLine { x: dayArrow.s * 0.2; y: dayArrow.s * 0.92 }
+                  PathLine { x: dayArrow.s * 0.2; y: dayArrow.s * 0.08 }
+                }
+              }
+            }
+            Text {
+              id: dayWhat
+              anchors.left: dayMark.right
+              anchors.leftMargin: root.sp(8)
+              textFormat: Text.PlainText
+              text: (svc.isToday ? "For today" : "For this day") + "  ·  " + dayBand.count + (dayBand.count === 1 ? " task" : " tasks")
+                + "  ·  " + (dayBand.undone === 0 ? "all done" : root.dayTasksDone + " done")
+              color: root.dim
+              font.family: root.fontFamily
+              font.styleName: root.fontStyle
+              font.pixelSize: root.fs(Style.font.bodySmall)
+            }
+            Text {
+              visible: dayBand.undone > 0
+              anchors.left: dayWhat.right
+              anchors.baseline: dayWhat.baseline
+              textFormat: Text.PlainText
+              text: "  ·  " + dayBand.undone + (dayBand.past ? " still open" : " to do")
+              color: dayBand.past ? root.urgent : root.foreground
+              font.family: root.fontFamily
+              font.styleName: root.fontStyle
+              font.pixelSize: root.fs(Style.font.bodySmall)
+            }
+            MouseArea {
+              id: dayHead
+              anchors.fill: parent
+              anchors.margins: -root.sp(4)
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.dayTasksOpen = !root.dayTasksOpen
+              Tip { host: root; act: "dayTasks"; shown: parent.containsMouse; text: root.tips([[root.dayTasksOpen ? "Fold the list" : "The tasks this day is for, from every note", "dayTasks"]]) }
+            }
+          }
+
+          Repeater {
+            model: root.dayTasksOpen ? root.dayTasks : []
+            Item {
+              id: dayRow
+              required property var modelData
+              readonly property bool late: !modelData.done && dayBand.past
+              width: dayBand.width
+              height: dayRowText.implicitHeight + root.sp(4)
+              Rectangle {
+                anchors.fill: parent
+                anchors.leftMargin: -root.sp(4)
+                anchors.rightMargin: -root.sp(4)
+                radius: Style.cornerRadius
+                color: dayRowArea.containsMouse && root.handOn ? Style.hoverFill : "transparent"
+              }
+              Text {
+                id: dayRowBox
+                anchors.left: parent.left
+                anchors.leftMargin: dayMark.width + root.sp(8)
+                anchors.verticalCenter: parent.verticalCenter
+                textFormat: Text.PlainText
+                text: dayRow.modelData.done ? "✓" : "○"
+                color: dayRow.modelData.done ? root.dim : dayRow.late ? root.urgent : root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: root.fs(Style.font.bodySmall)
+              }
+              Text {
+                id: dayRowText
+                anchors.left: dayRowBox.right
+                anchors.leftMargin: root.sp(8)
+                anchors.right: dayRowMeta.left
+                anchors.rightMargin: root.sp(12)
+                anchors.verticalCenter: parent.verticalCenter
+                textFormat: Text.PlainText
+                elide: Text.ElideRight
+                text: dayRow.modelData.title
+                color: dayRow.modelData.done ? root.dim : dayRow.late ? root.urgent : root.foreground
+                font.strikeout: dayRow.modelData.done
+                font.family: root.fontFamily
+                font.styleName: root.fontStyle
+                font.pixelSize: root.fs(Style.font.bodySmall)
+              }
+              Text {
+                id: dayRowMeta
+                anchors.right: parent.right
+                anchors.baseline: dayRowText.baseline
+                textFormat: Text.PlainText
+                text: {
+                  var m = dayRow.modelData, parts = []
+                  parts.push(m.how === "due" ? "due" + (m.due.length > 10 ? " " + m.due.slice(11) : "") : "to do")
+                  if (m.project) parts.push("#" + m.project)
+                  if (m.written !== root.noteIso) {
+                    var w = m.written.split("-")
+                    parts.push("written " + Qt.formatDate(new Date(+w[0], +w[1] - 1, +w[2]), "ddd d MMM"))
+                  }
+                  return parts.join("  ·  ")
+                }
+                color: root.faint
+                font.family: root.fontFamily
+                font.styleName: root.fontStyle
+                font.pixelSize: root.fs(Style.font.bodySmall)
+              }
+              MouseArea {
+                id: dayRowArea
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.goToTask(dayRow.modelData)
+                Tip { host: root; shown: parent.containsMouse; text: root.tips([["Go to its line", ""]]) }
+              }
+            }
+          }
+        }
+
         Flickable {
           id: flick
           visible: root.problem === "" && !root.pdfShown && !root.exportOpen
-          anchors.top: focusBand.bottom
+          anchors.top: dayBand.bottom
           anchors.topMargin: root.sp(24)
           anchors.left: parent.left
           anchors.leftMargin: -root.gutter

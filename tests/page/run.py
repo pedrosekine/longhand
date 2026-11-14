@@ -216,7 +216,7 @@ if [ "$1" = projects ]; then
   exit $rc
 fi
 case "$1" in
-  accept|projects|project|sections|next|tasks|box|timetable|plan|proposals|proposal|talk|thread|rate|notebook|autonomy|day|search|horizon|note|export) exec "{ROOT}/agent/longhand-agent" "$@" ;;
+  accept|projects|project|sections|next|dated|tasks|box|timetable|plan|proposals|proposal|talk|thread|rate|notebook|autonomy|day|search|horizon|note|export) exec "{ROOT}/agent/longhand-agent" "$@" ;;
   run) sleep 2; exit 0 ;;
   chat) sleep 2; exec python3 "{chatstub}" "{self.vault}/agents/longhand/daily" "$@" ;;
 esac
@@ -3185,6 +3185,24 @@ def checks() -> int:
         check("- [ ] Diary 2" in p.note(), "…and the deadline is still open")
         p.call("dashKey", KEY_ESC, 0)
         p.wait(lambda: panes()["center"] == "note")
+
+        # 12x. the tasks a day is for, written on any day (2026-11-14): a
+        # box written yesterday "for today" is counted on today's page.
+        iso = dt.date.today().isoformat()
+        ahead = (dt.date.today() - dt.timedelta(days=2)).strftime("%Y.%m.%d")
+        (p.daily / f"{ahead}.md").write_text(header(ahead) + f"- [ ] written ahead for today 📅 {iso}\n"
+                                             f"- [x] already done for today ⏳ {iso}\n")
+        p.call("openDay", TODAY)
+        p.call("refreshDated")
+        day = lambda: json.loads(p.call("dayTasks"))
+        check(p.wait(lambda: {"written ahead for today", "already done for today"} <= set(day()["titles"])),
+              f"a task written yesterday for today is on today's page ({day()})")
+        check(day()["done"] >= 1 and day()["titles"].index("written ahead for today") < day()["titles"].index("already done for today"),
+              f"…counted done or not, the open ones first ({day()})")
+        was = day()["open"]
+        check(p.call("keyPage", 0x54, 0x04000000 | 0x02000000) == "true" and p.wait(lambda: day()["open"] != was),
+              "Ctrl+Shift+T unfolds the list, or folds it")
+        p.call("keyPage", 0x54, 0x04000000 | 0x02000000)
 
         # 13. the usage log: written on close, event names only
         p.call("closeAll")

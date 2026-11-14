@@ -116,6 +116,9 @@ var actions = [
   // One project's part of the day (2026-11-11, Focus.js): F for focus;
   // Esc gives the whole day back too.
   { id: "focusSection", group: "page", places: ["note"], does: "Only this project's part of the day: the section you are in (again: the whole day)", keys: ["Ctrl+Shift+F"] },
+  // The tasks this day is for, from every note (2026-11-14): T for
+  // tasks, as Ctrl+T is all of them.
+  { id: "dayTasks", group: "page", places: ["note"], does: "The tasks this day is for, written on any day: show or fold the list", keys: ["Ctrl+Shift+T"] },
 
   { id: "bold", group: "write", places: ["note"], does: "Bold", keys: ["Ctrl+B"] },
   { id: "italic", group: "write", places: ["note"], does: "Italic", keys: ["Ctrl+I"] },
