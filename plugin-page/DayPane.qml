@@ -207,7 +207,7 @@ BorderSurface {
                     anchors.right: parent.right
                     width: cardPillText.implicitWidth + Math.round(page.textSize * 0.9)
                     height: cardPillText.implicitHeight + Math.round(page.textSize * 0.25)
-                    radius: height / 2
+                    radius: Style.cornerRadius
                     color: card.item.kind === "do-date" ? Style.selectedFill : "transparent"
                     border.width: card.item.kind === "do-date" ? 0 : 1
                     border.color: page.faint

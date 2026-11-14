@@ -1574,3 +1574,14 @@ only the window and the panels around it differ.
   up. A heading's space counts the empty lines above it, as before. A note
   with runs of blank lines (from elsewhere) shows them now. `Rows.js`
   (`extraBlank`), `NoteEditor.qml`; `tests/tst_editor.qml`.
+- 2026-11-14: corners are Omarchy's. Every surface, chip, pill, keycap,
+  bubble, gutter bar and highlight takes the shell's corner setting
+  (`Style.cornerRadius`, which follows Hyprland's rounding: square by
+  default); a checkbox, and the agent's diamond, take Omarchy's own
+  checkbox rounding (half of it, never under 2px; Ui/MultiSelect.qml).
+  Round stays round only where Omarchy keeps it round: a progress track,
+  and dots (the saved dot, bullets, the calendar's due dots, the lock's
+  shackle); the seal is the brand's (docs/brand). The note editor reads no
+  shell module, so the page hands it `cornerRadius`. Seen before and after
+  with `tests/page/shots.py`, which draws in a private Hyprland so it works
+  with the Air's lid shut and the session locked.

@@ -200,7 +200,7 @@ BorderSurface {
                       readonly property bool strong: keyRow.listening || keyRow.modelData.changed
                       width: capText.implicitWidth + Math.round(page.textSize * 0.9)
                       height: capText.implicitHeight + Math.round(page.textSize * 0.25)
-                      radius: height / 2
+                      radius: Style.cornerRadius
                       color: "transparent"
                       border.width: 1
                       border.color: strong ? page.accent : page.faint

@@ -75,7 +75,7 @@ BorderSurface {
     onCurChanged: page.selected(chip, "center", cur)
     width: chipRow.implicitWidth + page.sp(16)
     height: chipRow.implicitHeight + Math.round(page.textSize * 0.3)
-    radius: height / 2
+    radius: Style.cornerRadius
     color: cur ? Style.selectedFill : chipHover.hovered && page.handOn ? Style.hoverFill : "transparent"
     border.width: on ? 1 : 0
     border.color: page.accent
@@ -626,10 +626,13 @@ BorderSurface {
             // talked about, only a faint one while its chat key shows, so
             // the key always grows from a bar. As tall as the row's fill,
             // and cornered as the shell is (Style.cornerRadius, Hyprland's
-            // rounding; square by default).
+            // rounding; square by default). At the fill's left edge, so on
+            // a row set in under the box it is about (the agent's) it moves
+            // in with the fill, leaving no gap between them.
             Item {
+              id: chatBar
               visible: dashRow.chatState !== "" || chatKey.visible
-              x: page.sp(1)
+              x: inner.x - page.sp(9)
               y: inner.y - page.sp(7)
               width: page.sp(3)
               height: inner.height + page.sp(13)
@@ -646,7 +649,7 @@ BorderSurface {
                 id: chatSpark
                 width: parent.width
                 height: Math.max(page.sp(12), parent.height * 0.5)
-                radius: width
+                radius: Style.cornerRadius
                 visible: dashRow.chatState === "thinking"
                 gradient: Gradient {
                   GradientStop { position: 0.0; color: Qt.rgba(page.accent.r, page.accent.g, page.accent.b, 0) }
@@ -671,7 +674,7 @@ BorderSurface {
             Rectangle {
               id: chatKey
               visible: dashRow.chatCan && (dashRow.hot || rowHover.hovered && page.handOn || chatKeyArea.containsMouse)
-              x: page.sp(4) - width        // its right edge is the bar's
+              x: chatBar.x + chatBar.width - width   // its right edge is the bar's
               y: inner.y + box.y + Math.round((box.size - height) / 2)
               height: box.size + page.sp(6)
               width: Math.max(height, Math.ceil(chatKeyInk.tightBoundingRect.width) + page.sp(10)) + page.sp(3)
@@ -847,7 +850,7 @@ BorderSurface {
                 y: Math.round((inner.lineH - size) / 2)
                 width: size
                 height: size
-                radius: Math.max(2, Math.round(size * 0.22))
+                radius: Math.max(2, Math.round(Style.cornerRadius / 2))
                 color: dashRow.done && dashRow.author === "" ? pal.green : "transparent"
                 border.width: dashRow.done || dashRow.author !== "" ? 0 : Math.max(1, Math.round(page.textSize * 0.08))
                 readonly property color edge: boxArea.containsMouse && page.handOn ? page.accent : dashRow.late ? page.urgent : page.dim
@@ -860,7 +863,7 @@ BorderSurface {
                   width: Math.round(box.size * 0.74)
                   height: width
                   rotation: 45
-                  radius: Math.max(1, Math.round(width * 0.12))
+                  radius: Math.max(1, Math.round(Style.cornerRadius / 2))
                   color: dashRow.done ? pal.green : "transparent"
                   border.width: dashRow.done ? 0 : Math.max(1, Math.round(page.textSize * 0.08))
                   border.color: box.edge
@@ -932,7 +935,7 @@ BorderSurface {
                       : modelData.tone === "done" ? page.faint : page.dim
                     width: pillText.implicitWidth + Math.round(page.textSize * 0.9)
                     height: pillText.implicitHeight + Math.round(page.textSize * 0.25)
-                    radius: height / 2
+                    radius: Style.cornerRadius
                     color: filled ? Style.selectedFill : "transparent"
                     border.width: filled ? 0 : 1
                     border.color: modelData.tone === "late" ? page.urgent : page.faint

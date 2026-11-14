@@ -54,7 +54,7 @@ Item {
     anchors.right: parent.right
     width: Math.min(Math.ceil(natural.implicitWidth) + 2, Math.round(turn.width * 0.8) - turn.padX * 2) + turn.padX * 2
     height: said.implicitHeight + turn.padY * 2
-    radius: Math.max(Style.cornerRadius, page.sp(10))
+    radius: Style.cornerRadius
     color: Util.alpha(page.accent, 0.14)
   }
 

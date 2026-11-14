@@ -90,6 +90,9 @@ Item {
   property color dim: "gray"
   property color faint: "lightgray"
   property color selectionColor: "lightblue"
+  // The shell's corners (Style.cornerRadius, Hyprland's rounding), from the
+  // page: the editor reads no shell module of its own.
+  property int cornerRadius: 0
   property color accent: "orange"
   property color urgent: "red"
 
@@ -1892,7 +1895,7 @@ Item {
             x: row.outerLevel * ed.markerWidth + index * ed.quoteWidth + Math.round(ed.textSize * 0.15)
             width: Math.max(2, Math.round(ed.textSize * 0.12))
             height: row.height
-            radius: width / 2
+            radius: ed.cornerRadius
             color: ed.quoteColor
           }
         }
@@ -1919,7 +1922,7 @@ Item {
           y: row.gapTop + Math.round((row.firstLine - size) / 2)
           width: size
           height: size
-          radius: Math.max(2, Math.round(size * 0.22))
+          radius: Math.max(2, Math.round(ed.cornerRadius / 2))
           // The person's box is this square; the agent's and the shared one
           // draw their own shape inside it, and the square gives way.
           readonly property color edge: boxArea.containsMouse && ed.handOn ? ed.accent : ed.boxColor
@@ -1934,7 +1937,7 @@ Item {
             width: Math.round(box.size * 0.74)
             height: width
             rotation: 45
-            radius: Math.max(1, Math.round(width * 0.12))
+            radius: Math.max(1, Math.round(ed.cornerRadius / 2))
             color: row.checked ? (boxArea.containsMouse && ed.handOn ? ed.accent : ed.checkColor) : "transparent"
             border.width: row.checked ? 0 : Math.max(1, Math.round(ed.textSize * 0.08))
             border.color: box.edge
@@ -2042,7 +2045,7 @@ Item {
           y: row.gapTop + Math.round((row.firstLine - height) / 2)
           width: dueText.implicitWidth + (row.deadline > 0 || row.pending || row.binding ? Math.round(ed.textSize * 0.9) : 0)
           height: dueText.implicitHeight + Math.round(ed.textSize * 0.2)
-          radius: height / 2
+          radius: ed.cornerRadius
           color: "transparent"
           border.width: row.deadline > 0 || row.pending || row.binding ? 1 : 0
           border.color: row.pending || row.binding ? ed.accent : late ? ed.urgent : ed.faint
@@ -2087,7 +2090,7 @@ Item {
                 y: field.y + modelData.y
                 width: modelData.w + 2
                 height: modelData.h
-                radius: mark.modelData.kind === "selection" ? 0 : Math.max(2, Math.round(ed.textSize * 0.15))
+                radius: ed.cornerRadius
                 color: mark.modelData.kind === "selection" ? ed.selectionColor : mark.modelData.kind === "current" ? ed.currentMarkColor
                   : mark.modelData.kind === "cue" ? ed.cueColor : ed.markColor
                 opacity: 1

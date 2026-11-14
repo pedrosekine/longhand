@@ -100,7 +100,7 @@ PanelToolTip {
           required property string modelData
           width: Math.max(capText.implicitWidth + tip.host.sp(10), height)
           height: capText.implicitHeight + tip.host.sp(3)
-          radius: tip.host.sp(3)
+          radius: Style.cornerRadius
           color: tip.host.sheetColor
           border.width: 1
           border.color: tip.edge

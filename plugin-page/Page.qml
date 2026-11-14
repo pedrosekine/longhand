@@ -7535,7 +7535,7 @@ Item {
 
               Rectangle {
                 anchors.fill: parent
-                radius: width
+                radius: Style.cornerRadius
                 color: parent.modelData.sending ? root.dim
                   : parent.modelData.unread ? root.accent : root.dim
                 opacity: parent.modelData.sending ? 0.3 : 1
@@ -7550,7 +7550,7 @@ Item {
                 id: spark
                 width: parent.width
                 height: Math.max(root.sp(20), parent.height * 0.5)
-                radius: width
+                radius: Style.cornerRadius
                 visible: parent.modelData.sending
                 gradient: Gradient {
                   GradientStop { position: 0.0; color: Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0) }
@@ -7660,6 +7660,7 @@ Item {
             dim: root.dim
             faint: root.faint
             selectionColor: pal.selection
+            cornerRadius: Style.cornerRadius
             accent: root.accent
             urgent: root.urgent
             headingColors: pal.headings
