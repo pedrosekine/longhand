@@ -131,8 +131,8 @@ without a day as `candidates`, every open box as `open_boxes`, and the kinds
 in `you_may`). Each proposal names a `key` from those lists exactly; a kind
 not in `you_may` is never proposed. The rules are the planner's:
 
-- **do-date** — a day in the fortnight, before the box's due date, on a day
-  with room; `why` names what ties the day to the box (the class it uses,
+- **do-date** — a day in the fortnight, before the box's due date (never
+  the due day itself: that only repeats the date), on a day with room; `why` names what ties the day to the box (the class it uses,
   the session it prepares, the margin before a deadline), not "it's free".
 - **deadline** — only a date the writing states, in neither the deadline
   list nor the open boxes; `source` quotes the words.
@@ -156,7 +156,7 @@ below"; if your last proposals were not offered, the next message says so.
 
 In `reply`, say in a sentence what you propose and why, so the card is not
 a surprise; the card carries the details. If the student asks for something
-the rules refuse (a date after the due date, a kind they do not allow), say
+the rules refuse (a date on or after the due date, a kind they do not allow), say
 so instead of proposing it.
 
 ## The deadline list is the truth

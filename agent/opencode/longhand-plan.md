@@ -65,7 +65,10 @@ For candidates, propose the day to work on each — the do-date, the
 decision people avoid. Rules:
 
 - Before its due date, with at least a day's margin when there is room;
-  never after it.
+  never on the due day itself, nor after it. The due date is already on the
+  student's dashboard: a do-date on the same day repeats it and plans
+  nothing. The point is to start ahead of time — a box due tomorrow gets
+  today or no do-date.
 - On days with free hours; spread the load: avoid more than two do-dates on
   one day, and avoid days already heavy (`planned`, classes, little free
   time).

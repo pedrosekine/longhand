@@ -133,7 +133,7 @@ def workload(tasks: list[dict], deadlines: list[dict], today: dt.date) -> list[d
 
 def candidates(tasks: list[dict], deadlines: list[dict], today: dt.date) -> list[dict]:
     """The boxes worth planning: open tasks and deadlines with no do-date,
-    and not put away (quiet or shelved). A note box is thinking, not work to
+    due after today, and not put away (quiet or shelved). A note box is thinking, not work to
     schedule, and is left alone. Nearest due date first, then priority, then
     the oldest."""
     by_anchor = {x["id"]: x for x in deadlines}
@@ -146,8 +146,8 @@ def candidates(tasks: list[dict], deadlines: list[dict], today: dt.date) -> list
         due = t.get("due") or ""
         if t.get("anchor") and t["anchor"] in by_anchor:
             due = by_anchor[t["anchor"]]["due"].strftime("%Y-%m-%d %H:%M")
-        if due and due[:10] < today.isoformat():
-            continue                                  # already late: a do-date cannot help
+        if due and due[:10] <= today.isoformat():
+            continue                                  # due today or late: no day before it is left
         out.append({"key": t.get("key") or lifespan.key_of(t), "title": t.get("title") or t.get("text", ""),
                     "project": t.get("project") or "", "where": " › ".join(t.get("path") or []),
                     "due": due, "priority": t.get("priority") or 0, "est": t.get("est") or "",
@@ -353,8 +353,11 @@ def validate(reply: dict, cands: list[dict], days: list[dict], ledger: dict, tod
             c = by_key.get(key)
             if not c or date not in window or (key, date) in no_day:
                 continue
-            if c["due"] and date > c["due"][:10]:
-                continue                                  # never after its own due date
+            if c["due"] and date >= c["due"][:10]:
+                # Never on or after its own due date: a do-date on the due
+                # day only repeats the date the dashboard already shows
+                # (2026-11-14: six such, accepted, had planned nothing).
+                continue
             item = {"kind": kind, "key": key, "date": date, "why": why, "title": c["title"], "project": c["project"]}
         elif kind == "deadline":
             title = re.sub(r"\s+", " ", str(p.get("title") or "")).strip()[:120]

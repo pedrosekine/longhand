@@ -150,6 +150,7 @@ def main() -> int:
         "proposals": [
             {"kind": "do-date", "key": key["read the paper"], "date": day(3), "why": "Wednesday is free."},
             {"kind": "do-date", "key": key["essay draft"], "date": day(7), "why": "after its due date"},
+            {"kind": "do-date", "key": key["essay draft"], "date": day(5), "why": "on its due date"},
             {"kind": "do-date", "key": "not a key", "date": day(2), "why": "invented"},
             {"kind": "do-date", "key": key["read the paper"], "date": day(4), "why": "a second for the same box"},
             {"kind": "do-date", "key": key["essay draft"], "date": day(30), "why": "outside the fortnight"},
@@ -168,7 +169,7 @@ def main() -> int:
     items = ledger()
     dd = [x for x in items if x["kind"] == "do-date"]
     check(len(dd) == 1 and dd[0]["date"] == day(3) and dd[0]["why"] == "Wednesday is free.",
-          "never after a box's own due date, never an unknown box, one per box, inside the fortnight")
+          "never on or after a box's own due date, never an unknown box, one per box, inside the fortnight")
     check([x["question"] for x in items if x["kind"] == "question"] ==
           ["Which essay is this — Design Theory's?", "Do you work on weekends?"], "at most two questions, each about a box offered or none")
     check((know / "patterns.md").read_text().strip() == "- plans on Wednesdays", "its knowledge files are written as always")
