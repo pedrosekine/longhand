@@ -550,13 +550,17 @@ section, word for word, and to the diary's decisions log.
      - `Space` on a picture's line for a lightbox, and arrows between the
        pictures;
      - Tab between links, with `Space` to preview one.
-   - **A table too wide** even at its narrowest scrolls sideways in its
-     block.
+   - ~~**A table too wide**~~ *built 2026-11-14*: it scrolls sideways in
+     its block (`docs/files.md`, "Tables"; `tst_editor.qml`).
    - **`@` in the agent's box** points at other files, not only at blocks of
      the open note.
-   - **Helpful / not helpful** on a note's answers.
+   - ~~**Helpful / not helpful** on a note's answers~~ *built
+     2026-11-14*: as the day's, with the weekly review and eval cases
+     (`docs/files.md`, "Talking about a note"; `test_note.py`).
    - **The blip on a dashboard row.**
-   - **PDFs:** remember the place between openings, and a dark reading mode.
+   - **PDFs:** ~~remember the place between openings~~ *built 2026-11-14*
+     (`PdfPlaces.js`, `tst_pdfplaces.qml`); a dark reading mode waits
+     with item 15.
    - **Embedded notes and blocks** (`![[Note#^id]]`) drawn inline; footnote
      previews.
 
@@ -665,6 +669,33 @@ Small, when passing by:
     block's other actions (private, chat, a deadline). It would reuse the
     `@` list. Not built: `Ctrl+Shift+E` with a selection already exports
     a block or what is selected, and the menu is bigger than export.
+15. **Reading papers in Longhand — next to build** (2026-11-14, the
+    student's ask: "Longhand as a PDF visualiser where the agent helps with
+    reading, highlighting and understanding a paper well"). Today a PDF
+    opens read-only in the note's place (scroll, find, size, `o`), and it
+    now opens where it was left. Parked for a grilling first, then built
+    before anything else here. Questions for the grilling:
+    - **Highlights:** written into the PDF file, or kept beside it (a
+      reading note in the vault, readable in Obsidian, by page and quoted
+      words)? Qt's view already selects text (`PdfSelection`).
+    - **The agent:** explain a selected passage, summarise a section, quiz,
+      tie it to the course and its deadlines; the runner already reads PDFs
+      through pdftotext. "Ask about this note" on the open PDF is the first
+      slice.
+    - **Afterwards:** do highlights and notes flow into the day's note or
+      the project, and how do they show?
+    - Scanned PDFs have no text (no OCR; *Not built, on purpose*).
+16. **Dates with no cue word** (2026-11-14, the student's ask, to decide
+    on 2026-11-15). A box binds a date only after `due`, `by`, `until`,
+    `before`, `📅`, or `on` before a weekday or a month; the student wants
+    "- [ ] essay monday" to be enough, and dotted dates ("12.11") read
+    everywhere a date is read (the cue, `Ctrl+D`'s "when?", the
+    dashboard's `t`). **Decide first:** a bare date at a box's end — a
+    ⏳ do-date (proposed: the cue words stay deadlines; "call Anna monday"
+    reads as a plan) or a 📅 deadline (as Todoist does)? Which bare words
+    count: weekdays, today/tomorrow, `12.11`, `20 oct`, `next week`; never
+    a bare month or a lone number. It lights up as typed, and Backspace
+    keeps it as words, as the cue does now.
 
 - ~~**Tag suggestions while typing**~~ *done 2026-10-18*: `#` and a letter
   offer the tags that exist — the projects', then those written in the
