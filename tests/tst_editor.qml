@@ -1529,5 +1529,46 @@ Item {
       verify(ed.isShown(Rows.rowAt(ed.rows, ed.cursorPosition)), "the cursor is put on a drawn line")
       ed.focusTag = ""
     }
+
+    // A table too wide for the column even with every column given way
+    // (about eight letters each) scrolls sideways in its block, every row
+    // together: a sideways swipe, or Shift and the wheel; a plain wheel
+    // still scrolls the note.
+    function test_a_too_wide_table_scrolls_sideways() {
+      var wide = "| " + ["alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel", "india", "juliet"].map(function (w) { return w + "-" + w + "-" + w }).join(" | ") + " |"
+      var dashes = "|" + new Array(11).join(" --- |")
+      var cells = "| " + new Array(11).join("words in a cell | ").replace(/ \| $/, " |")
+      var t = "above\n\n" + wide + "\n" + dashes + "\n" + cells + "\n\nbelow"
+      start(t, 2)                                   // the cursor in "above": the table is drawn
+      wait(50)
+      var head = ed.rowItem(2), body = ed.rowItem(4)
+      verify(head.tableDrawn, "the table is drawn")
+      verify(head.tableReach > 0, "it is wider than the column (" + head.tableReach + ")")
+      verify(head.tinfo.widths.every(function (w) { return w >= ed.cellMin - 0.5 }), "no column narrower than about eight letters")
+      compare(head.tableShiftNow, 0)
+      mouseWheel(head, 40, 5, -120, 0)              // a sideways swipe, to the right
+      tryVerify(function () { return head.tableShiftNow > 0 }, 1000, "sideways: the table moves")
+      compare(body.tableShiftNow, head.tableShiftNow, "every row of it by the same shift")
+      var was = head.tableShiftNow
+      mouseWheel(body, 40, 5, 0, -120, Qt.NoButton, Qt.ShiftModifier)   // Shift and the wheel, down
+      tryVerify(function () { return head.tableShiftNow > was }, 1000, "Shift and the wheel move it on")
+      for (var i = 0; i < 80; i++) mouseWheel(head, 40, 5, -120, 0)
+      tryCompare(head, "tableShiftNow", head.tableReach, 1000, "never past its right edge")
+      for (i = 0; i < 80; i++) mouseWheel(head, 40, 5, 120, 0)
+      tryCompare(head, "tableShiftNow", 0, 1000, "…nor its left")
+      mouseWheel(head, 40, 5, 0, -120)              // a plain wheel: the note's, not the table's
+      compare(head.tableShiftNow, 0)
+    }
+
+    function test_a_table_that_fits_does_not_scroll() {
+      start("above\n\n| a | b |\n| --- | --- |\n| one | two |\n\nbelow", 2)
+      wait(50)
+      var head = ed.rowItem(2)
+      verify(head.tableDrawn)
+      compare(head.tableReach, 0)
+      mouseWheel(head, 20, 5, -120, 0)
+      wait(50)
+      compare(head.tableShiftNow, 0)
+    }
   }
 }

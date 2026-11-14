@@ -152,8 +152,22 @@ Item {
   // is outside it — a bold header, hairlines across, no rules down, each
   // column as wide as its widest cell until the row would not fit, then the
   // widest ones give way and wrap — and as written while it is inside.
+  // A column never gives way below about eight letters; a table too wide
+  // even then scrolls sideways in its block (2026-11-14), every row of it
+  // together, by a sideways swipe or Shift and the wheel.
   FontMetrics { id: cellMetrics; font.family: ed.fontFamily; font.styleName: ed.fontStyle; font.pixelSize: ed.textSize }
   readonly property real cellGap: Math.round(ed.textSize * 1.2)
+  readonly property real cellMin: Math.max(40, Math.round(cellMetrics.advanceWidth("abcdefgh")))
+  // How far each drawn table is scrolled sideways, by its first line.
+  property var tableShifts: ({})
+  function tableShift(start) { return ed.tableShifts[start] || 0 }
+  function setTableShift(start, x) {
+    var m = {}
+    for (var k in ed.tableShifts) m[k] = ed.tableShifts[k]
+    if (x > 0) m[start] = x
+    else delete m[start]
+    ed.tableShifts = m
+  }
   property var tableCache: ({})
   function tableInfo(start, width) {
     var rows = ed.rows
@@ -173,19 +187,20 @@ Item {
       for (var j = 0; j < n; j++)
         natural[j] = Math.max(natural[j], cellMetrics.advanceWidth(cs[j] || "") * (k === 0 ? 1.06 : 1) + 2)
     }
-    var room = Math.max(n * 40, width - ed.cellGap * (n - 1))
+    var room = Math.max(1, width - ed.cellGap * (n - 1))
     var widths = natural.slice()
     var total = widths.reduce(function (a, b) { return a + b }, 0)
     // Too wide: the narrow columns keep their width, the rest share what is left.
     for (var guard = 0; total > room && guard < n; guard++) {
       var fair = room / n, keep = 0, wide = 0
       for (var w = 0; w < n; w++) { if (natural[w] <= fair) keep += natural[w]; else wide++ }
-      var share = wide > 0 ? Math.max(40, (room - keep) / wide) : fair
+      var share = Math.max(ed.cellMin, wide > 0 ? (room - keep) / wide : fair)
       widths = natural.map(function (x) { return Math.min(x, share) })
       total = widths.reduce(function (a, b) { return a + b }, 0)
       if (total <= room + 1) break
     }
-    var info = { align: align, widths: widths, width: widths.reduce(function (a, b) { return a + b }, 0) + ed.cellGap * (n - 1) }
+    var whole = widths.reduce(function (a, b) { return a + b }, 0) + ed.cellGap * (n - 1)
+    var info = { align: align, widths: widths, width: whole, reach: Math.max(0, Math.ceil(whole - width)) }
     ed.tableCache.key = key           // mutated, not reassigned: a cache tells no binding
     ed.tableCache.info = info
     return info
@@ -1772,6 +1787,9 @@ Item {
         readonly property bool tableDrawn: kind === "table" && !(ed.focusedRow >= tableStart && ed.focusedRow < tableStart + tableLen)
         readonly property var tinfo: kind === "table" ? ed.tableInfo(tableStart, row.width - row.fieldX) : null
         readonly property var tcells: kind === "table" && tableRow !== 1 ? Rows.cells(raw) : []
+        // How far this table is scrolled sideways, and how far it can be.
+        readonly property real tableShiftNow: tableClip.shift
+        readonly property real tableReach: tableClip.reach
         property bool rendering: false
 
         // A drawn arrow is its glyph over its first character (Emph.js):
@@ -1800,38 +1818,90 @@ Item {
 
         FontMetrics { id: fm; font: field.font }
 
-        Row {
-          id: cellRow
-          visible: row.tableDrawn && row.tableRow !== 1 && !!row.tinfo
+        // The drawn table, clipped to the column: a table too wide for it
+        // moves sideways under the clip, every row by the same shift.
+        Item {
+          id: tableClip
+          visible: row.tableDrawn && !!row.tinfo
           x: row.fieldX
-          y: row.gapTop + Math.round(ed.textSize * 0.25)
-          spacing: ed.cellGap
-          Repeater {
-            model: cellRow.visible ? row.tinfo.widths.length : 0
-            Text {
-              required property int index
-              width: row.tinfo.widths[index]
-              wrapMode: Text.Wrap
-              textFormat: Text.RichText
-              text: Emph.html(row.tcells[index] || "", ed.codeFamily, { color: String(ed.linkColor), missing: String(ed.faint),
-                                source: String(ed.dim), reveal: -1, known: function (l) { return !ed.linkKnown || ed.linkKnown(l) } })
-              horizontalAlignment: row.tinfo.align[index] === "right" ? Text.AlignRight : row.tinfo.align[index] === "center" ? Text.AlignHCenter : Text.AlignLeft
-              color: ed.foreground
-              font.family: ed.fontFamily
-              font.styleName: row.tableRow === 0 ? "" : ed.fontStyle
-              font.weight: row.tableRow === 0 ? Font.DemiBold : Font.Normal
-              font.pixelSize: ed.textSize
+          width: Math.max(0, row.width - row.fieldX)
+          height: row.height
+          clip: reach > 0
+          readonly property real reach: row.tinfo ? row.tinfo.reach : 0
+          readonly property real shift: Math.min(reach, ed.tableShift(row.tableStart))
+          // Under the words' field, so its text cursor still shows; the
+          // wheel reaches it, since the field takes none. Only sideways
+          // (or Shift and the wheel) moves the table; the rest scrolls the
+          // note as ever.
+          MouseArea {
+            anchors.fill: parent
+            z: -1
+            enabled: tableClip.reach > 0
+            acceptedButtons: Qt.NoButton
+            onWheel: function (wheel) {
+              var dx = wheel.pixelDelta.x !== 0 ? wheel.pixelDelta.x : wheel.angleDelta.x / 2
+              var dy = wheel.pixelDelta.y !== 0 ? wheel.pixelDelta.y : wheel.angleDelta.y / 2
+              if (wheel.modifiers & Qt.ShiftModifier) { if (dx === 0) dx = dy; dy = 0 }
+              if (dx === 0 || Math.abs(dx) < Math.abs(dy)) { wheel.accepted = false; return }
+              ed.setTableShift(row.tableStart, Math.max(0, Math.min(tableClip.reach, tableClip.shift - dx)))
             }
           }
-        }
-        // The hairlines: under the header strong, between the rows faint.
-        Rectangle {
-          visible: row.tableDrawn && !!row.tinfo && row.tableRow !== 0 && row.tableRow < row.tableLen - 1
-          x: row.fieldX
-          y: row.tableRow === 1 ? Math.round(row.height / 2) : row.height - 1
-          width: row.tinfo ? row.tinfo.width : 0
-          height: 1
-          color: row.tableRow === 1 ? ed.dim : Qt.rgba(ed.faint.r, ed.faint.g, ed.faint.b, 0.35)
+          Row {
+            id: cellRow
+            visible: row.tableRow !== 1
+            x: -tableClip.shift
+            y: row.gapTop + Math.round(ed.textSize * 0.25)
+            spacing: ed.cellGap
+            Repeater {
+              model: cellRow.visible ? row.tinfo.widths.length : 0
+              Text {
+                required property int index
+                width: row.tinfo.widths[index]
+                wrapMode: Text.Wrap
+                textFormat: Text.RichText
+                text: Emph.html(row.tcells[index] || "", ed.codeFamily, { color: String(ed.linkColor), missing: String(ed.faint),
+                                  source: String(ed.dim), reveal: -1, known: function (l) { return !ed.linkKnown || ed.linkKnown(l) } })
+                horizontalAlignment: row.tinfo.align[index] === "right" ? Text.AlignRight : row.tinfo.align[index] === "center" ? Text.AlignHCenter : Text.AlignLeft
+                color: ed.foreground
+                font.family: ed.fontFamily
+                font.styleName: row.tableRow === 0 ? "" : ed.fontStyle
+                font.weight: row.tableRow === 0 ? Font.DemiBold : Font.Normal
+                font.pixelSize: ed.textSize
+              }
+            }
+          }
+          // The hairlines: under the header strong, between the rows faint.
+          Rectangle {
+            visible: row.tableRow !== 0 && row.tableRow < row.tableLen - 1
+            x: -tableClip.shift
+            y: row.tableRow === 1 ? Math.round(row.height / 2) : row.height - 1
+            width: row.tinfo ? row.tinfo.width : 0
+            height: 1
+            color: row.tableRow === 1 ? ed.dim : Qt.rgba(ed.faint.r, ed.faint.g, ed.faint.b, 0.35)
+          }
+          // More to see: the paper fades in at the edge the table goes on past.
+          Rectangle {
+            visible: tableClip.shift > 0.5
+            anchors.left: parent.left
+            width: Math.min(ed.cellGap * 2, tableClip.width / 4)
+            height: parent.height
+            gradient: Gradient {
+              orientation: Gradient.Horizontal
+              GradientStop { position: 0; color: ed.background }
+              GradientStop { position: 1; color: Qt.rgba(ed.background.r, ed.background.g, ed.background.b, 0) }
+            }
+          }
+          Rectangle {
+            visible: tableClip.shift < tableClip.reach - 0.5
+            anchors.right: parent.right
+            width: Math.min(ed.cellGap * 2, tableClip.width / 4)
+            height: parent.height
+            gradient: Gradient {
+              orientation: Gradient.Horizontal
+              GradientStop { position: 0; color: Qt.rgba(ed.background.r, ed.background.g, ed.background.b, 0) }
+              GradientStop { position: 1; color: ed.background }
+            }
+          }
         }
 
         Item {

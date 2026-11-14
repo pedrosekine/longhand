@@ -412,7 +412,11 @@ block, `table` rows.
   between rows, no rules down, and alignment from the `:--:` line.
 - Each column is as wide as its widest cell. When the row would not fit,
   the narrow columns keep their width and the wide ones share the rest and
-  wrap.
+  wrap, never below about eight letters.
+- A table too wide even then scrolls sideways in its block (2026-11-14):
+  every row together, by a sideways swipe or Shift and the wheel; the paper
+  fades in at the edge it goes on past. A plain wheel still scrolls the
+  note.
 - Cells draw emphasis and links.
 - With the cursor anywhere in it, every line shows as written.
 
@@ -420,7 +424,6 @@ block, `table` rows.
 - `Space` on a picture's line for a lightbox, and arrows between the
   pictures (Obsidian 1.13.2).
 - Tab between links, with `Space` to preview one and Enter to go.
-- A table too wide even at its narrowest scrolls sideways in its block.
 - A cell editor; the pipes lined up while the source shows.
 - Embedded notes and blocks (`![[Note#^id]]`) drawn inline with a quiet
   rule.
