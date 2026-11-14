@@ -2,6 +2,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import QtQuick
+import QtQuick.Shapes
 import Qt.labs.folderlistmodel
 import qs.Commons
 import qs.Ui
@@ -779,15 +780,33 @@ BorderSurface {
                 y: 0
                 spacing: page.sp(8)
                 readonly property bool empty: dashRow.kind === "band" && modelData.count === 0
-                Text {
+                // Drawn, not typed: the font's ▸ and ▾ came out a few
+                // pixels wide, too small to read as arrows (2026-11-14).
+                // As tall as the band's capitals, standing on its baseline;
+                // ▸ folded, turned a quarter to ▾ open.
+                Item {
                   id: bandMark
-                  width: page.sp(10)
+                  width: Math.round(page.fs(Style.font.body) * 0.72)
+                  height: width
+                  baselineOffset: height
                   anchors.baseline: bandName.baseline
-                  textFormat: Text.PlainText
-                  text: dashRow.kind !== "band" || modelData.fixed || bandRow.empty ? "" : modelData.open ? "▾" : "▸"
-                  color: page.faint
-                  font.family: page.fontFamily
-                  font.pixelSize: page.fs(Style.font.caption)
+                  Shape {
+                    id: bandArrow
+                    anchors.fill: parent
+                    visible: dashRow.kind === "band" && !modelData.fixed && !bandRow.empty
+                    rotation: dashRow.kind === "band" && modelData.open ? 90 : 0
+                    layer.enabled: true
+                    layer.samples: 8
+                    readonly property real s: width
+                    ShapePath {
+                      strokeColor: "transparent"
+                      fillColor: page.faint
+                      startX: bandArrow.s * 0.2; startY: bandArrow.s * 0.08
+                      PathLine { x: bandArrow.s * 0.88; y: bandArrow.s * 0.5 }
+                      PathLine { x: bandArrow.s * 0.2; y: bandArrow.s * 0.92 }
+                      PathLine { x: bandArrow.s * 0.2; y: bandArrow.s * 0.08 }
+                    }
+                  }
                 }
                 Text {
                   id: bandName
