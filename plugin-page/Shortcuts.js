@@ -174,8 +174,8 @@ var actions = [
   // Files: the note's). docs/keys-proposal.md, rule 6 (2026-10-27).
   { id: "ask", group: "agent", places: ["note"], does: "Chat about this block (with a sign for the agent: it answers first)", keys: ["Ctrl+Enter"] },
   { id: "dayChat", group: "agent", places: ["any"], does: "The day's chat (in a note from Files: the note's)", keys: ["Ctrl+Shift+Enter"] },
-  { id: "dayHelpful", group: "agent", places: ["chat"], does: "In the day's chat: its last answer was helpful (again: take it back)", keys: ["Alt+="] },
-  { id: "dayNotHelpful", group: "agent", places: ["chat"], does: "In the day's chat: its last answer was not helpful (again: take it back)", keys: ["Alt+-"] },
+  { id: "dayHelpful", group: "agent", places: ["chat"], does: "In the day's chat or a note's: its last answer was helpful (again: take it back)", keys: ["Alt+="] },
+  { id: "dayNotHelpful", group: "agent", places: ["chat"], does: "In the day's chat or a note's: its last answer was not helpful (again: take it back)", keys: ["Alt+-"] },
 
   { id: "mentionUp", group: "mention", places: ["mention"], does: "Previous project", keys: ["Up"] },
   { id: "mentionDown", group: "mention", places: ["mention"], does: "Next project", keys: ["Down"] },

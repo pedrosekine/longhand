@@ -191,8 +191,13 @@ view, reading the note's conversation instead of the day's.
   sheet, and from Ctrl+Shift+Enter anywhere in a file.
 - The header word shows only where the agent does not already read the
   note: a file, a day before the horizon, a private day.
-- A note's answers have no helpful / not-helpful yet. Opening another note
-  or day closes the room.
+- A note's answers are rated as the day's are (2026-11-14): *helpful* /
+  *not helpful* under each, or `Alt+=` / `Alt+-` for the last, kept on the
+  turn and in `feedback.tsv` (`longhand-agent rate … --note PATH --turn
+  N`). The weekly review lists the misses under "Talking about a note",
+  each with the `eval add … --job day` that makes it a case; a later
+  message is joined to the conversation's first, as a day's is.
+- Opening another note or day closes the room.
 
 **The blip.** When the keys go from the note into the agent's pane, what
 goes with them lights once under the words, an accent wash that fades in

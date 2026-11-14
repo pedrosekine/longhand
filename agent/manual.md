@@ -157,7 +157,8 @@ dashboard's row, under the same "what the agent may do" levels.
 {key:marginUp} from the empty box goes onto the cards; {key:marginAccept}
 does what one says, {key:marginDecline} declines it. Under each answer,
 "helpful" and "not helpful" say whether it was ({key:dayHelpful} and
-{key:dayNotHelpful} on the last one; again takes it back). The morning after, it
+{key:dayNotHelpful} on the last one; again takes it back), in a note's chat
+as in the day's. The morning after, it
 writes what the day's conversation came to — a few lines, the day's brief
 — into what the agent knows, where each line can be corrected or
 forgotten like any other; the next days read the last three. A private day

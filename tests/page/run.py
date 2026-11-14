@@ -2891,6 +2891,15 @@ def checks() -> int:
         check(p.wait(lambda: nt()["turns"] == 2 and any(t.startswith("agent: ") for t in json.loads(p.call("dayTurns"))), 15),
               f"…answered there, kept by the note's path ({nt()}, {p.call('dayTurns')})")
         check((course / "Session 1.md").read_text() == before, "…and the note is not written")
+        # Helpful or not, as in the day's chat: Alt+- on the last answer,
+        # kept on its turn of the note's conversation.
+        import hashlib
+        talk_file = p.vault / "agents" / "longhand" / "notes" / (hashlib.md5(b"Studies/Course A/Session 1.md").hexdigest()[:16] + ".json")
+        note_rating = lambda: (json.loads(talk_file.read_text())["turns"][-1].get("rating") or {}).get("value") if talk_file.is_file() else None
+        check(p.call("dayKey", 0x2d, 0x08000000) == "true" and p.wait(lambda: note_rating() == "down"),
+              f"Alt+- says the note's last answer was not helpful, kept on its turn ({note_rating()})")
+        p.call("dayKey", 0x2d, 0x08000000)
+        check(p.wait(lambda: note_rating() is None), "…and again takes it back")
         p.call("dayKey", KEY_ESC, 0)
         check(p.wait(lambda: not nt()["shown"] and nt()["here"] == "center"), f"Esc closes it, the keys back in the note ({nt()})")
         p.call("cursor", p.call("text").index("Notes from") + 3)

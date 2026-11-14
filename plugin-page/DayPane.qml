@@ -265,7 +265,7 @@ BorderSurface {
           // Helpful or not: the student's word on the answer, for the
           // weekly review and the eval cases. A word again takes it back.
           Row {
-            visible: modelData.role === "agent" && !modelData.error && !!modelData.text && !page.noteRoom
+            visible: modelData.role === "agent" && !modelData.error && !!modelData.text
             spacing: page.sp(10)
             Repeater {
               model: [{ value: "up", text: "helpful", act: "dayHelpful" }, { value: "down", text: "not helpful", act: "dayNotHelpful" }]

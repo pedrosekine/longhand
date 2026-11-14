@@ -119,6 +119,35 @@ def main() -> int:
     check(r.returncode != 0 and "never shared" in r.stderr, "a document of money is never shared, even asked about")
     r = agent("note", "--file", "../outside.md", "--message", "x", ok=False)
     check(r.returncode != 0, "nothing outside the vault")
+
+    # Helpful or not (the improvement loop): the student's word on an
+    # answer in a note's conversation, kept on its turn and in feedback.tsv.
+    # Turns: 0 asked, 1 "answer 0", 2 asked with a block, 3 "answer 1", …
+    agent("rate", "down", "--note", rel, "--turn", "3")
+    t = json.loads(talk.read_text())
+    check(t["turns"][3]["rating"]["value"] == "down" and "rating" not in t["turns"][1],
+          "rated not helpful: kept on its turn of the note's conversation")
+    fb = (tmp / "state" / "longhand" / "feedback.tsv").read_text().splitlines()[-1].split("\t")
+    check(fb[2] == f"note:{rel}#3" and fb[3] == "note" and fb[4] == "down" and fb[7].endswith("-note.md"),
+          f"…and in feedback.tsv, with the payload that made it ({fb})")
+    agent("rate", "none", "--note", rel, "--turn", "3")
+    check("rating" not in json.loads(talk.read_text())["turns"][3], "the same word again takes it back")
+    check(agent("rate", "up", "--note", rel, "--turn", "2", ok=False).returncode != 0, "…never a student's turn")
+    check(agent("rate", "up", "--note", "human/Studies/none.md", "--turn", "1", ok=False).returncode != 0,
+          "…nor a note with no conversation")
+    agent("rate", "down", "--note", rel, "--turn", "3")
+    review = agent("review").stdout
+    check("## Talking about a note" in review and "1 not helpful" in review and f"about `{rel}`" in review
+          and "answer 1" in review and f"eval add {fb[7]} --job day" in review,
+          "the weekly review lists the miss, with the command that makes it a case")
+    # A later message made a case: joined to the conversation's first
+    # message and the turns between, as a day case is.
+    agent("eval", "add", fb[7], "--id", "note-miss")
+    case = json.loads((vault / "agents/longhand/evals/cases/note-miss.json").read_text())
+    pay = case["payload"]
+    check(case["job"] == "day" and "# This conversation" in pay and "Longhand: answer 0" in pay
+          and "and this?" in pay.split("# The next message")[-1],
+          f"a note's answer becomes a day case, its conversation joined to its first message ({pay[-600:]!r})")
     payloads = list((tmp / "state").rglob("*-note.md"))
     check(len(payloads) == 4, f"every message logged before inference ({len(payloads)})")
     print("PASS" if failures == 0 else f"{failures} FAILED")

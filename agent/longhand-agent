@@ -5,6 +5,7 @@
     longhand-agent chat --hash <block> --message <text>         # dive in: continue that block's session
     longhand-agent ack --hash <block>                           # the student has seen the reply
     longhand-agent rate up|down|none --hash <block>             # the student's word on a reply (feedback.tsv)
+    longhand-agent rate up|down|none --note <path> --turn <i>   # …on an answer in a note's conversation
     longhand-agent accept --hash <block> --index <n>            # run a proposal through the CLI
     longhand-agent tasks [--days 7]                             # open checkboxes across daily notes, JSON
     longhand-agent next [--days 7]                              # tasks (with their clock) + open suggestions/observations, JSON
@@ -1641,17 +1642,40 @@ def cmd_ack(cfg: dict, args) -> int:
 
 
 def cmd_rate(cfg: dict, args) -> int:
-    """The student's word on a reply in the margin, or an answer in the
-    day's conversation (`--day`, its turn): helpful, not helpful, or taken
-    back (none). Kept on the block or the turn and in feedback.tsv, with the
-    prompt and model that made the reply, for the weekly review and for
-    turning a reply that missed into an eval case."""
+    """The student's word on a reply in the margin, an answer in the day's
+    conversation (`--day`, its turn) or in a note's (`--note` its path,
+    `--turn`): helpful, not helpful, or taken back (none). Kept on the
+    block or the turn and in feedback.tsv, with the prompt and model that
+    made the reply, for the weekly review and for turning a reply that
+    missed into an eval case."""
     date = dt.datetime.strptime(args.date, moment_to_strftime(cfg["daily"].get("format", "YYYY-MM-DD"))).date() \
         if args.date else dt.date.today()
     paths = Paths(cfg, date)
-    state = load_state(paths)
     at = dt.datetime.now().isoformat(timespec="seconds")
     rec = None
+    if args.note:
+        # An answer in a note's conversation (docs/files.md, "Talking about
+        # a note"): kept on its turn in the conversation's own file.
+        rel = args.note.strip().lstrip("/")
+        where = paths.agent_dir / NOTES_DIR / f"{note_key(rel)}.json"
+        try:
+            talk = json.loads(where.read_text())
+        except (OSError, ValueError):
+            raise Fail(f"no conversation about {rel}")
+        turns = talk.get("turns") or []
+        i = args.turn
+        if i is None or not (0 <= i < len(turns)) or turns[i]["role"] != "agent" or turns[i].get("error"):
+            raise Fail(f"no answer at turn {i} of the conversation about {rel}")
+        rec = dict(turns[i], trigger="note")
+        if args.value == "none":
+            turns[i].pop("rating", None)
+        else:
+            turns[i]["rating"] = {"value": args.value, "at": at}
+        write_atomic(paths, where, json.dumps(talk, indent=2, ensure_ascii=False) + "\n")
+        feedback(at, paths.stamp, f"note:{rel}#{i}", rec, args.value)
+        print(json.dumps({"note": rel, "turn": i, "rating": args.value}))
+        return 0
+    state = load_state(paths)
     if args.day is not None:
         # An answer in the day's conversation, by its place among the turns.
         turns = (state.get("day") or {}).get("turns") or []
@@ -1677,14 +1701,19 @@ def cmd_rate(cfg: dict, args) -> int:
     if rec is None:
         raise Fail(f"no block {args.hash} on {paths.stamp}")
     write_atomic(paths, paths.state, json.dumps(state, indent=2, ensure_ascii=False) + "\n")
+    feedback(at, paths.stamp, args.hash, rec, args.value)
+    print(json.dumps({"hash": args.hash, "rating": args.value}))
+    return 0
+
+
+def feedback(at: str, stamp: str, what: str, rec: dict, value: str) -> None:
+    """One rating, appended to feedback.tsv."""
     FEEDBACK.parent.mkdir(parents=True, exist_ok=True)
     if not FEEDBACK.exists():
         FEEDBACK.write_text("at\tdate\tblock\ttrigger\tvalue\tprompt\tmodel\tpayload\n")
     with open(FEEDBACK, "a") as f:
-        f.write(f"{at}\t{paths.stamp}\t{args.hash}\t{rec.get('trigger', '')}\t{args.value}\t"
+        f.write(f"{at}\t{stamp}\t{what}\t{rec.get('trigger', '')}\t{value}\t"
                 f"{rec.get('prompt', '')}\t{rec.get('model', '')}\t{rec.get('payload', '')}\n")
-    print(json.dumps({"hash": args.hash, "rating": args.value}))
-    return 0
 
 
 def cmd_state(cfg: dict, args) -> int:
@@ -3565,6 +3594,8 @@ def day_case_payload(cfg: dict, src: Path) -> str:
     text = src.read_text()
     if text.startswith("# Brief") or "# Your knowledge files" in text:
         return text
+    if src.name.endswith("-note.md"):
+        return note_case_payload(cfg, src, text)
     firsts = [f for f in sorted(src.parent.glob(src.name[:8] + "-*-day.md"))
               if f.name < src.name and "# Your knowledge files" in f.read_text()]
     if not firsts:
@@ -3582,6 +3613,47 @@ def day_case_payload(cfg: dict, src: Path) -> str:
             + "\n\n# The next message\n\n" + text)
 
 
+def note_conversations(cfg: dict) -> list[dict]:
+    """Every note's conversation in the agent's folder."""
+    folder = Paths(cfg, dt.date.today()).agent_dir / NOTES_DIR
+    out = []
+    for f in sorted(folder.glob("*.json")) if folder.is_dir() else []:
+        try:
+            talk = json.loads(f.read_text())
+        except (OSError, ValueError):
+            continue
+        if isinstance(talk, dict) and isinstance(talk.get("turns"), list):
+            out.append(talk)
+    return out
+
+
+def note_case_payload(cfg: dict, src: Path, text: str) -> str:
+    """A note conversation's message as one an eval can send (the note
+    conversation is the day agent's, so its cases are day cases): the
+    conversation's first message carries the note and the context; a later
+    one is joined to it and the turns between, from the conversation's
+    file, found by the payload its answer was given."""
+    if "# This conversation" in text:
+        return text
+    for talk in note_conversations(cfg):
+        turns = talk["turns"]
+        end = next((i for i, t in enumerate(turns) if t.get("payload") == str(src)), None)
+        if end is None:
+            continue
+        # The answer's own student turn comes just before it; the first
+        # message is the latest earlier one that carried the note whole.
+        firsts = [i for i in range(end) if turns[i].get("payload") and Path(turns[i]["payload"]).is_file()
+                  and "# This conversation" in Path(turns[i]["payload"]).read_text()]
+        if not firsts:
+            break
+        first = firsts[-1]
+        between = [f"{'Longhand' if t['role'] == 'agent' else 'student'}: {t.get('text') or '(no answer)'}"
+                   for t in turns[first:end - 1]]
+        return (Path(turns[first]["payload"]).read_text().rstrip() + "\n\n# The conversation since (the same session)\n\n"
+                + "\n".join(between) + "\n\n# The next message\n\n" + text)
+    raise Fail(f"{src.name} continues a note's conversation whose first message cannot be found")
+
+
 def cmd_eval(cfg: dict, args) -> int:
     paths = Paths(cfg, dt.date.today())
     if args.what == "add":
@@ -3590,7 +3662,7 @@ def cmd_eval(cfg: dict, args) -> int:
             raise Fail(f"no payload at {src}")
         job = args.job or ("plan" if src.name.endswith("-plan.md") else
                            "talk" if "-talk-" in src.name else
-                           "day" if src.name.endswith("-day.md") or "-brief-" in src.name else "margin")
+                           "day" if src.name.endswith(("-day.md", "-note.md")) or "-brief-" in src.name else "margin")
         payload = day_case_payload(cfg, src) if job == "day" else src.read_text()
         case = evallib.new_case(job, payload, src.name, args.note, args.answer)
         folder = evallib.cases_dir(paths.agent_dir)
@@ -3780,6 +3852,26 @@ def review_text(cfg: dict, since: dt.date, until: dt.date) -> str:
         if b.get("payload"):
             lines += ["", f"The brief of {b['date']}, if it reads wrong in Settings: "
                           f"`longhand-agent eval add {b['payload']} --job day`"]
+
+    # Talking about a note: the same agent, its answers rated in the same pane.
+    notes = []
+    for talk in note_conversations(cfg):
+        turns = talk["turns"]
+        for i, t in enumerate(turns):
+            if t["role"] == "agent" and not t.get("error") and since.isoformat() <= (t.get("at") or "")[:10] <= until.isoformat():
+                asked = next((u["text"] for u in reversed(turns[:i]) if u["role"] == "student"), "")
+                notes.append(dict(t, path=talk.get("path", ""), asked=asked))
+    if notes:
+        up = [a for a in notes if (a.get("rating") or {}).get("value") == "up"]
+        down = [a for a in notes if (a.get("rating") or {}).get("value") == "down"]
+        lines += ["", "## Talking about a note", "",
+                  f"- {len(notes)} answers · {len(up)} helpful · {len(down)} not helpful · {len(notes) - len(up) - len(down)} not rated"]
+        for a in down:
+            lines += ["", f"**Not helpful** — {(a.get('at') or '')[:10]}, about `{a['path']}`, asked “{' '.join(a['asked'].split())[:80]}” "
+                          f"(prompt `{a.get('prompt', '?')}`, {a.get('model', '?')})",
+                      "", "> " + " ".join((a.get("text") or "").split())[:400]]
+            if a.get("payload"):
+                lines += ["", f"Make it a case: `longhand-agent eval add {a['payload']} --job day --answer \"…\"`"]
 
     lines += ["", "## Proposals and questions", ""]
     summ = {}
@@ -4045,6 +4137,8 @@ def main(argv: list[str]) -> int:
     p.add_argument("value", choices=("up", "down", "none"))
     p.add_argument("--hash", default="")
     p.add_argument("--day", type=int, default=None, help="an answer in the day's conversation, by its turn")
+    p.add_argument("--note", default="", help="an answer in this note's conversation (its path in the vault), with --turn")
+    p.add_argument("--turn", type=int, default=None, help="with --note: the answer's turn")
     p.add_argument("--date", default="")
     p = sub.add_parser("plan")
     p.add_argument("--force", action="store_true", help="plan now, whatever today's plan was")

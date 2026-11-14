@@ -77,8 +77,8 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 |---|---|---|
 | Chat about this block (with a sign for the agent: it answers first) | `Ctrl+Enter` | in the note |
 | The day's chat (in a note from Files: the note's) | `Ctrl+Shift+Enter` | everywhere |
-| In the day's chat: its last answer was helpful (again: take it back) | `Alt+=` | in the chat's box |
-| In the day's chat: its last answer was not helpful (again: take it back) | `Alt+-` | in the chat's box |
+| In the day's chat or a note's: its last answer was helpful (again: take it back) | `Alt+=` | in the chat's box |
+| In the day's chat or a note's: its last answer was not helpful (again: take it back) | `Alt+-` | in the chat's box |
 
 ## @ a project
 

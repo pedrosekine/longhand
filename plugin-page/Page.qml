@@ -1182,25 +1182,29 @@ Item {
   // The student's word on an answer in the day's conversation, as on a
   // reply in the margin: shown at once, kept on the turn by the runner with
   // the prompt and model that made it, read by the weekly review.
-  property var dayRatingNow: ({})       // "<note date>#<turn>" -> "up" | "down" | "none", until the state says so
+  // The day's answers and a note's (its room) are rated alike: the word
+  // shows at once, and the runner keeps it on the turn.
+  property var dayRatingNow: ({})       // "<note date>#<turn>" or "note:<path>#<turn>" -> "up" | "down" | "none", until the state says so
+  function ratingKey(i) { return (root.noteRoom ? "note:" + root.noteRel : svc.noteDate) + "#" + i }
   function dayRatingOf(i) {
-    var now = root.dayRatingNow[svc.noteDate + "#" + i]
+    var now = root.dayRatingNow[root.ratingKey(i)]
     if (now !== undefined) return now === "none" ? "" : now
     var t = root.dayState && root.dayState.turns ? root.dayState.turns[i] : null
     return t && t.rating ? t.rating.value : ""
   }
   function rateDay(i, value) {
-    if (root.noteRoom) return
+    if (root.noteRoom && root.noteRel === "") return
     var turns = root.dayState && root.dayState.turns ? root.dayState.turns : []
     if (i < 0) for (var k = turns.length - 1; k >= 0 && i < 0; k--) if (turns[k].role === "agent" && !turns[k].error) i = k
     if (i < 0 || !turns[i] || turns[i].role !== "agent" || turns[i].error) return
     var v = root.dayRatingOf(i) === value ? "none" : value
     var m = {}
     for (var j in root.dayRatingNow) m[j] = root.dayRatingNow[j]
-    m[svc.noteDate + "#" + i] = v
+    m[root.ratingKey(i)] = v
     root.dayRatingNow = m
-    root.runInTurn(rateProc, [svc.runner, "rate", v, "--day", String(i), "--date", svc.noteDate])
-    root.used("rate", "day-" + v)
+    if (root.noteRoom) root.runInTurn(rateProc, [svc.runner, "rate", v, "--note", root.noteRel, "--turn", String(i)])
+    else root.runInTurn(rateProc, [svc.runner, "rate", v, "--day", String(i), "--date", svc.noteDate])
+    root.used("rate", (root.noteRoom ? "note-" : "day-") + v)
   }
 
   // The words last selected in a conversation (ChatTurn): one selection
