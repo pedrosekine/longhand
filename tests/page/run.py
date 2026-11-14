@@ -2992,6 +2992,34 @@ def checks() -> int:
         check(p.wait(lambda: not pd()["shown"] and pd()["label"] != "Reading.pdf" and json.loads(p.call("files"))["filePath"] == ""
                      and "therapy appointment" in p.call("text")),
               f"Esc closes it, back to the note under it ({pd()})")
+        # It opens again where it was left (PdfPlaces.js, pdfs.json): the
+        # last page of four, then nothing kept once back at the top.
+        KEY_HOME, KEY_END = 0x01000010, 0x01000011
+        make_pdf(course / "Long reading.pdf", "Chapter one.", pages=4)
+        places = p.state / "longhand" / "pdfs.json"
+        long_rel = "Studies/Course A/Long reading.pdf"
+        p.call("openFile", long_rel, "false")
+        check(p.wait(lambda: pd()["ready"] and pd()["settled"] and pd()["pages"] == 4 and pd()["resumed"] is None),
+              f"a PDF never opened before opens at its top ({pd()})")
+        # End: as far down as it goes. The last page is shorter than the
+        # window, so the top of the view rests in the page before it.
+        p.call("pdfKey", KEY_END, 0)
+        check(p.wait(lambda: (pd()["at"] or {}).get("page", 0) >= 2), f"End: the foot of it ({pd()})")
+        left = pd()["at"]
+        p.call("pdfKey", KEY_ESC, 0)
+        check(p.wait(lambda: not pd()["shown"] and places.is_file()
+                     and json.loads(places.read_text()).get(long_rel, {}).get("page") == left["page"]),
+              f"closing it keeps its place in pdfs.json ({places.read_text() if places.is_file() else 'no file'})")
+        p.call("openFile", long_rel, "false")
+        check(p.wait(lambda: pd()["settled"] and (pd()["resumed"] or {}).get("page") == left["page"]
+                     and (pd()["at"] or {}).get("page") == left["page"]
+                     and abs((pd()["at"] or {}).get("frac", -1) - left["frac"]) < 0.05),
+              f"opened again, it is back where it was left ({pd()}, left at {left})")
+        p.call("pdfKey", KEY_HOME, 0)
+        check(p.wait(lambda: (pd()["at"] or {}).get("page") == 0 and (pd()["at"] or {}).get("frac") == 0), f"Home: the top ({pd()})")
+        p.call("pdfKey", KEY_ESC, 0)
+        check(p.wait(lambda: not pd()["shown"] and places.is_file() and long_rel not in json.loads(places.read_text())),
+              "left at its top, nothing is kept for it")
         # The read view (step 4): a picture by name, a link followed to its
         # heading and back, a table drawn as one block.
         att = p.vault / "_Attachments"

@@ -183,6 +183,7 @@ Item {
   function goTo(place) {
     root.travelling = true
     if (place.pdf) { root.openPdf(place.pdf); root.travelling = false; return }
+    pdfPane.keep()
     root.pdfRel = ""
     root.pendingLink = { at: place.at }
     if (place.stem !== "") { if (place.stem === svc.noteDate) root.landOnLink(); else root.openNote(place.stem) }
@@ -458,11 +459,13 @@ Item {
     root.noteRoom = false
     root.dashOpen = false
     root.marginFocus = -1
+    pdfPane.keep()
     root.pdfRel = rel
     root.showNote()
   }
   function closePdf() {
     if (!root.pdfShown) return
+    pdfPane.keep()
     root.pdfRel = ""
     root.showNote()
   }
@@ -1666,6 +1669,7 @@ Item {
       root.overlayOpen = true
     }
     if (fresh) {
+      pdfPane.keep()
       root.pdfRel = ""
       root.sidebarOpen = false
       root.sidebarSpace = "time"
@@ -2277,6 +2281,7 @@ Item {
     if (root.settingsOpen) root.toggleSettings()
     root.leftLine(root.lastLine)
     root.flush()
+    pdfPane.keep()
     root.overlayOpen = false
     if (root.windowOpen) Qt.callLater(editor.focusNote)
   }
@@ -6048,7 +6053,7 @@ Item {
   // belonged to the old day (staging, the prompt, the margin) goes with it.
   function openNote(stamp) {
     if (stamp !== "" && (stamp !== svc.noteDate || root.pdfRel !== "")) root.remember()
-    if (stamp !== "") root.pdfRel = ""
+    if (stamp !== "") { pdfPane.keep(); root.pdfRel = "" }
     if (stamp === "" || stamp === svc.noteDate) return
     if (root.searchOpen) root.closeSearch("back")
     root.leftLine(root.lastLine)
@@ -6073,6 +6078,7 @@ Item {
   function openFile(rel, readOnly) {
     if (/\.pdf$/i.test(rel)) { root.openPdf(rel); return }
     if (rel !== "" && (rel !== svc.filePath || root.pdfRel !== "")) root.remember()
+    pdfPane.keep()
     root.pdfRel = ""
     if (rel === "" || (rel === svc.filePath && svc.ready)) { root.showNote(); return }
     if (root.searchOpen) root.closeSearch("back")

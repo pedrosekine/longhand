@@ -195,7 +195,8 @@ ShellRoot {
     function pdf(): string {
       var p = page.pdfItem
       return JSON.stringify({ shown: page.pdfShown, label: page.noteLabel, ready: p.ready, pages: p.pages, finding: p.finding,
-        found: p.view && p.view.searchModel ? p.view.searchModel.count : 0, here: page.here })
+        found: p.view && p.view.searchModel ? p.view.searchModel.count : 0, here: page.here,
+        at: p.here(), settled: p.settled, resumed: p.resumed, zoom: p.zoom })
     }
     function pdfKey(key: int, mods: int): bool { return page.pdfItem.key({ key: key, text: "", modifiers: mods }) }
     // Export as a PDF (ExportSheet.qml): the sheet as its keys see it.

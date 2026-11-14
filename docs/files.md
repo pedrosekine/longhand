@@ -452,11 +452,16 @@ block, `table` rows.
 - **A known shortcut.** Qt's view keeps its scroller to itself, so the pane
   finds it among the view's children to scroll by keys.
 
-**Not yet:**
+- **Where it was left** (2026-11-14). A PDF opens again on the page it
+  was left at, as far down it, at the size it had: `pdfs.json` in the state
+  folder, by its path, the newest hundred (`PdfPlaces.js`). Kept as
+  scrolling pauses, and when it closes or another opens; one left at its
+  top, at its own size, keeps nothing.
+
+**Not yet:** reading papers here, with the agent (plan.md item 15, next):
 - asking the agent about a PDF (the runner reads PDFs already, through
   pdftotext);
-- a dark reading mode for white pages;
-- keeping your place in a PDF between openings.
+- a dark reading mode for white pages.
 
 Tests: `tests/page/run.py` 12h. Pele can't run in Qt's own JavaScript
 engine (ES2022: `matchAll`, `replaceAll`, `\p{}`, `Intl`), so it needs

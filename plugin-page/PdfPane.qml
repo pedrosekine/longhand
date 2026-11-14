@@ -1,9 +1,11 @@
 import Quickshell
+import Quickshell.Io
 import QtQuick
 import QtQuick.Pdf
 import qs.Commons
 import qs.Ui
 import "Shortcuts.js" as Sc
+import "PdfPlaces.js" as Places
 
 // A PDF in the middle, in the note's place (docs/files.md, step 5,
 // 2026-10-27): Qt's own view, fitted to the column, the pages drawn as they
@@ -14,6 +16,10 @@ import "Shortcuts.js" as Sc
 // Keys (Shortcuts.js, "in a PDF"): arrows or j/k scroll, PgUp/PgDn and
 // Space a page, Home/End the ends, Ctrl+F finds, + / - / 0 size it, o opens
 // it in its own application, Esc closes it (back to the note under it).
+//
+// Each PDF opens where it was left (plan.md, item 9, "Left by the build"):
+// the page, how far down it, the size, kept in pdfs.json in the state
+// folder by the file's path. Never in the vault: it is the machine's.
 Item {
   id: pane
   required property Item page
@@ -28,8 +34,62 @@ Item {
   readonly property bool ready: loader.item ? loader.item.doc.status === PdfDocument.Ready : false
   readonly property string error: loader.item && loader.item.doc.status === PdfDocument.Error ? "this PDF could not be read" : ""
 
+  // Where each PDF was left: path → { page, frac, zoom, at } (PdfPlaces.js).
+  property var places: ({})
+  // False until the PDF just opened is back at its place, so the scroll that
+  // opening makes is never taken for where it was left.
+  property bool settled: false
+  // The place it opened at, or null at the top (the harness reads it).
+  property var resumed: null
+
   visible: rel !== ""
-  onRelChanged: { pane.zoom = 1; pane.finding = false; findField.text = "" }
+  onRelChanged: {
+    pane.zoom = 1; pane.finding = false; findField.text = ""
+    pane.settled = false; pane.resumed = null
+    Qt.callLater(pane.arrive)
+  }
+
+  // Where the view is now, or null while there is nothing to read.
+  function here() {
+    var t = pane.table()
+    if (!t || !pane.ready || !loader.item) return null
+    var doc = loader.item.doc, s = pane.view.renderScale, heights = []
+    for (var i = 0; i < pane.pages; i++) heights.push(doc.pagePointSize(i).height * s)
+    var at = Places.at(heights, t.rowSpacing || 0, t.contentY - t.originY)
+    if (!at) return null
+    at.zoom = pane.zoom
+    return at
+  }
+  // Note where this PDF is, now; Page.qml asks before it opens another or
+  // closes this one, and a pause in scrolling asks too.
+  function keep() {
+    if (!pane.settled || pane.rel === "") return
+    var at = pane.here()
+    if (!at) return
+    var next = Places.put(pane.places, pane.rel, at, Date.now())
+    if (JSON.stringify(next) === JSON.stringify(pane.places)) return
+    pane.places = next
+    placesFile.setText(JSON.stringify(next) + "\n")
+  }
+  // The PDF is read: back to where it was left, or at the top.
+  function arrive() {
+    // The document must be this PDF, not the one before it (Qt writes a
+    // URL's spaces decoded, so both are compared decoded).
+    if (pane.settled || !pane.ready || !loader.item
+        || decodeURIComponent(String(loader.item.doc.source)) !== decodeURIComponent(pane.url())) return
+    var p = Places.get(pane.places, pane.rel, pane.pages)
+    if (p) pane.zoom = p.zoom
+    Qt.callLater(function () {
+      pane.fit()
+      if (p && pane.view) {
+        var h = loader.item.doc.pagePointSize(p.page).height
+        // The view sets a jump 10 px below the top; give it back.
+        pane.view.goToLocation(p.page, Qt.point(0, p.frac * h + 10 / pane.view.renderScale), 0)
+        pane.resumed = p
+      }
+      pane.settled = true
+    })
+  }
 
   function url() {
     // A path in the vault, or a whole one: an export written to Downloads.
@@ -59,7 +119,24 @@ Item {
   }
   onWidthChanged: Qt.callLater(pane.fit)
   onZoomChanged: Qt.callLater(pane.fit)
-  onReadyChanged: if (ready) Qt.callLater(pane.fit)
+  onReadyChanged: if (ready) { Qt.callLater(pane.fit); Qt.callLater(pane.arrive) }
+
+  // A pause in scrolling notes the place.
+  Timer { id: keepTimer; interval: 800; onTriggered: pane.keep() }
+  Connections {
+    target: pane.settled ? pane.table() : null
+    ignoreUnknownSignals: true
+    function onContentYChanged() { keepTimer.restart() }
+  }
+  FileView {
+    id: placesFile
+    path: (Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state") + "/longhand/pdfs.json"
+    atomicWrites: true
+    printErrors: false
+    onLoaded: {
+      try { var o = JSON.parse(text()); if (o && typeof o === "object") pane.places = o } catch (e) { console.warn("longhand.page pdfs.json: " + e) }
+    }
+  }
 
   function find(dir) {
     if (!pane.view) return
@@ -75,8 +152,11 @@ Item {
     else if (Sc.hit(event, "pdfUp")) pane.scrollBy(-step)
     else if (Sc.hit(event, "pdfNextPage")) { if (pane.view) pane.view.goToPage(Math.min(pane.pages - 1, pane.current + 1)) }
     else if (Sc.hit(event, "pdfPrevPage")) { if (pane.view) pane.view.goToPage(Math.max(0, pane.current - 1)) }
-    else if (Sc.hit(event, "pdfFirst")) { if (pane.view) pane.view.goToPage(0) }
-    else if (Sc.hit(event, "pdfLast")) { if (pane.view) pane.view.goToPage(Math.max(0, pane.pages - 1)) }
+    // The ends: the top of the first page, the top of the last (as far as
+    // it goes). goToPage keeps the place inside the page, so it is not
+    // used for them: from the foot of a page it would land on another's foot.
+    else if (Sc.hit(event, "pdfFirst")) { if (pane.view) pane.view.goToLocation(0, Qt.point(0, 0), 0) }
+    else if (Sc.hit(event, "pdfLast")) { if (pane.view) pane.view.goToLocation(Math.max(0, pane.pages - 1), Qt.point(0, 0), 0) }
     else if (Sc.hit(event, "pdfBigger")) pane.zoom = Math.min(4, pane.zoom * 1.2)
     else if (Sc.hit(event, "pdfSmaller")) pane.zoom = Math.max(0.3, pane.zoom / 1.2)
     else if (Sc.hit(event, "pdfFit")) pane.zoom = 1
