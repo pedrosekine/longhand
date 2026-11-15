@@ -243,6 +243,11 @@ def main() -> int:
     cfg.pop("private")
     (tmp / "config.json").write_text(json.dumps(cfg))
 
+    f = run("find", "--pdf", paper, "--page", "2", "--text", "Sessions a day apart")
+    check(f["found"] == 2 and f["boxes"] and f["boxes"][0]["page"] == 1, f"find: quoted words shown where they are ({f})")
+    f = run("find", "--pdf", paper, "--page", "1", "--text", "words that are nowhere at all")
+    check(f["found"] == 0 and f["boxes"] == [], "…and nothing when they are nowhere")
+
     r = run("state", "--pdf", "lit/missing.pdf", ok=False)
     check(r.returncode != 0 and "no PDF" in r.stderr, "a PDF that is not there is refused")
 

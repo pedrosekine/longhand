@@ -261,6 +261,17 @@ ShellRoot {
       return false
     }
     function pdfPick(id: string): void { page.pdfItem.pick(id) }
+    // A paper's room (plan.md item 15, step 2): what the agent's pane shows.
+    function paper(): string {
+      return JSON.stringify({ room: page.paperRoom, shown: page.dayShown, list: page.paperList, filter: page.paperFilter,
+        focus: page.paperFocus, rows: page.paperRows.map(function (m) { return m.id }), marks: page.paperMarks,
+        waiting: page.paperWaiting.map(function (m) { return m.id }), answered: Object.keys(page.paperAnswered),
+        kept: page.paperKept, here: page.here, picked: page.pdfItem.picked, askable: page.paperAskable,
+        flash: page.pdfItem.flashBoxes.length, missed: page.pdfItem.flashMissed, hint: page.hint })
+    }
+    function paperKey(key: int, mods: int): bool { return page.paperKey({ key: key, text: "", modifiers: mods }) }
+    function paperLinks(text: string): string { return page.linkCitations(text) }
+    function openLink(link: string): void { page.openCitation(link) }
     // Words kept as a mark as `m` / `q` keep a selection (for scenes with
     // many marks; the keys' own path is checked with a real drag).
     function pdfMarkText(pageIndex: int, text: string, kind: string): bool { return page.pdfItem.markText(pageIndex, text, null, kind) }

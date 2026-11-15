@@ -204,6 +204,21 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | Remove the mark clicked, and its note | `x` · `Del` · `Backspace` | in a PDF |
 | Let go of the mark clicked or the words selected; then close it, back to the note | `Esc` | in a PDF |
 
+## A paper's marks and chat
+
+| | Keys | Works |
+|---|---|---|
+| The mark above (the PDF goes to it) | `↑` · `k` | in a paper's marks (the agent's pane, beside a PDF) |
+| The mark below (the PDF goes to it) | `↓` · `j` | in a paper's marks (the agent's pane, beside a PDF) |
+| To the paper's chat, this mark attached (or the ones kept) | `Enter` | in a paper's marks (the agent's pane, beside a PDF) |
+| Keep this mark, to attach several together (again: let go) | `Space` | in a paper's marks (the agent's pane, beside a PDF) |
+| To the paper's chat, nothing attached | `Tab` | in a paper's marks (the agent's pane, beside a PDF) |
+| Every mark | `1` | in a paper's marks (the agent's pane, beside a PDF) |
+| Only the highlights | `2` | in a paper's marks (the agent's pane, beside a PDF) |
+| Only the questions, the waiting ones first | `3` | in a paper's marks (the agent's pane, beside a PDF) |
+| Ask every waiting question at once, answered one by one | `Ctrl+Enter` | in a paper's marks (the agent's pane, beside a PDF) |
+| Let go of the marks kept; then close the pane (from the chat, Esc comes back here) | `Esc` | in a paper's marks (the agent's pane, beside a PDF) |
+
 ## Export as a PDF
 
 | | Keys | Works |

@@ -504,8 +504,36 @@ block, `table` rows.
   counted in the foot, not dropped. A PDF outside the vault, or one with
   no words (scanned), takes no marks and says so.
 
-**Not yet** (plan.md item 15, steps 2 to 5): the paper's chat and the
-highlight list beside it; "read today"; a dark reading mode for white
+- **The paper's room** (2026-11-15, plan.md item 15, step 2). With a PDF
+  of the vault open, the agent's pane is the paper's: `Ctrl+3`, `Alt+→`
+  from the PDF, the seal; `Ctrl+3` in it goes to the day's chat and back.
+  One conversation per paper, never one per mark, kept as a note's
+  (`agents/longhand/notes/<md5 of its path>.json`, `longhand-agent note
+  --file X.pdf [--marks hN,…]`). The pane turns between the paper's
+  **marks** and its **chat**:
+  - the marks: a strip (`1` all, `2` highlights, `3` questions, the
+    waiting ones first), rows in page order with their kind, page, words,
+    note and whether a question waits or was answered; `↑↓` (or `j`/`k`)
+    move and the PDF goes to the mark; `Enter` goes to the chat with it
+    attached; `Space` keeps several to attach together; `Tab` the chat
+    with nothing attached; `Ctrl+Enter` asks every waiting question in one
+    message, answered one by one under their names; `Esc` closes;
+  - the chat: `^` in the box attaches a mark (as `@` points at a block),
+    Backspace in the empty box lets go of the last; `Esc` back to the
+    marks. A question marked with `q` opens the chat with it attached and
+    sends nothing: the words are typed, Enter asks.
+  - A quote in an answer, “its exact words” (p. 12), is a link: opened, the
+    PDF goes there and the words light a moment (`longhand-read find`;
+    nothing kept). The agent is asked to quote that way.
+  - What travels: the marks (kinds, days, the reader's notes) on the first
+    message and again when they change; each mark attached with its page's
+    text; the paper whole only when the agent asks to read it (whatever its
+    folder: asking is the consent), up to 150 000 characters. A PDF in a
+    private folder (`private` in the config, else `<notes>/Personal`) takes
+    no marks and has no room; one with no words has none either.
+
+**Not yet** (plan.md item 15, steps 3 to 5): "read today"; a task line
+linking a PDF opening it where it was left; a dark reading mode for white
 pages; OCR; a two-column paper fitted one column at a time; a reading
 view (its text reflowed in the page's own face).
 

@@ -3079,6 +3079,62 @@ def checks() -> int:
         check(p.wait(lambda: mk()["read"]["marks"] == [] and mk()["drawn"] == 0 and m1["id"] not in reading.read_text()
                      and "the method, in one line" not in reading.read_text()),
               f"x removes it, with its note, from the page and the note ({mk()})")
+        # The paper's room (plan.md item 15, step 2): beside the PDF, one
+        # chat for the paper and its marks as a list. A question marked opens
+        # the chat with it attached, nothing sent until Enter; Esc turns the
+        # pane to the list; quotes in an answer show their words.
+        pr = lambda: json.loads(p.call("paper"))
+        p.call("pdfDrag", "0", "73", "69", "115", "69")
+        p.wait(lambda: mk()["selected"] != "")
+        p.call("pdfKey", 0x4D, 0)                           # m
+        p.wait(lambda: len(mk()["read"]["marks"]) == 1)
+        hid = mk()["read"]["marks"][0]["id"]
+        p.call("pdfDrag", "0", "160", "69", "250", "69")
+        p.wait(lambda: mk()["selected"] != "")
+        p.call("pdfKey", 0x51, 0)                           # q
+        check(p.wait(lambda: len(mk()["read"]["marks"]) == 2 and pr()["room"] and not pr()["list"] and len(pr()["marks"]) == 1
+                     and pr()["here"] == "right"),
+              f"q marks a question and opens the paper's chat with it attached, the keys in its box ({pr()})")
+        qid = pr()["marks"][0]
+        check(json.loads(p.call("dayTurns")) == [] and pr()["waiting"] == [qid], "…nothing sent: the question waits for its words")
+        p.call("dayType", "what does this mean here?")
+        p.call("dayKey", KEY_RETURN, 0)
+        check(p.wait(lambda: qid in pr()["answered"] and pr()["waiting"] == [], 20),
+              f"Enter asks it; answered, it waits no more ({pr()}, {p.call('dayTurns')})")
+        paper_talk = p.vault / "agents" / "longhand" / "notes" / (hashlib.md5(b"Studies/Course A/Reading.pdf").hexdigest()[:16] + ".json")
+        check(paper_talk.is_file() and json.loads(paper_talk.read_text())["turns"][-2].get("marks") == [qid],
+              "…kept as the paper's conversation, the message pointing at the mark")
+        check(pr()["marks"] == [], "…and the box lets go of it once sent")
+        p.call("dayKey", KEY_ESC, 0)
+        check(p.wait(lambda: pr()["list"] and pr()["here"] == "right" and sorted(pr()["rows"]) == sorted([hid, qid])),
+              f"Esc in the chat turns the pane to the marks ({pr()})")
+        p.call("paperKey", 0x33, 0)                         # 3
+        check(p.wait(lambda: pr()["filter"] == "q" and pr()["rows"] == [qid]), "3: only the questions")
+        p.call("paperKey", 0x31, 0)                         # 1
+        p.call("paperKey", KEY_DOWN, 0)
+        check(p.wait(lambda: pr()["focus"] == 1 and pr()["picked"] == pr()["rows"][1]), f"↓: the next mark, picked in the PDF too ({pr()})")
+        p.call("paperKey", KEY_RETURN, 0)
+        check(p.wait(lambda: not pr()["list"] and pr()["marks"] == [pr()["rows"][1]]), f"Enter: the chat, that mark attached ({pr()})")
+        p.call("dayKey", 0x01000003, 0)                     # Backspace in the empty box
+        check(p.wait(lambda: pr()["marks"] == []), "Backspace in the empty box lets go of it")
+        p.call("dayKey", KEY_ESC, 0)
+        p.call("paperKey", KEY_RETURN, CTRL)
+        check(p.wait(lambda: "no question is waiting" in pr()["hint"]), f"Ctrl+Enter with none waiting says so ({pr()['hint']!r})")
+        links = p.call("paperLinks", "It says “Reflexive thematic analysis” (p. 1), plainly.")
+        check("](quote:1:" in links and "[“Reflexive thematic analysis” (p. 1)]" in links, f"a quote with its page is a link ({links})")
+        import urllib.parse
+        p.call("openLink", "quote:1:" + urllib.parse.quote("Reflexive thematic analysis"))
+        check(p.wait(lambda: pr()["flash"] > 0), f"…and opened, its words light where they are ({pr()})")
+        p.call("openLink", "quote:1:" + urllib.parse.quote("words this paper never had"))
+        check(p.wait(lambda: pr()["missed"] != ""), "…words that are not there are said to be missing")
+        p.call("pageKey", KEY_3, CTRL)
+        check(p.wait(lambda: not pr()["room"] and pr()["shown"]), f"Ctrl+3 in the paper's room: the day's chat ({pr()})")
+        p.call("pageKey", KEY_3, CTRL)
+        check(p.wait(lambda: pr()["room"] and pr()["shown"]), f"…and again: the paper's ({pr()})")
+        p.call("paperKey", KEY_ESC, 0)
+        check(p.wait(lambda: not pr()["shown"] and pd()["shown"]), "Esc on the marks closes the pane, the PDF stays")
+        p.call("pdfKey", KEY_ESC, 0)
+        check(p.wait(lambda: pr()["picked"] == "" and pd()["shown"]), "…and Esc in the PDF lets go of the mark picked first")
         p.call("pdfKey", KEY_ESC, 0)
         check(p.wait(lambda: not pd()["shown"] and pd()["label"] != "Reading.pdf" and json.loads(p.call("files"))["filePath"] == ""
                      and "therapy appointment" in p.call("text")),

@@ -745,8 +745,13 @@ Small, when passing by:
       paragraph (Readwise's arrows and H), a chat across a project's
       readings, a layer of the agent's own highlights.
     - **Order:** (1) highlights and questions drawn and kept in the reading
-      note, `n`, the project, removal, re-finding (c); (2) the paper's chat
-      with (a), (b), (d), the list and its strip, `^`, the private folders;
+      note, `n`, the project, removal, re-finding (c) — *built 2026-11-15*
+      (the project's tag offered on a first mark still waits); (2) the
+      paper's chat with (a), (b), (d), the list and its strip, `^`, the
+      private folders — *built 2026-11-15* (docs/files.md, "The paper's
+      room"); found in use the same day and fixed: a touchpad drag selected
+      nothing, marks drew with no size, overlaps drew darker, the text read
+      too small (now 1.8× the note's measure, fitted by its text);
       (3) "read today" on the day
       page, and a task line linking a PDF opens it where it was left;
       (4) inverted pages; (5) **OCR**, parked but soon (tesseract is here).

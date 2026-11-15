@@ -62,6 +62,10 @@ Item {
   property bool noting: false
   property string notingId: ""
   property bool awaitingMark: false
+  property bool askAfter: false
+  // Words the agent quoted, shown where they are for a moment (never kept).
+  property var flashBoxes: []
+  property string flashMissed: ""
   // Marks are kept only for a PDF in the vault, with words in it.
   readonly property bool markable: rel !== "" && rel.charAt(0) !== "/" && read.text !== false
   readonly property string readPath: (page.noteService.config && page.noteService.config.read)
@@ -236,15 +240,54 @@ Item {
     var o = null
     try { o = JSON.parse(out) } catch (e) { o = null }
     if (!o || o.pdf !== pane.rel) return
+    if (o.found !== undefined && o.marks === undefined) { pane.flashDone(o); return }
     if (pane.awaitingMark) {
       var before = (pane.read.marks || []).map(function (m) { return m.id })
       var fresh = o.marks.filter(function (m) { return before.indexOf(m.id) < 0 })
       if (fresh.length === 1) pane.lastMade = fresh[0].id
       pane.awaitingMark = false
+      // A question marked: its chat opens with it attached, for the
+      // question in words; nothing is sent until Enter (plan.md item 15).
+      if (fresh.length === 1 && fresh[0].kind === "q" && pane.askAfter) Qt.callLater(function () { page.askAboutMark(fresh[0].id) })
+      pane.askAfter = false
     }
     if (pane.picked !== "" && !o.marks.some(function (m) { return m.id === pane.picked })) pane.picked = ""
     pane.read = o
     pane.readError = ""
+  }
+
+  // Words quoted in the paper's chat, “like this” (p. 12): found on their
+  // page (or around it) and lit there a moment, the page brought to them.
+  function flash(page1, words) {
+    pane.flashBoxes = []
+    pane.flashMissed = ""
+    pane.readRun(["find", "--page", String(page1), "--text", words])
+  }
+  function flashDone(o) {
+    if (!o.boxes || o.boxes.length === 0) { pane.flashMissed = "not found on that page"; flashTimer.restart(); return }
+    pane.flashBoxes = o.boxes
+    pane.goToBox(o.boxes[0])
+    flashTimer.restart()
+  }
+  Timer { id: flashTimer; interval: 2600; onTriggered: { pane.flashBoxes = []; pane.flashMissed = "" } }
+  function flashOn(index) {
+    var out = []
+    for (var b = 0; b < pane.flashBoxes.length; b++)
+      if (pane.flashBoxes[b].page === index) out = out.concat(pane.flashBoxes[b].rects)
+    return out
+  }
+  // The view brought to a box's first line, a little above it.
+  function goToBox(box) {
+    if (!pane.view || !box || !box.rects || box.rects.length === 0) return
+    pane.view.goToLocation(box.page, Qt.point(0, Math.max(0, box.rects[0][1] - 60)), 0)
+    pane.alignSoon()
+  }
+  // A mark chosen in the paper's list: shown and picked.
+  function showMark(id) {
+    var m = pane.markById(id)
+    if (!m) return
+    pane.picked = id
+    if (m.boxes && m.boxes.length) pane.goToBox(m.boxes[0])
   }
 
   // The rectangles to draw on page `index` (from 0): { id, kind, r }.
@@ -361,6 +404,7 @@ Item {
     var args = ["mark", "--page", String(pageIndex + 1), "--text", text, "--kind", kind]
     if (y !== undefined && y !== null && !isNaN(y)) args.push("--y", String(Math.round(y * 10) / 10))
     pane.awaitingMark = true
+    pane.askAfter = kind === "q"
     pane.readRun(args)
     page.used("pdf", kind === "q" ? "question" : "highlight")
     return true
@@ -470,6 +514,23 @@ Item {
               onTapped: pane.pick(box.modelData.id)
             }
           }
+        }
+      }
+      // Words the agent quoted, lit a moment where they are.
+      Repeater {
+        model: pane.flashOn(sheet.index)
+        delegate: Rectangle {
+          required property var modelData
+          x: modelData[0] * sheet.s - 2
+          y: modelData[1] * sheet.s - 1
+          width: modelData[2] * sheet.s + 4
+          height: modelData[3] * sheet.s + 2
+          radius: 2
+          color: Qt.rgba(page.accent.r, page.accent.g, page.accent.b, 0.22)
+          border.width: 2
+          border.color: page.accent
+          opacity: flashTimer.running ? 1 : 0
+          Behavior on opacity { NumberAnimation { duration: 400 } }
         }
       }
       // The mark picked, outlined at full strength above them.
@@ -609,6 +670,7 @@ Item {
     text: pane.error !== "" ? pane.error
       : !pane.ready ? "reading…"
       : pane.readError !== "" ? pane.readError
+      : pane.flashMissed !== "" ? "those words are " + pane.flashMissed
       : "page " + (pane.current + 1) + " of " + pane.pages
         + (pane.view && pane.finding && pane.view.searchModel.count > 0 ? " · " + pane.view.searchModel.count + " found" : "")
         + (pane.read.text === false && pane.rel.charAt(0) !== "/" ? " · no words in it (scanned): nothing to mark" : "")

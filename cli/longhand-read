@@ -30,6 +30,7 @@ nowhere is reported as not placed, never dropped.
     longhand-read kind   --pdf P --id hN --kind h|q
     longhand-read note   --pdf P --id hN --text T      (empty: the note goes)
     longhand-read tag    --pdf P --tag T
+    longhand-read find   --pdf P --page N --text T     (where words are, to show them; nothing kept)
 
 P is the PDF's path in the vault (or a whole path). Pages are counted from
 1, as the link says. `--y` is where on the page the selection began, in
@@ -555,9 +556,12 @@ def cmd_tag(cfg, rel, path, a) -> Note:
 def main() -> int:
     ap = argparse.ArgumentParser(prog="longhand-read", description=__doc__.split("\n\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
-    for name in ("state", "mark", "remove", "kind", "note", "tag"):
+    for name in ("state", "mark", "remove", "kind", "note", "tag", "find"):
         p = sub.add_parser(name)
         p.add_argument("--pdf", required=True)
+        if name == "find":
+            p.add_argument("--page", type=int, required=True)
+            p.add_argument("--text", required=True)
         if name == "mark":
             p.add_argument("--page", type=int, required=True)
             p.add_argument("--text", required=True)
@@ -576,6 +580,12 @@ def main() -> int:
     a = ap.parse_args()
     cfg = load_config()
     rel, path = rel_of(cfg, a.pdf)
+    if a.cmd == "find":
+        # Words quoted by the agent, shown where they are: found as a mark's
+        # are, loosely, on their page or around it; nothing written.
+        at = place(words_of(path), clean_quote(a.text), a.page - 1)
+        print(json.dumps({"pdf": rel, "found": at["page"] + 1 if at else 0, "boxes": at["boxes"] if at else []}))
+        return 0
     if a.cmd == "state":
         note = load_note(cfg, rel)
     else:

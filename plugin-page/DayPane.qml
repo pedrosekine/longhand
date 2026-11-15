@@ -16,6 +16,10 @@ BorderSurface {
   required property Item page
   readonly property var sheet: page.sheetItem
   property alias dayFieldRef: dayField
+  property alias paperKeysRef: paperKeys
+  // A paper's room (plan.md item 15, step 2): its marks as a list, or its
+  // chat; the pane turns between them.
+  readonly property bool listing: page.paperRoom && page.paperList
 
   readonly property bool besideDash: page.dayBesideDash
   visible: page.dayShown && (besideDash || (page.marginWidth > 0 && page.problem === ""))
@@ -29,7 +33,7 @@ BorderSurface {
   borderSpec: page.alongside ? Border.none() : page.borderSpec
   padding: page.sp(22)
 
-  MouseArea { anchors.fill: parent; onClicked: dayField.forceActiveFocus() }
+  MouseArea { anchors.fill: parent; onClicked: page.dayKeysItem().forceActiveFocus() }
 
   // In the window the pane sits on the same ground as the note; a
   // hairline keeps them apart, as the sidebar's does on its side.
@@ -49,7 +53,8 @@ BorderSurface {
     anchors.left: parent.left
     anchors.leftMargin: dayPane.contentLeftInset
     textFormat: Text.PlainText
-    text: page.noteRoom ? "ABOUT " + (page.noteLabel || "").toUpperCase()
+    text: page.paperRoom ? (dayPane.listing ? "MARKS · " : "CHAT · ") + (page.noteLabel || "").toUpperCase()
+      : page.noteRoom ? "ABOUT " + (page.noteLabel || "").toUpperCase()
       : page.noteService.isToday ? "TODAY" : (page.dateLabel || "").toUpperCase()
     color: page.dim
     font.family: page.fontFamily
@@ -57,8 +62,185 @@ BorderSurface {
     font.pixelSize: page.fs(Style.font.caption)
   }
 
+  // ------------------------------------------------- the paper's marks
+  Item {
+    id: paperKeys
+    anchors.fill: parent
+    Keys.onPressed: function (event) { if (page.paperKey(event)) event.accepted = true }
+  }
+  Column {
+    id: paperView
+    visible: dayPane.listing
+    anchors.top: dayTitle.bottom
+    anchors.topMargin: page.sp(12)
+    anchors.left: parent.left
+    anchors.leftMargin: dayPane.contentLeftInset
+    anchors.right: parent.right
+    anchors.rightMargin: dayPane.contentRightInset
+    anchors.bottom: parent.bottom
+    anchors.bottomMargin: dayPane.contentBottomInset
+    spacing: page.sp(8)
+
+    // The strip: all, highlights, questions — as the dashboard's courses.
+    Row {
+      spacing: page.sp(6)
+      Repeater {
+        model: [{ f: "all", label: "all", key: "paperAll" }, { f: "h", label: "highlights", key: "paperHighlights" },
+                { f: "q", label: "questions", key: "paperQuestions" }]
+        Rectangle {
+          required property var modelData
+          readonly property bool on: page.paperFilter === modelData.f
+          readonly property int n: page.paperCount(modelData.f)
+          width: chipText.implicitWidth + page.sp(14)
+          height: chipText.implicitHeight + page.sp(6)
+          radius: height / 2
+          color: on ? Style.selectedFill : "transparent"
+          border.width: 1
+          border.color: on ? page.accent : page.faint
+          Text {
+            id: chipText
+            anchors.centerIn: parent
+            textFormat: Text.PlainText
+            text: parent.modelData.label + " " + parent.n
+              + (parent.modelData.f === "q" && page.paperWaiting.length > 0 ? " · " + page.paperWaiting.length + " waiting" : "")
+            color: parent.on ? page.foreground : page.dim
+            font.family: page.fontFamily
+            font.styleName: page.fontStyle
+            font.pixelSize: page.fs(Style.font.caption)
+          }
+          MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            onClicked: { page.paperFilter = parent.modelData.f; page.paperFocus = 0; paperKeys.forceActiveFocus() }
+          }
+        }
+      }
+    }
+
+    ListView {
+      id: paperListView
+      width: parent.width
+      height: parent.height - y - paperFoot.implicitHeight - page.sp(8)
+      clip: true
+      spacing: page.sp(2)
+      model: page.paperRows
+      currentIndex: page.paperFocus
+      boundsBehavior: Flickable.StopAtBounds
+      highlightFollowsCurrentItem: false
+      onCurrentIndexChanged: positionViewAtIndex(currentIndex, ListView.Contain)
+      delegate: Rectangle {
+        id: markRow
+        required property var modelData
+        required property int index
+        readonly property bool hot: index === page.paperFocus && paperKeys.activeFocus
+        readonly property bool kept: page.paperKept.indexOf(modelData.id) >= 0
+        readonly property string state_: page.markState(modelData)
+        width: paperListView.width
+        height: markColumn.implicitHeight + page.sp(8)
+        radius: Style.cornerRadius
+        color: hot ? Style.selectedFill : "transparent"
+        onHotChanged: page.selected(markRow, "right", hot)
+        Rectangle {
+          visible: markRow.kept
+          width: 2
+          height: parent.height
+          color: page.accent
+        }
+        Column {
+          id: markColumn
+          x: page.sp(8)
+          y: page.sp(4)
+          width: parent.width - page.sp(16)
+          spacing: page.sp(1)
+          Row {
+            spacing: page.sp(6)
+            Rectangle {
+              width: page.sp(7)
+              height: page.sp(7)
+              radius: 2
+              anchors.verticalCenter: parent.verticalCenter
+              color: markRow.modelData.kind === "q" ? page.palette.blue : page.palette.yellow
+            }
+            Text {
+              textFormat: Text.PlainText
+              text: "p. " + markRow.modelData.page + (markRow.modelData.placed ? "" : " · not found on its page")
+                + (markRow.state_ === "waiting" ? " · waiting" : markRow.state_ === "answered" ? " · answered" : "")
+              color: markRow.state_ === "waiting" ? page.accent : page.faint
+              font.family: page.fontFamily
+              font.styleName: page.fontStyle
+              font.pixelSize: page.fs(Style.font.caption)
+            }
+          }
+          Text {
+            width: parent.width
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
+            maximumLineCount: 2
+            elide: Text.ElideRight
+            text: "“" + markRow.modelData.text + "”"
+            color: page.foreground
+            font.family: page.fontFamily
+            font.styleName: page.fontStyle
+            font.italic: true
+            font.pixelSize: page.fs(Style.font.bodySmall)
+          }
+          Text {
+            visible: !!markRow.modelData.note
+            width: parent.width
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
+            maximumLineCount: 2
+            elide: Text.ElideRight
+            text: markRow.modelData.note || ""
+            color: page.dim
+            font.family: page.fontFamily
+            font.styleName: page.fontStyle
+            font.pixelSize: page.fs(Style.font.caption)
+          }
+        }
+        MouseArea {
+          anchors.fill: parent
+          cursorShape: Qt.PointingHandCursor
+          onClicked: { page.paperPick(markRow.index); paperKeys.forceActiveFocus() }
+          onDoubleClicked: { page.attachMark(markRow.modelData.id); page.showPaperChat() }
+        }
+      }
+    }
+
+    Text {
+      visible: page.paperRows.length === 0
+      width: parent.width
+      textFormat: Text.PlainText
+      wrapMode: Text.WordWrap
+      text: page.paperCount("all") === 0
+        ? "Nothing marked yet. Select words in the PDF, then " + page.keyName("pdfMark") + " for a highlight or "
+          + page.keyName("pdfQuestion") + " for a question. " + page.keyName("paperChat") + " goes to the paper's chat."
+        : "None here."
+      color: page.faint
+      font.family: page.fontFamily
+      font.styleName: page.fontStyle
+      font.pixelSize: page.fs(Style.font.bodySmall)
+    }
+
+    Text {
+      id: paperFoot
+      width: parent.width
+      textFormat: Text.PlainText
+      wrapMode: Text.WordWrap
+      text: page.keyName("paperOpen") + " asks about it · " + page.keyName("paperKeep") + " keeps several · "
+        + page.keyName("paperChat") + " the chat · 1 2 3 the strip"
+        + (page.paperWaiting.length > 0 ? " · " + page.keyName("paperAskWaiting") + " asks the " + page.paperWaiting.length + " waiting" : "")
+        + " · " + page.keyName("paperBack") + " closes"
+      color: page.faint
+      font.family: page.fontFamily
+      font.styleName: page.fontStyle
+      font.pixelSize: page.fs(Style.font.caption)
+    }
+  }
+
   Flickable {
     id: dayFlick
+    visible: !dayPane.listing
     anchors.top: dayTitle.bottom
     anchors.topMargin: page.sp(14)
     anchors.left: parent.left
@@ -112,6 +294,19 @@ BorderSurface {
           required property int index
           width: dayColumn.width
           spacing: page.sp(2)
+          // The marks a message about a paper pointed at, over its bubble.
+          Text {
+            visible: modelData.role === "student" && !!modelData.marks && modelData.marks.length > 0
+            width: parent.width
+            textFormat: Text.PlainText
+            elide: Text.ElideRight
+            horizontalAlignment: Text.AlignRight
+            text: (modelData.marks || []).map(function (id) { return "↳ " + page.markHead(id) }).join("  ")
+            color: page.faint
+            font.family: page.fontFamily
+            font.styleName: page.fontStyle
+            font.pixelSize: page.fs(Style.font.caption)
+          }
           // The block a message pointed at, over its bubble.
           Text {
             visible: modelData.role === "student" && !!modelData.block
@@ -323,7 +518,9 @@ BorderSurface {
         width: parent.width
         textFormat: Text.PlainText
         wrapMode: Text.WordWrap
-        text: page.noteRoom
+        text: page.paperRoom
+          ? "Chat about this paper. Asking shares what you marked and the passages you attach; the paper whole only when the agent needs it. Attach a mark with ^."
+          : page.noteRoom
           ? "Chat about this note. Chatting shares it with the agent, for this chat only; the note itself is never written. Point at a part with @."
           : page.dayCanSend
           ? "The day's chat: your tasks, your courses, what you wrote. Point at a block with @."
@@ -338,6 +535,7 @@ BorderSurface {
 
   Column {
     id: dayBox
+    visible: !dayPane.listing
     anchors.left: parent.left
     anchors.leftMargin: dayPane.contentLeftInset
     anchors.right: parent.right
@@ -378,6 +576,22 @@ BorderSurface {
       }
     }
 
+    // The marks the next message points at; Backspace in the empty box
+    // lets go of the last.
+    Repeater {
+      model: page.paperRoom ? page.paperMarks : []
+      Text {
+        required property var modelData
+        width: dayBox.width
+        textFormat: Text.PlainText
+        elide: Text.ElideRight
+        text: "↳ " + page.markHead(modelData)
+        color: page.dim
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.caption)
+      }
+    }
     // The block the next message points at; Backspace in the empty box lets go.
     Text {
       visible: page.dayBlock !== ""
@@ -399,7 +613,8 @@ BorderSurface {
       // Read-only rather than disabled on a past day: the pane still takes
       // the keys, so Esc and the panes' keys work in it.
       readOnly: !page.dayCanSend
-      placeholderText: page.noteRoom ? "chat about this note…"
+      placeholderText: page.paperRoom ? (page.paperMarks.length > 0 ? "ask about it…" : "ask about this paper…")
+        : page.noteRoom ? "chat about this note…"
         : page.dayCanSend ? "chat with the day…" : "a past day: today's is where you chat (" + page.keyName("today") + ")"
       onKeyPressed: function (event) { if (page.dayKey(event)) event.accepted = true }
       onTextChanged: Qt.callLater(page.updateDayMention)
@@ -410,7 +625,9 @@ BorderSurface {
       width: parent.width
       textFormat: Text.PlainText
       wrapMode: Text.WordWrap
-      text: page.keyName("chatSend") + " sends · Shift+Enter a new line · @ points at a block"
+      text: page.paperRoom ? page.keyName("chatSend") + " sends · ^ attaches a mark · quotes link to the page · "
+          + page.keyName("marginBack") + " back to the marks"
+        : page.keyName("chatSend") + " sends · Shift+Enter a new line · @ points at a block"
         + (page.dayOpenCards.length > 0 ? " · " + page.keyName("marginUp") + " to its proposals" : "")
         + " · " + page.keyName("marginBack") + " closes · " + page.keyName("dayChat") + " from anywhere"
       color: page.faint

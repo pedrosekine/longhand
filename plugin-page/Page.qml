@@ -472,6 +472,7 @@ Item {
   }
   function closePdf() {
     if (!root.pdfShown) return
+    if (root.paperRoom) { root.dayOpen = false; root.noteRoom = false }
     pdfPane.keep()
     root.pdfRel = ""
     root.showNote()
@@ -984,9 +985,13 @@ Item {
   property bool noteRoom: false
   readonly property string noteRel: svc.filePath !== "" ? svc.filePath
     : svc.noteDate !== "" && svc.configured ? String(svc.config.daily.dir).replace(/^\/+|\/+$/g, "") + "/" + svc.noteDate + ".md" : ""
-  readonly property bool noteAskable: svc.ready && root.noteRel !== "" && (!root.dayNote || root.beforeHorizon || svc.notePrivate)
-  readonly property string noteTalkPath: svc.agentDir !== "" && root.noteRel !== ""
-    ? svc.agentDir + "/notes/" + Qt.md5(root.noteRel).slice(0, 16) + ".json" : ""
+  readonly property bool noteAskable: root.paperShown ? root.paperAskable
+    : svc.ready && root.noteRel !== "" && (!root.dayNote || root.beforeHorizon || svc.notePrivate)
+  // What the room talks about: the PDF open in the vault (plan.md item 15,
+  // step 2), else the note.
+  readonly property string roomRel: root.paperShown ? root.pdfRel : root.noteRel
+  readonly property string noteTalkPath: svc.agentDir !== "" && root.roomRel !== ""
+    ? svc.agentDir + "/notes/" + Qt.md5(root.roomRel).slice(0, 16) + ".json" : ""
   property var noteTalk: null
   onNoteTalkPathChanged: if (root.noteTalkPath === "") root.noteTalk = null
   readonly property int noteTalkTurns: root.noteTalk && root.noteTalk.turns ? root.noteTalk.turns.length : 0
@@ -994,7 +999,7 @@ Item {
   readonly property var dayState: root.noteRoom ? root.noteTalk : agent.state && agent.state.day ? agent.state.day : null
   readonly property var dayTurns: {
     var t = root.dayState && root.dayState.turns ? root.dayState.turns.slice() : []
-    if (root.dayPending && (svc.isToday || root.noteRoom)) t.push({ role: "student", text: root.dayPending.text, block: root.dayPending.block })
+    if (root.dayPending && (svc.isToday || root.noteRoom)) t.push({ role: "student", text: root.dayPending.text, block: root.dayPending.block, marks: root.dayPending.marks })
     return t
   }
   // The morning's observation is the conversation's opening line, waiting.
@@ -1018,7 +1023,7 @@ Item {
 
   // A file has no day: its pane is its own conversation.
   function openDay(block) {
-    root.openRoom(block, !root.dayNote)
+    root.openRoom(block, root.paperShown ? root.paperAskable : !root.dayNote)
   }
 
   // "ask about this note" in the header, and the agent's pane on a file.
@@ -1031,7 +1036,7 @@ Item {
     root.marginOpen = false
     root.marginFocus = -1
     root.closeTalk(false)
-    if (note !== root.noteRoom) { root.dayPending = null; root.dayBlock = ""; root.dayBlockText = "" }
+    if (note !== root.noteRoom) { root.dayPending = null; root.dayBlock = ""; root.dayBlockText = ""; root.paperMarks = [] }
     root.noteRoom = !!note
     root.dayOpen = true
     if (block) {
@@ -1039,11 +1044,14 @@ Item {
       root.dayBlock = b ? block : ""
       root.dayBlockText = b ? b.text.split("\n")[0].replace(/^\s*([-*+] (\[.\] )?|#+ )/, "").slice(0, 80) : ""
     }
-    root.used(note ? "note-talk" : "day", block ? "block" : "")
-    Qt.callLater(function () { dayPane.dayFieldRef.forceActiveFocus() })
+    root.used(note ? (root.paperShown ? "paper-talk" : "note-talk") : "day", block ? "block" : "")
+    if (root.paperRoom && root.paperList) Qt.callLater(function () { dayPane.paperKeysRef.forceActiveFocus() })
+    else Qt.callLater(function () { dayPane.dayFieldRef.forceActiveFocus() })
   }
 
   function dayFieldItem() { return dayPane.dayFieldRef }
+  // Where the keys go in the day's pane: the box, or the paper's list.
+  function dayKeysItem() { return root.paperRoom && root.paperList ? dayPane.paperKeysRef : dayPane.dayFieldRef }
 
   // A block's first words, for the "↳" a message carries; "a block" when
   // the note no longer has it as it was.
@@ -1061,12 +1069,156 @@ Item {
     root.giveBack("right", was, "right")
   }
 
+  // ------------------------------------------------- the paper's room
+  //
+  // Reading a paper (plan.md item 15, step 2, 2026-11-15): with a PDF of
+  // the vault open, the agent's pane is the paper's — one conversation for
+  // the whole paper, never one per mark ("shared context makes more sense",
+  // the student). The pane turns between the paper's marks, as a list, and
+  // its chat: Enter on a row goes to the chat with that mark attached, Esc
+  // comes back. Above the list a strip: all, highlights, questions (the
+  // waiting ones first); Ctrl+Enter asks every waiting question at once.
+  // `^` in the box attaches a mark, as `@` points at a block.
+  readonly property bool paperShown: root.pdfShown && root.pdfRel !== "" && root.pdfRel.charAt(0) !== "/"
+  readonly property bool paperAskable: root.paperShown && pdfPane.read.text !== false && !pdfPane.read.private
+  readonly property bool paperRoom: root.noteRoom && root.paperShown
+  property var paperMarks: []          // attached to the next message
+  property bool paperList: true        // the list, or the chat
+  property string paperFilter: "all"   // "all", "h", "q"
+  property int paperFocus: 0
+  property var paperKept: []           // Space on rows: kept, to attach together
+  onPdfRelChanged: { root.paperMarks = []; root.paperKept = []; root.paperFocus = 0; root.paperList = true; root.paperFilter = "all" }
+  // Which marks have had an answer: pointed at by a message answered.
+  readonly property var paperAnswered: {
+    var out = ({})
+    var t = root.paperShown && root.noteTalk && root.noteTalk.turns ? root.noteTalk.turns : []
+    for (var i = 0; i + 1 < t.length; i++)
+      if (t[i].role === "student" && t[i].marks && t[i + 1].role === "agent" && !t[i + 1].error)
+        for (var k = 0; k < t[i].marks.length; k++) out[t[i].marks[k]] = true
+    return out
+  }
+  function markState(m) {
+    if (m.kind !== "q") return m.note ? "note" : ""
+    return root.paperAnswered[m.id] ? "answered" : "waiting"
+  }
+  // The rows, as the strip shows them: in page order; questions with the
+  // waiting ones first.
+  readonly property var paperRows: {
+    var ms = (pdfPane.read && pdfPane.read.marks) ? pdfPane.read.marks : []
+    var f = root.paperFilter
+    var rows = ms.filter(function (m) { return f === "all" || m.kind === f })
+    if (f === "q") rows = rows.filter(function (m) { return root.markState(m) === "waiting" })
+      .concat(rows.filter(function (m) { return root.markState(m) !== "waiting" }))
+    return rows
+  }
+  readonly property var paperWaiting: ((pdfPane.read && pdfPane.read.marks) ? pdfPane.read.marks : [])
+    .filter(function (m) { return m.kind === "q" && !root.paperAnswered[m.id] })
+  function paperCount(kind) {
+    var ms = (pdfPane.read && pdfPane.read.marks) ? pdfPane.read.marks : []
+    return ms.filter(function (m) { return kind === "all" || m.kind === kind }).length
+  }
+  function markById(id) { return pdfPane.markById(id) }
+  function markHead(id) {
+    var m = pdfPane.markById(id)
+    if (!m) return id
+    return "p. " + m.page + " “" + (m.text.length > 48 ? m.text.slice(0, 48) + "…" : m.text) + "”"
+  }
+  function attachMark(id) {
+    if (!pdfPane.markById(id) || root.paperMarks.indexOf(id) >= 0) return
+    root.paperMarks = root.paperMarks.concat([id])
+  }
+  function showPaperList() {
+    root.paperList = true
+    root.dayMention = null
+    Qt.callLater(function () { dayPane.paperKeysRef.forceActiveFocus() })
+  }
+  function showPaperChat() {
+    root.paperList = false
+    Qt.callLater(function () { dayPane.dayFieldRef.forceActiveFocus() })
+  }
+  // A question just marked: its chat, with it attached, the words to come.
+  function askAboutMark(id) {
+    if (!root.paperAskable) return
+    if (!root.paperRoom) root.openRoom("", true)
+    root.paperMarks = [id]
+    root.showPaperChat()
+  }
+  function paperPick(i) {
+    var n = root.paperRows.length
+    if (n === 0) return
+    root.paperFocus = Math.max(0, Math.min(n - 1, i))
+    pdfPane.showMark(root.paperRows[root.paperFocus].id)
+  }
+  // Every waiting question in one message, each by its name, the answer
+  // to come back question by question (the runner asks for that).
+  function askWaiting() {
+    var w = root.paperWaiting
+    if (w.length === 0) { root.showHint("no question is waiting"); return }
+    root.paperMarks = w.map(function (m) { return m.id })
+    var lines = w.map(function (m) { return "- " + m.id + (m.note ? ": " + m.note : "") })
+    root.sendDay((w.length === 1 ? "My question:\n" : "My waiting questions, one by one:\n") + lines.join("\n"))
+    root.showPaperChat()
+    root.used("paper-talk", "ask-waiting")
+  }
+  function paperKey(event) {
+    if (root.anywhereKey(event)) return true
+    var n = root.paperRows.length
+    if (Sc.hit(event, "paperAll")) { root.paperFilter = "all"; root.paperFocus = 0; return true }
+    if (Sc.hit(event, "paperHighlights")) { root.paperFilter = "h"; root.paperFocus = 0; return true }
+    if (Sc.hit(event, "paperQuestions")) { root.paperFilter = "q"; root.paperFocus = 0; return true }
+    if (Sc.hit(event, "paperAskWaiting")) { root.askWaiting(); return true }
+    if (Sc.hit(event, "paperUp")) { root.paperPick(root.paperFocus - 1); return true }
+    if (Sc.hit(event, "paperDown")) { root.paperPick(root.paperFocus + 1); return true }
+    if (Sc.hit(event, "paperKeep")) {
+      var row = root.paperRows[root.paperFocus]
+      if (!row) return true
+      var i = root.paperKept.indexOf(row.id)
+      root.paperKept = i >= 0 ? root.paperKept.filter(function (x) { return x !== row.id }) : root.paperKept.concat([row.id])
+      return true
+    }
+    if (Sc.hit(event, "paperOpen")) {
+      var r = root.paperRows[root.paperFocus]
+      var ids = root.paperKept.length > 0 ? root.paperKept.slice() : r ? [r.id] : []
+      ids.forEach(root.attachMark)
+      root.paperKept = []
+      root.showPaperChat()
+      return true
+    }
+    if (Sc.hit(event, "paperChat")) { root.showPaperChat(); return true }
+    if (Sc.hit(event, "paperBack")) {
+      if (root.paperKept.length > 0) { root.paperKept = []; return true }
+      root.closeDay(); return true
+    }
+    // Typing in the list goes to the box, as a dashboard row's chat does.
+    if (event.text && event.text.length === 1 && event.text >= " " && !(event.modifiers & (Qt.ControlModifier | Qt.AltModifier))) {
+      root.showPaperChat()
+      Qt.callLater(function () { dayPane.dayFieldRef.insert(dayPane.dayFieldRef.cursorPosition, event.text) })
+      return true
+    }
+    return false
+  }
+  // `^` in the paper's box: its marks, narrowing as you type.
+  function updatePaperMention() {
+    var f = dayPane.dayFieldRef
+    var m = f.text.substring(0, f.cursorPosition).match(/(^|\s)\^([^\s^]*)$/)
+    if (!m) { root.dayMention = null; return }
+    var q = m[2].toLowerCase()
+    var ms = (pdfPane.read && pdfPane.read.marks) ? pdfPane.read.marks : []
+    var items = ms.filter(function (x) { return q === "" || x.text.toLowerCase().indexOf(q) >= 0 || x.id === q })
+      .slice(0, 8).map(function (x) { return { mark: x.id, head: root.markHead(x.id) } })
+    root.dayMention = { start: f.cursorPosition - m[2].length - 1, query: m[2], items: items }
+    if (root.dayMentionFocus > items.length - 1) root.dayMentionFocus = Math.max(0, items.length - 1)
+  }
+
   function sendDay(text) {
     var msg = String(text || "").trim()
     if (msg === "" || !root.dayCanSend) return false
-    var cmd = root.noteRoom ? [svc.runner, "note", "--file", root.noteRel, "--message", msg] : [svc.runner, "day", "--message", msg]
+    var cmd = root.noteRoom ? [svc.runner, "note", "--file", root.roomRel, "--message", msg] : [svc.runner, "day", "--message", msg]
     if (root.dayBlock !== "") cmd = cmd.concat(["--block", root.dayBlock])
-    root.dayPending = { text: msg, block: root.dayBlock }
+    var marks = root.paperRoom ? root.paperMarks.slice() : []
+    if (marks.length > 0) cmd = cmd.concat(["--marks", marks.join(",")])
+    root.paperMarks = []
+    root.dayPending = { text: msg, block: root.dayBlock, marks: marks }
     root.dayBlock = ""
     root.dayBlockText = ""
     root.flush()
@@ -1092,6 +1244,7 @@ Item {
   property int dayMentionFocus: 0
   function updateDayMention() {
     var f = dayPane.dayFieldRef
+    if (root.paperRoom) { root.updatePaperMention(); return }
     var m = f.text.substring(0, f.cursorPosition).match(/(^|\s)@([^\s@]*)$/)
     if (!m || !root.dayCanSend) { root.dayMention = null; return }
     var q = m[2].toLowerCase()
@@ -1105,6 +1258,13 @@ Item {
     var m = root.dayMention
     var it = m && m.items[i]
     if (!it) return
+    if (it.mark) {
+      dayPane.dayFieldRef.remove(m.start, dayPane.dayFieldRef.cursorPosition)
+      root.attachMark(it.mark)
+      root.dayMention = null
+      root.used("paper-talk", "caret")
+      return
+    }
     var f = dayPane.dayFieldRef
     f.remove(m.start, f.cursorPosition)
     root.dayBlock = it.hash
@@ -1192,7 +1352,7 @@ Item {
   // The day's answers and a note's (its room) are rated alike: the word
   // shows at once, and the runner keeps it on the turn.
   property var dayRatingNow: ({})       // "<note date>#<turn>" or "note:<path>#<turn>" -> "up" | "down" | "none", until the state says so
-  function ratingKey(i) { return (root.noteRoom ? "note:" + root.noteRel : svc.noteDate) + "#" + i }
+  function ratingKey(i) { return (root.noteRoom ? "note:" + root.roomRel : svc.noteDate) + "#" + i }
   function dayRatingOf(i) {
     var now = root.dayRatingNow[root.ratingKey(i)]
     if (now !== undefined) return now === "none" ? "" : now
@@ -1200,7 +1360,7 @@ Item {
     return t && t.rating ? t.rating.value : ""
   }
   function rateDay(i, value) {
-    if (root.noteRoom && root.noteRel === "") return
+    if (root.noteRoom && root.roomRel === "") return
     var turns = root.dayState && root.dayState.turns ? root.dayState.turns : []
     if (i < 0) for (var k = turns.length - 1; k >= 0 && i < 0; k--) if (turns[k].role === "agent" && !turns[k].error) i = k
     if (i < 0 || !turns[i] || turns[i].role !== "agent" || turns[i].error) return
@@ -1209,7 +1369,7 @@ Item {
     for (var j in root.dayRatingNow) m[j] = root.dayRatingNow[j]
     m[root.ratingKey(i)] = v
     root.dayRatingNow = m
-    if (root.noteRoom) root.runInTurn(rateProc, [svc.runner, "rate", v, "--note", root.noteRel, "--turn", String(i)])
+    if (root.noteRoom) root.runInTurn(rateProc, [svc.runner, "rate", v, "--note", root.roomRel, "--turn", String(i)])
     else root.runInTurn(rateProc, [svc.runner, "rate", v, "--day", String(i), "--date", svc.noteDate])
     root.used("rate", (root.noteRoom ? "note-" : "day-") + v)
   }
@@ -1261,8 +1421,13 @@ Item {
       if (Sc.hit(event, "mentionClose")) { root.dayMention = null; return true }
     }
     if (root.anywhereKey(event)) return true
+    if (root.paperRoom && Sc.hit(event, "marginBack")) { root.showPaperList(); return true }
     if (Sc.hit(event, "marginBack")) { root.closeDay(); return true }
     if (Sc.hit(event, "chatSend")) { if (root.sendDay(dayPane.dayFieldRef.text)) dayPane.dayFieldRef.text = ""; return true }
+    // Backspace in an empty box lets go of the last mark attached.
+    if (event.key === Qt.Key_Backspace && dayPane.dayFieldRef.text === "" && root.paperMarks.length > 0) {
+      root.paperMarks = root.paperMarks.slice(0, -1); return true
+    }
     // Backspace in an empty box lets go of the block pointed at.
     if (event.key === Qt.Key_Backspace && dayPane.dayFieldRef.text === "" && root.dayBlock !== "") {
       root.dayBlock = ""; root.dayBlockText = ""; return true
@@ -1879,7 +2044,7 @@ Item {
     blipAnim.restart()
   }
   readonly property string here: sidebar.sidebarKeysRef.activeFocus || sidebar.projectFieldRef.activeFocus || sidebar.filesFilterRef.activeFocus ? "left"
-    : margin.marginKeysRef.activeFocus || margin.chatFieldRef.activeFocus || dayPane.dayFieldRef.activeFocus ? "right"
+    : margin.marginKeysRef.activeFocus || margin.chatFieldRef.activeFocus || dayPane.dayFieldRef.activeFocus || dayPane.paperKeysRef.activeFocus ? "right"
     : "center"
   // Where the keys were when a pane ("left", "right") or a view of the
   // middle ("dash", "keys", "settings") opened.
@@ -1902,7 +2067,7 @@ Item {
     if (p === "right") {
       var v = root.rightView
       if (v === "") return false
-      if (v === "day") dayPane.dayFieldRef.forceActiveFocus()
+      if (v === "day") root.dayKeysItem().forceActiveFocus()
       else if (v === "talk") {
         if (root.marginFocus === 0 && root.talkItem) margin.marginKeysRef.forceActiveFocus()
         else { root.marginFocus = 1; margin.chatFieldRef.forceActiveFocus() }
@@ -1965,7 +2130,8 @@ Item {
     if (p === "right") {
       if (root.rightView === "") root.openRight()
       else if (root.here !== "right") root.focusPane("right")
-      else if (root.rightView === "day") root.openThisChat()
+      // The paper's room and the day's chat, one key between them.
+      else if (root.rightView === "day") { if (root.paperRoom) root.openRoom("", false); else root.openThisChat() }
       else root.openDay("")
       return
     }
@@ -2005,6 +2171,9 @@ Item {
       var row = root.taskRows[root.taskFocus]
       if (row && ["task", "deadline", "proposal", "question", "told"].indexOf(row.kind) >= 0) root.talkFocused()
       else root.showHint("this row has no chat")
+    } else if (root.paperShown) {
+      if (!root.paperAskable) root.showHint(pdfPane.read.private ? "private: this PDF is never given to the agent" : "this PDF has no words for the agent to read")
+      else root.openRoom("", true)
     } else if (root.centerView === "note" && root.dayNote && !root.pdfShown) {
       if (root.currentHash === "") root.showHint("no block under the cursor")
       else if (!root.agentOn) root.showHint("private: the agent sees nothing of this note")
@@ -2023,7 +2192,9 @@ Item {
     // missed it, 2026-10-25). It opens without sending, to be asked in
     // your own words; Ctrl+Enter is the key that sends.
     if (d > 0 && root.here === "center" && root.centerView === "note"
-        && root.currentHash !== "" && root.marginWidth > 0) { root.diveIn(); return }
+        && root.currentHash !== "" && root.marginWidth > 0 && !root.pdfShown) { root.diveIn(); return }
+    // Beside a paper, Alt+→ opens its room, as a block's chat beside a note.
+    if (d > 0 && root.here === "center" && root.paperAskable && root.marginWidth > 0) { root.openRoom("", true); return }
     root.showHint(d < 0 ? "nothing to the left · " + root.keyName("pane1") + " opens the sidebar"
                         : "nothing to the right · " + root.keyName("pane3") + " opens the agent's pane")
   }
@@ -2791,7 +2962,7 @@ Item {
     var was = root.here
     root.marginFocus = -1
     root.marginOpen = false
-    if (was === "right" && root.rightView === "day") dayPane.dayFieldRef.forceActiveFocus()
+    if (was === "right" && root.rightView === "day") root.dayKeysItem().forceActiveFocus()
     else root.giveBack("right", was, "right")
   }
 
@@ -3110,7 +3281,13 @@ Item {
   // A reply's citations — `path` line N, or p. N — made links: a daily
   // note opens at that line, any other file in its own application.
   function linkCitations(text) {
-    return String(text || "").replace(/`([^`\n]+\.(?:md|txt|pdf))`(?:,?\s*(line|p\.)\s*(\d+))?/g, function (m, path, kind, n) {
+    var t = String(text || "")
+    // In a paper's chat, “its exact words” (p. 12) shows them on the page.
+    if (root.paperRoom)
+      t = t.replace(/“([^”\n]{3,300})”\s*\(p\.\s*(\d+)\)/g, function (m, words, n) {
+        return "[“" + words + "” (p. " + n + ")](quote:" + n + ":" + encodeURIComponent(words) + ")"
+      })
+    return t.replace(/`([^`\n]+\.(?:md|txt|pdf))`(?:,?\s*(line|p\.)\s*(\d+))?/g, function (m, path, kind, n) {
       var label = path.replace(/^.*\//, "").replace(/\.md$/, "") + (n ? (kind === "line" ? " · line " : " · p. ") + n : "")
       return "[" + label + "](cite:" + encodeURIComponent(path) + (n ? "#" + n : "") + ")"
     })
@@ -3118,6 +3295,8 @@ Item {
 
   property int pendingLine: -1
   function openCitation(link) {
+    var q = /^quote:(\d+):(.*)$/.exec(String(link))
+    if (q) { root.used("paper-talk", "quote"); pdfPane.flash(parseInt(q[1]), decodeURIComponent(q[2])); return }
     var m = /^cite:([^#]+)(?:#(\d+))?$/.exec(String(link))
     if (!m) return
     var path = decodeURIComponent(m[1])
@@ -4148,7 +4327,7 @@ Item {
   function leaveTalk() {
     var was = root.here
     root.closeTalk(false)
-    if (was === "right" && root.rightView === "day") dayPane.dayFieldRef.forceActiveFocus()
+    if (was === "right" && root.rightView === "day") root.dayKeysItem().forceActiveFocus()
     else root.giveBack("right", was, "right")
   }
 
