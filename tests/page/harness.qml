@@ -208,6 +208,38 @@ ShellRoot {
         at: p.here(), settled: p.settled, resumed: p.resumed, zoom: p.zoom })
     }
     function pdfKey(key: int, mods: int): bool { return page.pdfItem.key({ key: key, text: "", modifiers: mods }) }
+    // Marks (plan.md, item 15): what longhand-read said, what is drawn on
+    // the first page, what is selected.
+    function pdfMarks(): string {
+      var p = page.pdfItem, drawn = 0
+      for (var i = 0; i < p.dressed.length; i++) {
+        var h = p.dressed[i]
+        if (!h || h.index !== 0) continue
+        var kids = h.selection.parent.children
+        for (var k = 0; k < kids.length; k++) if (kids[k].holder !== undefined && kids[k].count !== undefined) drawn += kids[k].count
+      }
+      var sel = p.selected()
+      return JSON.stringify({ read: p.read, picked: p.picked, lastMade: p.lastMade, error: p.readError, noting: p.noting,
+        dressed: p.dressed.length, drawn: drawn, selected: sel ? sel.text : "", markable: p.markable })
+    }
+    // Select on a page (from 0) from one point to another, in points: both
+    // on the words, as a drag starts (pdfium finds no text elsewhere).
+    function pdfSelect(pageIndex: int, x0: real, y0: real, x1: real, y1: real): bool {
+      var p = page.pdfItem, s = p.view.renderScale
+      for (var i = 0; i < p.dressed.length; i++) {
+        var h = p.dressed[i]
+        if (!h || h.index !== pageIndex) continue
+        // Qt's selection takes new points only while not held (a drag).
+        h.selection.hold = false
+        h.selection.from = Qt.point(x0 * s, y0 * s)
+        h.selection.to = Qt.point(x1 * s, y1 * s)
+        h.selection.hold = true
+        return true
+      }
+      return false
+    }
+    function pdfPick(id: string): void { page.pdfItem.pick(id) }
+    function pdfWriteNote(text: string): void { page.pdfItem.noteRef.text = text; page.pdfItem.saveNote() }
     // Export as a PDF (ExportSheet.qml): the sheet as its keys see it.
     function exportState(): string {
       return JSON.stringify({ open: page.exportOpen, busy: page.exportBusy, error: page.exportError, title: page.exportTitle,

@@ -76,7 +76,7 @@ var actions = [
   { id: "zoomReset", group: "page", places: ["any"], does: "Zoom back to 100%", keys: ["Ctrl+0"] },
   { id: "keys", group: "page", places: ["any"], does: "Show these keys", keys: ["Ctrl+/"] },
   // `?` where nothing is typed, as Gmail, Todoist and GitHub have it.
-  { id: "keysHere", group: "page", places: ["dash", "lists", "files", "calendar"], does: "Show these keys (where nothing is typed)", keys: ["?"] },
+  { id: "keysHere", group: "page", places: ["dash", "lists", "files", "calendar", "pdf"], does: "Show these keys (where nothing is typed)", keys: ["?"] },
   { id: "settings", group: "page", places: ["any"], does: "Settings (calendars, sound)", keys: ["Ctrl+,"] },
   // The three panes, left to right, are the digits (2026-10-27, docs/
   // keys-proposal.md; the brackets were theirs from 2026-10-23, and need
@@ -297,7 +297,11 @@ var actions = [
   { id: "pdfFit", group: "pdf", places: ["pdf"], does: "Fit to the column again", keys: ["0"] },
   { id: "pdfFind", group: "pdf", places: ["pdf"], does: "Find in it (Enter: next, Shift+Enter: before)", keys: ["Ctrl+F", "/"] },
   { id: "pdfOpen", group: "pdf", places: ["pdf"], does: "Open it in its own application", keys: ["O"] },
-  { id: "pdfClose", group: "pdf", places: ["pdf"], does: "Close it, back to the note", keys: ["Esc"] },
+  { id: "pdfMark", group: "pdf", places: ["pdf"], does: "Highlight the words selected; on a mark clicked, make it a highlight", keys: ["M"] },
+  { id: "pdfQuestion", group: "pdf", places: ["pdf"], does: "Mark the words selected as a question; on a mark clicked, make it one", keys: ["Q"] },
+  { id: "pdfNote", group: "pdf", places: ["pdf"], does: "A note under the mark clicked, else the last one made", keys: ["N"] },
+  { id: "pdfRemove", group: "pdf", places: ["pdf"], does: "Remove the mark clicked, and its note", keys: ["X", "Del", "Backspace"] },
+  { id: "pdfClose", group: "pdf", places: ["pdf"], does: "Let go of the mark clicked or the words selected; then close it, back to the note", keys: ["Esc"] },
 
   { id: "exportDown", group: "export", places: ["export"], does: "The next block", keys: ["Down", "J"] },
   { id: "exportUp", group: "export", places: ["export"], does: "The block before", keys: ["Up", "K"] },

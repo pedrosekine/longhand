@@ -45,6 +45,7 @@ tools/install-plugins   # the page, the timer and the deadlines into ~/.config/o
 ln -s "$PWD/cli/pomo"             ~/.local/bin/pomo
 ln -s "$PWD/agent/longhand-agent" ~/.local/bin/longhand-agent
 ln -s "$PWD/cli/longhand-check"   ~/.local/bin/longhand-check    # keeps the notes, the store and the popup one thing
+ln -s "$PWD/cli/longhand-read"    ~/.local/bin/longhand-read     # a paper's highlights, kept in its reading note
 longhand-agent install
 mkdir -p ~/.local/share/icons/hicolor/scalable/apps         # "Longhand" in the app launcher (Super+Space)
 ln -s "$PWD/launcher/longhand.desktop" ~/.local/share/applications/longhand.desktop

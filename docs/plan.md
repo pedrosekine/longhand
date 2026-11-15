@@ -724,9 +724,30 @@ Small, when passing by:
       highlight `m`/`q` switch its kind and `x`/Del/Backspace remove it,
       `i` inverted pages (off by default, kept per paper). Mouse selects;
       keyboard selection waits.
+    - **From the survey of other tools** (2026-11-15: Zotero and its AI
+      plugins, Readwise Reader, NotebookLM, Acrobat, SciSpace, Elicit,
+      Semantic Reader, MarginNote, LiquidText, Sioyek, PDF++, Hypothesis).
+      In line: one chat per paper, attaching chosen passages, the PDF
+      untouched. Unusual: markdown as the only store (the field's first
+      complaint is annotations locked in a database), anchoring by words,
+      the waiting question, "read today". Taken in:
+      (a) the agent's answers **cite the words and page**, and the page
+      finds and flashes them (passing, never saved), as every other tool
+      does; (b) an attached highlight takes **its page's text** along,
+      unseen, so terms defined near it come too; (c) **re-finding** is made
+      sturdy: the words are matched loosely (hyphens, ligatures, spaces), a
+      few words around them are written only when the phrase is not unique
+      on its page, the pages either side are searched when it moved, and a
+      highlight that cannot be placed is listed as such, never lost
+      silently (Hypothesis measured 27% orphans on the web); (d) asking all
+      waiting questions together is answered **question by question**, so
+      each is marked answered. Later: keyboard selection by a focused
+      paragraph (Readwise's arrows and H), a chat across a project's
+      readings, a layer of the agent's own highlights.
     - **Order:** (1) highlights and questions drawn and kept in the reading
-      note, `n`, the project, removal; (2) the paper's chat, the list and
-      its strip, `^`, the private folders; (3) "read today" on the day
+      note, `n`, the project, removal, re-finding (c); (2) the paper's chat
+      with (a), (b), (d), the list and its strip, `^`, the private folders;
+      (3) "read today" on the day
       page, and a task line linking a PDF opens it where it was left;
       (4) inverted pages; (5) **OCR**, parked but soon (tesseract is here).
     - **Telling a highlight from a question** is the person's choice at the

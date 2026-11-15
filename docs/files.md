@@ -466,10 +466,24 @@ block, `table` rows.
   scrolling pauses, and when it closes or another opens; one left at its
   top, at its own size, keeps nothing.
 
-**Not yet:** reading papers here, with the agent (plan.md item 15, next):
-- asking the agent about a PDF (the runner reads PDFs already, through
-  pdftotext);
-- a dark reading mode for white pages.
+- **Marks** (2026-11-15, plan.md item 15, step 1). Words selected with
+  the mouse, then `m` keeps them as a highlight (yellow) and `q` as a
+  question (blue); a mark clicked is picked (outlined), and then `m`/`q`
+  switch its kind and `x`/Del/Backspace remove it; `n` writes a note under
+  the mark picked, else the last one made; Esc lets go of a pick or a
+  selection before it closes the PDF. Every mark lives in the paper's
+  **reading note** (`<notes>/Readings/<paper>.md`, or `readings` in the
+  config), written by `cli/longhand-read`; the PDF is never written to.
+  The words are found on their page again each time (`pdftotext
+  -bbox-layout`, cached in the state folder), loosely, so no coordinates
+  are kept; the pane draws the rectangles it hands back in a layer put
+  into each of Qt's page delegates. A mark whose words cannot be found is
+  counted in the foot, not dropped. A PDF outside the vault, or one with
+  no words (scanned), takes no marks and says so.
+
+**Not yet** (plan.md item 15, steps 2 to 5): the paper's chat and the
+highlight list beside it; "read today"; a dark reading mode for white
+pages; OCR.
 
 Tests: `tests/page/run.py` 12h. Pele can't run in Qt's own JavaScript
 engine (ES2022: `matchAll`, `replaceAll`, `\p{}`, `Intl`), so it needs

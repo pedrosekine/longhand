@@ -169,7 +169,7 @@ class Page:
         self.runner = self.tmp / "runner"
         (cfg / "longhand" / "config.json").write_text(json.dumps({
             "vault": str(self.vault), "daily": {"dir": "Daily", "format": "YYYY.MM.DD"}, "horizon": "2000-01-01",
-            "runner": str(self.runner), "check": str(ROOT / "cli" / "longhand-check"), "weekStart": "monday",
+            "runner": str(self.runner), "check": str(ROOT / "cli" / "longhand-check"), "read": str(ROOT / "cli" / "longhand-read"), "weekStart": "monday",
             "inbox": str(self.tmp / "Downloads"),
             "export": {"author": "A. Student", "dir": str(self.tmp / "Downloads")}}))
         (self.tmp / "Downloads").mkdir()
@@ -510,7 +510,7 @@ def checks() -> int:
         time.sleep(0.6)
         p.call("openDay", YDAY)
         time.sleep(1.5)
-        check("^d3" in p.note(YDAY), "with the store unreadable, opening a note keeps its anchors")
+        check("^d3" in p.note(YDAY), f"with the store unreadable, opening a note keeps its anchors ({p.note(YDAY)!r})")
         p.store.with_suffix(".away").rename(p.store)
 
         # 8. an edit made outside the page while it is open is kept
@@ -543,7 +543,8 @@ def checks() -> int:
 
         # 9. the popup's `o`: opening on a deadline's line
         p.open_fresh(json.dumps({"shape": "alongside", "goto": f"[[{YDAY}#^d3]]"}))
-        check(p.wait(lambda: "from cli" in p.lines()[int(p.call("cursorLine"))]), "goto opens the note on the deadline's line")
+        check(p.wait(lambda: "from cli" in p.lines()[int(p.call("cursorLine"))]),
+              f"goto opens the note on the deadline's line ({p.call('cursorLine')}, {p.lines()[:8]})")
 
         # 10. accepting an agent proposal binds the block's checkbox
         line = "- [ ] one-pager by friday"
@@ -3034,6 +3035,42 @@ def checks() -> int:
         p.call("pdfKey", 0x46, CTRL)                        # Ctrl+F
         p.call("pdfFind", "thematic")
         check(p.wait(lambda: pd()["finding"] and pd()["found"] >= 1), f"Ctrl+F finds in it ({pd()})")
+        # Marks (plan.md, item 15): words selected, `m` keeps them in the
+        # paper's reading note and draws them; clicked, `q` makes it a
+        # question; `n` writes a note under it; `x` removes it.
+        mk = lambda: json.loads(p.call("pdfMarks"))
+        check(p.wait(lambda: mk()["dressed"] >= 1 and mk()["markable"] and mk()["read"]["marks"] == []),
+              f"a PDF never marked has no marks, and its pages can take them ({mk()})")
+        check(p.call("pdfSelect", "0", "73", "69", "200", "69") == "true" and p.wait(lambda: mk()["selected"] != ""),
+              f"words selected on its page ({mk()})")
+        picked = mk()["selected"]
+        p.call("pdfKey", 0x4D, 0)                           # m
+        check(p.wait(lambda: len(mk()["read"]["marks"]) == 1 and mk()["drawn"] >= 1 and mk()["selected"] == ""),
+              f"m keeps them as a highlight, drawn on the page, the selection let go ({mk()})")
+        m1 = mk()["read"]["marks"][0]
+        reading = p.vault / mk()["read"]["note"]
+        check(m1["kind"] == "h" and m1["placed"] and reading.is_file() and f"> {m1['text']}" in reading.read_text()
+              and "Reflexive" in m1["text"] and m1["text"] in " ".join(picked.split()),
+              f"…in the paper's reading note, as its words ({m1}, {reading})")
+        check(mk()["lastMade"] == m1["id"], "…and it is the last one made")
+        p.call("pdfPick", m1["id"])
+        p.call("pdfKey", 0x51, 0)                           # q
+        check(p.wait(lambda: mk()["read"]["marks"][0]["kind"] == "q" and "> [!question]" in reading.read_text()),
+              f"clicked, q makes it a question ({mk()})")
+        p.call("pdfKey", 0x4E, 0)                           # n
+        check(p.wait(lambda: mk()["noting"]), "n opens a line for a note under it")
+        p.call("pdfWriteNote", "the method, in one line")
+        check(p.wait(lambda: mk()["read"]["marks"][0]["note"] == "the method, in one line" and not mk()["noting"]
+                     and "the method, in one line" in reading.read_text()),
+              f"…and Enter writes it under the quote ({mk()})")
+        check(mk()["picked"] == m1["id"], "…which stays picked")
+        p.call("pdfKey", KEY_ESC, 0)
+        check(p.wait(lambda: mk()["picked"] == "") and pd()["shown"], "Esc lets go of the mark clicked, and the PDF stays")
+        p.call("pdfPick", m1["id"])
+        p.call("pdfKey", 0x58, 0)                           # x
+        check(p.wait(lambda: mk()["read"]["marks"] == [] and mk()["drawn"] == 0 and m1["id"] not in reading.read_text()
+                     and "the method, in one line" not in reading.read_text()),
+              f"x removes it, with its note, from the page and the note ({mk()})")
         p.call("pdfKey", KEY_ESC, 0)
         check(p.wait(lambda: not pd()["shown"] and pd()["label"] != "Reading.pdf" and json.loads(p.call("files"))["filePath"] == ""
                      and "therapy appointment" in p.call("text")),

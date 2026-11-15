@@ -17,7 +17,7 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | Zoom out | `Ctrl+-` · `Ctrl+_` | everywhere |
 | Zoom back to 100% | `Ctrl+0` | everywhere |
 | Show these keys | `Ctrl+/` | everywhere |
-| Show these keys (where nothing is typed) | `?` | in the dashboard, in the sidebar's lists, in the files, in the calendar |
+| Show these keys (where nothing is typed) | `?` | in the dashboard, in the sidebar's lists, in the files, in the calendar, in a PDF |
 | Settings (calendars, sound) | `Ctrl+,` | everywhere |
 | The sidebar: go there, opening it; in it, Time ↔ Files | `Ctrl+1` | everywhere |
 | The middle: go there; in it, the note ↔ the dashboard | `Ctrl+2` | everywhere |
@@ -198,7 +198,11 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | Fit to the column again | `0` | in a PDF |
 | Find in it (Enter: next, Shift+Enter: before) | `Ctrl+F` · `/` | in a PDF |
 | Open it in its own application | `o` | in a PDF |
-| Close it, back to the note | `Esc` | in a PDF |
+| Highlight the words selected; on a mark clicked, make it a highlight | `m` | in a PDF |
+| Mark the words selected as a question; on a mark clicked, make it one | `q` | in a PDF |
+| A note under the mark clicked, else the last one made | `n` | in a PDF |
+| Remove the mark clicked, and its note | `x` · `Del` · `Backspace` | in a PDF |
+| Let go of the mark clicked or the words selected; then close it, back to the note | `Esc` | in a PDF |
 
 ## Export as a PDF
 
