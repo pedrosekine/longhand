@@ -464,6 +464,12 @@ block, `table` rows.
   selecting words. Its dragging is off; the touchpad scrolls it through
   `TouchScroll` (as the note), a mouse wheel through the pane's own
   handler, sideways only when it is sized wider than the column.
+- **The touchpad selects too** (2026-11-15). Qt's page takes a drag or a
+  click from a mouse or a stylus only, and on a laptop the touchpad is a
+  device of its own: a drag there selected nothing. The pane widens the
+  page's own drag and click to the touchpad, and a mark takes a click from
+  any device. The page test drags and clicks through the window (QtTest),
+  from the session's pointer, so it fails as a hand would.
 
 - **Where it was left** (2026-11-14). A PDF opens again on the page it
   was left at, as far down it, at the size it had: `pdfs.json` in the state

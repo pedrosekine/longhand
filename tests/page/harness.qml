@@ -1,6 +1,7 @@
 import Quickshell
 import Quickshell.Io
 import QtQuick
+import QtTest
 import qs.Commons
 // Qt 6.12's QtQuick has a `Color` of its own that shadows the shell's
 // (2026-10-18): the shell's palette is named through the module.
@@ -20,6 +21,9 @@ ShellRoot {
     property var seenRows: []    // dashDrawn's: the drawn rows seen so far
   }
   Page { id: page; shell: fakeShell; windowTitle: "Page scratch" }
+  // Real pointer events, delivered through the page's window as a mouse's
+  // are (QtTest's), for what only a drag shows: a selection in a PDF.
+  TestCase { id: pointer; name: "pointer"; when: false }
   IpcHandler {
     target: "page"
     function summon(payload: string): void { page.open(payload) }
@@ -208,15 +212,20 @@ ShellRoot {
         at: p.here(), settled: p.settled, resumed: p.resumed, zoom: p.zoom })
     }
     function pdfKey(key: int, mods: int): bool { return page.pdfItem.key({ key: key, text: "", modifiers: mods }) }
-    // Marks (plan.md, item 15): what longhand-read said, what is drawn on
-    // the first page, what is selected.
+    // Marks (plan.md, item 15): what longhand-read said, the marks drawn on
+    // the first page (those with a size: a mark once came out with none),
+    // what is selected.
     function pdfMarks(): string {
       var p = page.pdfItem, drawn = 0
       for (var i = 0; i < p.dressed.length; i++) {
         var h = p.dressed[i]
         if (!h || h.index !== 0) continue
         var kids = h.selection.parent.children
-        for (var k = 0; k < kids.length; k++) if (kids[k].holder !== undefined && kids[k].count !== undefined) drawn += kids[k].count
+        for (var k = 0; k < kids.length; k++) {
+          if (kids[k].holder === undefined || kids[k].count === undefined) continue
+          var boxes = kids[k].children
+          for (var b = 0; b < boxes.length; b++) if (boxes[b].modelData !== undefined && boxes[b].width > 4 && boxes[b].height > 4) drawn++
+        }
       }
       var sel = p.selected()
       return JSON.stringify({ read: p.read, picked: p.picked, lastMade: p.lastMade, error: p.readError, noting: p.noting,
@@ -246,6 +255,35 @@ ShellRoot {
       return false
     }
     function pdfPick(id: string): void { page.pdfItem.pick(id) }
+    // A click on a PDF's page (from 0), at a point in points, through the window.
+    function pdfClick(pageIndex: int, x: real, y: real): bool {
+      var p = page.pdfItem, s = p.view.renderScale
+      for (var i = 0; i < p.dressed.length; i++) {
+        var h = p.dressed[i]
+        if (!h || h.index !== pageIndex) continue
+        pointer.mouseClick(h.selection.parent, x * s, y * s, Qt.LeftButton)
+        return true
+      }
+      return false
+    }
+    // A drag across a PDF's page (from 0), from one point to another in
+    // points, through the window: what a hand does. QtTest sends it from
+    // the session's main pointer, on a laptop its touchpad — the device a
+    // drag on a PDF once selected nothing from.
+    function pdfDrag(pageIndex: int, x0: real, y0: real, x1: real, y1: real): bool {
+      var p = page.pdfItem, s = p.view.renderScale
+      for (var i = 0; i < p.dressed.length; i++) {
+        var h = p.dressed[i]
+        if (!h || h.index !== pageIndex) continue
+        var paper = h.selection.parent
+        pointer.mousePress(paper, x0 * s, y0 * s, Qt.LeftButton)
+        for (var k = 1; k <= 12; k++)
+          pointer.mouseMove(paper, (x0 + (x1 - x0) * k / 12) * s, (y0 + (y1 - y0) * k / 12) * s, 5, Qt.LeftButton)
+        pointer.mouseRelease(paper, x1 * s, y1 * s, Qt.LeftButton)
+        return true
+      }
+      return false
+    }
     function keysToSidebar(): void { if (!page.sidebarOpen) page.toggleSidebar(); page.focusSidebar() }
     function pdfWriteNote(text: string): void { page.pdfItem.noteRef.text = text; page.pdfItem.saveNote() }
     // Export as a PDF (ExportSheet.qml): the sheet as its keys see it.

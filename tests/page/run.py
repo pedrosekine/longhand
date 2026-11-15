@@ -3044,8 +3044,8 @@ def checks() -> int:
         check(mk()["dragPans"] is False, "a mouse drag on it selects, never moves the pages")
         p.call("keysToSidebar")
         check(p.wait(lambda: pd()["here"] == "left"), f"(the keys in the sidebar, as after opening it from the Files tree: {pd()['here']})")
-        check(p.call("pdfSelect", "0", "73", "69", "200", "69") == "true" and p.wait(lambda: mk()["selected"] != ""),
-              f"words selected on its page ({mk()})")
+        check(p.call("pdfDrag", "0", "73", "69", "200", "69") == "true" and p.wait(lambda: mk()["selected"] != ""),
+              f"a mouse dragged across words selects them ({mk()})")
         check(p.wait(lambda: pd()["here"] == "center"), f"…bring the keys to it, so m reaches them ({pd()['here']})")
         picked = mk()["selected"]
         p.call("pdfKey", 0x4D, 0)                           # m
@@ -3059,7 +3059,9 @@ def checks() -> int:
         check(mk()["lastMade"] == m1["id"], "…and it is the last one made")
         if p.call("sidebarOpen") == "true":
             p.call("sidebar")
-        p.call("pdfPick", m1["id"])
+        r = m1["boxes"][0]["rects"][0]
+        p.call("pdfClick", "0", str(r[0] + r[2] / 2), str(r[1] + r[3] / 2))
+        check(p.wait(lambda: mk()["picked"] == m1["id"]), f"a click on the mark picks it ({mk()['picked']!r})")
         p.call("pdfKey", 0x51, 0)                           # q
         check(p.wait(lambda: mk()["read"]["marks"][0]["kind"] == "q" and "> [!question]" in reading.read_text()),
               f"clicked, q makes it a question ({mk()})")

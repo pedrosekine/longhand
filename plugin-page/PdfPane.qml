@@ -270,7 +270,21 @@ Item {
       if (!paper) continue
       marksLayer.createObject(paper, { holder: h, paper: paper })
       pane.watch(h)
+      pane.touchpad(paper)
       pane.dressed = pane.dressed.concat([h])
+    }
+  }
+  // Qt's page selects words with a drag from a mouse or a stylus only; on
+  // a laptop the touchpad is its own kind of device, so a drag there
+  // selected nothing (2026-11-15, seen on both laptops: first as the pages
+  // sliding, then as nothing at all). The page's drag and click take the
+  // touchpad too.
+  function touchpad(paper) {
+    for (var i = 0; i < paper.data.length; i++) {
+      var o = paper.data[i], name = String(o)
+      if ((name.indexOf("DragHandler") >= 0 || name.indexOf("TapHandler") >= 0)
+          && o.acceptedDevices !== undefined && (o.acceptedDevices & PointerDevice.Mouse))
+        o.acceptedDevices = o.acceptedDevices | PointerDevice.TouchPad
     }
   }
   // Words selected on a page bring the keys here, wherever they were (a
@@ -384,8 +398,11 @@ Item {
   // The layer put into each page delegate: the marks on the page it holds.
   Component {
     id: marksLayer
+    // Not `layer`: every Item has a `layer` of its own (its effects), and
+    // inside a mark's Rectangle that name meant the Rectangle's, so every
+    // mark came out with no size (2026-11-15).
     Item {
-      id: layer
+      id: sheet
       property Item holder
       property Item paper
       anchors.fill: parent
@@ -394,22 +411,22 @@ Item {
       readonly property int count: drawn.count
       Repeater {
         id: drawn
-        model: pane.rectsOn(layer.index)
+        model: pane.rectsOn(sheet.index)
         delegate: Rectangle {
           id: box
           required property var modelData
           readonly property real pad: 1.5
           readonly property color tint: modelData.kind === "q" ? page.palette.blue : page.palette.yellow
-          x: modelData.r[0] * layer.s - pad
-          y: modelData.r[1] * layer.s - pad
-          width: modelData.r[2] * layer.s + 2 * pad
-          height: modelData.r[3] * layer.s + 2 * pad
+          x: modelData.r[0] * sheet.s - pad
+          y: modelData.r[1] * sheet.s - pad
+          width: modelData.r[2] * sheet.s + 2 * pad
+          height: modelData.r[3] * sheet.s + 2 * pad
           radius: 2
           color: Qt.rgba(tint.r, tint.g, tint.b, 0.38)
           border.width: modelData.id === pane.picked ? 2 : 0
           border.color: page.accent
           TapHandler {
-            acceptedDevices: PointerDevice.Mouse | PointerDevice.Stylus | PointerDevice.TouchScreen
+            acceptedDevices: PointerDevice.AllDevices
             onTapped: pane.pick(box.modelData.id)
           }
         }
