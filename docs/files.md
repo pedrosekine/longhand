@@ -550,8 +550,16 @@ block, `table` rows.
   finds nothing reads the names again once, and so does a picture's name
   missed (once per name).
 
-**Not yet** (plan.md item 15, steps 4 and 5): a dark reading mode for white
-pages; OCR; a two-column paper fitted one column at a time; a reading view
+- **Dark pages** (2026-11-15, plan.md item 15, step 4). `i` draws a
+  paper's pages in the theme's colours: white paper the sheet's ground (a
+  breath towards the ink, so the page's edge shows), black ink the text,
+  by lightness alone, so a figure's colours are kept and a photo is not a
+  negative (`dark-page.frag`, compiled to `dark-page.frag.qsb` with `qsb`,
+  which the Air does not have: compile it on xmg). Qt lays each page's
+  picture on a white sheet, which takes the ground too. Off by default,
+  kept per paper (`pdf-dark.json` in the state folder).
+
+**Not yet** (plan.md item 15, step 5): OCR; a two-column paper fitted one column at a time; a reading view
 (its text reflowed in the page's own face); the project's tag offered on a
 paper's first mark.
 

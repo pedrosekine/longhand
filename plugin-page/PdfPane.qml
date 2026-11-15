@@ -350,9 +350,55 @@ Item {
       marksLayer.createObject(paper, { holder: h, paper: paper })
       pane.watch(h)
       pane.touchpad(paper)
+      pane.darken(paper)
       pane.dressed = pane.dressed.concat([h])
     }
   }
+  // Dark pages (plan.md item 15, step 4): `i` draws the paper's pages in
+  // the theme's colours — white paper the ground, black ink the text, a
+  // figure's colours kept (dark-page.frag) — off by default, kept per paper
+  // in pdf-dark.json in the state folder.
+  property var darkPapers: ({})
+  // The page's ground: the sheet's, a breath towards the ink, so a page's
+  // edge still shows against the pane.
+  readonly property color darkGround: Qt.tint(page.sheetColor, Qt.rgba(page.foreground.r, page.foreground.g, page.foreground.b, 0.05))
+  readonly property bool dark: !!pane.darkPapers[pane.rel]
+  function toggleDark() {
+    if (pane.rel === "") return
+    var d = JSON.parse(JSON.stringify(pane.darkPapers))
+    if (d[pane.rel]) delete d[pane.rel]
+    else d[pane.rel] = true
+    pane.darkPapers = d
+    darkFile.setText(JSON.stringify(d) + "\n")
+    page.used("pdf", pane.dark ? "dark" : "light")
+  }
+  Component {
+    id: darkPage
+    ShaderEffect {
+      property color ground: pane.darkGround
+      property color ink: page.foreground
+      fragmentShader: Qt.resolvedUrl("dark-page.frag.qsb")
+    }
+  }
+  function darken(paper) {
+    // Qt lays each page's picture on a white sheet (the paper, the picture
+    // see-through around the ink): the sheet takes the ground too.
+    paper.color = Qt.binding(function () { return pane.dark ? pane.darkGround : "white" })
+    for (var i = 0; i < paper.data.length; i++) {
+      var o = paper.data[i]
+      if (String(o).indexOf("PdfPageImage") < 0) continue
+      o.layer.effect = darkPage
+      o.layer.enabled = Qt.binding(function () { return pane.dark })
+    }
+  }
+  FileView {
+    id: darkFile
+    path: (Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state") + "/longhand/pdf-dark.json"
+    atomicWrites: true
+    printErrors: false
+    onLoaded: { try { var o = JSON.parse(text()); if (o && typeof o === "object") pane.darkPapers = o } catch (e) {} }
+  }
+
   // Qt's page selects words with a drag from a mouse or a stylus only; on
   // a laptop the touchpad is its own kind of device, so a drag there
   // selected nothing (2026-11-15, seen on both laptops: first as the pages
@@ -558,6 +604,7 @@ Item {
     if (Sc.hit(event, "pdfNote")) { pane.startNote(); return true }
     if (pane.picked !== "" && Sc.hit(event, "pdfRemove")) return pane.remove()
     if (Sc.hit(event, "keysHere")) { page.toggleKeys(); return true }
+    if (Sc.hit(event, "pdfDark")) { pane.toggleDark(); return true }
     if (Sc.hit(event, "pdfClose")) {
       // Esc lets go of what is picked or selected first.
       if (pane.picked !== "") { pane.picked = ""; return true }

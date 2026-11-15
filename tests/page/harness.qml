@@ -211,7 +211,10 @@ ShellRoot {
         found: p.view && p.view.searchModel ? p.view.searchModel.count : 0, here: page.here,
         at: p.here(), settled: p.settled, resumed: p.resumed, zoom: p.zoom,
         scale: p.view ? p.view.renderScale : 0, x: p.table() ? p.table().contentX : 0, whole: p.wholePage, width: p.width,
-        span: p.read && p.read.span ? p.read.span : null })
+        span: p.read && p.read.span ? p.read.span : null, dark: p.dark,
+        darkDrawn: p.dressed.some(function (h) { if (!h || !h.selection) return false; var ds = h.selection.parent.data
+          for (var i = 0; i < ds.length; i++) if (String(ds[i]).indexOf("PdfPageImage") >= 0 && ds[i].layer.enabled) return true
+          return false }) })
     }
     function pdfKey(key: int, mods: int): bool { return page.pdfItem.key({ key: key, text: "", modifiers: mods }) }
     // Marks (plan.md, item 15): what longhand-read said, the marks drawn on

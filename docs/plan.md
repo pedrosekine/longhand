@@ -755,7 +755,7 @@ Small, when passing by:
       list opens on "the whole paper", to chat with it unattached;
       (3) — *built 2026-11-15* — "read today" on the day
       page, and a task line linking a PDF opens it where it was left;
-      (4) inverted pages; (5) **OCR**, parked but soon (tesseract is here).
+      (4) inverted pages — *built 2026-11-15*, in the theme's colours; (5) **OCR**, parked but soon (tesseract is here).
     - **Telling a highlight from a question** is the person's choice at the
       moment of marking (`m` or `q`, switchable after): to be tried and
       felt in use before anything cleverer. The agent marking passages

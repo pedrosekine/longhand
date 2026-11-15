@@ -3234,6 +3234,16 @@ def checks() -> int:
               f"0: the whole page, smaller ({fitted:.2f} → {pd()['scale']:.2f})")
         p.call("pdfKey", 0x30, 0)
         check(p.wait(lambda: not pd()["whole"] and abs(pd()["scale"] - fitted) < 0.01), "0 again: its text")
+        # Dark pages (plan.md item 15, step 4): i, kept for this paper.
+        check(not pd()["dark"] and not pd()["darkDrawn"], "a paper opens as printed")
+        p.call("pdfKey", 0x49, 0)                           # i
+        check(p.wait(lambda: pd()["dark"] and pd()["darkDrawn"]), f"i: its pages in the theme's colours ({pd()})")
+        p.call("pdfKey", KEY_ESC, 0)
+        p.wait(lambda: not pd()["shown"])
+        p.call("openFile", "Studies/Course A/Paper.pdf", "false")
+        check(p.wait(lambda: pd()["ready"] and pd()["dark"] and pd()["darkDrawn"]), "…kept: opened again, it is dark")
+        p.call("pdfKey", 0x49, 0)
+        check(p.wait(lambda: not pd()["dark"] and not pd()["darkDrawn"]), "i again: as printed")
         p.call("pdfKey", KEY_ESC, 0)
         check(p.wait(lambda: not pd()["shown"]), "…and Esc closes it")
         # The read view (step 4): a picture by name, a link followed to its
