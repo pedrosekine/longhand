@@ -53,6 +53,18 @@ Item {
       compare(r[7].space, 0.5)    // a paragraph after it
     }
 
+    // Cancelled is closed, not done (2026-11-15): grey with a dash, never
+    // the tick's colour and mark.
+    function test_a_cancelled_box_is_not_drawn_done() {
+      ed.checkColor = "green"
+      ed.load("- [x] done\n- [-] dropped ❌ 2026-11-15")
+      var done = findChild(ed.rowItem(0), "box"), dropped = findChild(ed.rowItem(1), "box")
+      verify(Qt.colorEqual(done.color, "green"), "a done box: the tick's colour")
+      verify(Qt.colorEqual(dropped.color, ed.cancelColor) && !Qt.colorEqual(dropped.color, "green"), "a cancelled one: grey")
+      compare([findChild(done, "tick").text, findChild(dropped, "tick").text], ["✓", "–"])
+      ed.checkColor = ed.dim
+    }
+
     function test_vertical_rhythm() {
       var r = Rows.derive("para one\npara two\n\n\n## Section\n- a\n\n# Top\ntext")
       compare(r[1].space, 0.25)                    // the next line of text

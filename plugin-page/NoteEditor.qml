@@ -105,6 +105,7 @@ Item {
   property color cueColor: Qt.rgba(accent.r, accent.g, accent.b, 0.2)   // a date being recognised
   property color boxColor: dim                                  // an open checkbox
   property color checkColor: dim                                // a ticked one
+  property color cancelColor: dim                               // a cancelled one: never the tick's
   property color bulletColor: dim                               // dots and numbers
   property color quoteColor: faint                              // a quote's bar
   property color privateColor: dim                              // a private callout's bar and label
@@ -1986,6 +1987,7 @@ Item {
 
         Rectangle {
           id: box
+          objectName: "box"
           readonly property int size: Math.round(ed.textSize * 0.72)
           visible: row.kind === "task"
           x: row.indentX + Math.round((ed.markerWidth - size) / 2) - Math.round(ed.textSize * 0.15)
@@ -1996,7 +1998,10 @@ Item {
           // The person's box is this square; the agent's and the shared one
           // draw their own shape inside it, and the square gives way.
           readonly property color edge: boxArea.containsMouse && ed.handOn ? ed.accent : ed.boxColor
-          color: row.checked && row.author === "" ? (boxArea.containsMouse && ed.handOn ? ed.accent : ed.checkColor) : "transparent"
+          // Cancelled is closed but not done (2026-11-15): grey, with a
+          // dash, so it is never read as ticked.
+          readonly property color shut: row.cancelled ? ed.cancelColor : ed.checkColor
+          color: row.checked && row.author === "" ? (boxArea.containsMouse && ed.handOn ? ed.accent : box.shut) : "transparent"
           border.width: row.checked || row.author !== "" ? 0 : Math.max(1, Math.round(ed.textSize * 0.08))
           border.color: box.edge
 
@@ -2008,7 +2013,7 @@ Item {
             height: width
             rotation: 45
             radius: Math.max(1, Math.round(ed.cornerRadius / 2))
-            color: row.checked ? (boxArea.containsMouse && ed.handOn ? ed.accent : ed.checkColor) : "transparent"
+            color: row.checked ? (boxArea.containsMouse && ed.handOn ? ed.accent : box.shut) : "transparent"
             border.width: row.checked ? 0 : Math.max(1, Math.round(ed.textSize * 0.08))
             border.color: box.edge
           }
@@ -2022,10 +2027,11 @@ Item {
             height: width
             outline: !row.checked
             strokePx: Math.max(1, Math.round(ed.textSize * 0.08))
-            color: row.checked ? (boxArea.containsMouse && ed.handOn ? ed.accent : ed.checkColor) : box.edge
+            color: row.checked ? (boxArea.containsMouse && ed.handOn ? ed.accent : box.shut) : box.edge
           }
 
           Text {
+            objectName: "tick"
             anchors.centerIn: parent
             visible: row.checked
             textFormat: Text.PlainText

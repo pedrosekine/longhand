@@ -618,6 +618,9 @@ BorderSurface {
             // Who made it (docs/agent.md): drawn in the box, as in the note.
             readonly property string author: page.rowAuthor(modelData)
             readonly property bool done: (deadline ? deadline.status !== "open" : (!!task && task.done)) || !!page.doneNow[rowKey]
+            // Closed but not done (2026-11-15): drawn as the note draws
+            // `[-]`, grey with a dash, never the green tick.
+            readonly property bool cancelled: deadline ? deadline.status === "cancelled" : (!!task && !!task.cancelled)
             // The tick, felt: the box pops and fills, the check comes in,
             // the words are struck through left to right, the row glows
             // and settles. Only for the row just ticked; a row already
@@ -926,7 +929,8 @@ BorderSurface {
               }
 
               // The box, exactly as the note draws one: open is an
-              // outline, closed is filled with a tick.
+              // outline, done is filled with a tick, cancelled is grey
+              // with a dash.
               Rectangle {
                 id: box
                 readonly property int size: Math.round(page.textSize * 0.72)
@@ -936,7 +940,8 @@ BorderSurface {
                 width: size
                 height: size
                 radius: Math.max(2, Math.round(Style.cornerRadius / 2))
-                color: dashRow.done && dashRow.author === "" ? pal.green : "transparent"
+                readonly property color shut: dashRow.cancelled ? page.dim : pal.green
+                color: dashRow.done && dashRow.author === "" ? shut : "transparent"
                 border.width: dashRow.done || dashRow.author !== "" ? 0 : Math.max(1, Math.round(page.textSize * 0.08))
                 readonly property color edge: boxArea.containsMouse && page.handOn ? page.accent : dashRow.late ? page.urgent : page.dim
                 border.color: edge
@@ -949,7 +954,7 @@ BorderSurface {
                   height: width
                   rotation: 45
                   radius: Math.max(1, Math.round(Style.cornerRadius / 2))
-                  color: dashRow.done ? pal.green : "transparent"
+                  color: dashRow.done ? box.shut : "transparent"
                   border.width: dashRow.done ? 0 : Math.max(1, Math.round(page.textSize * 0.08))
                   border.color: box.edge
                 }
@@ -960,7 +965,7 @@ BorderSurface {
                   height: width
                   outline: !dashRow.done
                   strokePx: Math.max(1, Math.round(page.textSize * 0.08))
-                  color: dashRow.done ? pal.green : box.edge
+                  color: dashRow.done ? box.shut : box.edge
                 }
                 // The outline gives way as the fill comes in, never
                 // before: the box is never empty mid-tick.
@@ -974,7 +979,7 @@ BorderSurface {
                   Behavior on opacity { NumberAnimation { duration: 160 } }
                   Behavior on scale { NumberAnimation { duration: 220; easing.type: Easing.OutBack } }
                   textFormat: Text.PlainText
-                  text: "✓"
+                  text: dashRow.cancelled ? "–" : "✓"
                   color: page.background
                   font.family: page.fontFamily
                   font.pixelSize: Math.round(box.size * (dashRow.author === "" ? 0.85 : 0.62))
