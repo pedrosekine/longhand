@@ -31,6 +31,15 @@ ShellRoot {
     // The page photographs itself, whatever is in front of it on screen.
     function shot(path: string): void { page.contentItem.grabToImage(function (r) { r.saveToFile(path) }) }
     function insert(s: string): void { var e = page.editorItem; e.insert(e.cursorPosition, s) }
+    // Each letter written and saved at once, so the saves overlap: the
+    // last one must be what the file and the page are left with — and until
+    // it has landed, the page knows a save is on its way (the check waits
+    // for that). Says whether it knew, right after the last save began.
+    function saveBurst(s: string): bool {
+      var e = page.editorItem
+      for (var i = 0; i < s.length; i++) { e.insert(e.length, s.charAt(i)); page.flush() }
+      return page.noteSaving
+    }
     // As fingers do it: into the focused line's field, so the editor sees
     // typing (typed()), and Enter as the key does it.
     // The row the fingers would be in: the focused one, or — since this

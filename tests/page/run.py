@@ -83,6 +83,7 @@ if os.path.exists(os.path.join(d, "plan-on")) and payload.startswith("# Plan") \
 if os.path.exists(os.path.join(d, "plan-reply.json")) and payload.startswith("# Plan"):
     data = json.loads(re.search(r"```json\\n(.*?)\\n```", payload, re.S).group(1))
     reply = json.load(open(os.path.join(d, "plan-reply.json")))
+    open(os.path.join(d, "plan-data.json"), "w").write(json.dumps(data))
     for p in reply["proposals"]:
         if "key_of" in p:
             want = p.pop("key_of")
@@ -525,6 +526,20 @@ def checks() -> int:
         tmpf.write_text(f.read_text() + "written by rename\n")
         tmpf.rename(f)
         check(p.wait(lambda: "written by rename" in p.call("text")), "…also when written by rename (atomic save)")
+        # Saves that overlap (2026-11-15): a save begun over one still on its
+        # way was taken as landed when the older did, and the check read
+        # the note a write too early (a line Ctrl+Z had just brought back
+        # read cancelled, and its deadline was cancelled again).
+        p.call("cursorEnd")
+        p.call("insert", "\n")
+        knew = p.call("saveBurst", "overlapping saves")
+        check(knew == "true", f"a save that overtakes one still on its way is known to be on its way ({knew}): "
+              "the check must not read the note before it lands")
+        check(p.wait(lambda: p.note().rstrip().endswith("overlapping saves") and p.call("text").rstrip().endswith("overlapping saves")),
+              f"saves that overlap: the last is what the file holds ({p.note()[-30:]!r} / {p.call('text')[-30:]!r})")
+        time.sleep(1.0)
+        check(p.note().rstrip().endswith("overlapping saves") and p.call("text").rstrip().endswith("overlapping saves"),
+              f"…and the page stays on it, not on one of its own earlier saves ({p.note()[-30:]!r} / {p.call('text')[-30:]!r})")
 
         # 9. the popup's `o`: opening on a deadline's line
         p.open_fresh(json.dumps({"shape": "alongside", "goto": f"[[{YDAY}#^d3]]"}))
@@ -1532,6 +1547,16 @@ def checks() -> int:
         p.call("dueKey", 0, KEY_L, CTRL)
         check(p.wait(lambda: p.deadline(eid)["status"] == "open" and f"- [ ] essay outline 📅 2030-01-05 ^d{eid}" in p.call("text")),
               f"…and again, open ({p.deadline(eid)}, {p.call('text')[-80:]!r})")
+        # …and it stays so once the check has read the note (2026-11-15: a
+        # check that read the note while the save was still on its way saw
+        # the line cancelled, and cancelled its deadline again).
+        def settled_open():
+            st = json.loads(p.call("checkState"))
+            return (not st["wanted"] and not st["checking"] and p.deadline(eid)["status"] == "open"
+                    and f"- [ ] essay outline 📅 2030-01-05 ^d{eid}" in p.note())
+        time.sleep(1.0)
+        check(p.wait(settled_open) and (time.sleep(1.0) or settled_open()),
+              f"…and stays open once the check has read the note ({p.deadline(eid)}, {p.call('checkState')}, {p.note()[-70:]!r})")
         p.call("sidebar")
         p.call("dash")
 
@@ -2149,7 +2174,14 @@ def checks() -> int:
             {"kind": "do-date", "key_of": "read the paper", "date": (dt.date.today() + dt.timedelta(days=1)).isoformat(),
              "why": "Tomorrow is free."}], "questions": [], "knowledge": []}))
         p.call("plan", "true")
-        check(p.wait(lambda: any(r["kind"] == "proposal" and r["id"] not in settled for _, r in asks()), timeout=15), "another proposal")
+        def planned():
+            f = p.stub / "plan-data.json"
+            data = json.loads(f.read_text()) if f.exists() else {}
+            return {"open": [(b.get("title"), b.get("key"), b.get("due"), b.get("when")) for b in data.get("open_boxes", [])],
+                    "candidates": [(c.get("title"), c.get("key")) for c in data.get("candidates", [])],
+                    "ledger": [(x["id"], x.get("key"), x.get("date"), x["status"]) for x in json.loads(ledger_file.read_text())["items"]][-5:]}
+        check(p.wait(lambda: any(r["kind"] == "proposal" and r["id"] not in settled for _, r in asks()), timeout=15),
+              f"another proposal ({planned()})")
         (p.stub / "plan-reply.json").unlink()
         p.call("dashFocus", next(n for n, r in asks() if r["kind"] == "proposal" and r["id"] not in settled))
         p.call("dashKey", KEY_RETURN, 0)

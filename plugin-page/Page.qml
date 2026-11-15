@@ -431,6 +431,9 @@ Item {
   // a day has that a file does not — its deadlines bound to lines, who made
   // each line, the agent's records and runs, the check — asks this first.
   readonly property bool dayNote: svc.noteDate !== ""
+  // Whether the note's last save is still on its way to the disk (the check
+  // waits for it; the tests ask).
+  readonly property bool noteSaving: svc.saving
   // A PDF in the middle, in the note's place (PdfPane.qml, step 5): the note
   // stays loaded under it, and Esc goes back to it.
   property string pdfRel: ""

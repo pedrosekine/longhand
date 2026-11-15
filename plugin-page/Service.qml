@@ -66,6 +66,16 @@ Item {
   property bool ready: false
   property bool pending: false
   property bool saving: false
+  // One write at a time. A save asked for while one is on its way waits
+  // here, the newest text only, and goes when that one lands; `saving`
+  // stays true until the last has. Until 2026-11-15 a save started over
+  // one in flight, and Quickshell, finishing the older first, said
+  // `saved` inside the newer `setText`: `saving` went false while the
+  // newer was still on its way, and the check — which waits for the save —
+  // read the note a write too early (a line Ctrl+Z had just brought back
+  // still read cancelled, and the check cancelled its deadline again).
+  property bool queued: false
+  property string queuedText: ""
   property string error: ""
 
   signal loaded()
@@ -161,6 +171,7 @@ Item {
       if (!saving && !pending) noteFile.reload()
       return
     }
+    root.writeQueued()
     root.ready = false
     root.error = ""
     root.noteDate = stamp
@@ -183,6 +194,7 @@ Item {
       if (!saving && !pending) noteFile.reload()
       return
     }
+    root.writeQueued()
     root.ready = false
     root.error = ""
     root.noteDate = ""
@@ -210,6 +222,34 @@ Item {
     root.lastWritten = content
     root.text = content
     root.body = bodyText
+    if (root.saving) { root.queued = true; root.queuedText = content; return }
+    root.write(content)
+  }
+
+  // Before another file is opened: a text still waiting is this file's, and
+  // goes now (Quickshell finishes a write before it changes path).
+  function writeQueued() {
+    if (!root.queued) return
+    root.queued = false
+    noteFile.setText(root.queuedText)
+  }
+
+  // The text that waited, once the write before it has landed.
+  function writeLatest() {
+    if (!root.queued) return
+    root.queued = false
+    root.write(root.queuedText)
+  }
+
+  // With nothing on its way, Quickshell writes unless the file already
+  // holds exactly this — and then says nothing at all: that is landed too.
+  function write(content) {
+    if (noteFile.text() === content) {
+      root.saving = false
+      root.pending = false
+      root.savedNow()
+      return
+    }
     root.saving = true
     noteFile.setText(content)
   }
@@ -287,7 +327,7 @@ Item {
         if (root.noteDate === root.todayStamp()) {
           root.lastWritten = seed
           root.exists = seed !== ""
-          if (seed !== "") noteFile.setText(seed)
+          if (seed !== "") root.write(seed)
         } else {
           root.lastWritten = ""
           root.exists = false
@@ -298,8 +338,18 @@ Item {
       root.error = "Cannot read " + root.notePath + ": " + FileViewError.toString(err)
       root.ready = false
     }
-    onSaved: { root.saving = false; root.pending = false; root.exists = true; root.savedNow() }
+    onSaved: {
+      root.exists = true
+      // Not from in here: Quickshell says `saved` while the write that
+      // landed still counts as its live one, and a `setText` now would
+      // finish it again, say `saved` again, and lose the new write's own.
+      if (root.queued) { Qt.callLater(root.writeLatest); return }
+      root.saving = false
+      root.pending = false
+      root.savedNow()
+    }
     onSaveFailed: function (err) {
+      root.queued = false
       root.saving = false
       root.error = "Cannot write " + root.notePath + ": " + FileViewError.toString(err)
     }
