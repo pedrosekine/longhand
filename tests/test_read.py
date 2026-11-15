@@ -227,6 +227,22 @@ def main() -> int:
     check(sp and abs(sp["x0"] - 72) < 1 and sp["w"] == 612 and sp["x1"] > sp["x0"] + 100,
           f"where the text stands across the page, to fit it by its text ({sp})")
 
+    # A private folder: read, never marked (the agent is never given it).
+    pdf(vault / "human" / "Personal" / "statement.pdf", [["Account balance and other private lines"] * 30])
+    s = run("state", "--pdf", "human/Personal/statement.pdf")
+    check(s["private"] is True and s["text"], "a PDF in the Personal folder is private, and still read")
+    r = run("mark", "--pdf", "human/Personal/statement.pdf", "--page", "1", "--text", "Account balance", ok=False)
+    check(r.returncode != 0 and "private" in r.stderr and not (vault / "human" / "Readings" / "statement.md").exists(),
+          "…and takes no marks")
+    check(run("state", "--pdf", paper)["private"] is False, "a paper elsewhere is not")
+    cfg = json.loads((tmp / "config.json").read_text())
+    cfg["private"] = ["lit"]
+    (tmp / "config.json").write_text(json.dumps(cfg))
+    check(run("state", "--pdf", paper)["private"] is True and run("state", "--pdf", "human/Personal/statement.pdf")["private"] is False,
+          "the config's `private` names the folders instead")
+    cfg.pop("private")
+    (tmp / "config.json").write_text(json.dumps(cfg))
+
     r = run("state", "--pdf", "lit/missing.pdf", ok=False)
     check(r.returncode != 0 and "no PDF" in r.stderr, "a PDF that is not there is refused")
 

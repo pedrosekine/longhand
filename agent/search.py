@@ -245,7 +245,7 @@ def search(vault: Path, on: dict[str, bool], words: str, cache: Path, folder: st
     return {"hits": hits, "withheld": withheld}
 
 
-def read(vault: Path, on: dict[str, bool], rel: str, cache: Path, hide=None) -> dict:
+def read(vault: Path, on: dict[str, bool], rel: str, cache: Path, hide=None, limit: int = 0) -> dict:
     """A file whole, under the same rules: its visible paragraphs with
     their lines (or its pages), up to WHOLE_MAX characters."""
     rel = rel.strip().lstrip("/")
@@ -268,7 +268,7 @@ def read(vault: Path, on: dict[str, bool], rel: str, cache: Path, hide=None) -> 
     chunks = ["[withheld: looked like a secret]" if i in bad else c for i, c in enumerate(chunks)]
     text, complete = "", True
     for c in chunks:
-        if len(text) + len(c) > WHOLE_MAX:
+        if len(text) + len(c) > (limit or WHOLE_MAX):
             complete = False
             break
         text += c + "\n\n"

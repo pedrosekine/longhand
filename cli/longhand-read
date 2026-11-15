@@ -36,6 +36,10 @@ P is the PDF's path in the vault (or a whole path). Pages are counted from
 points from the top: which of several equal phrases was meant. Every
 command prints the paper's state as JSON: its note, its tags, its marks,
 each with the rectangles to draw (page from 0, points from the top left).
+
+A PDF in a private folder (`private` in the config, else `<notes>/Personal`)
+is read but takes no marks, and the agent is never given it (`private` in
+the state says so).
 """
 import argparse
 import datetime as dt
@@ -81,16 +85,34 @@ def load_config() -> dict:
     return cfg
 
 
+def notes_root(cfg: dict) -> str:
+    notes = cfg.get("notes")
+    if notes is None:
+        parts = str((cfg.get("daily") or {}).get("dir", "")).strip("/").split("/")
+        notes = parts[0] if len(parts) > 1 else ""
+    return str(notes).strip("/")
+
+
+def private_dirs(cfg: dict) -> list[str]:
+    """Folders whose PDFs are read but never marked nor talked about with
+    the agent: `private` in the config, else the person's Personal folder
+    (bank statements, contracts)."""
+    if "private" in cfg:
+        return [str(d).strip("/") for d in cfg["private"] if str(d).strip("/")]
+    notes = notes_root(cfg)
+    return [f"{notes}/Personal" if notes else "Personal"]
+
+
+def is_private(cfg: dict, rel: str) -> bool:
+    return any(rel == d or rel.startswith(d + "/") for d in private_dirs(cfg))
+
+
 def readings_dir(cfg: dict) -> str:
     """The reading notes' folder, from the vault: `readings`, else the
     person's notes (`notes`, else the daily folder's first part) + Readings."""
     if cfg.get("readings"):
         return str(cfg["readings"]).strip("/")
-    notes = cfg.get("notes")
-    if notes is None:
-        parts = str((cfg.get("daily") or {}).get("dir", "")).strip("/").split("/")
-        notes = parts[0] if len(parts) > 1 else ""
-    notes = str(notes).strip("/")
+    notes = notes_root(cfg)
     return f"{notes}/Readings" if notes else "Readings"
 
 
@@ -385,7 +407,7 @@ def state(cfg: dict, rel: str, path: Path, note: Note | None) -> dict:
     pages = words_of(path)
     has_text = any(pages)
     out = {"pdf": rel, "note": "", "tags": [], "marks": [], "unplaced": 0, "text": has_text, "pages": len(pages),
-           "span": text_span(pages)}
+           "span": text_span(pages), "private": is_private(cfg, rel)}
     if not note:
         return out
     out["note"] = str(note.path.relative_to(Path(cfg["vault"]))) if note.path.is_relative_to(Path(cfg["vault"])) else str(note.path)
@@ -418,6 +440,8 @@ def by_id(note: Note, mid: str) -> dict:
 
 
 def cmd_mark(cfg, rel, path, a) -> Note:
+    if is_private(cfg, rel):
+        fail("private: a PDF in a private folder takes no marks")
     text = clean_quote(a.text)
     if not key(text):
         fail("nothing to mark: no words selected")

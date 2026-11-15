@@ -2955,7 +2955,7 @@ def day_followup(cfg: dict, paths: Paths, visible: list[dict], last: str, messag
 DAY_ROUNDS = 2        # searches and reads a message may ask for, one after another
 
 
-def day_fetch(cfg: dict, paths: Paths, tag: str, reply: dict) -> tuple[list[str], dict]:
+def day_fetch(cfg: dict, paths: Paths, tag: str, reply: dict, paper: str = "") -> tuple[list[str], dict]:
     """What the day's agent asked for, fetched by local code: words searched
     for in the folders switched on (search.py), files read whole, course
     documents and the manual (documents.py). Returns the payload section and
@@ -2976,7 +2976,13 @@ def day_fetch(cfg: dict, paths: Paths, tag: str, reply: dict) -> tuple[list[str]
     docs_asked = []
     for q in (reply.get("read") or [])[:3]:
         if q.get("file"):
-            r = searchlib.read(paths.vault, on, str(q["file"]), SEARCH_TEXT, horizon_hide(cfg))
+            asked = str(q["file"]).strip().lstrip("/")
+            # The paper talked about may be read whole whatever its folder:
+            # asking about it is the consent (its folder was checked then).
+            if paper and asked == paper:
+                r = searchlib.read(paths.vault, dict(on, **{paper: True}), asked, SEARCH_TEXT, None, limit=PAPER_MAX)
+            else:
+                r = searchlib.read(paths.vault, on, asked, SEARCH_TEXT, horizon_hide(cfg))
             if r.get("error"):
                 parts += [f"## {q['file']}", "", f"(not read: {r['error']})", ""]
                 continue
@@ -2995,7 +3001,8 @@ def day_fetch(cfg: dict, paths: Paths, tag: str, reply: dict) -> tuple[list[str]
     return parts, rec
 
 
-def day_follow(cfg: dict, paths: Paths, tag: str, result: dict, reply: dict, payload_file: Path) -> tuple[dict, dict, dict]:
+def day_follow(cfg: dict, paths: Paths, tag: str, result: dict, reply: dict, payload_file: Path,
+               paper: str = "") -> tuple[dict, dict, dict]:
     """The agent asked to search or read: local code fetches, and the same
     session runs again with what was found — at most DAY_ROUNDS times, each
     logged as its own payload. The last answer is the one that counts; cost
@@ -3005,7 +3012,7 @@ def day_follow(cfg: dict, paths: Paths, tag: str, result: dict, reply: dict, pay
     for n in range(DAY_ROUNDS):
         if result["error"] or not result["session"] or not (reply.get("search") or reply.get("read")):
             break
-        parts, rec = day_fetch(cfg, paths, tag, reply)
+        parts, rec = day_fetch(cfg, paths, tag, reply, paper)
         for k in ("searched", "files", "documents"):
             record[k] += rec[k]
         for k, v in rec["withheld"].items():
@@ -3216,6 +3223,127 @@ def note_payload(cfg: dict, paths: Paths, rel: str, shown: list[dict], message: 
     return "\n".join(parts) + "\n"
 
 
+# A paper (plan.md, item 15, step 2, 2026-11-15): a PDF's conversation is a
+# note's, kept the same way by its path; what travels is the reader's
+# marks (cli/longhand-read keeps them in the paper's reading note), the
+# marks pointed at with their page's text, and the paper whole only when
+# the agent asks to read it.
+READ_CLI = Path(__file__).resolve().parent.parent / "cli" / "longhand-read"
+PAPER_MAX = 150_000       # characters of a paper read whole (search's own limit is 30 000)
+PAGE_MAX = 6_000          # characters of a page carried with a mark
+
+
+def paper_state(rel: str) -> dict:
+    try:
+        r = subprocess.run([sys.executable, str(READ_CLI), "state", "--pdf", rel], capture_output=True, text=True,
+                           timeout=180, env=dict(os.environ, LONGHAND_CONFIG=str(CONFIG_PATH)))
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise Fail(f"longhand-read: {e}")
+    if r.returncode != 0:
+        raise Fail(r.stderr.strip().replace("longhand-read: ", "") or "longhand-read failed")
+    return json.loads(r.stdout)
+
+
+def paper_talk(paths: Paths, rel: str) -> tuple[str, dict, str]:
+    """(the path as the vault has it, the paper's state from longhand-read,
+    a hash of its marks as they were shown)."""
+    rel = rel.strip().lstrip("/")
+    root = paths.vault.resolve()
+    p = (root / rel).resolve()
+    if root not in p.parents or not p.is_file() or p.suffix.lower() != ".pdf":
+        raise Fail(f"not a PDF in the vault: {rel}")
+    rel = str(p.relative_to(root))
+    if searchlib._never(rel):
+        raise Fail(f"never shared: {rel}")
+    st = paper_state(rel)
+    if st.get("private"):
+        raise Fail(f"private: {rel} is in a folder kept from the agent")
+    if not st.get("text"):
+        raise Fail("this PDF has no words in it (scanned): nothing to read")
+    seen = hashlib.sha1(json.dumps([[m["id"], m["kind"], m["text"], m["note"]] for m in st["marks"]]).encode()).hexdigest()[:16]
+    return rel, st, seen
+
+
+def paper_page(paths: Paths, rel: str, page: int) -> str:
+    """One page's text, as a passage is read in its place."""
+    try:
+        r = subprocess.run(["pdftotext", "-f", str(page), "-l", str(page), str(paths.vault / rel), "-"],
+                           capture_output=True, text=True, timeout=60)
+        text = re.sub(r"[ \t]+\n", "\n", r.stdout).strip()
+    except (OSError, subprocess.TimeoutExpired):
+        text = ""
+    text = searchlib.mask(text)
+    if searchlib.leaks([text]):
+        return "[withheld: looked like a secret]"
+    return text[:PAGE_MAX] + (" …" if len(text) > PAGE_MAX else "") if text else "(no text on this page)"
+
+
+def paper_marks(st: dict) -> list[str]:
+    out = []
+    for m in st["marks"]:
+        kind = "question" if m["kind"] == "q" else "highlight"
+        out.append(f"- `{m['id']}` p. {m['page']}, {kind}, {m['day']}: “{searchlib.mask(m['text'])}”"
+                   + (f"\n  their note: {searchlib.mask(m['note'])}" if m["note"] else "")
+                   + ("" if m["placed"] else "\n  (no longer found on its page)"))
+    return out or ["(nothing marked yet)"]
+
+
+def paper_payload(cfg: dict, paths: Paths, rel: str, st: dict, message: str, marks: list[str], first: bool,
+                  changed: bool = False) -> str:
+    """The first message: what this conversation is, the paper's marks, the
+    notebook, what may be searched. A later one: the marks again only when
+    they changed. Either way the marks pointed at, with their pages' text,
+    and the message."""
+    parts = [language_line(cfg, message), ""]
+    if first:
+        on = [f for f, y in searchlib.switched(paths.vault, cfg).items() if y]
+        parts += ["# This conversation", "",
+                  "The student is reading a paper, a PDF in their vault, and marks passages in it: a highlight, or a "
+                  "question (a passage they want to understand). This is the paper's own conversation, not the day's: "
+                  "answer about the paper, briefly, as someone who knows it well. Propose nothing: `proposals` stays "
+                  "empty.",
+                  "",
+                  f"Its full text is not in this message. When a question needs the paper as a whole (a summary, its "
+                  f"main concepts, its argument, a part not quoted here), ask to read it: `read` with "
+                  f"{{\"file\": \"{rel}\"}}. A passage pointed at comes with its page.",
+                  "",
+                  "When you quote the paper or point at a place in it, give its exact words and the page, as "
+                  "“exact words” (p. 12): five to twenty words, copied exactly, so the student can be shown them. "
+                  "When several of their questions are asked at once, answer each in turn, each answer starting "
+                  "with a line that is only its name, as `h3:`.", "",
+                  f"# The paper: `{rel}`", "",
+                  f"{st.get('pages', 0)} pages." + (" Its project: " + ", ".join("#" + t for t in st["tags"]) + "."
+                                                     if st.get("tags") else ""),
+                  "", "# What they have marked, in page order", ""]
+        parts += paper_marks(st)
+        parts += knowledge_parts(paths)
+        parts += ["", "# What you may search", "",
+                  "The folders the student switched on: " + (", ".join(f"`{f}`" for f in on) or "none") + ". "
+                  "Private notes and blocks, and documents of identity, money, health, contracts or secrets, are never "
+                  "shown to you, whatever you ask."]
+    elif changed:
+        parts += ["# What they have marked, as it is now", ""] + paper_marks(st)
+    by_id = {m["id"]: m for m in st["marks"]}
+    pages_given = set()
+    for mid in marks:
+        m = by_id.get(mid)
+        if not m:
+            continue
+        kind = "question" if m["kind"] == "q" else "highlight"
+        parts += ["", f"# The student points at `{mid}` (p. {m['page']}, {kind})", "",
+                  "> " + searchlib.mask(m["text"])]
+        if m["note"]:
+            parts += ["", "Their note on it: " + searchlib.mask(m["note"])]
+        page = m.get("found") or m["page"]
+        if page not in pages_given:
+            pages_given.add(page)
+            parts += ["", f"## Page {page} of the paper, where it stands", "", paper_page(paths, rel, page)]
+    parts += ["", "# The student says", "", message]
+    if not first:
+        parts += ["", "Answer with the same JSON contract."]
+    return "\n".join(parts) + "\n"
+
+
 def cmd_note(cfg: dict, args) -> int:
     """Talk about one note: `--file` its path in the vault, `--block` a
     block of it pointed at. The first message carries the note whole; a
@@ -3225,7 +3353,14 @@ def cmd_note(cfg: dict, args) -> int:
         raise Fail("--message is empty")
     today = dt.date.today()
     paths = Paths(cfg, today)
-    rel, shown, seen = note_talk(paths, args.file)
+    marks = [m.strip() for m in (args.marks or "").split(",") if m.strip()]
+    paper = args.file.strip().lower().endswith(".pdf")
+    if paper:
+        rel, st, seen = paper_talk(paths, args.file)
+        tag = (st.get("tags") or [""])[0]
+    else:
+        rel, shown, seen = note_talk(paths, args.file)
+        tag = ""
     where = paths.agent_dir / NOTES_DIR / f"{note_key(rel)}.json"
     try:
         talk = json.loads(where.read_text())
@@ -3237,11 +3372,13 @@ def cmd_note(cfg: dict, args) -> int:
     payload_file = paths.payloads / f"{dt.datetime.now():%Y%m%d-%H%M%S-%f}-note.md"
     day_cfg = dict(cfg, agent=cfg.get("dayAgent", "longhand-day"))
     if talk["session"]:
-        payload = note_payload(cfg, paths, rel, shown, message, args.block, False, changed=seen != talk["seen"])
+        payload = paper_payload(cfg, paths, rel, st, message, marks, False, changed=seen != talk["seen"]) if paper else \
+            note_payload(cfg, paths, rel, shown, message, args.block, False, changed=seen != talk["seen"])
         payload_file.write_text(payload)                 # logged before inference
         result = run_model(day_cfg, paths, "", session=talk["session"], message=payload)
     else:
-        payload = note_payload(cfg, paths, rel, shown, message, args.block, True)
+        payload = paper_payload(cfg, paths, rel, st, message, marks, True) if paper else \
+            note_payload(cfg, paths, rel, shown, message, args.block, True)
         payload_file.write_text(payload)
         result = run_model(day_cfg, paths, payload, message="Context follows on stdin.")
     payload_file.with_suffix(".events.jsonl").write_text(result["events"])
@@ -3249,7 +3386,7 @@ def cmd_note(cfg: dict, args) -> int:
         {"reply": "", "proposals": [], "suggestions": [], "knowledge": [], "read": []}
     fetched = {"searched": [], "files": [], "documents": [], "withheld": {}}
     if not result["error"]:
-        result, reply, fetched = day_follow(cfg, paths, "", result, reply, payload_file)
+        result, reply, fetched = day_follow(cfg, paths, tag, result, reply, payload_file, rel if paper else "")
 
     try:
         talk["turns"] = (json.loads(where.read_text()).get("turns") or talk["turns"])
@@ -3261,6 +3398,8 @@ def cmd_note(cfg: dict, args) -> int:
     turn = {"role": "student", "text": message, "at": at}
     if args.block:
         turn["block"] = args.block
+    if marks:
+        turn["marks"] = marks
     talk["turns"].append(turn)
     if result["error"]:
         talk["turns"].append({"role": "agent", "text": "", "error": result["error"], "at": at})
@@ -4171,6 +4310,7 @@ def main(argv: list[str]) -> int:
     p.add_argument("--file", required=True, help="the note's path in the vault")
     p.add_argument("--message", required=True)
     p.add_argument("--block", default="", help="a block of the note the student points at")
+    p.add_argument("--marks", default="", help="a paper's marks pointed at (hN, comma separated)")
     p = sub.add_parser("day")
     p.add_argument("--message", required=True)
     p.add_argument("--block", default="", help="a block of today's note the student points at")

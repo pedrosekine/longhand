@@ -40,7 +40,9 @@ if args[:1] != ["run"]:
 n = len([f for f in os.listdir(d) if f.startswith("call-")])
 stdin = sys.stdin.read()
 json.dump({"argv": args, "stdin": stdin}, open(os.path.join(d, f"call-{n}.json"), "w"))
-reply = {"reply": f"answer {n}", "knowledge": [], "read": [],
+said = stdin + " ".join(args)
+read = [{"file": os.environ.get("STUB_READ", "")}] if "READ-PAPER" in said and "# What you asked for" not in said else []
+reply = {"reply": f"answer {n}", "knowledge": [], "read": read,
          "proposals": [{"kind": "deadline", "title": "made up", "date": "2030-01-01", "why": "no"}]}
 print(json.dumps({"type": "text", "sessionID": "ses_note", "part": {"type": "text", "text": "```json\\n" + json.dumps(reply) + "\\n```"}}))
 """
@@ -150,6 +152,74 @@ def main() -> int:
           f"a note's answer becomes a day case, its conversation joined to its first message ({pay[-600:]!r})")
     payloads = list((tmp / "state").rglob("*-note.md"))
     check(len(payloads) == 4, f"every message logged before inference ({len(payloads)})")
+    # A paper (plan.md item 15, step 2): a PDF's conversation, kept as a
+    # note's; its marks travel, the marks pointed at with their page's
+    # text, the paper whole only when the agent asks to read it.
+    sys.path.insert(0, str(ROOT / "tests"))
+    from test_read import pdf as lined_pdf
+    paper = "human/_Attachments/Course/Smith 2020.pdf"
+    lined_pdf(vault / paper, [["Why testing helps", "Retrieval changes the memory it retrieves."] + ["filler line one"] * 8,
+                              ["Spacing compounds the effect.", "Sessions a day apart beat one sitting."] + ["filler two"] * 8,
+                              ["The closing argument, page three only."]])
+    read_cli = ROOT / "cli" / "longhand-read"
+
+    def mark(page, words, kind="h"):
+        r = subprocess.run([str(read_cli), "mark", "--pdf", paper, "--page", str(page), "--text", words, "--kind", kind,
+                            "--day", "2026-11-15"], capture_output=True, text=True, env=env)
+        assert r.returncode == 0, r.stderr
+
+    mark(1, "Retrieval changes the memory")
+    mark(2, "Sessions a day apart", "q")
+    reading = vault / "human" / "Readings" / "Smith 2020.md"
+    subprocess.run([str(read_cli), "note", "--pdf", paper, "--id", "h2", "--text", "does sleep matter?"],
+                   capture_output=True, text=True, env=env, check=True)
+    before_note, before_pdf = reading.read_text(), (vault / paper).read_bytes()
+    agent("note", "--file", paper, "--message", "what is this paper about?")
+    pay = calls()[-1]["stdin"]
+    check("reading a paper" in pay and f"# The paper: `{paper}`" in pay and "3 pages." in pay,
+          "a paper's first message says what this is, and names the paper")
+    check("- `h1` p. 1, highlight, 2026-11-15: “Retrieval changes the memory”" in pay
+          and "- `h2` p. 2, question, 2026-11-15: “Sessions a day apart”\n  their note: does sleep matter?" in pay,
+          "…with what they marked, kinds, days and their notes")
+    check("The closing argument" not in pay and "Spacing compounds" not in pay, "…but not the paper's text")
+    check(f'`read` with {{"file": "{paper}"}}' in pay and "“exact words” (p. 12)" in pay and "`h3:`" in pay,
+          "…told to read it whole when asked about the whole, to quote with the page, to answer questions one by one")
+    ptalk = vault / "agents/longhand/notes" / (hashlib.md5(paper.encode()).hexdigest()[:16] + ".json")
+    check(json.loads(ptalk.read_text())["path"] == paper, "kept as a note's conversation, by the PDF's path")
+
+    agent("note", "--file", paper, "--message", "explain this", "--marks", "h2")
+    msg = calls()[-1]["argv"][-1]
+    check("# The student points at `h2` (p. 2, question)" in msg and "> Sessions a day apart" in msg
+          and "Their note on it: does sleep matter?" in msg, "a mark pointed at goes with the message, with their note")
+    check("## Page 2 of the paper, where it stands" in msg and "Spacing compounds the effect." in msg
+          and "Why testing helps" not in msg, "…and its page's text, only that page")
+    check("# What they have marked" not in msg, "the marks unchanged are not sent again")
+    t = json.loads(ptalk.read_text())
+    check(t["turns"][-2].get("marks") == ["h2"], "the turn keeps which marks it pointed at")
+
+    mark(3, "The closing argument")
+    agent("note", "--file", paper, "--message", "and h1 and h3?", "--marks", "h1,h3")
+    msg = calls()[-1]["argv"][-1]
+    check("# What they have marked, as it is now" in msg and "`h3` p. 3" in msg, "a new mark: the marks are sent again")
+    check(msg.count("## Page") == 2, "…each pointed-at mark with its own page")
+
+    n0 = len(calls())
+    env["STUB_READ"] = paper
+    agent("note", "--file", paper, "--message", "summarise it READ-PAPER")
+    follow = calls()[-1]["argv"][-1]
+    check(len(calls()) == n0 + 2 and "# What you asked for" in follow and "The closing argument, page three only." in follow
+          and "(not read" not in follow,
+          "asked to read it, the agent is given the paper whole, though its folder is not searched")
+    check((vault / paper).read_bytes() == before_pdf, "the PDF is never written")
+
+    lined_pdf(vault / "human" / "Personal" / "garden plans.pdf", [["Where the roses go this spring"] * 30])
+    r = agent("note", "--file", "human/Personal/garden plans.pdf", "--message", "x", ok=False)
+    check(r.returncode != 0 and "private" in r.stderr,
+          f"a PDF in a private folder is never talked about ({r.stderr.strip()})")
+    lined_pdf(vault / "human" / "Studies" / "scan.pdf", [[]])
+    r = agent("note", "--file", "human/Studies/scan.pdf", "--message", "x", ok=False)
+    check(r.returncode != 0 and "no words" in r.stderr, "a PDF with no words is said to have none")
+
     print("PASS" if failures == 0 else f"{failures} FAILED")
     return 1 if failures else 0
 
