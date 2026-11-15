@@ -1085,9 +1085,12 @@ Item {
   property var paperMarks: []          // attached to the next message
   property bool paperList: true        // the list, or the chat
   property string paperFilter: "all"   // "all", "h", "q"
-  property int paperFocus: 0
+  // The row the keys are on: -1 is the first, the paper as a whole (asked
+  // about with nothing attached: 2026-11-15, the student found no way to
+  // just chat with the paper), then the marks from 0.
+  property int paperFocus: -1
   property var paperKept: []           // Space on rows: kept, to attach together
-  onPdfRelChanged: { root.paperMarks = []; root.paperKept = []; root.paperFocus = 0; root.paperList = true; root.paperFilter = "all" }
+  onPdfRelChanged: { root.paperMarks = []; root.paperKept = []; root.paperFocus = -1; root.paperList = true; root.paperFilter = "all" }
   // Which marks have had an answer: pointed at by a message answered.
   readonly property var paperAnswered: {
     var out = ({})
@@ -1145,9 +1148,9 @@ Item {
   }
   function paperPick(i) {
     var n = root.paperRows.length
-    if (n === 0) return
-    root.paperFocus = Math.max(0, Math.min(n - 1, i))
-    pdfPane.showMark(root.paperRows[root.paperFocus].id)
+    root.paperFocus = Math.max(-1, Math.min(n - 1, i))
+    if (root.paperFocus >= 0) pdfPane.showMark(root.paperRows[root.paperFocus].id)
+    else pdfPane.picked = ""
   }
   // Every waiting question in one message, each by its name, the answer
   // to come back question by question (the runner asks for that).
@@ -1163,9 +1166,9 @@ Item {
   function paperKey(event) {
     if (root.anywhereKey(event)) return true
     var n = root.paperRows.length
-    if (Sc.hit(event, "paperAll")) { root.paperFilter = "all"; root.paperFocus = 0; return true }
-    if (Sc.hit(event, "paperHighlights")) { root.paperFilter = "h"; root.paperFocus = 0; return true }
-    if (Sc.hit(event, "paperQuestions")) { root.paperFilter = "q"; root.paperFocus = 0; return true }
+    if (Sc.hit(event, "paperAll")) { root.paperFilter = "all"; root.paperFocus = -1; return true }
+    if (Sc.hit(event, "paperHighlights")) { root.paperFilter = "h"; root.paperFocus = -1; return true }
+    if (Sc.hit(event, "paperQuestions")) { root.paperFilter = "q"; root.paperFocus = -1; return true }
     if (Sc.hit(event, "paperAskWaiting")) { root.askWaiting(); return true }
     if (Sc.hit(event, "paperUp")) { root.paperPick(root.paperFocus - 1); return true }
     if (Sc.hit(event, "paperDown")) { root.paperPick(root.paperFocus + 1); return true }
@@ -1177,8 +1180,9 @@ Item {
       return true
     }
     if (Sc.hit(event, "paperOpen")) {
-      var r = root.paperRows[root.paperFocus]
+      var r = root.paperFocus >= 0 ? root.paperRows[root.paperFocus] : null
       var ids = root.paperKept.length > 0 ? root.paperKept.slice() : r ? [r.id] : []
+      if (ids.length === 0) root.paperMarks = []      // the paper as a whole
       ids.forEach(root.attachMark)
       root.paperKept = []
       root.showPaperChat()

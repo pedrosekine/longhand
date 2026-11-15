@@ -306,7 +306,7 @@ var actions = [
   { id: "pdfClose", group: "pdf", places: ["pdf"], does: "Let go of the mark clicked or the words selected; then close it, back to the note", keys: ["Esc"] },
   { id: "paperUp", group: "paper", places: ["paper"], does: "The mark above (the PDF goes to it)", keys: ["Up", "K"] },
   { id: "paperDown", group: "paper", places: ["paper"], does: "The mark below (the PDF goes to it)", keys: ["Down", "J"] },
-  { id: "paperOpen", group: "paper", places: ["paper"], does: "To the paper's chat, this mark attached (or the ones kept)", keys: ["Enter"] },
+  { id: "paperOpen", group: "paper", places: ["paper"], does: "To the paper's chat: on the first row, about the paper as a whole; on a mark, with it attached (or the ones kept)", keys: ["Enter"] },
   { id: "paperKeep", group: "paper", places: ["paper"], does: "Keep this mark, to attach several together (again: let go)", keys: ["Space"] },
   { id: "paperChat", group: "paper", places: ["paper"], does: "To the paper's chat, nothing attached", keys: ["Tab"] },
   { id: "paperAll", group: "paper", places: ["paper"], does: "Every mark", keys: ["1"] },

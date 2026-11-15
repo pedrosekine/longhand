@@ -3111,8 +3111,15 @@ def checks() -> int:
         p.call("paperKey", 0x33, 0)                         # 3
         check(p.wait(lambda: pr()["filter"] == "q" and pr()["rows"] == [qid]), "3: only the questions")
         p.call("paperKey", 0x31, 0)                         # 1
+        check(p.wait(lambda: pr()["focus"] == -1), "the first row is the paper as a whole")
+        p.call("paperKey", KEY_RETURN, 0)
+        check(p.wait(lambda: not pr()["list"] and pr()["marks"] == [] and pr()["here"] == "right"),
+              f"Enter on it: the chat, nothing attached, to ask about the paper as a whole ({pr()})")
+        p.call("dayKey", KEY_ESC, 0)
+        p.wait(lambda: pr()["list"])
         p.call("paperKey", KEY_DOWN, 0)
-        check(p.wait(lambda: pr()["focus"] == 1 and pr()["picked"] == pr()["rows"][1]), f"↓: the next mark, picked in the PDF too ({pr()})")
+        p.call("paperKey", KEY_DOWN, 0)
+        check(p.wait(lambda: pr()["focus"] == 1 and pr()["picked"] == pr()["rows"][1]), f"↓: the marks below it, each picked in the PDF too ({pr()})")
         p.call("paperKey", KEY_RETURN, 0)
         check(p.wait(lambda: not pr()["list"] and pr()["marks"] == [pr()["rows"][1]]), f"Enter: the chat, that mark attached ({pr()})")
         p.call("dayKey", 0x01000003, 0)                     # Backspace in the empty box

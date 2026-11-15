@@ -511,8 +511,11 @@ block, `table` rows.
   (`agents/longhand/notes/<md5 of its path>.json`, `longhand-agent note
   --file X.pdf [--marks hN,…]`). The pane turns between the paper's
   **marks** and its **chat**:
-  - the marks: a strip (`1` all, `2` highlights, `3` questions, the
-    waiting ones first), rows in page order with their kind, page, words,
+  - the marks: first a row for **the whole paper**, picked when the room
+    opens — `Enter` on it chats about the paper with nothing attached (a
+    summary, its main ideas: found missing in use the same day, when the
+    only way was `Tab`); a strip (`1` all, `2` highlights, `3` questions,
+    the waiting ones first); rows in page order with their kind, page, words,
     note and whether a question waits or was answered; `↑↓` (or `j`/`k`)
     move and the PDF goes to the mark; `Enter` goes to the chat with it
     attached; `Space` keeps several to attach together; `Tab` the chat

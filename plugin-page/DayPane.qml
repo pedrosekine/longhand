@@ -117,6 +117,51 @@ BorderSurface {
       }
     }
 
+    // The first row: the paper as a whole — Enter asks about it with
+    // nothing attached.
+    Rectangle {
+      id: wholeRow
+      readonly property bool hot: page.paperFocus === -1 && paperKeys.activeFocus
+      width: parent.width
+      height: wholeColumn.implicitHeight + page.sp(8)
+      radius: Style.cornerRadius
+      color: hot ? Style.selectedFill : "transparent"
+      border.width: 1
+      border.color: hot ? page.accent : page.faint
+      onHotChanged: page.selected(wholeRow, "right", hot)
+      Column {
+        id: wholeColumn
+        x: page.sp(8)
+        y: page.sp(4)
+        width: parent.width - page.sp(16)
+        spacing: page.sp(1)
+        Text {
+          textFormat: Text.PlainText
+          text: "the whole paper"
+          color: page.foreground
+          font.family: page.fontFamily
+          font.styleName: page.fontStyle
+          font.pixelSize: page.fs(Style.font.bodySmall)
+        }
+        Text {
+          width: parent.width
+          textFormat: Text.PlainText
+          wrapMode: Text.WordWrap
+          text: "ask about it as a whole: a summary, its main ideas, anything"
+            + (page.noteTalkTurns > 0 ? " · " + Math.floor(page.noteTalkTurns / 2) + (page.noteTalkTurns > 3 ? " answers" : " answer") + " so far" : "")
+          color: page.faint
+          font.family: page.fontFamily
+          font.styleName: page.fontStyle
+          font.pixelSize: page.fs(Style.font.caption)
+        }
+      }
+      MouseArea {
+        anchors.fill: parent
+        cursorShape: Qt.PointingHandCursor
+        onClicked: { page.paperPick(-1); page.paperMarks = []; page.showPaperChat() }
+      }
+    }
+
     ListView {
       id: paperListView
       width: parent.width
@@ -214,7 +259,7 @@ BorderSurface {
       wrapMode: Text.WordWrap
       text: page.paperCount("all") === 0
         ? "Nothing marked yet. Select words in the PDF, then " + page.keyName("pdfMark") + " for a highlight or "
-          + page.keyName("pdfQuestion") + " for a question. " + page.keyName("paperChat") + " goes to the paper's chat."
+          + page.keyName("pdfQuestion") + " for a question."
         : "None here."
       color: page.faint
       font.family: page.fontFamily
@@ -227,7 +272,8 @@ BorderSurface {
       width: parent.width
       textFormat: Text.PlainText
       wrapMode: Text.WordWrap
-      text: page.keyName("paperOpen") + " asks about it · " + page.keyName("paperKeep") + " keeps several · "
+      text: page.keyName("paperOpen") + (page.paperFocus < 0 ? " chats about the whole paper · " : " asks about this mark · ")
+        + page.keyName("paperKeep") + " keeps several · "
         + page.keyName("paperChat") + " the chat · 1 2 3 the strip"
         + (page.paperWaiting.length > 0 ? " · " + page.keyName("paperAskWaiting") + " asks the " + page.paperWaiting.length + " waiting" : "")
         + " · " + page.keyName("paperBack") + " closes"
