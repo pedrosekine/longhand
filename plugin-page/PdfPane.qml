@@ -159,7 +159,9 @@ Item {
   function url() {
     // A path in the vault, or a whole one: an export written to Downloads.
     var v = pane.page.noteService.config.vault
-    var path = pane.rel.charAt(0) === "/" ? pane.rel : v + "/" + pane.rel
+    // A scan read (plan.md item 15, step 5): its copy with words, which
+    // looks as the scan does; the scan itself is never written.
+    var path = pane.read && pane.read.ocr ? pane.read.ocr : pane.rel.charAt(0) === "/" ? pane.rel : v + "/" + pane.rel
     return "file://" + path.split("/").map(encodeURIComponent).join("/")
   }
 
@@ -430,6 +432,41 @@ Item {
     onLoaded: { try { var o = JSON.parse(text()); if (o && typeof o === "object") pane.darkPapers = o } catch (e) {} }
   }
 
+  // A scan has no words to select, find or ask about. `r` reads it
+  // (`longhand-read ocr`: each page drawn and read by tesseract into a copy
+  // with an invisible text layer), saying how far it is; read, the copy
+  // takes its place and it is marked as any paper is.
+  property var ocrProgress: null        // { page, pages } while it reads
+  readonly property bool ocrable: pane.rel !== "" && pane.rel.charAt(0) !== "/" && !!pane.read.scanned && !pane.read.ocr
+  function readScan() {
+    if (!pane.ocrable || ocrProc.running) return
+    pane.ocrProgress = { page: 0, pages: pane.pages }
+    ocrProc.forRel = pane.rel
+    ocrProc.command = [pane.readPath, "ocr", "--pdf", pane.rel]
+    ocrProc.running = true
+    page.used("pdf", "ocr")
+  }
+  Process {
+    id: ocrProc
+    property string forRel: ""
+    stdout: SplitParser {
+      onRead: function (line) {
+        var o = null
+        try { o = JSON.parse(line) } catch (e) { return }
+        if (ocrProc.forRel !== pane.rel) return
+        // The state at the end has `ocr` too (the copy's path): it is told
+        // apart by `pdf`.
+        if (o.pdf === pane.rel) { pane.ocrProgress = null; pane.read = o }
+        else if (o.ocr && typeof o.ocr === "object") pane.ocrProgress = o.ocr
+      }
+    }
+    stderr: StdioCollector {
+      id: ocrErr
+      onStreamFinished: { var t = ocrErr.text.trim(); if (t !== "") { pane.readError = t.replace(/^longhand-read:\s*/, ""); pane.ocrProgress = null } }
+    }
+    onRunningChanged: if (!running && ocrProc.forRel === pane.rel) pane.ocrProgress = null
+  }
+
   // Qt's page selects words with a drag from a mouse or a stylus only; on
   // a laptop the touchpad is its own kind of device, so a drag there
   // selected nothing (2026-11-15, seen on both laptops: first as the pages
@@ -477,7 +514,7 @@ Item {
 
   // Keep the words given as a mark (`h` or `q`).
   function markText(pageIndex, text, y, kind) {
-    if (!pane.markable) { pane.readError = pane.rel.charAt(0) === "/" ? "only a PDF in the vault keeps marks" : "this PDF has no words to mark (scanned)"; return false }
+    if (!pane.markable) { pane.readError = pane.rel.charAt(0) === "/" ? "only a PDF in the vault keeps marks" : "a scan, no words to mark: " + page.keyName("pdfOcr") + " reads it"; return false }
     var args = ["mark", "--page", String(pageIndex + 1), "--text", text, "--kind", kind]
     if (y !== undefined && y !== null && !isNaN(y)) args.push("--y", String(Math.round(y * 10) / 10))
     pane.awaitingMark = true
@@ -636,6 +673,7 @@ Item {
     if (pane.picked !== "" && Sc.hit(event, "pdfRemove")) return pane.remove()
     if (Sc.hit(event, "keysHere")) { page.toggleKeys(); return true }
     if (Sc.hit(event, "pdfDark")) { pane.toggleDark(); return true }
+    if (Sc.hit(event, "pdfOcr")) { if (pane.ocrable) pane.readScan(); else pane.readError = pane.read.ocr ? "this scan was read already" : "this PDF has words of its own"; return true }
     if (Sc.hit(event, "pdfClose")) {
       // Esc lets go of what is picked or selected first.
       if (pane.picked !== "") { pane.picked = ""; return true }
@@ -826,7 +864,9 @@ Item {
       : pane.flashMissed !== "" ? "those words are " + pane.flashMissed
       : "page " + (pane.current + 1) + " of " + pane.pages
         + (pane.view && pane.finding && pane.view.searchModel.count > 0 ? " · " + pane.view.searchModel.count + " found" : "")
-        + (pane.read.text === false && pane.rel.charAt(0) !== "/" ? " · no words in it (scanned): nothing to mark" : "")
+        + (pane.ocrProgress ? " · reading the scan, page " + Math.max(1, pane.ocrProgress.page) + " of " + (pane.ocrProgress.pages || pane.pages) + "…"
+           : pane.ocrable ? " · a scan, no words in it: " + page.keyName("pdfOcr") + " reads it (a few seconds a page)"
+           : pane.read.ocr ? " · read from a scan" : "")
         + (foot.count > 0 ? " · " + foot.count + (foot.count === 1 ? " mark" : " marks") : "")
         + ((pane.read.tags || []).length > 0 ? " · " + pane.read.tags.map(function (x) { return "#" + x }).join(" ") : "")
         + (pane.tagSaid !== "" ? " (kept in its reading note)" : "")

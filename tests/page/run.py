@@ -3249,6 +3249,37 @@ def checks() -> int:
               f"0: the whole page, smaller ({fitted:.2f} → {pd()['scale']:.2f})")
         p.call("pdfKey", 0x30, 0)
         check(p.wait(lambda: not pd()["whole"] and abs(pd()["scale"] - fitted) < 0.01), "0 again: its text")
+        # A scan (plan.md item 15, step 5): no words of its own; r reads it
+        # into a copy with words, which takes its place; then a drag
+        # selects in it and m marks it, as in any paper.
+        if all(shutil.which(x) for x in ("magick", "pdftoppm", "tesseract", "qpdf")):
+            p.call("pdfKey", KEY_ESC, 0)
+            p.wait(lambda: not pd()["shown"])
+            lined_pdf(p.tmp / "typed.pdf", [["Reflexive thematic analysis is a method", "for finding patterns of meaning in data."]])
+            subprocess.run(["pdftoppm", "-r", "150", "-png", "-singlefile", str(p.tmp / "typed.pdf"), str(p.tmp / "scanpage")], check=True)
+            subprocess.run(["magick", str(p.tmp / "scanpage.png"), "-units", "PixelsPerInch", "-density", "150", str(course / "Scan.pdf")], check=True)
+            sc = lambda: json.loads(p.call("pdfScan"))
+            p.call("openFile", "Studies/Course A/Scan.pdf", "false")
+            check(p.wait(lambda: pd()["ready"] and sc()["scanned"] and sc()["ocrable"] and not sc()["text"]),
+                  f"a scan opens, said to have no words, r offered ({sc()})")
+            p.call("pdfKey", 0x52, 0)                       # r
+            check(p.wait(lambda: sc()["ocr"] != "" and sc()["text"] and sc()["progress"] is None, 60),
+                  f"r reads it: a copy with words takes its place ({sc()})")
+            check(p.wait(lambda: pd()["ready"] and sc()["url"].endswith(".pdf") and "reading/ocr" in sc()["url"]), "…the copy is what is shown")
+            p.wait(lambda: mk()["dressed"] >= 1, 10)
+            time.sleep(1)
+            p.call("pdfDrag", "0", "73", "69", "200", "69")
+            check(p.wait(lambda: mk()["selected"] != ""), f"…its words can be selected ({mk()['selected']!r})")
+            p.call("pdfKey", 0x4D, 0)                       # m
+            check(p.wait(lambda: len(mk()["read"]["marks"]) == 1 and mk()["read"]["marks"][0]["placed"]),
+                  f"…and marked ({mk()['read']['marks']})")
+            p.wait(lambda: not json.loads(p.call("pdfAsk"))["asking"] or p.call("pdfChooseProject", "") is not None)
+            p.call("pdfKey", KEY_ESC, 0)
+            p.wait(lambda: not pd()["shown"])
+            p.call("openFile", "Studies/Course A/Paper.pdf", "false")
+            p.wait(lambda: pd()["ready"] and pd()["label"] == "Paper.pdf")
+        else:
+            print("skip a scan read (magick, pdftoppm, tesseract or qpdf missing)")
         # Dark pages (plan.md item 15, step 4): i, kept for this paper.
         check(not pd()["dark"] and not pd()["darkDrawn"], "a paper opens as printed")
         p.call("pdfKey", 0x49, 0)                           # i

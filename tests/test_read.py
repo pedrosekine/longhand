@@ -257,6 +257,36 @@ def main() -> int:
           f"days: each day's papers, from the marks' own days ({days.get('2026-11-15')})")
     check("Smith 2020" in on16 and on16["Smith 2020"]["h"] + on16["Smith 2020"]["q"] >= 3, "…counted as highlights and questions that day")
 
+    # A scan (plan.md item 15, step 5): no words of its own; `ocr` reads it
+    # into a copy with a text layer, kept in the state folder, and then it
+    # is marked as any paper is. The original is never written.
+    import shutil
+    if all(shutil.which(x) for x in ("magick", "pdftoppm", "tesseract", "qpdf")):
+        src = tmp / "typed.pdf"
+        pdf(src, [["Reflexive thematic analysis is a method", "for finding patterns of meaning in data."]])
+        subprocess.run(["pdftoppm", "-r", "150", "-png", "-singlefile", str(src), str(tmp / "scanpage")], check=True)
+        scan = vault / "lit" / "scanned.pdf"
+        subprocess.run(["magick", str(tmp / "scanpage.png"), "-units", "PixelsPerInch", "-density", "150", str(scan)], check=True)
+        before = scan.read_bytes()
+        s = run("state", "--pdf", "lit/scanned.pdf")
+        check(s["scanned"] and not s["text"] and s["ocr"] == "", f"a scan has no words, and no copy yet ({s})")
+        r = subprocess.run([str(READ), "ocr", "--pdf", "lit/scanned.pdf"], capture_output=True, text=True, env=env)
+        lines = r.stdout.strip().split("\n")
+        check(r.returncode == 0 and json.loads(lines[0]).get("ocr", {}).get("pages") == 1,
+              f"ocr says how far it is, a line a page ({lines[0] if lines else r.stderr})")
+        s = json.loads(lines[-1])
+        check(s["scanned"] and s["text"] and s["ocr"].endswith(".pdf") and pathlib.Path(s["ocr"]).is_file()
+              and str(tmp / "state") in s["ocr"], f"…then it has words, from a copy in the state folder ({s['ocr']})")
+        check(scan.read_bytes() == before, "…and the scan itself is untouched")
+        s = run("mark", "--pdf", "lit/scanned.pdf", "--page", "1", "--text", "thematic analysis", "--day", "2026-11-16")
+        m = s["marks"][0]
+        check(m["placed"] and m["boxes"] and abs(m["boxes"][0]["rects"][0][1] - 70) < 20,
+              f"…and is marked as any paper is, where the words are ({m['boxes']})")
+        r = subprocess.run([str(READ), "ocr", "--pdf", paper], capture_output=True, text=True, env=env)
+        check(r.returncode != 0 and "words already" in r.stderr, "a PDF with words of its own is not read again")
+    else:
+        print("skip a scan read (magick, pdftoppm, tesseract or qpdf missing)")
+
     r = run("state", "--pdf", "lit/missing.pdf", ok=False)
     check(r.returncode != 0 and "no PDF" in r.stderr, "a PDF that is not there is refused")
 

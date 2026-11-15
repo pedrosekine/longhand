@@ -218,7 +218,8 @@ def main() -> int:
           f"a PDF in a private folder is never talked about ({r.stderr.strip()})")
     lined_pdf(vault / "human" / "Studies" / "scan.pdf", [[]])
     r = agent("note", "--file", "human/Studies/scan.pdf", "--message", "x", ok=False)
-    check(r.returncode != 0 and "no words" in r.stderr, "a PDF with no words is said to have none")
+    check(r.returncode != 0 and "no words" in r.stderr and "read it first" in r.stderr,
+          "a PDF with no words is said to have none, and how to read it")
 
     print("PASS" if failures == 0 else f"{failures} FAILED")
     return 1 if failures else 0

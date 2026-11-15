@@ -200,6 +200,7 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | Find in it (Enter: next, Shift+Enter: before) | `Ctrl+F` · `/` | in a PDF |
 | Open it in its own application | `o` | in a PDF |
 | Dark pages: the paper in the theme's colours (again: as printed); kept for this paper | `i` | in a PDF |
+| A scan: read its words (OCR), into a copy that takes its place; the scan is not written | `r` | in a PDF |
 | Highlight the words selected; on a mark clicked, make it a highlight | `m` | in a PDF |
 | Mark the words selected as a question; on a mark clicked, make it one | `q` | in a PDF |
 | A note under the mark clicked, else the last one made | `n` | in a PDF |

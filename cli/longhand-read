@@ -32,6 +32,7 @@ nowhere is reported as not placed, never dropped.
     longhand-read tag    --pdf P --tag T
     longhand-read find   --pdf P --page N --text T     (where words are, to show them; nothing kept)
     longhand-read days                                 (what was marked on each day, every paper)
+    longhand-read ocr    --pdf P                       (a scan read into a copy with words; one line a page)
 
 P is the PDF's path in the vault (or a whole path). Pages are counted from
 1, as the link says. `--y` is where on the page the selection began, in
@@ -50,6 +51,7 @@ import html
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -126,7 +128,80 @@ def key(s: str) -> str:
     return "".join(c for c in s if c.isalnum())
 
 
+def ocr_copy(pdf: Path) -> Path:
+    """Where a scanned PDF's copy with a text layer is kept: the state
+    folder, by the original's path, size and time (plan.md item 15, step 5).
+    The original is never written."""
+    st = pdf.stat()
+    key = hashlib.sha1(f"{pdf.resolve()}|{st.st_size}|{st.st_mtime_ns}".encode()).hexdigest()
+    return CACHE / "ocr" / f"{key}.pdf"
+
+
 def words_of(pdf: Path) -> list[list[dict]]:
+    """Every page's words with their boxes — the PDF's own, else, for a scan
+    read with `ocr`, its copy's."""
+    pages = own_words(pdf)
+    if not any(pages):
+        copy = ocr_copy(pdf)
+        if copy.is_file():
+            return own_words(copy)
+    return pages
+
+
+TESSERACT = {"english": "eng", "german": "deu", "portuguese": "por", "spanish": "spa", "french": "fra", "italian": "ita"}
+
+
+def ocr_languages(cfg: dict) -> str:
+    """The person's languages (`languages` in the config) that tesseract
+    has, English when none of them is there."""
+    try:
+        have = set(subprocess.run(["tesseract", "--list-langs"], capture_output=True, text=True, timeout=20).stdout.split()[1:])
+    except (OSError, subprocess.TimeoutExpired):
+        have = set()
+    want = [TESSERACT.get(str(x).lower()) for x in cfg.get("languages") or ["English"]]
+    langs = [c for c in want if c and c in have]
+    return "+".join(langs or (["eng"] if "eng" in have or not have else sorted(have - {"osd"})[:1]))
+
+
+def cmd_ocr(cfg: dict, path: Path) -> None:
+    """A scanned PDF read: each page drawn (pdftoppm, 300 dpi) and read by
+    tesseract into an invisible text layer, laid over the original pages in
+    a copy (qpdf) — so the copy looks as the scan does and its words can be
+    selected, found and marked. One JSON line per page read, as it goes."""
+    if any(own_words(path)):
+        fail("this PDF has words already")
+    out = ocr_copy(path)
+    if out.is_file():
+        return
+    for tool in ("pdftoppm", "tesseract", "qpdf"):
+        if not shutil.which(tool):
+            fail(f"{tool} is not installed: a scan cannot be read")
+    n = int(subprocess.run(["qpdf", "--show-npages", str(path)], capture_output=True, text=True, timeout=60).stdout.strip() or 0)
+    langs = ocr_languages(cfg)
+    work = Path(tempfile.mkdtemp(prefix="longhand-ocr-"))
+    try:
+        layers = []
+        for i in range(1, n + 1):
+            print(json.dumps({"ocr": {"page": i, "pages": n, "languages": langs}}), flush=True)
+            img = work / f"p{i:04d}"
+            subprocess.run(["pdftoppm", "-r", "300", "-f", str(i), "-l", str(i), "-singlefile", "-png", str(path), str(img)],
+                           capture_output=True, timeout=300, check=True)
+            subprocess.run(["tesseract", f"{img}.png", str(img), "-l", langs, "-c", "textonly_pdf=1", "pdf"],
+                           capture_output=True, timeout=600, check=True)
+            layers.append(f"{img}.pdf")
+        text = work / "text.pdf"
+        subprocess.run(["qpdf", "--empty", "--pages", *layers, "--", str(text)], capture_output=True, timeout=300, check=True)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        tmp = out.with_suffix(".tmp")
+        subprocess.run(["qpdf", str(path), "--overlay", str(text), "--", str(tmp)], capture_output=True, timeout=300, check=True)
+        os.replace(tmp, out)
+    except subprocess.CalledProcessError as e:
+        fail(f"{e.cmd[0]} failed: {(e.stderr or b'').decode(errors='replace').strip()[:200]}")
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def own_words(pdf: Path) -> list[list[dict]]:
     """Every page's words with their boxes, in reading order, from
     `pdftotext -bbox-layout` — kept by the file's size and time."""
     st = pdf.stat()
@@ -408,8 +483,11 @@ def rel_of(cfg: dict, pdf: str) -> tuple[str, Path]:
 def state(cfg: dict, rel: str, path: Path, note: Note | None) -> dict:
     pages = words_of(path)
     has_text = any(pages)
+    scanned = not any(own_words(path))
+    copy = ocr_copy(path) if scanned else None
     out = {"pdf": rel, "note": "", "tags": [], "marks": [], "unplaced": 0, "text": has_text, "pages": len(pages),
-           "span": text_span(pages), "private": is_private(cfg, rel)}
+           "span": text_span(pages), "private": is_private(cfg, rel), "scanned": scanned,
+           "ocr": str(copy) if copy and copy.is_file() else ""}
     if not note:
         return out
     out["note"] = str(note.path.relative_to(Path(cfg["vault"]))) if note.path.is_relative_to(Path(cfg["vault"])) else str(note.path)
@@ -587,7 +665,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(prog="longhand-read", description=__doc__.split("\n\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("days")
-    for name in ("state", "mark", "remove", "kind", "note", "tag", "find"):
+    for name in ("state", "mark", "remove", "kind", "note", "tag", "find", "ocr"):
         p = sub.add_parser(name)
         p.add_argument("--pdf", required=True)
         if name == "find":
@@ -614,6 +692,10 @@ def main() -> int:
         print(json.dumps(cmd_days(cfg), ensure_ascii=False))
         return 0
     rel, path = rel_of(cfg, a.pdf)
+    if a.cmd == "ocr":
+        cmd_ocr(cfg, path)
+        print(json.dumps(state(cfg, rel, path, load_note(cfg, rel)), ensure_ascii=False))
+        return 0
     if a.cmd == "find":
         # Words quoted by the agent, shown where they are: found as a mark's
         # are, loosely, on their page or around it; nothing written.

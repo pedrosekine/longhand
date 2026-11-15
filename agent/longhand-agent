@@ -2955,7 +2955,7 @@ def day_followup(cfg: dict, paths: Paths, visible: list[dict], last: str, messag
 DAY_ROUNDS = 2        # searches and reads a message may ask for, one after another
 
 
-def day_fetch(cfg: dict, paths: Paths, tag: str, reply: dict, paper: str = "") -> tuple[list[str], dict]:
+def day_fetch(cfg: dict, paths: Paths, tag: str, reply: dict, paper: dict | None = None) -> tuple[list[str], dict]:
     """What the day's agent asked for, fetched by local code: words searched
     for in the folders switched on (search.py), files read whole, course
     documents and the manual (documents.py). Returns the payload section and
@@ -2979,8 +2979,8 @@ def day_fetch(cfg: dict, paths: Paths, tag: str, reply: dict, paper: str = "") -
             asked = str(q["file"]).strip().lstrip("/")
             # The paper talked about may be read whole whatever its folder:
             # asking about it is the consent (its folder was checked then).
-            if paper and asked == paper:
-                r = searchlib.read(paths.vault, dict(on, **{paper: True}), asked, SEARCH_TEXT, None, limit=PAPER_MAX)
+            if paper and asked == paper["rel"]:
+                r = paper_whole(paper)
             else:
                 r = searchlib.read(paths.vault, on, asked, SEARCH_TEXT, horizon_hide(cfg))
             if r.get("error"):
@@ -3002,7 +3002,7 @@ def day_fetch(cfg: dict, paths: Paths, tag: str, reply: dict, paper: str = "") -
 
 
 def day_follow(cfg: dict, paths: Paths, tag: str, result: dict, reply: dict, payload_file: Path,
-               paper: str = "") -> tuple[dict, dict, dict]:
+               paper: dict | None = None) -> tuple[dict, dict, dict]:
     """The agent asked to search or read: local code fetches, and the same
     session runs again with what was found — at most DAY_ROUNDS times, each
     logged as its own payload. The last answer is the one that counts; cost
@@ -3259,15 +3259,43 @@ def paper_talk(paths: Paths, rel: str) -> tuple[str, dict, str]:
     if st.get("private"):
         raise Fail(f"private: {rel} is in a folder kept from the agent")
     if not st.get("text"):
-        raise Fail("this PDF has no words in it (scanned): nothing to read")
+        raise Fail("this PDF has no words in it (scanned): read it first (r in the PDF)")
     seen = hashlib.sha1(json.dumps([[m["id"], m["kind"], m["text"], m["note"]] for m in st["marks"]]).encode()).hexdigest()[:16]
     return rel, st, seen
 
 
-def paper_page(paths: Paths, rel: str, page: int) -> str:
+def paper_file(paths: Paths, rel: str, st: dict) -> str:
+    """Where a paper's words are read from: a scan's copy with its text
+    layer (`longhand-read ocr`), else the PDF itself."""
+    return st.get("ocr") or str(paths.vault / rel)
+
+
+def paper_whole(paper: dict) -> dict:
+    """The paper whole, as search reads a file whole (its pages, masked,
+    what looks like a secret withheld), up to PAPER_MAX characters."""
+    try:
+        r = subprocess.run(["pdftotext", "-layout", paper["file"], "-"], capture_output=True, text=True, timeout=120)
+        pages = [re.sub(r"[ \t]+\n", "\n", x).strip() for x in r.stdout.split("\f")]
+    except (OSError, subprocess.TimeoutExpired):
+        pages = []
+    chunks = [f"[p. {n}]\n{searchlib.mask(t)}" for n, t in enumerate(pages, 1) if t]
+    if not chunks:
+        return {"error": "no text in it"}
+    bad = searchlib.leaks(chunks)
+    chunks = ["[withheld: looked like a secret]" if i in bad else c for i, c in enumerate(chunks)]
+    text, complete = "", True
+    for c in chunks:
+        if len(text) + len(c) > PAPER_MAX:
+            complete = False
+            break
+        text += c + "\n\n"
+    return {"path": paper["rel"], "text": text.rstrip(), "complete": complete, "withheld": {"secret": len(bad)} if bad else {}}
+
+
+def paper_page(paths: Paths, rel: str, page: int, file: str = "") -> str:
     """One page's text, as a passage is read in its place."""
     try:
-        r = subprocess.run(["pdftotext", "-f", str(page), "-l", str(page), str(paths.vault / rel), "-"],
+        r = subprocess.run(["pdftotext", "-f", str(page), "-l", str(page), file or str(paths.vault / rel), "-"],
                            capture_output=True, text=True, timeout=60)
         text = re.sub(r"[ \t]+\n", "\n", r.stdout).strip()
     except (OSError, subprocess.TimeoutExpired):
@@ -3337,7 +3365,7 @@ def paper_payload(cfg: dict, paths: Paths, rel: str, st: dict, message: str, mar
         page = m.get("found") or m["page"]
         if page not in pages_given:
             pages_given.add(page)
-            parts += ["", f"## Page {page} of the paper, where it stands", "", paper_page(paths, rel, page)]
+            parts += ["", f"## Page {page} of the paper, where it stands", "", paper_page(paths, rel, page, paper_file(paths, rel, st))]
     parts += ["", "# The student says", "", message]
     if not first:
         parts += ["", "Answer with the same JSON contract."]
@@ -3386,7 +3414,8 @@ def cmd_note(cfg: dict, args) -> int:
         {"reply": "", "proposals": [], "suggestions": [], "knowledge": [], "read": []}
     fetched = {"searched": [], "files": [], "documents": [], "withheld": {}}
     if not result["error"]:
-        result, reply, fetched = day_follow(cfg, paths, tag, result, reply, payload_file, rel if paper else "")
+        result, reply, fetched = day_follow(cfg, paths, tag, result, reply, payload_file,
+                                            {"rel": rel, "file": paper_file(paths, rel, st)} if paper else None)
 
     try:
         talk["turns"] = (json.loads(where.read_text()).get("turns") or talk["turns"])

@@ -568,9 +568,21 @@ block, `table` rows.
   small list asks, once: the projects, narrowing as a name or tag is typed,
   `↑↓` `Enter`, `Esc` for none. The note can name more by hand.
 
-**Not yet** (plan.md item 15, step 5): OCR; a two-column paper fitted one column at a time; a reading view
-(its text reflowed in the page's own face); the project's tag offered on a
-paper's first mark.
+- **A scan read** (2026-11-15, plan.md item 15, step 5). A PDF with no
+  words of its own says so in the foot and offers `r`: `longhand-read ocr`
+  draws each page (pdftoppm, 300 dpi), reads it with tesseract into an
+  invisible text layer, and lays the layers over the original pages in a
+  copy (qpdf `--overlay`) kept in the state folder (`reading/ocr/`, by the
+  scan's path, size and time) — the scan itself is never written. The foot
+  says how far it is, page by page; read, the copy takes the scan's place:
+  it looks the same, and its words are selected, found, marked, asked
+  about and read whole by the agent as any paper's. Its languages are the
+  config's `languages` that tesseract has (only English is installed on
+  the Air and xmg: `tesseract-data-deu` for German). About four seconds a
+  page on the Air.
+
+**Not yet:** a two-column paper fitted one column at a time; a reading view
+(its text reflowed in the page's own face).
 
 Tests: `tests/page/run.py` 12h. Pele can't run in Qt's own JavaScript
 engine (ES2022: `matchAll`, `replaceAll`, `\p{}`, `Intl`), so it needs

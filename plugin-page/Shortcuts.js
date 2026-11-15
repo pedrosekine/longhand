@@ -301,6 +301,7 @@ var actions = [
   { id: "pdfFind", group: "pdf", places: ["pdf"], does: "Find in it (Enter: next, Shift+Enter: before)", keys: ["Ctrl+F", "/"] },
   { id: "pdfOpen", group: "pdf", places: ["pdf"], does: "Open it in its own application", keys: ["O"] },
   { id: "pdfDark", group: "pdf", places: ["pdf"], does: "Dark pages: the paper in the theme's colours (again: as printed); kept for this paper", keys: ["I"] },
+  { id: "pdfOcr", group: "pdf", places: ["pdf"], does: "A scan: read its words (OCR), into a copy that takes its place; the scan is not written", keys: ["R"] },
   { id: "pdfMark", group: "pdf", places: ["pdf"], does: "Highlight the words selected; on a mark clicked, make it a highlight", keys: ["M"] },
   { id: "pdfQuestion", group: "pdf", places: ["pdf"], does: "Mark the words selected as a question; on a mark clicked, make it one", keys: ["Q"] },
   { id: "pdfNote", group: "pdf", places: ["pdf"], does: "A note under the mark clicked, else the last one made", keys: ["N"] },
