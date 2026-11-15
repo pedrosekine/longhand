@@ -228,10 +228,40 @@ Item {
     return null
   }
 
+  // A mouse drag selects words; it never moves the pages. Qt's view is a
+  // Flickable a little wider than the column, so a drag panned it sideways
+  // (or up and down) instead of selecting (seen 2026-11-15). Its dragging is
+  // turned off; the touchpad scrolls it as it does the note (TouchScroll,
+  // with its glide), a mouse wheel through `wheel` below.
+  property Item tamed: null
+  function tame(t) {
+    if (pane.tamed === t) return
+    t.interactive = false
+    touchScroll.createObject(t.contentItem, { flickable: t })
+    pane.tamed = t
+  }
+  Component { id: touchScroll; TouchScroll {} }
+  function wheel(ev) {
+    var t = pane.table()
+    if (!t || (ev.modifiers & Qt.ControlModifier)) { ev.accepted = false; return }
+    var dy = ev.pixelDelta.y !== 0 ? ev.pixelDelta.y * 2 : ev.angleDelta.y / 120 * page.sp(60)
+    var dx = ev.pixelDelta.x !== 0 ? ev.pixelDelta.x * 2 : ev.angleDelta.x / 120 * page.sp(60)
+    if (dy !== 0) pane.scrollBy(-dy)
+    // Sideways only when the page is wider than the column (sized up): the
+    // few pixels the view's scrollbar adds are no reason to slide.
+    if (dx !== 0 && t.contentWidth - t.width > page.sp(40))
+      t.contentX = Math.max(t.originX, Math.min(t.originX + t.contentWidth - t.width, t.contentX - dx))
+  }
+  WheelHandler {
+    target: null
+    onWheel: function (ev) { pane.wheel(ev) }
+  }
+
   // Put a layer of marks into every page delegate the view has made.
   function dress() {
     var t = pane.table()
     if (!t || !t.contentItem) return
+    pane.tame(t)
     var kids = t.contentItem.children
     for (var i = 0; i < kids.length; i++) {
       var h = kids[i]

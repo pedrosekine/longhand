@@ -220,7 +220,14 @@ ShellRoot {
       }
       var sel = p.selected()
       return JSON.stringify({ read: p.read, picked: p.picked, lastMade: p.lastMade, error: p.readError, noting: p.noting,
-        dressed: p.dressed.length, drawn: drawn, selected: sel ? sel.text : "", markable: p.markable })
+        dressed: p.dressed.length, drawn: drawn, selected: sel ? sel.text : "", markable: p.markable,
+        dragPans: p.table() ? p.table().interactive : null })
+    }
+    // A mouse wheel turned on the PDF: how far down it is after.
+    function pdfWheel(dy: int): real {
+      var p = page.pdfItem
+      p.wheel({ pixelDelta: Qt.point(0, 0), angleDelta: Qt.point(0, dy), modifiers: 0, accepted: true })
+      return p.table().contentY
     }
     // Select on a page (from 0) from one point to another, in points: both
     // on the words, as a drag starts (pdfium finds no text elsewhere).

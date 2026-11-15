@@ -459,6 +459,11 @@ block, `table` rows.
   - Esc closes it, back to the note.
 - **A known shortcut.** Qt's view keeps its scroller to itself, so the pane
   finds it among the view's children to scroll by keys.
+- **A drag selects, never pans** (2026-11-15). Qt's view is a Flickable a
+  little wider than the column, so a mouse drag slid the pages instead of
+  selecting words. Its dragging is off; the touchpad scrolls it through
+  `TouchScroll` (as the note), a mouse wheel through the pane's own
+  handler, sideways only when it is sized wider than the column.
 
 - **Where it was left** (2026-11-14). A PDF opens again on the page it
   was left at, as far down it, at the size it had: `pdfs.json` in the state

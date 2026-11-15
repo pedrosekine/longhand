@@ -3041,6 +3041,7 @@ def checks() -> int:
         mk = lambda: json.loads(p.call("pdfMarks"))
         check(p.wait(lambda: mk()["dressed"] >= 1 and mk()["markable"] and mk()["read"]["marks"] == []),
               f"a PDF never marked has no marks, and its pages can take them ({mk()})")
+        check(mk()["dragPans"] is False, "a mouse drag on it selects, never moves the pages")
         p.call("keysToSidebar")
         check(p.wait(lambda: pd()["here"] == "left"), f"(the keys in the sidebar, as after opening it from the Files tree: {pd()['here']})")
         check(p.call("pdfSelect", "0", "73", "69", "200", "69") == "true" and p.wait(lambda: mk()["selected"] != ""),
@@ -3089,6 +3090,9 @@ def checks() -> int:
         p.call("openFile", long_rel, "false")
         check(p.wait(lambda: pd()["ready"] and pd()["settled"] and pd()["pages"] == 4 and pd()["resumed"] is None),
               f"a PDF never opened before opens at its top ({pd()})")
+        y0 = float(p.call("pdfWheel", "0"))
+        check(float(p.call("pdfWheel", "-240")) > y0 + 50, "a mouse wheel scrolls it, its dragging turned off")
+        p.call("pdfKey", KEY_HOME, 0)
         # End: as far down as it goes. The last page is shorter than the
         # window, so the top of the view rests in the page before it.
         p.call("pdfKey", KEY_END, 0)
