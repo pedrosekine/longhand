@@ -204,6 +204,7 @@ Item {
     var links = t && t.text ? Links.inLine(t.text).filter(function (l) { return l.url !== "" || l.target !== "" }) : []
     if (links.length === 0) { root.showHint("no link in its line"); return }
     var daily = svc.configured ? String(svc.config.daily.dir).replace(/^\/+|\/+$/g, "") : ""
+    root.pdfFromTagNext = t.project || ""
     root.followLink(links[0], t.date && daily !== "" ? daily + "/" + t.date + ".md" : "")
   }
   property var followAgain: null        // { link, from }: waiting for the vault's names, read again
@@ -493,8 +494,27 @@ Item {
     root.dashOpen = false
     root.marginFocus = -1
     pdfPane.keep()
+    root.pdfFromTag = root.pdfFromTagNext
+    root.pdfFromTagNext = ""
     root.pdfRel = rel
     root.showNote()
+  }
+  // The project a paper belongs to (plan.md item 15, step 1), guessed when
+  // it is plain: the project of the line its link was followed from, else
+  // the project whose documents hold it, else one whose tag is a folder on
+  // its way. "" when none is plain: then it is asked, once.
+  property string pdfFromTagNext: ""   // the line a link is being followed from
+  property string pdfFromTag: ""       // …for the PDF open now
+  function paperProject(rel) {
+    var known = function (t) { return root.projects.some(function (p) { return p.tag === t }) }
+    if (root.pdfFromTag !== "" && known(root.pdfFromTag)) return root.pdfFromTag
+    var abs = svc.configured ? svc.config.vault + "/" + rel : ""
+    for (var i = 0; i < root.projects.length; i++)
+      if ((root.projects[i].docs || []).some(function (d) { return d.path === abs })) return root.projects[i].tag
+    var parts = rel.toLowerCase().split("/").slice(0, -1)
+    for (var k = 0; k < root.projects.length; k++)
+      if (parts.indexOf(String(root.projects[k].tag).toLowerCase()) >= 0) return root.projects[k].tag
+    return ""
   }
   function closePdf() {
     if (!root.pdfShown) return
@@ -2975,7 +2995,13 @@ Item {
     if (Sc.hit(event, "dayPrev")) { root.stepDay(-1); return true }
     if (Sc.hit(event, "dayNext")) { root.stepDay(1); return true }
     if (Sc.hit(event, "find")) { root.openSearch(); return true }
-    if (Sc.hit(event, "followLink")) { var l = editor.linkAtCursor(); if (l) root.followLink(l); else root.showHint("no link here"); return true }
+    if (Sc.hit(event, "followLink")) {
+      var l = editor.linkAtCursor()
+      if (!l) { root.showHint("no link here"); return true }
+      root.pdfFromTagNext = Focus.tagAt(editor.text, root.lineIndexAt(editor.cursorPosition))
+      root.followLink(l)
+      return true
+    }
     // Emphasis, where every editor puts it. The sidebar moved to the
     // shifted pair on 2026-10-15 so that Ctrl+B could be bold.
     if (Sc.hit(event, "bold")) { editor.emphasise("**"); return true }

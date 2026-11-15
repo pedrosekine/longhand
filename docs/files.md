@@ -559,6 +559,15 @@ block, `table` rows.
   picture on a white sheet, which takes the ground too. Off by default,
   kept per paper (`pdf-dark.json` in the state folder).
 
+- **A paper's project** (2026-11-15, plan.md item 15, step 1's last
+  part). On a paper's first mark its project is guessed when it is plain —
+  the project of the line its link was followed from (`Alt+Enter` in the
+  note or on a dashboard row), else the project whose documents hold it,
+  else a project whose tag is a folder on its way — and kept in its reading
+  note (`#tag` under the title), said a moment in the foot. Otherwise a
+  small list asks, once: the projects, narrowing as a name or tag is typed,
+  `↑↓` `Enter`, `Esc` for none. The note can name more by hand.
+
 **Not yet** (plan.md item 15, step 5): OCR; a two-column paper fitted one column at a time; a reading view
 (its text reflowed in the page's own face); the project's tag offered on a
 paper's first mark.

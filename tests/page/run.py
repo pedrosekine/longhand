@@ -3062,6 +3062,16 @@ def checks() -> int:
               and "Reflexive" in m1["text"] and m1["text"] in " ".join(picked.split()),
               f"…in the paper's reading note, as its words ({m1}, {reading})")
         check(mk()["lastMade"] == m1["id"], "…and it is the last one made")
+        # Its project (plan.md item 15, step 1): nothing makes it plain (no
+        # line it was followed from, no project's folder), so it is asked,
+        # once; the choice goes into its reading note.
+        ask = lambda: json.loads(p.call("pdfAsk"))
+        check(p.wait(lambda: ask()["asking"] and len(ask()["choices"]) > 0),
+              f"the paper's first mark asks which project it is for ({ask()})")
+        first_tag = ask()["choices"][0]
+        p.call("pdfChooseProject", first_tag)
+        check(p.wait(lambda: ask()["tags"] == [first_tag] and f"#{first_tag}" in reading.read_text() and not ask()["asking"]),
+              f"…chosen, the project's tag is kept in its reading note ({ask()})")
         if p.call("sidebarOpen") == "true":
             p.call("sidebar")
         r = m1["boxes"][0]["rects"][0]

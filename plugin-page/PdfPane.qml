@@ -63,6 +63,29 @@ Item {
   property string notingId: ""
   property bool awaitingMark: false
   property bool askAfter: false
+  // The project asked for on a paper's first mark: the projects, narrowing
+  // as a name or tag is typed.
+  property bool askingTag: false
+  property int tagFocus: 0
+  property string tagSaid: ""          // "#thesis": said a moment in the foot, once given
+  Timer { id: tagSaidTimer; interval: 4000; onTriggered: pane.tagSaid = "" }
+  readonly property var tagChoices: {
+    var q = tagField.text.toLowerCase().replace(/^#/, "")
+    return page.projects.filter(function (p) {
+      return q === "" || String(p.tag).toLowerCase().indexOf(q) >= 0 || String(p.name).toLowerCase().indexOf(q) >= 0
+    }).slice(0, 8)
+  }
+  function askProject() {
+    pane.askingTag = true
+    pane.tagFocus = 0
+    tagField.text = ""
+    tagField.forceActiveFocus()
+  }
+  function chooseProject(tag) {
+    pane.askingTag = false
+    if (tag) { pane.readRun(["tag", "--tag", tag]); pane.tagSaid = "#" + tag; tagSaidTimer.restart(); page.used("pdf", "project") }
+    keys.forceActiveFocus()
+  }
   // Words the agent quoted, shown where they are for a moment (never kept).
   property var flashBoxes: []
   property string flashMissed: ""
@@ -81,6 +104,7 @@ Item {
     pane.settled = false; pane.resumed = null
     pane.read = ({ marks: [], unplaced: 0, text: true, note: "", tags: [] })
     pane.wholePage = false
+    pane.askingTag = false
     pane.dressed = []
     pane.picked = ""; pane.lastMade = ""; pane.readError = ""; pane.noting = false; noteField.text = ""
     pane.readQueue = []
@@ -246,6 +270,13 @@ Item {
       var fresh = o.marks.filter(function (m) { return before.indexOf(m.id) < 0 })
       if (fresh.length === 1) pane.lastMade = fresh[0].id
       pane.awaitingMark = false
+      // The paper's first mark: its project, guessed when plain, else
+      // asked once (Esc leaves it with none; its note can name one later).
+      if (fresh.length === 1 && (pane.read.marks || []).length === 0 && (o.tags || []).length === 0) {
+        var guess = page.paperProject(pane.rel)
+        if (guess !== "") { pane.readRun(["tag", "--tag", guess]); pane.tagSaid = "#" + guess; tagSaidTimer.restart() }
+        else if (page.projects.length > 0) pane.askProject()
+      }
       // A question marked: its chat opens with it attached, for the
       // question in words; nothing is sent until Enter (plan.md item 15).
       if (fresh.length === 1 && fresh[0].kind === "q" && pane.askAfter) Qt.callLater(function () { page.askAboutMark(fresh[0].id) })
@@ -687,6 +718,81 @@ Item {
     }
   }
 
+  // Which project the paper is for, asked once on its first mark.
+  Rectangle {
+    id: tagAsk
+    visible: pane.askingTag
+    z: 3
+    anchors.bottom: foot.top
+    anchors.bottomMargin: page.sp(6)
+    width: Math.min(parent.width, page.sp(420))
+    height: tagColumn.implicitHeight + page.sp(16)
+    radius: Style.cornerRadius
+    color: page.palette.background
+    border.width: 1
+    border.color: page.accent
+    Column {
+      id: tagColumn
+      x: page.sp(10)
+      y: page.sp(8)
+      width: parent.width - page.sp(20)
+      spacing: page.sp(4)
+      Text {
+        width: parent.width
+        textFormat: Text.PlainText
+        wrapMode: Text.WordWrap
+        text: "Which project is this paper for? Enter keeps it in its reading note · Esc: none"
+        color: page.dim
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.caption)
+      }
+      TextField {
+        id: tagField
+        width: parent.width
+        placeholderText: "a project's name or #tag"
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.bodySmall)
+        foreground: page.foreground
+        Keys.priority: Keys.BeforeItem
+        Keys.onPressed: function (event) {
+          if (page.anywhereKey(event)) { event.accepted = true; return }
+          var seq = Sc.fromEvent(event)
+          if (seq === "Enter") { var c = pane.tagChoices[pane.tagFocus]; pane.chooseProject(c ? c.tag : ""); event.accepted = true }
+          else if (seq === "Esc") { pane.chooseProject(""); event.accepted = true }
+          else if (seq === "Up") { pane.tagFocus = Math.max(0, pane.tagFocus - 1); event.accepted = true }
+          else if (seq === "Down") { pane.tagFocus = Math.min(pane.tagChoices.length - 1, pane.tagFocus + 1); event.accepted = true }
+        }
+        onTextChanged: pane.tagFocus = 0
+      }
+      Repeater {
+        model: pane.tagChoices
+        Rectangle {
+          required property var modelData
+          required property int index
+          width: tagColumn.width
+          height: tagRowText.implicitHeight + page.sp(4)
+          radius: Style.cornerRadius
+          color: pane.tagFocus === index ? Style.selectedFill : "transparent"
+          Text {
+            id: tagRowText
+            anchors.left: parent.left
+            anchors.leftMargin: page.sp(4)
+            anchors.verticalCenter: parent.verticalCenter
+            textFormat: Text.PlainText
+            text: "#" + modelData.tag + "  " + modelData.name
+            color: page.foreground
+            font.family: page.fontFamily
+            font.styleName: page.fontStyle
+            font.pixelSize: page.fs(Style.font.bodySmall)
+          }
+          MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: pane.chooseProject(parent.modelData.tag) }
+        }
+      }
+    }
+  }
+
   Loader {
     id: loader
     active: pane.rel !== ""
@@ -722,6 +828,8 @@ Item {
         + (pane.view && pane.finding && pane.view.searchModel.count > 0 ? " · " + pane.view.searchModel.count + " found" : "")
         + (pane.read.text === false && pane.rel.charAt(0) !== "/" ? " · no words in it (scanned): nothing to mark" : "")
         + (foot.count > 0 ? " · " + foot.count + (foot.count === 1 ? " mark" : " marks") : "")
+        + ((pane.read.tags || []).length > 0 ? " · " + pane.read.tags.map(function (x) { return "#" + x }).join(" ") : "")
+        + (pane.tagSaid !== "" ? " (kept in its reading note)" : "")
         + (pane.read.unplaced > 0 ? ", " + pane.read.unplaced + " not found on its page" : "")
         + "   " + (pane.selected() ? page.keyName("pdfMark") + " highlight · " + page.keyName("pdfQuestion") + " question"
                    : pane.picked !== "" ? page.keyName("pdfMark") + "/" + page.keyName("pdfQuestion") + " its kind · " + page.keyName("pdfNote") + " a note · " + page.keyName("pdfRemove") + " remove"

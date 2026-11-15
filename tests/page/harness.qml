@@ -264,6 +264,9 @@ ShellRoot {
       return false
     }
     function pdfPick(id: string): void { page.pdfItem.pick(id) }
+    // The project asked for on a paper's first mark.
+    function pdfAsk(): string { var p = page.pdfItem; return JSON.stringify({ asking: p.askingTag, choices: p.tagChoices.map(function (c) { return c.tag }), said: p.tagSaid, tags: p.read.tags || [] }) }
+    function pdfChooseProject(tag: string): void { page.pdfItem.chooseProject(tag) }
     // What was read on the calendar's day (plan.md item 15, step 3).
     function readToday(): string {
       return JSON.stringify({ rows: page.focusRead.map(function (r) { return r.title + " · " + page.readSummary(r) }),
