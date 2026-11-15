@@ -751,8 +751,9 @@ Small, when passing by:
       private folders — *built 2026-11-15* (docs/files.md, "The paper's
       room"); found in use the same day and fixed: a touchpad drag selected
       nothing, marks drew with no size, overlaps drew darker, the text read
-      too small (now 1.8× the note's measure, fitted by its text);
-      (3) "read today" on the day
+      too small (now 1.8× the note's measure, fitted by its text); and the
+      list opens on "the whole paper", to chat with it unattached;
+      (3) — *built 2026-11-15* — "read today" on the day
       page, and a task line linking a PDF opens it where it was left;
       (4) inverted pages; (5) **OCR**, parked but soon (tesseract is here).
     - **Telling a highlight from a question** is the person's choice at the

@@ -248,6 +248,15 @@ def main() -> int:
     f = run("find", "--pdf", paper, "--page", "1", "--text", "words that are nowhere at all")
     check(f["found"] == 0 and f["boxes"] == [], "…and nothing when they are nowhere")
 
+    # What was read on each day, from the reading notes alone.
+    d = subprocess.run([str(READ), "days"], capture_output=True, text=True, env=env)
+    days = json.loads(d.stdout)["days"]
+    on15 = {r["title"]: r for r in days.get("2026-11-15", [])}
+    on16 = {r["title"]: r for r in days.get("2026-11-16", [])}
+    check(d.returncode == 0 and "Smith 2020" in on15 and on15["Smith 2020"]["pdf"] == paper and on15["Smith 2020"]["h"] >= 1,
+          f"days: each day's papers, from the marks' own days ({days.get('2026-11-15')})")
+    check("Smith 2020" in on16 and on16["Smith 2020"]["h"] + on16["Smith 2020"]["q"] >= 3, "…counted as highlights and questions that day")
+
     r = run("state", "--pdf", "lit/missing.pdf", ok=False)
     check(r.returncode != 0 and "no PDF" in r.stderr, "a PDF that is not there is refused")
 

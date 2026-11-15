@@ -535,10 +535,25 @@ block, `table` rows.
     private folder (`private` in the config, else `<notes>/Personal`) takes
     no marks and has no room; one with no words has none either.
 
-**Not yet** (plan.md item 15, steps 3 to 5): "read today"; a task line
-linking a PDF opening it where it was left; a dark reading mode for white
-pages; OCR; a two-column paper fitted one column at a time; a reading
-view (its text reflowed in the page's own face).
+- **Read today** (2026-11-15, plan.md item 15, step 3). Under the
+  calendar's day and its deadlines in the sidebar, **READ** lists the papers
+  marked that day — "Smith 2020 · 4 highlights, 1 question" — from the
+  marks' own days in the reading notes (`longhand-read days`), computed:
+  nothing is written into the day's note. `Tab` walks into it after the
+  deadlines; `Enter` or a click opens the paper where it was left.
+- **A task that links its paper.** `Alt+Enter` on a dashboard row follows
+  the first link in its line, as in the note: `- [ ] read [[Smith
+  2020.pdf]]` opens the paper where it was left. Found on the way: the
+  vault's names, which links are resolved against, left PDFs out, so a
+  wiki link to a PDF never resolved; and they were read once per opening,
+  so a file added since was not found. PDFs are named now, a link that
+  finds nothing reads the names again once, and so does a picture's name
+  missed (once per name).
+
+**Not yet** (plan.md item 15, steps 4 and 5): a dark reading mode for white
+pages; OCR; a two-column paper fitted one column at a time; a reading view
+(its text reflowed in the page's own face); the project's tag offered on a
+paper's first mark.
 
 Tests: `tests/page/run.py` 12h. Pele can't run in Qt's own JavaScript
 engine (ES2022: `matchAll`, `replaceAll`, `\p{}`, `Intl`), so it needs

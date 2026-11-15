@@ -233,6 +233,7 @@ var actions = [
   { id: "dashPrevAsk", group: "dash", places: ["dash"], does: "The one before it", keys: ["Shift+N"] },
   // C is Todoist's comment key, and the word on the row; Ctrl+Enter is
   // the note's key for the same chat (2026-10-27, no longer done here).
+  { id: "dashFollow", group: "dash", places: ["dash"], does: "Follow the link in its line (a paper: open it where it was left)", keys: ["Alt+Enter"] },
   { id: "dashTalk", group: "dash", places: ["dash"], does: "Chat about it (the agent's pane opens on it)", keys: ["C", "Ctrl+Enter"] },
   // Its section found among its course's, the PDF named after it; the
   // deadline stays open — handing it in is the person's (plan.md item 13).
@@ -264,7 +265,7 @@ var actions = [
   { id: "calNextMonth", group: "calendar", places: ["calendar"], does: "A month on", keys: ["Ctrl+Right", "PgDn"] },
   { id: "calToday", group: "calendar", places: ["calendar"], does: "Today", keys: ["Home", "T"] },
   { id: "calOpen", group: "calendar", places: ["calendar"], does: "Open the day in the sheet", keys: ["Enter"] },
-  { id: "calLists", group: "calendar", places: ["calendar"], does: "On to the day's deadlines and the projects", keys: ["Tab"] },
+  { id: "calLists", group: "calendar", places: ["calendar"], does: "On to the day's deadlines, the papers read that day, and the projects", keys: ["Tab"] },
   { id: "calBack", group: "calendar", places: ["calendar"], does: "Close the sidebar (back where you were)", keys: ["Esc"] },
 
   { id: "listUp", group: "lists", places: ["lists"], does: "Move up", keys: ["Up", "K"] },

@@ -136,10 +136,12 @@ Item {
   // fresh open. One `find`, a few thousand short strings; dropped on close.
   property var vaultIndex: null
   property int vaultIndexVersion: 0
+  property var missedNames: ({})      // names not found, each read again once
+  Timer { id: reindexTimer; interval: 1200; onTriggered: { root.vaultIndex = null; root.needIndex() } }
   function needIndex() {
     if (root.vaultIndex !== null || indexProc.running || !svc.configured) return
     indexProc.command = ["find", svc.config.vault, "-name", ".*", "-prune", "-o", "-type", "f", "-regextype", "posix-extended",
-                         "-iregex", ".*\\.(md|png|jpe?g|gif|webp|bmp|svg|avif)", "-print"]
+                         "-iregex", ".*\\.(md|pdf|png|jpe?g|gif|webp|bmp|svg|avif)", "-print"]
     indexProc.running = true
   }
   // Following links (docs/files.md, 2026-10-27). Where it leads: a day's
@@ -193,12 +195,30 @@ Item {
     else root.showNote()
     root.travelling = false
   }
-  function followLink(l) {
+  // A dashboard row's line, its first link followed (Alt+Enter, as in the
+  // note): a task that links its paper opens it where it was left (plan.md
+  // item 15, step 3).
+  function followRowLink() {
+    var row = root.taskRows[root.taskFocus]
+    var t = !row ? null : row.task ? row.task : row.deadline ? root.taskOfAnchor(row.deadline.id) : null
+    var links = t && t.text ? Links.inLine(t.text).filter(function (l) { return l.url !== "" || l.target !== "" }) : []
+    if (links.length === 0) { root.showHint("no link in its line"); return }
+    var daily = svc.configured ? String(svc.config.daily.dir).replace(/^\/+|\/+$/g, "") : ""
+    root.followLink(links[0], t.date && daily !== "" ? daily + "/" + t.date + ".md" : "")
+  }
+  property var followAgain: null        // { link, from }: waiting for the vault's names, read again
+  function followLink(l, from, retried) {
     root.used("link", l.url ? "web" : l.kind)
     if (l.url) { Qt.openUrlExternally(l.url); return }
     if (l.target === "") { root.pendingLink = { heading: l.heading }; root.landOnLink(); return }
     if (root.vaultIndex === null) { root.needIndex(); root.showHint("reading the vault's names…"); return }
-    var rel = Links.resolve(root.vaultIndex, l.target, root.noteRel, l.kind !== "md")
+    var rel = Links.resolve(root.vaultIndex, l.target, from || root.noteRel, l.kind !== "md")
+    if (rel === "" && !retried) {
+      root.followAgain = { link: l, from: from || "" }
+      root.vaultIndex = null
+      root.needIndex()
+      return
+    }
     if (rel === "") { root.showHint("no note “" + l.target + "” in the vault"); return }
     if (/\.pdf$/i.test(rel)) {
       root.remember()
@@ -277,7 +297,13 @@ Item {
     if (!svc.configured) return ""
     if (root.vaultIndex === null) { root.needIndex(); return "?" }
     var rel = Links.resolve(root.vaultIndex, target, root.noteRel, wiki)
-    if (rel === "") return ""
+    // Not among the names read: they are read again, a moment later (a
+    // picture added since the page opened) — once for each name missed, so
+    // a name that is truly missing does not keep the vault being read.
+    if (rel === "") {
+      if (!root.missedNames[target]) { var m = root.missedNames; m[target] = true; root.missedNames = m; reindexTimer.restart() }
+      return ""
+    }
     return "file://" + (svc.config.vault + "/" + rel).split("/").map(encodeURIComponent).join("/")
   }
   readonly property alias sidebarItem: sidebar
@@ -866,6 +892,49 @@ Item {
   property bool dayTasksOpen: false
   property int dueFocus: -1          // in the list under the calendar (-1: the grid has the keys)
   property int projFocus: -1         // in the projects list (-1: not there)
+  property int readFocus: -1         // in the day's read papers (-1: not there)
+
+  // What was read on the calendar's day (plan.md item 15, step 3): the
+  // papers marked that day, from the reading notes' own days (`longhand-read
+  // days`) — computed, nothing written into the day's note. Enter opens
+  // one where it was left.
+  property var readDays: ({})
+  readonly property var focusRead: root.readDays[Qt.formatDate(root.calFocus, "yyyy-MM-dd")] || []
+  onCalFocusChanged: root.readFocus = -1
+  function refreshReadDays() {
+    if (!svc.configured || readDaysProc.running) { readDaysTimer.restart(); return }
+    readDaysProc.command = [pdfPane.readPath, "days"]
+    readDaysProc.running = true
+  }
+  Timer { id: readDaysTimer; interval: 700; onTriggered: root.refreshReadDays() }
+  Process {
+    id: readDaysProc
+    stdout: StdioCollector {
+      id: readDaysOut
+      onStreamFinished: { try { root.readDays = JSON.parse(readDaysOut.text).days || ({}) } catch (e) {} }
+    }
+  }
+  // Marks made or taken away change what the day shows as read.
+  Connections {
+    target: pdfPane
+    function onReadChanged() { readDaysTimer.restart() }
+  }
+  function readKey(event) {
+    var n = root.focusRead.length
+    if (Sc.hit(event, "listUp")) root.readFocus = Math.max(0, root.readFocus - 1)
+    else if (Sc.hit(event, "listDown")) root.readFocus = Math.min(n - 1, root.readFocus + 1)
+    else if (Sc.hit(event, "listOpen")) { var r = root.focusRead[root.readFocus]; if (r) { root.used("read-today", "open"); root.remember(); root.openPdf(r.pdf) } }
+    else if (Sc.hit(event, "listNext")) { root.readFocus = -1; root.projFocus = 0 }
+    else if (Sc.hit(event, "listBack")) root.readFocus = -1
+    else return false
+    return true
+  }
+  function readSummary(r) {
+    var parts = []
+    if (r.h) parts.push(r.h + (r.h === 1 ? " highlight" : " highlights"))
+    if (r.q) parts.push(r.q + (r.q === 1 ? " question" : " questions"))
+    return parts.join(", ")
+  }
   property var projects: []          // [{ tag, name, next: { at, room } }]
   property int pendingGoto: 0        // a deadline whose line to land on once its note is open
   property var pendingTask: null     // { text, line }: a task's line to land on, the same way
@@ -4016,7 +4085,7 @@ Item {
     sectionsProc.command = [svc.runner, "sections", "--tag", root.projectTag]
     sectionsProc.running = true
   }
-  onSidebarOpenChanged: if (root.sidebarOpen) root.notesChanged()
+  onSidebarOpenChanged: if (root.sidebarOpen) { root.notesChanged(); root.refreshReadDays() }
 
   // The day's deadline list in the sidebar; false for a key it does not
   // use. A function, as projectsKey is, so the page can be driven without
@@ -4031,7 +4100,7 @@ Item {
       if (d && d.status === "open") root.tickSound()
       root.tickDeadline(d)
     }
-    else if (Sc.hit(event, "listNext")) { root.dueFocus = -1; root.projFocus = 0 }
+    else if (Sc.hit(event, "listNext")) { root.dueFocus = -1; if (root.focusRead.length > 0) root.readFocus = 0; else root.projFocus = 0 }
     else if (Sc.hit(event, "listBack")) root.dueFocus = -1
     else return false
     return true
@@ -5008,6 +5077,7 @@ Item {
     // the deadline popup and "go to it" here.
     if (Sc.hit(e, "dashDone")) { root.tickFocused(); return true }
     if (Sc.hit(e, "dashOpen")) { root.activateTask(); return true }
+    if (Sc.hit(e, "dashFollow")) { root.followRowLink(); return true }
     if (Sc.hit(e, "dashDrop")) { root.dropFocused(); return true }
     if (Sc.hit(e, "dashUndo")) { root.untickLast(); return true }
     if (Sc.hit(e, "dashPriority")) { root.cyclePriorityFocused(); return true }
@@ -6822,6 +6892,11 @@ Item {
         var paths = String(text).split("\n").filter(function (p) { return p !== "" }).map(function (p) { return p.slice(cut) })
         root.vaultIndex = Links.index(paths)
         root.vaultIndexVersion++
+        // A link that found nothing in the names read before: once more,
+        // with the vault read again (a file added since the page opened).
+        var again = root.followAgain
+        root.followAgain = null
+        if (again) root.followLink(again.link, again.from, true)
       }
     }
   }

@@ -3142,6 +3142,45 @@ def checks() -> int:
         check(p.wait(lambda: not pr()["shown"] and pd()["shown"]), "Esc on the marks closes the pane, the PDF stays")
         p.call("pdfKey", KEY_ESC, 0)
         check(p.wait(lambda: pr()["picked"] == "" and pd()["shown"]), "…and Esc in the PDF lets go of the mark picked first")
+        # Read today (plan.md item 15, step 3): the papers marked on the
+        # calendar's day, under its deadlines; Enter opens one where it was
+        # left. And a task linking a paper: Alt+Enter on its row opens it.
+        p.call("pdfKey", KEY_ESC, 0)
+        p.wait(lambda: not pd()["shown"])
+        rt = lambda: json.loads(p.call("readToday"))
+        p.call("keysToSidebar")
+        check(p.wait(lambda: rt()["day"] == TODAY_ISO and "Reading · 1 highlight, 1 question" in rt()["rows"]),
+              f"the sidebar's day lists the paper read that day, with its marks counted ({rt()})")
+        for _ in range(3):
+            if rt()["focus"] >= 0:
+                break
+            p.call("sideKey", 0x01000001, 0)                  # Tab
+        check(rt()["focus"] == 0, f"Tab walks into it after the day's deadlines ({rt()})")
+        p.call("sideKey", KEY_RETURN, 0)
+        check(p.wait(lambda: pd()["shown"] and pd()["label"] == "Reading.pdf"), f"Enter opens it ({pd()['label']})")
+        p.call("pdfKey", KEY_ESC, 0)
+        p.wait(lambda: not pd()["shown"])
+        if p.call("sidebarOpen") == "true":
+            p.call("sidebar")
+        today_note = p.daily / f"{TODAY}.md"
+        kept_note = today_note.read_text()
+        today_note.write_text(kept_note.rstrip("\n") + "\n- [ ] read [[Reading.pdf]] again\n")
+        p.wait(lambda: "read [[Reading.pdf]] again" in p.call("text"))
+        p.call("pageKey", KEY_2, CTRL)
+        row = lambda: next((n for n, x in enumerate(json.loads(p.call("dashRows")))
+                            if x.get("kind") == "task" and "again" in x.get("text", "")), -1)
+        check(p.wait(lambda: row() >= 0, 10), "a task linking a paper is on the dashboard")
+        p.call("dashFocus", str(row()))
+        p.call("dashKey", KEY_RETURN, 0x08000000)              # Alt+Enter
+        check(p.wait(lambda: pd()["shown"] and pd()["label"] == "Reading.pdf"),
+              f"Alt+Enter on its row follows the link: the paper opens ({pd()['label']}, {p.call('hint')!r})")
+        p.call("pdfKey", KEY_ESC, 0)
+        p.wait(lambda: not pd()["shown"])
+        today_note.write_text(kept_note)
+        p.wait(lambda: "read [[Reading.pdf]] again" not in p.call("text"))
+        if panes()["center"] != "note":
+            p.call("pageKey", KEY_2, CTRL)
+        p.wait(lambda: panes()["center"] == "note")
         p.call("pdfKey", KEY_ESC, 0)
         check(p.wait(lambda: not pd()["shown"] and pd()["label"] != "Reading.pdf" and json.loads(p.call("files"))["filePath"] == ""
                      and "therapy appointment" in p.call("text")),

@@ -135,10 +135,15 @@ BorderSurface {
       // calendar below.
       if (!(event.modifiers & (Qt.ControlModifier | Qt.AltModifier))) { page.dueFocus = -1; return false }
     }
+    if (page.readFocus >= 0) {
+      if (page.readKey(event)) return true
+      if (!(event.modifiers & (Qt.ControlModifier | Qt.AltModifier))) { page.readFocus = -1; return false }
+    }
     if (page.projFocus >= 0) return page.projectsKey(event)
     // (The projects' list always has a row: the one that makes a new one.)
     if (Sc.hit(event, "calLists")) {
       if (page.focusDue.length > 0) page.dueFocus = 0
+      else if (page.focusRead.length > 0) page.readFocus = 0
       else page.projFocus = 0
     } else if (Sc.hit(event, "calBack")) {
       page.toggleSidebar()
@@ -409,6 +414,56 @@ BorderSurface {
           cursorShape: Qt.PointingHandCursor
           onClicked: page.goToDeadline(modelData)
           Tip { host: page; shown: parent.containsMouse; text: page.tips([["Go to its line", "listOpen"], ["Done (again: not done)", "listDone"]]) }
+        }
+      }
+    }
+
+    // The papers marked that day (plan.md item 15, step 3): Tab goes into
+    // the list after the deadlines; Enter or a click opens one where it
+    // was left.
+    Text {
+      visible: page.focusRead.length > 0
+      topPadding: page.sp(8)
+      textFormat: Text.PlainText
+      text: "READ"
+      color: page.dim
+      font.family: page.fontFamily
+      font.styleName: page.fontStyle
+      font.pixelSize: page.fs(Style.font.caption)
+    }
+    Repeater {
+      model: page.focusRead
+      Rectangle {
+        id: readCell
+        required property var modelData
+        required property int index
+        readonly property bool lit: page.readFocus === index && sidebarKeys.activeFocus
+        onLitChanged: page.selected(readCell, "left", lit)
+        width: calendar.width
+        height: readRow.implicitHeight + page.sp(6)
+        radius: Style.cornerRadius
+        color: lit ? Style.selectedFill : readArea.containsMouse && page.handOn ? Style.hoverFill : "transparent"
+        Text {
+          id: readRow
+          anchors.left: parent.left
+          anchors.right: parent.right
+          anchors.leftMargin: page.sp(4)
+          anchors.verticalCenter: parent.verticalCenter
+          textFormat: Text.PlainText
+          wrapMode: Text.WordWrap
+          text: modelData.title + " · " + page.readSummary(modelData)
+          color: page.foreground
+          font.family: page.fontFamily
+          font.styleName: page.fontStyle
+          font.pixelSize: page.fs(Style.font.bodySmall)
+        }
+        MouseArea {
+          id: readArea
+          anchors.fill: parent
+          hoverEnabled: true
+          cursorShape: Qt.PointingHandCursor
+          onClicked: { page.remember(); page.openPdf(readCell.modelData.pdf) }
+          Tip { host: page; shown: parent.containsMouse; text: page.tips([["Open it where it was left", "listOpen"]]) }
         }
       }
     }

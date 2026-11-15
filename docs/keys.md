@@ -125,6 +125,7 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | Ask the agent to plan now | `Ctrl+R` | in the dashboard |
 | Next thing from the agent to settle (round again at the end) | `n` | in the dashboard |
 | The one before it | `Shift+N` | in the dashboard |
+| Follow the link in its line (a paper: open it where it was left) | `Alt+Enter` | in the dashboard |
 | Chat about it (the agent's pane opens on it) | `c` · `Ctrl+Enter` | in the dashboard |
 | Export its section as a PDF, named after it (it stays open) | `Ctrl+Shift+E` | in the dashboard |
 | Take the last tick back | `Ctrl+Z` | in the dashboard |
@@ -154,7 +155,7 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | A month on | `Ctrl+→` · `PgDn` | in the calendar |
 | Today | `Home` · `t` | in the calendar |
 | Open the day in the sheet | `Enter` | in the calendar |
-| On to the day's deadlines and the projects | `Tab` | in the calendar |
+| On to the day's deadlines, the papers read that day, and the projects | `Tab` | in the calendar |
 | Close the sidebar (back where you were) | `Esc` | in the calendar |
 
 ## Deadlines, projects and sections in the sidebar

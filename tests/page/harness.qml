@@ -261,6 +261,11 @@ ShellRoot {
       return false
     }
     function pdfPick(id: string): void { page.pdfItem.pick(id) }
+    // What was read on the calendar's day (plan.md item 15, step 3).
+    function readToday(): string {
+      return JSON.stringify({ rows: page.focusRead.map(function (r) { return r.title + " · " + page.readSummary(r) }),
+        focus: page.readFocus, due: page.dueFocus, proj: page.projFocus, day: Qt.formatDate(page.calFocus, "yyyy-MM-dd") })
+    }
     // A paper's room (plan.md item 15, step 2): what the agent's pane shows.
     function paper(): string {
       return JSON.stringify({ room: page.paperRoom, shown: page.dayShown, list: page.paperList, filter: page.paperFilter,
@@ -304,7 +309,7 @@ ShellRoot {
       }
       return false
     }
-    function keysToSidebar(): void { if (!page.sidebarOpen) page.toggleSidebar(); page.focusSidebar() }
+    function keysToSidebar(): void { if (!page.sidebarOpen) page.toggleSidebar(); page.sidebarSpace = "time"; page.focusSidebar() }
     function pdfWriteNote(text: string): void { page.pdfItem.noteRef.text = text; page.pdfItem.saveNote() }
     // Export as a PDF (ExportSheet.qml): the sheet as its keys see it.
     function exportState(): string {

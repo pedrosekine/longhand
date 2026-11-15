@@ -31,6 +31,7 @@ nowhere is reported as not placed, never dropped.
     longhand-read note   --pdf P --id hN --text T      (empty: the note goes)
     longhand-read tag    --pdf P --tag T
     longhand-read find   --pdf P --page N --text T     (where words are, to show them; nothing kept)
+    longhand-read days                                 (what was marked on each day, every paper)
 
 P is the PDF's path in the vault (or a whole path). Pages are counted from
 1, as the link says. `--y` is where on the page the selection began, in
@@ -553,9 +554,39 @@ def cmd_tag(cfg, rel, path, a) -> Note:
     return note
 
 
+def cmd_days(cfg: dict) -> dict:
+    """Each day a paper was marked, from the reading notes' own days: the
+    papers, their names, how many highlights and questions that day — what
+    the day page shows as read (plan.md item 15, step 3). Read from the
+    notes alone: no PDF is opened."""
+    folder = Path(cfg["vault"]) / readings_dir(cfg)
+    days: dict[str, dict] = {}
+    for f in sorted(folder.glob("*.md")) if folder.is_dir() else []:
+        try:
+            note = Note(f, f.read_text().split("\n"))
+        except OSError:
+            continue
+        pdf = ""
+        for line in note.lines[:12]:
+            m = PDF_FIELD_RE.match(line.strip())
+            if m:
+                pdf = m.group("target").strip()
+                break
+        if not pdf:
+            continue
+        for m in note.marks():
+            if not m["day"]:
+                continue
+            row = days.setdefault(m["day"], {}).setdefault(pdf, {"pdf": pdf, "title": Path(pdf).stem, "h": 0, "q": 0,
+                                                                  "note": str(f.relative_to(Path(cfg["vault"])))})
+            row[m["kind"]] += 1
+    return {"days": {d: sorted(v.values(), key=lambda r: r["title"].lower()) for d, v in sorted(days.items())}}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(prog="longhand-read", description=__doc__.split("\n\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("days")
     for name in ("state", "mark", "remove", "kind", "note", "tag", "find"):
         p = sub.add_parser(name)
         p.add_argument("--pdf", required=True)
@@ -579,6 +610,9 @@ def main() -> int:
             p.add_argument("--tag", required=True)
     a = ap.parse_args()
     cfg = load_config()
+    if a.cmd == "days":
+        print(json.dumps(cmd_days(cfg), ensure_ascii=False))
+        return 0
     rel, path = rel_of(cfg, a.pdf)
     if a.cmd == "find":
         # Words quoted by the agent, shown where they are: found as a mark's
