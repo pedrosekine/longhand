@@ -131,7 +131,7 @@ def workload(tasks: list[dict], deadlines: list[dict], today: dt.date) -> list[d
     return sorted(out.values(), key=lambda p: (p["next_due"] or "9999", p["project"]))
 
 
-def candidates(tasks: list[dict], deadlines: list[dict], today: dt.date) -> list[dict]:
+def candidates(tasks: list[dict], deadlines: list[dict], today: dt.date, limit: int | None = MAX_CANDIDATES) -> list[dict]:
     """The boxes worth planning: open tasks and deadlines with no do-date,
     due after today, and not put away (quiet or shelved). A note box is thinking, not work to
     schedule, and is left alone. Nearest due date first, then priority, then
@@ -153,10 +153,10 @@ def candidates(tasks: list[dict], deadlines: list[dict], today: dt.date) -> list
                     "due": due, "priority": t.get("priority") or 0, "est": t.get("est") or "",
                     "written": t.get("date", ""), "age_days": t.get("age", 0)})
     out.sort(key=lambda c: (c["due"] or "9999", -c["priority"], -c["age_days"]))
-    return out[:MAX_CANDIDATES]
+    return out[:limit]
 
 
-def open_boxes(tasks: list[dict], deadlines: list[dict], today: dt.date) -> list[dict]:
+def open_boxes(tasks: list[dict], deadlines: list[dict], today: dt.date, limit: int | None = MAX_BOXES) -> list[dict]:
     """Every open box the agent may see, for the actions that are not about a
     day: a priority, steps under it, dropping it, whether it is done. Quiet
     and shelved ones too (`quiet`) — a box gone quiet is what dropping is
@@ -173,9 +173,10 @@ def open_boxes(tasks: list[dict], deadlines: list[dict], today: dt.date) -> list
                     "project": t.get("project") or "", "where": " › ".join(t.get("path") or []),
                     "due": due, "when": t.get("when") or "", "priority": t.get("priority") or 0,
                     "steps_under_it": t.get("details") or 0, "written": t.get("date", ""),
-                    "age_days": t.get("age", 0), "quiet": bool(t.get("away")), "kind": t.get("kind") or "task"})
+                    "age_days": t.get("age", 0), "quiet": bool(t.get("away")), "kind": t.get("kind") or "task",
+                    "deadline": t["anchor"] if t.get("anchor") in by_anchor else 0})
     out.sort(key=lambda b: (b["due"] or "9999", -b["age_days"]))
-    return out[:MAX_BOXES]
+    return out[:limit]
 
 
 def inputs_hash(cands: list[dict], days: list[dict]) -> str:
@@ -276,9 +277,12 @@ def same_deadline(title: str, date: str, d: dict) -> bool:
 
 def ident(x: dict) -> tuple[str, str]:
     """What one proposal is about: its kind and its box, or, for a deadline
-    (which has no box yet), its words; for a project, its tag."""
+    (which has no box yet), its words; for a project, its tag; for a drop of
+    a deadline that has no line, its number."""
     if x["kind"] == "project":
         return (x["kind"], str(x.get("project") or "").lower())
+    if not x.get("key") and x.get("deadline"):
+        return (x["kind"], f"#{x['deadline']}")      # a deadline with no line: its number
     return (x["kind"], x.get("key") or norm(x.get("title", "")))
 
 
@@ -325,9 +329,12 @@ def validate(reply: dict, cands: list[dict], days: list[dict], ledger: dict, tod
     against what it was shown, against what the person already refused, and
     against what the person allows ("never" drops it). At most
     MAX_PROPOSALS of all kinds, in the model's order, and MAX_QUESTIONS.
-    `asked`: the day conversation, where the person is there and talking — a
+    `asked`: a conversation, where the person is there and talking — a
     drop they ask for (a duplicate, a box no longer wanted) is offered
-    whatever its age or due date, with its reason (2026-10-27)."""
+    whatever its age or due date, with its reason (2026-10-27); and so is a
+    drop of a deadline the store holds with no line (`deadline`, its
+    number), which has no box to name (2026-11-15: the margin's own card
+    had added one, and nothing could take it away)."""
     by_key = {c["key"]: c for c in cands}
     by_box = {b["key"]: b for b in boxes or []}
     window = {d["date"] for d in days}
@@ -386,6 +393,18 @@ def validate(reply: dict, cands: list[dict], days: list[dict], ledger: dict, tod
             if not re.fullmatch(r"[\w/-]{1,40}", tag) or tag.lower() in tags or not name or not why:
                 continue
             item = {"kind": kind, "key": "", "title": name, "project": tag, "why": why}
+        elif kind == "drop" and not key and asked:
+            try:
+                num = int(str(p.get("deadline") or "").lstrip("#"))
+            except ValueError:
+                continue
+            # One with a line is dropped through its box, as any box is.
+            b = next((b for b in boxes or [] if num and b.get("deadline") == num), None)
+            d = next((d for d in deadlines or [] if d["id"] == num and not d.get("linked")), None)
+            if not why or (b is None and d is None):
+                continue
+            item = {"kind": kind, "key": b["key"], "why": why, "title": b["title"], "project": b["project"]} if b else \
+                {"kind": kind, "key": "", "deadline": num, "title": d["title"], "project": d.get("project") or "", "why": why}
         else:
             b = by_box.get(key)
             if not b:
@@ -468,14 +487,21 @@ def _same(old: dict | None, new: dict) -> bool:
     return old is not None and all(old.get(k) == new.get(k) for k in ("date", "priority", "steps", "title"))
 
 
-def settle_moot(ledger: dict, tasks: list[dict], at: str) -> int:
+def settle_moot(ledger: dict, tasks: list[dict], at: str, open_ids: set[int] | None = None) -> int:
     """An open do-date whose box has a date now, is done, or is gone, no
     longer asks anything: moot. Nor does a do-date or a deadline whose day
     has passed (2026-10-23: a do-date for the 20th was still there to
-    accept on the 23rd, and accepting it put a past day on the line)."""
+    accept on the 23rd, and accepting it put a past day on the line); nor
+    a drop of a deadline with no line that is no longer open (`open_ids`,
+    the store's open deadlines, when known)."""
     live = {(t.get("key") or lifespan.key_of(t)): t for t in tasks}
     n = 0
     for x in open_items(ledger):
+        if x["kind"] == "drop" and not x.get("key") and x.get("deadline") and open_ids is not None \
+                and not x.get("auto") and x["deadline"] not in open_ids:
+            x["status"], x["resolved"] = "moot", at
+            n += 1
+            continue
         if x["kind"] in ("do-date", "deadline") and not x.get("auto") and (x.get("date") or "9999") < at[:10]:
             x["status"], x["resolved"] = "moot", at
             n += 1

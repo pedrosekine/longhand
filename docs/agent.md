@@ -388,6 +388,30 @@ longer silent: the turn keeps it (`unoffered`), the page says "not offered
 as a card" under the reply, and the next message tells the agent, whose
 prompt no longer lets it point at a card it cannot see.
 
+**A block's chat changes what is there (2026-11-15).** Found on a new
+"AI Literacy course" box (#63, the 20th): "do this task by wed" gave a
+card "add deadline", which added #64 on the 18th beside #63 — the margin's
+card named a deadline only by its words, and with two alike (#63 and
+January's #32) local code made a new one rather than guess. Asked then to
+remove the 18th and the 20th, the agent had no card to do it and sent the
+student to the dashboard. Now a block's chat proposes the day
+conversation's cards too — a day for a box (`do-date`) and dropping one
+(`drop`) — checked by `validate` as the day's are (`asked`), recorded in
+the one list (`from: margin`), and drawn in the margin under the answer
+that made them, the block keeping a copy that names the item (`ledger`).
+Enter does what one says, written by the page as from its row; Del
+declines it. The margin is shown what it may propose about: the boxes that
+read like the block (at most eight, with each box's deadline number) and
+the deadlines the store holds with no line (`deadlines_with_no_line`) —
+the duplicates someone asks to tidy, not the whole list, which is the
+day's. A deadline with no line is dropped by its number, and accepting it
+cancels it in the store, as Del on its row does; a number that has a line
+becomes its box's drop. A move names the deadline it moves (`moves: n`); a
+number that is not open is no card, and is said back; a new deadline with
+others alike says which ("beside #63, #32"), so it is never taken for a
+move. The day conversation is shown the deadlines with no line as well.
+Tests: `tests/test_margin_cards.py`, and 10b' in `tests/page/run.py`.
+
 **How the brief works (slice 4, built 2026-10-21).** The day's first run —
 the morning pass, the plan, or the first message to the day, whichever
 comes first; runs that start together wait for each other — writes the

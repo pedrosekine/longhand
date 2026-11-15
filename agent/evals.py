@@ -7,7 +7,8 @@ A case is a real run's payload — kept in the student's vault
 their notes — and what a good answer must do there:
 
 - `rules`, checked by code: for the margin, patterns the reply must or must
-  not contain, whether silence is acceptable; for the day's conversation,
+  not contain, whether silence is acceptable, and in a block's chat which
+  cards it must propose and which never (`cards`, `no_cards`); for the day's conversation,
   the same, and whether it asks to search or read rather than answer, with
   which words, which proposals must survive plan.py's checks and which must
   not, and for a brief how many lines; for a plan, how many do-dates
@@ -76,7 +77,8 @@ def new_case(job: str, payload: str, source: str, note: str = "", answer: str = 
         rules = {"must_not_match": [], "must_match_any": [], "settle": "any"}
         return {"job": job, "created": dt.date.today().isoformat(), "source": source, "note": note,
                 "answer_then": answer, "rules": rules, "criteria": [], "payload": payload}
-    rules = ({"must_not_match": [], "must_match_any": [], "silence_ok": False} if job == "margin" else
+    rules = ({"must_not_match": [], "must_match_any": [], "silence_ok": False, "cards": [], "no_cards": []}
+             if job == "margin" else
              {"min_dates": 0, "max_questions": planlib.MAX_QUESTIONS, "ask_about": [], "date_for": [], "no_date_for": [],
               "deadline_for": [], "done_for": [], "drop_for": [], "no_drop_for": [], "steps_for": [], "no_steps_for": [],
               "max_priorities": planlib.MAX_PROPOSALS})
@@ -106,6 +108,38 @@ def check_margin(case: dict, reply: dict) -> list[dict]:
     if anyof:
         hit = next((p for p in anyof if re.search(p, text, re.I)), None)
         out.append({"check": "names one of: " + ", ".join(anyof), "pass": bool(hit), "why": hit or "none found"})
+    out += check_cards(r, reply.get("proposals") or [])
+    return out
+
+
+def card_matches(want: dict, p: dict) -> bool:
+    """Whether a proposal is the card a rule describes: each field as given
+    ("absent": not there at all), numbers alike whether written 64 or "#64"."""
+    for k, v in want.items():
+        got = p.get(k)
+        if v == "absent":
+            if got not in (None, "", [], {}):
+                return False
+        elif isinstance(v, int) and not isinstance(v, bool):
+            if str(got if not isinstance(got, dict) else got.get("id")).lstrip("#") != str(v):
+                return False
+        elif got != v:
+            return False
+    return True
+
+
+def check_cards(rules: dict, proposals: list[dict]) -> list[dict]:
+    """A block's chat's cards (2026-11-15): each of `cards` must be among
+    them; none of `no_cards` may be."""
+    out = []
+    for want in rules.get("cards") or []:
+        hit = any(card_matches(want, p) for p in proposals if isinstance(p, dict))
+        out.append({"check": f"proposes {json.dumps(want, ensure_ascii=False)}", "pass": hit,
+                    "why": "" if hit else json.dumps(proposals, ensure_ascii=False)[:300]})
+    for want in rules.get("no_cards") or []:
+        bad = next((p for p in proposals if isinstance(p, dict) and card_matches(want, p)), None)
+        out.append({"check": f"never proposes {json.dumps(want, ensure_ascii=False)}", "pass": bad is None,
+                    "why": json.dumps(bad, ensure_ascii=False)[:300] if bad else ""})
     return out
 
 

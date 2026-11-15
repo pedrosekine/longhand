@@ -121,6 +121,21 @@ def main() -> int:
     rules = evals.check_talk(talk, {"reply": "I have moved it to today.", "settle": "accept"})
     check(sum(not r["pass"] for r in rules) == 3, "claiming the move, without the key, and settling, fails all three")
 
+    # A block's chat's cards (2026-11-15): the ones a case asks for must be
+    # proposed, the ones it forbids never — a new deadline where a move or a
+    # drop was asked is the 2026-11-15 mistake.
+    case = {"rules": {"silence_ok": False, "cards": [{"kind": "drop", "deadline": 64}, {"kind": "drop", "key": "\t- AI course"}],
+                      "no_cards": [{"kind": "deadline", "moves": "absent"}]}}
+    good = {"reply": "Dropping both.", "proposals": [{"kind": "drop", "deadline": "#64", "why": "a copy"},
+                                                     {"kind": "drop", "key": "\t- AI course", "why": "the same"},
+                                                     {"kind": "deadline", "title": "AI course", "when": "wed", "moves": 63}]}
+    check(all(c["pass"] for c in evals.check_margin(case, good)),
+          f"a chat's cards: asked-for drops and a named move pass ({evals.check_margin(case, good)})")
+    bad = {"reply": "Moving it.", "proposals": [{"kind": "deadline", "title": "AI course", "when": "wed"}]}
+    got = {c["check"]: c["pass"] for c in evals.check_margin(case, bad)}
+    check(not got['never proposes {"kind": "deadline", "moves": "absent"}'] and not got['proposes {"kind": "drop", "deadline": 64}'],
+          "…a new deadline where a move was meant fails, and so does a missing drop")
+
     print("PASS" if failures == 0 else f"{failures} FAILED")
     return 1 if failures else 0
 

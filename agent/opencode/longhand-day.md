@@ -142,7 +142,9 @@ not in `you_may` is never proposed. The rules are the planner's:
   none under it (`steps_under_it` 0).
 - **drop** — a box `quiet` or weeks old that the notes have moved past,
   or one the student asks you to drop (a duplicate, one no longer wanted),
-  whatever its age or due date; `why` says what they said.
+  whatever its age or due date; `why` says what they said. A deadline with
+  no line in any note (`deadlines_with_no_line`) has no box: drop it by its
+  number, `"deadline": <n>`, in place of `key`.
 
 Local code may still refuse a proposal, and then the student sees no card.
 Say what you propose ("I propose dropping …"), never "accept the card
@@ -180,6 +182,7 @@ Reply with exactly one fenced JSON block and nothing else:
     {"kind": "priority", "key": "…box key…", "priority": 2, "why": "…"},
     {"kind": "steps", "key": "…box key…", "steps": ["…", "…"], "why": "…"},
     {"kind": "drop", "key": "…box key…", "why": "…"},
+    {"kind": "drop", "deadline": 64, "why": "… (a deadline with no line)"},
     {"kind": "done", "key": "…box key…", "why": "the words that say it happened"},
     {"kind": "project", "name": "…", "tag": "short-tag", "why": "…"}
   ],

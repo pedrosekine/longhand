@@ -590,6 +590,49 @@ def checks() -> int:
         check(len(p.store.read_text().splitlines()) == before + 2, "another item offers it no more; a proposal naming no line adds once")
         check("- [ ] A0 poster\n" in p.note() and "Conference" not in p.note(), "…and that one takes no line")
 
+        # 10b'. a block's chat drops what is already there (2026-11-15): its
+        # cards from the one list sit in the margin; Enter on "drop it" for a
+        # deadline with no line cancels it in the store, as Del on its row
+        # does; Del on a card declines it, in the one list.
+        line = "- [ ] AI Literacy course"
+        h = blocks.split(line)[0]["hash"]
+        due = int(time.mktime((dt.date.today() + dt.timedelta(days=3)).timetuple())) + 86340
+        p.store.write_text(p.store.read_text() + f"77\t{due}\tAI Literacy course\topen\t0\t\t\t\n")
+        ledger_path = p.state / "longhand" / "proposals.json"
+        led = json.loads(ledger_path.read_text()) if ledger_path.exists() else {"next": 1, "items": []}
+        nid = led["next"]
+        now_at = dt.datetime.now().isoformat(timespec="seconds")
+        led["items"] += [{"kind": "drop", "key": "", "deadline": 77, "title": "AI Literacy course", "project": "",
+                          "why": "a copy", "from": "margin", "id": nid, "status": "open", "at": now_at},
+                         {"kind": "drop", "key": "", "deadline": 77, "title": "AI Literacy course (again)", "project": "",
+                          "why": "asked twice", "from": "margin", "id": nid + 1, "status": "open", "at": now_at}]
+        led["next"] = nid + 2
+        ledger_path.write_text(json.dumps(led))
+        cards = [{"kind": "drop", "key": "", "deadline": 77, "title": "AI Literacy course", "why": "a copy", "ledger": nid, "at": now_at},
+                 {"kind": "drop", "key": "", "deadline": 77, "title": "AI Literacy course (again)", "why": "asked twice",
+                  "ledger": nid + 1, "at": now_at}]
+        (p.vault / "agents" / "longhand" / "daily" / f"{TODAY}.json").write_text(json.dumps({"blocks": {h: {
+            "state": "reply", "reply": "Dropping the copy.", "read": True, "proposals": cards,
+            "chat": [{"role": "student", "text": "remove the one from the 18th", "at": now_at},
+                     {"role": "agent", "text": "Dropping the copy with no line.", "at": now_at, "proposals": [0, 1]}]}}}))
+        (p.daily / f"{TODAY}.md").write_text(header(TODAY) + line + "\n")
+        p.open_fresh()
+        p.call("cursor", 3)
+        p.call("refreshProposals")
+        check(p.wait(lambda: [c["live"] for c in json.loads(p.call("marginListed"))] == [True, True], 8),
+              f"a block's day and drop cards are open while the one list has them ({p.call('marginListed')})")
+        p.call("declineAt", 1)
+        check(p.wait(lambda: any(x["id"] == nid + 1 and x["status"] == "declined" for x in json.loads(ledger_path.read_text())["items"])),
+              "Del on one declines it, in the one list")
+        p.call("acceptAt", 0)
+        check(p.wait(lambda: p.deadline(77)["status"] == "cancelled", 8),
+              f"Enter on a drop of a deadline with no line cancels it in the store ({p.deadline(77)})")
+        check(p.wait(lambda: any(x["id"] == nid and x["status"] == "accepted" for x in json.loads(ledger_path.read_text())["items"]))
+              and json.loads(p.call("marginListed")) == [{"kind": "drop", "live": False, "state": "accepted"},
+                                                          {"kind": "drop", "live": False, "state": "declined"}],
+              f"…accepted in the one list, and both cards say how they were settled ({p.call('marginListed')})")
+        check(line + "\n" in p.note(), "…and no note was written: it had no line")
+
         # 10c. ways to keep a date as words, and old lines left alone
         (p.daily / f"{TODAY}.md").write_text(header(TODAY) + "- [ ] essay\n- [ ] old line by friday\nnext item\n")
         p.open_fresh()

@@ -173,7 +173,10 @@ in, the "chat" in the header does the same. A block with a sign for the
 agent (a checkbox, or a line ending in `?`) is sent first, and the agent
 answers; any other block opens its chat with the box ready, for you to
 start. A block already answered opens on its chat. {key:margin} goes into
-the margin, where `+` and `-` say whether a reply helped. It plans the next
+the margin, where `+` and `-` say whether a reply helped. Asked in a block's
+chat, it can move a deadline, give a box a day to work on, or drop a box or
+a duplicate deadline: each comes as a card under its answer, and nothing
+changes until you accept it ({key:marginAccept}; {key:marginDecline} declines it). It plans the next
 two weeks when the page or the dashboard opens: do-dates, and with the
 student's leave, deadlines found in the writing, priorities, steps under a
 box, dropping a stale box, "this looks done — tick it?". Every kind starts

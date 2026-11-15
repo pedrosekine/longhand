@@ -1410,9 +1410,10 @@ Item {
     return x.kind === "do-date" && x.date ? "do " + Say.sayDate(x.date)
       : x.kind === "deadline" && x.date ? "📅 " + Say.sayDate(x.date) : ""
   }
-  function settleDayCard(i, how) {
-    var p = root.dayOpenCards[i]
-    if (!p) return
+  // One of the list's items, settled from a card — in the day's
+  // conversation or a block's (2026-11-15) — as from its row: false when
+  // it could not be (its box is not on the list any more).
+  function settleCard(p, how) {
     var s = {}
     for (var k in root.dayCardSettled) s[k] = root.dayCardSettled[k]
     if (how === "accept" && p.told) {
@@ -1421,7 +1422,7 @@ Item {
     } else if (how === "accept") {
       // Written by the page, the one writer of notes, as from its row; a
       // box no longer on the list leaves the card open, and says so.
-      if (!root.applyProposal(p, root.taskOfKey(p.key))) return
+      if (!root.applyProposal(p, p.key ? root.taskOfKey(p.key) : null)) return false
       root.resolveProposal(p, "accept", "")
       s[p.id] = "accepted"
     } else if (p.told) {
@@ -1432,6 +1433,11 @@ Item {
       s[p.id] = "declined"
     }
     root.dayCardSettled = s
+    return true
+  }
+  function settleDayCard(i, how) {
+    var p = root.dayOpenCards[i]
+    if (!p || !root.settleCard(p, how)) return
     root.used("day", "card-" + how)
     Qt.callLater(function () {
       var n = root.dayOpenCards.length
@@ -1567,7 +1573,7 @@ Item {
     for (var t = 0; t < turns.length; t++)
       for (var c = 0; c < (turns[t].cards || []).length; c++) {
         var card = turns[t].cards[c]
-        if (!card.accepted && !card.superseded) out.push(card)
+        if (card.ledger ? !!root.dayCardLive({ id: card.ledger }) : (!card.accepted && !card.superseded)) out.push(card)
       }
     return out
   }
@@ -1777,7 +1783,11 @@ Item {
   // A card's words: a new deadline, or one already there moved.
   function marginCardFacts(p) {
     var m = p.moves
-    return (m ? m.title : p.title) + ((p.project || p.subject) && !m ? " · " + (p.project || p.subject) : "")
+    // A new one beside others that read the same says so: it is not a
+    // move (2026-11-15: "do this by wed" added a third AI Literacy course).
+    var alike = !m && p.alike && p.alike.length ? "\nbeside " + p.alike.map(function (d) {
+      return "#" + d.id + " (" + Qt.formatDate(new Date(d.due * 1000), "d MMM") + ")" }).join(", ") : ""
+    return (m ? m.title : p.title) + ((p.project || p.subject) && !m ? " · " + (p.project || p.subject) : "") + alike
   }
   // The day as the page says days ("Fri 20 Nov", "tomorrow"); words the
   // agent wrote that are not a date ("friday") as written.
@@ -3073,8 +3083,18 @@ Item {
     else margin.marginKeysRef.forceActiveFocus()
   }
 
+  // A card in the one list (a day for a box, or dropping one): settled as
+  // the day's cards are, the item read from the list as it is now.
+  function settleListedCard(c, how) {
+    var live = c && c.ledger ? root.dayCardLive({ id: c.ledger }) : null
+    if (!live) return false
+    if (root.settleCard(live, how)) root.used("margin", "card-" + how)
+    return true
+  }
+
   function acceptProposal(i) {
     var p = root.currentProposals[i]
+    if (p && p.ledger) { root.settleListedCard(p, "accept"); return }
     if (!p || p.accepted || p.superseded || root.currentRec === "" || acceptProc.running) return
     root.pendingAccept = { hash: root.currentRec, index: i }
     acceptProc.command = [svc.runner, "accept", "--hash", root.currentRec, "--index", String(i), "--date", svc.noteDate]
@@ -4343,7 +4363,13 @@ Item {
 
   // The person's answer: the row goes at once, the runner records it in
   // order.
+  // What the page settled this session: a list read already on its way
+  // when the answer was given would bring the item back as open (found
+  // 2026-11-15, a card declined beside another accepted). A settled item
+  // never opens again, so it stays left out.
+  property var settledHere: ({})
   function resolveProposal(item, how, answer) {
+    root.settledHere[item.id] = true
     root.proposals = root.proposals.filter(function (x) { return x.id !== item.id })
     var args = [svc.runner, "proposal", how, "--id", String(item.id)]
     if (answer) args = args.concat(["--answer", answer])
@@ -4496,7 +4522,8 @@ Item {
         else { root.talkCardFocus = -1; root.marginFocus = 1; margin.chatFieldRef.forceActiveFocus() }
         return true
       }
-      return Sc.hit(e, "marginDecline")
+      if (Sc.hit(e, "marginDecline")) { root.settleListedCard(root.talkCards[root.talkCardFocus], "decline"); return true }
+      return false
     }
     if (Sc.hit(e, "marginAccept")) { root.acceptTalked(); return true }
     if (Sc.hit(e, "marginDecline")) { root.declineTalked(); return true }
@@ -4519,6 +4546,7 @@ Item {
   // filed under; the chat is read again, and the card says what came of it.
   // The box's line is bound only from its note, where the page has it.
   function acceptTalkCard(c) {
+    if (c && c.ledger) { root.settleListedCard(c, "accept"); return }
     var chat = root.talkData ? root.talkData.chat : null
     if (!c || !chat || c.accepted || c.superseded || acceptProc.running) return
     root.pendingAccept = null
@@ -4558,6 +4586,14 @@ Item {
   function applyProposal(p, task) {
     var t = task || (p.key ? root.taskOfKey(p.key) : null)
     if (p.kind === "project") return true          // made by the runner, on accepting it
+    // A deadline with no line (2026-11-15): cancelled in the store, as Del
+    // on its row does.
+    if (p.kind === "drop" && !p.key && p.deadline) {
+      var d = dl.items.filter(function (x) { return x.id === p.deadline })[0]
+      if (!d || d.status !== "open") { root.showHint("deadline #" + p.deadline + " is not open any more"); return false }
+      root.dropDeadline(d)
+      return true
+    }
     if (p.kind !== "deadline" && !t) { root.showHint("its box is not on the list any more"); return false }
     // A day already gone is not accepted (the runner settles it as moot on
     // the next list): it would put a past date on the line.
@@ -4590,6 +4626,7 @@ Item {
     var t = p.key ? root.taskOfKey(p.key) : null
     if (p.kind === "do-date" && t) root.editTask(t, "when", "")
     else if (p.kind === "priority" && t) root.editTask(t, "prio", p.was || 0)
+    else if (p.kind === "drop" && !p.key && p.deadline) dl.reopen(p.deadline)
     else if (p.kind === "drop" && t) root.editTask(t, "undrop", "")
     else if (p.kind === "steps" && t) {
       var lead = root.leadOf(t.text)
@@ -6547,6 +6584,8 @@ Item {
       root.running = false
       // The day's answer may have proposed: its cards are the dashboard's items.
       if (root.runningHash === "day") { Qt.callLater(root.refreshProposals); Qt.callLater(root.refreshTasks) }
+      // …and so may a block's chat: a day or a drop is in the one list.
+      else if (runner.command[1] === "chat") Qt.callLater(root.refreshProposals)
       if (root.runningHash === "note") noteTalkFile.reload()
       root.runningHash = ""
       if (code !== 0) Qt.callLater(root.runnerFailed)
@@ -7004,6 +7043,7 @@ Item {
           var p = JSON.parse(text)
           root.proposals = (p.open || []).filter(function (x) { return !x.auto }).concat(
             (p.told || []).map(function (x) { return Object.assign({ told: true }, x) }))
+            .filter(function (x) { return !root.settledHere[x.id] })
           root.proposalsReadAt = root.proposalsAsked
           root.applyAuto(p.open || [])
           // Kept, not replaced: a conversation whose proposal was just

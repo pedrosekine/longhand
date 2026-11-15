@@ -67,6 +67,7 @@ BorderSurface {
       else if (Sc.hit(event, "marginUp")) page.moveMarginFocus(-1)
       else if (Sc.hit(event, "marginDown")) page.moveMarginFocus(1)
       else if (Sc.hit(event, "marginAccept")) page.acceptProposal(page.marginFocus)
+      else if (Sc.hit(event, "marginDecline")) page.settleListedCard(page.currentProposals[page.marginFocus], "decline")
       else if (Sc.hit(event, "marginHelpful")) page.rateReply("up")
       else if (Sc.hit(event, "marginNotHelpful")) page.rateReply("down")
       else return
@@ -190,6 +191,17 @@ BorderSurface {
             font.styleName: page.fontStyle
             font.pixelSize: page.fs(Style.font.caption)
           }
+          Text {
+            visible: modelData.role === "agent" && (modelData.unoffered || []).length > 0
+            width: parent.width
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
+            text: "◇ not offered as a card: " + (modelData.unoffered || []).join("; ")
+            color: page.faint
+            font.family: page.fontFamily
+            font.styleName: page.fontStyle
+            font.pixelSize: page.fs(Style.font.caption)
+          }
           // What the margin agent proposed in the task's chat: its cards,
           // under the answer that made them, as beside the note
           // (2026-11-03: "Proposed", and nothing here to see).
@@ -302,6 +314,20 @@ BorderSurface {
             visible: !row.isCard && row.turn.who === "planner" && row.turn.role === "agent"
             textFormat: Text.PlainText
             text: "the planner"
+            color: page.faint
+            font.family: page.fontFamily
+            font.styleName: page.fontStyle
+            font.pixelSize: page.fs(Style.font.caption)
+          }
+          // What it proposed that local code did not offer: said here, as
+          // in the day's conversation, so a reply pointing at a card that
+          // is not there is not the last word.
+          Text {
+            visible: !row.isCard && row.turn.role === "agent" && (row.turn.unoffered || []).length > 0
+            width: parent.width
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
+            text: "◇ not offered as a card: " + (row.turn.unoffered || []).join("; ")
             color: page.faint
             font.family: page.fontFamily
             font.styleName: page.fontStyle

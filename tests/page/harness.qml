@@ -377,6 +377,14 @@ ShellRoot {
     function activate(): void { page.activateTask() }
     function tickRow(): void { page.tickFocused() }
     function acceptAt(i: int): void { page.acceptProposal(i) }
+    // A block's cards from the one list (2026-11-15): Del on one, and how
+    // each reads — open while the list has it, else as the page settled it.
+    function declineAt(i: int): void { page.settleListedCard(page.currentProposals[i], "decline") }
+    function marginListed(): string {
+      return JSON.stringify(page.currentProposals.filter(function (c) { return !!c.ledger }).map(function (c) {
+        return { kind: c.kind, live: !!page.dayCardLive({ id: c.ledger }), state: page.dayCardSettled[c.ledger] || "" }
+      }))
+    }
     // What omarchy-shell's own applyTheme does when a theme is set.
     function applyTheme(colorsB64: string, shellB64: string): string { Commons.Color.loadColors(Qt.atob(colorsB64)); Commons.Color.loadShell(Qt.atob(shellB64)); return "ok" }
     function palette(): string { var p = page.palette; return "keys=" + Object.keys(p.keys).length + " accent=" + p.accent + " dim=" + p.dim + " faint=" + p.faint + " h=" + p.headings.join(",") + " eh=" + page.editorItem.headingColors + " bullet=" + page.editorItem.bulletColor + " fg=" + page.foreground + " bg=" + page.background }

@@ -893,11 +893,22 @@ def block_key(text: str) -> str:
     return blocklib.fnv1a(tasklib.identity(text))
 
 
+def card_words(p: dict) -> str:
+    """A card from the one list, as the transcript says it."""
+    if p.get("kind") == "do-date":
+        return f"do {p.get('date', '')}: {p.get('title', '')}"
+    if p.get("kind") == "drop":
+        return f"drop: {p.get('title', '')}" + (f" (deadline #{p['deadline']}, no line)" if p.get("deadline") else "")
+    return f"{p.get('kind', '')}: {p.get('title', '')}"
+
+
 def same_card(a: dict, b: dict) -> bool:
     """Whether two of a block's cards are about the same thing: a move of
     the same deadline, or a new deadline in much the same words."""
     if a.get("kind") != b.get("kind"):
         return False
+    if a.get("ledger") or b.get("ledger"):
+        return a.get("ledger") == b.get("ledger")
     ma, mb = (a.get("moves") or {}).get("id"), (b.get("moves") or {}).get("id")
     if ma or mb:
         return ma == mb
@@ -930,7 +941,12 @@ def card_places(props: list[dict], new: list[dict], at: str) -> tuple[list[int],
 
 
 def apply(cfg: dict, paths: Paths, trigger: str, fired: list[dict], visible: list[dict],
-          result: dict, reply: dict, payload_file: Path, hash_: str = "", message: str = "") -> dict:
+          result: dict, reply: dict, payload_file: Path, hash_: str = "", message: str = "",
+          ledger_cards: list[dict] | None = None, unoffered: list[str] | None = None) -> dict:
+    """What a margin run or a block's chat answered, kept. Its own cards are
+    deadlines (`accept`); a chat's day or drop is in the one list already
+    (`ledger_cards`, by `ledger_proposals`) and sits among them, a copy
+    saying which item it is."""
     now = dt.datetime.now()
     at = now.isoformat(timespec="seconds")
     state = load_state(paths)
@@ -939,7 +955,8 @@ def apply(cfg: dict, paths: Paths, trigger: str, fired: list[dict], visible: lis
     if fired:
         hash_ = fired[0]["hash"]
     chat = trigger == "chat"
-    mark_moves(reply["proposals"])
+    reply["proposals"] = [p for p in reply["proposals"] if p.get("kind") == "deadline"]
+    refused = mark_moves(reply["proposals"]) + list(unoffered or [])
     listed = reply["proposals"]
 
     # Every block the model saw is now "seen"; the fired ones get the reply.
@@ -955,10 +972,12 @@ def apply(cfg: dict, paths: Paths, trigger: str, fired: list[dict], visible: lis
             # Which of the block's proposals this answer made: the margin
             # draws them under it, in the conversation, not at its top.
             props = rec.setdefault("proposals", [])
-            made, fresh = card_places(props, reply["proposals"], at)
+            made, fresh = card_places(props, reply["proposals"] + list(ledger_cards or []), at)
             turns.append({"role": "agent", "text": reply["reply"], "at": at, "cost": result["cost"],
                           "prompt": result.get("prompt", ""), "model": result.get("model", ""),
                           "documents": result.get("reads", []), "proposals": made})
+            if refused:
+                turns[-1]["unoffered"] = refused
             rec["session"] = result["session"] or rec.get("session", "")
             rec["read"] = False
             if rec.get("state") != "reply":
@@ -1013,13 +1032,17 @@ def apply(cfg: dict, paths: Paths, trigger: str, fired: list[dict], visible: lis
     else:
         sec.append(reply["reply"] if reply["reply"] else "_(nothing to add)_")
     for p in listed:
-        if p.get("kind") == "deadline" and p.get("moves"):
+        if p.get("ledger"):
+            sec.append(f"- [ ] {card_words(p)}")
+        elif p.get("kind") == "deadline" and p.get("moves"):
             sec.append(f"- [ ] move deadline #{p['moves']['id']}: {p['moves']['title']} — to {p.get('when', '')}")
         elif p.get("kind") == "deadline":
             sec.append(f"- [ ] add deadline: {p.get('title', '')} — {p.get('when', '')}"
                        + (f" · {project_of(p)}" if project_of(p) else ""))
     for s in reply["suggestions"]:
         sec.append(f"- suggestion: {s.get('text', '')} _(evidence: {s.get('evidence', '')})_")
+    for r in refused if chat else []:
+        sec.append(f"- not offered as a card: {r}")
     if result["error"]:
         sec.append(f"- error: {result['error']}")
     tk = result["tokens"]
@@ -1209,11 +1232,22 @@ def cmd_chat(cfg: dict, args) -> int:
     if session and {d["name"] for d in docs} - set(rec.get("docs_seen") or []):
         docs_part = (f"Documents filed for #{doc_tag} since, the index as it is now (an index only: their contents are"
                      " not available to you; name one if the student should open it):\n\n" + "\n".join(doc_lines(docs)) + "\n\n")
+    # A day for the box, or dropping it or one like it (2026-11-15): the
+    # boxes it may name travel with the first message, and again when they
+    # changed; and what local code did not offer last time is said, so the
+    # agent does not point at a card that is not there.
+    proposable, digest = margin_proposable(cfg, about_block) if about_block else (None, "")
     if session:
         # The session already holds the context and the first reply; only the
         # student's words travel. Logged all the same.
         since = f"The block now reads:\n\n{now['text']}\n\n" if now else ""
-        payload = (f"{language_line(cfg, message)}\n\n{since}{planner_part}{docs_part}The student replies about block {args.hash}:\n\n{message}\n\n"
+        gone = next((t.get("unoffered") or [] for t in reversed(rec.get("chat") or []) if t["role"] == "agent"), [])
+        gone_part = ("Your last proposals local code did not offer as cards — the student saw no card for these; "
+                     "do not point at one:\n\n" + "\n".join(f"- {x}" for x in gone) + "\n\n") if gone else ""
+        offer_part = "\n".join(margin_proposable_parts(proposable, again=True)).lstrip() + "\n\n" \
+            if proposable and digest != rec.get("proposable") else ""
+        payload = (f"{language_line(cfg, message)}\n\n{since}{planner_part}{docs_part}{gone_part}{offer_part}"
+                   f"The student replies about block {args.hash}:\n\n{message}\n\n"
                    "Answer with the same JSON contract.\n")
         payload_file.write_text(payload)
         result = run_model(cfg, paths, "", session=session, message=payload)
@@ -1224,6 +1258,8 @@ def cmd_chat(cfg: dict, args) -> int:
         payload = build_payload(paths, "mention", [block], visible, cfg)
         if planner_part:
             payload += f"\n# This box with the planner\n\n{planner_part}"
+        if proposable:
+            payload += "\n".join(margin_proposable_parts(proposable)) + "\n"
         payload += f"\n# The student says\n\n{message}\n"
         payload_file.write_text(payload)
         result = run_model(cfg, paths, payload)
@@ -1233,13 +1269,25 @@ def cmd_chat(cfg: dict, args) -> int:
     about = block or now
     tag = project_of_block(visible, about) if about else ""
     result, reply = follow_reads(cfg, paths, tag, result, reply, payload_file)
-    state = apply(cfg, paths, "chat", [], visible, result, reply, payload_file, hash_=args.hash, message=message)
-    if (planned or docs) and not result["error"]:
+    # A day or a drop goes into the one list, checked as the day's are; the
+    # margin keeps a copy saying which item it is.
+    asked = [x for x in reply["proposals"] if x.get("kind") != "deadline"]
+    cards, unoffered = [], []
+    if asked and not result["error"]:
+        at = dt.datetime.now().isoformat(timespec="seconds")
+        made, unoffered = ledger_proposals(cfg, asked, result, payload_file, at, "margin",
+                                           proposable or {"candidates": [], "open_boxes": []})
+        cards = [dict({k: v for k, v in x.items() if k != "id"}, ledger=x["id"], at=at) for x in made]
+    state = apply(cfg, paths, "chat", [], visible, result, reply, payload_file, hash_=args.hash, message=message,
+                  ledger_cards=cards, unoffered=unoffered)
+    if (planned or docs or proposable) and not result["error"]:
         for h in group_of(state, args.hash):
             if planned:
                 state["blocks"][h]["planner_seen"] = len(planned)
             if docs:
                 state["blocks"][h]["docs_seen"] = sorted(d["name"] for d in docs)
+            if proposable:
+                state["blocks"][h]["proposable"] = digest
         write_atomic(paths, paths.state, json.dumps(state, indent=2, ensure_ascii=False) + "\n")
     if result["error"]:
         print(f"error: {result['error']}", file=sys.stderr)
@@ -1256,40 +1304,74 @@ def run_pomo(argv: list[str]) -> tuple[int, str]:
     return r.returncode, (r.stdout + r.stderr).strip()
 
 
-def same_deadline(title: str, when: list[str]) -> tuple[dict | None, dict | None]:
-    """The open deadline in the store with the same words (or mostly) as a
-    proposal: (it, if due the day the proposal says — the one it would
-    duplicate; it, if due another day — the one it would move)."""
+def same_deadline(title: str, when: list[str]) -> tuple[dict | None, dict | None, list[dict]]:
+    """The open deadlines in the store with the same words (or mostly) as a
+    proposal: (the one due the day the proposal says — the one it would
+    duplicate; the one due another day, when it is the only one alike — the
+    one it would move; every one alike)."""
     try:
         code, out = run_pomo(["deadline", "when", *when])
         day = dt.datetime.fromtimestamp(int(out.split("\t")[0])).date() if code == 0 else None
         code, out = run_pomo(["deadline", "list", "--json"])
         items = json.loads(out)["deadlines"] if code == 0 and day else []
     except (ValueError, KeyError, TypeError):
-        return None, None
+        return None, None, []
     alike = [d for d in items if d.get("status") == "open" and (norm(d["title"]) == norm(title) or similar(d["title"], title))]
     twin = next((d for d in alike if dt.datetime.fromtimestamp(d["due"]).date() == day), None)
     # Only one candidate to move: with two alike, which one is meant is
-    # the student's to say, and the card stays a new deadline.
+    # the agent's to name (`moves`), and the card stays a new deadline —
+    # one that says what it stands beside.
     other = alike[0] if not twin and len(alike) == 1 else None
-    return twin, other
+    return twin, other, alike
 
 
 def twin_deadline(title: str, when: list[str]) -> dict | None:
     return same_deadline(title, when)[0]
 
 
-def mark_moves(proposals: list[dict]) -> None:
+def store_list() -> list[dict]:
+    code, out = run_pomo(["deadline", "list", "--json"])
+    try:
+        return json.loads(out)["deadlines"] if code == 0 else []
+    except (ValueError, KeyError, TypeError):
+        return []
+
+
+def mark_moves(proposals: list[dict]) -> list[str]:
     """A deadline proposed with the words of one already open, for another
     day, is that deadline moved, not a second one (2026-10-23: "reschedule
     to today" made a card that would have added a copy of #41). The card
-    says so, and accepting it moves the date."""
+    says so, and accepting it moves the date. The agent names the one it
+    means (`moves`: its number) — guessed from the words, two alike made a
+    third instead (2026-11-15: "do this by wed" added #64 beside #63 and
+    #32). A number that is not an open deadline is no card: said back.
+    A new one with others alike says which (`alike`), so it is not taken
+    for a move. Returns what was not offered."""
+    unoffered, keep = [], []
+    store = None
     for p in proposals:
-        if p.get("kind") != "deadline" or p.get("moves"):
+        if p.get("kind") != "deadline" or isinstance(p.get("moves"), dict):
+            keep.append(p)
             continue
-        _, other = same_deadline(str(p.get("title") or ""), str(p.get("when") or "").split() or ["today"])
+        named = str(p.get("moves") or "").strip().lstrip("#")
+        if named:
+            store = store_list() if store is None else store
+            d = next((d for d in store if str(d.get("id")) == named and d.get("status") == "open"), None)
+            if d is None:
+                unoffered.append(f"move deadline #{named} · it is not an open deadline")
+                continue
+            p["moves"] = {"id": d["id"], "title": d["title"], "due": d["due"]}
+            keep.append(p)
+            continue
+        p.pop("moves", None)
+        _, other, alike = same_deadline(str(p.get("title") or ""), str(p.get("when") or "").split() or ["today"])
         if other:
             p["moves"] = {"id": other["id"], "title": other["title"], "due": other["due"]}
+        elif len(alike) > 1:
+            p["alike"] = [{"id": d["id"], "title": d["title"], "due": d["due"]} for d in alike[:4]]
+        keep.append(p)
+    proposals[:] = keep
+    return unoffered
 
 
 def cmd_accept(cfg: dict, args) -> int:
@@ -1305,6 +1387,10 @@ def cmd_accept(cfg: dict, args) -> int:
     if not 0 <= args.index < len(props):
         raise Fail(f"block {args.hash} has no proposal #{args.index}")
     prop = props[args.index]
+    if prop.get("ledger"):
+        # A day or a drop is written on the box by the page, the one writer
+        # of notes, from the agent's list (`proposal accept`), never here.
+        raise Fail(f"block {args.hash}'s proposal #{args.index} is the page's to apply (proposal {prop['ledger']})")
     if prop.get("accepted"):
         return 0
     if prop.get("superseded"):
@@ -2238,7 +2324,7 @@ def parse_plan(text: str) -> dict:
     return empty
 
 
-def plan_inputs(cfg: dict, today: dt.date) -> tuple:
+def plan_inputs(cfg: dict, today: dt.date, notes: bool = True) -> tuple:
     """What a plan is made from, and a proposal is checked against: the
     open boxes, the store's deadlines, the fortnight, the candidates for a
     do-date, the boxes for the other actions, the week's notes, and what
@@ -2247,7 +2333,7 @@ def plan_inputs(cfg: dict, today: dt.date) -> tuple:
     deadlines = planlib.store_deadlines(STATE_HOME / "deadlines.tsv")
     days = planlib.fortnight(today, plan_events(cfg, today), deadlines, tasks)
     return (tasks, deadlines, days, planlib.candidates(tasks, deadlines, today),
-            planlib.open_boxes(tasks, deadlines, today), plan_notes(cfg, today), planlib.autonomy(cfg))
+            planlib.open_boxes(tasks, deadlines, today), plan_notes(cfg, today) if notes else [], planlib.autonomy(cfg))
 
 
 def plan_cfg_of(cfg: dict) -> dict:
@@ -2418,7 +2504,9 @@ def cmd_proposals(cfg: dict, args) -> int:
     lock = planlib.hold(PROPOSALS)
     ledger = planlib.load_ledger(PROPOSALS)
     at = dt.datetime.now().isoformat(timespec="seconds")
-    changed = planlib.settle_moot(ledger, tasks, at)
+    open_ids = {d["id"] for d in planlib.store_deadlines(STATE_HOME / "deadlines.tsv")} \
+        if (STATE_HOME / "deadlines.tsv").exists() else None    # a store that is not there is not "none open"
+    changed = planlib.settle_moot(ledger, tasks, at, open_ids)
     changed += planlib.settle_projects(ledger, project_tags(cfg), at)
     changed += inbox_pass(cfg, ledger, at)
     if changed:
@@ -2628,7 +2716,8 @@ def block_record(paths: Paths, visible: list[dict], block: dict, blocks: dict) -
     return block["hash"], None
 
 
-CARD_KEYS = ("kind", "title", "when", "project", "moves", "accepted", "error", "superseded")
+CARD_KEYS = ("kind", "title", "when", "project", "moves", "alike", "accepted", "error", "superseded",
+             "ledger", "key", "deadline", "date", "why", "at")
 
 
 def margin_turns(rec: dict | None) -> list[dict]:
@@ -2648,7 +2737,8 @@ def margin_turns(rec: dict | None) -> list[dict]:
     out = [{"role": "agent", "text": rec["reply"], "at": rec.get("at", ""), "who": "margin",
             "cards": cards([i for i in range(len(props)) if i not in claimed])}] if rec.get("reply") else []
     out += [dict({"role": t["role"], "text": t["text"], "at": t.get("at", ""), "who": "margin"},
-                 **({"cards": cards(t.get("proposals") or [])} if t["role"] == "agent" else {}))
+                 **({"cards": cards(t.get("proposals") or []), "unoffered": t.get("unoffered") or []}
+                    if t["role"] == "agent" else {}))
             for t in chat]
     return out
 
@@ -2665,8 +2755,10 @@ def open_cards(rec: dict | None, now: dt.datetime | None = None) -> int:
         return 0
     made = {i: t.get("at", "") for t in rec.get("chat") or [] if t.get("role") == "agent" for i in t.get("proposals") or []}
     since = ((now or dt.datetime.now()) - dt.timedelta(days=CARD_QUIET_DAYS)).isoformat(timespec="seconds")
+    # A day or a drop is a row of its own in the dashboard (the one list).
     return sum(1 for i, p in enumerate(rec.get("proposals") or [])
-               if not p.get("accepted") and not p.get("superseded") and (made.get(i) or rec.get("at", "")) >= since)
+               if not p.get("ledger") and not p.get("accepted") and not p.get("superseded")
+               and (made.get(i) or rec.get("at", "")) >= since)
 
 
 def merged_turns(margin: list[dict], planner: list[dict]) -> list[dict]:
@@ -2853,10 +2945,12 @@ def day_proposable(cfg: dict, today: dt.date) -> tuple[dict, str]:
     a hash of them, so a later message carries them again only when they
     changed."""
     tasks, deadlines, days, cands, boxes, notes, allowed = plan_inputs(cfg, today)
-    data = {"fortnight": days, "candidates": cands, "open_boxes": boxes,
+    loose = [{"deadline": d["id"], "title": d["title"], "due": d["due"].strftime("%Y-%m-%d %H:%M"),
+              "project": d.get("project") or ""} for d in deadlines if not d.get("linked")]
+    data = {"fortnight": days, "candidates": cands, "open_boxes": boxes, "deadlines_with_no_line": loose,
             "you_may": sorted(k for k, v in allowed.items() if v != "never" and k != "file")}
     return data, planlib.inputs_hash(cands, days) + hashlib.sha256(
-        json.dumps([boxes, data["you_may"]], sort_keys=True, default=str).encode()).hexdigest()[:8]
+        json.dumps([boxes, loose, data["you_may"]], sort_keys=True, default=str).encode()).hexdigest()[:8]
 
 
 def proposable_parts(data: dict, again: bool = False) -> list[str]:
@@ -2865,26 +2959,31 @@ def proposable_parts(data: dict, again: bool = False) -> list[str]:
             "```json", json.dumps(data, indent=1, ensure_ascii=False), "```"]
 
 
-def day_proposals(cfg: dict, reply: dict, result: dict, payload_file: Path, at: str) -> tuple[list[dict], list[str]]:
-    """The day's agent proposed: checked as the planner's are (plan.py
-    `validate`, against what is open and what the store has closed — a drop
-    the student asks for is offered whatever its age), recorded in the one
-    ledger with the dashboard's rows — the same item, shown in the
-    conversation as a card. Returns what each card says, with its id: the
-    turn keeps it, so a card settled since still reads; and what was
-    proposed but not offered, so the turn says so rather than the reply
+def ledger_proposals(cfg: dict, proposals: list[dict], result: dict, payload_file: Path, at: str,
+                     frm: str = "day", shown: dict | None = None) -> tuple[list[dict], list[str]]:
+    """A conversation's agent proposed (the day's, or a block's in the
+    margin): checked as the planner's are (plan.py `validate`, against what
+    is open and what the store has closed — a drop the student asks for is
+    offered whatever its age), recorded in the one ledger with the
+    dashboard's rows — the same item, shown in the conversation as a card.
+    `shown`: the boxes the agent was given, when it was not given them all
+    (the margin's, about one box). Returns what each card says, with its
+    id: the turn keeps it, so a card settled since still reads; and what
+    was proposed but not offered, so the turn says so rather than the reply
     pointing at a card that is not there (2026-10-27)."""
-    if not reply.get("proposals"):
+    if not proposals:
         return [], []
     today = dt.date.today()
-    tasks, deadlines, days, cands, boxes, notes, allowed = plan_inputs(cfg, today)
+    tasks, deadlines, days, cands, boxes, notes, allowed = plan_inputs(cfg, today, notes=False)
+    if shown is not None:
+        cands, boxes = shown.get("candidates") or [], shown.get("open_boxes") or []
     lock = planlib.hold(PROPOSALS)
     ledger = planlib.load_ledger(PROPOSALS)
     closed = planlib.store_deadlines(STATE_HOME / "deadlines.tsv", ("done", "cancelled"))
-    props, _ = planlib.validate({"proposals": reply["proposals"], "questions": []}, cands, days, ledger, today,
+    props, _ = planlib.validate({"proposals": proposals, "questions": []}, cands, days, ledger, today,
                                 boxes, deadlines, allowed, closed, project_tags(cfg), asked=True)
     for item in props:
-        item.update({"from": "day", "prompt": result.get("prompt", ""), "model": result.get("model", ""),
+        item.update({"from": frm, "prompt": result.get("prompt", ""), "model": result.get("model", ""),
                      "payload": str(payload_file)})
     new = planlib.record(ledger, props, [], at)
     # One the same as a proposal still open keeps that one: the card shows it.
@@ -2892,20 +2991,74 @@ def day_proposals(cfg: dict, reply: dict, result: dict, payload_file: Path, at: 
             if x["kind"] != "question" and planlib.ident(x) == planlib.ident(p) and x not in new]
     planlib.save_ledger(PROPOSALS, ledger)
     lock.close()
-    keep = ("id", "kind", "key", "title", "project", "date", "priority", "steps", "why", "auto")
+    keep = ("id", "kind", "key", "deadline", "title", "project", "date", "priority", "steps", "why", "auto")
     offered = {planlib.ident(x) for x in props}
     titles = {b["key"]: b["title"] for b in boxes}
+    by_number = {b["deadline"]: b["key"] for b in boxes if b.get("deadline")}
     unoffered = []
-    for p in reply["proposals"]:
+    for p in proposals:
         if not isinstance(p, dict):
             continue
         kind, key = str(p.get("kind") or ""), str(p.get("key") or "")
-        about = (kind, str(p.get("tag") or "").strip().lstrip("#").lower()) if kind == "project" \
-            else (kind, key or planlib.norm(str(p.get("title") or "")))
+        num = str(p.get("deadline") or "").lstrip("#")
+        if kind == "project":
+            about = (kind, str(p.get("tag") or "").strip().lstrip("#").lower())
+        elif not key and num.isdigit():
+            about = (kind, by_number.get(int(num)) or f"#{num}")
+        else:
+            about = (kind, key or planlib.norm(str(p.get("title") or "")))
         if about not in offered:
-            words = titles.get(key) or str(p.get("title") or p.get("name") or "") or key.split("\t")[-1].lstrip("- ")
+            words = titles.get(key) or str(p.get("title") or p.get("name") or "") or key.split("\t")[-1].lstrip("- ") \
+                or (f"deadline #{num}" if num else "")
             unoffered.append(f"{kind} · {words}".strip(" ·"))
     return [{k: x[k] for k in keep if k in x} for x in new + same], unoffered[:planlib.MAX_PROPOSALS]
+
+
+def day_proposals(cfg: dict, reply: dict, result: dict, payload_file: Path, at: str) -> tuple[list[dict], list[str]]:
+    """The day's agent proposed: its cards (`ledger_proposals`)."""
+    return ledger_proposals(cfg, reply.get("proposals") or [], result, payload_file, at)
+
+
+MARGIN_KINDS = ("do-date", "drop")   # what a block's chat proposes into the one list; a deadline is its own card
+MARGIN_RELATED = 8                   # boxes that read like the block, shown to propose about
+
+
+def margin_proposable(cfg: dict, block: dict) -> tuple[dict, str]:
+    """What the margin's agent may propose about in a block's chat
+    (2026-11-15): a day for a box, or dropping one — the day
+    conversation's cards — about this block's box and the boxes that read
+    like it, the duplicates a person asks to tidy; and the deadlines the
+    store holds with no line that read like it (one added by a card has
+    none, and nothing else could take it away). The fortnight, for the
+    days. A hash, so a later message carries them again only when they
+    changed."""
+    today = dt.date.today()
+    tasks, deadlines, days, _, _, _, allowed = plan_inputs(cfg, today, notes=False)
+    about = tasklib.identity(block["text"])
+
+    def score(title: str) -> float:
+        a, b = words(title), words(about)
+        return len(a & b) / min(len(a), len(b)) if a and b else float(norm(title) == norm(about))
+
+    def related(rows: list[dict]) -> list[dict]:
+        hits = sorted(((score(r["title"]), i) for i, r in enumerate(rows)), key=lambda x: (-x[0], x[1]))
+        return [rows[i] for sc, i in hits if sc >= 0.5][:MARGIN_RELATED]
+
+    boxes = related(planlib.open_boxes(tasks, deadlines, today, limit=None))
+    keys = {b["key"] for b in boxes}
+    cands = [c for c in planlib.candidates(tasks, deadlines, today, limit=None) if c["key"] in keys]
+    loose = [{"deadline": d["id"], "title": d["title"], "due": d["due"].strftime("%Y-%m-%d %H:%M"),
+              "project": d.get("project") or ""} for d in related([d for d in deadlines if not d.get("linked")])]
+    data = {"fortnight": days, "candidates": cands, "open_boxes": boxes, "deadlines_with_no_line": loose,
+            "you_may": sorted(k for k in MARGIN_KINDS if allowed.get(k) != "never")}
+    return data, hashlib.sha256(json.dumps(data, sort_keys=True, default=str).encode()).hexdigest()[:12]
+
+
+def margin_proposable_parts(data: dict, again: bool = False) -> list[str]:
+    return ["", "# What you may propose about this box" + (", as it stands now" if again else ""), "",
+            "Computed by local code; trust it. A `do-date` or a `drop` names a `key` from these lists, exactly; "
+            "a drop of a deadline with no line names its number (`deadline`). Nothing else may be proposed this way.",
+            "", "```json", json.dumps(data, indent=1, ensure_ascii=False, default=str), "```"]
 
 
 def day_payload(cfg: dict, paths: Paths, visible: list[dict], private: bool, message: str, block: str,
