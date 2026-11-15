@@ -401,7 +401,11 @@ Item {
   // overlay's margin on the overlay. The side panes stand against it.
   readonly property int edge: root.alongside ? 0 : root.sheetMargin
   readonly property int rightSpace: (root.marginOpen && !root.wideOpen) || root.dayBesideNote ? root.marginWidth + root.marginGap : 0
-  readonly property var notePlace: Layout.note(content.width, root.sheetFor, root.edge, root.sideSpace, root.rightSpace)
+  // A PDF is not prose: its lines are its own, so it is given more than the
+  // note's measure (2026-11-15: in the note's column a paper's text was
+  // too small to read), up to the room the window has.
+  readonly property int pdfFor: Math.round(root.sheetFor * 1.8)
+  readonly property var notePlace: Layout.note(content.width, root.pdfShown ? root.pdfFor : root.sheetFor, root.edge, root.sideSpace, root.rightSpace)
   readonly property int sheetWidth: root.notePlace.width
   readonly property int sheetX: root.notePlace.x
   // The dashboard and the keys sheet are lists, so they take the width the

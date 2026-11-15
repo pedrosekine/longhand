@@ -106,11 +106,12 @@ def words_of(pdf: Path) -> list[list[dict]]:
     """Every page's words with their boxes, in reading order, from
     `pdftotext -bbox-layout` — kept by the file's size and time."""
     st = pdf.stat()
-    sig = f"{pdf.resolve()}|{st.st_size}|{st.st_mtime_ns}"
+    sig = f"2|{pdf.resolve()}|{st.st_size}|{st.st_mtime_ns}"
     cached = CACHE / (hashlib.sha1(str(pdf.resolve()).encode()).hexdigest() + ".json")
     try:
         c = json.loads(cached.read_text())
         if c.get("sig") == sig:
+            WIDTHS[:] = c.get("widths", [])
             return c["pages"]
     except (OSError, ValueError):
         pass
@@ -120,24 +121,47 @@ def words_of(pdf: Path) -> list[list[dict]]:
     except (OSError, subprocess.TimeoutExpired) as e:
         fail(f"pdftotext: {e}")
     pages: list[list[dict]] = []
+    widths: list[float] = []
     line = 0
-    for m in re.finditer(r"<page\b|<line\b|<word xMin=\"([\d.]+)\" yMin=\"([\d.]+)\" xMax=\"([\d.]+)\" yMax=\"([\d.]+)\">(.*?)</word>", out):
+    for m in re.finditer(r"<page width=\"([\d.]+)\"|<line\b|<word xMin=\"([\d.]+)\" yMin=\"([\d.]+)\" xMax=\"([\d.]+)\" yMax=\"([\d.]+)\">(.*?)</word>", out):
         tok = m.group(0)
-        if tok == "<page":
+        if tok.startswith("<page"):
             pages.append([])
+            widths.append(float(m.group(1)))
         elif tok == "<line":
             line += 1
         elif pages:
-            pages[-1].append({"t": html.unescape(m.group(5)), "x0": float(m.group(1)), "y0": float(m.group(2)),
-                              "x1": float(m.group(3)), "y1": float(m.group(4)), "l": line})
+            pages[-1].append({"t": html.unescape(m.group(6)), "x0": float(m.group(2)), "y0": float(m.group(3)),
+                              "x1": float(m.group(4)), "y1": float(m.group(5)), "l": line})
     try:
         CACHE.mkdir(parents=True, exist_ok=True)
         tmp = cached.with_suffix(".tmp")
-        tmp.write_text(json.dumps({"sig": sig, "pages": pages}))
+        tmp.write_text(json.dumps({"sig": sig, "pages": pages, "widths": widths}))
         os.replace(tmp, cached)
     except OSError:
         pass
+    WIDTHS[:] = widths
     return pages
+
+
+# Each page's width in points, from the last words_of.
+WIDTHS: list[float] = []
+
+
+def text_span(pages: list[list[dict]]) -> dict | None:
+    """Where the text stands across the page, left and right, in points: the
+    words' edges, leaving out the outermost few (a page number, a line
+    number in the margin), so the page can be fitted by its text rather than
+    its paper."""
+    x0s = sorted(w["x0"] for p in pages for w in p)
+    x1s = sorted(w["x1"] for p in pages for w in p)
+    if len(x0s) < 20 or not WIDTHS:
+        return None
+    left, right = x0s[len(x0s) // 50], x1s[len(x1s) - 1 - len(x1s) // 50]
+    width = max(set(WIDTHS), key=WIDTHS.count)
+    if right - left < width * 0.3:
+        return None
+    return {"x0": round(left, 1), "x1": round(right, 1), "w": round(width, 1)}
 
 
 def page_keys(words: list[dict]) -> tuple[str, list[int]]:
@@ -170,6 +194,12 @@ def rects(words: list[dict], first: int, last: int) -> list[list[float]]:
         else:
             cur = [w["x0"], w["y0"], w["x1"], w["y1"], w["l"]]
             out.append(cur)
+    # Lines set close together have boxes that cross (each as tall as its
+    # font); drawn see-through, the crossing showed darker. Two lines that
+    # cross meet halfway instead.
+    for a, b in zip(out, out[1:]):
+        if b[1] < a[3] and b[3] > a[3]:
+            a[3] = b[1] = (a[3] + b[1]) / 2
     return [[round(r[0], 2), round(r[1], 2), round(r[2] - r[0], 2), round(r[3] - r[1], 2)] for r in out]
 
 
@@ -354,7 +384,8 @@ def rel_of(cfg: dict, pdf: str) -> tuple[str, Path]:
 def state(cfg: dict, rel: str, path: Path, note: Note | None) -> dict:
     pages = words_of(path)
     has_text = any(pages)
-    out = {"pdf": rel, "note": "", "tags": [], "marks": [], "unplaced": 0, "text": has_text, "pages": len(pages)}
+    out = {"pdf": rel, "note": "", "tags": [], "marks": [], "unplaced": 0, "text": has_text, "pages": len(pages),
+           "span": text_span(pages)}
     if not note:
         return out
     out["note"] = str(note.path.relative_to(Path(cfg["vault"]))) if note.path.is_relative_to(Path(cfg["vault"])) else str(note.path)

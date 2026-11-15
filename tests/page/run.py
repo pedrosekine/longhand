@@ -3114,6 +3114,26 @@ def checks() -> int:
         p.call("pdfKey", KEY_ESC, 0)
         check(p.wait(lambda: not pd()["shown"] and places.is_file() and long_rel not in json.loads(places.read_text())),
               "left at its top, nothing is kept for it")
+        # Fitted by its text (plan.md item 15, 2026-11-15): a paper's
+        # margins out of view, the text across the column; `0` switches to
+        # the whole page and back.
+        from test_read import pdf as lined_pdf
+        lined_pdf(course / "Paper.pdf", [[f"line {i} of a paper set in the middle of its page" for i in range(30)]])
+        p.call("openFile", "Studies/Course A/Paper.pdf", "false")
+        # Its text runs from 72 pt to 294 of 612: about the page's middle
+        # (306) the farther side is 234 pt, and 14 are kept beside it.
+        want = lambda: (pd()["width"] / 2) / (306 - 72 + 14)
+        check(p.wait(lambda: pd()["ready"] and pd()["settled"] and pd()["span"] is not None
+                     and abs(pd()["scale"] - want()) < 0.01),
+              f"a paper is fitted by its text, about the page's middle ({pd()})")
+        fitted = pd()["scale"]
+        p.call("pdfKey", 0x30, 0)                           # 0
+        check(p.wait(lambda: pd()["whole"] and pd()["scale"] < fitted * 0.95),
+              f"0: the whole page, smaller ({fitted:.2f} → {pd()['scale']:.2f})")
+        p.call("pdfKey", 0x30, 0)
+        check(p.wait(lambda: not pd()["whole"] and abs(pd()["scale"] - fitted) < 0.01), "0 again: its text")
+        p.call("pdfKey", KEY_ESC, 0)
+        check(p.wait(lambda: not pd()["shown"]), "…and Esc closes it")
         # The read view (step 4): a picture by name, a link followed to its
         # heading and back, a table drawn as one block.
         att = p.vault / "_Attachments"

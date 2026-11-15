@@ -195,7 +195,7 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | The last page | `End` | in a PDF |
 | Larger | `+` · `=` | in a PDF |
 | Smaller | `-` | in a PDF |
-| Fit to the column again | `0` | in a PDF |
+| Fit again; fitted, switch between its text and the whole page | `0` | in a PDF |
 | Find in it (Enter: next, Shift+Enter: before) | `Ctrl+F` · `/` | in a PDF |
 | Open it in its own application | `o` | in a PDF |
 | Highlight the words selected; on a mark clicked, make it a highlight | `m` | in a PDF |

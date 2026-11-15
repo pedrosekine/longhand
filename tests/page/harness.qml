@@ -209,7 +209,9 @@ ShellRoot {
       var p = page.pdfItem
       return JSON.stringify({ shown: page.pdfShown, label: page.noteLabel, ready: p.ready, pages: p.pages, finding: p.finding,
         found: p.view && p.view.searchModel ? p.view.searchModel.count : 0, here: page.here,
-        at: p.here(), settled: p.settled, resumed: p.resumed, zoom: p.zoom })
+        at: p.here(), settled: p.settled, resumed: p.resumed, zoom: p.zoom,
+        scale: p.view ? p.view.renderScale : 0, x: p.table() ? p.table().contentX : 0, whole: p.wholePage, width: p.width,
+        span: p.read && p.read.span ? p.read.span : null })
     }
     function pdfKey(key: int, mods: int): bool { return page.pdfItem.key({ key: key, text: "", modifiers: mods }) }
     // Marks (plan.md, item 15): what longhand-read said, the marks drawn on
@@ -223,8 +225,12 @@ ShellRoot {
         var kids = h.selection.parent.children
         for (var k = 0; k < kids.length; k++) {
           if (kids[k].holder === undefined || kids[k].count === undefined) continue
-          var boxes = kids[k].children
-          for (var b = 0; b < boxes.length; b++) if (boxes[b].modelData !== undefined && boxes[b].width > 4 && boxes[b].height > 4) drawn++
+          var groups = kids[k].children
+          for (var gi = 0; gi < groups.length; gi++) {
+            var boxes = groups[gi].children
+            for (var b = 0; b < boxes.length; b++)
+              if (boxes[b].modelData !== undefined && boxes[b].color.a > 0.5 && boxes[b].width > 4 && boxes[b].height > 4) drawn++
+          }
         }
       }
       var sel = p.selected()
@@ -255,6 +261,9 @@ ShellRoot {
       return false
     }
     function pdfPick(id: string): void { page.pdfItem.pick(id) }
+    // Words kept as a mark as `m` / `q` keep a selection (for scenes with
+    // many marks; the keys' own path is checked with a real drag).
+    function pdfMarkText(pageIndex: int, text: string, kind: string): bool { return page.pdfItem.markText(pageIndex, text, null, kind) }
     // A click on a PDF's page (from 0), at a point in points, through the window.
     function pdfClick(pageIndex: int, x: real, y: real): bool {
       var p = page.pdfItem, s = p.view.renderScale

@@ -25,15 +25,15 @@ def check(cond, what):
         failures += 1
 
 
-def pdf(path: pathlib.Path, pages: list[list[str]]) -> None:
-    """A PDF with these lines on each page, from the top, 14 pt apart."""
+def pdf(path: pathlib.Path, pages: list[list[str]], lead: int = 14) -> None:
+    """A PDF with these lines on each page, from the top, `lead` pt apart."""
     path.parent.mkdir(parents=True, exist_ok=True)
     kids = " ".join(f"{4 + 2 * i} 0 R" for i in range(len(pages)))
     objs = [b"<< /Type /Catalog /Pages 2 0 R >>",
             f"<< /Type /Pages /Kids [{kids}] /Count {len(pages)} >>".encode(),
             b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"]
     for i, lines in enumerate(pages):
-        body = "BT /F1 11 Tf 14 TL 72 720 Td " + " ".join(f"({t}) Tj T*" for t in lines) + " ET"
+        body = f"BT /F1 11 Tf {lead} TL 72 720 Td " + " ".join(f"({t}) Tj T*" for t in lines) + " ET"
         stream = body.encode()
         objs.append(f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents {5 + 2 * i} 0 R "
                     "/Resources << /Font << /F1 3 0 R >> >> >>".encode())
@@ -93,6 +93,8 @@ def main() -> int:
           f"it is found on its page, one rectangle per line it stands on ({m['boxes']})")
     r1, r2 = m["boxes"][0]["rects"]
     check(r1[1] < r2[1] and r1[2] > 0 and r1[3] > 0, "…in points from the top left, top line first")
+    check(r1[1] + r1[3] <= r2[1] + 0.01, "…the lines' boxes never crossing, so nothing is drawn twice")
+    check(s["span"] is None, "too few words to tell where the text stands: no span")
 
     # A question, on a later page, then a highlight on an earlier one: page order.
     s = run("mark", "--pdf", paper, "--page", "2", "--text", "Sessions a day apart", "--kind", "q", "--day", "2026-11-15")
@@ -214,6 +216,16 @@ def main() -> int:
     check(s["text"] is False, "a PDF with no text says so")
     r = run("mark", "--pdf", "lit/scan.pdf", "--page", "1", "--text", "   ", ok=False)
     check(r.returncode != 0 and not (vault / "human" / "Readings" / "scan.md").exists(), "nothing selected, nothing marked")
+
+    # Lines set closer than their font is tall: their boxes meet halfway.
+    tight = vault / "lit" / "tight.pdf"
+    pdf(tight, [["word " * 12 + "end"] * 30], lead=8)
+    s = run("mark", "--pdf", "lit/tight.pdf", "--page", "1", "--text", "end word word", "--y", "80", "--day", "2026-11-16")
+    rs = s["marks"][0]["boxes"][0]["rects"]
+    check(len(rs) == 2 and rs[0][1] + rs[0][3] <= rs[1][1] + 0.01, f"boxes of lines set tight meet, not cross ({rs})")
+    sp = s["span"]
+    check(sp and abs(sp["x0"] - 72) < 1 and sp["w"] == 612 and sp["x1"] > sp["x0"] + 100,
+          f"where the text stands across the page, to fit it by its text ({sp})")
 
     r = run("state", "--pdf", "lit/missing.pdf", ok=False)
     check(r.returncode != 0 and "no PDF" in r.stderr, "a PDF that is not there is refused")

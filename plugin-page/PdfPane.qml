@@ -76,6 +76,8 @@ Item {
     pane.zoom = 1; pane.finding = false; findField.text = ""
     pane.settled = false; pane.resumed = null
     pane.read = ({ marks: [], unplaced: 0, text: true, note: "", tags: [] })
+    pane.wholePage = false
+    pane.dressed = []
     pane.picked = ""; pane.lastMade = ""; pane.readError = ""; pane.noting = false; noteField.text = ""
     pane.readQueue = []
     if (pane.rel !== "" && pane.rel.charAt(0) !== "/") pane.readRun(["state"])
@@ -122,6 +124,7 @@ Item {
       }
       pane.settled = true
       pane.dress()
+      pane.alignSoon()
     })
   }
 
@@ -144,15 +147,48 @@ Item {
     if (!t) return
     t.contentY = Math.max(t.originY, Math.min(t.originY + t.contentHeight - t.height, t.contentY + dy))
   }
+  // Fitted by its text (2026-11-15): a paper's margins are a fifth of its
+  // width or more, so the text, not the paper, is fitted to the column.
+  // Qt's view keeps a page larger than the column centred (and its left
+  // side out of reach), so the fit is made about the page's middle: as
+  // large as the text's farther side allows. A paper with even margins
+  // fills the column; a lopsided one a little less, never cut. `0`
+  // switches to the whole page and back. A PDF with no words (or too few)
+  // is fitted by its page.
+  property bool wholePage: false
+  readonly property var span: !pane.wholePage && pane.read && pane.read.span ? pane.read.span : null
+  readonly property real spanPad: 14     // points kept beside the text
   function fit() {
     if (!pane.view || !pane.ready) return
+    var w = Math.max(100, pane.width)
+    if (pane.span) {
+      var mid = pane.span.w / 2
+      var reach = Math.max(mid - pane.span.x0, pane.span.x1 - mid) + pane.spanPad
+      pane.view.renderScale = (w / 2) / Math.max(1, reach)
+    }
     // The column's whole width: the view lays a narrower page against its
     // right edge rather than centring it.
-    pane.view.scaleToWidth(Math.max(100, pane.width), pane.height)
+    else pane.view.scaleToWidth(w, pane.height)
     pane.view.renderScale = pane.view.renderScale * pane.zoom
+    pane.alignSoon()
+  }
+  // The view's own column is a little wider than the pane (its scrollbar);
+  // centred in it, so the page's middle is the pane's.
+  function align() {
+    var t = pane.table()
+    if (!t) return
+    t.contentX = t.originX + Math.max(0, (t.contentWidth - t.width) / 2)
+  }
+  Timer { id: alignTimer; interval: 60; onTriggered: pane.align() }
+  function alignSoon() { alignTimer.restart() }
+  Connections {
+    target: pane.table()
+    ignoreUnknownSignals: true
+    function onContentWidthChanged() { pane.alignSoon() }
   }
   onWidthChanged: Qt.callLater(pane.fit)
   onZoomChanged: Qt.callLater(pane.fit)
+  onSpanChanged: Qt.callLater(pane.fit)
   onReadyChanged: if (ready) { Qt.callLater(pane.fit); Qt.callLater(pane.arrive); dressTimer.restart() }
   // The view makes its page delegates when it lays out; a moment after it
   // is ready, and as it scrolls, each gets its layer of marks.
@@ -247,9 +283,9 @@ Item {
     var dy = ev.pixelDelta.y !== 0 ? ev.pixelDelta.y * 2 : ev.angleDelta.y / 120 * page.sp(60)
     var dx = ev.pixelDelta.x !== 0 ? ev.pixelDelta.x * 2 : ev.angleDelta.x / 120 * page.sp(60)
     if (dy !== 0) pane.scrollBy(-dy)
-    // Sideways only when the page is wider than the column (sized up): the
-    // few pixels the view's scrollbar adds are no reason to slide.
-    if (dx !== 0 && t.contentWidth - t.width > page.sp(40))
+    // Sideways only when it is sized up past the fit: fitted, the margins
+    // beside the text are out of view on purpose.
+    if (dx !== 0 && pane.zoom > 1.01 && t.contentWidth - t.width > page.sp(40))
       t.contentX = Math.max(t.originX, Math.min(t.originX + t.contentWidth - t.width, t.contentX - dx))
   }
   WheelHandler {
@@ -409,26 +445,46 @@ Item {
       readonly property int index: holder ? holder.index : -1
       readonly property real s: paper && paper.pageScale ? paper.pageScale : 1
       readonly property int count: drawn.count
-      Repeater {
-        id: drawn
-        model: pane.rectsOn(sheet.index)
-        delegate: Rectangle {
-          id: box
-          required property var modelData
-          readonly property real pad: 1.5
-          readonly property color tint: modelData.kind === "q" ? page.palette.blue : page.palette.yellow
-          x: modelData.r[0] * sheet.s - pad
-          y: modelData.r[1] * sheet.s - pad
-          width: modelData.r[2] * sheet.s + 2 * pad
-          height: modelData.r[3] * sheet.s + 2 * pad
-          radius: 2
-          color: Qt.rgba(tint.r, tint.g, tint.b, 0.38)
-          border.width: modelData.id === pane.picked ? 2 : 0
-          border.color: page.accent
-          TapHandler {
-            acceptedDevices: PointerDevice.AllDevices
-            onTapped: pane.pick(box.modelData.id)
+      // The marks solid, and see-through as one: where two cover the same
+      // words the colour is the same, never darker (2026-11-15), and where
+      // a question crosses a highlight the later one shows.
+      Item {
+        anchors.fill: parent
+        opacity: 0.4
+        layer.enabled: drawn.count > 0
+        Repeater {
+          id: drawn
+          model: pane.rectsOn(sheet.index)
+          delegate: Rectangle {
+            id: box
+            required property var modelData
+            readonly property real pad: 1.5
+            x: modelData.r[0] * sheet.s - pad
+            y: modelData.r[1] * sheet.s
+            width: modelData.r[2] * sheet.s + 2 * pad
+            height: modelData.r[3] * sheet.s
+            radius: 2
+            color: modelData.kind === "q" ? page.palette.blue : page.palette.yellow
+            TapHandler {
+              acceptedDevices: PointerDevice.AllDevices
+              onTapped: pane.pick(box.modelData.id)
+            }
           }
+        }
+      }
+      // The mark picked, outlined at full strength above them.
+      Repeater {
+        model: pane.picked === "" ? [] : pane.rectsOn(sheet.index).filter(function (r) { return r.id === pane.picked })
+        delegate: Rectangle {
+          required property var modelData
+          x: modelData.r[0] * sheet.s - 1.5
+          y: modelData.r[1] * sheet.s
+          width: modelData.r[2] * sheet.s + 3
+          height: modelData.r[3] * sheet.s
+          radius: 2
+          color: "transparent"
+          border.width: 2
+          border.color: page.accent
         }
       }
     }
@@ -454,11 +510,15 @@ Item {
     // The ends: the top of the first page, the top of the last (as far as
     // it goes). goToPage keeps the place inside the page, so it is not
     // used for them: from the foot of a page it would land on another's foot.
-    else if (Sc.hit(event, "pdfFirst")) { if (pane.view) pane.view.goToLocation(0, Qt.point(0, 0), 0) }
-    else if (Sc.hit(event, "pdfLast")) { if (pane.view) pane.view.goToLocation(Math.max(0, pane.pages - 1), Qt.point(0, 0), 0) }
+    else if (Sc.hit(event, "pdfFirst")) { if (pane.view) pane.view.goToLocation(0, Qt.point(0, 0), 0); pane.alignSoon() }
+    else if (Sc.hit(event, "pdfLast")) { if (pane.view) pane.view.goToLocation(Math.max(0, pane.pages - 1), Qt.point(0, 0), 0); pane.alignSoon() }
     else if (Sc.hit(event, "pdfBigger")) pane.zoom = Math.min(4, pane.zoom * 1.2)
     else if (Sc.hit(event, "pdfSmaller")) pane.zoom = Math.max(0.3, pane.zoom / 1.2)
-    else if (Sc.hit(event, "pdfFit")) pane.zoom = 1
+    else if (Sc.hit(event, "pdfFit")) {
+      // Sized: back to the fit. Fitted: the whole page ↔ its text.
+      if (Math.abs(pane.zoom - 1) > 0.01) pane.zoom = 1
+      else { pane.wholePage = !pane.wholePage; Qt.callLater(pane.fit) }
+    }
     else if (Sc.hit(event, "pdfFind")) { pane.finding = true; findField.forceActiveFocus(); findField.selectAll() }
     else if (Sc.hit(event, "pdfOpen")) { page.used("pdf", "open-elsewhere"); Qt.openUrlExternally(pane.url()) }
     else if (Sc.hit(event, "pdfClose")) page.closePdf()

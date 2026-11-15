@@ -470,6 +470,18 @@ block, `table` rows.
   page's own drag and click to the touchpad, and a mark takes a click from
   any device. The page test drags and clicks through the window (QtTest),
   from the session's pointer, so it fails as a hand would.
+- **Readable size** (2026-11-15). A PDF is given 1.8 times the note's
+  measure (up to the window's room), not the note's column: its lines are
+  its own. It is fitted by its **text**, not its paper: `longhand-read`
+  gives where the words stand across the page (their edges, leaving out the
+  outermost few), and the page is sized so the text's farther side from
+  the page's middle reaches the column's edge (Qt's view keeps a page
+  wider than the column centred, its left side out of reach). Even margins
+  fill the column; `0` switches to the whole page and back.
+- **Marks drawn once** (2026-11-15). The lines of one mark meet halfway
+  rather than cross, and a page's marks are drawn solid and made
+  see-through together, so where marks overlap the colour is even and the
+  later one shows; the mark picked is outlined above them.
 
 - **Where it was left** (2026-11-14). A PDF opens again on the page it
   was left at, as far down it, at the size it had: `pdfs.json` in the state
@@ -494,7 +506,8 @@ block, `table` rows.
 
 **Not yet** (plan.md item 15, steps 2 to 5): the paper's chat and the
 highlight list beside it; "read today"; a dark reading mode for white
-pages; OCR.
+pages; OCR; a two-column paper fitted one column at a time; a reading
+view (its text reflowed in the page's own face).
 
 Tests: `tests/page/run.py` 12h. Pele can't run in Qt's own JavaScript
 engine (ES2022: `matchAll`, `replaceAll`, `\p{}`, `Intl`), so it needs

@@ -294,7 +294,7 @@ var actions = [
   { id: "pdfLast", group: "pdf", places: ["pdf"], does: "The last page", keys: ["End"] },
   { id: "pdfBigger", group: "pdf", places: ["pdf"], does: "Larger", keys: ["Plus", "="] },
   { id: "pdfSmaller", group: "pdf", places: ["pdf"], does: "Smaller", keys: ["-"] },
-  { id: "pdfFit", group: "pdf", places: ["pdf"], does: "Fit to the column again", keys: ["0"] },
+  { id: "pdfFit", group: "pdf", places: ["pdf"], does: "Fit again; fitted, switch between its text and the whole page", keys: ["0"] },
   { id: "pdfFind", group: "pdf", places: ["pdf"], does: "Find in it (Enter: next, Shift+Enter: before)", keys: ["Ctrl+F", "/"] },
   { id: "pdfOpen", group: "pdf", places: ["pdf"], does: "Open it in its own application", keys: ["O"] },
   { id: "pdfMark", group: "pdf", places: ["pdf"], does: "Highlight the words selected; on a mark clicked, make it a highlight", keys: ["M"] },
