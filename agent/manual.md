@@ -88,8 +88,7 @@ and tag stay as made; the agent never makes one, only proposes it.
 {key:pane2}, pressed in the middle, turns the note into the dashboard (and
 back); {key:dashGo} goes straight to it from anywhere, and pressed on it
 stays: every open checkbox and
-deadline across all the notes, grouped by what they ask (due, doing, to
-schedule) and by course. {key:dashOpen} goes to the line; {key:dashDone}
+deadline across all the notes, by day (or by kind, or by course, below). {key:dashOpen} goes to the line; {key:dashDone}
 ticks it; {key:dashWhen} reschedules it and {key:dashNoDate} takes the date
 off; {key:dashPriority} cycles its priority; {key:dashRename} renames it;
 {key:dashDrop} cancels it (the line stays, as cancelled); {key:dashShelve}
@@ -109,8 +108,12 @@ no day) and its next deadline, where {key:stripUnfold} picks only that one.
 {key:dashCourse} and the other digits pick a course from the list itself,
 {key:dashAll} shows all again. {key:dashSearch} goes to the strip's ⌕:
 type words (in a box's words, its section or its course) or a `#tag`.
-{key:dashOrder} orders the list by date (one timeline across the courses,
-where it opens), by what it asks, or by course. By date the list is in
+The three orders are named above the list, the one shown underlined: by
+day, by kind, by course; a click picks one, and {key:dashOrder} goes on to
+the next. By day (where it opens) is one timeline across the courses, each
+on the day you mean to work on it (⏳), or the day it is due (📅) when it
+has none; a deadline whose line has a ⏳ goes on that day. By kind is due,
+doing, to schedule, then notes by course. By day the list is in
 bands that narrow as they come near: late, today, this week, next week,
 the rest of the month, then a band a month, and what has no day yet. The
 near ones are open and the far ones folded, each saying how much it holds

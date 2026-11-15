@@ -134,7 +134,7 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | The course strip, on the course picked | `#` | in the dashboard |
 | Only that course: the strip's first, second… (0: all) | `1` · `2` · `3` · `4` · `5` · `6` · `7` · `8` · `9` | in the dashboard, on the dashboard's course strip |
 | Every course again | `0` | in the dashboard, on the dashboard's course strip |
-| Order: by what it asks, by course, by date | `o` | in the dashboard, on the dashboard's course strip |
+| Order: by day, by kind, by course | `o` | in the dashboard, on the dashboard's course strip |
 | The chip before (its course shown at once, until Space keeps one) | `←` | on the dashboard's course strip |
 | The chip after | `→` | on the dashboard's course strip |
 | Keep this course, so the next Space adds another (again: take it out) | `Space` | on the dashboard's course strip |

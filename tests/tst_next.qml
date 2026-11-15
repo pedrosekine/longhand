@@ -217,6 +217,23 @@ TestCase {
     compare([later.next.title, later.next.ms], ["d5", sec(10, 26) * 1000])
   }
 
+  // By day, a deadline goes on the day its line is to be worked on (⏳),
+  // and on the day it is due only when its line has none (2026-11-15).
+  function test_date_puts_a_deadline_on_its_lines_do_date() {
+    var rows = Next.rows(state({
+      order: "date", folds: { "*": true },
+      deadlines: [deadline(1, "open", sec(11, 2)), deadline(2, "open", sec(10, 15)), deadline(3, "done", sec(11, 2), { doneAt: sec(10, 13, 8, 0) })],
+      tasks: [task("essay", { anchor: 1, when: "2026-10-14" }), task("talk", { anchor: 2 }),
+              task("report", { anchor: 3, when: "2026-10-20" })] }))
+    // d1 is due in November but worked on tomorrow: this week, before d2,
+    // which has no do-date and is due on Thursday. A closed one is past
+    // working on: its do-date no longer places it.
+    compare(said(rows), ["band:TODAY 0", "band:THIS WEEK 2", "d1", "d2",
+                         "band:" + Qt.formatDate(new Date(2026, 10, 2), "MMMM").toUpperCase() + " 1", "d3"])
+    var week = rows.filter(function (r) { return r.kind === "band" && r.id === "week" })[0]
+    compare([week.next.title, week.next.ms], ["d1", new Date(2026, 9, 14).getTime()])
+  }
+
   function test_date_bands_fold_and_unfold() {
     function bandsSaid(folds) {
       return said(Next.rows(date_state({ folds: folds }))).filter(function (x) { return x.indexOf("band:") === 0 })

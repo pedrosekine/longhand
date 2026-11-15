@@ -42,8 +42,10 @@ function taskOfKey(tasks, key) {
 //   WAITING FOR A GRADE   folded: done deadlines with no grade yet
 //   FROM THE AGENT
 //
-// That is the order "what it asks" (`order`); "course" puts the courses
-// first, each with those bands inside, and "date" makes one timeline. The
+// That is the order "what it asks" (`order`, "by kind" on the page);
+// "course" puts the courses first, each with those bands inside, and
+// "date" ("by day") makes one timeline, each row on the day it is to be
+// worked on, else the day it is due. The
 // course strip narrows any of them (`lens`, `query`; `narrowed`).
 //
 // Note boxes group by project rather than by the day they were written,
@@ -179,7 +181,14 @@ function byDate(b, s, now) {
   // what is still open comes first.
   var today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
   function put(ms, row, closed) { dated.push({ ms: closed ? Math.max(ms, today) : ms, row: row, closed: closed }) }
-  for (var i = 0; i < b.due.length; i++) put(b.due[i].due * 1000, { kind: "deadline", deadline: b.due[i] }, b.due[i].status !== "open")
+  // A deadline goes on the day its line is to be worked on (⏳), when it
+  // has one, and only else on the day it is due (📅): the day it is done
+  // is the one the timeline is for (2026-11-15). Its row still says both.
+  function dayOf(d) {
+    var t = d.status === "open" ? taskOfAnchor(s.tasks, d.id) : null
+    return t && t.when ? Say.taskMs({ when: t.when }) : d.due * 1000
+  }
+  for (var i = 0; i < b.due.length; i++) put(dayOf(b.due[i]), { kind: "deadline", deadline: b.due[i] }, b.due[i].status !== "open")
   for (var w = 0; w < b.waiting.length; w++) put(b.waiting[w].due * 1000, { kind: "deadline", deadline: b.waiting[w] }, false)
   for (var d = 0; d < b.doing.length; d++) put(Say.taskMs(b.doing[d]), { kind: "task", task: b.doing[d] }, !!b.doing[d].done)
   dated.sort(function (x, y) {
@@ -212,10 +221,10 @@ function byDate(b, s, now) {
   for (var n = 0; n < groups.length; n++) {
     var gr = groups[n]
     var open = gr.id === "late" || words || bandOpen(s.folds, gr.id)
-    var first = gr.items.length > 0 ? gr.items[0].row : null
+    var first = gr.items.length > 0 ? gr.items[0] : null
     rows.push({ kind: "band", id: gr.id, text: gr.text, count: gr.items.length, open: open, fixed: gr.id === "late",
-                next: first ? (first.kind === "deadline" ? { title: first.deadline.title, ms: first.deadline.due * 1000 }
-                                                         : { title: Say.taskTitle(first.task), ms: Say.taskMs(first.task) }) : null })
+                next: first ? { title: first.row.kind === "deadline" ? first.row.deadline.title : Say.taskTitle(first.row.task),
+                                ms: first.ms !== undefined ? first.ms : Say.taskMs(first.row.task) } : null })
     if (open) for (var r = 0; r < gr.items.length; r++) rows.push(gr.items[r].row)
   }
   return rows

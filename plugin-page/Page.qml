@@ -1815,7 +1815,9 @@ Item {
   // By date, the bands folded or unfolded (Next.bandOpen): a band's id to
   // open or not, "*" for all at once. Kept in page.json.
   property var dashFolds: ({})
-  readonly property var dashOrders: ["ask", "course", "date"]
+  // As drawn on the title row, by day first (2026-11-15); O goes round
+  // them in this order.
+  readonly property var dashOrders: ["date", "ask", "course"]
   property int stripAt: -1            // the strip's cursor: 0 ⌕, 1 All, the chips, then the order; -1 the list
   property bool stripOpen: false      // unfolded
   property int stripPick: 0           // unfolded: 0 ⌕, then a row per chip, then the orders
@@ -5169,7 +5171,10 @@ Item {
     root.moveTaskFocus(0)
   }
   function cycleOrder() {
-    root.dashOrder = root.dashOrders[(root.dashOrders.indexOf(root.dashOrder) + 1) % root.dashOrders.length]
+    root.setOrder(root.dashOrders[(root.dashOrders.indexOf(root.dashOrder) + 1) % root.dashOrders.length])
+  }
+  function setOrder(order) {
+    root.dashOrder = order
     root.savePageState()
     root.taskFocus = 0
     root.moveTaskFocus(0)

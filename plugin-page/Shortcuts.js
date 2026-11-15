@@ -248,7 +248,7 @@ var actions = [
   { id: "dashCourse", group: "dash", places: ["dash", "strip"], does: "Only that course: the strip's first, second… (0: all)",
     keys: ["1", "2", "3", "4", "5", "6", "7", "8", "9"] },
   { id: "dashAll", group: "dash", places: ["dash", "strip"], does: "Every course again", keys: ["0"] },
-  { id: "dashOrder", group: "dash", places: ["dash", "strip"], does: "Order: by what it asks, by course, by date", keys: ["O"] },
+  { id: "dashOrder", group: "dash", places: ["dash", "strip"], does: "Order: by day, by kind, by course", keys: ["O"] },
   { id: "stripPrev", group: "dash", places: ["strip"], does: "The chip before (its course shown at once, until Space keeps one)", keys: ["Left"] },
   { id: "stripNext", group: "dash", places: ["strip"], does: "The chip after", keys: ["Right"] },
   { id: "stripAdd", group: "dash", places: ["strip"], does: "Keep this course, so the next Space adds another (again: take it out)", keys: ["Space"] },

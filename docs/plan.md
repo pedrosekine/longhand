@@ -912,6 +912,18 @@ from 2026-09/10 and still stand.
     to skip?
   - Collapse all keeps folding the near bands on later days (it sets
     every band, `*`): wanted, or should this week and next always open?
+- **The orders named, and by day** (built 2026-11-15, `Dashboard.qml`
+  `orderRow`, `Next.js` `byDate`): "by date ▾" hid two orders behind a menu
+  and never said which date; now "order  day · kind · course" sits above
+  the list, the one shown underlined, each with a tip, and a click picks
+  one. By day, a deadline goes on its line's ⏳ when it has one, else on its
+  📅 (it went on its 📅 always, so a deadline worked on tomorrow but due
+  next month sat in next month).
+  - Are the other orders clicked now, or is by day all that is used
+    (`dash-order` in the usage log)?
+  - "kind" for what was "what it asks": read without its tip?
+  - A deadline put on its ⏳ day, its 📅 far off: does the row's outlined
+    due pill say enough, or is the deadline missed?
 - **Chat on a task** (built 2026-10-28, `docs/keys-proposal.md`, slice 1):
   - Is a task's chat opened from the dashboard now (`talk` `task` in the
     usage log; `talk` and a kind for a proposal's)?

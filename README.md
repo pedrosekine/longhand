@@ -20,7 +20,7 @@ when you ask.
 | **The page** (`plugin-page/`) | Today's note as a full-screen overlay or a tiling window, drawn in the Omarchy theme: headings, checkboxes, emphasis, private callouts. Month calendar and your projects in a sidebar. |
 | **The agent** (`agent/longhand-agent`) | `Ctrl+Enter` sends the block you are in; the reply and the conversation appear beside it. Tool-less, sandboxed opencode, with a cost ledger. |
 | **Deadlines in the notes** | Write `- [ ] essay draft #course due fri 17:00` and the line becomes a deadline, still readable in Obsidian. |
-| **The dashboard** (`Ctrl+T`) | Every open task and deadline across all your notes, grouped by what it asks of you and then by course. |
+| **The dashboard** (`Ctrl+T`) | Every open task and deadline across all your notes: by day (the day you work on it, else its deadline), by kind, or by course. |
 | **Bar widgets** (`plugin/`, `plugin-deadline/`) | A Pomodoro countdown and the next deadline, with popups. |
 | **`pomo`** (`cli/pomo`) | The timer and deadline store behind it all, scriptable from a terminal or Hyprland bindings. |
 
@@ -367,10 +367,14 @@ again whenever a note opens or is saved. How it all holds together, and why:
 ## The dashboard
 
 `Ctrl+T` turns the sheet into the dashboard: every open checkbox and every
-deadline across all your daily notes, full width. Rows are grouped by what
-they ask of you — **due** (a date you owe), **doing** (a day you mean to work
-on it), **to schedule** (a priority and no day yet) — and then by course,
-never by the day the thought was written. Each row says where it was written
+deadline across all your daily notes, full width, in one of three orders
+named above the list (a click picks one, `o` goes round them). **By day**,
+where it opens, is one timeline in bands (late, today, this week, next week,
+then by month): each row on the day you mean to work on it (⏳), or on the
+day it is due (📅) when it has none. **By kind** groups rows by what they ask
+of you — **due** (a date you owe), **doing** (a day you mean to work on it),
+**to schedule** (a priority and no day yet) — and then by course. **By
+course** puts each course first. Never by the day the thought was written. Each row says where it was written
 and how long ago ("Design Theory › Essay 2 · yesterday"); dates are the same
 pills as in the note. A deadline's row also shows what its line holds: the
 day you mean to work on it ("do tomorrow"), its priority (▲ or ▽ beside the

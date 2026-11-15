@@ -271,10 +271,10 @@ BorderSurface {
       anchors.top: parent.top
       x: strip.x
       width: strip.width
-      height: orderChip.height
+      height: orderRow.height
       Text {
         x: page.sp(8)
-        width: Math.max(0, (foldAllRow.visible ? foldAllRow.x : orderChip.x) - x - page.sp(16))
+        width: Math.max(0, (foldAllRow.visible ? foldAllRow.x : orderRow.x) - x - page.sp(16))
         anchors.verticalCenter: parent.verticalCenter
         elide: Text.ElideRight
         textFormat: Text.PlainText
@@ -292,7 +292,7 @@ BorderSurface {
         visible: page.dashOrder === "date" && page.taskRows.some(function (r) { return r.kind === "band" && r.count > 0 && !r.fixed })
         readonly property bool anyShut: page.taskRows.some(function (r) { return r.kind === "band" && r.count > 0 && !r.fixed && !r.open })
         readonly property bool anyOpen: page.taskRows.some(function (r) { return r.kind === "band" && r.count > 0 && !r.fixed && r.open })
-        anchors.right: orderChip.left
+        anchors.right: orderRow.left
         anchors.rightMargin: page.sp(14)
         anchors.verticalCenter: parent.verticalCenter
         spacing: page.sp(6)
@@ -319,16 +319,39 @@ BorderSurface {
           }
         }
       }
-      // The strip's last stop, though drawn up here: ← → and Enter reach
-      // it as before.
-      Chip {
-        id: orderChip
-        page: dash.page
-        keys: dash.keysHere
+      // Every order at once, the one shown underlined (2026-11-15: one
+      // word, "by date ▾", hid the other two behind a menu and never said
+      // which date). One stop of the strip, its last, though drawn up
+      // here: ← → reach the order shown, Space goes on to the next, Enter
+      // unfolds them; a click picks one.
+      Row {
+        id: orderRow
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
-        at: page.stripEnd
-        label: "by " + strip.orderWords[page.dashOrder] + (page.stripOpen ? "  ▴" : "  ▾")
+        spacing: 0
+        Text {
+          anchors.verticalCenter: parent.verticalCenter
+          rightPadding: page.sp(4)
+          textFormat: Text.PlainText
+          text: "order"
+          color: page.faint
+          font.family: page.fontFamily
+          font.styleName: page.fontStyle
+          font.pixelSize: page.fs(Style.font.caption)
+        }
+        Repeater {
+          model: page.dashOrders
+          Chip {
+            required property var modelData
+            page: dash.page
+            keys: dash.keysHere
+            at: page.dashOrder === modelData ? page.stripEnd : -1
+            on: page.dashOrder === modelData
+            label: strip.orderWords[modelData]
+            tip: page.tip(strip.orderTips[modelData], "dashOrder")
+            action: function () { dashKeys.forceActiveFocus(); page.setOrder(modelData) }
+          }
+        }
       }
     }
 
@@ -339,7 +362,11 @@ BorderSurface {
     // the orders. ↑ from the first row climbs onto it.
     Item {
       id: strip
-      readonly property var orderWords: ({ ask: "what it asks", course: "course", date: "date" })
+      readonly property var orderWords: ({ date: "day", ask: "kind", course: "course" })
+      readonly property var orderTips: ({
+        date: "One timeline: each on the day you work on it (do), else the day it is due",
+        ask: "By kind: due, doing, to schedule, then notes by course",
+        course: "Each course, with what it holds inside" })
       anchors.top: dashTitle.bottom
       anchors.topMargin: page.sp(10)
       width: Math.min(parent.width, Math.round(page.measure * 1.45))
