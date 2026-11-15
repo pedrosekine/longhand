@@ -228,6 +228,10 @@ esac
                         PATH=f"{bindir}:{os.environ['PATH']}", FAKE_HYPR_DIR=str(self.hypr),
                         FAKE_HYPR_REAL=shutil.which("hyprctl") or "")
         self.env.pop("LONGHAND_SILENT", None)
+        # Every deadline the check cancels, and why (cli/longhand-check,
+        # `trace`): said in the failures that come from a line lost.
+        self.cancels = self.tmp / "cancels.log"
+        self.env["LONGHAND_CHECK_LOG"] = str(self.cancels)
         if fake_home:
             # A home of its own, holding a copy of the current theme, so a
             # theme switch can be replayed without touching the real one.
@@ -2187,7 +2191,8 @@ def checks() -> int:
                     "candidates": [(c.get("title"), c.get("key")) for c in data.get("candidates", [])],
                     "ledger": [(x["id"], x.get("key"), x.get("date"), x["status"]) for x in json.loads(ledger_file.read_text())["items"]][-5:]}
         check(p.wait(lambda: any(r["kind"] == "proposal" and r["id"] not in settled for _, r in asks()), timeout=15),
-              f"another proposal ({planned()})")
+              f"another proposal ({planned()}; cancelled by the check: "
+              f"{p.cancels.read_text()[-1500:] if p.cancels.exists() else 'nothing'})")
         (p.stub / "plan-reply.json").unlink()
         p.call("dashFocus", next(n for n, r in asks() if r["kind"] == "proposal" and r["id"] not in settled))
         p.call("dashKey", KEY_RETURN, 0)

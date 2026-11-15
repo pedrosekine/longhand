@@ -106,6 +106,26 @@ def pomo(*args: str) -> str:
     return r.stdout
 
 
+def trace(why: str, d: dict, open_stem: str, where: dict | None = None, cfg: dict | None = None) -> None:
+    """With LONGHAND_CHECK_LOG set: each deadline cancelled, why, and the
+    note that had it — to find what took a line away (debugging only)."""
+    log = os.environ.get("LONGHAND_CHECK_LOG")
+    if not log:
+        return
+    rec = {"at": dt.datetime.now().isoformat(timespec="milliseconds"), "why": why, "id": d["id"], "title": d["title"],
+           "link": d.get("link"), "open": open_stem}
+    if where:
+        rec["line"] = where.get("line")
+        rec["stem"] = where.get("stem")
+    if cfg and open_stem:
+        try:
+            rec["open_text_tail"] = (Path(cfg["vault"]) / cfg["daily"]["dir"] / f"{open_stem}.md").read_text()[-400:]
+        except OSError:
+            pass
+    with open(log, "a") as f:
+        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+
+
 def store() -> list[dict]:
     # A store that is not there is unknown, not empty: every tag in the
     # notes would look stale, and taking them off would lose every link.
@@ -286,6 +306,7 @@ def check(cfg: dict, open_stem: str = "", now: int | None = None, waiting: set[s
                 continue
             if seen or d.get("link"):
                 # It had a line, and no note holds its tag now.
+                trace("no line", d, open_stem, cfg=cfg)
                 rec["cancelled"] = {"at": now, "status": status, "doneAt": d.get("done_at") or 0}
                 pomo("cancel", key)
                 out["cancelled"].append({"id": d["id"], "title": d["title"]})
@@ -342,6 +363,7 @@ def check(cfg: dict, open_stem: str = "", now: int | None = None, waiting: set[s
                 elif line_state == "open":
                     pomo("reopen", key)
                 else:
+                    trace("its line says cancelled", d, open_stem, where)
                     rec["cancelled"] = {"at": now, "status": status, "doneAt": d.get("done_at") or 0}
                     pomo("cancel", key)
                     out["cancelled"].append({"id": d["id"], "title": d["title"]})
