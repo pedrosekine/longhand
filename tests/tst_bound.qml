@@ -20,7 +20,8 @@ TestCase {
     var c = Bound.cue("conference on the 8th of Feb")
     compare(c.phrase, "the 8th of Feb"); compare(c.title, "conference")
     compare(Bound.cue("call the dean on friday 10:00").phrase, "friday 10:00")
-    compare(Bound.cue("hand in on 12.11"), null)                         // the dates read no dotted days
+    compare(Bound.cue("hand in on 12.11").phrase, "12.11")               // a dotted day
+    compare(Bound.cue("work on 2.3"), null)                              // …but an exercise is not one
     compare(Bound.cue("defence on March 3").phrase, "March 3")
     compare(Bound.cue("essay on Kant by monday").phrase, "monday")      // the last cue counts
     compare(Bound.cue("read on friday by the 9th of Nov").phrase, "the 9th of Nov")
@@ -29,6 +30,35 @@ TestCase {
     compare(Bound.cue("comment on 3 papers"), null)
     compare(Bound.cue("notes on monday's lecture").phrase, "monday's lecture")  // lights up only if it parses
     compare(Bound.cue("on friday"), null)                                // nothing to name the deadline
+  }
+
+  // No cue word (decided 2026-11-15): a date at the end is the deadline.
+  function test_a_bare_date_at_the_end() {
+    function bare(body) { var c = Bound.cue(body); return c ? [c.head, c.phrase] : null }
+    compare(bare("essay monday"), ["essay", "monday"])
+    compare(bare("essay next monday 10:00"), ["essay", "next monday 10:00"])   // the date as long as it reads
+    compare(bare("send it tomorrow at 5pm"), ["send it", "tomorrow at 5pm"])
+    compare(bare("hand in 12.11"), ["hand in", "12.11"])
+    compare(bare("hand in 1.5."), ["hand in", "1.5."])
+    compare(bare("essay 12.11.2026 17:00"), ["essay", "12.11.2026 17:00"])
+    compare(bare("read pages 20 oct"), ["read pages", "20 oct"])
+    compare(bare("defence March 3"), ["defence", "March 3"])
+    compare(bare("conference the 8th of Feb"), ["conference", "the 8th of Feb"])
+    compare(bare("call Anna this sat"), ["call Anna", "this sat"])
+    compare(bare("plan the trip next week"), ["plan the trip", "next week"])
+    compare(bare("slides for monday"), ["slides", "monday"])                    // "for" goes with the date
+    compare(Bound.cue("chapter 2 #thesis fri").project, "thesis")
+    compare(Bound.cue("chapter 2 #thesis fri").title, "chapter 2")
+  }
+
+  function test_a_bare_date_only_when_it_is_one() {
+    var no = ["monday",                  // nothing to name the deadline
+              "exercise 2.3", "upgrade to python 3.12", "read chapter 3", "write 2h",
+              "lie in the sun", "the cat sat", "get 10 marks", "go to may",
+              "essay friday 3",          // a time has a colon or am/pm
+              "notes from monday", "focus on today", "gym every friday", "recap of tuesday",
+              "since last thursday", "read ⏳ 2026-11-16", "reread friday's lecture"]
+    for (var i = 0; i < no.length; i++) compare(Bound.cue(no[i]), null, no[i])
   }
 
   function test_no_cue_no_deadline() {

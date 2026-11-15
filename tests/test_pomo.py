@@ -66,6 +66,20 @@ def main() -> int:
         r = pomo("when", *phrase.split())
         got = dt.datetime.fromtimestamp(int(r.stdout.split("\t")[0])).strftime("%Y-%m-%d %H:%M") if r.returncode == 0 else ""
         check(got.endswith(want), f"when {phrase!r} is {want} ({got or r.stderr.strip()})")
+    # Dotted, day first (2026-11-15): with a year as written, without one
+    # this year's, or next year's once over; a day that does not exist is refused.
+    ahead = today + dt.timedelta(days=3)
+    for phrase, want in ((ahead.strftime("%d.%m"), ahead.strftime("%Y-%m-%d 23:59")),
+                         (ahead.strftime("%d.%m."), ahead.strftime("%Y-%m-%d 23:59")),
+                         (past.strftime("%d.%m") if past.year == today.year else "", past.replace(year=past.year + 1).strftime("%Y-%m-%d 23:59")),
+                         ("12.11.2026 17:00", "2026-11-12 17:00"), ("12.11.26 at 9:30", "2026-11-12 09:30"),
+                         ("3.2.2027", "2027-02-03 23:59")):
+        if not phrase:
+            continue
+        r = pomo("when", *phrase.split())
+        got = dt.datetime.fromtimestamp(int(r.stdout.split("\t")[0])).strftime("%Y-%m-%d %H:%M") if r.returncode == 0 else ""
+        check(got == want, f"when {phrase!r} is {want} ({got or r.stderr.strip()})")
+    check(pomo("when", "31.02.2027").returncode != 0, "a dotted day that does not exist is refused")
     r = pomo("when", "22nd")
     check(r.returncode != 0, "a bare ordinal is refused, not read as 22:00")
     r = pomo("when", "3d")

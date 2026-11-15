@@ -685,17 +685,20 @@ Small, when passing by:
     - **Afterwards:** do highlights and notes flow into the day's note or
       the project, and how do they show?
     - Scanned PDFs have no text (no OCR; *Not built, on purpose*).
-16. **Dates with no cue word** (2026-11-14, the student's ask, to decide
-    on 2026-11-15). A box binds a date only after `due`, `by`, `until`,
-    `before`, `📅`, or `on` before a weekday or a month; the student wants
-    "- [ ] essay monday" to be enough, and dotted dates ("12.11") read
-    everywhere a date is read (the cue, `Ctrl+D`'s "when?", the
-    dashboard's `t`). **Decide first:** a bare date at a box's end — a
-    ⏳ do-date (proposed: the cue words stay deadlines; "call Anna monday"
-    reads as a plan) or a 📅 deadline (as Todoist does)? Which bare words
-    count: weekdays, today/tomorrow, `12.11`, `20 oct`, `next week`; never
-    a bare month or a lone number. It lights up as typed, and Backspace
-    keeps it as words, as the cue does now.
+16. ~~**Dates with no cue word**~~ *decided and built 2026-11-15*: a date
+    alone at a box's end is its **📅 deadline** (the student: "if there is
+    nothing, assume it is the deadline — you cannot plan a do-date without
+    a deadline first"). "- [ ] essay monday" binds as "by monday" does,
+    lit up as typed, Backspace keeps it words. Bare words that count: a
+    weekday (sat/sun/wed only after this/next), today, tomorrow, next
+    week/month, a day and a month by name, an ISO day, a dotted day; each
+    maybe with a time (colon or am/pm). Never a month or a number alone,
+    never after from/since/after/of/about/last/every/on…, never after a
+    Tasks mark. Dotted days are day first ("12.11", "1.5.", "12.11.2026")
+    and read everywhere a date is read (the cue, "on 12.11", `Ctrl+D`'s
+    "when?", the dashboard's `t`, `pomo`); in a cue with no cue word both
+    numbers need two figures or a trailing dot, so "exercise 2.3" and
+    "python 3.12" stay words (`Bound.js`, `Dates.js`, `cli/pomo`).
 
 - ~~**Tag suggestions while typing**~~ *done 2026-10-18*: `#` and a letter
   offer the tags that exist — the projects', then those written in the

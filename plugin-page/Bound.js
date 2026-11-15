@@ -11,7 +11,9 @@
 //
 // A line becomes bound when it is written with a cue at its end ("due
 // friday 17:00", "by monday", "until 20 oct", "before tomorrow", "📅 fri",
-// "on the 8th of Feb"),
+// "on the 8th of Feb"), or with a date and no cue word at all ("essay
+// monday", "hand in 12.11": a deadline, as Todoist reads it — a day to work
+// on something is planned after the day it is owed, decided 2026-11-15),
 // or by Ctrl+D. The first #tag in it is the deadline's project.
 .pragma library
 .import "Task.js" as Task
@@ -20,14 +22,45 @@ var CUE_RE = /^(.*\S)\s+(?:due|by|until|before)\s+(.+?)\s*$/i
 var CAL_RE = /^(.*\S)\s*📅\s*(.+?)\s*$/
 // "on" is the commonest of them in a sentence ("work on part 3", "focus on
 // today"), so it cues a date only when what follows begins as one: a
-// weekday, a month and a day, or a day and a month ("the 8th of Feb") —
-// never "today", never a lone number.
+// weekday, a month and a day, a day and a month ("the 8th of Feb") or a
+// dotted day — never "today", never a lone number.
 var MONTH = "(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\\.?"
+// A dotted day, day first ("12.11", "1.5.", "12.11.2026"): both numbers
+// of two figures, or a dot after them — "exercise 2.3" and "python 3.12"
+// are not days.
+var DOTTED = "(?:\\d{1,2}\\.\\d{1,2}\\.(?:\\d{4}|\\d{2})?|\\d{2}\\.\\d{2})"
 var ON_RE = new RegExp("^(.*\\S)\\s+on\\s+("
   + "(?:mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun)[a-z]*\\b.*"
   + "|(?:the\\s+)?\\d{1,2}(?:st|nd|rd|th)?(?:\\s+of)?\\s+" + MONTH + "(?:\\s.*)?"
   + "|" + MONTH + "\\s+\\d{1,2}(?:st|nd|rd|th)?\\b.*"
+  + "|" + DOTTED + "(?:\\s.*)?"
   + ")\\s*$", "i")
+// No cue word: the line's last words are the date itself, and nothing
+// else. Only what reads as a day and nothing else: a weekday ("sat", "sun"
+// and "wed" only after this/next — "lie in the sun"), today, tomorrow, next
+// week, a dotted day, a day and a month, an ISO day; each maybe with a
+// time. Never a bare month, a lone number or an offset ("chapter 3",
+// "2h"). The shortest words win the head, so the date is all it can be
+// ("essay next monday 10:00"); a "for" before it goes with it, as a cue
+// word does ("slides for monday" is "slides").
+var WEEKDAY = "(?:mon(?:day)?|tue(?:s|sday)?|wed(?:nesday)?|thu(?:r|rs|rsday)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?)"
+var CLOCK = "(?:\\s+(?:at\\s+)?\\d{1,2}(?::\\d{2}\\s*(?:am|pm)?|\\s*(?:am|pm)))?"
+var ORDINAL = "\\d{1,2}(?:st|nd|rd|th)?"
+// The months by their names only: "10 marks" is not the 10th of March.
+var MONTH_NAME = "(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\\.?"
+var BARE_RE = new RegExp("^(.*?\\S)\\s+(?:for\\s+)?("
+  + "(?:(?:this|next)\\s+" + WEEKDAY + "|monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tues?|thu(?:rs?)?|fri)" + CLOCK
+  + "|(?:today|tomorrow)" + CLOCK
+  + "|next\\s+(?:week|month)"
+  + "|\\d{4}-\\d{2}-\\d{2}" + CLOCK
+  + "|" + DOTTED + CLOCK
+  + "|(?:the\\s+)?" + ORDINAL + "(?:\\s+of)?\\s+" + MONTH_NAME + "(?:\\s+\\d{4})?" + CLOCK
+  + "|" + MONTH_NAME + "\\s+" + ORDINAL + "(?:\\s+\\d{4})?" + CLOCK
+  + ")\\s*$", "i")
+// …unless the word before makes the date something else than the day it
+// is owed: "notes from monday", "focus on today", "every friday".
+// A date after one of the Tasks marks is that mark's ("⏳ 2026-11-16").
+var NOT_OWED_RE = /(?:^|\s)(?:due|by|until|before|on|from|since|after|of|about|last|than|every|each|per|till|til)$|(?:⏳|🛫|➕|✅|❌|🔁)$/i
 var TAG_RE = /(^|\s)#([\w\/-]+)/
 var ANCHOR_RE = /^\s*[-*+] \[([ xX\/\-])\] .*\s\^d(\d+)\s*$/
 // What a date phrase has in it. "by phone" or "until done" must not read as
@@ -53,6 +86,10 @@ function cue(body) {
     // The last cue counts: of a cue word and "on", the one further along.
     var w = body.match(CUE_RE), o = body.match(ON_RE)
     m = w && o ? (o[1].length > w[1].length ? o : w) : (w || o)
+  }
+  if (!m) {
+    m = body.match(BARE_RE)
+    if (m && NOT_OWED_RE.test(m[1])) m = null
   }
   if (!m || !DATEISH_RE.test(m[2])) return null
   return { head: m[1], phrase: m[2], title: titleOf(m[1]), project: projectOf(body) }

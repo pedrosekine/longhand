@@ -9,9 +9,9 @@
 // periods and offsets keep the clock time — and hands the store an exact
 // `YYYY-MM-DD HH:MM`, so the page and the CLI can never read one
 // differently. A few phrases GNU date refuses read here too ("30 oct
-// 17:00", "the 8th of Feb"). Across a clock change an offset keeps the
-// wall clock ("in 2 weeks" from 08:58 is 08:58), where GNU date counts
-// hours (07:58).
+// 17:00", "the 8th of Feb"); the dotted "12.11" `pomo` reads by hand, as
+// here. Across a clock change an offset keeps the wall clock ("in 2
+// weeks" from 08:58 is 08:58), where GNU date counts hours (07:58).
 .pragma library
 
 var MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
@@ -76,6 +76,16 @@ function read(text, now) {
     // No year written and the day is over: next year's.
     if (day && !m[3] && day < new Date(now.getFullYear(), now.getMonth(), now.getDate()))
       day = dayOf(yy + 1, mm, dd)
+  } else if ((m = s.match(/^(\d{1,2})\.(\d{1,2})(?:\.(\d{4}|\d{2})?)?(?: (.*))?$/))) {
+    // Dotted, day first, as written in Germany and Brazil: "12.11",
+    // "12.11.", "12.11.2026", "12.11.26". No year, and the day is over:
+    // next year's, as with a month by name.
+    var dy = m[3] ? parseInt(m[3], 10) : now.getFullYear()
+    if (m[3] && m[3].length === 2) dy += 2000
+    day = dayOf(dy, parseInt(m[2], 10) - 1, parseInt(m[1], 10))
+    rest = m[4] || ""
+    if (day && !m[3] && day < new Date(now.getFullYear(), now.getMonth(), now.getDate()))
+      day = dayOf(dy + 1, parseInt(m[2], 10) - 1, parseInt(m[1], 10))
   } else if (new RegExp("^" + TIME_RE + "$").test(s) && /[:apm]/.test(s)) {
     day = new Date(now.getFullYear(), now.getMonth(), now.getDate())
     rest = s

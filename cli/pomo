@@ -521,6 +521,23 @@ parse_when() { # $1=free date text -> epoch
   if printf '%s' "$norm" | grep -qiE '\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b'; then
     norm=$(printf '%s' "$norm" | sed -E 's/^the[[:space:]]+//I; s/\b([0-9]{1,2})(st|nd|rd|th)\b/\1/gI; s/[[:space:]]+of[[:space:]]+/ /gI')
   fi
+  # A dotted day, day first ("12.11", "12.11.", "12.11.2026", "12.11.26"),
+  # as written in Germany and Brazil: GNU date reads none of them. Written
+  # out as a day; with no year and already over, next year's (as below).
+  local dotted='^([0-9]{1,2})\.([0-9]{1,2})(\.([0-9]{4}|[0-9]{2})?)?([[:space:]]+(.*))?$'
+  if [[ "$norm" =~ $dotted ]]; then
+    local dd=$((10#${BASH_REMATCH[1]})) mm=$((10#${BASH_REMATCH[2]})) yy=${BASH_REMATCH[4]} rest=${BASH_REMATCH[6]} iso
+    local written=$yy
+    [ -z "$yy" ] && yy=$(date +%Y)
+    [ ${#yy} -eq 2 ] && yy=$((2000 + 10#$yy))
+    iso=$(printf '%04d-%02d-%02d' "$yy" "$mm" "$dd")
+    if [ -z "$written" ] && [[ "$iso" < "$(date +%F)" ]]; then
+      iso=$(printf '%04d-%02d-%02d' $((yy + 1)) "$mm" "$dd")
+    fi
+    # 31.02 is no day: GNU date would roll it into March.
+    [ "$(date -d "$iso" +%F 2>/dev/null)" = "$iso" ] || return 1
+    norm="$iso${rest:+ $rest}"
+  fi
   # Only digits then the letter: a glob's `*` would also take "1 march".
   if [[ "$norm" =~ ^([0-9]+)([hHdDwW])$ ]]; then
     case "${BASH_REMATCH[2],,}" in

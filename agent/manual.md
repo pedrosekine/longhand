@@ -37,7 +37,8 @@ outermost level Enter leaves the list); Shift+Enter is a new line in the same bl
 ## Deadlines
 
 A checkbox with a date at its end is a deadline: `- [ ] essay draft #intsem
-due fri 17:00` (also `by monday`, `until 20 oct`, `📅 tomorrow`). The date
+due fri 17:00` (also `by monday`, `until 20 oct`, `📅 tomorrow`, or the date
+alone: `essay monday`, `hand in 12.11` — dotted dates are day first). The date
 lights up as it is typed and becomes the deadline when the cursor leaves
 the line — nothing is asked. To keep the date as words: Backspace as it
 lights up, or {key:deadline} on the line. {key:deadline} also binds a line

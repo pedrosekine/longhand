@@ -327,7 +327,13 @@ SSH; with no Hyprland running they say so and stop.
 A checkbox can stand for a deadline. Write it with a date at the end —
 `- [ ] chapter 2 draft #thesis due fri 17:00` (or `by monday`, `until 20
 oct`, `the 8th of Feb`, `on friday`, `📅 tomorrow`; "on" counts only before
-a weekday or a month) — and the date lights up as you type
+a weekday, a month or a dotted day). The date alone is enough too —
+`- [ ] essay monday`, `hand in 12.11` (day first), `slides for next friday
+10:00` — and it is the deadline, never the day you plan to work on it: a
+weekday, today or tomorrow, next week, a day and a month, a dotted day,
+each maybe with a time; never a month or a number alone ("exercise 2.3",
+"python 3.12" and "lie in the sun" stay words), and not after "from",
+"since", "every" and the like ("notes from monday"). The date lights up as you type
 it, with the pill it will become; when you leave the line it is the
 deadline, nothing asked (as in Todoist). To keep the date as words: Backspace
 right as it lights up, `Ctrl+D` on the line, or `Ctrl+Z` after it is bound.

@@ -25,6 +25,20 @@ TestCase {
     compare(iso("2026-10-30"), "2026-10-30 23:59")
   }
 
+  function test_dotted_days() {
+    compare(iso("30.10"), "2026-10-30 23:59")
+    compare(iso("30.10."), "2026-10-30 23:59")
+    compare(iso("1.5."), "2027-05-01 23:59")            // over this year: next year's
+    compare(iso("12.10"), "2027-10-12 23:59")
+    compare(iso("13.10"), "2026-10-13 23:59")           // today stays today
+    compare(iso("12.10.2026"), "2026-10-12 23:59")      // a year written is kept
+    compare(iso("3.2.27"), "2027-02-03 23:59")
+    compare(iso("30.10 17:00"), "2026-10-30 17:00")
+    compare(iso("by 30.10. at 9am"), "2026-10-30 09:00")
+    compare(iso("31.02"), null)
+    compare(iso("30.13"), null)
+  }
+
   function test_weekdays_like_gnu_date() {
     compare(iso("tuesday"), "2026-10-13 23:59")         // today is a Tuesday
     compare(iso("next tuesday"), "2026-10-20 23:59")
