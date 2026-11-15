@@ -669,22 +669,72 @@ Small, when passing by:
     block's other actions (private, chat, a deadline). It would reuse the
     `@` list. Not built: `Ctrl+Shift+E` with a selection already exports
     a block or what is selected, and the menu is bigger than export.
-15. **Reading papers in Longhand — next to build** (2026-11-14, the
+15. **Reading papers in Longhand — next to build, designed** (2026-11-14, the
     student's ask: "Longhand as a PDF visualiser where the agent helps with
     reading, highlighting and understanding a paper well"). Today a PDF
     opens read-only in the note's place (scroll, find, size, `o`), and it
-    now opens where it was left. Parked for a grilling first, then built
-    before anything else here. Questions for the grilling:
-    - **Highlights:** written into the PDF file, or kept beside it (a
-      reading note in the vault, readable in Obsidian, by page and quoted
-      words)? Qt's view already selects text (`PdfSelection`).
-    - **The agent:** explain a selected passage, summarise a section, quiz,
-      tie it to the course and its deadlines; the runner already reads PDFs
-      through pdftotext. "Ask about this note" on the open PDF is the first
-      slice.
-    - **Afterwards:** do highlights and notes flow into the day's note or
-      the project, and how do they show?
-    - Scanned PDFs have no text (no OCR; *Not built, on purpose*).
+    now opens where it was left. **Decided 2026-11-15** (a grilling, then
+    mockups of three layouts and four variants of the chosen one):
+    - **Which PDFs:** any PDF opened in the page. Its project is guessed
+      when obvious (opened from a task line: that line's project; inside a
+      project's folder: that project), else offered once on the first
+      highlight with the `@` list; Esc leaves none. A reading may carry
+      several tags, and the project's page gathers its readings.
+    - **Where highlights live:** a reading note per paper in one folder
+      (`human/Readings/` by default, set in the config), created on the
+      first highlight, never on opening. Its link to the PDF at the top is
+      what ties them, not the name: names that collide get the PDF's folder
+      added ("lecture1 (Mechatronics)"); a PDF moved outside Obsidian is
+      found again by file name and relinking is offered. The PDF itself is
+      never written to.
+    - **A highlight in the note:** a quote block, page order, with its page
+      link and day — `> the words` / `> — [[paper.pdf#page=12|p. 12]] ·
+      2026-11-15` — and the person's own note under it if any. Redrawn by
+      finding the words on that page again; no hidden coordinates. Look to
+      be tuned once it runs. The day gives the day page a computed "read
+      today: Smith 2020, 4 highlights, 1 question", nothing written into
+      the day note; a pomodoro running on a task counts as it always does.
+    - **Two kinds, two colours:** a highlight, and a question. A question
+      is **never sent by marking it**: `q` opens the box with the quote
+      attached so the actual question is typed; Enter asks, Esc leaves it
+      waiting. Highlights carry no note by default; `n` notes the previous
+      highlight (the last made this sitting, else the clicked or nearest
+      one), typed in the margin and written under its quote.
+    - **One chat per paper** (the student: "shared context makes more sense
+      to me"), never one per highlight. The agent's pane turns between the
+      **highlight list** and **the paper's chat**: Enter on a row goes to
+      the chat with that highlight attached, Esc back to the list. Above
+      the list a strip like the dashboard's course strip — all, highlights,
+      questions (waiting first) — so "go through my questions" opens on
+      it; `Ctrl+Enter` asks every waiting one together. In the chat's box
+      `^` lists the highlights to attach (as `@` lists projects), and
+      `Space` on rows keeps several. The agent sees the reading note and
+      what is attached with every question, and reads the whole paper when
+      the question is about the paper ("summarise it", "the main
+      concepts"). Its answers stay in the chat, never in the person's
+      note; an answered question is marked on the page.
+    - **Private:** PDFs in the private folders of the config
+      (`human/Personal` first: the bank statements) open and read, but
+      marking and asking are off and the pane says why.
+    - **Keys** follow the page's own: the PDF in the middle, `Ctrl+2`
+      there swaps PDF ↔ its reading note (as note ↔ dashboard); `Ctrl+3`
+      the agent's pane, day's chat ↔ this paper's; `Alt+←/→` between them;
+      `↑↓ Enter Space Del` in the list as in the dashboard; `?` the keys.
+      New, PDF only: `m` highlight, `q` question, `n` note, on a clicked
+      highlight `m`/`q` switch its kind and `x`/Del/Backspace remove it,
+      `i` inverted pages (off by default, kept per paper). Mouse selects;
+      keyboard selection waits.
+    - **Order:** (1) highlights and questions drawn and kept in the reading
+      note, `n`, the project, removal; (2) the paper's chat, the list and
+      its strip, `^`, the private folders; (3) "read today" on the day
+      page, and a task line linking a PDF opens it where it was left;
+      (4) inverted pages; (5) **OCR**, parked but soon (tesseract is here).
+    - **Telling a highlight from a question** is the person's choice at the
+      moment of marking (`m` or `q`, switchable after): to be tried and
+      felt in use before anything cleverer. The agent marking passages
+      that answer a question is not part of this.
+    Mockups: the session's scratchpad (`reader-mockups.html`,
+    `reader-b-variants.html`), not kept.
 16. ~~**Dates with no cue word**~~ *decided and built 2026-11-15*: a date
     alone at a box's end is its **📅 deadline** (the student: "if there is
     nothing, assume it is the deadline — you cannot plan a do-date without
