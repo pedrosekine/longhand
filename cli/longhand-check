@@ -109,9 +109,21 @@ def pomo(*args: str) -> str:
 def store() -> list[dict]:
     # A store that is not there is unknown, not empty: every tag in the
     # notes would look stale, and taking them off would lose every link.
-    if not (STATE_HOME / "deadlines.tsv").is_file():
-        raise Fail(f"no deadline store at {STATE_HOME / 'deadlines.tsv'}; nothing checked")
-    return json.loads(pomo("list", "--all", "--json"))["deadlines"]
+    path = STATE_HOME / "deadlines.tsv"
+    if not path.is_file():
+        raise Fail(f"no deadline store at {path}; nothing checked")
+    items = json.loads(pomo("list", "--all", "--json"))["deadlines"]
+    # pomo takes a missing file for an empty store. One that went away while
+    # it was read (2026-11-15: the page test renames it, and a check started
+    # a moment before stripped the anchors off every note not open) is
+    # unknown too, and so is a file with lines that read as no deadlines.
+    try:
+        size = path.stat().st_size
+    except OSError:
+        raise Fail(f"the deadline store went away while it was read; nothing checked")
+    if not items and size > 0:
+        raise Fail(f"the deadline store read as empty but is not; nothing checked")
+    return items
 
 
 def load_ledger() -> dict:

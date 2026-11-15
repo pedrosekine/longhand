@@ -248,6 +248,25 @@ def main() -> int:
     store.with_suffix(".away").rename(store)
     check(r.returncode != 0 and note.read_text() == before, "a missing store strips no tag from any note")
 
+    # The store going away while the check reads it (pomo reads a missing
+    # file as an empty store): unknown, not empty — no tag is taken off.
+    racer = tmp / "racing-pomo"
+    racer.write_text(f"""#!/bin/bash
+if [ "$2" = list ]; then mv "{store}" "{store}.gone"; "{POMO}" "$@"; rc=$?; mv "{store}.gone" "{store}"; exit $rc; fi
+exec "{POMO}" "$@"
+""")
+    racer.chmod(0o755)
+    before = note.read_text()
+    r = subprocess.run([str(CHECK), "--json"], capture_output=True, text=True, env=dict(env, LONGHAND_POMO=str(racer)))
+    check(r.returncode != 0 and note.read_text() == before and "nothing checked" in r.stderr,
+          f"a store gone while it is read strips no tag ({r.returncode}, {r.stderr.strip()!r})")
+    racer.write_text(f"""#!/bin/bash
+if [ "$2" = list ]; then echo '{{"deadlines":[]}}'; exit 0; fi
+exec "{POMO}" "$@"
+""")
+    r = subprocess.run([str(CHECK), "--json"], capture_output=True, text=True, env=dict(env, LONGHAND_POMO=str(racer)))
+    check(r.returncode != 0 and note.read_text() == before, "…nor one that reads as empty while the file has lines")
+
     # A dry run says what it would do and does nothing.
     pomo("done", str(w))
     before = note.read_text()
