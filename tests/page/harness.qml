@@ -239,6 +239,7 @@ ShellRoot {
       return false
     }
     function pdfPick(id: string): void { page.pdfItem.pick(id) }
+    function keysToSidebar(): void { if (!page.sidebarOpen) page.toggleSidebar(); page.focusSidebar() }
     function pdfWriteNote(text: string): void { page.pdfItem.noteRef.text = text; page.pdfItem.saveNote() }
     // Export as a PDF (ExportSheet.qml): the sheet as its keys see it.
     function exportState(): string {

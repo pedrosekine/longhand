@@ -239,9 +239,18 @@ Item {
       var paper = h.selection.parent
       if (!paper) continue
       marksLayer.createObject(paper, { holder: h, paper: paper })
-      h.selection.textChanged.connect(function () { pane.selectionRev++ })
+      pane.watch(h)
       pane.dressed = pane.dressed.concat([h])
     }
+  }
+  // Words selected on a page bring the keys here, wherever they were (a
+  // PDF opened from the Files tree leaves them in the sidebar): `m` and `q`
+  // must reach the words just selected.
+  function watch(h) {
+    h.selection.textChanged.connect(function () {
+      pane.selectionRev++
+      if (h.selection && h.selection.text !== "" && !pane.noting) keys.forceActiveFocus()
+    })
   }
   Connections {
     target: pane.table() ? pane.table().contentItem : null
@@ -500,7 +509,7 @@ Item {
         + (pane.read.unplaced > 0 ? ", " + pane.read.unplaced + " not found on its page" : "")
         + "   " + (pane.selected() ? page.keyName("pdfMark") + " highlight · " + page.keyName("pdfQuestion") + " question"
                    : pane.picked !== "" ? page.keyName("pdfMark") + "/" + page.keyName("pdfQuestion") + " its kind · " + page.keyName("pdfNote") + " a note · " + page.keyName("pdfRemove") + " remove"
-                   : page.keyName("pdfOpen") + " opens it elsewhere")
+                   : (pane.markable ? "select words to mark them · " : "") + page.keyName("pdfOpen") + " opens it elsewhere")
     color: pane.error !== "" || pane.readError !== "" ? page.urgent : page.faint
     font.family: page.fontFamily
     font.styleName: page.fontStyle
