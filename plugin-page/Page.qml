@@ -5132,6 +5132,9 @@ Item {
     var d = root.pendingWrite
     if (!d || !svc.isToday || !svc.ready) return
     root.pendingWrite = null
+    // Never written until now: the agent's, which the check is told (it
+    // writes that down only if it ran while the deadline waited).
+    root.wroteIn = root.wroteIn.concat([String(d.id)])
     // Where a step's line goes, not at the end: the end of a note is inside
     // its last section, which then claims the line (2026-11-03).
     root.placeLine(Bound.lineFor(d), d.project)
@@ -5653,6 +5656,8 @@ Item {
   readonly property var editQueueState: ({ busy: editFile.busy, queue: editFile.queue.length, path: String(editFile.path) })
   property bool checkWanted: false
   property bool checking: false
+  property var wroteIn: []           // deadlines written in from "not in a note yet", for the next check
+  property var checkTold: []         // …those the running check was told
   // ------------------------------------------------------------ who made it
   //
   // docs/agent.md, "Who made it": for each box and bullet, the person's,
@@ -5831,7 +5836,9 @@ Item {
     root.checkWanted = false
     root.checking = true
     checkGuard.restart()
-    checkProc.command = [root.checkPath, "--json", "--open", svc.noteDate]
+    root.checkTold = root.wroteIn
+    checkProc.command = [root.checkPath, "--json", "--open", svc.noteDate].concat(
+      [].concat.apply([], root.wroteIn.map(function (id) { return ["--waiting", id] })))
     checkProc.running = true
   }
 
@@ -5842,6 +5849,8 @@ Item {
     var out = null
     try { out = JSON.parse(text) } catch (e) { out = null }
     if (out) {
+      var told = root.checkTold
+      root.wroteIn = root.wroteIn.filter(function (id) { return told.indexOf(id) < 0 })
       root.origins = out.origins || ({})
       root.dueDates = out.dates || ({})
       root.sayChecked(out)

@@ -209,7 +209,7 @@ def notes(cfg: dict) -> list[Path]:
 
 # ---------------------------------------------------------------- the check
 
-def check(cfg: dict, open_stem: str = "", now: int | None = None) -> dict:
+def check(cfg: dict, open_stem: str = "", now: int | None = None, waiting: set[str] | None = None) -> dict:
     now = int(now if now is not None else dt.datetime.now().timestamp())
     today = dt.datetime.fromtimestamp(now).strftime("%Y-%m-%d")
     files = notes(cfg)
@@ -290,7 +290,12 @@ def check(cfg: dict, open_stem: str = "", now: int | None = None) -> dict:
 
         box = where["box"]
         writable = where["stem"] != open_stem
-        rec.setdefault("origin", "note")
+        # Written in from the dashboard's "not in a note yet" (`--waiting`):
+        # never written before, so the agent's — even when no check ran
+        # while it waited, which is what writes that down above.
+        rec.setdefault("origin", "agent" if key in (waiting or set()) and not seen else "note")
+        if rec["origin"] == "agent":
+            rec.setdefault("firstTitle", d["title"])
         if rec["origin"] == "agent" and box["title"] != rec.get("firstTitle", box["title"]):
             rec["rewritten"] = True
 
@@ -420,6 +425,8 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--quiet", action="store_true")
     ap.add_argument("--dry-run", action="store_true", help="say what would change, change nothing")
     ap.add_argument("--now", type=int, default=None, help=argparse.SUPPRESS)
+    ap.add_argument("--waiting", action="append", default=[],
+                    help="a deadline the page wrote into a note from its waiting band (repeatable)")
     args = ap.parse_args(argv)
     global DRY_RUN
     DRY_RUN = args.dry_run
@@ -429,7 +436,7 @@ def main(argv: list[str]) -> int:
         # One check at a time: the page and the popup may both start one.
         with open(STATE_HOME / "ledger.lock", "w") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
-            out = check(cfg, args.open, args.now)
+            out = check(cfg, args.open, args.now, {str(w) for w in args.waiting})
     except (Fail, subprocess.TimeoutExpired) as e:
         print(f"longhand-check: {e}", file=sys.stderr)
         return 2

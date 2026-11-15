@@ -1568,6 +1568,11 @@ def checks() -> int:
         check(p.wait(lambda: f"Registered topic and supervisor 📅 2030-01-06 ^d{wid}" in p.call("text")),
               "Enter writes it into today's note")
         check(p.wait(lambda: p.deadline(wid)["link"] != ""), "…and the store knows its line")
+        # …and is the agent's, though no check ran while it waited (it is
+        # written in at once): the page tells the check where it came from.
+        led = p.state / "longhand" / "ledger.json"
+        check(p.wait(lambda: (json.loads(led.read_text())["deadlines"].get(str(wid)) or {}).get("origin") == "agent"),
+              f"…and the ledger keeps it as the agent's ({json.loads(led.read_text())['deadlines'].get(str(wid))})")
 
         # 12c. lifespans (2026-10-17): a box counts down through the last
         # quarter of its life and then waits under "not now"; `s` puts one

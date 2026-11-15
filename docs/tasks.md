@@ -118,7 +118,10 @@ person inside Longhand.
    matched no checkbox, `pomo deadline add`) waits in a "not in a note yet"
    band and counts as the agent's. Renaming it lets the person write over the
    agent's words; Enter writes it into today's note, which makes the act the
-   person's. The ledger keeps its origin and the agent's first wording, and
+   person's. The ledger keeps its origin and the agent's first wording —
+   the check writes them down when it sees the deadline waiting, and the
+   page tells it (`--waiting`) when one was written in before any check
+   ran — and
    the row says "from the agent · rewritten by you" once it has been. A done
    deadline that never had a line (the first two, from before binding) is
    history and stays out of the way.

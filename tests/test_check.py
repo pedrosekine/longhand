@@ -184,6 +184,18 @@ def main() -> int:
     check(item(w)["title"] == "A registered topic and supervisor" and ledger()[str(w)].get("rewritten") is True,
           "written over by the person: their words, and the origin kept")
 
+    # Written in from the dashboard's waiting band before any check ran
+    # (2026-11-15): the page says so (--waiting), and it is the agent's.
+    q = add("Ethics form signed", "2026-10-31")
+    note.write_text(note.read_text() + f"\n- [ ] Ethics form signed #respro 📅 2026-10-31 ^d{q}\n")
+    run("--waiting", str(q))
+    check(ledger()[str(q)]["origin"] == "agent" and ledger()[str(q)]["firstTitle"] == "Ethics form signed",
+          "a deadline written in from waiting, no check between, is the agent's")
+    z = add("Book the room", "2026-10-31")
+    note.write_text(note.read_text() + f"\n- [ ] Book the room #respro 📅 2026-10-31 ^d{z}\n")
+    run()
+    check(ledger()[str(z)]["origin"] == "note", "…one written by hand, untold, is the note's")
+
     # A tag no deadline stands behind (removed outright): the line keeps its words and date.
     pomo("rm", str(a))
     out = run()
