@@ -595,8 +595,8 @@ section, word for word, and to the diary's decisions log.
      dated box in a private block become a deadline (item 3)?
 
    Left by the build (2026-10-27), roughly in the order worth doing:
-   - **Asking about a PDF.** Mostly wiring: the runner already reads PDFs,
-     through pdftotext.
+   - ~~**Asking about a PDF.**~~ *done by item 15* (2026-11-15): the
+     paper's chat.
    - **The read view's keys** (from the research):
      - `Space` on a picture's line for a lightbox, and arrows between the
        pictures;
@@ -610,8 +610,8 @@ section, word for word, and to the diary's decisions log.
      (`docs/files.md`, "Talking about a note"; `test_note.py`).
    - **The blip on a dashboard row.**
    - **PDFs:** ~~remember the place between openings~~ *built 2026-11-14*
-     (`PdfPlaces.js`, `tst_pdfplaces.qml`); a dark reading mode waits
-     with item 15.
+     (`PdfPlaces.js`, `tst_pdfplaces.qml`); ~~a dark reading mode~~ *built
+     with item 15, 2026-11-15* (`i`, inverted pages).
    - **Embedded notes and blocks** (`![[Note#^id]]`) drawn inline; footnote
      previews.
 
@@ -638,7 +638,8 @@ Small, when passing by:
     history, Todoist's keys on the dashboard. Five slices, in order: chat on
     a task, what a row's chat shows, panes by number, one history, the rest
     of the map. Started from the dashboard, where a task had no visible way
-    to talk with the agent.
+    to talk with the agent. *All five built 2026-10-28* (`docs/keys-proposal.md`);
+    left from it: "find anything" on `Ctrl+O`, which item 19 may take up.
 11. **Hover hints, after the benchmark apps** (study 2026-10-30,
     `docs/hints.md`): A (hints follow the hand), D (hover marks too),
     B (warm hints) and C (the key named after a click) are built; then the
@@ -797,7 +798,8 @@ Small, when passing by:
       readings, a layer of the agent's own highlights.
     - **Order:** (1) highlights and questions drawn and kept in the reading
       note, `n`, the project, removal, re-finding (c) — *built 2026-11-15*
-      (the project's tag offered on a first mark still waits); (2) the
+      (the project's tag offered on a first mark too, the same day:
+      `docs/files.md`, "A paper's project"); (2) the
       paper's chat with (a), (b), (d), the list and its strip, `^`, the
       private folders — *built 2026-11-15* (docs/files.md, "The paper's
       room"); found in use the same day and fixed: a touchpad drag selected
@@ -855,15 +857,21 @@ Small, when passing by:
 18. **Hover a paper to have it explained** (2026-11-16, the student: "even
     though it was mentioned on page 1, by page 6 I will have forgotten
     it"). Follows item 15's reader. Two kinds, in this order:
-    - **Acronyms first.** Hovering an acronym anywhere in the paper shows
-      what it stands for and the page that said so (Enter or a click goes
-      there, Alt+← back). Needs: the definitions found in the paper's own
-      text, with no model ("Long Form (LF)" and "LF (Long Form)", as the
-      Schwartz–Hearst rule does), once per paper and kept in the state
-      folder beside the OCR copy; the word under the pointer from the
-      page's text layer; the agent only for one the paper never defines,
-      said as a guess. A key for the keyboard (show every acronym on the
-      page at once?) to decide.
+    - ~~**Acronyms first.**~~ *built 2026-11-16* (`docs/files.md`,
+      "Acronyms, hovered"; `longhand-read acronyms`,
+      `tests/test_acronyms.py`, live checks in `tests/page/run.py`).
+      Hovering one shows what it stands for and its page; a click or Enter
+      goes there, lit a moment, and the page's back key (`Ctrl+[`, not
+      Alt+←, which moves between panes) returns. Found with no model by
+      Schwartz–Hearst, plus a list of abbreviations as IEEE papers print
+      them, and two checks found on the thesis papers (no dot in a short
+      form; the long form's words start with its letters, the last aside).
+      One never spelled out says so, and Enter asks the paper's chat, as a
+      guess. The keyboard's key, decided while building: `a` lists the
+      paper's acronyms, narrowing as typed, every one underlined on the
+      pages while it is open. Tried on eleven papers in the thesis
+      folders: right on the English ones; the German one finds few, its
+      long forms being compound words.
     - **Then the argument, wired.** Passages tied together (claim →
       evidence → conclusion, "this answers that") so how the paper builds
       up can be seen. Needs a grilling first: who draws the wires (the
@@ -943,16 +951,18 @@ this list, with *Open, in order* above. Each says why it waits.
   Node from a copy fetched from npm (pin a version at least two weeks old;
   it released almost daily in October 2026). Revisit when a note has a
   diagram.
-- **The rest of the Page.qml split** (item 4): the note sheet, the logic
-  into tested `.js` libraries, one deadline-store parser for both plugins.
-  Install by symlink is out (Omarchy refuses symlinks).
-- **A project as one continuous page** (item 5).
+- **The rest of the Page.qml split** (item 4): the note sheet's view (see
+  above). The logic went into tested `.js` libraries and the one
+  deadline-store reader (`Store.js`) was built, 2026-10-30. Install by
+  symlink is out (Omarchy refuses symlinks).
+- **A project as one continuous page** (item 5): its page is built,
+  read-only (2026-11-16); editing in place is what waits.
 - **Later, by the student's word:** see the paragraph above (study mode,
   phone capture, external reading, history, a daily counter).
 - **Small gaps noticed while building (2026-10-18):**
-  - dotted dates ("12.11") are not read, after "by" or "on" alike (`Dates.js`);
-  - scanned PDFs (9 of 67 in Downloads) have no text, so the agent cannot
-    read them — no OCR;
+  - ~~dotted dates ("12.11") are not read~~ *read since 2026-11-15* (item 16);
+  - ~~scanned PDFs have no text~~ *read by OCR since 2026-11-15* (item 15,
+    step 5: `r` in the reader);
   - the installed `longhand.pomo` plugin is not in this repo and still has
     the bare `Color` fallback Qt 6.12 broke (only used without a bar).
 
@@ -1223,6 +1233,11 @@ from 2026-09/10 and still stand.
   the dashboard; and on HEAD itself, "also when written by rename". Under
   load the live suite is flaky in its waits; a failure is real when it
   repeats in the same place.
+- **Acronyms, hovered** (built 2026-11-16, item 18's first half): is a
+  tip read while reading, or is `a`'s list the way in? Watch for a wrong
+  long form (Schwartz–Hearst takes the shortest that fits: "EDA =
+  electrodermal" where the paper wrote just that), for a paper's acronyms
+  missed, and whether asking the chat about one never spelled out is used.
 
 ### Decided against
 

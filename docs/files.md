@@ -597,6 +597,33 @@ block, `table` rows.
   walk the three as one, `Enter` opens a paper where it was left. A
   project's PDF documents open in this reader too.
 
+- **Acronyms, hovered** (2026-11-16, plan.md item 18, its first half). "Even
+  though it was mentioned on page 1, by page 6 I will have forgotten it."
+  `longhand-read acronyms` finds what a paper spells out, with no model, by
+  the Schwartz–Hearst rule: "heart rate variability (HRV)" and "the WHO
+  (World Health Organization)", a plural kept without its s (LLMs → LLM), a
+  word broken across lines joined again, and a list of abbreviations (the
+  short form alone, its long form beside it, as IEEE papers print them).
+  Two checks of its own after a German paper fooled it: never a dot in the
+  short form (initials), and every word of the long form, small words
+  aside, starts with one of the short form's letters — but the last, which
+  may trail ("skin conductance response frequency (SCR)"). An acronym the
+  paper never spells out is listed too when written twice in running text,
+  never a heading in capitals, a word also written small ("STRESS" in a
+  running head), nor a name in the references. Every place each is written
+  comes with it (in "CNN-based" only its letters), kept in the state folder
+  (`reading/acronyms/`, by the file's size and time), so a paper is read
+  once — about a tenth of a second.
+  In the reader, the pointer resting on one shows a tip: the acronym, what
+  it stands for, and its page; a click or `Enter` goes there, the words lit
+  a moment, and the page's back key (`Ctrl+[`) returns to where it was read
+  (said in the foot while it can). One the paper never spells out says so;
+  a click or `Enter` asks the paper's chat what it stands for, as a guess —
+  never by hovering, and never for a private PDF. `a` lists them all,
+  narrowing as letters or words are typed (`↑↓ Enter Esc`), and while the
+  list is open every acronym on the pages is underlined: the keyboard's way
+  to them.
+
 **Not yet:** a two-column paper fitted one column at a time; a reading view
 (its text reflowed in the page's own face).
 

@@ -12,7 +12,7 @@ in your session, your windows and rules are not touched, and the private
 Hyprland is stopped when it is done.
 
 Run: python3 tests/page/shots.py OUT                         every scene
-     python3 tests/page/shots.py OUT --scene dashboard        one of: dashboard, note, day, keys, chat
+     python3 tests/page/shots.py OUT --scene dashboard        one of: dashboard, note, day, keys, chat, project, acronyms
      python3 tests/page/shots.py OUT --order date             the dashboard's order (ask, course, date)
      python3 tests/page/shots.py OUT --root DIR               draw another checkout (a variant study)
      python3 tests/page/shots.py OUT --env NAME=VALUE         an environment variable for the page
@@ -225,6 +225,37 @@ def scenes(m, p, out, which):
         p.call("projectOpenRow")
         time.sleep(2.5)
         shot("project-3")
+    if which in ("all", "acronyms"):
+        # Acronyms in a paper (plan.md item 18): one hovered, then the list.
+        sys.path.insert(0, str(HERE.parent))
+        from test_read import pdf as lined_pdf
+        lined_pdf(p.vault / "Papers" / "Stress on bikes.pdf", [[
+            "Cyclists wore a wristband that read their heart rate",
+            "variability (HRV) and electrodermal activity (EDA) while",
+            "riding through the city, and a GPS logger kept the route.",
+            "Moments of stress (MOS) were found where the EDA rose and",
+            "the HRV fell together. A large language model (LLM) wrote",
+            "nothing here. Each MOS was placed on the route by its GPS",
+            "time, and the HRV around it was compared with the HRV of",
+            "the same rider on a quiet street."]])
+        p.call("openFile", "Papers/Stress on bikes.pdf", "false")
+        ac = lambda: json.loads(p.call("pdfAcronyms"))
+        p.wait(lambda: len(ac()["list"]) >= 4, 10)
+        spot = [x for x in ac()["spots"][0] if x["a"] == "MOS"][-1]["r"]
+        p.call("pdfHover", "0", str(spot[0] + spot[2] / 2), str(spot[1] + spot[3] / 2))
+        p.wait(lambda: ac()["tip"], 5)
+        shot("acronyms-0")
+        spot = [x for x in ac()["spots"][0] if x["a"] == "GPS"][-1]["r"]
+        p.call("pdfHover", "0", "400", "500")
+        p.wait(lambda: not ac()["tip"], 5)
+        p.call("pdfHover", "0", str(spot[0] + spot[2] / 2), str(spot[1] + spot[3] / 2))
+        p.wait(lambda: ac()["tip"], 5)
+        shot("acronyms-1")
+        p.call("pdfHover", "0", "400", "500")
+        p.call("pdfKey", 0x41, 0)           # a: the list
+        p.wait(lambda: ac()["listing"], 5)
+        shot("acronyms-2")
+        p.call("pdfKey", 0x01000000, 0)
     if which in ("all", "keys"):
         p.call("keys")
         shot("keys-0")
@@ -235,7 +266,7 @@ def scenes(m, p, out, which):
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("out", type=pathlib.Path)
-    ap.add_argument("--scene", default="all", choices=["all", "dashboard", "note", "day", "keys", "chat", "project"])
+    ap.add_argument("--scene", default="all", choices=["all", "dashboard", "note", "day", "keys", "chat", "project", "acronyms"])
     ap.add_argument("--order", default="ask", choices=["ask", "course", "date"])
     ap.add_argument("--root", type=pathlib.Path, default=HERE.parent.parent)
     ap.add_argument("--env", action="append", default=[])

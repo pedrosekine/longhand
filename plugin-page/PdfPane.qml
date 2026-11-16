@@ -30,6 +30,14 @@ import "PdfMarks.js" as Marks
 // `longhand-read`, which also finds its words on the page again and hands
 // back the rectangles drawn here, over Qt's own page (a layer put into each
 // of its page delegates, which follows the page the delegate holds).
+//
+// Acronyms (plan.md item 18, 2026-11-16): `longhand-read acronyms` finds,
+// once per paper, what each acronym stands for where the paper spells it
+// out, and every place each is written. Hovered, one says so and on which
+// page; a click or Enter goes there (the words lit a moment), and the
+// page's back key returns to where it was read. One the paper never spells
+// out says so, and Enter asks the paper's chat, as a guess. `a` lists them
+// all, every one underlined on the pages while the list is open.
 Item {
   id: pane
   required property Item page
@@ -37,6 +45,7 @@ Item {
   property alias keysRef: keys
   property alias findRef: findField
   property alias noteRef: noteField
+  property alias acroFieldRef: acroField
   property real zoom: 1                 // over the column's width
   property bool finding: false
   readonly property var view: loader.item ? loader.item.view : null
@@ -96,6 +105,117 @@ Item {
     if (tag) { pane.readRun(["tag", "--tag", tag]); pane.tagSaid = "#" + tag; tagSaidTimer.restart(); page.used("pdf", "project") }
     keys.forceActiveFocus()
   }
+  // The paper's acronyms (longhand-read acronyms): short → { short, long,
+  // page, rects, defined }, and where each is written, page → [{ r, a }].
+  property var acro: ({ byShort: {}, list: [], spots: {} })
+  property var hoverAcro: null          // { a, item, page }: the one under the pointer
+  property bool acroTip: false          // its tip shown (a moment after the pointer stops)
+  property bool acroListing: false      // `a`: the list open, every acronym underlined
+  property int acroFocus: 0
+  property var jumpBack: null           // where a jump to a definition left from
+  readonly property var acroChoices: {
+    var q = acroField.text.trim().toLowerCase()
+    return pane.acro.list.filter(function (x) {
+      return q === "" || x.short.toLowerCase().indexOf(q) === 0 || (x.long || "").toLowerCase().indexOf(q) >= 0
+    }).sort(function (a, b) {
+      // What starts with the letters typed first, then those spelled out, then by their letters (Qt's sort is not
+      // stable, so the order is said whole).
+      var sa = a.short.toLowerCase().indexOf(q) === 0 ? 0 : 1, sb = b.short.toLowerCase().indexOf(q) === 0 ? 0 : 1
+      if (sa !== sb) return sa - sb
+      if (a.defined !== b.defined) return a.defined ? -1 : 1
+      return a.short.toLowerCase() < b.short.toLowerCase() ? -1 : a.short.toLowerCase() > b.short.toLowerCase() ? 1 : 0
+    })
+  }
+  function acroRead(o) {
+    var by = {}, list = []
+    ;(o.acronyms || []).forEach(function (x) { by[x.short] = { short: x.short, long: x.long, page: x.page, rects: x.rects, defined: true }; list.push(by[x.short]) })
+    ;(o.undefined || []).forEach(function (x) { by[x.short] = { short: x.short, long: "", page: x.page, count: x.count, defined: false }; list.push(by[x.short]) })
+    pane.acro = { byShort: by, list: list, spots: o.spots || {} }
+  }
+  function esc(t) { return String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") }
+  function acroOn(index) { return pane.acro.spots[String(index)] || [] }
+  // Is the spot `r` on page `index` (from 0) the place the acronym is spelled out?
+  function acroIsDef(a, index, r) {
+    var d = pane.acro.byShort[a]
+    if (!d || !d.defined || d.page - 1 !== index) return false
+    var cx = r[0] + r[2] / 2, cy = r[1] + r[3] / 2
+    return d.rects.some(function (q) { return cx >= q[0] && cx <= q[0] + q[2] && cy >= q[1] && cy <= q[1] + q[3] })
+  }
+  function acroHover(a, item, index) {
+    pane.hoverAcro = { a: a, item: item, page: index }
+    acroLeaveTimer.stop()
+    if (pane.acroTip) return
+    acroShowTimer.restart()
+  }
+  function acroLeave(item) {
+    if (!pane.hoverAcro || pane.hoverAcro.item !== item) return
+    acroLeaveTimer.restart()
+  }
+  Timer {
+    id: acroShowTimer
+    interval: 250
+    onTriggered: {
+      var t = pane.table()
+      pane.acroTipY = t ? t.contentY : 0
+      pane.acroTip = pane.hoverAcro !== null
+    }
+  }
+  // A scroll takes the word from under the tip: it goes. Not the view
+  // settling a pixel or two after a jump (2026-11-16: it let go of the
+  // acronym hovered just after End, so Enter did nothing).
+  property real acroTipY: 0
+  function acroScrolled() {
+    var t = pane.table()
+    if (!pane.acroTip || !t || Math.abs(t.contentY - pane.acroTipY) < page.sp(12)) return
+    pane.acroTip = false
+    pane.hoverAcro = null
+  }
+  Timer { id: acroLeaveTimer; interval: 180; onTriggered: { pane.hoverAcro = null; pane.acroTip = false } }
+  // To where the paper spells it out: the place read now kept for the back
+  // key, the words lit a moment. One it never spells out: its chat asked.
+  function acroGo(a) {
+    var d = pane.acro.byShort[a]
+    if (!d) return
+    pane.hoverAcro = null
+    pane.acroTip = false
+    if (!d.defined) { page.paper.askAcronym(a); return }
+    var box = { page: d.page - 1, rects: d.rects }
+    pane.jumpBack = pane.here()
+    pane.flashMissed = ""
+    pane.flashBoxes = [box]
+    pane.goToBox(box)
+    flashTimer.restart()
+    keys.forceActiveFocus()
+    page.used("pdf", "acronym")
+  }
+  function jumpReturn() {
+    var p = pane.jumpBack
+    pane.jumpBack = null
+    if (!p || !pane.view || !loader.item) return
+    var h = loader.item.doc.pagePointSize(p.page).height
+    pane.view.goToLocation(p.page, Qt.point(0, p.frac * h + 10 / pane.view.renderScale), 0)
+    pane.alignSoon()
+    page.used("pdf", "acronym-back")
+  }
+  function openAcronyms() {
+    if (pane.acro.list.length === 0) { pane.readError = "no acronyms found in this paper"; return }
+    pane.acroListing = true
+    pane.acroFocus = 0
+    acroField.text = ""
+    acroField.forceActiveFocus()
+    page.used("pdf", "acronyms")
+  }
+  // Enter in the list: the row chosen, gone to.
+  function acroPick() {
+    var c = pane.acroChoices[pane.acroFocus]
+    pane.closeAcronyms()
+    if (c) pane.acroGo(c.short)
+  }
+  function closeAcronyms() {
+    pane.acroListing = false
+    keys.forceActiveFocus()
+  }
+
   // Words the agent quoted, shown where they are for a moment (never kept).
   property var flashBoxes: []
   property string flashMissed: ""
@@ -118,7 +238,10 @@ Item {
     pane.dressed = []
     pane.picked = ""; pane.lastMade = ""; pane.readError = ""; pane.noting = false; noteField.text = ""
     pane.readQueue = []
+    pane.acro = ({ byShort: {}, list: [], spots: {} })
+    pane.hoverAcro = null; pane.acroTip = false; pane.acroListing = false; pane.jumpBack = null
     if (pane.rel !== "" && pane.rel.charAt(0) !== "/") pane.readRun(["state"])
+    if (pane.rel !== "") pane.readRun(["acronyms"])
     Qt.callLater(pane.arrive)
   }
 
@@ -240,7 +363,7 @@ Item {
   Connections {
     target: pane.settled ? pane.table() : null
     ignoreUnknownSignals: true
-    function onContentYChanged() { keepTimer.restart(); Qt.callLater(pane.dress) }
+    function onContentYChanged() { keepTimer.restart(); Qt.callLater(pane.dress); pane.acroScrolled() }
   }
   FileView {
     id: placesFile
@@ -282,6 +405,7 @@ Item {
     var o = null
     try { o = JSON.parse(out) } catch (e) { o = null }
     if (!o || o.pdf !== pane.rel) return
+    if (o.acronyms !== undefined) { pane.acroRead(o); return }
     if (o.found !== undefined && o.marks === undefined) { pane.flashDone(o); return }
     if (pane.awaitingMark) {
       var before = (pane.read.marks || []).map(function (m) { return m.id })
@@ -473,7 +597,7 @@ Item {
         if (ocrProc.forRel !== pane.rel) return
         // The state at the end has `ocr` too (the copy's path): it is told
         // apart by `pdf`.
-        if (o.pdf === pane.rel) { pane.ocrProgress = null; pane.read = o }
+        if (o.pdf === pane.rel) { pane.ocrProgress = null; pane.read = o; pane.readRun(["acronyms"]) }
         else if (o.ocr && typeof o.ocr === "object") pane.ocrProgress = o.ocr
       }
     }
@@ -570,8 +694,23 @@ Item {
     var now = Date.now(), t = pane.lastTap
     pane.lastTap = { at: now, index: index, x: x, y: y }
     if (t && now - t.at < 80 && t.index === index && Math.abs(t.x - x) < 2 && Math.abs(t.y - y) < 2) return
-    pane.picked = Marks.pick(pane.read.marks || [], index, x, y, pane.picked, 1.5 / Math.max(0.01, s))
-    keys.forceActiveFocus()
+    pane.tapPick = Marks.pick(pane.read.marks || [], index, x, y, pane.picked, 1.5 / Math.max(0.01, s))
+    Qt.callLater(pane.settleTap)
+  }
+  // A click heard by a mark and by an acronym inside it is one click: the
+  // acronym's (its definition), never both. Settled once both have heard it.
+  property var tapPick: undefined
+  property string tapAcro: ""
+  function acroTap(a) {
+    pane.tapAcro = a
+    Qt.callLater(pane.settleTap)
+  }
+  function settleTap() {
+    var a = pane.tapAcro, p = pane.tapPick
+    pane.tapAcro = ""
+    pane.tapPick = undefined
+    if (a !== "") { pane.acroGo(a); return }
+    if (p !== undefined) { pane.picked = p; keys.forceActiveFocus() }
   }
   function remove() {
     if (pane.picked === "") return false
@@ -662,6 +801,38 @@ Item {
           }
         }
       }
+      // The acronyms written on this page: hovered, each says what it
+      // stands for; underlined while hovered, and all while the list is open.
+      Repeater {
+        model: pane.acroOn(sheet.index)
+        delegate: Item {
+          id: spot
+          required property var modelData
+          readonly property var def: pane.acro.byShort[modelData.a] || null
+          readonly property bool lit: pane.hoverAcro !== null && pane.hoverAcro.item === spot
+          x: modelData.r[0] * sheet.s
+          y: modelData.r[1] * sheet.s
+          width: modelData.r[2] * sheet.s
+          height: modelData.r[3] * sheet.s
+          Rectangle {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: -Math.max(1, sheet.s)
+            height: Math.max(1, sheet.s * 0.7)
+            color: spot.def && spot.def.defined ? page.accent : page.dim
+            opacity: spot.lit ? 0.9 : pane.acroListing ? 0.5 : 0
+          }
+          HoverHandler {
+            cursorShape: Qt.PointingHandCursor
+            onHoveredChanged: hovered ? pane.acroHover(spot.modelData.a, spot, sheet.index) : pane.acroLeave(spot)
+          }
+          TapHandler {
+            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad | PointerDevice.Stylus
+            onTapped: pane.acroTap(spot.modelData.a)
+          }
+        }
+      }
       // Words the agent quoted, lit a moment where they are.
       Repeater {
         model: pane.flashOn(sheet.index)
@@ -698,7 +869,11 @@ Item {
   }
 
   function key(event) {
+    // Back from a definition gone to, before the page's own back.
+    if (pane.jumpBack && Sc.hit(event, "linkBack")) { pane.jumpReturn(); return true }
     if (page.anywhereKey(event)) return true
+    if (pane.hoverAcro && Sc.hit(event, "pdfAcronymGo")) { pane.acroGo(pane.hoverAcro.a); return true }
+    if (Sc.hit(event, "pdfAcronyms")) { pane.openAcronyms(); return true }
     if (Sc.hit(event, "pdfMark")) return pane.mark("h")
     if (Sc.hit(event, "pdfQuestion")) return pane.mark("q")
     if (Sc.hit(event, "pdfNote")) { pane.startNote(); return true }
@@ -785,6 +960,159 @@ Item {
       var seq = Sc.fromEvent(event)
       if (seq === "Enter") { pane.saveNote(); event.accepted = true }
       else if (seq === "Esc") { pane.noting = false; keys.forceActiveFocus(); event.accepted = true }
+    }
+  }
+
+  // The tip of the acronym under the pointer.
+  Rectangle {
+    id: acroTipBox
+    readonly property var d: pane.hoverAcro ? pane.acro.byShort[pane.hoverAcro.a] || null : null
+    readonly property point at: {
+      pane.acroTip
+      if (!pane.hoverAcro || !pane.hoverAcro.item) return Qt.point(0, 0)
+      var it = pane.hoverAcro.item
+      return it.mapToItem(pane, 0, it.height)
+    }
+    readonly property bool here: !!(d !== null && pane.hoverAcro !== null && pane.hoverAcro.item
+      && pane.acroIsDef(d.short, pane.hoverAcro.page, pane.hoverAcro.item.modelData.r))
+    visible: pane.acroTip && d !== null
+    z: 4
+    width: Math.min(pane.width - page.sp(16), Math.max(acroTipLine.implicitWidth, acroTipMore.implicitWidth) + page.sp(20))
+    height: acroTipCol.implicitHeight + page.sp(14)
+    x: Math.max(page.sp(8), Math.min(pane.width - width - page.sp(8), at.x - page.sp(10)))
+    y: at.y + page.sp(6) + height > pane.height - foot.height ? at.y - (pane.hoverAcro && pane.hoverAcro.item ? pane.hoverAcro.item.height : 0) - height - page.sp(6) : at.y + page.sp(6)
+    radius: Style.cornerRadius
+    color: page.sunk
+    border.width: 1
+    border.color: Qt.rgba(page.foreground.r, page.foreground.g, page.foreground.b, 0.16)
+    Column {
+      id: acroTipCol
+      x: page.sp(10)
+      y: page.sp(7)
+      spacing: page.sp(3)
+      Text {
+        id: acroTipLine
+        width: Math.min(implicitWidth, pane.width - page.sp(36))
+        wrapMode: Text.WordWrap
+        textFormat: Text.StyledText
+        text: !acroTipBox.d ? "" : "<b>" + acroTipBox.d.short + "</b>&nbsp;&nbsp;"
+          + (acroTipBox.d.defined ? pane.esc(acroTipBox.d.long) : "<i>not spelled out in this paper</i>")
+        color: page.foreground
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.bodySmall)
+      }
+      Text {
+        id: acroTipMore
+        textFormat: Text.PlainText
+        text: !acroTipBox.d ? ""
+          : !acroTipBox.d.defined ? (page.paper.askable ? "Enter or a click asks the paper's chat, as a guess" : "")
+          : acroTipBox.here ? "spelled out here"
+          : "p. " + acroTipBox.d.page + " · Enter or a click goes there"
+        visible: text !== ""
+        color: page.faint
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.caption)
+      }
+    }
+  }
+
+  // `a`: the paper's acronyms, narrowing as letters are typed; Enter goes
+  // to where the one chosen is spelled out.
+  Rectangle {
+    id: acroList
+    visible: pane.acroListing
+    z: 3
+    anchors.bottom: foot.top
+    anchors.bottomMargin: page.sp(6)
+    anchors.right: parent.right
+    width: Math.min(parent.width, page.sp(460))
+    height: acroColumn.implicitHeight + page.sp(16)
+    radius: Style.cornerRadius
+    color: page.palette.background
+    border.width: 1
+    border.color: page.accent
+    Column {
+      id: acroColumn
+      x: page.sp(10)
+      y: page.sp(8)
+      width: parent.width - page.sp(20)
+      spacing: page.sp(4)
+      Text {
+        width: parent.width
+        textFormat: Text.PlainText
+        wrapMode: Text.WordWrap
+        text: pane.acro.list.length + " acronyms, underlined on the pages · Enter goes to where it is spelled out · Esc"
+        color: page.dim
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.caption)
+      }
+      TextField {
+        id: acroField
+        width: parent.width
+        placeholderText: "an acronym, or words of what it stands for"
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.bodySmall)
+        foreground: page.foreground
+        Keys.priority: Keys.BeforeItem
+        Keys.onPressed: function (event) {
+          if (page.anywhereKey(event)) { event.accepted = true; return }
+          var seq = Sc.fromEvent(event)
+          if (seq === "Enter") { pane.acroPick(); event.accepted = true }
+          else if (seq === "Esc") { pane.closeAcronyms(); event.accepted = true }
+          else if (seq === "Up") { pane.acroFocus = Math.max(0, pane.acroFocus - 1); event.accepted = true }
+          else if (seq === "Down") { pane.acroFocus = Math.min(pane.acroChoices.length - 1, pane.acroFocus + 1); event.accepted = true }
+        }
+        onTextChanged: pane.acroFocus = 0
+      }
+      ListView {
+        id: acroRows
+        width: parent.width
+        height: Math.min(contentHeight, page.sp(300))
+        clip: true
+        model: pane.acroChoices
+        currentIndex: pane.acroFocus
+        onCurrentIndexChanged: positionViewAtIndex(currentIndex, ListView.Contain)
+        delegate: Rectangle {
+          required property var modelData
+          required property int index
+          width: acroRows.width
+          height: acroRowText.implicitHeight + page.sp(4)
+          radius: Style.cornerRadius
+          color: pane.acroFocus === index ? Style.selectedFill : "transparent"
+          Text {
+            id: acroRowText
+            anchors.left: parent.left
+            anchors.leftMargin: page.sp(4)
+            anchors.right: acroRowPage.left
+            anchors.rightMargin: page.sp(8)
+            anchors.verticalCenter: parent.verticalCenter
+            elide: Text.ElideRight
+            textFormat: Text.StyledText
+            text: "<b>" + modelData.short + "</b>&nbsp;&nbsp;" + (modelData.defined ? pane.esc(modelData.long) : "<i>not spelled out</i>")
+            color: modelData.defined ? page.foreground : page.dim
+            font.family: page.fontFamily
+            font.styleName: page.fontStyle
+            font.pixelSize: page.fs(Style.font.bodySmall)
+          }
+          Text {
+            id: acroRowPage
+            anchors.right: parent.right
+            anchors.rightMargin: page.sp(4)
+            anchors.verticalCenter: parent.verticalCenter
+            textFormat: Text.PlainText
+            text: modelData.defined ? "p. " + modelData.page : "ask"
+            color: page.faint
+            font.family: page.fontFamily
+            font.styleName: page.fontStyle
+            font.pixelSize: page.fs(Style.font.caption)
+          }
+          MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: { pane.closeAcronyms(); pane.acroGo(parent.modelData.short) } }
+        }
+      }
     }
   }
 
@@ -903,9 +1231,12 @@ Item {
         + ((pane.read.tags || []).length > 0 ? " · " + pane.read.tags.map(function (x) { return "#" + x }).join(" ") : "")
         + (pane.tagSaid !== "" ? " (kept in its reading note)" : "")
         + (pane.read.unplaced > 0 ? ", " + pane.read.unplaced + " not found on its page" : "")
-        + "   " + (pane.selected() ? page.keyName("pdfMark") + " highlight · " + page.keyName("pdfQuestion") + " question"
+        + "   " + (pane.jumpBack ? page.keyName("linkBack") + " back to where you were · " : "")
+        + (pane.selected() ? page.keyName("pdfMark") + " highlight · " + page.keyName("pdfQuestion") + " question"
                    : pane.picked !== "" ? page.keyName("pdfMark") + "/" + page.keyName("pdfQuestion") + " its kind · " + page.keyName("pdfNote") + " a note · " + page.keyName("pdfRemove") + " remove"
-                   : (pane.markable ? "select words to mark them · " : "") + page.keyName("pdfOpen") + " opens it elsewhere")
+                   : (pane.markable ? "select words to mark them · " : "")
+                     + (pane.acro.list.length > 0 ? page.keyName("pdfAcronyms") + " acronyms · " : "")
+                     + page.keyName("pdfOpen") + " opens it elsewhere")
     color: pane.error !== "" || pane.readError !== "" ? page.urgent : page.faint
     font.family: page.fontFamily
     font.styleName: page.fontStyle

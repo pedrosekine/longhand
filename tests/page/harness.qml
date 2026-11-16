@@ -321,6 +321,28 @@ ShellRoot {
       return false
     }
     function keysToSidebar(): void { if (!page.sidebarOpen) page.toggleSidebar(); page.sidebarSpace = "time"; page.focusSidebar() }
+    // Acronyms (plan.md item 18): what the paper's are, the one hovered and
+    // its tip, the back key's place, the list.
+    function pdfAcronyms(): string {
+      var p = page.pdfItem
+      return JSON.stringify({ list: p.acro.list.map(function (x) { return x.short + "=" + (x.long || "?") }),
+        spots: [p.acroOn(0), p.acroOn(1), p.acroOn(2)], hover: p.hoverAcro ? p.hoverAcro.a : "", tip: p.acroTip,
+        back: p.jumpBack !== null, flash: p.flashBoxes.length, listing: p.acroListing,
+        choices: p.acroChoices.map(function (x) { return x.short }), page: p.current })
+    }
+    // The pointer resting on a page at (x, y) in its points, no button down.
+    function pdfHover(pageIndex: int, x: real, y: real): bool {
+      var p = page.pdfItem, s = p.view.renderScale
+      for (var i = 0; i < p.dressed.length; i++) {
+        var h = p.dressed[i]
+        if (!h || h.index !== pageIndex) continue
+        pointer.mouseMove(h.selection.parent, x * s, y * s)
+        return true
+      }
+      return false
+    }
+    function pdfAcroType(text: string): void { page.pdfItem.acroFieldRef.text = text }
+    function pdfAcroEnter(): void { page.pdfItem.acroPick() }
     function pdfWriteNote(text: string): void { page.pdfItem.noteRef.text = text; page.pdfItem.saveNote() }
     // Export as a PDF (ExportSheet.qml): the sheet as its keys see it.
     function exportState(): string {

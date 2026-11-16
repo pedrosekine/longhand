@@ -209,6 +209,17 @@ classes) are proposed in the dashboard for filing into the course's documents; n
 folder is ever listed. A course's documents are in its project in the
 sidebar; the agent sees their titles and can ask to read one.
 
+## Reading a paper
+
+A PDF opens in the note's place, where it was left. Select words with the
+mouse, then {key:pdfMark} keeps them as a highlight and {key:pdfQuestion}
+as a question, in the paper's reading note; {key:pdfNote} writes a note
+under one. The pointer resting on an acronym says what it stands for and
+on which page the paper spells it out; a click or {key:pdfAcronymGo} goes
+there, and {key:linkBack} comes back. {key:pdfAcronyms} lists the paper's
+acronyms. One the paper never spells out can be asked about in the
+paper's chat, the same way.
+
 ## Keys
 
 Every key can be moved: {key:keys} opens the list of keys ({key:keysHere}

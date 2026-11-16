@@ -91,6 +91,21 @@ Item {
     pp.marks = [id]
     pp.showChat()
   }
+  // An acronym the paper never spells out (plan.md item 18): asked in the
+  // paper's chat, as a guess. Asked because the person pressed for it, on
+  // the acronym, never by hovering.
+  function askAcronym(short) {
+    if (!pp.askable) { page.showHint(page.pdfItem.read.private ? "a private PDF is never sent to the agent" : "this PDF has no words to ask about"); return false }
+    if (!pp.room) page.openRoom("", true)
+    pp.marks = []
+    pp.listing = false
+    Qt.callLater(function () {
+      page.sendDay("What does “" + short + "” stand for in this paper? It never spells it out, so answer with your best guess and say that it is one.")
+      pp.showChat()
+    })
+    page.used("paper-talk", "acronym")
+    return true
+  }
   function pick(i) {
     var n = pp.rows.length
     pp.at = Math.max(-1, Math.min(n - 1, i))

@@ -307,6 +307,8 @@ var actions = [
   { id: "pdfQuestion", group: "pdf", places: ["pdf"], does: "Mark the words selected as a question; on a mark clicked, make it one", keys: ["Q"] },
   { id: "pdfNote", group: "pdf", places: ["pdf"], does: "A note under the mark clicked, else the last one made", keys: ["N"] },
   { id: "pdfRemove", group: "pdf", places: ["pdf"], does: "Remove the mark clicked, and its note", keys: ["X", "Del", "Backspace"] },
+  { id: "pdfAcronyms", group: "pdf", places: ["pdf"], does: "The paper's acronyms: each underlined on the pages, and a list to find one by its letters or words", keys: ["A"] },
+  { id: "pdfAcronymGo", group: "pdf", places: ["pdf"], does: "On an acronym under the pointer: to where the paper spells it out (back: the back key); one it never spells out, asked in the paper's chat", keys: ["Enter"] },
   { id: "pdfClose", group: "pdf", places: ["pdf"], does: "Let go of the mark clicked or the words selected; then close it, back to the note", keys: ["Esc"] },
   { id: "paperUp", group: "paper", places: ["paper"], does: "The mark above (the PDF goes to it)", keys: ["Up", "K"] },
   { id: "paperDown", group: "paper", places: ["paper"], does: "The mark below (the PDF goes to it)", keys: ["Down", "J"] },

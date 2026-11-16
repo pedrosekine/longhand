@@ -3270,6 +3270,59 @@ def checks() -> int:
         check(p.wait(lambda: not pd()["shown"] and pd()["label"] != "Reading.pdf" and json.loads(p.call("files"))["filePath"] == ""
                      and "therapy appointment" in p.call("text")),
               f"Esc closes it, back to the note under it ({pd()})")
+        # Acronyms (plan.md item 18): hovered, one says what it stands for;
+        # Enter goes to where the paper spells it out, Ctrl+[ comes back; `a`
+        # lists them; one never spelled out is asked in the paper's chat.
+        from test_read import pdf as lined_pdf
+        lined_pdf(course / "Acronyms.pdf", [
+            ["We measured heart rate variability (HRV) on bikes."],
+            ["Nothing on this page but words."],
+            ["HRV fell as the GPU ran.", "Another GPU ran too."]])
+        ac = lambda: json.loads(p.call("pdfAcronyms"))
+        p.call("openFile", "Studies/Course A/Acronyms.pdf", "false")
+        check(p.wait(lambda: pd()["settled"] and "HRV=heart rate variability" in ac()["list"] and "GPU=?" in ac()["list"]),
+              f"a paper's acronyms are read on opening: spelled out, and never ({ac()})")
+        p.call("pdfKey", 0x01000011, 0)                    # End
+        p.wait(lambda: ac()["page"] == 2)
+
+        def rest_on(a):
+            # The pointer resting on it, off it first; again if the view
+            # laid its page out anew under the pointer meanwhile.
+            for _ in range(6):
+                r = next(x for x in ac()["spots"][2] if x["a"] == a)["r"]
+                p.call("pdfHover", "2", "300", "400")
+                p.wait(lambda: ac()["hover"] == "", 2)
+                p.call("pdfHover", "2", str(r[0] + r[2] / 2), str(r[1] + r[3] / 2))
+                if p.wait(lambda: ac()["hover"] == a and ac()["tip"], 2):
+                    return True
+            return False
+        check(rest_on("HRV"), f"hovered, HRV says what it stands for ({ac()})")
+        read_at = pd()["at"]
+        same = lambda a: a and a["page"] == read_at["page"] and abs(a["frac"] - read_at["frac"]) < 0.05
+        p.call("pdfKey", KEY_RETURN, 0)
+        check(p.wait(lambda: ac()["page"] == 0 and ac()["back"] and ac()["flash"] == 1 and not ac()["tip"]),
+              f"Enter: to page 1, where it is spelled out, lit a moment ({ac()})")
+        p.call("pdfKey", KEY_LBRACKET, CTRL)
+        check(p.wait(lambda: same(pd()["at"]) and not ac()["back"] and pd()["shown"]),
+              f"Ctrl+[: back to where it was read, the PDF still open ({pd()['at']}, read at {read_at})")
+        p.call("pdfKey", 0x41, 0)                           # a
+        p.call("pdfAcroType", "heart")
+        check(p.wait(lambda: ac()["listing"] and ac()["choices"] == ["HRV"]),
+              f"a: the paper's acronyms, narrowed by the words they stand for ({ac()})")
+        p.call("pdfAcroEnter")
+        check(p.wait(lambda: not ac()["listing"] and ac()["page"] == 0 and ac()["back"]), f"…Enter goes to it ({ac()})")
+        p.call("pdfKey", KEY_LBRACKET, CTRL)
+        check(p.wait(lambda: same(pd()["at"])), f"…and back again ({pd()['at']})")
+        check(rest_on("GPU"), f"one never spelled out is hovered too ({ac()})")
+        p.call("pdfKey", KEY_RETURN, 0)
+        check(p.wait(lambda: pr()["room"] and "“GPU”" in p.call("dayTurns"), 20),
+              f"…and Enter asks the paper's chat what it stands for, as a guess ({p.call('dayTurns')[:200]})")
+        p.call("dayKey", KEY_ESC, 0)
+        p.wait(lambda: pr()["list"])
+        p.call("paperKey", KEY_ESC, 0)
+        p.wait(lambda: not pr()["shown"])
+        p.call("pdfKey", KEY_ESC, 0)
+        p.wait(lambda: not pd()["shown"])
         # It opens again where it was left (PdfPlaces.js, pdfs.json): the
         # last page of four, then nothing kept once back at the top.
         KEY_HOME, KEY_END = 0x01000010, 0x01000011

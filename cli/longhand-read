@@ -35,6 +35,7 @@ nowhere is reported as not placed, never dropped.
     longhand-read reading [--days N]                   (papers read lately and their waiting questions, for the agent)
     longhand-read papers --tag T                       (a project's papers, by their reading notes' tags)
     longhand-read ocr    --pdf P                       (a scan read into a copy with words; one line a page)
+    longhand-read acronyms --pdf P                     (what its acronyms stand for, and where each is written)
     longhand-read move   --pdf P --to NEW               (moved, with its note, conversation and place)
 
 P is the PDF's path in the vault (or a whole path). Pages are counted from
@@ -361,6 +362,284 @@ def clean_quote(text: str) -> str:
     text = re.sub("[\ufffe\u00ad]\\s*", "", text)
     text = re.sub(r"(\w)-\r?\n(\w)", r"\1\2", text)
     return re.sub(r"\s+", " ", text).strip()
+
+
+# ---------------------------------------------------------- acronyms
+#
+# Hover a paper to have it explained (plan.md, item 18, 2026-11-16): an
+# acronym anywhere in the paper says what it stands for and the page that
+# said so. The definitions are found in the paper's own text with no model,
+# by the Schwartz–Hearst rule ("Long Form (LF)", and "LF (Long Form)" when
+# the parenthesis holds several words): each letter of the short form,
+# taken backwards, is found in the long form, the first at a word's start.
+# Kept in the state folder by the file's size and time, beside the scan's
+# copy, so a paper is read for them once.
+
+ACRO_VERSION = 4
+OPEN_PUNCT = "([{\"'“‘"
+CLOSE_PUNCT = ")]}\"'”’.,;:!?"
+ROMAN_RE = re.compile(r"^[IVXLCDM]+$")
+
+
+# Small words a long form may hold that its short form leaves out.
+STOPWORDS = {"of", "and", "the", "in", "for", "on", "to", "a", "an", "with", "by", "at", "from", "&",
+             "der", "die", "das", "und", "für", "mit", "von", "vom", "zur", "zum", "im", "auf", "des", "den",
+             "dem", "ein", "eine", "de", "la", "le", "et", "du"}
+# A heading that starts the paper's references: names in capitals there are
+# not acronyms.
+REFERENCES = {"references", "reference", "bibliography", "literatur", "literaturverzeichnis", "quellen",
+              "quellenverzeichnis", "works cited", "referenzen", "bibliographie"}
+
+
+def short_ok(s: str) -> bool:
+    """Could `s` be a short form: one word, 2 to 10 characters, starting
+    with a letter or digit, with two capitals (or one and a digit). Never
+    with a dot: "J.M." is someone's initials."""
+    if not (2 <= len(s) <= 10) or not s[0].isalnum() or " " in s:
+        return False
+    if not all(c.isalnum() or c in "-/&" for c in s):
+        return False
+    caps = sum(c.isupper() for c in s)
+    digits = any(c.isdigit() for c in s)
+    return caps >= 2 or (caps >= 1 and digits)
+
+
+def canonical(s: str) -> str:
+    """The short form without a plural's s: LLMs → LLM."""
+    if len(s) > 2 and s.endswith("s") and short_ok(s[:-1]) and s[:-1].replace("-", "").isupper():
+        return s[:-1]
+    return s
+
+
+def best_long_form(short: str, long: str) -> str | None:
+    """Schwartz & Hearst (2003): the shortest end of `long` that holds the
+    letters of `short` in order, the first at the start of a word."""
+    s, li = len(short) - 1, len(long) - 1
+    while s >= 0:
+        c = short[s].lower()
+        if not c.isalnum():
+            s -= 1
+            continue
+        while (li >= 0 and long[li].lower() != c) or (s == 0 and li > 0 and long[li - 1].isalnum()):
+            li -= 1
+        if li < 0:
+            return None
+        li -= 1
+        s -= 1
+    return long[long.rfind(" ", 0, li + 1) + 1:]
+
+
+def joined(words: list[dict]) -> list[tuple[str, list[int]]]:
+    """A page's words as tokens, a word broken across lines by a hyphen
+    joined again ("lan-" "guage" → "language"); each with the words it is."""
+    out: list[tuple[str, list[int]]] = []
+    i = 0
+    while i < len(words):
+        t, idx = words[i]["t"], [i]
+        while (t.endswith("-") and len(t) > 1 and i + 1 < len(words) and words[i + 1]["l"] != words[i]["l"]
+               and words[i + 1]["t"][:1].islower()):
+            i += 1
+            t, idx = t[:-1] + words[i]["t"], idx + [i]
+        out.append((t, idx))
+        i += 1
+    return out
+
+
+def long_ok(short: str, long: str) -> bool:
+    """Schwartz–Hearst's limits, and one more for languages that join words
+    (2026-11-16, a German paper: "Der Umstieg auf das Fahrrad … (DStGB)"):
+    each of the long form's words, small words aside, starts with a letter
+    the short form has — but the last, which may trail ("skin conductance
+    response frequency (SCR)")."""
+    n = len(long.split())
+    if not (len(long) > len(short) and short.lower() not in long.lower()
+            and 1 <= n <= min(len(short) + 5, len(short) * 2) and any(c.isalpha() for c in long)):
+        return False
+    if "@" in long or "://" in long:
+        return False
+    letters = {c.lower() for c in short if c.isalnum()}
+    words = [w.strip(OPEN_PUNCT + CLOSE_PUNCT) for w in long.split()]
+    content = [w for w in words if w and w.lower() not in STOPWORDS]
+    return all(w[0].lower() in letters for w in content[:-1])
+
+
+def definitions(pages: list[list[dict]]) -> dict:
+    """Every short form the paper spells out, the first time it does:
+    short → { short, long, page (from 1), rects (where it is spelled out) }."""
+    found: dict = {}
+    for pi, words in enumerate(pages):
+        toks = joined(words)
+        for ti, (t, idx) in enumerate(toks):
+            if not t.startswith("("):
+                continue
+            # The parenthesis: up to its close, at most eight words on.
+            inner, end = [], ti
+            for tj in range(ti, min(len(toks), ti + 8)):
+                inner.append(toks[tj][0])
+                end = tj
+                if ")" in toks[tj][0]:
+                    break
+            else:
+                continue
+            text = " ".join(inner)[1:]
+            text = text[:text.index(")")] if ")" in text else text
+            text = re.split(r"[;,]", text)[0].strip()
+            # Words before it, back to the sentence's start.
+            before: list[int] = []
+            for tk in range(ti - 1, -1, -1):
+                w = toks[tk][0]
+                if w[-1:] in ".;:!?)" and tk != ti - 1:
+                    break
+                before.insert(0, tk)
+                if len(before) >= 16:
+                    break
+            if not before:
+                continue
+            # "Long Form (LF)"
+            if short_ok(text):
+                short = text
+                window = before[-min(len(short) + 5, len(short) * 2):]
+                cand = " ".join(toks[k][0] for k in window).strip(OPEN_PUNCT + CLOSE_PUNCT)
+                long = best_long_form(short, cand)
+                if not (long and long_ok(short, long)):
+                    continue
+                # The long form is the window's end, word for word.
+                first, last = window[-len(long.split())], end
+            # "LF (Long Form)"
+            elif len(text.split()) > 1:
+                short = toks[before[-1]][0].strip(OPEN_PUNCT + CLOSE_PUNCT)
+                if not short_ok(short):
+                    continue
+                long = best_long_form(short, text)
+                first, last = before[-1], end
+                if not (long and long_ok(short, long) and len(long.split()) >= len(text.split()) - 1):
+                    long = None
+            else:
+                continue
+            if not long:
+                continue
+            key_ = canonical(short)
+            if key_ in found:
+                continue
+            ws = [w for k in range(first, last + 1) for w in toks[k][1]]
+            found[key_] = {"short": key_, "long": re.sub(r"\s+", " ", long).strip(OPEN_PUNCT + CLOSE_PUNCT),
+                           "page": pi + 1, "rects": rects(words, ws[0], ws[-1])}
+        # A list of abbreviations (an IEEE paper's nomenclature, 2026-11-16):
+        # a short form alone on its line, its long form on the same line to
+        # its right, read as two lines.
+        lines: dict[int, list[int]] = {}
+        for i, w in enumerate(words):
+            lines.setdefault(w["l"], []).append(i)
+        for l, idx in lines.items():
+            w = words[idx[0]]
+            short = w["t"].strip(OPEN_PUNCT + CLOSE_PUNCT)
+            if len(idx) != 1 or not short_ok(short) or canonical(short) in found:
+                continue
+            beside = [ix for m, ix in lines.items() if m != l and abs(words[ix[0]]["y0"] - w["y0"]) < 1.5
+                      and 0 < words[ix[0]]["x0"] - w["x1"] < 120]
+            if not beside:
+                continue
+            row = min(beside, key=lambda ix: words[ix[0]]["x0"])
+            long = " ".join(words[i]["t"] for i in row).strip(OPEN_PUNCT + CLOSE_PUNCT)
+            got = best_long_form(short, long)
+            if not got or len(got.split()) < len(long.split()) or not long_ok(short, long):
+                continue
+            found[canonical(short)] = {"short": canonical(short), "long": long, "page": pi + 1,
+                                       "rects": rects(words, idx[0], idx[0]) + rects(words, row[0], row[-1])}
+    return found
+
+
+def parts(t: str) -> list[tuple[str, int]]:
+    """A word's candidate tokens with where each starts in it: the word
+    stripped of its punctuation and possessive, and the pieces of a
+    compound ("LF-based", "CNN/RNN")."""
+    a = len(t) - len(t.lstrip(OPEN_PUNCT))
+    core = t[a:].rstrip(CLOSE_PUNCT)
+    core = re.sub(r"['’]s$", "", core)
+    out = [(core, a)]
+    if re.search(r"[-/]", core):
+        at = a
+        for piece in re.split(r"([-/])", core):
+            if piece not in ("-", "/") and piece:
+                out.append((piece, at))
+            at += len(piece)
+    return out
+
+
+def acronyms(pages: list[list[dict]]) -> dict:
+    """The paper's acronyms: those it spells out, those it never does
+    (written at least twice in running text, so a heading in capitals is
+    not one), and every place each is written, to be hovered."""
+    defs = definitions(pages)
+    spots: dict[str, list] = {}
+    loose: dict[str, list] = {}
+    in_refs = False
+    for pi, words in enumerate(pages):
+        lines: dict[int, bool] = {}
+        said: dict[int, list[str]] = {}
+        for w in words:
+            lines[w["l"]] = lines.get(w["l"], False) or any(c.islower() for c in w["t"])
+            said.setdefault(w["l"], []).append(w["t"])
+        # Only in the paper's later part: "2 Literature" may open a review.
+        refs_from = None if pi < len(pages) * 0.4 else next(
+            (l for l, ts in said.items() if " ".join(ts).strip(" .:0123456789").lower() in REFERENCES), None)
+        for w in words:
+            n = max(1, len(w["t"]))
+            width = w["x1"] - w["x0"]
+
+            def box(tok: str, start: int) -> list[float]:
+                # Its share of the word's box, by its letters.
+                return [round(w["x0"] + width * start / n, 2), round(w["y0"], 2),
+                        round(width * len(tok) / n, 2), round(w["y1"] - w["y0"], 2)]
+            cands = [(canonical(tok), tok, start) for tok, start in parts(w["t"])]
+            hit = next(((c, tok, start) for c, tok, start in cands if c in defs), None)
+            if hit:
+                spots.setdefault(str(pi), []).append({"r": box(hit[1], hit[2]), "a": hit[0]})
+                continue
+            if refs_from is not None and w["l"] >= refs_from:
+                in_refs = True
+            if in_refs or not lines[w["l"]]:
+                continue
+            for c, tok, start in cands:
+                if 2 <= len(c) <= 8 and c.isalnum() and c.isupper() and short_ok(c) and not ROMAN_RE.match(c):
+                    loose.setdefault(c, []).append((pi, box(tok, start)))
+                    break
+    # A word also written in small letters is a word set in capitals
+    # (a running head's "STRESS", an author's "MOSER"), not an acronym.
+    small = {key(w["t"]) for words in pages for w in words if not w["t"].isupper()}
+    undefined = []
+    for c, at in sorted(loose.items()):
+        if len(at) < 2 or c in defs or c.lower() in small:
+            continue
+        undefined.append({"short": c, "count": len(at), "page": at[0][0] + 1})
+        for pi, r in at:
+            spots.setdefault(str(pi), []).append({"r": r, "a": c})
+    listed = sorted(defs.values(), key=lambda d: d["short"].lower())
+    return {"acronyms": listed, "undefined": undefined, "spots": spots}
+
+
+def cmd_acronyms(cfg: dict, rel: str, path: Path) -> dict:
+    """The paper's acronyms, kept by the file's size and time (and its scan's
+    copy, once read)."""
+    st = path.stat()
+    copy = ocr_copy(path)
+    sig = f"{ACRO_VERSION}|{path.resolve()}|{st.st_size}|{st.st_mtime_ns}|{copy.is_file()}"
+    cached = CACHE / "acronyms" / (hashlib.sha1(str(path.resolve()).encode()).hexdigest() + ".json")
+    try:
+        c = json.loads(cached.read_text())
+        if c.get("sig") == sig:
+            return {"pdf": rel, **c["found"]}
+    except (OSError, ValueError, KeyError):
+        pass
+    found = acronyms(words_of(path))
+    try:
+        cached.parent.mkdir(parents=True, exist_ok=True)
+        tmp = cached.with_suffix(".tmp")
+        tmp.write_text(json.dumps({"sig": sig, "found": found}, ensure_ascii=False))
+        os.replace(tmp, cached)
+    except OSError:
+        pass
+    return {"pdf": rel, **found}
 
 
 # -------------------------------------------------------------- the note
@@ -1110,7 +1389,7 @@ def main() -> int:
     pp = sub.add_parser("papers")
     pp.add_argument("--tag", required=True)
     pp.add_argument("--dir", default="", help="the project's folder in the vault: its PDFs too, marked or not")
-    for name in ("state", "mark", "remove", "kind", "note", "tag", "find", "ocr", "move"):
+    for name in ("state", "mark", "remove", "kind", "note", "tag", "find", "ocr", "move", "acronyms"):
         p = sub.add_parser(name)
         p.add_argument("--pdf", required=True)
         if name == "move":
@@ -1148,6 +1427,10 @@ def main() -> int:
         print(json.dumps(cmd_move(cfg, a.pdf, a.to), ensure_ascii=False))
         return 0
     rel, path = rel_of(cfg, a.pdf)
+    if a.cmd == "acronyms":
+        # Read only: nothing settled or written in the vault.
+        print(json.dumps(cmd_acronyms(cfg, rel, path), ensure_ascii=False))
+        return 0
     if a.cmd != "find":
         settle(cfg, rel, path)
     if a.cmd == "ocr":
