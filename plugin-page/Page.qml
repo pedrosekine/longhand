@@ -995,6 +995,7 @@ Item {
   property bool projectOpen: false   // the margin is showing one project's notes
   property var sections: []          // [{ date, line, heading, title, sub, preview, open, done }]
   property string projectTag: ""
+  property string projectFolder: ""   // its folder in the vault (`projects/thesis_itu`), "" when none
   property string projectName: ""
   property int sectionFocus: 0
   // The project's filed documents above its sections (docs/agent.md, slice
@@ -1009,7 +1010,9 @@ Item {
     if (!root.projectOpen || root.projectTag === "") { root.projectPapers = []; return }
     if (projectPapersProc.running) { projectPapersAgain.restart(); return }
     projectPapersProc.tag = root.projectTag
+    // With the project's folder, its PDFs too, marked or not (2026-11-16).
     projectPapersProc.command = [pdfPane.readPath, "papers", "--tag", root.projectTag]
+      .concat(root.projectFolder !== "" ? ["--dir", root.projectFolder] : [])
     projectPapersProc.running = true
   }
   Timer { id: projectPapersAgain; interval: 300; onTriggered: root.refreshProjectPapers() }
@@ -1020,7 +1023,11 @@ Item {
       id: projectPapersOut
       onStreamFinished: {
         if (projectPapersProc.tag !== root.projectTag) return
-        try { root.projectPapers = JSON.parse(projectPapersOut.text).papers || [] } catch (e) { root.projectPapers = [] }
+        // Papers only: the folder's own documents (a proposal, a logo) are
+        // not reading; nor a note whose PDF is gone (moved: it is found
+        // again when the PDF is opened where it went).
+        try { root.projectPapers = (JSON.parse(projectPapersOut.text).papers || []).filter(function (p) { return p.kind === "paper" && !p.missing }) }
+        catch (e) { root.projectPapers = [] }
       }
     }
   }
@@ -3954,6 +3961,7 @@ Item {
     if (!pr) return
     root.used("project-notes")
     root.projectTag = pr.tag
+    root.projectFolder = pr.folder || ""
     root.projectName = pr.name || pr.tag
     root.sections = []
     root.sectionFocus = 0

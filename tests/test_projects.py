@@ -229,6 +229,14 @@ def project_page() -> None:
     check("funding" not in t and "kept to myself" not in t and "1 day marked private left out." in t,
           "a private block and a private day are left out, the day counted")
     check(not any(vault.rglob("pages")), "nothing written into the vault")
+    # The sidebar's list carries each project's folder, so the page asks for
+    # its PDFs too (2026-11-16); a project with no folder carries "".
+    (know / "dtm.md").write_text("# DTM\n\n- Tag: `#dtm`\n")
+    r = subprocess.run([sys.executable, str(AGENT), "projects", "--now", f"{TODAY.isoformat()}T09:00"],
+                       capture_output=True, text=True, env=env)
+    folders = {p["tag"]: p.get("folder") for p in json.loads(r.stdout or "[]")}
+    check(folders == {"thesis": "projects/thesis_itu", "dtm": ""},
+          f"`projects`: each project's folder, the one under way; none for a project without one ({folders})")
 
 
 def main() -> int:

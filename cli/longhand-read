@@ -35,6 +35,7 @@ nowhere is reported as not placed, never dropped.
     longhand-read reading [--days N]                   (papers read lately and their waiting questions, for the agent)
     longhand-read papers --tag T                       (a project's papers, by their reading notes' tags)
     longhand-read ocr    --pdf P                       (a scan read into a copy with words; one line a page)
+    longhand-read move   --pdf P --to NEW               (moved, with its note, conversation and place)
 
 P is the PDF's path in the vault (or a whole path). Pages are counted from
 1, as the link says. `--y` is where on the page the selection began, in
@@ -372,8 +373,31 @@ class Note:
         self.lines = lines
 
     @staticmethod
-    def blank(path: Path, rel: str) -> "Note":
-        return Note(path, ["---", f'pdf: "[[{rel}]]"', "---", f"# {Path(rel).stem}", ""])
+    def blank(path: Path, rel: str, pid: str = "") -> "Note":
+        return Note(path, ["---", f'pdf: "[[{rel}]]"', f'pdf-path: "{rel}"'] + ([f'pdf-id: "{pid}"'] if pid else [])
+                    + ["---", f"# {Path(rel).stem}", ""])
+
+    def field(self, name: str) -> str:
+        """A frontmatter field's value, its quotes off; "" when it has none."""
+        for line in self.lines[1:self.body_start() - 1] if self.body_start() else []:
+            m = re.match(rf"^{re.escape(name)}:\s*(.*?)\s*$", line)
+            if m:
+                return m.group(1).strip('"').strip("'")
+        return ""
+
+    def set_field(self, name: str, value: str) -> None:
+        """The field written (quoted), in place, else at the frontmatter's
+        end — a frontmatter made when the note has none."""
+        line = f'{name}: "{value}"'
+        end = self.body_start()
+        if not end:
+            self.lines[:0] = ["---", line, "---"]
+            return
+        for i in range(1, end - 1):
+            if re.match(rf"^{re.escape(name)}:", self.lines[i]):
+                self.lines[i] = line
+                return
+        self.lines.insert(end - 1, line)
 
     def marks(self) -> list[dict]:
         """Each mark: where its block starts and ends (its note included)."""
@@ -468,6 +492,252 @@ def new_note_path(cfg: dict, rel: str) -> Path:
     return folder / f"{names[-1]} {n}.md"
 
 
+# ------------------------------------------------------------- moves
+#
+# A paper moved or renamed (2026-11-16) — by `move` here, in Obsidian, in a
+# file manager — keeps everything made about it: its reading note, the
+# conversation about it, where it was left, a scan's copy with words. All
+# of those go by the PDF's path, so a move re-keys each of them.
+#
+# The note says which file it is about twice over: `pdf-path`, the path as
+# plain text (Obsidian rewrites a link when it moves a file, never plain
+# text, so a path that no longer matches the link is a move it made), and
+# `pdf-id`, the file's size and the start of its sha1 (a move that left the
+# link pointing at nothing is found again by the file's contents). A note
+# from before either was kept is matched by its marks: a moved paper's
+# quotes are still on their pages.
+
+def pdf_id(path: Path) -> str:
+    """The file's size and the start of its sha1, kept by its path, size
+    and time in the state folder so a folder of papers is read once."""
+    st = path.stat()
+    sig = f"{path.resolve()}|{st.st_size}|{st.st_mtime_ns}"
+    ids = CACHE / "ids.json"
+    try:
+        known = json.loads(ids.read_text())
+    except (OSError, ValueError):
+        known = {}
+    if sig in known:
+        return known[sig]
+    h = hashlib.sha1()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    out = known[sig] = f"{st.st_size}-{h.hexdigest()[:16]}"
+    try:
+        ids.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=ids.parent, prefix=".ids-")
+        with os.fdopen(fd, "w") as f:
+            json.dump(dict(list(known.items())[-2000:]), f)
+        os.replace(tmp, ids)
+    except OSError:
+        pass
+    return out
+
+
+def talk_file(cfg: dict, rel: str) -> Path:
+    """The conversation about a file: by the md5 of its path (as the runner
+    and the page name it)."""
+    return Path(cfg["vault"]) / str(cfg.get("agentDir") or "agents/longhand") / "notes" / \
+        (hashlib.md5(rel.encode("utf-8")).hexdigest()[:16] + ".json")
+
+
+def note_target(note: Note) -> str:
+    return next((m.group("target").strip() for line in note.lines[:12] for m in [PDF_FIELD_RE.match(line.strip())] if m), "")
+
+
+def move_talk(cfg: dict, old: str, new: str) -> bool:
+    """The conversation about `old` made the one about `new`, never over
+    one `new` has already."""
+    src, dst = talk_file(cfg, old), talk_file(cfg, new)
+    if not src.is_file() or dst.exists():
+        return False
+    try:
+        d = json.loads(src.read_text())
+        d["path"] = new
+        tmp = dst.with_name(dst.name + ".tmp")
+        tmp.write_text(json.dumps(d, ensure_ascii=False, indent=1) + "\n")
+        os.replace(tmp, dst)
+        src.unlink()
+        return True
+    except (OSError, ValueError):
+        return False
+
+
+def carry(cfg: dict, old: str, new: str, path: Path) -> list[str]:
+    """What went by the old path, re-keyed to the new: the conversation
+    (never over one the new path has already), where it was left, a scan's
+    copy with words. What was carried, said."""
+    said = ["conversation"] if move_talk(cfg, old, new) else []
+    places = STATE_HOME / "pdfs.json"
+    try:
+        p = json.loads(places.read_text())
+        if old in p and new not in p:
+            p[new] = p.pop(old)
+            tmp = places.with_name(places.name + ".tmp")
+            tmp.write_text(json.dumps(p) + "\n")
+            os.replace(tmp, places)
+            said.append("place")
+    except (OSError, ValueError):
+        pass
+    # A scan's copy is named by the original's path, size and time; a move
+    # keeps the size and the time.
+    st = path.stat()
+    was = CACHE / "ocr" / (hashlib.sha1(f"{(Path(cfg['vault']) / old).resolve()}|{st.st_size}|{st.st_mtime_ns}".encode()).hexdigest() + ".pdf")
+    if was.is_file() and not ocr_copy(path).exists():
+        os.replace(was, ocr_copy(path))
+        said.append("ocr")
+    return said
+
+
+def linked_from(cfg: dict, name: str, skip: Path) -> bool:
+    """Whether any note in the vault links to the note called `name`."""
+    pat = re.compile(r"\[\[(?:[^\]|#]*/)?" + re.escape(name) + r"(?:\.md)?(?:[#|]|\]\])")
+    for f in Path(cfg["vault"]).rglob("*.md"):
+        if f == skip or any(part.startswith(".") for part in f.relative_to(cfg["vault"]).parts):
+            continue
+        try:
+            if pat.search(f.read_text(errors="replace")):
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def relink(cfg: dict, note: Note, old: str, new: str, path: Path) -> list[str]:
+    """The note pointed at the PDF's new path: its `pdf` field and every
+    mark's link, `pdf-path` and `pdf-id`; then the rest carried. A note
+    named after the old file, as one is made, takes the new file's name when
+    that is free and nothing links to it; a name given by the person stays."""
+    for i, line in enumerate(note.lines):
+        if f"[[{old}" in line:
+            note.lines[i] = line.replace(f"[[{old}]]", f"[[{new}]]").replace(f"[[{old}#", f"[[{new}#").replace(f"[[{old}|", f"[[{new}|")
+    note.set_field("pdf-path", new)
+    note.set_field("pdf-id", pdf_id(path))
+    said = carry(cfg, old, new, path)
+    o, n = Path(old), Path(new)
+    made = {o.stem, f"{o.stem} ({o.parent.name})"}
+    if note.path.stem in made and n.stem != o.stem:
+        dest = new_note_path(cfg, new)
+        if dest.stem in (n.stem, f"{n.stem} ({n.parent.name})") and not linked_from(cfg, note.path.stem, note.path):
+            vault = Path(cfg["vault"])
+            old_rel = str(note.path.relative_to(vault)) if note.path.is_relative_to(vault) else ""
+            for i, line in enumerate(note.lines[note.body_start():], note.body_start()):
+                if line.strip() == f"# {o.stem}":
+                    note.lines[i] = f"# {n.stem}"
+                    break
+            note.save()
+            os.replace(note.path, dest)
+            note.path = dest
+            if old_rel:
+                move_talk(cfg, old_rel, str(dest.relative_to(vault)))
+            said.append("renamed")
+            return said
+    note.save()
+    return said
+
+
+
+
+def reading_notes(cfg: dict) -> list[Note]:
+    folder = Path(cfg["vault"]) / readings_dir(cfg)
+    out = []
+    for f in sorted(folder.glob("*.md")) if folder.is_dir() else []:
+        try:
+            out.append(Note(f, f.read_text().split("\n")))
+        except OSError:
+            continue
+    return out
+
+
+def orphans(cfg: dict) -> list[Note]:
+    """Reading notes whose PDF is not where they say."""
+    vault = Path(cfg["vault"])
+    return [n for n in reading_notes(cfg) if (t := note_target(n)) and not (vault / t).is_file()]
+
+
+def by_marks(note: Note, path: Path) -> bool:
+    """A note from before `pdf-id` was kept, matched by its quotes: at
+    least two, of 30 letters or more between them (a short phrase two
+    papers share is no proof), nearly all of them found in this PDF."""
+    marks = note.marks()
+    if len(marks) < 2 or sum(len(key(m["text"])) for m in marks) < 30:
+        return False
+    pages = words_of(path)
+    if not any(pages):
+        return False
+    found = sum(1 for m in marks if place(pages, m["text"], m["page"] - 1, m["after"]))
+    return found >= 0.8 * len(marks)
+
+
+def settle(cfg: dict, rel: str, path: Path, marks: bool = True) -> Note | None:
+    """The PDF's note, kept up with a move: one found by its link but with
+    another `pdf-path` was moved by Obsidian, so the rest follows it; none
+    found, a note whose PDF is gone is looked for by the file's id (and,
+    `marks`, by its quotes) and pointed here. A note that says nothing yet
+    of its path or id is given both."""
+    if is_private(cfg, rel):
+        return load_note(cfg, rel)
+    note = load_note(cfg, rel)
+    if note:
+        was = note.field("pdf-path")
+        if was and was != rel and not (Path(cfg["vault"]) / was).is_file():
+            relink(cfg, note, was, rel, path)
+        elif was != rel or not note.field("pdf-id"):
+            note.set_field("pdf-path", rel)
+            note.set_field("pdf-id", pdf_id(path))
+            note.save()
+        return note
+    lost = orphans(cfg)
+    if not lost:
+        return None
+    pid = pdf_id(path)
+    hits = [n for n in lost if n.field("pdf-id") == pid]
+    if not hits and marks:
+        hits = [n for n in lost if not n.field("pdf-id") and by_marks(n, path)]
+    if len(hits) != 1:
+        return None
+    note = hits[0]
+    relink(cfg, note, note_target(note), rel, path)
+    return note
+
+
+def cmd_move(cfg: dict, src: str, to: str) -> dict:
+    """A PDF moved within the vault, and all made about it with it. Onto a
+    file that is there already: only when it is the same file (its copy),
+    which then stays and the moved one goes; never over a paper with marks
+    of its own."""
+    vault = Path(cfg["vault"])
+    rel, path = rel_of(cfg, src)
+    dest = Path(to) if to.startswith("/") else vault / to
+    if dest.is_dir() or to.endswith("/"):
+        dest = dest / path.name
+    try:
+        new = str(dest.resolve().relative_to(vault.resolve()))
+    except ValueError:
+        fail(f"not in the vault: {dest}")
+    if dest.suffix.lower() != ".pdf":
+        fail("the new name must end in .pdf")
+    if new == rel:
+        fail("that is where it is")
+    if is_private(cfg, new) != is_private(cfg, rel):
+        fail("not between a private folder and the rest: its marks would be kept, or lost, against the rule")
+    note = settle(cfg, rel, path, marks=False)
+    if dest.exists():
+        if pdf_id(dest) != pdf_id(path):
+            fail(f"another file is at {new}")
+        if find_note(cfg, new):
+            fail(f"{new} has a reading note of its own")
+        path.unlink()
+    else:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        os.rename(path, dest)
+    said = relink(cfg, note, rel, new, dest) if note else carry(cfg, rel, new, dest)
+    out = state(cfg, new, dest, load_note(cfg, new))
+    out["moved"] = {"from": rel, "to": new, "carried": said}
+    return out
+
+
 # -------------------------------------------------------------- commands
 
 def rel_of(cfg: dict, pdf: str) -> tuple[str, Path]:
@@ -535,7 +805,7 @@ def cmd_mark(cfg, rel, path, a) -> Note:
     page = at["page"] + 1 if at else a.page
     note = load_note(cfg, rel)
     if note is None:
-        note = Note.blank(new_note_path(cfg, rel), rel)
+        note = Note.blank(new_note_path(cfg, rel), rel, pdf_id(path))
         if a.tag:
             note.lines += [f"#{a.tag.lstrip('#')}", ""]
     mid = next_id(note)
@@ -611,7 +881,7 @@ def cmd_note(cfg, rel, path, a) -> Note:
 def cmd_tag(cfg, rel, path, a) -> Note:
     note = load_note(cfg, rel)
     if note is None:
-        note = Note.blank(new_note_path(cfg, rel), rel)
+        note = Note.blank(new_note_path(cfg, rel), rel, pdf_id(path))
     tag = a.tag.lstrip("#")
     if tag in note.tags():
         return note
@@ -722,6 +992,14 @@ def cmd_papers(cfg: dict, tag: str, folder_rel: str = "") -> dict:
     still waiting, and the last day it was marked — the newest first."""
     tag = tag.lstrip("#").lower()
     folder = Path(cfg["vault"]) / readings_dir(cfg)
+    # A paper moved into the project's folder finds its note again (by the
+    # file's id only: quotes are too slow to look for in every PDF here).
+    if folder_rel and orphans(cfg):
+        vault = Path(cfg["vault"])
+        for f in sorted((vault / folder_rel).rglob("*.pdf")) if (vault / folder_rel).is_dir() else []:
+            r = str(f.relative_to(vault))
+            if not is_private(cfg, r) and not find_note(cfg, r):
+                settle(cfg, r, f, marks=False)
     out = []
     for f in sorted(folder.glob("*.md")) if folder.is_dir() else []:
         try:
@@ -745,8 +1023,9 @@ def cmd_papers(cfg: dict, tag: str, folder_rel: str = "") -> dict:
                     or any(part.startswith(".") for part in Path(rel).parts):
                 continue
             out.append(paper_row(cfg, rel, load_note(cfg, rel)))
-    out.sort(key=lambda r: (r["last"], r["title"]), reverse=True)
-    return {"tag": tag, "papers": out}
+    # The marked first, the newest marked first; then those not begun, A to Z.
+    marked = sorted((r for r in out if r["last"]), key=lambda r: (r["last"], r["title"]), reverse=True)
+    return {"tag": tag, "papers": marked + sorted((r for r in out if not r["last"]), key=lambda r: r["title"].lower())}
 
 
 LITERATURE = {"literature", "papers", "paper", "readings", "reading", "references", "refs", "bibliography", "sources"}
@@ -760,6 +1039,7 @@ def paper_row(cfg: dict, pdf: str, note: "Note | None") -> dict:
     # or one of the project's own documents (a proposal, a chart).
     lit = bool(marks) or any(p.lower() in LITERATURE for p in Path(pdf).parts[:-1])
     return {"pdf": pdf, "title": Path(pdf).stem, "kind": "paper" if lit else "document",
+            "missing": not (Path(cfg["vault"]) / pdf).is_file(),
             "note": str(note.path.relative_to(Path(cfg["vault"]))) if note else "",
             "h": sum(1 for m in marks if m["kind"] == "h"), "q": sum(1 for m in marks if m["kind"] == "q"),
             "waiting": len(waiting), "questions": [{"id": m["id"], "page": m["page"], "text": m["text"][:240], "note": m["note"][:240]}
@@ -776,9 +1056,11 @@ def main() -> int:
     pp = sub.add_parser("papers")
     pp.add_argument("--tag", required=True)
     pp.add_argument("--dir", default="", help="the project's folder in the vault: its PDFs too, marked or not")
-    for name in ("state", "mark", "remove", "kind", "note", "tag", "find", "ocr"):
+    for name in ("state", "mark", "remove", "kind", "note", "tag", "find", "ocr", "move"):
         p = sub.add_parser(name)
         p.add_argument("--pdf", required=True)
+        if name == "move":
+            p.add_argument("--to", required=True, help="its new path in the vault (a folder: the same name there)")
         if name == "find":
             p.add_argument("--page", type=int, required=True)
             p.add_argument("--text", required=True)
@@ -808,7 +1090,12 @@ def main() -> int:
     if a.cmd == "reading":
         print(json.dumps(cmd_reading(cfg, max(1, a.days)), ensure_ascii=False))
         return 0
+    if a.cmd == "move":
+        print(json.dumps(cmd_move(cfg, a.pdf, a.to), ensure_ascii=False))
+        return 0
     rel, path = rel_of(cfg, a.pdf)
+    if a.cmd != "find":
+        settle(cfg, rel, path)
     if a.cmd == "ocr":
         cmd_ocr(cfg, path)
         print(json.dumps(state(cfg, rel, path, load_note(cfg, rel)), ensure_ascii=False))

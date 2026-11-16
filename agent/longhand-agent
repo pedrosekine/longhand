@@ -2304,7 +2304,10 @@ def project_list(cfg: dict, now: dt.datetime, events: list[dict] | None = None) 
                 if end > now and (nxt is None or start < nxt["at"]):
                     nxt = {"at": start, "end": end, "room": room.group(1).strip() if room else ""}
         tag = m.group(1) if m else f.stem
-        out.append({"tag": tag, "name": name, "file": f.name,
+        # The project's own folder (`projects/thesis_itu`), so the page asks
+        # for its PDFs too, those not marked yet (2026-11-16): the papers are
+        # read where they are, never moved, copied or written.
+        out.append({"tag": tag, "name": name, "file": f.name, "folder": project_folder(cfg, tag, f.name),
                     "docs": doclib.index(Paths(cfg, now.date()).vault, cfg.get("projectsDir", "projects"), tag, pages),
                     "next": {"at": nxt["at"].isoformat(timespec="minutes"), "end": nxt["end"].isoformat(timespec="minutes"),
                              "now": nxt["at"] <= now, "room": nxt["room"]} if nxt else None})

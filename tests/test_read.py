@@ -6,7 +6,10 @@ context when a phrase repeats, and never dropping one that cannot be found.
 
 Run: python3 tests/test_read.py
 """
+import hashlib
 import json
+import re
+import shutil
 import os
 import pathlib
 import subprocess
@@ -83,8 +86,8 @@ def main() -> int:
     check(s["note"] == "human/Readings/Smith 2020.md" and reading.is_file(),
           "the first mark makes the reading note, named after the PDF, in <notes>/Readings")
     text = reading.read_text()
-    check(text.startswith('---\npdf: "[[lit/Smith 2020.pdf]]"\n---\n# Smith 2020\n'),
-          f"its top links the PDF and names it ({text[:80]!r})")
+    check(re.match(r'---\npdf: "\[\[lit/Smith 2020.pdf\]\]"\npdf-path: "lit/Smith 2020.pdf"\npdf-id: "\d+-[0-9a-f]{16}"\n---\n# Smith 2020\n', text),
+          f"its top links the PDF, says its path and its file's id, and names it ({text[:160]!r})")
     check("> memory it retrieves, each recall\n> — [[lit/Smith 2020.pdf#page=1|p. 1]] · 2026-11-15 ^h1" in text,
           "a highlight is the quoted words, one line, then its page link, day and name")
     m = s["marks"][0]
@@ -210,6 +213,11 @@ def main() -> int:
     kinds = {x["title"]: x["kind"] for x in pp}
     check(kinds == {"Smith 2020": "paper", "Moser 2026": "paper", "Proposal": "document"},
           f"papers --dir: the folder's PDFs too, papers and documents told apart, the archive left out ({kinds})")
+    (proj / "literature/pdf/Anders 2019.pdf").write_bytes(b"%PDF-1.4\n")
+    order = [x["title"] for x in run("papers", "--tag", "thesis", "--dir", "projects/thesis_itu")["papers"]]
+    check(order == ["Smith 2020", "Anders 2019", "Moser 2026", "Proposal"],
+          f"…the marked first, then those not begun, A to Z ({order})")
+    (proj / "literature/pdf/Anders 2019.pdf").unlink()
 
     # A name taken by another paper's note: the PDF's folder is added.
     other = "other/Smith 2020.pdf"
@@ -309,8 +317,137 @@ def main() -> int:
     r = run("state", "--pdf", "lit/missing.pdf", ok=False)
     check(r.returncode != 0 and "no PDF" in r.stderr, "a PDF that is not there is refused")
 
+    moves()
     print("PASS" if failures == 0 else f"{failures} FAILED")
     return 1 if failures else 0
+
+
+def moves() -> None:
+    """A paper moved or renamed (2026-11-16): by `move`, by Obsidian (the
+    links rewritten, nothing else), by a file manager (nothing rewritten),
+    and a note from before ids were kept. Each keeps its note, its
+    conversation and its place."""
+    tmp = pathlib.Path(tempfile.mkdtemp(prefix="longhand-move-"))
+    vault, state = tmp / "vault", tmp / "state"
+    (vault / "human" / "Daily").mkdir(parents=True)
+    (tmp / "config.json").write_text(json.dumps({"vault": str(vault), "daily": {"dir": "human/Daily"}}))
+    env = dict(os.environ, XDG_STATE_HOME=str(state), LONGHAND_CONFIG=str(tmp / "config.json"))
+    talks = vault / "agents" / "longhand" / "notes"
+    talks.mkdir(parents=True)
+
+    def run(*args, ok=True):
+        r = subprocess.run([str(READ), *args], capture_output=True, text=True, env=env)
+        if ok:
+            assert r.returncode == 0, r.stderr
+            return json.loads(r.stdout)
+        return r
+
+    def talk(rel):
+        return talks / (hashlib.md5(rel.encode()).hexdigest()[:16] + ".json")
+
+    def paper(rel, word):
+        pdf(vault / rel, [[f"The {word} effect is large.", "Its cause is unknown."], [f"A second {word} page.", "End."]])
+
+    def marked(rel):
+        run("mark", "--pdf", rel, "--page", "1", "--text", "effect is large", "--day", "2026-11-15")
+        run("mark", "--pdf", rel, "--page", "2", "--text", "second", "--kind", "q", "--day", "2026-11-15")
+        talk(rel).write_text(json.dumps({"path": rel, "session": "s1", "turns": [{"role": "student", "text": "why?"}]}))
+        (state / "longhand").mkdir(parents=True, exist_ok=True)
+        places = state / "longhand" / "pdfs.json"
+        p = json.loads(places.read_text()) if places.is_file() else {}
+        p[rel] = {"page": 1, "frac": 0.5, "zoom": 1, "at": 1}
+        places.write_text(json.dumps(p))
+
+    def kept(rel, what):
+        s = run("state", "--pdf", rel)
+        t = json.loads(talk(rel).read_text()) if talk(rel).is_file() else {}
+        places = json.loads((state / "longhand" / "pdfs.json").read_text())
+        check(len(s["marks"]) == 2 and all(m["placed"] for m in s["marks"]) and t.get("path") == rel
+              and rel in places, f"{what}: its marks, its conversation and its place follow it ({s['note']}, {t}, {list(places)})")
+        return s
+
+    # 1. `move`: the file, and all made about it.
+    paper("human/test_alpha.pdf", "alpha")
+    marked("human/test_alpha.pdf")
+    s = run("move", "--pdf", "human/test_alpha.pdf", "--to", "projects/thesis/lit/alpha.pdf")
+    check(not (vault / "human/test_alpha.pdf").exists() and (vault / "projects/thesis/lit/alpha.pdf").is_file()
+          and s["moved"]["to"] == "projects/thesis/lit/alpha.pdf", f"move: the file moved ({s.get('moved')})")
+    s = kept("projects/thesis/lit/alpha.pdf", "move")
+    note = (vault / s["note"]).read_text()
+    check(s["note"] == "human/Readings/alpha.md" and "# alpha\n" in note and "test_alpha" not in note
+          and not talk("human/test_alpha.pdf").exists(),
+          f"…a note named after the old file takes the new name; nothing points at the old path ({s['note']})")
+
+    # Onto its own copy: the copy stays, the moved one goes. Onto another file: refused.
+    paper("human/beta.pdf", "beta")
+    marked("human/beta.pdf")
+    (vault / "projects/thesis/lit").mkdir(parents=True, exist_ok=True)
+    shutil.copy(vault / "human/beta.pdf", vault / "projects/thesis/lit/beta.pdf")
+    paper("projects/thesis/lit/other.pdf", "other")
+    r = run("move", "--pdf", "human/beta.pdf", "--to", "projects/thesis/lit/other.pdf", ok=False)
+    check(r.returncode != 0 and "another file" in r.stderr and (vault / "human/beta.pdf").is_file(),
+          "move onto a different file is refused, nothing touched")
+    run("move", "--pdf", "human/beta.pdf", "--to", "projects/thesis/lit/")
+    check(not (vault / "human/beta.pdf").exists(), "move onto its own copy (a folder given): the moved one goes")
+    kept("projects/thesis/lit/beta.pdf", "…its note now the copy's")
+
+    # A name the person gave the note stays.
+    paper("human/gamma.pdf", "gamma")
+    marked("human/gamma.pdf")
+    (vault / "human/Readings/gamma.md").rename(vault / "human/Readings/My gamma notes.md")
+    run("move", "--pdf", "human/gamma.pdf", "--to", "projects/thesis/lit/gamma-2019.pdf")
+    check((vault / "human/Readings/My gamma notes.md").is_file(), "a note the person renamed keeps their name")
+
+    # 2. Moved by Obsidian: the links rewritten, the plain path not.
+    paper("human/delta.pdf", "delta")
+    marked("human/delta.pdf")
+    n = vault / "human/Readings/delta.md"
+    n.write_text(n.read_text().replace("[[human/delta.pdf", "[[projects/thesis/lit/delta.pdf"))
+    (vault / "human/delta.pdf").rename(vault / "projects/thesis/lit/delta.pdf")
+    kept("projects/thesis/lit/delta.pdf", "moved by Obsidian")
+    check('pdf-path: "projects/thesis/lit/delta.pdf"' in n.read_text(), "…and the note says its new path")
+
+    # 3. Moved by a file manager: the note points at nothing; found by the file's id,
+    #    already when its project lists its papers.
+    paper("human/eps.pdf", "eps")
+    marked("human/eps.pdf")
+    run("tag", "--pdf", "human/eps.pdf", "--tag", "thesis")
+    (vault / "human/eps.pdf").rename(vault / "projects/thesis/lit/eps-renamed.pdf")
+    pp = run("papers", "--tag", "thesis", "--dir", "projects/thesis")["papers"]
+    row = next((x for x in pp if x["title"] == "eps-renamed"), {})
+    check(row.get("h") == 1 and row.get("q") == 1 and not any(x["pdf"] == "human/eps.pdf" for x in pp),
+          f"moved by a file manager: its project's list finds its note by the file ({[x['pdf'] for x in pp]})")
+    kept("projects/thesis/lit/eps-renamed.pdf", "…and opening it")
+
+    # 4. A note from before ids were kept, its PDF moved: found by its quotes.
+    paper("human/zeta.pdf", "zeta")
+    marked("human/zeta.pdf")
+    run("mark", "--pdf", "human/zeta.pdf", "--page", "1", "--text", "Its cause is unknown", "--day", "2026-11-15")
+    n = vault / "human/Readings/zeta.md"
+    n.write_text(re.sub(r'pdf-(path|id): .*\n', "", n.read_text()))
+    (vault / "human/zeta.pdf").rename(vault / "projects/thesis/lit/zeta.pdf")
+    s = run("state", "--pdf", "projects/thesis/lit/zeta.pdf")
+    check(len(s["marks"]) == 3 and all(m["placed"] for m in s["marks"]) and talk("projects/thesis/lit/zeta.pdf").is_file(),
+          "an old note, found by its quotes: its marks and conversation follow it")
+    # …but never by a short phrase two papers share.
+    paper("human/iota.pdf", "iota")
+    marked("human/iota.pdf")
+    n = vault / "human/Readings/iota.md"
+    n.write_text(re.sub(r'pdf-(path|id): .*\n', "", n.read_text()))
+    (vault / "human/iota.pdf").unlink()
+    paper("human/kappa.pdf", "kappa")
+    check(run("state", "--pdf", "human/kappa.pdf")["note"] == "", "…never by a short phrase another paper shares")
+
+    # A paper with no marks is not taken for an orphan; a missing one is said.
+    paper("human/eta.pdf", "eta")
+    s = run("state", "--pdf", "human/eta.pdf")
+    check(s["note"] == "", "a new paper is not given another paper's note")
+    paper("human/theta.pdf", "theta")
+    marked("human/theta.pdf")
+    run("tag", "--pdf", "human/theta.pdf", "--tag", "thesis")
+    (vault / "human/theta.pdf").unlink()
+    pp = run("papers", "--tag", "thesis")["papers"]
+    check(next(x for x in pp if x["title"] == "theta")["missing"], "a note whose PDF is gone is listed as missing")
 
 
 if __name__ == "__main__":

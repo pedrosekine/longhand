@@ -236,6 +236,11 @@ Item {
     path: (Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state") + "/longhand/pdfs.json"
     atomicWrites: true
     printErrors: false
+    // Read again when written elsewhere: `longhand-read` moves a paper's
+    // place with the paper (2026-11-16), and the next keep() must not
+    // write the old record back over it.
+    watchChanges: true
+    onFileChanged: reload()
     onLoaded: {
       try { var o = JSON.parse(text()); if (o && typeof o === "object") pane.places = o } catch (e) { console.warn("longhand.page pdfs.json: " + e) }
     }
