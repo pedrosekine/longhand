@@ -9,8 +9,9 @@
 // gets its own part. Nothing is written: this reads the conversation.
 
 // The first exchange that answered mark `id`: { student, agent (turn
-// indexes), text (its part of the answer), more (the agent's turns after
-// it, a conversation that went on) }, or null when none has.
+// indexes), asked (the question's words, as typed), text (its part of the
+// answer), more (the agent's turns after it, a conversation that went on) },
+// or null when none has.
 function forMark(turns, id) {
   turns = turns || []
   for (var i = 0; i + 1 < turns.length; i++) {
@@ -19,9 +20,24 @@ function forMark(turns, id) {
     if (b.role !== "agent" || b.error || !b.text) continue
     var more = 0
     for (var k = i + 2; k < turns.length; k++) if (turns[k].role === "agent" && !turns[k].error) more++
-    return { student: i, agent: i + 1, text: part(b.text, id, a.marks), more: more }
+    return { student: i, agent: i + 1, asked: asked(a.text, id), text: part(b.text, id, a.marks), more: more }
   }
   return null
+}
+
+// What was asked about mark `id`, in the words typed. Waiting questions
+// asked together (Paper.qml's askWaiting: "My waiting questions, one by
+// one:" and a line "- h5: its note" each) were typed as their notes: its
+// line's note, or "" when it had none — the passage marked is the question.
+function asked(text, id) {
+  text = String(text || "").trim()
+  if (!/^My (question|waiting questions)[^\n]*:\s*\n/.test(text)) return text
+  var lines = text.split("\n")
+  for (var i = 1; i < lines.length; i++) {
+    var m = /^\s*-\s*(h\d+)(?::\s*(.*))?$/.exec(lines[i])
+    if (m && m[1] === id) return (m[2] || "").trim()
+  }
+  return ""
 }
 
 // A line that opens one question's part: `h3:`, maybe bold or in code,

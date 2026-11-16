@@ -631,6 +631,9 @@ block, `table` rows.
   keeps which marks each message pointed at, and the agent's turn after it
   is the answer; asked together, each question gets its own part, opened
   by its `h3:` line), and "N more answers after it" when the talk went on.
+  Over the answer, faint, what was asked, in the words typed ("you asked:
+  …"); waiting questions asked together were typed as their notes, so each
+  shows its note, or nothing when the passage itself was the question.
   `Enter` opens the paper's chat at that exchange, lit a moment, held there
   rather than at the conversation's foot until a new message comes. A
   question not asked yet says so and `Enter` asks it (the chat with it

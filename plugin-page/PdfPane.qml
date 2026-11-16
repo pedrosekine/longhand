@@ -54,7 +54,7 @@ Item {
   property alias noteRef: noteField
   property alias acroFieldRef: acroField
   // What the tip under the pointer says, for the harness.
-  readonly property string tipSays: acroTipBox.visible ? acroTipLine.text + " | " + acroTipMore.text : ""
+  readonly property string tipSays: acroTipBox.visible ? (acroTipAsked.visible ? acroTipAsked.text + " | " : "") + acroTipLine.text + " | " + acroTipMore.text : ""
   property real zoom: 1                 // over the column's width
   property bool finding: false
   readonly property var view: loader.item ? loader.item.view : null
@@ -188,7 +188,7 @@ Item {
     var a = Answers.forMark(page.noteTalk && page.noteTalk.turns ? page.noteTalk.turns : [], id)
     if (a) {
       var g = Answers.gist(a.text, 260)
-      return { line: pane.esc(g.text), more: page.keyName("pdfGo") + " opens it in the paper's chat"
+      return { asked: Answers.gist(a.asked, 200).text, line: pane.esc(g.text), more: page.keyName("pdfGo") + " opens it in the paper's chat"
         + (a.more > 0 ? " · " + a.more + (a.more === 1 ? " more answer" : " more answers") + " after it" : "") }
     }
     if (page.dayPending && (page.dayPending.marks || []).indexOf(id) >= 0) return { line: "<i>being answered…</i>", more: "" }
@@ -1048,7 +1048,8 @@ Item {
       && pane.acroIsDef(d.short, pane.hoverAcro.page, pane.hoverAcro.item.modelData.r))
     visible: pane.tipOn && (d !== null || m !== null)
     z: 4
-    width: Math.min(pane.width - page.sp(16), Math.max(acroTipLine.width, acroTipMore.implicitWidth) + page.sp(20))
+    width: Math.min(pane.width - page.sp(16), Math.max(acroTipLine.width, acroTipMore.implicitWidth,
+                                                        acroTipAsked.visible ? acroTipAsked.width : 0) + page.sp(20))
     height: acroTipCol.implicitHeight + page.sp(14)
     x: Math.max(page.sp(8), Math.min(pane.width - width - page.sp(8), at.x - page.sp(10)))
     y: at.y + page.sp(6) + height > pane.height - foot.height ? at.y - (anchor ? anchor.height : 0) - height - page.sp(6) : at.y + page.sp(6)
@@ -1061,6 +1062,23 @@ Item {
       x: page.sp(10)
       y: page.sp(7)
       spacing: page.sp(3)
+      // The question as it was asked, over its answer (2026-11-16: "can I
+      // see the question that was asked?").
+      Text {
+        id: acroTipAsked
+        visible: !!(acroTipBox.m && acroTipBox.m.asked)
+        width: Math.min(implicitWidth, page.sp(440), pane.width - page.sp(36))
+        wrapMode: Text.WordWrap
+        maximumLineCount: 3
+        elide: Text.ElideRight
+        textFormat: Text.PlainText
+        text: acroTipBox.m && acroTipBox.m.asked ? "you asked: “" + acroTipBox.m.asked + "”" : ""
+        color: page.dim
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.italic: true
+        font.pixelSize: page.fs(Style.font.caption)
+      }
       Text {
         id: acroTipLine
         width: Math.min(implicitWidth, page.sp(440), pane.width - page.sp(36))

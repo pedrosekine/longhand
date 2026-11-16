@@ -43,6 +43,15 @@ TestCase {
     compare(Answers.part("h9: words\nmore", "h1", ["h1", "h2"]), "h9: words\nmore")
   }
 
+  function test_what_was_asked() {
+    compare(Answers.forMark(turns, "h2").asked, "what is this?")
+    // Asked together: each its own line's note, or nothing (the passage is the question).
+    compare(Answers.forMark(turns, "h5").asked, "")
+    compare(Answers.asked("My waiting questions, one by one:\n- h5: why first?\n- h7", "h5"), "why first?")
+    compare(Answers.asked("My question:\n- h3: and here?", "h3"), "and here?")
+    compare(Answers.asked("My question is simple: why?", "h3"), "My question is simple: why?", "words of one's own stay")
+  }
+
   function test_none_yet() {
     compare(Answers.forMark(turns, "h3"), null)
     compare(Answers.forMark([], "h1"), null)

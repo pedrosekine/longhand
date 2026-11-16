@@ -3213,8 +3213,9 @@ def checks() -> int:
                 if p.wait(lambda: ac()["mark"] == mid and (ac()["tip"] or not tip), 2):
                     return True
             return False
-        check(rest_on_mark(qid) and "opens it in the paper's chat" in ac()["says"],
-              f"a question hovered shows its answer ({ac()['mark']!r}, {ac()['says']!r})")
+        check(rest_on_mark(qid) and "opens it in the paper's chat" in ac()["says"]
+              and ac()["says"].startswith("you asked: “what does this mean here?” | "),
+              f"a question hovered shows what was asked, and its answer ({ac()['mark']!r}, {ac()['says']!r})")
         asked_at = next(n for n, t in enumerate(json.loads(p.call("dayTurns"))) if t.startswith("student: what does this mean"))
         p.call("pdfKey", KEY_RETURN, 0)
         check(p.wait(lambda: not pr()["list"] and pr()["pin"] == asked_at and pr()["lit"] == asked_at),
