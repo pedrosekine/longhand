@@ -217,6 +217,7 @@ ShellRoot {
           return false }) })
     }
     function pdfKey(key: int, mods: int): bool { return page.pdfItem.key({ key: key, text: "", modifiers: mods }) }
+    function tasksTrace(): string { return JSON.stringify(page.tasksTrace) }
     // Marks (plan.md, item 15): what longhand-read said, the marks drawn on
     // the first page (those with a size: a mark once came out with none),
     // what is selected.

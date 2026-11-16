@@ -782,7 +782,9 @@ Small, when passing by:
     anchors (`e316130`: a store gone while the check read it stripped the
     `^dN` off every note not open; "four kinds arrive as rows" was its
     knock-on). Still open:
-    - **"another proposal"** — about one full run in fifteen before the
+    - **"another proposal"** — *still open 2026-11-16*, not caught in 25
+      tries; waits for its next failure to say what the check saw. About
+      one full run in fifteen before the
       fix, none in 25 tries since: "essay outline" (`^d18`), reopened and
       seen to stay open by the check, is cancelled again before 12e, so the
       planner's first proposal goes to "read the paper", whose declined
@@ -790,9 +792,15 @@ Small, when passing by:
       `LONGHAND_CHECK_LOG`, and this check's failure prints every
       cancellation the check made and what it read: start there.
     - **"a line written a moment before is on it"** — once in ten runs: a
-      line inserted and the dashboard opened at once, the row missing. The
-      dashboard waits for the note's save; the serialised writes of
-      2026-11-15 (`Service.qml`: `saving`, `queued`) are the first suspect.
+      line inserted and the dashboard opened at once, the row missing.
+      *2026-11-16:* not caught in 30 tries of the same steps alone (it came
+      after the zoom checks, a matter of timing). Closed the one window
+      found: a save landing after a list read began went unread unless the
+      read had waited for it — now, while the dashboard shows, every save
+      that lands reads the list again. And the page keeps its last twelve
+      list reads (`tasksTrace`: asked or read, pending, saving, queued), which
+      this check's failure prints, with whether the line was on disk.
+      Two full runs clean since.
 
 - ~~**Tag suggestions while typing**~~ *done 2026-10-18*: `#` and a letter
   offer the tags that exist — the projects', then those written in the

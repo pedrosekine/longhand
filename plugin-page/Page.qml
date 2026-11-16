@@ -4027,7 +4027,15 @@ Item {
     }
   }
 
+  // What the last list reads were asked in, for a test that finds a line
+  // missing to say why (the newest last; plan.md item 17).
+  property var tasksTrace: []
+  function traceTasks(what) {
+    root.tasksTrace = root.tasksTrace.slice(-11).concat([Qt.formatTime(new Date(), "hh:mm:ss.zzz") + " " + what
+      + " pending=" + svc.pending + " saving=" + svc.saving + " queued=" + svc.queued + " running=" + tasksProc.running])
+  }
   function refreshTasks() {
+    root.traceTasks("asked")
     // Not while a tick is still being drawn: the list read again rebuilds
     // every row, which would cut the tick short.
     var wait = root.holdTasksUntil - Date.now()
@@ -4043,6 +4051,7 @@ Item {
     if (tasksProc.running) { root.tasksAgain = true; return }
     tasksProc.command = [svc.runner, "next", "--days", "7"]
     tasksProc.running = true
+    root.traceTasks("read")
   }
   property bool tasksAfterSave: false
   property bool tasksAgain: false
@@ -6532,7 +6541,12 @@ Item {
     onSavedNow: {
       root.notesChanged()
       root.refreshDated()
-      if (root.tasksAfterSave) { root.tasksAfterSave = false; root.refreshTasks() }
+      // The list once the save it waited for has landed — and, while the
+      // dashboard shows, after any save: one that lands after a read began
+      // may hold a line the read did not see (a line written and the
+      // dashboard opened at once, missing once in forty runs: plan.md
+      // item 17).
+      if (root.tasksAfterSave || root.dashOpen) { root.tasksAfterSave = false; root.refreshTasks() }
       if (root.exportAfterSave) { root.exportAfterSave = false; root.listExport() }
       root.runCheck()
       if (root.pendingStamp !== "") {

@@ -1266,7 +1266,8 @@ def checks() -> int:
         p.call("dash")
         check(p.call("dashOpen") == "true", "Ctrl+T opens the dashboard")
         check(p.wait(lambda: any(r.get("text") == "just written" for r in json.loads(p.call("dashRows")))),
-              "a line written a moment before is on it")
+              f"a line written a moment before is on it (on disk: {'just written' in p.note()}; "
+              f"the list's reads: {p.call('tasksTrace')})")
         p.call("dash")
         p.call("removeLine", p.line_of("just written"))
         p.wait(lambda: "just written" not in p.note())
