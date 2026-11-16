@@ -212,6 +212,25 @@ def main() -> int:
           "asked to read it, the agent is given the paper whole, though its folder is not searched")
     check((vault / paper).read_bytes() == before_pdf, "the PDF is never written")
 
+    # What the student is reading, for the day's agent (plan.md item 15):
+    # the paper marked today, its project, and its questions no answer has
+    # come to — h2 was answered above, a new one waits.
+    subprocess.run([str(read_cli), "tag", "--pdf", paper, "--tag", "thesis"], capture_output=True, text=True, env=env, check=True)
+    r = subprocess.run([str(read_cli), "mark", "--pdf", paper, "--page", "2", "--text", "Sessions a day apart beat one sitting",
+                        "--kind", "q"], capture_output=True, text=True, env=env)
+    assert r.returncode == 0, r.stderr
+    waiting_id = next(m["id"] for m in json.loads(r.stdout)["marks"] if m["text"] == "Sessions a day apart beat one sitting")
+    rd = json.loads(subprocess.run([str(read_cli), "reading"], capture_output=True, text=True, env=env).stdout)
+    smith = next(x for x in rd["papers"] if x["title"] == "Smith 2020")
+    check(smith["tags"] == ["thesis"] and [w["id"] for w in smith["waiting"]] == [waiting_id],
+          f"reading: the paper, its project, the questions still waiting (the answered one not) ({smith})")
+    agent("day", "--message", "what is on today?")
+    pay = calls()[-1]["stdin"]
+    check("# What the student is reading" in pay and "**Smith 2020** #thesis" in pay
+          and "1 question waiting:" in pay and "Sessions a day apart beat one sitting" in pay,
+          "the day's first message says what the student is reading, with the questions waiting")
+    check("Do not answer those questions here" in pay, "…and that answering them is the paper's own chat's")
+
     lined_pdf(vault / "human" / "Personal" / "garden plans.pdf", [["Where the roses go this spring"] * 30])
     r = agent("note", "--file", "human/Personal/garden plans.pdf", "--message", "x", ok=False)
     check(r.returncode != 0 and "private" in r.stderr,

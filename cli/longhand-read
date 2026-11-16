@@ -32,6 +32,7 @@ nowhere is reported as not placed, never dropped.
     longhand-read tag    --pdf P --tag T
     longhand-read find   --pdf P --page N --text T     (where words are, to show them; nothing kept)
     longhand-read days                                 (what was marked on each day, every paper)
+    longhand-read reading [--days N]                   (papers read lately and their waiting questions, for the agent)
     longhand-read ocr    --pdf P                       (a scan read into a copy with words; one line a page)
 
 P is the PDF's path in the vault (or a whole path). Pages are counted from
@@ -661,10 +662,65 @@ def cmd_days(cfg: dict) -> dict:
     return {"days": {d: sorted(v.values(), key=lambda r: r["title"].lower()) for d, v in sorted(days.items())}}
 
 
+def answered_marks(cfg: dict, rel: str) -> set[str]:
+    """The marks a paper's conversation has answered: pointed at by a
+    message that has an answer (the agent's notes/<md5 of the path>.json,
+    as the page reads it)."""
+    where = Path(cfg["vault"]) / str(cfg.get("agentDir") or "agents/longhand") / "notes" / \
+        (hashlib.md5(rel.encode("utf-8")).hexdigest()[:16] + ".json")
+    try:
+        turns = json.loads(where.read_text()).get("turns") or []
+    except (OSError, ValueError):
+        return set()
+    out = set()
+    for a, b in zip(turns, turns[1:]):
+        if a.get("role") == "student" and a.get("marks") and b.get("role") == "agent" and not b.get("error"):
+            out.update(a["marks"])
+    return out
+
+
+def cmd_reading(cfg: dict, days: int, today: dt.date | None = None) -> dict:
+    """What the person is reading, for the day's agent and the planner
+    (plan.md item 15, after step 5): each paper marked in the last `days`
+    days or with questions still waiting — its project, the days it was
+    marked on, and the questions no answer has come to. From the reading
+    notes and the papers' conversations; no PDF is opened. A paper in a
+    private folder is never listed."""
+    today = today or dt.date.today()
+    since = (today - dt.timedelta(days=days - 1)).isoformat()
+    folder = Path(cfg["vault"]) / readings_dir(cfg)
+    papers = []
+    for f in sorted(folder.glob("*.md")) if folder.is_dir() else []:
+        try:
+            note = Note(f, f.read_text().split("\n"))
+        except OSError:
+            continue
+        pdf = next((m.group("target").strip() for line in note.lines[:12] for m in [PDF_FIELD_RE.match(line.strip())] if m), "")
+        if not pdf or is_private(cfg, pdf):
+            continue
+        marks = note.marks()
+        answered = answered_marks(cfg, pdf)
+        recent: dict[str, dict] = {}
+        for m in marks:
+            if m["day"] >= since:
+                recent.setdefault(m["day"], {"h": 0, "q": 0})[m["kind"]] += 1
+        waiting = [{"id": m["id"], "page": m["page"], "text": m["text"][:240], "note": m["note"][:240]}
+                   for m in marks if m["kind"] == "q" and m["id"] not in answered]
+        if not recent and not waiting:
+            continue
+        papers.append({"pdf": pdf, "title": Path(pdf).stem, "tags": note.tags(),
+                       "days": [{"day": d, **c} for d, c in sorted(recent.items())],
+                       "last": max((m["day"] for m in marks if m["day"]), default=""), "waiting": waiting})
+    papers.sort(key=lambda r: r["last"], reverse=True)
+    return {"since": since, "papers": papers}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(prog="longhand-read", description=__doc__.split("\n\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("days")
+    rp = sub.add_parser("reading")
+    rp.add_argument("--days", type=int, default=7)
     for name in ("state", "mark", "remove", "kind", "note", "tag", "find", "ocr"):
         p = sub.add_parser(name)
         p.add_argument("--pdf", required=True)
@@ -690,6 +746,9 @@ def main() -> int:
     cfg = load_config()
     if a.cmd == "days":
         print(json.dumps(cmd_days(cfg), ensure_ascii=False))
+        return 0
+    if a.cmd == "reading":
+        print(json.dumps(cmd_reading(cfg, max(1, a.days)), ensure_ascii=False))
         return 0
     rel, path = rel_of(cfg, a.pdf)
     if a.cmd == "ocr":

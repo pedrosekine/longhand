@@ -2296,12 +2296,44 @@ def plan_notes(cfg: dict, today: dt.date) -> list[str]:
     return out
 
 
+def reading_parts(cfg: dict, days: int = 7) -> list[str]:
+    """What the student is reading (plan.md item 15): the papers marked in
+    the last week or with questions still waiting, from their reading notes
+    (`longhand-read reading`) — for the day's agent and the planner. Their
+    questions are the paper's own chat's to answer; here they are context:
+    a project that meets soon with questions still open on its reading."""
+    try:
+        r = subprocess.run([sys.executable, str(READ_CLI), "reading", "--days", str(days)], capture_output=True, text=True,
+                           timeout=60, env=dict(os.environ, LONGHAND_CONFIG=str(CONFIG_PATH)))
+        papers = (json.loads(r.stdout).get("papers") or []) if r.returncode == 0 else []
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        papers = []
+    if not papers:
+        return []
+    out = ["", "# What the student is reading (the last seven days, from their reading notes)", "",
+           "Papers they marked lately, and the questions they marked in them that no answer has come to yet. Do not "
+           "answer those questions here: each paper has its own chat for that. Use them as context — when a paper's "
+           "project meets soon, or its deadline nears, and questions wait, you may say so, and propose time for them "
+           "with the kinds you have.", ""]
+    for p in papers:
+        tags = " ".join("#" + t for t in p.get("tags") or [])
+        days = ", ".join(f"{d['day']} ({d['h']} highlight{'s' if d['h'] != 1 else ''}, {d['q']} question{'s' if d['q'] != 1 else ''})"
+                         for d in p.get("days") or [])
+        out.append(f"- **{p['title']}**" + (f" {tags}" if tags else "") + f" — `{p['pdf']}`"
+                   + (f"; marked {days}" if days else "")
+                   + (f"; {len(p['waiting'])} question{'s' if len(p['waiting']) != 1 else ''} waiting:" if p.get("waiting") else ""))
+        for w in p.get("waiting") or []:
+            out.append(f"  - p. {w['page']}: “{searchlib.mask(w['text'])}”" + (f" — their words: {searchlib.mask(w['note'])}" if w.get("note") else ""))
+    return out
+
+
 def plan_payload(cfg: dict, paths: Paths, today: dt.date, data: dict, notes: list[str] | None = None) -> str:
     parts = ["# Plan", f"today: {today.isoformat()} ({today:%A})", "",
              "# Data (computed by local code; trust the numbers)", "",
              "```json", json.dumps(data, indent=1, ensure_ascii=False), "```"]
     if notes:
         parts += ["", "# The student's notes, the last seven days (private parts removed; read-only)", ""] + notes
+    parts += reading_parts(cfg)
     parts += knowledge_parts(paths)
     dismissed = read_dismissed(paths)
     if dismissed:
@@ -3074,6 +3106,7 @@ def day_payload(cfg: dict, paths: Paths, visible: list[dict], private: bool, mes
     other = today_conversations(cfg, paths)
     if other:
         parts += ["", "# Today's other conversations (in the note's margin, and with the planner)", ""] + other
+    parts += reading_parts(cfg)
     parts += block_reference(paths, visible, block) if block else []
     on = [f for f, y in searchlib.switched(paths.vault, cfg).items() if y]
     parts += ["", "# What you may search", "",

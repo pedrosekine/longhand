@@ -581,6 +581,16 @@ block, `table` rows.
   the Air and xmg: `tesseract-data-deu` for German). About four seconds a
   page on the Air.
 
+- **The day's agent knows what is read** (2026-11-16). The day's chat (its
+  first message) and the planner are told what the student is reading:
+  each paper marked in the last seven days or with questions still waiting
+  (none in a private folder), its project, the days it was marked on, and
+  the questions no answer has come to in its own chat, with their words
+  (`longhand-read reading`, from the reading notes and the papers'
+  conversations). They are told not to answer those there, but to say so
+  when a paper's project meets soon or its deadline nears and questions
+  wait, and to propose time for them with the kinds they have.
+
 **Not yet:** a two-column paper fitted one column at a time; a reading view
 (its text reflowed in the page's own face).
 
