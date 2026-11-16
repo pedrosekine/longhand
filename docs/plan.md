@@ -873,6 +873,26 @@ Small, when passing by:
       highlights, or a map in the agent's pane); whether highlights are
       the only ends or any passage. Item 15's "a layer of the agent's own
       highlights" is close and may come with it.
+19. **Reaching a project from the keyboard** (2026-11-16, the student:
+    "this is not good at the moment"; to be made much better, not
+    tweaked). Today, from the calendar, #thesis takes Tab three times (the
+    day's deadlines, READ, the projects) and then ↓ six times: the walk
+    grows with every list the sidebar gains, and the project used most
+    sits last. Candidates, to grill and mock up before building:
+    - **Type to go:** in the sidebar, typing letters picks the project
+      whose tag or name starts with them ("th" → #thesis, Enter opens),
+      with no field to open first.
+    - **A key per project,** shown by Hold Ctrl (item 11's F): a number or
+      the tag's first letter, so #thesis is two keys from anywhere.
+    - **The switcher (`Ctrl+O`),** already designed in
+      `docs/keys-proposal.md` and waiting: "#th" Enter from anywhere,
+      not only the sidebar.
+    - **Smaller walks:** Shift+Tab from the calendar straight to the
+      projects; the projects ordered by use or by what is next, not as
+      written; the sidebar remembering the last list and row.
+    Needs: which of these is the one way (one key, one action), and
+    whether the walk itself stays. Measured by keys pressed from the
+    calendar to #thesis: ten today (3 Tab, 6 ↓, Enter).
 
 - ~~**Tag suggestions while typing**~~ *done 2026-10-18*: `#` and a letter
   offer the tags that exist — the projects', then those written in the
