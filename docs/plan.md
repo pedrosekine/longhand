@@ -476,8 +476,26 @@ section, word for word, and to the diary's decisions log.
    those still waiting — between its documents and its sections, the three
    walked as one list; Enter opens a paper where it was left. Its documents
    that are PDFs in the vault open in the page's reader now, not in another
-   application. The continuous, editable page itself is still to be
-   designed with the student.
+   application. *A second part, 2026-11-16, for the master thesis*: the
+   **project's page**, read-only — P on a project (or inside one), or
+   "→ the project's page" in its view. The runner (`longhand-agent
+   project-page --tag T`) gathers into one note: the next session, the
+   project's open deadlines (overdue said), the "## Now" of its folder's
+   README, its papers (questions waiting, with their words; being read; not
+   marked yet — the folder's PDFs under a literature-named folder count as
+   papers before any mark), its working files (the folder's top-level notes
+   and its own PDFs, never `archive/`, `build/` or dot folders), and every
+   section of its tag in the daily notes, newest first, linked to where it is
+   written, boxes shown as ☐/☑/☒ with their due day (never as boxes, so
+   nothing counts them twice). The folder: a `Folder:` line in the project's
+   knowledge file, else `projects/<tag>` or `projects/<tag>_…`, the one
+   worked on last (`thesis_itu`, not `thesis_fhooe`). Private days and
+   blocks are left out, the days counted. It is written to
+   `~/.local/state/longhand/pages/<tag>.md`, never into the vault, so
+   nothing private-adjacent travels with the vault; opened again, it is
+   written again. Read-only means it is not asked about and not exported
+   (it is gathered from notes that are). Still to come: editing in place,
+   each edit landing in its day's note.
 6. **A sent block keeps its conversation through word edits.** A tick, a
    date or a priority keep it since `7740b51`; changing the words still
    detaches it. Identity in the layer (its last words and place, followed

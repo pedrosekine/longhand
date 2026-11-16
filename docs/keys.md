@@ -168,6 +168,7 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | A deadline: done (again: not done) | `Ctrl+L` | in the sidebar's lists |
 | Into a project's notes | `→` | in the sidebar's lists |
 | A project: a new section for it in today's note (# Name #tag) | `s` | in the sidebar's lists |
+| The project's page: its papers, files, notes and deadlines in one scroll (on a project, or inside one) | `p` | in the sidebar's lists |
 | A project: put its #tag at the cursor | `#` | in the sidebar's lists |
 | On to the next list | `Tab` | in the sidebar's lists |
 | Back out of the list | `Esc` · `Shift+Tab` · `←` | in the sidebar's lists |

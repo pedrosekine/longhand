@@ -605,6 +605,15 @@ engine (ES2022: `matchAll`, `replaceAll`, `\p{}`, `Intl`), so it needs
 Node, and its npm package fetched once. No note in the vault has a diagram
 yet.
 
+## A project's page (built 2026-11-16)
+
+A note the page shows that is not in the vault: P on a project gathers it
+into `~/.local/state/longhand/pages/<tag>.md` (plan.md item 5) and opens it
+read-only by its whole path (`Service.openFile` takes one). Its links are
+the vault's, so they open where each thing is written. A page outside the
+vault has no room and is not exported. Tests: `tests/test_projects.py`
+(`project_page`), `tests/page/run.py` (the dtm project).
+
 ## Open, and documented as open
 
 - **The middle ground.** `projects/`, `reference/` and `inbox/` are mixed

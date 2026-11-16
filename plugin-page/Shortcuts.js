@@ -275,6 +275,7 @@ var actions = [
   { id: "listDone", group: "lists", places: ["lists"], does: "A deadline: done (again: not done)", keys: ["Ctrl+L"] },
   { id: "listInto", group: "lists", places: ["lists"], does: "Into a project's notes", keys: ["Right"] },
   { id: "listClass", group: "lists", places: ["lists"], does: "A project: a new section for it in today's note (# Name #tag)", keys: ["S"] },
+  { id: "listPage", group: "lists", places: ["lists"], does: "The project's page: its papers, files, notes and deadlines in one scroll (on a project, or inside one)", keys: ["P"] },
   { id: "listTag", group: "lists", places: ["lists"], does: "A project: put its #tag at the cursor", keys: ["#"] },
   { id: "listNext", group: "lists", places: ["lists"], does: "On to the next list", keys: ["Tab"] },
   { id: "listBack", group: "lists", places: ["lists"], does: "Back out of the list", keys: ["Esc", "Shift+Tab", "Left"] },

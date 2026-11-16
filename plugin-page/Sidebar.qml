@@ -117,6 +117,7 @@ BorderSurface {
     // the sheet (the list stays), Left or Esc goes back to the list of
     // projects.
     if (page.projectOpen) {
+      if (Sc.hit(event, "listPage")) { page.openProjectPage(page.projectTag); return true }
       if (Sc.hit(event, "listUp")) page.moveSectionFocus(-1)
       else if (Sc.hit(event, "listDown")) page.moveSectionFocus(1)
       else if (Sc.hit(event, "listOpen")) page.openInProject()
@@ -785,6 +786,22 @@ BorderSurface {
         font.family: page.fontFamily
         font.styleName: page.fontStyle
         font.pixelSize: page.fs(Style.font.caption)
+      }
+      // The whole project in one scroll (P).
+      Text {
+        textFormat: Text.PlainText
+        text: "→ the project's page  P"
+        color: pageLink.containsMouse ? page.foreground : page.dim
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.caption)
+        MouseArea {
+          id: pageLink
+          anchors.fill: parent
+          hoverEnabled: true
+          cursorShape: Qt.PointingHandCursor
+          onClicked: page.openProjectPage(page.projectTag)
+        }
       }
 
       // Its documents, filed from the inbox: opened in the PDF viewer.

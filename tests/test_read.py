@@ -199,6 +199,17 @@ def main() -> int:
           and pp[0]["waiting"] == 1, f"papers: a project's papers by tag, any case, with their marks counted ({pp})")
     d = subprocess.run([str(READ), "papers", "--tag", "nothing"], capture_output=True, text=True, env=env)
     check(json.loads(d.stdout)["papers"] == [], "…and none for a tag no paper has")
+    # With the project's folder: its PDFs too, marked or not; literature by
+    # its folder's name or its marks, the rest the project's own documents;
+    # an archive and dot folders left out.
+    proj = vault / "projects" / "thesis_itu"
+    for rel in ("literature/pdf/Moser 2026.pdf", "docs/Proposal.pdf", "archive/Old.pdf", ".trash/Gone.pdf"):
+        (proj / rel).parent.mkdir(parents=True, exist_ok=True)
+        (proj / rel).write_bytes(b"%PDF-1.4\n")
+    pp = run("papers", "--tag", "thesis", "--dir", "projects/thesis_itu")["papers"]
+    kinds = {x["title"]: x["kind"] for x in pp}
+    check(kinds == {"Smith 2020": "paper", "Moser 2026": "paper", "Proposal": "document"},
+          f"papers --dir: the folder's PDFs too, papers and documents told apart, the archive left out ({kinds})")
 
     # A name taken by another paper's note: the PDF's folder is added.
     other = "other/Smith 2020.pdf"

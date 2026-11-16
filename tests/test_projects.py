@@ -163,9 +163,78 @@ def end_to_end() -> None:
     check((folder / "bikes.md").read_text().startswith("# Bikes in Linz"), "…and the person's name stands")
 
 
+def project_page() -> None:
+    """A project's page (plan.md item 5, 2026-11-16): the folder under way
+    found, its Now, papers and files; the tag's sections in the daily notes
+    with their boxes shown, never as boxes; private days and blocks left out;
+    written in the state folder, never the vault."""
+    tmp = pathlib.Path(tempfile.mkdtemp(prefix="project-page-test-"))
+    vault = tmp / "vault"
+    daily = vault / "Daily"
+    daily.mkdir(parents=True)
+    d1, d2, d3 = (TODAY - dt.timedelta(days=n) for n in (1, 2, 3))
+    (daily / f"{d1.isoformat()}.md").write_text(
+        "# Thesis #thesis\n\nSketched the method chapter.\n\n- [ ] email the supervisor 📅 2030-01-07 ⏫ ^d4\n- [x] read Moser\n\n"
+        "> [!private]\n> a worry about the funding\n\n# Other #dtm\n\n- [ ] not the thesis's\n")
+    (daily / f"{d2.isoformat()}.md").write_text("---\nagent: false\n---\n# Thesis #thesis\n\nsomething kept to myself\n")
+    (daily / f"{d3.isoformat()}.md").write_text("# Thesis #thesis\n\nFirst look at the literature.\n")
+    old, cur = vault / "projects" / "thesis_fhooe", vault / "projects" / "thesis_itu"
+    (old).mkdir(parents=True)
+    (old / "README.md").write_text("# Old thesis\n\n## Now\n\nfinished long ago\n")
+    os.utime(old / "README.md", (1_600_000_000, 1_600_000_000))
+    os.utime(old, (1_600_000_000, 1_600_000_000))
+    (cur / "literature" / "pdf").mkdir(parents=True)
+    (cur / "docs").mkdir()
+    (cur / "archive").mkdir()
+    (cur / "README.md").write_text("# Thesis\n\n## Now\n\n- Writing the method.\n- Next: the pilot.\n\n## Later\n\nnot now\n")
+    (cur / "DECISIONS.md").write_text("# Decisions\n")
+    (cur / "literature" / "pdf" / "Moser 2026.pdf").write_bytes(b"%PDF-1.4\n")
+    (cur / "docs" / "Proposal.pdf").write_bytes(b"%PDF-1.4\n")
+    (cur / "archive" / "Draft 0.pdf").write_bytes(b"%PDF-1.4\n")
+    know = vault / "agents" / "longhand" / "knowledge" / "projects"
+    know.mkdir(parents=True)
+    (know / "thesis.md").write_text("# Master Thesis\n\n- Tag: `#thesis`\n")
+    cfgdir = tmp / "config"
+    (cfgdir / "longhand").mkdir(parents=True)
+    cfg = cfgdir / "longhand" / "config.json"
+    cfg.write_text(json.dumps({"vault": str(vault), "daily": {"dir": "Daily", "format": "YYYY-MM-DD"},
+                               "agentDir": "agents/longhand", "horizon": "2000-01-01"}))
+    state = tmp / "state"
+    (state / "longhand").mkdir(parents=True)
+    due = int(dt.datetime.combine(TODAY + dt.timedelta(days=10), dt.time(23, 59)).timestamp())
+    (state / "longhand" / "deadlines.tsv").write_text(
+        f"1\t{due}\tDraft the method\topen\t\t\tthesis\t\n2\t{due}\tDTM poster\topen\t\t\tdtm\t\n")
+    env = dict(os.environ, LONGHAND_CONFIG=str(cfg), XDG_STATE_HOME=str(state), XDG_CONFIG_HOME=str(cfgdir))
+    r = subprocess.run([sys.executable, str(AGENT), "project-page", "--tag", "#thesis"], capture_output=True, text=True, env=env)
+    check(r.returncode == 0, f"`project-page` runs ({r.stderr[-400:]})")
+    out = json.loads(r.stdout or "{}")
+    page = pathlib.Path(out.get("path", "/nonexistent"))
+    check(page == state / "longhand" / "pages" / "thesis.md" and page.is_file(), f"…written in the state folder ({out})")
+    check(out.get("folder") == "projects/thesis_itu", f"of two thesis folders, the one worked on last ({out})")
+    t = page.read_text() if page.is_file() else ""
+    check(t.startswith("# Master Thesis\n"), "its name heads it")
+    check("- Draft the method · " in t and "DTM poster" not in t, "its deadlines, not another project's")
+    check("## Now" in t and "- Next: the pilot." in t and "not now" not in t and "finished long ago" not in t,
+          "the README's Now section, only it")
+    check("### Not marked yet" in t and "[[projects/thesis_itu/literature/pdf/Moser 2026.pdf|Moser 2026]]" in t,
+          "its literature, by folder, as papers not yet marked")
+    check("[[projects/thesis_itu/docs/Proposal.pdf|Proposal]] (PDF)" in t and "[[projects/thesis_itu/DECISIONS|DECISIONS]]" in t
+          and "Draft 0" not in t, "its own documents and notes as working files; the archive left out")
+    check(f"[[Daily/{d1.isoformat()}#Thesis #thesis|" in t and "Sketched the method chapter." in t
+          and "First look at the literature." in t and t.index("Sketched") < t.index("First look"),
+          "the tag's sections in the daily notes, newest first, linked to where they are written")
+    check("☐ email the supervisor · due Mon 7 Jan" in t and "☑ read Moser" in t and "- [ ]" not in t and "^d4" not in t
+          and "⏫" not in t, "boxes shown as ☐/☑ with their due day, never as boxes, their marks off")
+    check("not the thesis's" not in t, "…not another tag's section under it")
+    check("funding" not in t and "kept to myself" not in t and "1 day marked private left out." in t,
+          "a private block and a private day are left out, the day counted")
+    check(not any(vault.rglob("pages")), "nothing written into the vault")
+
+
 def main() -> int:
     units()
     end_to_end()
+    project_page()
     print("PASS" if failures == 0 else f"{failures} FAILED")
     return 1 if failures else 0
 

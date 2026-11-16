@@ -557,7 +557,7 @@ Item {
   onNoteRelChanged: if (root.exportOpen && root.noteRel !== root.exportFor) root.closeExport()
 
   function openExport() {
-    if (!svc.ready || root.pdfShown || root.noteRel === "" || root.problem !== "") { root.showHint("nothing here to export"); return }
+    if (!svc.ready || root.pdfShown || root.noteRel === "" || root.pageOutside || root.problem !== "") { root.showHint("nothing here to export"); return }
     var body = editor.text
     var whole = svc.joinHeader(body)
     var before = whole.substring(0, whole.length - body.length)
@@ -1059,7 +1059,10 @@ Item {
   readonly property string noteRel: svc.filePath !== "" ? svc.filePath
     : svc.noteDate !== "" && svc.configured ? String(svc.config.daily.dir).replace(/^\/+|\/+$/g, "") + "/" + svc.noteDate + ".md" : ""
   readonly property bool noteAskable: root.paper.shown ? root.paper.askable
-    : svc.ready && root.noteRel !== "" && (!root.dayNote || root.beforeHorizon || svc.notePrivate)
+    : svc.ready && root.noteRel !== "" && !root.pageOutside && (!root.dayNote || root.beforeHorizon || svc.notePrivate)
+  // A note written outside the vault (a project's page): read, never asked
+  // about or exported — it is gathered from notes that are.
+  readonly property bool pageOutside: svc.filePath.charAt(0) === "/"
   // What the room talks about: the PDF open in the vault (plan.md item 15,
   // step 2), else the note.
   readonly property string roomRel: root.paper.shown ? root.pdfRel : root.noteRel
@@ -4016,6 +4019,7 @@ Item {
     var pr = root.projects[root.projFocus]
     if (Sc.hit(event, "listUp")) root.projFocus = Math.max(0, root.projFocus - 1)
     else if (Sc.hit(event, "listDown")) root.projFocus = Math.min(root.projects.length, root.projFocus + 1)
+    else if (Sc.hit(event, "listPage")) { if (pr) root.openProjectPage(pr.tag) }
     else if (Sc.hit(event, "listTag")) { if (pr) root.insertTag(pr) }
     else if (Sc.hit(event, "listClass")) { if (pr) root.startClass(pr) }
     else if (Sc.hit(event, "listOpen")) { if (pr) root.openProject(pr); else root.openSidebarProject() }
@@ -4056,6 +4060,32 @@ Item {
     for (var k = 0; k < root.projects.length; k++)
       if (root.projects[k].tag === root.projectTag) return root.projects[k].docs || []
     return []
+  }
+
+  // A project's page (plan.md item 5, 2026-11-16): everything of it in one
+  // scroll — next session, deadlines, its folder's "Now", its papers and
+  // the questions waiting in them, its working files, every section of its
+  // tag in the daily notes — written by the runner (`project-page`) into the
+  // state folder and shown read-only; its links go where each thing is
+  // written. Written again each time it is opened.
+  function openProjectPage(tag) {
+    if (!tag) return
+    root.used("project-page")
+    root.showHint("gathering #" + tag + "…")
+    projectPageProc.command = [svc.runner, "project-page", "--tag", tag]
+    projectPageProc.running = true
+  }
+  Process {
+    id: projectPageProc
+    stdout: StdioCollector {
+      id: projectPageOut
+      onStreamFinished: {
+        var o = null
+        try { o = JSON.parse(projectPageOut.text) } catch (e) { o = null }
+        if (o && o.path) { root.hint = ""; root.openFile(o.path, true) }
+        else root.showHint("the project's page could not be made")
+      }
+    }
   }
 
   // A project's document: a PDF in the vault opens in the page's reader

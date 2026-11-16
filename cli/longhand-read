@@ -716,7 +716,7 @@ def cmd_reading(cfg: dict, days: int, today: dt.date | None = None) -> dict:
     return {"since": since, "papers": papers}
 
 
-def cmd_papers(cfg: dict, tag: str) -> dict:
+def cmd_papers(cfg: dict, tag: str, folder_rel: str = "") -> dict:
     """A project's papers (plan.md item 5's first part, 2026-11-16): every
     reading note carrying its tag, with its marks counted, the questions
     still waiting, and the last day it was marked — the newest first."""
@@ -733,14 +733,38 @@ def cmd_papers(cfg: dict, tag: str) -> dict:
         pdf = next((m.group("target").strip() for line in note.lines[:12] for m in [PDF_FIELD_RE.match(line.strip())] if m), "")
         if not pdf:
             continue
-        marks = note.marks()
-        answered = answered_marks(cfg, pdf)
-        out.append({"pdf": pdf, "title": Path(pdf).stem, "h": sum(1 for m in marks if m["kind"] == "h"),
-                    "q": sum(1 for m in marks if m["kind"] == "q"),
-                    "waiting": sum(1 for m in marks if m["kind"] == "q" and m["id"] not in answered),
-                    "last": max((m["day"] for m in marks if m["day"]), default="")})
+        out.append(paper_row(cfg, pdf, note))
+    # With the project's folder: its PDFs too, those never marked as well
+    # (a reading list not yet begun), and those marked under no tag.
+    if folder_rel:
+        vault = Path(cfg["vault"])
+        have = {r["pdf"] for r in out}
+        for f in sorted((vault / folder_rel).rglob("*.pdf")) if (vault / folder_rel).is_dir() else []:
+            rel = str(f.relative_to(vault))
+            if rel in have or is_private(cfg, rel) or "/archive/" in f"/{rel}" or "/build/" in f"/{rel}" \
+                    or any(part.startswith(".") for part in Path(rel).parts):
+                continue
+            out.append(paper_row(cfg, rel, load_note(cfg, rel)))
     out.sort(key=lambda r: (r["last"], r["title"]), reverse=True)
     return {"tag": tag, "papers": out}
+
+
+LITERATURE = {"literature", "papers", "paper", "readings", "reading", "references", "refs", "bibliography", "sources"}
+
+
+def paper_row(cfg: dict, pdf: str, note: "Note | None") -> dict:
+    marks = note.marks() if note else []
+    answered = answered_marks(cfg, pdf)
+    waiting = [m for m in marks if m["kind"] == "q" and m["id"] not in answered]
+    # Literature (a folder named so on its way, or a paper already marked)
+    # or one of the project's own documents (a proposal, a chart).
+    lit = bool(marks) or any(p.lower() in LITERATURE for p in Path(pdf).parts[:-1])
+    return {"pdf": pdf, "title": Path(pdf).stem, "kind": "paper" if lit else "document",
+            "note": str(note.path.relative_to(Path(cfg["vault"]))) if note else "",
+            "h": sum(1 for m in marks if m["kind"] == "h"), "q": sum(1 for m in marks if m["kind"] == "q"),
+            "waiting": len(waiting), "questions": [{"id": m["id"], "page": m["page"], "text": m["text"][:240], "note": m["note"][:240]}
+                                                   for m in waiting],
+            "last": max((m["day"] for m in marks if m["day"]), default="")}
 
 
 def main() -> int:
@@ -751,6 +775,7 @@ def main() -> int:
     rp.add_argument("--days", type=int, default=7)
     pp = sub.add_parser("papers")
     pp.add_argument("--tag", required=True)
+    pp.add_argument("--dir", default="", help="the project's folder in the vault: its PDFs too, marked or not")
     for name in ("state", "mark", "remove", "kind", "note", "tag", "find", "ocr"):
         p = sub.add_parser(name)
         p.add_argument("--pdf", required=True)
@@ -778,7 +803,7 @@ def main() -> int:
         print(json.dumps(cmd_days(cfg), ensure_ascii=False))
         return 0
     if a.cmd == "papers":
-        print(json.dumps(cmd_papers(cfg, a.tag), ensure_ascii=False))
+        print(json.dumps(cmd_papers(cfg, a.tag, a.dir.strip("/")), ensure_ascii=False))
         return 0
     if a.cmd == "reading":
         print(json.dumps(cmd_reading(cfg, max(1, a.days)), ensure_ascii=False))

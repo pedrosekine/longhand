@@ -187,7 +187,9 @@ Item {
   // file that is not there says so.
   function openFile(rel, readOnly) {
     if (!configured) return
-    var p = config.vault + "/" + rel
+    // A whole path: a note written outside the vault for the page to show
+    // (a project's page, 2026-11-16), read-only.
+    var p = rel.charAt(0) === "/" ? rel : config.vault + "/" + rel
     root.today = todayStamp()
     root.readOnly = !!readOnly
     if (p === notePath && ready) {

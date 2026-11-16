@@ -217,7 +217,7 @@ if [ "$1" = projects ]; then
   exit $rc
 fi
 case "$1" in
-  accept|projects|project|sections|next|dated|tasks|box|timetable|plan|proposals|proposal|talk|thread|rate|notebook|autonomy|day|search|horizon|note|export) exec "{ROOT}/agent/longhand-agent" "$@" ;;
+  accept|projects|project|project-page|sections|next|dated|tasks|box|timetable|plan|proposals|proposal|talk|thread|rate|notebook|autonomy|day|search|horizon|note|export) exec "{ROOT}/agent/longhand-agent" "$@" ;;
   run) sleep 2; exit 0 ;;
   chat) sleep 2; exec python3 "{chatstub}" "{self.vault}/agents/longhand/daily" "$@" ;;
 esac
@@ -2289,6 +2289,17 @@ def checks() -> int:
               f"the project in the sidebar lists its documents ({p.call('projectDocs')})")
         p.call("moveSectionFocus", -1)
         check(p.call("docFocus") == "0", "↑ from the first section reaches the documents")
+        # The project's page (plan.md item 5): P gathers the project into one
+        # note outside the vault, opened read-only.
+        dash_was = p.call("dashOpen")
+        p.call("sideKey", 0x50, 0)                          # P
+        fl = lambda: json.loads(p.call("files"))
+        check(p.wait(lambda: fl()["filePath"].endswith("/longhand/pages/dtm.md") and fl()["readOnly"]
+                     and "Working files" in p.call("text") and "DTM handout" in p.call("text"), 20),
+              f"P inside a project opens its page, read-only, its documents on it ({fl()}, {p.call('text')[:300]!r})")
+        check(fl()["filePath"].startswith(str(p.state)), "…written in the state folder, not the vault")
+        if p.call("dashOpen") != dash_was:
+            p.call("dash")
         p.call("leaveProject")
         if p.call("sidebarOpen") != side_was:
             p.call("sidebar")
@@ -3523,7 +3534,9 @@ def checks() -> int:
         def diary_row():
             return next((n for n, r in enumerate(json.loads(p.call("dashRows")))
                          if r.get("kind") == "task" and r.get("text") == "Diary 2"), -1)
-        check(p.wait(lambda: panes()["center"] == "dash" and diary_row() >= 0, 10), "the deadline's row on the dashboard")
+        check(p.wait(lambda: panes()["center"] == "dash" and diary_row() >= 0, 10),
+              f"the deadline's row on the dashboard ({panes()}; rows: {[r.get('text') for r in json.loads(p.call('dashRows'))][:12]}; "
+              f"on disk: {'Diary 2' in p.note()}; trace: {p.call('tasksTrace')[-600:]})")
         p.call("dashFocus", diary_row())
         p.call("dashKey", KEY_E, CTRL | SHIFT)
         check(p.wait(lambda: ex()["open"] and not ex()["busy"] and ex()["from"], 15)

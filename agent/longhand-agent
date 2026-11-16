@@ -1610,6 +1610,201 @@ def cmd_sections(cfg: dict, args) -> int:
 
 
 
+# A project's page (plan.md item 5, 2026-11-16): everything of one project
+# in one scroll — its next session and deadlines, its folder's "Now", its
+# papers and the questions waiting in them, its working files, and every
+# section of its tag in the daily notes, newest first — written as a note
+# the page opens read-only, its links leading to where each thing is
+# written. Kept in the state folder, never in the vault: copied boxes would
+# count twice in Obsidian, and a copy of the notes would travel with every
+# sync and backup.
+PAGES = STATE_HOME / "pages"
+BOX_LINE = re.compile(r"^(\s*)[-*+] \[(.)\]\s*")
+
+
+def project_folder(cfg: dict, tag: str, file: str = "") -> str:
+    """The project's own folder in the vault: a `Folder:` line in its file,
+    else `projects/<tag>` or a folder there whose name starts with the tag
+    and `_` or `-` (`projects/thesis_itu`) — of several, the one whose files
+    changed last (the thesis under way, not an old one). "" when none."""
+    vault = Path(cfg["vault"])
+    root = cfg.get("projectsDir", "projects")
+    if file:
+        try:
+            m = re.search(r"^\s*-?\s*Folder:\s*`?([^`\n]+?)`?\s*$", (Path(cfg["vault"]) / cfg.get("agentDir", "agents/longhand")
+                          / "knowledge" / "projects" / file).read_text(), re.M)
+            if m and (vault / m.group(1).strip("/")).is_dir():
+                return m.group(1).strip("/")
+        except OSError:
+            pass
+    base = vault / root
+    found = [d for d in (sorted(base.iterdir()) if base.is_dir() else [])
+             if d.is_dir() and (d.name.lower() == tag.lower() or re.match(re.escape(tag) + r"[_-]", d.name, re.I))]
+    if not found:
+        return ""
+
+    # Several (an old thesis and the one under way): the one worked on last.
+    def touched(d: Path) -> float:
+        return max([f.stat().st_mtime for f in d.iterdir() if f.is_file()] or [d.stat().st_mtime])
+    return f"{root}/{max(found, key=touched).name}"
+
+
+def readme_now(vault: Path, folder: str) -> list[str]:
+    """The folder README's "Now" section (the thesis keeps one current), its
+    lines as written; [] when there is none."""
+    try:
+        lines = (vault / folder / "README.md").read_text().split("\n")
+    except OSError:
+        return []
+    out, inside = [], False
+    for line in lines:
+        if re.match(r"^##\s+Now\b", line):
+            inside = True
+            continue
+        if inside and re.match(r"^#{1,2}\s", line):
+            break
+        if inside:
+            out.append(line)
+    while out and not out[-1].strip():
+        out.pop()
+    while out and not out[0].strip():
+        out.pop(0)
+    return out
+
+
+def page_box(line: str) -> str:
+    """A box copied into the page: never a box (so nothing counts it twice),
+    its Tasks marks and anchor taken off, its day said."""
+    m = BOX_LINE.match(line)
+    if not m:
+        return line
+    mark = {"x": "☑", "X": "☑", "-": "☒", "/": "◐"}.get(m.group(2), "☐")
+    rest = line[m.end():]
+    due = re.search(r"📅\s*(\d{4}-\d{2}-\d{2})", rest)
+    rest = re.sub(r"\s*\^d\d+\s*$", "", rest)
+    rest = re.sub(r"\s*(?:📅|⏳|🛫|➕|✅|❌)\s*\d{4}-\d{2}-\d{2}(?:\s+\d{1,2}:\d{2})?", "", rest)
+    rest = re.sub(r"\s*[⏫🔼🔽🔺⏬]", "", rest).rstrip()
+    if due:
+        rest += f" · due {dt.date.fromisoformat(due.group(1)):%a %-d %b}"
+    return f"{m.group(1)}{mark} {rest}"
+
+
+def wiki(rel: str, label: str = "") -> str:
+    target = rel[:-3] if rel.endswith(".md") else rel
+    return f"[[{target}|{label}]]" if label else f"[[{target}]]"
+
+
+def project_page(cfg: dict, tag: str, now: dt.datetime) -> tuple[str, str]:
+    """The page's text, and the folder it found ("" if none)."""
+    tag = tag.lstrip("#").lower()
+    vault = Path(cfg["vault"])
+    projects = project_list(cfg, now, timetable.sessions(cfg, STATE_HOME, fetch=False))
+    pr = next((p for p in projects if p["tag"].lower() == tag), {"tag": tag, "name": tag, "file": "", "next": None})
+    folder = project_folder(cfg, tag, pr.get("file") or "")
+    out = [f"# {pr['name']}", "",
+           f"*#{tag} — everything of it in one place, as Longhand found it at {now:%a %-d %b, %H:%M}. Read-only: "
+           "follow a link (Alt+Enter, or a click) to where each thing is written; open the page again to bring it up "
+           "to date.*", ""]
+    nxt = pr.get("next") or {}
+    if nxt.get("at"):
+        at = dt.datetime.fromisoformat(nxt["at"])
+        out.append(f"**Next session:** {at:%a %-d %b, %H:%M}" + (f" · {nxt['room']}" if nxt.get("room") else ""))
+    dls = sorted((d for d in planlib.store_deadlines(STATE_HOME / "deadlines.tsv") if (d["project"] or "").lower() == tag),
+                 key=lambda d: d["due"])
+    if dls:
+        out += ([""] if out[-1] != "" else []) + ["**Deadlines:**"] + [f"- {d['title']} · {d['due']:%a %-d %b}" + (f" {d['due']:%H:%M}" if d["due"].strftime("%H:%M") != "23:59" else "")
+                                          + (" · overdue" if d["due"] < now else "") for d in dls]
+    if nxt.get("at") or dls:
+        out.append("")
+    now_lines = readme_now(vault, folder) if folder else []
+    if now_lines:
+        out += ["## Now", "", f"*From {wiki(folder + '/README.md', 'the folder’s README')}.*", ""] + now_lines + [""]
+    # Papers, and the questions still waiting in them.
+    try:
+        r = subprocess.run([sys.executable, str(READ_CLI), "papers", "--tag", tag] + (["--dir", folder] if folder else []),
+                           capture_output=True, text=True, timeout=120, env=dict(os.environ, LONGHAND_CONFIG=str(CONFIG_PATH)))
+        rows = json.loads(r.stdout).get("papers") or [] if r.returncode == 0 else []
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        rows = []
+    papers = [x for x in rows if x.get("kind", "paper") == "paper"]
+    documents = [x for x in rows if x.get("kind") == "document"]
+    if papers:
+        waiting = [x for x in papers if x["waiting"]]
+        marked = [x for x in papers if (x["h"] or x["q"]) and not x["waiting"]]
+        unopened = sorted((x for x in papers if not (x["h"] or x["q"])), key=lambda x: x["title"].lower())
+        out += ["## Papers", ""]
+        if waiting:
+            out += ["### Questions waiting", ""]
+            for x in waiting:
+                out.append(f"- {wiki(x['pdf'], x['title'])} — {x['waiting']} waiting" + (f", last read {x['last']}" if x["last"] else ""))
+                for q in x.get("questions") or []:
+                    out.append(f"  - p. {q['page']}: “{q['text']}”" + (f" — {q['note']}" if q.get("note") else ""))
+            out.append("")
+        if marked:
+            out += ["### Being read", ""] + [
+                f"- {wiki(x['pdf'], x['title'])} — {x['h']} highlight{'s' if x['h'] != 1 else ''}, {x['q']} question{'s' if x['q'] != 1 else ''}"
+                + (f", last read {x['last']}" if x["last"] else "") + (f" · {wiki(x['note'], 'its reading note')}" if x.get("note") else "")
+                for x in marked] + [""]
+        if unopened:
+            out += ["### Not marked yet", ""] + [f"- {wiki(x['pdf'], x['title'])}" for x in unopened] + [""]
+    # The folder's working files: its notes at the top, its own documents.
+    files = []
+    if folder:
+        files = [p for p in sorted((vault / folder).glob("*.md"))]
+    if files or documents:
+        out += ["## Working files", ""]
+        out += [f"- {wiki(str(f.relative_to(vault)), f.stem)}" for f in files]
+        out += [f"- {wiki(x['pdf'], x['title'])} (PDF)" for x in documents]
+        out.append("")
+    # Every section of its tag in the daily notes, newest first; never a
+    # note or a block marked private.
+    secs = tagged_sections(cfg, tag, 0, boxes=True)
+    daily = cfg["daily"]["dir"].strip("/")
+    kept, private_days = [], 0
+    cache: dict[str, list] = {}
+    for sec in secs:
+        f = sec.get("file") or ""
+        if f not in cache:
+            try:
+                cache[f] = blocklib.split(Path(f).read_text())
+            except OSError:
+                cache[f] = []
+        if note_is_private(cache[f]):
+            private_days += 1
+            continue
+        kept.append(sec)
+    if kept or private_days:
+        out += ["## In the daily notes", ""]
+        for sec in kept:
+            d = dt.date.fromisoformat(sec["date"]) if re.match(r"\d{4}-\d{2}-\d{2}$", sec["date"]) else None
+            stem = Path(sec["file"]).stem
+            where = wiki(f"{daily}/{stem}" + (f"#{sec['heading']}" if sec.get("heading") else ""), f"{d:%a %-d %b}" if d else stem)
+            out.append(f"### {where}" + (f" — {sec['title']}" if sec.get("title") and sec.get("heading") else ""))
+            out.append("")
+            body = sec.get("text") or ""
+            if body.strip():
+                shown = [b["text"] for b in visible_blocks(blocklib.split(body)) if b["kind"] != "frontmatter"]
+                out += ["\n".join(page_box(l) for l in b.split("\n")) for b in shown]
+            else:
+                out += [page_box(b["text"] if b["text"].lstrip().startswith(("-", "*", "+")) else f"- [{b.get('state', ' ')}] {b['text']}")
+                        for b in sec.get("boxes") or []]
+            out.append("")
+        if private_days:
+            out += [f"*{private_days} day{'s' if private_days != 1 else ''} marked private left out.*", ""]
+    return "\n".join(out).rstrip() + "\n", folder
+
+
+def cmd_project_page(cfg: dict, args) -> int:
+    text, folder = project_page(cfg, args.tag, dt.datetime.now())
+    PAGES.mkdir(parents=True, exist_ok=True)
+    out = PAGES / f"{args.tag.lstrip('#').lower()}.md"
+    tmp = out.with_suffix(".tmp")
+    tmp.write_text(text)
+    os.replace(tmp, out)
+    print(json.dumps({"path": str(out), "folder": folder}))
+    return 0
+
+
 def cmd_tasks(cfg: dict, args) -> int:
     """Every open checkbox across the daily notes, newest day first, with
     what the note says about each one. Read-only; ticking is the page's job
@@ -4477,6 +4672,8 @@ def main(argv: list[str]) -> int:
     p.add_argument("--date", default="")
     p = sub.add_parser("tasks")
     p.add_argument("--days", default="7")
+    p = sub.add_parser("project-page")
+    p.add_argument("--tag", required=True)
     p = sub.add_parser("sections")
     p.add_argument("--tag", required=True)
     p.add_argument("--days", default="0", help="0: every day there is")
@@ -4582,7 +4779,7 @@ def main(argv: list[str]) -> int:
     args = ap.parse_args(argv)
     try:
         cfg = load_config()
-        return {"run": cmd_run, "chat": cmd_chat, "ack": cmd_ack, "accept": cmd_accept, "tasks": cmd_tasks, "sections": cmd_sections,
+        return {"run": cmd_run, "chat": cmd_chat, "ack": cmd_ack, "accept": cmd_accept, "tasks": cmd_tasks, "sections": cmd_sections, "project-page": cmd_project_page,
                 "next": cmd_next, "dated": cmd_dated, "box": cmd_box, "rate": cmd_rate, "eval": cmd_eval, "review": cmd_review, "plan": cmd_plan, "proposals": cmd_proposals, "proposal": cmd_proposal, "talk": cmd_talk, "thread": cmd_thread, "timetable": cmd_timetable, "notebook": cmd_notebook, "documents": cmd_documents, "day": cmd_day, "search": cmd_search, "horizon": cmd_horizon, "note": cmd_note, "autonomy": cmd_autonomy, "dismiss": cmd_dismiss, "curriculum": cmd_curriculum,
                 "context": cmd_context, "state": cmd_state, "install": cmd_install, "stats": cmd_stats,
                 "projects": cmd_projects, "project": cmd_project, "export": cmd_export}[args.cmd](cfg, args)
