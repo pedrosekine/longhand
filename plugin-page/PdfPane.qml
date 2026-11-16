@@ -56,6 +56,15 @@ Item {
   // (each with its rectangles), how many could not be placed, whether the
   // PDF has words at all.
   property var read: ({ marks: [], unplaced: 0, text: true, note: "", tags: [] })
+  // A mark to show once the PDF is open and its marks are read (a waiting
+  // question picked in a project's view, 2026-11-16); "" when none.
+  property string showAfter: ""
+  function showPending() {
+    if (pane.showAfter === "" || !pane.settled || !pane.markById(pane.showAfter)) return
+    var id = pane.showAfter
+    pane.showAfter = ""
+    pane.showMark(id)
+  }
   property string picked: ""            // a mark clicked
   property string lastMade: ""          // the last mark made while it is open
   property string readError: ""
@@ -153,6 +162,7 @@ Item {
       pane.settled = true
       pane.dress()
       pane.alignSoon()
+      pane.showPending()
     })
   }
 
@@ -292,6 +302,7 @@ Item {
     if (pane.picked !== "" && !o.marks.some(function (m) { return m.id === pane.picked })) pane.picked = ""
     pane.read = o
     pane.readError = ""
+    Qt.callLater(pane.showPending)
   }
 
   // Words quoted in the paper's chat, “like this” (p. 12): found on their

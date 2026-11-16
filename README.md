@@ -118,6 +118,17 @@ in the agent's `knowledge/projects/`) with their next session. Enter or a
 click **opens that project's notes** in the sidebar itself: every section you
 wrote under its tag, newest first, with the headings under each as its index,
 so a class note is found by its course instead of by the date it happened on.
+The project is **one list**, writing and reading together: first what is
+**open** (its unticked boxes, then the questions still waiting in its papers,
+each with the words you marked and its page; past five, the rest fold to a
+line), then **by day** — every section and every day a paper was read
+("Sun 15 Nov · read · 10 highlights, 6 questions"), newest first — then the
+papers not begun as a folded **Shelf** and the project's own PDFs as folded
+**Files**. A paper named by its BibTeX key (`moser2026identifying.pdf`) is
+shown as its authors, year and title from a `.bib` file in the project's
+folder. Enter does what the row is: a section or a box goes to the note, a
+paper opens where it was left, a question opens its paper on that mark, a
+fold opens.
 Each section says what its tagged heading says, when it was written and
 how many of its boxes are open. Enter opens a section in the sheet with the
 cursor on its heading and **only that project's part of the day drawn**: the

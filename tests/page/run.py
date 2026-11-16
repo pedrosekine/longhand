@@ -249,8 +249,10 @@ esac
         # full one, the window can be a few pixels wide).
         subprocess.run(["hyprctl", "eval", 'hl.window_rule({ match = { title = "^Page scratch$" }, float = true, size = { 701, 850 } })'],
                        capture_output=True)
-        self.proc = subprocess.Popen(["quickshell", "-p", str(self.shell)], env=self.env,
-                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # PAGE_LOG=file keeps what the page says (its QML warnings), to read
+        # when a run goes wrong.
+        log = open(os.environ["PAGE_LOG"], "w") if os.environ.get("PAGE_LOG") else subprocess.DEVNULL
+        self.proc = subprocess.Popen(["quickshell", "-p", str(self.shell)], env=self.env, stdout=log, stderr=log)
         self.wait(lambda: self.call("state").startswith("{"), 10)
 
     def call(self, fn, *args):
@@ -2287,8 +2289,14 @@ def checks() -> int:
         p.call("openProject", next(n for n, x in enumerate(json.loads(p.call("projects"))) if x.startswith("dtm|")))
         check(p.wait(lambda: [d["name"] for d in json.loads(p.call("projectDocs"))] == [f"{TODAY_ISO} DTM handout"]),
               f"the project in the sidebar lists its documents ({p.call('projectDocs')})")
-        p.call("moveSectionFocus", -1)
-        check(p.call("docFocus") == "0", "↑ from the first section reaches the documents")
+        # Since the one-list view (ProjectView.js, 2026-11-16) its files
+        # are folded at the foot, a key away.
+        prows = lambda: json.loads(p.call("projectRows"))["rows"]
+        check(p.wait(lambda: "fold|fold:files" in prows()), f"…folded under Files at the foot ({prows()})")
+        p.call("projectPick", "fold:files")
+        p.call("projectOpenRow")
+        check(p.wait(lambda: any(r.startswith("f|") or (r.startswith("doc|") and "DTM handout" in r) for r in prows())),
+              f"…which unfolds to them ({prows()})")
         # The project's page (plan.md item 5): P gathers the project into one
         # note outside the vault, opened read-only.
         dash_was = p.call("dashOpen")

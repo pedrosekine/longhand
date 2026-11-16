@@ -106,6 +106,53 @@ def fixture(m, p):
                                           f"- [x] Book the plotter #studio ⏳ {d0} ✅ {d0}\n")
 
 
+def project_fixture(m, p):
+    """A thesis as Longhand sees one: its knowledge file, its folder with a
+    bibliography and papers (one read over two days, with questions; the
+    rest not begun), its proposal, and three days of sections."""
+    import importlib.util as iu
+    spec = iu.spec_from_file_location("tread", HERE.parent / "test_read.py")
+    tr = iu.module_from_spec(spec)
+    spec.loader.exec_module(tr)
+    know = p.vault / "agents" / "longhand" / "knowledge" / "projects"
+    know.mkdir(parents=True, exist_ok=True)
+    (know / "thesis.md").write_text("# Master Thesis\n\n- Tag: `#thesis`\n")
+    lit = p.vault / "projects" / "thesis_itu" / "literature" / "pdf"
+    lit.mkdir(parents=True)
+    papers = {
+        "moser2026identifying": ("Moser, Martin and Graf, David and Resch, Bernd", "2026",
+                                 "Identifying environmental stress factors in urban cycling using multimodal human sensing"),
+        "zeile2016urban": ("Zeile, Peter and Resch, Bernd and Loidl, Martin", "2016", "Urban Emotions and Cycling Experience"),
+        "kyriakou2019spatial": ("Kyriakou, Kalliopi and Resch, Bernd", "2019", "Spatial Analysis of Moments of Stress Derived from Wearable Sensor Data"),
+        "fox2011procedures": ("Fox, Mark and Ericsson, Anders and Best, Ryan", "2011", "Do procedures for verbal reporting of thinking have to be reactive?"),
+        "haug2023identifying": ("Haug, Nina and Schmidt, Tom and Resch, Bernd", "2023", "Identifying urban stress and bicycle infrastructure relationships"),
+        "resch2020interdisciplinary": ("Resch, Bernd and Puetz, Inga and Bluemke, Matthias", "2020", "An Interdisciplinary Mixed-Methods Approach to Analyzing Urban Spaces"),
+    }
+    bib = []
+    for key, (authors, year, title) in papers.items():
+        tr.pdf(lit / f"{key}.pdf", [["Negative exposures within multifaceted urban settings", "can discourage active mobility usage.",
+                                     "We apply Getis-Ord Gi* hot spot analysis", "to the stress moments of each rider."],
+                                    ["Subjective experience gives an objective assessment", "when many riders agree on a place.", "End."]])
+        bib.append(f"@article{{{key},\n  author = {{{authors}}},\n  title = {{{title}}},\n  year = {{{year}}},\n}}\n")
+    (p.vault / "projects" / "thesis_itu" / "proposal").mkdir()
+    (p.vault / "projects" / "thesis_itu" / "proposal" / "references.bib").write_text("\n".join(bib))
+    tr.pdf(p.vault / "projects" / "thesis_itu" / "proposal" / "proposal.pdf", [["Proposal"]])
+    d0 = dt.date.today()
+    day = lambda n: (d0 - dt.timedelta(days=n)).isoformat()
+    paper = "projects/thesis_itu/literature/pdf/moser2026identifying.pdf"
+    read = [str(m.ROOT / "cli" / "longhand-read")]
+    for page_, text, kind, n in [(1, "Negative exposures within multifaceted urban settings", "h", 1),
+                                 (1, "Getis-Ord Gi* hot spot analysis", "q", 1),
+                                 (2, "Subjective experience gives an objective assessment", "q", 1),
+                                 (1, "can discourage active mobility usage", "h", 0)]:
+        subprocess.run(read + ["mark", "--pdf", paper, "--page", str(page_), "--text", text, "--kind", kind, "--day", day(n),
+                               "--tag", "thesis"], env=p.env, check=True, capture_output=True)
+    stem = lambda n: (d0 - dt.timedelta(days=n)).strftime("%Y.%m.%d")
+    (p.daily / f"{stem(2)}.md").write_text(m.header(stem(2)) + f"- [ ] Finish the Themenvorschlag #thesis 📅 {d0}\n")
+    (p.daily / f"{stem(6)}.md").write_text(m.header(stem(6)) + "- [x] Revise Themenvorschlag based on Bernd's feedback #thesis\n")
+    (p.daily / f"{stem(11)}.md").write_text(m.header(stem(11)) + "# Bernd Meeting #thesis\n\nTalk out loud can go more natural.\n\n- 30 as a cohort of riders\n")
+
+
 def grab(path):
     # The private Hyprland's own notice (it was started without
     # start-hyprland, as a throwaway one is) sits on top of the window.
@@ -155,6 +202,29 @@ def scenes(m, p, out, which):
         p.call("keyPage", 0x54, 0x04000000 | 0x02000000)   # Ctrl+Shift+T: the list
         shot("day-1")
         p.call("keyPage", 0x54, 0x04000000 | 0x02000000)
+    if which in ("all", "project"):
+        project_fixture(m, p)
+        p.open_fresh()
+        p.call("sidebar")
+        p.wait(lambda: any(x.startswith("thesis|") for x in json.loads(p.call("projects"))), 10)
+        i = next(n for n, x in enumerate(json.loads(p.call("projects"))) if x.startswith("thesis|"))
+        p.call("openProject", i)
+        p.wait(lambda: any(r.startswith("read|") for r in json.loads(p.call("projectRows"))["rows"]), 10)
+        time.sleep(0.8)
+        shot("project-0")
+        rows = json.loads(p.call("projectRows"))["rows"]
+        p.call("projectPick", next(r.split("|", 1)[1] for r in rows if r.startswith("question|")))
+        shot("project-1")
+        p.call("projectPick", "fold:shelf")
+        p.call("projectOpenRow")
+        p.call("projectPick", "fold:files")
+        p.call("projectOpenRow")
+        shot("project-2")
+        rows = json.loads(p.call("projectRows"))["rows"]
+        p.call("projectPick", next(r.split("|", 1)[1] for r in rows if r.startswith("question|")))
+        p.call("projectOpenRow")
+        time.sleep(2.5)
+        shot("project-3")
     if which in ("all", "keys"):
         p.call("keys")
         shot("keys-0")
@@ -165,7 +235,7 @@ def scenes(m, p, out, which):
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("out", type=pathlib.Path)
-    ap.add_argument("--scene", default="all", choices=["all", "dashboard", "note", "day", "keys", "chat"])
+    ap.add_argument("--scene", default="all", choices=["all", "dashboard", "note", "day", "keys", "chat", "project"])
     ap.add_argument("--order", default="ask", choices=["ask", "course", "date"])
     ap.add_argument("--root", type=pathlib.Path, default=HERE.parent.parent)
     ap.add_argument("--env", action="append", default=[])

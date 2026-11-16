@@ -25,6 +25,7 @@ import "Say.js" as Say
 import "Focus.js" as Focus
 import "Layout.js" as Layout
 import "Links.js" as Links
+import "ProjectView.js" as PV
 
 // The page: today's note as a blank sheet in the shell, with the agent in
 // the margin. Two shapes of the same sheet: the overlay (a layer over
@@ -1006,6 +1007,37 @@ Item {
   // its documents and its sections; -1 when the keys are not on them.
   property var projectPapers: []
   property int projectPaperFocus: -1
+  // The project's view as one list (ProjectView.js, 2026-11-16): what is
+  // open, then writing and reading by day, then the shelf and the files
+  // folded. The selection is a row's key, so it holds when the list is
+  // read again.
+  property string projectRowKey: ""
+  property var projectFolds: ({ shelf: false, files: false, open: false })
+  readonly property var projectRows: PV.rows(root.sections, root.projectPapers, root.projectOpen ? root.projectDocs() : [],
+    { shelf: root.projectFolds.shelf, files: root.projectFolds.files, open: root.projectFolds.open, iso: root.sectionIso })
+  readonly property var projectRow: PV.find(root.projectRows, root.projectRowKey)
+  readonly property string projectFocusKey: root.projectRow ? root.projectRow.key : ""
+  function sectionIso(s) {
+    var p = svc.configured ? Days.parse(s.date, svc.dailyFormat()) : null
+    return p ? Qt.formatDate(p.date, "yyyy-MM-dd") : String(s.date)
+  }
+  // A day given as YYYY-MM-DD, said as a section's day is.
+  function isoWhen(iso) {
+    var d = new Date(iso + "T12:00:00")
+    if (isNaN(d.getTime())) return iso
+    var age = Math.round((new Date(new Date().toDateString()) - new Date(d.toDateString())) / 86400000)
+    return Qt.formatDate(d, d.getFullYear() === new Date().getFullYear() ? "ddd d MMM" : "ddd d MMM yyyy")
+      + (age === 0 ? " · today" : age === 1 ? " · yesterday" : "")
+  }
+  // The row picked, by its key; the older foci follow it (the live tests
+  // and the sections' refresh read them).
+  function pickProjectRow(key) {
+    root.projectRowKey = key
+    var r = PV.find(root.projectRows, key)
+    root.docFocus = -1
+    root.projectPaperFocus = -1
+    if (r && (r.kind === "section" || r.kind === "box")) root.sectionFocus = r.index
+  }
   function refreshProjectPapers() {
     if (!root.projectOpen || root.projectTag === "") { root.projectPapers = []; return }
     if (projectPapersProc.running) { projectPapersAgain.restart(); return }
@@ -1023,11 +1055,9 @@ Item {
       id: projectPapersOut
       onStreamFinished: {
         if (projectPapersProc.tag !== root.projectTag) return
-        // Papers only: the folder's own documents (a proposal, a logo) are
-        // not reading; nor a note whose PDF is gone (moved: it is found
-        // again when the PDF is opened where it went).
-        try { root.projectPapers = (JSON.parse(projectPapersOut.text).papers || []).filter(function (p) { return p.kind === "paper" && !p.missing }) }
-        catch (e) { root.projectPapers = [] }
+        // All of them: ProjectView sorts papers from the folder's own
+        // documents, and leaves out a note whose PDF is gone.
+        try { root.projectPapers = JSON.parse(projectPapersOut.text).papers || [] } catch (e) { root.projectPapers = [] }
       }
     }
   }
@@ -3967,6 +3997,8 @@ Item {
     root.sectionFocus = 0
     root.docFocus = -1
     root.projectPaperFocus = -1
+    root.projectRowKey = ""
+    root.projectFolds = ({ shelf: false, files: false, open: false })
     root.projectPapers = []
     root.sidebarOpen = true
     root.projectOpen = true
@@ -4050,16 +4082,10 @@ Item {
     sidebar.sidebarKeysRef.forceActiveFocus()
   }
 
-  // Up and down through the project's three lists as one: its documents,
-  // its papers, its sections.
+  // Up and down through the project's view, one list (ProjectView.js).
   function moveSectionFocus(d) {
-    var D = root.projectDocs().length, P = root.projectPapers.length, S = root.sections.length
-    if (D + P + S === 0) return
-    var cur = root.docFocus >= 0 ? root.docFocus : root.projectPaperFocus >= 0 ? D + root.projectPaperFocus : D + P + root.sectionFocus
-    var i = Math.max(0, Math.min(D + P + S - 1, cur + d))
-    root.docFocus = i < D ? i : -1
-    root.projectPaperFocus = i >= D && i < D + P ? i - D : -1
-    if (i >= D + P) root.sectionFocus = i - D - P
+    var k = PV.step(root.projectRows, root.projectFocusKey, d)
+    if (k !== "") root.pickProjectRow(k)
   }
 
   // The open project's documents, as the runner listed them with the
@@ -4110,11 +4136,30 @@ Item {
     Qt.openUrlExternally("file://" + d.path)
   }
 
-  // Enter in a project: the document picked, or the section.
+  // Enter in a project, by what the row is: a fold opens or closes; a
+  // section or an open box goes to the note; a paper opens where it was
+  // left, a waiting question opens it on that mark; a file opens.
   function openInProject() {
-    if (root.docFocus >= 0) root.openDocument(root.projectDocs()[root.docFocus])
-    else if (root.projectPaperFocus >= 0) { var pp = root.projectPapers[root.projectPaperFocus]; if (pp) { root.used("project-paper"); root.remember(); root.openPdf(pp.pdf) } }
-    else root.openSection(root.sections[root.sectionFocus])
+    var r = root.projectRow
+    if (!r) return
+    if (r.kind === "fold") {
+      var f = Object.assign({}, root.projectFolds)
+      f[r.fold] = !f[r.fold]
+      root.projectFolds = f
+      return
+    }
+    if (r.kind === "section" || r.kind === "box") { root.sectionFocus = r.index; root.openSection(r.section); return }
+    if (r.kind === "doc") {
+      if (r.doc) root.openDocument(r.doc)
+      else { root.remember(); root.openPdf(r.pdf) }
+      return
+    }
+    if (r.paper) {
+      root.used("project-paper")
+      root.remember()
+      if (r.kind === "question") pdfPane.showAfter = r.id
+      root.openPdf(r.paper.pdf)
+    }
   }
 
   // Enter: the note itself, the cursor on the section's own heading. The

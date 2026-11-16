@@ -733,13 +733,13 @@ BorderSurface {
       var kids = projectColumn.children
       for (var i = 0; i < kids.length; i++) {
         var k = kids[i]
-        if (k.index === undefined || k.index !== page.sectionFocus) continue
+        if (k.rowKey === undefined || k.rowKey !== page.projectFocusKey) continue
         if (contentY > k.y) contentY = k.y
         else if (contentY + height < k.y + k.height) contentY = k.y + k.height - height
         return
       }
     }
-    Connections { target: page; function onSectionFocusChanged() { Qt.callLater(projectFlick.revealFocused) } }
+    Connections { target: page; function onProjectFocusKeyChanged() { Qt.callLater(projectFlick.revealFocused) } }
 
     Column {
       id: projectColumn
@@ -804,110 +804,9 @@ BorderSurface {
         }
       }
 
-      // Its documents, filed from the inbox: opened in the PDF viewer.
-      Text {
-        visible: page.projectDocs().length > 0
-        topPadding: page.sp(8)
-        textFormat: Text.PlainText
-        text: "DOCUMENTS"
-        color: page.dim
-        font.family: page.fontFamily
-        font.styleName: page.fontStyle
-        font.pixelSize: page.fs(Style.font.caption)
-      }
-      Repeater {
-        model: page.projectDocs()
-        Rectangle {
-          id: docCell
-          required property var modelData
-          required property int index
-          readonly property bool hot: page.docFocus === index && sidebarKeys.activeFocus
-          onHotChanged: page.selected(docCell, "left", hot)
-          Component.onCompleted: if (hot) page.selected(docCell, "left", true)
-          width: projectColumn.width
-          height: docText.implicitHeight + page.sp(6)
-          radius: Style.cornerRadius
-          color: hot ? Style.selectedFill : docArea.containsMouse && page.handOn ? Style.hoverFill : "transparent"
-          Text {
-            id: docText
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.leftMargin: page.sp(4)
-            anchors.rightMargin: page.sp(4)
-            anchors.verticalCenter: parent.verticalCenter
-            textFormat: Text.PlainText
-            elide: Text.ElideRight
-            text: modelData.name + (modelData.pages ? "   " + modelData.pages + " p." : "")
-            color: page.foreground
-            font.family: page.fontFamily
-            font.styleName: page.fontStyle
-            font.pixelSize: page.fs(Style.font.caption)
-          }
-          MouseArea {
-            id: docArea
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: { page.docFocus = index; page.openDocument(modelData) }
-            Tip { host: page; shown: parent.containsMouse; text: page.tip("Open it", "listOpen") }
-          }
-        }
-      }
-
-      // Its papers (plan.md item 5's first part): every reading note with
-      // its tag, the newest marked first; Enter opens one where it was left.
-      Text {
-        visible: page.projectPapers.length > 0
-        topPadding: page.sp(8)
-        textFormat: Text.PlainText
-        text: "PAPERS"
-        color: page.dim
-        font.family: page.fontFamily
-        font.styleName: page.fontStyle
-        font.pixelSize: page.fs(Style.font.caption)
-      }
-      Repeater {
-        model: page.projectPapers
-        Rectangle {
-          id: paperCell
-          required property var modelData
-          required property int index
-          readonly property bool hot: page.projectPaperFocus === index && sidebarKeys.activeFocus
-          onHotChanged: page.selected(paperCell, "left", hot)
-          width: projectColumn.width
-          height: paperText.implicitHeight + page.sp(6)
-          radius: Style.cornerRadius
-          color: hot ? Style.selectedFill : paperArea.containsMouse && page.handOn ? Style.hoverFill : "transparent"
-          Text {
-            id: paperText
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.leftMargin: page.sp(4)
-            anchors.rightMargin: page.sp(4)
-            anchors.verticalCenter: parent.verticalCenter
-            textFormat: Text.PlainText
-            elide: Text.ElideRight
-            text: modelData.title + "   " + page.readToday.summary(modelData)
-              + (modelData.waiting > 0 ? " · " + modelData.waiting + " waiting" : "")
-            color: page.foreground
-            font.family: page.fontFamily
-            font.styleName: page.fontStyle
-            font.pixelSize: page.fs(Style.font.caption)
-          }
-          MouseArea {
-            id: paperArea
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: { page.docFocus = -1; page.projectPaperFocus = index; page.openInProject() }
-            Tip { host: page; shown: parent.containsMouse; text: page.tip("Open it where it was left", "listOpen") }
-          }
-        }
-      }
-
       Text {
         width: parent.width
-        visible: page.sections.length === 0
+        visible: page.projectRows.length === 0
         textFormat: Text.PlainText
         wrapMode: Text.WordWrap
         topPadding: page.sp(6)
@@ -918,80 +817,111 @@ BorderSurface {
         font.pixelSize: page.fs(Style.font.caption)
       }
 
+      // The project as one list (ProjectView.js, 2026-11-16): what is open
+      // (boxes, then the questions waiting in its papers), then writing and
+      // reading by day, then the shelf and the files folded. A row's three
+      // lines: when (quiet), what (the words), under (quiet).
       Repeater {
-        model: page.sections
+        model: page.projectRows
         Rectangle {
-          id: secCell
+          id: rowCell
           required property var modelData
           required property int index
-          readonly property bool hot: page.docFocus < 0 && page.projectPaperFocus < 0 && page.sectionFocus === index && sidebarKeys.activeFocus
-          onHotChanged: page.selected(secCell, "left", hot)
-          Component.onCompleted: if (hot) page.selected(secCell, "left", true)
+          readonly property string rowKey: modelData.key
+          readonly property string kind: modelData.kind
+          readonly property bool hot: !!modelData.pick && page.projectFocusKey === modelData.key && sidebarKeys.activeFocus
+          onHotChanged: page.selected(rowCell, "left", hot)
+          Component.onCompleted: if (hot) page.selected(rowCell, "left", true)
           width: projectColumn.width
-          height: secCol.implicitHeight + page.sp(8)
+          height: kind === "cap" ? capText.implicitHeight : rowCol.implicitHeight + page.sp(kind === "fold" || kind === "doc" || kind === "paper" ? 4 : 8)
           radius: Style.cornerRadius
-          color: hot ? Style.selectedFill : secArea.containsMouse && page.handOn ? Style.hoverFill : "transparent"
-          readonly property string title: Say.sectionTitle(modelData, page.projectName)
-          readonly property string under: Say.sectionUnder(modelData)
+          color: hot ? Style.selectedFill : rowArea.containsMouse && modelData.pick && page.handOn ? Style.hoverFill : "transparent"
+          readonly property var sec: modelData.section || null
+          readonly property string whenLine: kind === "section" ? page.sectionWhen(sec) + (Say.sectionCounts(sec) !== "" ? "  ·  " + Say.sectionCounts(sec) : "")
+            : kind === "read" ? page.isoWhen(modelData.day) + "  ·  read" + (modelData.said ? "  ·  " + modelData.said : "")
+            : ""
+          readonly property string whatLine: kind === "section" ? Say.sectionTitle(sec, page.projectName)
+            : kind === "box" ? "○  " + modelData.text
+            : kind === "question" ? "?  " + modelData.text
+            : kind === "read" ? modelData.label
+            : kind === "fold" ? (modelData.open ? "▾  " : "▸  ") + modelData.text
+            : kind === "paper" ? modelData.label
+            : kind === "doc" ? modelData.name
+            : ""
+          readonly property string underLine: kind === "section" ? Say.sectionUnder(sec)
+            : kind === "box" ? page.sectionWhen(sec)
+            : kind === "question" ? modelData.label + " · p. " + modelData.page + (modelData.note ? " · " + modelData.note : "")
+            : kind === "read" ? modelData.title
+            : kind === "paper" ? modelData.title
+            : ""
+          Text {
+            id: capText
+            visible: rowCell.kind === "cap"
+            topPadding: page.sp(10)
+            bottomPadding: page.sp(2)
+            textFormat: Text.PlainText
+            text: rowCell.kind === "cap" ? modelData.text : ""
+            color: page.dim
+            font.family: page.fontFamily
+            font.styleName: page.fontStyle
+            font.pixelSize: page.fs(Style.font.caption)
+          }
           Column {
-            id: secCol
+            id: rowCol
+            visible: rowCell.kind !== "cap"
             anchors.left: parent.left
             anchors.right: parent.right
-            anchors.leftMargin: page.sp(4)
+            anchors.leftMargin: page.sp(4) + (rowCell.kind === "paper" || rowCell.kind === "doc" ? page.sp(14) : 0)
             anchors.rightMargin: page.sp(4)
             anchors.verticalCenter: parent.verticalCenter
             spacing: page.sp(1)
-            // When, and its boxes; in the accent while it is the note in
-            // the sheet.
             Text {
               width: parent.width
+              visible: rowCell.whenLine !== ""
               textFormat: Text.PlainText
               elide: Text.ElideRight
-              text: page.sectionWhen(modelData)
-                + (Say.sectionCounts(modelData) !== "" ? "  ·  " + Say.sectionCounts(modelData) : "")
-              color: modelData.date === svc.noteDate ? page.accent : page.dim
+              text: rowCell.whenLine
+              color: rowCell.sec && rowCell.sec.date === svc.noteDate ? page.accent : page.dim
               font.family: page.fontFamily
               font.styleName: page.fontStyle
               font.pixelSize: page.fs(Style.font.caption)
             }
-            // The tagged line itself — what the section is — unless it only
-            // names the project again.
             Text {
               width: parent.width
-              visible: secCell.title !== ""
+              visible: rowCell.whatLine !== ""
               textFormat: Text.StyledText
               wrapMode: Text.WordWrap
               maximumLineCount: 2
               elide: Text.ElideRight
-              text: Say.quietTag(secCell.title, modelData.tag, page.faint)
-              color: page.foreground
+              text: rowCell.kind === "question"
+                ? '<font color="' + page.accent + '">?</font>' + Say.quietTag(rowCell.whatLine.slice(1), page.projectTag, page.faint)
+                : Say.quietTag(rowCell.whatLine, page.projectTag, page.faint)
+              color: rowCell.kind === "fold" || rowCell.kind === "doc" ? page.dim : page.foreground
               font.family: page.fontFamily
               font.styleName: page.fontStyle
-              font.pixelSize: page.fs(Style.font.bodySmall)
+              font.pixelSize: page.fs(rowCell.kind === "fold" || rowCell.kind === "paper" || rowCell.kind === "doc" ? Style.font.caption : Style.font.bodySmall)
             }
-            // What it holds: its sub-headings, or its first lines as words.
-            // Quiet under a heading; the row's words when there is none.
             Text {
               width: parent.width
-              visible: secCell.under !== ""
+              visible: rowCell.underLine !== ""
               textFormat: Text.StyledText
               wrapMode: Text.WordWrap
-              maximumLineCount: 2
+              maximumLineCount: rowCell.kind === "paper" ? 1 : 2
               elide: Text.ElideRight
-              text: Say.quietTag(secCell.under, modelData.tag, page.faint)
-              color: secCell.title !== "" ? page.dim : page.foreground
+              text: Say.quietTag(rowCell.underLine, page.projectTag, page.faint)
+              color: rowCell.kind === "section" && rowCell.whatLine === "" ? page.foreground : page.dim
               font.family: page.fontFamily
               font.styleName: page.fontStyle
               font.pixelSize: page.fs(Style.font.caption)
             }
           }
           MouseArea {
-            id: secArea
+            id: rowArea
             anchors.fill: parent
+            enabled: !!modelData.pick
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onClicked: { page.docFocus = -1; page.projectPaperFocus = -1; page.sectionFocus = index; page.openSection(modelData) }
-            Tip { host: page; shown: parent.containsMouse; text: page.tip(modelData.heading ? "Open the section, on its heading" : "Go to the box", "listOpen") }
+            onClicked: { page.pickProjectRow(modelData.key); page.openInProject() }
           }
         }
       }
@@ -1002,7 +932,7 @@ BorderSurface {
         topPadding: page.sp(6)
         textFormat: Text.PlainText
         wrapMode: Text.WordWrap
-        text: page.keyName("listUp") + page.keyName("listDown") + " pick · " + page.keyName("listOpen") + " opens it in the sheet · "
+        text: page.keyName("listUp") + page.keyName("listDown") + " pick · " + page.keyName("listOpen") + " opens it (a fold: unfolds) · "
           + page.keyName("listBack") + " back to the projects"
         color: page.faint
         font.family: page.fontFamily

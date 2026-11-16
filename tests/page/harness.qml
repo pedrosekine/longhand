@@ -398,6 +398,12 @@ ShellRoot {
     function projects(): string { return JSON.stringify(page.projects.map(function (p) { return p.tag + "|" + page.sessionLabel(p.next) })) }
     function startClass(i: int): void { page.startClass(page.projects[i]) }
     function openProject(i: int): void { page.openProject(page.projects[i]) }
+    // The project's view as one list (ProjectView.js): its rows, the one
+    // picked, a step, Enter.
+    function projectRows(): string { return JSON.stringify({ rows: page.projectRows.map(function (r) { return r.kind + "|" + r.key }), focus: page.projectFocusKey }) }
+    function projectStep(d: int): void { page.moveSectionFocus(d) }
+    function projectPick(key: string): void { page.pickProjectRow(key) }
+    function projectOpenRow(): void { page.openInProject() }
     function sections(): string { return JSON.stringify(page.sections.map(function (s) { return s.date + "|" + s.title + "|" + Say.sectionUnder(s) })) }
     function openSection(i: int): void { page.sectionFocus = i; page.openSection(page.sections[i]) }
     // One project's part of the day (Focus.js): its tag, and the lines drawn.

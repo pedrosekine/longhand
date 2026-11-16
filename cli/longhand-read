@@ -1000,6 +1000,7 @@ def cmd_papers(cfg: dict, tag: str, folder_rel: str = "") -> dict:
             r = str(f.relative_to(vault))
             if not is_private(cfg, r) and not find_note(cfg, r):
                 settle(cfg, r, f, marks=False)
+    cites = bib_index(cfg, folder_rel)
     out = []
     for f in sorted(folder.glob("*.md")) if folder.is_dir() else []:
         try:
@@ -1011,7 +1012,7 @@ def cmd_papers(cfg: dict, tag: str, folder_rel: str = "") -> dict:
         pdf = next((m.group("target").strip() for line in note.lines[:12] for m in [PDF_FIELD_RE.match(line.strip())] if m), "")
         if not pdf:
             continue
-        out.append(paper_row(cfg, pdf, note))
+        out.append(paper_row(cfg, pdf, note, cites))
     # With the project's folder: its PDFs too, those never marked as well
     # (a reading list not yet begun), and those marked under no tag.
     if folder_rel:
@@ -1022,7 +1023,7 @@ def cmd_papers(cfg: dict, tag: str, folder_rel: str = "") -> dict:
             if rel in have or is_private(cfg, rel) or "/archive/" in f"/{rel}" or "/build/" in f"/{rel}" \
                     or any(part.startswith(".") for part in Path(rel).parts):
                 continue
-            out.append(paper_row(cfg, rel, load_note(cfg, rel)))
+            out.append(paper_row(cfg, rel, load_note(cfg, rel), cites))
     # The marked first, the newest marked first; then those not begun, A to Z.
     marked = sorted((r for r in out if r["last"]), key=lambda r: (r["last"], r["title"]), reverse=True)
     return {"tag": tag, "papers": marked + sorted((r for r in out if not r["last"]), key=lambda r: r["title"].lower())}
@@ -1031,7 +1032,54 @@ def cmd_papers(cfg: dict, tag: str, folder_rel: str = "") -> dict:
 LITERATURE = {"literature", "papers", "paper", "readings", "reading", "references", "refs", "bibliography", "sources"}
 
 
-def paper_row(cfg: dict, pdf: str, note: "Note | None") -> dict:
+def bib_fields(body: str) -> dict:
+    """An entry's fields, `name = {value}` or `name = "value"`, braces
+    nested as BibTeX nests them."""
+    out, i = {}, 0
+    while True:
+        m = re.compile(r"(\w+)\s*=\s*([{\"])").search(body, i)
+        if not m:
+            return out
+        close, depth, j = ("}" if m.group(2) == "{" else '"'), 1, m.end()
+        while j < len(body) and depth:
+            c = body[j]
+            if m.group(2) == "{" and c == "{":
+                depth += 1
+            elif c == close and body[j - 1] != "\\":
+                depth -= 1
+            j += 1
+        out[m.group(1).lower()] = body[m.end():j - 1]
+        i = j
+
+
+def bib_index(cfg: dict, folder_rel: str) -> dict:
+    """A project's bibliography, by key (2026-11-16): the .bib files in its
+    folder, so a paper named by its key (`moser2026identifying.pdf`, as the
+    thesis keeps them) is shown as its authors, year and title."""
+    vault = Path(cfg["vault"])
+    out = {}
+    for f in sorted((vault / folder_rel).rglob("*.bib")) if folder_rel and (vault / folder_rel).is_dir() else []:
+        rel = f"/{f.relative_to(vault)}"
+        if "/archive/" in rel or "/build/" in rel or any(p.startswith(".") for p in f.relative_to(vault).parts):
+            continue
+        try:
+            text = f.read_text(errors="replace")
+        except OSError:
+            continue
+        for m in re.finditer(r"@\w+\s*\{\s*([^,\s]+)\s*,", text):
+            end = text.find("\n@", m.end())
+            fields = bib_fields(text[m.end():end if end >= 0 else len(text)])
+            plain = lambda v: re.sub(r"\s+", " ", re.sub(r"[{}]|\\(?=[_&%$#])", "", v)).strip()
+            names = [n.strip() for n in re.split(r"\s+and\s+", plain(fields.get("author", fields.get("editor", "")))) if n.strip()]
+            first = (names[0].split(",")[0] if names and "," in names[0] else names[0].split()[-1] if names else "").strip()
+            year = (re.search(r"\d{4}", fields.get("year", "") or fields.get("date", "")) or [""])[0]
+            out.setdefault(m.group(1).lower(), {
+                "authors": first + (" et al." if len(names) > 2 else f" and {names[1].split(',')[0].strip() if ',' in names[1] else names[1].split()[-1]}" if len(names) == 2 else ""),
+                "year": year, "title": plain(fields.get("title", ""))})
+    return out
+
+
+def paper_row(cfg: dict, pdf: str, note: "Note | None", cites: dict | None = None) -> dict:
     marks = note.marks() if note else []
     answered = answered_marks(cfg, pdf)
     waiting = [m for m in marks if m["kind"] == "q" and m["id"] not in answered]
@@ -1044,7 +1092,13 @@ def paper_row(cfg: dict, pdf: str, note: "Note | None") -> dict:
             "h": sum(1 for m in marks if m["kind"] == "h"), "q": sum(1 for m in marks if m["kind"] == "q"),
             "waiting": len(waiting), "questions": [{"id": m["id"], "page": m["page"], "text": m["text"][:240], "note": m["note"][:240]}
                                                    for m in waiting],
-            "last": max((m["day"] for m in marks if m["day"]), default="")}
+            "last": max((m["day"] for m in marks if m["day"]), default=""),
+            # Each day it was marked, and what: the project's stream shows
+            # reading by the day it was done.
+            "days": {d: {"h": sum(1 for m in marks if m["day"] == d and m["kind"] == "h"),
+                         "q": sum(1 for m in marks if m["day"] == d and m["kind"] == "q")}
+                     for d in sorted({m["day"] for m in marks if m["day"]})},
+            "cite": (cites or {}).get(Path(pdf).stem.lower(), {})}
 
 
 def main() -> int:

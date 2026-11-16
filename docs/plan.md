@@ -476,7 +476,7 @@ section, word for word, and to the diary's decisions log.
    those still waiting — between its documents and its sections, the three
    walked as one list; Enter opens a paper where it was left. Its documents
    that are PDFs in the vault open in the page's reader now, not in another
-   application. *A second part, 2026-11-16, for the master thesis*: the
+   application. *Replaced the same day by the one-list view (below).* *A second part, 2026-11-16, for the master thesis*: the
    **project's page**, read-only — P on a project (or inside one), or
    "→ the project's page" in its view. The runner (`longhand-agent
    project-page --tag T`) gathers into one note: the next session, the
@@ -545,6 +545,22 @@ section, word for word, and to the diary's decisions log.
       "PDFs").
    6. ~~**How private looks.**~~ *built 2026-10-27*: five mockups compared,
       **B · Paper** chosen and built (`docs/files.md`).
+   *A third part, 2026-11-16, the design study "readings and notes"*: the
+   project's view is **one list** (`ProjectView.js`, `tests/tst_projectview.qml`)
+   instead of documents, papers and sections stacked, where thirteen unread
+   papers pushed the person's own writing off the sidebar. **Open** first —
+   unticked boxes, then questions waiting in its papers (more than six: five
+   and a fold) — then **by day**, sections and reading days together, newest
+   first (a heading-less day of only open boxes is in Open already, not
+   twice; a paper's title under its newest day only), then the **Shelf**
+   (papers not begun) and **Files** (the folder's own PDFs and filed
+   documents), each folded to a line. Papers are cited from the folder's
+   `.bib` by key (`longhand-read papers` gives `cite` and per-day `days`).
+   Enter by kind; a question opens its paper on that mark (`PdfPane.showAfter`).
+   The selection is a row's key, so it holds when the list is read again.
+   Four directions were weighed (two lenses, one stream, a hub, open loops
+   first); this is the stream with open loops on top. Screenshots:
+   `tests/page/shots.py OUT --scene project`.
 
    Waiting inside it:
    - the mixed folders (`projects/`, `reference/`, `inbox/`): whose are they,
@@ -836,6 +852,27 @@ Small, when passing by:
       list reads (`tasksTrace`: asked or read, pending, saving, queued), which
       this check's failure prints, with whether the line was on disk.
       Two full runs clean since.
+18. **Hover a paper to have it explained** (2026-11-16, the student: "even
+    though it was mentioned on page 1, by page 6 I will have forgotten
+    it"). Follows item 15's reader. Two kinds, in this order:
+    - **Acronyms first.** Hovering an acronym anywhere in the paper shows
+      what it stands for and the page that said so (Enter or a click goes
+      there, Alt+← back). Needs: the definitions found in the paper's own
+      text, with no model ("Long Form (LF)" and "LF (Long Form)", as the
+      Schwartz–Hearst rule does), once per paper and kept in the state
+      folder beside the OCR copy; the word under the pointer from the
+      page's text layer; the agent only for one the paper never defines,
+      said as a guess. A key for the keyboard (show every acronym on the
+      page at once?) to decide.
+    - **Then the argument, wired.** Passages tied together (claim →
+      evidence → conclusion, "this answers that") so how the paper builds
+      up can be seen. Needs a grilling first: who draws the wires (the
+      person, with the agent proposing — the human drives); what a wire is
+      in the reading note (a link between two quotes, markdown only, no
+      hidden store); where it is seen (lines in the margin between
+      highlights, or a map in the agent's pane); whether highlights are
+      the only ends or any passage. Item 15's "a layer of the agent's own
+      highlights" is close and may come with it.
 
 - ~~**Tag suggestions while typing**~~ *done 2026-10-18*: `#` and a letter
   offer the tags that exist — the projects', then those written in the
