@@ -1,5 +1,6 @@
 import QtQuick
 import "Shortcuts.js" as Sc
+import "Answers.js" as Answers
 
 // The paper's room (plan.md item 15, step 2), moved out of Page.qml on
 // 2026-11-16 (plan item 4): what the agent's pane holds beside a PDF of the
@@ -90,6 +91,22 @@ Item {
     if (!pp.room) page.openRoom("", true)
     pp.marks = [id]
     pp.showChat()
+  }
+  // A question's answer, from its mark hovered in the PDF (2026-11-16): the
+  // chat opened at the exchange that answered it, lit a moment. False when
+  // none has.
+  function answerOf(id) {
+    return Answers.forMark(page.noteTalk && page.noteTalk.turns ? page.noteTalk.turns : [], id)
+  }
+  function showAnswer(id) {
+    var a = pp.answerOf(id)
+    if (!a || !pp.shown) return false
+    if (!pp.room) page.openRoom("", true)
+    pp.marks = []
+    pp.listing = false
+    Qt.callLater(function () { page.dayPaneItem.showTurn(a.student); page.dayPaneItem.dayFieldRef.forceActiveFocus() })
+    page.used("paper-talk", "answer-shown")
+    return true
   }
   // An acronym the paper never spells out (plan.md item 18): asked in the
   // paper's chat, as a guess. Asked because the person pressed for it, on

@@ -872,6 +872,13 @@ Small, when passing by:
       pages while it is open. Tried on eleven papers in the thesis
       folders: right on the English ones; the German one finds few, its
       long forms being compound words.
+    - ~~**A question's answer, hovered**~~ *built 2026-11-16* (asked the
+      same evening; `docs/files.md`, "A question's answer, hovered";
+      `Answers.js`, `tests/tst_answers.qml`, live checks). Assessed first:
+      marked questions now; questions asked freely in the chat have no
+      place on the page but the passages the agent quoted, which would
+      come with the agent's own layer of highlights (item 15, "Later") —
+      not until hovering answers is seen in use.
     - **Then the argument, wired.** Passages tied together (claim →
       evidence → conclusion, "this answers that") so how the paper builds
       up can be seen. Needs a grilling first: who draws the wires (the
@@ -1238,6 +1245,10 @@ from 2026-09/10 and still stand.
   long form (Schwartz–Hearst takes the shortest that fits: "EDA =
   electrodermal" where the paper wrote just that), for a paper's acronyms
   missed, and whether asking the chat about one never spelled out is used.
+- **A question's answer, hovered** (built 2026-11-16): are answers read on
+  the page, and does the first sentence stand alone now that the chat is
+  asked for one? If tips cut answers badly, the agent could give a gist of
+  its own (a field in its reply) rather than its first sentence.
 
 ### Decided against
 

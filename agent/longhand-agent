@@ -3723,6 +3723,8 @@ def paper_payload(cfg: dict, paths: Paths, rel: str, st: dict, message: str, mar
                   "“exact words” (p. 12): five to twenty words, copied exactly, so the student can be shown them. "
                   "When several of their questions are asked at once, answer each in turn, each answer starting "
                   "with a line that is only its name, as `h3:`.", "",
+                  "Begin every answer with one sentence that answers it on its own: it is shown alone on the page, "
+                  "when the student rests the pointer on their question. Then as much as the question needs.", "",
                   f"# The paper: `{rel}`", "",
                   f"{st.get('pages', 0)} pages." + (" Its project: " + ", ".join("#" + t for t in st["tags"]) + "."
                                                      if st.get("tags") else ""),

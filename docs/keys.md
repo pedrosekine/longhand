@@ -207,7 +207,7 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | A note under the mark clicked, else the last one made | `n` | in a PDF |
 | Remove the mark clicked, and its note | `x` · `Del` · `Backspace` | in a PDF |
 | The paper's acronyms: each underlined on the pages, and a list to find one by its letters or words | `a` | in a PDF |
-| On an acronym under the pointer: to where the paper spells it out (back: the back key); one it never spells out, asked in the paper's chat | `Enter` | in a PDF |
+| On what is under the pointer (or the mark clicked): an acronym, to where the paper spells it out (back: the back key); a question, its answer in the paper's chat, or asked; a highlight, its note | `Enter` | in a PDF |
 | Let go of the mark clicked or the words selected; then close it, back to the note | `Esc` | in a PDF |
 
 ## A paper's marks and chat

@@ -624,6 +624,27 @@ block, `table` rows.
   list is open every acronym on the pages is underlined: the keyboard's way
   to them.
 
+- **A question's answer, hovered** (2026-11-16, the student: "for every
+  question I ask, can the same hover show the answer, and open the chat in
+  that part of the conversation?"). The pointer resting on a question shows
+  the first sentences of its answer (`Answers.js`: the paper's conversation
+  keeps which marks each message pointed at, and the agent's turn after it
+  is the answer; asked together, each question gets its own part, opened
+  by its `h3:` line), and "N more answers after it" when the talk went on.
+  `Enter` opens the paper's chat at that exchange, lit a moment, held there
+  rather than at the conversation's foot until a new message comes. A
+  question not asked yet says so and `Enter` asks it (the chat with it
+  attached, as `q` does); a highlight with a note shows the note, and
+  `Enter` edits it; a highlight with none shows nothing. `Enter` does the
+  same for the mark clicked, the keyboard's way; a click still picks a mark,
+  to change or remove it. The marks list shows each answered question's
+  first words under it. The paper's chat is now asked to begin every answer
+  with one sentence that answers it on its own, since that sentence is what
+  the tip shows. Nothing is written: the answers stay in the chat. Found on
+  the way: a quote with parentheses in it, "(MOS)", closed its link early
+  and spilled the rest into the answer; a link's parentheses are now
+  written `%28 %29`.
+
 **Not yet:** a two-column paper fitted one column at a time; a reading view
 (its text reflowed in the page's own face).
 

@@ -283,7 +283,8 @@ ShellRoot {
         focus: page.paper.at, rows: page.paper.rows.map(function (m) { return m.id }), marks: page.paper.marks,
         waiting: page.paper.waiting.map(function (m) { return m.id }), answered: Object.keys(page.paper.answered),
         kept: page.paper.kept, here: page.here, picked: page.pdfItem.picked, askable: page.paper.askable,
-        flash: page.pdfItem.flashBoxes.length, missed: page.pdfItem.flashMissed, hint: page.hint })
+        flash: page.pdfItem.flashBoxes.length, missed: page.pdfItem.flashMissed, hint: page.hint,
+        pin: page.dayPaneItem.pinTurn, lit: page.dayPaneItem.litTurn })
     }
     function paperKey(key: int, mods: int): bool { return page.paper.keyPressed({ key: key, text: "", modifiers: mods }) }
     function paperLinks(text: string): string { return page.linkCitations(text) }
@@ -326,7 +327,8 @@ ShellRoot {
     function pdfAcronyms(): string {
       var p = page.pdfItem
       return JSON.stringify({ list: p.acro.list.map(function (x) { return x.short + "=" + (x.long || "?") }),
-        spots: [p.acroOn(0), p.acroOn(1), p.acroOn(2)], hover: p.hoverAcro ? p.hoverAcro.a : "", tip: p.acroTip,
+        spots: [p.acroOn(0), p.acroOn(1), p.acroOn(2)], hover: p.hoverAcro ? p.hoverAcro.a : "", tip: p.tipOn,
+        mark: p.hoverMark, says: p.tipSays,
         back: p.jumpBack !== null, flash: p.flashBoxes.length, listing: p.acroListing,
         choices: p.acroChoices.map(function (x) { return x.short }), page: p.current })
     }
@@ -341,6 +343,9 @@ ShellRoot {
       }
       return false
     }
+    // The pointer following the selection, or not: it moves the pointer off
+    // a word hovered on purpose.
+    function setPointer(mode: string): void { page.setPointer(mode) }
     function pdfAcroType(text: string): void { page.pdfItem.acroFieldRef.text = text }
     function pdfAcroEnter(): void { page.pdfItem.acroPick() }
     function pdfWriteNote(text: string): void { page.pdfItem.noteRef.text = text; page.pdfItem.saveNote() }

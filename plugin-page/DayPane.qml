@@ -3,6 +3,7 @@ import QtQuick
 import qs.Commons
 import qs.Ui
 import "Shortcuts.js" as Sc
+import "Answers.js" as Answers
 
 // The day conversation (docs/agent.md, "The day conversation", 2026-10-21):
 // the right pane's home. The student talks to the day, not to a line:
@@ -17,6 +18,30 @@ BorderSurface {
   readonly property var sheet: page.sheetItem
   property alias dayFieldRef: dayField
   property alias paperKeysRef: paperKeys
+  // A turn shown on purpose (a question's answer, from the PDF): the
+  // conversation held at it, not at its foot, until a new turn comes; it
+  // and the answer after it lit a moment.
+  property int pinTurn: -1
+  property int pinCount: 0
+  property int litTurn: -1
+  function showTurn(i) {
+    dayPane.pinTurn = i
+    dayPane.pinCount = page.dayTurns.length
+    dayPane.litTurn = i
+    litTimer.restart()
+    Qt.callLater(dayPane.toPin)
+  }
+  function toPin() {
+    var it = dayPane.pinTurn >= 0 ? turnsRep.itemAt(dayPane.pinTurn) : null
+    if (!it) return
+    dayFlick.contentY = Math.max(0, Math.min(dayFlick.contentHeight - dayFlick.height, it.y - page.sp(12)))
+  }
+  Timer { id: litTimer; interval: 2600; onTriggered: dayPane.litTurn = -1 }
+  Connections {
+    target: dayPane.page
+    function onDayTurnsChanged() { if (dayPane.pinTurn >= 0 && dayPane.page.dayTurns.length !== dayPane.pinCount) dayPane.pinTurn = -1 }
+    function onNoteRoomChanged() { dayPane.pinTurn = -1 }
+  }
   // A paper's room (plan.md item 15, step 2): its marks as a list, or its
   // chat; the pane turns between them.
   readonly property bool listing: page.paper.room && page.paper.listing
@@ -234,6 +259,21 @@ BorderSurface {
             font.italic: true
             font.pixelSize: page.fs(Style.font.bodySmall)
           }
+          // An answered question's answer, its first words.
+          Text {
+            readonly property var answer: markRow.state_ === "answered" ? page.paper.answerOf(markRow.modelData.id) : null
+            visible: answer !== null
+            width: parent.width
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
+            maximumLineCount: 2
+            elide: Text.ElideRight
+            text: answer ? "→ " + Answers.gist(answer.text, 160).text : ""
+            color: page.dim
+            font.family: page.fontFamily
+            font.styleName: page.fontStyle
+            font.pixelSize: page.fs(Style.font.caption)
+          }
           Text {
             visible: !!markRow.modelData.note
             width: parent.width
@@ -308,10 +348,29 @@ BorderSurface {
     contentWidth: width
     contentHeight: dayColumn.implicitHeight
     boundsBehavior: Flickable.StopAtBounds
-    // A new turn is seen: the conversation keeps to its foot.
-    onContentHeightChanged: if (contentHeight > height) contentY = contentHeight - height
+    // A new turn is seen: the conversation keeps to its foot — but for a
+    // turn shown on purpose, which it keeps to.
+    onContentHeightChanged: {
+      if (dayPane.pinTurn >= 0) dayPane.toPin()
+      else if (contentHeight > height) contentY = contentHeight - height
+    }
 
     TouchScroll { flickable: dayFlick }
+
+    // The exchange shown on purpose, lit behind its turns a moment.
+    Rectangle {
+      readonly property Item from: dayPane.litTurn >= 0 ? turnsRep.itemAt(dayPane.litTurn) : null
+      readonly property Item to: dayPane.litTurn >= 0 ? turnsRep.itemAt(dayPane.litTurn + 1) || from : null
+      visible: from !== null
+      x: -page.sp(6)
+      y: from ? from.y - page.sp(4) : 0
+      width: dayColumn.width + page.sp(12)
+      height: from && to ? to.y + to.height - from.y + page.sp(8) : 0
+      radius: Style.cornerRadius
+      color: Qt.rgba(page.accent.r, page.accent.g, page.accent.b, 0.12)
+      opacity: litTimer.running ? 1 : 0
+      Behavior on opacity { NumberAnimation { duration: 500 } }
+    }
 
     Column {
       id: dayColumn
@@ -342,6 +401,7 @@ BorderSurface {
       }
 
       Repeater {
+        id: turnsRep
         model: page.dayTurns
         Column {
           id: turn

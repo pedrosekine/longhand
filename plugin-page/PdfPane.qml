@@ -7,6 +7,7 @@ import qs.Ui
 import "Shortcuts.js" as Sc
 import "PdfPlaces.js" as Places
 import "PdfMarks.js" as Marks
+import "Answers.js" as Answers
 
 // A PDF in the middle, in the note's place (docs/files.md, step 5,
 // 2026-10-27): Qt's own view, fitted to the column, the pages drawn as they
@@ -38,6 +39,12 @@ import "PdfMarks.js" as Marks
 // page's back key returns to where it was read. One the paper never spells
 // out says so, and Enter asks the paper's chat, as a guess. `a` lists them
 // all, every one underlined on the pages while the list is open.
+//
+// A mark hovered says what came of it (2026-11-16): a question, the first
+// sentences of its answer in the paper's chat (Answers.js), and Enter opens
+// the chat at that exchange; a question not asked yet says so, and Enter
+// asks it; a highlight with a note shows the note. Enter does the same for
+// the mark clicked. A click still picks a mark, to change or remove it.
 Item {
   id: pane
   required property Item page
@@ -46,6 +53,8 @@ Item {
   property alias findRef: findField
   property alias noteRef: noteField
   property alias acroFieldRef: acroField
+  // What the tip under the pointer says, for the harness.
+  readonly property string tipSays: acroTipBox.visible ? acroTipLine.text + " | " + acroTipMore.text : ""
   property real zoom: 1                 // over the column's width
   property bool finding: false
   readonly property var view: loader.item ? loader.item.view : null
@@ -109,7 +118,7 @@ Item {
   // page, rects, defined }, and where each is written, page → [{ r, a }].
   property var acro: ({ byShort: {}, list: [], spots: {} })
   property var hoverAcro: null          // { a, item, page }: the one under the pointer
-  property bool acroTip: false          // its tip shown (a moment after the pointer stops)
+  property bool tipOn: false           // a tip shown (a moment after the pointer stops)
   property bool acroListing: false      // `a`: the list open, every acronym underlined
   property int acroFocus: 0
   property var jumpBack: null           // where a jump to a definition left from
@@ -143,41 +152,94 @@ Item {
   }
   function acroHover(a, item, index) {
     pane.hoverAcro = { a: a, item: item, page: index }
-    acroLeaveTimer.stop()
-    if (pane.acroTip) return
-    acroShowTimer.restart()
+    pane.tipWait()
   }
   function acroLeave(item) {
     if (!pane.hoverAcro || pane.hoverAcro.item !== item) return
-    acroLeaveTimer.restart()
+    tipLeaveTimer.restart()
+  }
+  function tipWait() {
+    tipLeaveTimer.stop()
+    if (!pane.tipOn) tipShowTimer.restart()
+  }
+  // The marks under the pointer (one inside another: both), each a
+  // rectangle of it: { id, item, area }. The smallest is the one meant.
+  property var markHovers: []
+  readonly property var hoverMarkAt: {
+    var best = null
+    for (var i = 0; i < pane.markHovers.length; i++)
+      if (!best || pane.markHovers[i].area < best.area) best = pane.markHovers[i]
+    return best
+  }
+  readonly property string hoverMark: pane.hoverMarkAt ? pane.hoverMarkAt.id : ""
+  function markHover(id, item, area) {
+    pane.markHovers = pane.markHovers.filter(function (h) { return h.item !== item }).concat([{ id: id, item: item, area: area }])
+    pane.tipWait()
+  }
+  function markLeave(item) {
+    pane.markHovers = pane.markHovers.filter(function (h) { return h.item !== item })
+    if (pane.markHovers.length === 0 && !pane.hoverAcro) tipLeaveTimer.restart()
+  }
+  // What a mark's tip says: { line (styled), more (plain) }, or null.
+  function markTip(id) {
+    var m = pane.markById(id)
+    if (!m) return null
+    if (m.kind !== "q") return m.note ? { line: pane.esc(m.note), more: "your note · " + page.keyName("pdfGo") + " edits it" } : null
+    var a = Answers.forMark(page.noteTalk && page.noteTalk.turns ? page.noteTalk.turns : [], id)
+    if (a) {
+      var g = Answers.gist(a.text, 260)
+      return { line: pane.esc(g.text), more: page.keyName("pdfGo") + " opens it in the paper's chat"
+        + (a.more > 0 ? " · " + a.more + (a.more === 1 ? " more answer" : " more answers") + " after it" : "") }
+    }
+    if (page.dayPending && (page.dayPending.marks || []).indexOf(id) >= 0) return { line: "<i>being answered…</i>", more: "" }
+    if (!page.paper.askable) return { line: "<i>your question</i>", more: pane.read.private ? "a private PDF is never sent to the agent" : "" }
+    return { line: "<i>your question, not asked yet</i>", more: page.keyName("pdfGo") + " asks it" }
+  }
+  // Enter on a mark: an answered question's exchange in the chat; one not
+  // asked yet, the chat with it attached, for its words; a highlight's note.
+  function markGo(id) {
+    var m = pane.markById(id)
+    if (!m) return false
+    pane.tipOn = false
+    pane.markHovers = []
+    if (m.kind !== "q") { pane.picked = id; pane.startNote(); return true }
+    if (page.paper.showAnswer(id)) return true
+    page.paper.askAbout(id)
+    return true
   }
   Timer {
-    id: acroShowTimer
+    id: tipShowTimer
     interval: 250
     onTriggered: {
       var t = pane.table()
-      pane.acroTipY = t ? t.contentY : 0
-      pane.acroTip = pane.hoverAcro !== null
+      pane.tipY = t ? t.contentY : 0
+      pane.tipOn = pane.tipHas()
     }
   }
   // A scroll takes the word from under the tip: it goes. Not the view
   // settling a pixel or two after a jump (2026-11-16: it let go of the
   // acronym hovered just after End, so Enter did nothing).
-  property real acroTipY: 0
-  function acroScrolled() {
+  property real tipY: 0
+  function tipScrolled() {
     var t = pane.table()
-    if (!pane.acroTip || !t || Math.abs(t.contentY - pane.acroTipY) < page.sp(12)) return
-    pane.acroTip = false
+    if (!pane.tipOn || !t || Math.abs(t.contentY - pane.tipY) < page.sp(12)) return
+    pane.tipOn = false
     pane.hoverAcro = null
+    pane.markHovers = []
   }
-  Timer { id: acroLeaveTimer; interval: 180; onTriggered: { pane.hoverAcro = null; pane.acroTip = false } }
+  Timer { id: tipLeaveTimer; interval: 180; onTriggered: { pane.hoverAcro = null; pane.tipOn = pane.tipHas() } }
+  // Something to say under the pointer: an acronym, or a mark with a tip (a
+  // highlight with no note has none).
+  function tipHas() {
+    return pane.hoverAcro !== null || (pane.hoverMarkAt !== null && pane.markTip(pane.hoverMarkAt.id) !== null)
+  }
   // To where the paper spells it out: the place read now kept for the back
   // key, the words lit a moment. One it never spells out: its chat asked.
   function acroGo(a) {
     var d = pane.acro.byShort[a]
     if (!d) return
     pane.hoverAcro = null
-    pane.acroTip = false
+    pane.tipOn = false
     if (!d.defined) { page.paper.askAcronym(a); return }
     var box = { page: d.page - 1, rects: d.rects }
     pane.jumpBack = pane.here()
@@ -239,7 +301,7 @@ Item {
     pane.picked = ""; pane.lastMade = ""; pane.readError = ""; pane.noting = false; noteField.text = ""
     pane.readQueue = []
     pane.acro = ({ byShort: {}, list: [], spots: {} })
-    pane.hoverAcro = null; pane.acroTip = false; pane.acroListing = false; pane.jumpBack = null
+    pane.hoverAcro = null; pane.tipOn = false; pane.markHovers = []; pane.acroListing = false; pane.jumpBack = null
     if (pane.rel !== "" && pane.rel.charAt(0) !== "/") pane.readRun(["state"])
     if (pane.rel !== "") pane.readRun(["acronyms"])
     Qt.callLater(pane.arrive)
@@ -363,7 +425,7 @@ Item {
   Connections {
     target: pane.settled ? pane.table() : null
     ignoreUnknownSignals: true
-    function onContentYChanged() { keepTimer.restart(); Qt.callLater(pane.dress); pane.acroScrolled() }
+    function onContentYChanged() { keepTimer.restart(); Qt.callLater(pane.dress); pane.tipScrolled() }
   }
   FileView {
     id: placesFile
@@ -792,6 +854,9 @@ Item {
             height: modelData.r[3] * sheet.s
             radius: 2
             color: modelData.kind === "q" ? page.palette.blue : page.palette.yellow
+            HoverHandler {
+              onHoveredChanged: hovered ? pane.markHover(box.modelData.id, box, box.width * box.height) : pane.markLeave(box)
+            }
             TapHandler {
               acceptedDevices: PointerDevice.AllDevices
               onTapped: function (point) {
@@ -872,7 +937,11 @@ Item {
     // Back from a definition gone to, before the page's own back.
     if (pane.jumpBack && Sc.hit(event, "linkBack")) { pane.jumpReturn(); return true }
     if (page.anywhereKey(event)) return true
-    if (pane.hoverAcro && Sc.hit(event, "pdfAcronymGo")) { pane.acroGo(pane.hoverAcro.a); return true }
+    if (Sc.hit(event, "pdfGo")) {
+      if (pane.hoverAcro) { pane.acroGo(pane.hoverAcro.a); return true }
+      if (pane.hoverMark !== "") return pane.markGo(pane.hoverMark)
+      if (pane.picked !== "") return pane.markGo(pane.picked)
+    }
     if (Sc.hit(event, "pdfAcronyms")) { pane.openAcronyms(); return true }
     if (Sc.hit(event, "pdfMark")) return pane.mark("h")
     if (Sc.hit(event, "pdfQuestion")) return pane.mark("q")
@@ -967,20 +1036,22 @@ Item {
   Rectangle {
     id: acroTipBox
     readonly property var d: pane.hoverAcro ? pane.acro.byShort[pane.hoverAcro.a] || null : null
+    // A mark's, when no acronym is under the pointer.
+    readonly property var m: !d && pane.hoverMark !== "" ? pane.markTip(pane.hoverMark) : null
+    readonly property Item anchor: d && pane.hoverAcro ? pane.hoverAcro.item : pane.hoverMarkAt ? pane.hoverMarkAt.item : null
     readonly property point at: {
-      pane.acroTip
-      if (!pane.hoverAcro || !pane.hoverAcro.item) return Qt.point(0, 0)
-      var it = pane.hoverAcro.item
-      return it.mapToItem(pane, 0, it.height)
+      pane.tipOn
+      if (!anchor) return Qt.point(0, 0)
+      return anchor.mapToItem(pane, 0, anchor.height)
     }
     readonly property bool here: !!(d !== null && pane.hoverAcro !== null && pane.hoverAcro.item
       && pane.acroIsDef(d.short, pane.hoverAcro.page, pane.hoverAcro.item.modelData.r))
-    visible: pane.acroTip && d !== null
+    visible: pane.tipOn && (d !== null || m !== null)
     z: 4
-    width: Math.min(pane.width - page.sp(16), Math.max(acroTipLine.implicitWidth, acroTipMore.implicitWidth) + page.sp(20))
+    width: Math.min(pane.width - page.sp(16), Math.max(acroTipLine.width, acroTipMore.implicitWidth) + page.sp(20))
     height: acroTipCol.implicitHeight + page.sp(14)
     x: Math.max(page.sp(8), Math.min(pane.width - width - page.sp(8), at.x - page.sp(10)))
-    y: at.y + page.sp(6) + height > pane.height - foot.height ? at.y - (pane.hoverAcro && pane.hoverAcro.item ? pane.hoverAcro.item.height : 0) - height - page.sp(6) : at.y + page.sp(6)
+    y: at.y + page.sp(6) + height > pane.height - foot.height ? at.y - (anchor ? anchor.height : 0) - height - page.sp(6) : at.y + page.sp(6)
     radius: Style.cornerRadius
     color: page.sunk
     border.width: 1
@@ -992,10 +1063,10 @@ Item {
       spacing: page.sp(3)
       Text {
         id: acroTipLine
-        width: Math.min(implicitWidth, pane.width - page.sp(36))
+        width: Math.min(implicitWidth, page.sp(440), pane.width - page.sp(36))
         wrapMode: Text.WordWrap
         textFormat: Text.StyledText
-        text: !acroTipBox.d ? "" : "<b>" + acroTipBox.d.short + "</b>&nbsp;&nbsp;"
+        text: acroTipBox.m ? acroTipBox.m.line : !acroTipBox.d ? "" : "<b>" + acroTipBox.d.short + "</b>&nbsp;&nbsp;"
           + (acroTipBox.d.defined ? pane.esc(acroTipBox.d.long) : "<i>not spelled out in this paper</i>")
         color: page.foreground
         font.family: page.fontFamily
@@ -1005,7 +1076,7 @@ Item {
       Text {
         id: acroTipMore
         textFormat: Text.PlainText
-        text: !acroTipBox.d ? ""
+        text: acroTipBox.m ? acroTipBox.m.more : !acroTipBox.d ? ""
           : !acroTipBox.d.defined ? (page.paper.askable ? "Enter or a click asks the paper's chat, as a guess" : "")
           : acroTipBox.here ? "spelled out here"
           : "p. " + acroTipBox.d.page + " · Enter or a click goes there"

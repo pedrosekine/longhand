@@ -256,6 +256,44 @@ def scenes(m, p, out, which):
         p.wait(lambda: ac()["listing"], 5)
         shot("acronyms-2")
         p.call("pdfKey", 0x01000000, 0)
+    if which in ("all", "answers"):
+        # A question hovered shows its answer; Enter opens the chat at it.
+        import hashlib
+        if which == "answers":
+            scenes(m, p, out, "acronyms")
+        rel = "Papers/Stress on bikes.pdf"
+        mk = lambda: json.loads(p.call("pdfMarks"))
+        p.call("openFile", rel, "false")
+        p.wait(lambda: json.loads(p.call("pdf"))["settled"], 10)
+        p.call("pdfMarkText", "0", "Moments of stress (MOS) were found where the EDA rose", "q")
+        if not p.wait(lambda: len(mk()["read"]["marks"]) >= 1, 10):
+            raise SystemExit(f"no mark made: {mk()['error']!r}")
+        qid = mk()["read"]["marks"][0]["id"]
+        talk = p.vault / "agents" / "longhand" / "notes" / (hashlib.md5(rel.encode()).hexdigest()[:16] + ".json")
+        talk.parent.mkdir(parents=True, exist_ok=True)
+        talk.write_text(json.dumps({"path": rel, "session": "", "seen": "", "turns": [
+            {"role": "student", "text": "how do they decide a moment of stress?", "marks": [qid], "at": "2026-11-16T10:00:00"},
+            {"role": "agent", "at": "2026-11-16T10:00:09", "text":
+             "A moment of stress is a stretch where skin conductance rises while heart rate variability falls, both "
+             "within a few seconds. The paper says “Moments of stress (MOS) were found where the EDA rose” (p. 1): "
+             "the rule needs both signals, so a rise in EDA alone, from heat or effort, does not count. Each one is "
+             "then placed on the route by its GPS time."},
+            {"role": "student", "text": "and how long is a moment?", "at": "2026-11-16T10:02:00"},
+            {"role": "agent", "text": "A few seconds; the paper does not fix a length.", "at": "2026-11-16T10:02:07"}]}))
+        p.call("pdfKey", 0x01000000, 0)
+        p.wait(lambda: not json.loads(p.call("pdf"))["shown"], 5)
+        p.call("openFile", rel, "false")
+        p.wait(lambda: mk()["read"]["marks"] and mk()["read"]["marks"][0]["boxes"], 10)
+        time.sleep(1)
+        r = mk()["read"]["marks"][0]["boxes"][0]["rects"][0]
+        p.call("pdfHover", "0", "400", "500")
+        time.sleep(0.4)
+        p.call("pdfHover", "0", str(r[0] + 40), str(r[1] + r[3] / 2))
+        p.wait(lambda: json.loads(p.call("pdfAcronyms"))["tip"], 5)
+        shot("answers-0")
+        p.call("pdfKey", 0x01000004, 0)     # Enter: the chat at it
+        time.sleep(0.8)
+        shot("answers-1")
     if which in ("all", "keys"):
         p.call("keys")
         shot("keys-0")
@@ -266,7 +304,7 @@ def scenes(m, p, out, which):
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("out", type=pathlib.Path)
-    ap.add_argument("--scene", default="all", choices=["all", "dashboard", "note", "day", "keys", "chat", "project", "acronyms"])
+    ap.add_argument("--scene", default="all", choices=["all", "dashboard", "note", "day", "keys", "chat", "project", "acronyms", "answers"])
     ap.add_argument("--order", default="ask", choices=["ask", "course", "date"])
     ap.add_argument("--root", type=pathlib.Path, default=HERE.parent.parent)
     ap.add_argument("--env", action="append", default=[])

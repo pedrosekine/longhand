@@ -215,10 +215,12 @@ A PDF opens in the note's place, where it was left. Select words with the
 mouse, then {key:pdfMark} keeps them as a highlight and {key:pdfQuestion}
 as a question, in the paper's reading note; {key:pdfNote} writes a note
 under one. The pointer resting on an acronym says what it stands for and
-on which page the paper spells it out; a click or {key:pdfAcronymGo} goes
+on which page the paper spells it out; a click or {key:pdfGo} goes
 there, and {key:linkBack} comes back. {key:pdfAcronyms} lists the paper's
 acronyms. One the paper never spells out can be asked about in the
-paper's chat, the same way.
+paper's chat, the same way. The pointer resting on a question shows the
+start of its answer, and {key:pdfGo} opens the paper's chat at it (a
+question not asked yet: {key:pdfGo} asks it); on a highlight, its note.
 
 ## Keys
 

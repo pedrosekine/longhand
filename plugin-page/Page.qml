@@ -3280,16 +3280,20 @@ Item {
 
   // A reply's citations — `path` line N, or p. N — made links: a daily
   // note opens at that line, any other file in its own application.
+  // A link's address with its parentheses written as %28 %29: a quote's
+  // "(MOS)" closed the markdown link early and spilled the rest of it
+  // into the answer (2026-11-16).
+  function linkPart(s) { return encodeURIComponent(s).replace(/\(/g, "%28").replace(/\)/g, "%29") }
   function linkCitations(text) {
     var t = String(text || "")
     // In a paper's chat, “its exact words” (p. 12) shows them on the page.
     if (root.paper.room)
       t = t.replace(/“([^”\n]{3,300})”\s*\(p\.\s*(\d+)\)/g, function (m, words, n) {
-        return "[“" + words + "” (p. " + n + ")](quote:" + n + ":" + encodeURIComponent(words) + ")"
+        return "[“" + words + "” (p. " + n + ")](quote:" + n + ":" + root.linkPart(words) + ")"
       })
     return t.replace(/`([^`\n]+\.(?:md|txt|pdf))`(?:,?\s*(line|p\.)\s*(\d+))?/g, function (m, path, kind, n) {
       var label = path.replace(/^.*\//, "").replace(/\.md$/, "") + (n ? (kind === "line" ? " · line " : " · p. ") + n : "")
-      return "[" + label + "](cite:" + encodeURIComponent(path) + (n ? "#" + n : "") + ")"
+      return "[" + label + "](cite:" + root.linkPart(path) + (n ? "#" + n : "") + ")"
     })
   }
 

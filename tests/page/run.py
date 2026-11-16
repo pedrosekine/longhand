@@ -417,6 +417,8 @@ def checks() -> int:
         check(p.call("ask") == "null", "nothing is asked")
         p.call("cursor", 1)
         check(p.wait(lambda: "#thesis 📅 " in p.note() and p.note().rstrip().endswith("17:00 ^d1")), "left, the line is bound: 📅 date ^d1")
+        # The store is written a moment after the note: waited for.
+        p.wait(lambda: (p.deadline(1) or {}).get("link") == f"[[{TODAY}#^d1]]", 5)
         d = p.deadline(1)
         check(d and d["project"] == "thesis" and d["link"] == f"[[{TODAY}#^d1]]", f"store has it, with project and link ({d})")
 
@@ -3193,6 +3195,39 @@ def checks() -> int:
         p.call("dayKey", KEY_ESC, 0)
         check(p.wait(lambda: pr()["list"] and pr()["here"] == "right" and sorted(pr()["rows"]) == sorted([hid, qid])),
               f"Esc in the chat turns the pane to the marks ({pr()})")
+        # A question hovered in the PDF shows its answer; Enter opens the
+        # chat at that exchange, lit (2026-11-16). A highlight with no note
+        # has nothing to say.
+        ac = lambda: json.loads(p.call("pdfAcronyms"))
+        # The pointer left where the test puts it: following the selection
+        # it would move off the mark hovered.
+        p.call("setPointer", "off")
+
+        def rest_on_mark(mid, tip=True):
+            m = next(x for x in mk()["read"]["marks"] if x["id"] == mid)
+            r = m["boxes"][0]["rects"][0]
+            for _ in range(6):
+                p.call("pdfHover", "0", "300", "600")
+                p.wait(lambda: ac()["mark"] == "", 2)
+                p.call("pdfHover", "0", str(r[0] + r[2] / 2), str(r[1] + r[3] / 2))
+                if p.wait(lambda: ac()["mark"] == mid and (ac()["tip"] or not tip), 2):
+                    return True
+            return False
+        check(rest_on_mark(qid) and "opens it in the paper's chat" in ac()["says"],
+              f"a question hovered shows its answer ({ac()['mark']!r}, {ac()['says']!r})")
+        asked_at = next(n for n, t in enumerate(json.loads(p.call("dayTurns"))) if t.startswith("student: what does this mean"))
+        p.call("pdfKey", KEY_RETURN, 0)
+        check(p.wait(lambda: not pr()["list"] and pr()["pin"] == asked_at and pr()["lit"] == asked_at),
+              f"…Enter opens the chat at that exchange, lit ({pr()}, asked at turn {asked_at})")
+        p.call("pdfHover", "0", "300", "600")
+        p.wait(lambda: ac()["mark"] == "", 2)
+        rest_on_mark(hid, tip=False)
+        p.wait(lambda: ac()["tip"], 1)
+        check(ac()["mark"] == hid and not ac()["tip"], f"a highlight with no note shows no tip ({ac()['says']!r})")
+        p.call("pdfHover", "0", "300", "600")
+        p.call("setPointer", "every")
+        p.call("dayKey", KEY_ESC, 0)
+        p.wait(lambda: pr()["list"])
         p.call("paperKey", 0x33, 0)                         # 3
         check(p.wait(lambda: pr()["filter"] == "q" and pr()["rows"] == [qid]), "3: only the questions")
         p.call("paperKey", 0x31, 0)                         # 1
@@ -3214,6 +3249,9 @@ def checks() -> int:
         check(p.wait(lambda: "no question is waiting" in pr()["hint"]), f"Ctrl+Enter with none waiting says so ({pr()['hint']!r})")
         links = p.call("paperLinks", "It says “Reflexive thematic analysis” (p. 1), plainly.")
         check("](quote:1:" in links and "[“Reflexive thematic analysis” (p. 1)]" in links, f"a quote with its page is a link ({links})")
+        links = p.call("paperLinks", "It says “stress (MOS) were found” (p. 1), plainly.")
+        check(links.endswith("(quote:1:stress%20%28MOS%29%20were%20found), plainly."),
+              f"…its own parentheses never close the link early ({links})")
         import urllib.parse
         p.call("openLink", "quote:1:" + urllib.parse.quote("Reflexive thematic analysis"))
         check(p.wait(lambda: pr()["flash"] > 0), f"…and opened, its words light where they are ({pr()})")
@@ -3279,6 +3317,7 @@ def checks() -> int:
             ["Nothing on this page but words."],
             ["HRV fell as the GPU ran.", "Another GPU ran too."]])
         ac = lambda: json.loads(p.call("pdfAcronyms"))
+        p.call("setPointer", "off")
         p.call("openFile", "Studies/Course A/Acronyms.pdf", "false")
         check(p.wait(lambda: pd()["settled"] and "HRV=heart rate variability" in ac()["list"] and "GPU=?" in ac()["list"]),
               f"a paper's acronyms are read on opening: spelled out, and never ({ac()})")
@@ -3314,9 +3353,20 @@ def checks() -> int:
         p.call("pdfKey", KEY_LBRACKET, CTRL)
         check(p.wait(lambda: same(pd()["at"])), f"…and back again ({pd()['at']})")
         check(rest_on("GPU"), f"one never spelled out is hovered too ({ac()})")
-        p.call("pdfKey", KEY_RETURN, 0)
-        check(p.wait(lambda: pr()["room"] and "“GPU”" in p.call("dayTurns"), 20),
-              f"…and Enter asks the paper's chat what it stands for, as a guess ({p.call('dayTurns')[:200]})")
+        # Enter while it is under the pointer (rested on again if the page
+        # let go of it meanwhile; what it was is said if it never asks).
+        asked, seen = False, []
+        for _ in range(3):
+            if ac()["hover"] != "GPU" and not rest_on("GPU"):
+                continue
+            seen.append((ac()["hover"], ac()["tip"]))
+            p.call("pdfKey", KEY_RETURN, 0)
+            if p.wait(lambda: pr()["room"] and "“GPU”" in p.call("dayTurns"), 20):
+                asked = True
+                break
+        check(asked, f"…and Enter asks the paper's chat what it stands for, as a guess "
+                     f"(before Enter {seen}; {pr()}; {p.call('dayTurns')[:200]})")
+        p.call("setPointer", "every")
         p.call("dayKey", KEY_ESC, 0)
         p.wait(lambda: pr()["list"])
         p.call("paperKey", KEY_ESC, 0)
