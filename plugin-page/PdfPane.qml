@@ -281,7 +281,7 @@ Item {
       }
       // A question marked: its chat opens with it attached, for the
       // question in words; nothing is sent until Enter (plan.md item 15).
-      if (fresh.length === 1 && fresh[0].kind === "q" && pane.askAfter) Qt.callLater(function () { page.askAboutMark(fresh[0].id) })
+      if (fresh.length === 1 && fresh[0].kind === "q" && pane.askAfter) Qt.callLater(function () { page.paper.askAbout(fresh[0].id) })
       pane.askAfter = false
     }
     if (pane.picked !== "" && !o.marks.some(function (m) { return m.id === pane.picked })) pane.picked = ""

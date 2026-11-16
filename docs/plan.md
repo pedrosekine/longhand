@@ -457,6 +457,15 @@ section, word for word, and to the diary's decisions log.
    plugins, the same day*: `plugin-page/Store.js` (`tests/tst_store.qml`),
    copied beside the popup by `tools/install-plugins`, which replaces the
    README's `cp -r` lines.
+   *Fourth pass, 2026-11-16*: what the paper reader had put in `Page.qml`
+   — the paper's room (its marks as a list, what is attached, the strip,
+   the keys) in `Paper.qml`, what was read on a day in `ReadToday.qml` —
+   tested alone against a stand-in page (`tests/tst_paper.qml`); the one
+   process reading the days stays in `Page.qml`, so both load in the test
+   runner. The move found one thing broken by it: READ no longer followed
+   new marks (a name left behind), fixed in the move. `Page.qml` is 8,397
+   lines (8,546 before). Only the reader's part: another session was
+   changing the rest of `Page.qml` that day.
 5. **A project as one continuous page** (2026-10-17, the consistency
    grilling). Every section of a project in one scroll, newest first,
    editable in place, each edit landing in its day's note. Needs writing

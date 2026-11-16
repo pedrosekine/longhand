@@ -135,15 +135,15 @@ BorderSurface {
       // calendar below.
       if (!(event.modifiers & (Qt.ControlModifier | Qt.AltModifier))) { page.dueFocus = -1; return false }
     }
-    if (page.readFocus >= 0) {
-      if (page.readKey(event)) return true
-      if (!(event.modifiers & (Qt.ControlModifier | Qt.AltModifier))) { page.readFocus = -1; return false }
+    if (page.readToday.at >= 0) {
+      if (page.readToday.keyPressed(event)) return true
+      if (!(event.modifiers & (Qt.ControlModifier | Qt.AltModifier))) { page.readToday.at = -1; return false }
     }
     if (page.projFocus >= 0) return page.projectsKey(event)
     // (The projects' list always has a row: the one that makes a new one.)
     if (Sc.hit(event, "calLists")) {
       if (page.focusDue.length > 0) page.dueFocus = 0
-      else if (page.focusRead.length > 0) page.readFocus = 0
+      else if (page.readToday.rows.length > 0) page.readToday.at = 0
       else page.projFocus = 0
     } else if (Sc.hit(event, "calBack")) {
       page.toggleSidebar()
@@ -422,7 +422,7 @@ BorderSurface {
     // the list after the deadlines; Enter or a click opens one where it
     // was left.
     Text {
-      visible: page.focusRead.length > 0
+      visible: page.readToday.rows.length > 0
       topPadding: page.sp(8)
       textFormat: Text.PlainText
       text: "READ"
@@ -432,12 +432,12 @@ BorderSurface {
       font.pixelSize: page.fs(Style.font.caption)
     }
     Repeater {
-      model: page.focusRead
+      model: page.readToday.rows
       Rectangle {
         id: readCell
         required property var modelData
         required property int index
-        readonly property bool lit: page.readFocus === index && sidebarKeys.activeFocus
+        readonly property bool lit: page.readToday.at === index && sidebarKeys.activeFocus
         onLitChanged: page.selected(readCell, "left", lit)
         width: calendar.width
         height: readRow.implicitHeight + page.sp(6)
@@ -451,7 +451,7 @@ BorderSurface {
           anchors.verticalCenter: parent.verticalCenter
           textFormat: Text.PlainText
           wrapMode: Text.WordWrap
-          text: modelData.title + " · " + page.readSummary(modelData)
+          text: modelData.title + " · " + page.readToday.summary(modelData)
           color: page.foreground
           font.family: page.fontFamily
           font.styleName: page.fontStyle

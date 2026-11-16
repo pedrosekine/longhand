@@ -19,7 +19,7 @@ BorderSurface {
   property alias paperKeysRef: paperKeys
   // A paper's room (plan.md item 15, step 2): its marks as a list, or its
   // chat; the pane turns between them.
-  readonly property bool listing: page.paperRoom && page.paperList
+  readonly property bool listing: page.paper.room && page.paper.listing
 
   readonly property bool besideDash: page.dayBesideDash
   visible: page.dayShown && (besideDash || (page.marginWidth > 0 && page.problem === ""))
@@ -53,7 +53,7 @@ BorderSurface {
     anchors.left: parent.left
     anchors.leftMargin: dayPane.contentLeftInset
     textFormat: Text.PlainText
-    text: page.paperRoom ? (dayPane.listing ? "MARKS · " : "CHAT · ") + (page.noteLabel || "").toUpperCase()
+    text: page.paper.room ? (dayPane.listing ? "MARKS · " : "CHAT · ") + (page.noteLabel || "").toUpperCase()
       : page.noteRoom ? "ABOUT " + (page.noteLabel || "").toUpperCase()
       : page.noteService.isToday ? "TODAY" : (page.dateLabel || "").toUpperCase()
     color: page.dim
@@ -66,7 +66,7 @@ BorderSurface {
   Item {
     id: paperKeys
     anchors.fill: parent
-    Keys.onPressed: function (event) { if (page.paperKey(event)) event.accepted = true }
+    Keys.onPressed: function (event) { if (page.paper.keyPressed(event)) event.accepted = true }
   }
   Column {
     id: paperView
@@ -89,8 +89,8 @@ BorderSurface {
                 { f: "q", label: "questions", key: "paperQuestions" }]
         Rectangle {
           required property var modelData
-          readonly property bool on: page.paperFilter === modelData.f
-          readonly property int n: page.paperCount(modelData.f)
+          readonly property bool on: page.paper.filter === modelData.f
+          readonly property int n: page.paper.count(modelData.f)
           width: chipText.implicitWidth + page.sp(14)
           height: chipText.implicitHeight + page.sp(6)
           radius: height / 2
@@ -102,7 +102,7 @@ BorderSurface {
             anchors.centerIn: parent
             textFormat: Text.PlainText
             text: parent.modelData.label + " " + parent.n
-              + (parent.modelData.f === "q" && page.paperWaiting.length > 0 ? " · " + page.paperWaiting.length + " waiting" : "")
+              + (parent.modelData.f === "q" && page.paper.waiting.length > 0 ? " · " + page.paper.waiting.length + " waiting" : "")
             color: parent.on ? page.foreground : page.dim
             font.family: page.fontFamily
             font.styleName: page.fontStyle
@@ -111,7 +111,7 @@ BorderSurface {
           MouseArea {
             anchors.fill: parent
             cursorShape: Qt.PointingHandCursor
-            onClicked: { page.paperFilter = parent.modelData.f; page.paperFocus = 0; paperKeys.forceActiveFocus() }
+            onClicked: { page.paper.filter = parent.modelData.f; page.paper.at = 0; paperKeys.forceActiveFocus() }
           }
         }
       }
@@ -121,7 +121,7 @@ BorderSurface {
     // nothing attached.
     Rectangle {
       id: wholeRow
-      readonly property bool hot: page.paperFocus === -1 && paperKeys.activeFocus
+      readonly property bool hot: page.paper.at === -1 && paperKeys.activeFocus
       width: parent.width
       height: wholeColumn.implicitHeight + page.sp(8)
       radius: Style.cornerRadius
@@ -158,7 +158,7 @@ BorderSurface {
       MouseArea {
         anchors.fill: parent
         cursorShape: Qt.PointingHandCursor
-        onClicked: { page.paperPick(-1); page.paperMarks = []; page.showPaperChat() }
+        onClicked: { page.paper.pick(-1); page.paper.marks = []; page.paper.showChat() }
       }
     }
 
@@ -168,8 +168,8 @@ BorderSurface {
       height: parent.height - y - paperFoot.implicitHeight - page.sp(8)
       clip: true
       spacing: page.sp(2)
-      model: page.paperRows
-      currentIndex: page.paperFocus
+      model: page.paper.rows
+      currentIndex: page.paper.at
       boundsBehavior: Flickable.StopAtBounds
       highlightFollowsCurrentItem: false
       onCurrentIndexChanged: positionViewAtIndex(currentIndex, ListView.Contain)
@@ -177,9 +177,9 @@ BorderSurface {
         id: markRow
         required property var modelData
         required property int index
-        readonly property bool hot: index === page.paperFocus && paperKeys.activeFocus
-        readonly property bool kept: page.paperKept.indexOf(modelData.id) >= 0
-        readonly property string state_: page.markState(modelData)
+        readonly property bool hot: index === page.paper.at && paperKeys.activeFocus
+        readonly property bool kept: page.paper.kept.indexOf(modelData.id) >= 0
+        readonly property string state_: page.paper.markState(modelData)
         width: paperListView.width
         height: markColumn.implicitHeight + page.sp(8)
         radius: Style.cornerRadius
@@ -246,18 +246,18 @@ BorderSurface {
         MouseArea {
           anchors.fill: parent
           cursorShape: Qt.PointingHandCursor
-          onClicked: { page.paperPick(markRow.index); paperKeys.forceActiveFocus() }
-          onDoubleClicked: { page.attachMark(markRow.modelData.id); page.showPaperChat() }
+          onClicked: { page.paper.pick(markRow.index); paperKeys.forceActiveFocus() }
+          onDoubleClicked: { page.paper.attach(markRow.modelData.id); page.paper.showChat() }
         }
       }
     }
 
     Text {
-      visible: page.paperRows.length === 0
+      visible: page.paper.rows.length === 0
       width: parent.width
       textFormat: Text.PlainText
       wrapMode: Text.WordWrap
-      text: page.paperCount("all") === 0
+      text: page.paper.count("all") === 0
         ? "Nothing marked yet. Select words in the PDF, then " + page.keyName("pdfMark") + " for a highlight or "
           + page.keyName("pdfQuestion") + " for a question."
         : "None here."
@@ -272,10 +272,10 @@ BorderSurface {
       width: parent.width
       textFormat: Text.PlainText
       wrapMode: Text.WordWrap
-      text: page.keyName("paperOpen") + (page.paperFocus < 0 ? " chats about the whole paper · " : " asks about this mark · ")
+      text: page.keyName("paperOpen") + (page.paper.at < 0 ? " chats about the whole paper · " : " asks about this mark · ")
         + page.keyName("paperKeep") + " keeps several · "
         + page.keyName("paperChat") + " the chat · 1 2 3 the strip"
-        + (page.paperWaiting.length > 0 ? " · " + page.keyName("paperAskWaiting") + " asks the " + page.paperWaiting.length + " waiting" : "")
+        + (page.paper.waiting.length > 0 ? " · " + page.keyName("paperAskWaiting") + " asks the " + page.paper.waiting.length + " waiting" : "")
         + " · " + page.keyName("paperBack") + " closes"
       color: page.faint
       font.family: page.fontFamily
@@ -347,7 +347,7 @@ BorderSurface {
             textFormat: Text.PlainText
             elide: Text.ElideRight
             horizontalAlignment: Text.AlignRight
-            text: (modelData.marks || []).map(function (id) { return "↳ " + page.markHead(id) }).join("  ")
+            text: (modelData.marks || []).map(function (id) { return "↳ " + page.paper.head(id) }).join("  ")
             color: page.faint
             font.family: page.fontFamily
             font.styleName: page.fontStyle
@@ -564,7 +564,7 @@ BorderSurface {
         width: parent.width
         textFormat: Text.PlainText
         wrapMode: Text.WordWrap
-        text: page.paperRoom
+        text: page.paper.room
           ? "Chat about this paper. Asking shares what you marked and the passages you attach; the paper whole only when the agent needs it. Attach a mark with ^."
           : page.noteRoom
           ? "Chat about this note. Chatting shares it with the agent, for this chat only; the note itself is never written. Point at a part with @."
@@ -625,13 +625,13 @@ BorderSurface {
     // The marks the next message points at; Backspace in the empty box
     // lets go of the last.
     Repeater {
-      model: page.paperRoom ? page.paperMarks : []
+      model: page.paper.room ? page.paper.marks : []
       Text {
         required property var modelData
         width: dayBox.width
         textFormat: Text.PlainText
         elide: Text.ElideRight
-        text: "↳ " + page.markHead(modelData)
+        text: "↳ " + page.paper.head(modelData)
         color: page.dim
         font.family: page.fontFamily
         font.styleName: page.fontStyle
@@ -659,7 +659,7 @@ BorderSurface {
       // Read-only rather than disabled on a past day: the pane still takes
       // the keys, so Esc and the panes' keys work in it.
       readOnly: !page.dayCanSend
-      placeholderText: page.paperRoom ? (page.paperMarks.length > 0 ? "ask about it…" : "ask about this paper…")
+      placeholderText: page.paper.room ? (page.paper.marks.length > 0 ? "ask about it…" : "ask about this paper…")
         : page.noteRoom ? "chat about this note…"
         : page.dayCanSend ? "chat with the day…" : "a past day: today's is where you chat (" + page.keyName("today") + ")"
       onKeyPressed: function (event) { if (page.dayKey(event)) event.accepted = true }
@@ -671,7 +671,7 @@ BorderSurface {
       width: parent.width
       textFormat: Text.PlainText
       wrapMode: Text.WordWrap
-      text: page.paperRoom ? page.keyName("chatSend") + " sends · ^ attaches a mark · quotes link to the page · "
+      text: page.paper.room ? page.keyName("chatSend") + " sends · ^ attaches a mark · quotes link to the page · "
           + page.keyName("marginBack") + " back to the marks"
         : page.keyName("chatSend") + " sends · Shift+Enter a new line · @ points at a block"
         + (page.dayOpenCards.length > 0 ? " · " + page.keyName("marginUp") + " to its proposals" : "")

@@ -272,18 +272,18 @@ ShellRoot {
     function pdfScan(): string { var p = page.pdfItem; return JSON.stringify({ scanned: !!p.read.scanned, ocr: p.read.ocr || "", text: p.read.text, ocrable: p.ocrable, progress: p.ocrProgress, error: p.readError, url: p.url() }) }
     // What was read on the calendar's day (plan.md item 15, step 3).
     function readToday(): string {
-      return JSON.stringify({ rows: page.focusRead.map(function (r) { return r.title + " · " + page.readSummary(r) }),
-        focus: page.readFocus, due: page.dueFocus, proj: page.projFocus, day: Qt.formatDate(page.calFocus, "yyyy-MM-dd") })
+      return JSON.stringify({ rows: page.readToday.rows.map(function (r) { return r.title + " · " + page.readToday.summary(r) }),
+        focus: page.readToday.at, due: page.dueFocus, proj: page.projFocus, day: Qt.formatDate(page.calFocus, "yyyy-MM-dd") })
     }
     // A paper's room (plan.md item 15, step 2): what the agent's pane shows.
     function paper(): string {
-      return JSON.stringify({ room: page.paperRoom, shown: page.dayShown, list: page.paperList, filter: page.paperFilter,
-        focus: page.paperFocus, rows: page.paperRows.map(function (m) { return m.id }), marks: page.paperMarks,
-        waiting: page.paperWaiting.map(function (m) { return m.id }), answered: Object.keys(page.paperAnswered),
-        kept: page.paperKept, here: page.here, picked: page.pdfItem.picked, askable: page.paperAskable,
+      return JSON.stringify({ room: page.paper.room, shown: page.dayShown, list: page.paper.listing, filter: page.paper.filter,
+        focus: page.paper.at, rows: page.paper.rows.map(function (m) { return m.id }), marks: page.paper.marks,
+        waiting: page.paper.waiting.map(function (m) { return m.id }), answered: Object.keys(page.paper.answered),
+        kept: page.paper.kept, here: page.here, picked: page.pdfItem.picked, askable: page.paper.askable,
         flash: page.pdfItem.flashBoxes.length, missed: page.pdfItem.flashMissed, hint: page.hint })
     }
-    function paperKey(key: int, mods: int): bool { return page.paperKey({ key: key, text: "", modifiers: mods }) }
+    function paperKey(key: int, mods: int): bool { return page.paper.keyPressed({ key: key, text: "", modifiers: mods }) }
     function paperLinks(text: string): string { return page.linkCitations(text) }
     function openLink(link: string): void { page.openCitation(link) }
     // Words kept as a mark as `m` / `q` keep a selection (for scenes with
