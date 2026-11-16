@@ -1000,6 +1000,30 @@ Item {
   // The project's filed documents above its sections (docs/agent.md, slice
   // 4): -1 while the keys are on the sections, else the document picked.
   property int docFocus: -1
+  // The open project's papers (plan.md item 5's first part, 2026-11-16):
+  // every reading note carrying its tag (`longhand-read papers`), between
+  // its documents and its sections; -1 when the keys are not on them.
+  property var projectPapers: []
+  property int projectPaperFocus: -1
+  function refreshProjectPapers() {
+    if (!root.projectOpen || root.projectTag === "") { root.projectPapers = []; return }
+    if (projectPapersProc.running) { projectPapersAgain.restart(); return }
+    projectPapersProc.tag = root.projectTag
+    projectPapersProc.command = [pdfPane.readPath, "papers", "--tag", root.projectTag]
+    projectPapersProc.running = true
+  }
+  Timer { id: projectPapersAgain; interval: 300; onTriggered: root.refreshProjectPapers() }
+  Process {
+    id: projectPapersProc
+    property string tag: ""
+    stdout: StdioCollector {
+      id: projectPapersOut
+      onStreamFinished: {
+        if (projectPapersProc.tag !== root.projectTag) return
+        try { root.projectPapers = JSON.parse(projectPapersOut.text).papers || [] } catch (e) { root.projectPapers = [] }
+      }
+    }
+  }
   property var pendingSection: null  // a heading to land on once its note is open
   property var tasks: []
   property var raised: []
@@ -3931,9 +3955,12 @@ Item {
     root.sections = []
     root.sectionFocus = 0
     root.docFocus = -1
+    root.projectPaperFocus = -1
+    root.projectPapers = []
     root.sidebarOpen = true
     root.projectOpen = true
     root.refreshSections()
+    root.refreshProjectPapers()
     sidebar.sidebarKeysRef.forceActiveFocus()
   }
 
@@ -4003,6 +4030,7 @@ Item {
   function leaveProject() {
     root.projectOpen = false
     root.docFocus = -1
+    root.projectPaperFocus = -1
     root.sections = []
     var i = -1
     for (var k = 0; k < root.projects.length; k++) if (root.projects[k].tag === root.projectTag) i = k
@@ -4010,17 +4038,16 @@ Item {
     sidebar.sidebarKeysRef.forceActiveFocus()
   }
 
+  // Up and down through the project's three lists as one: its documents,
+  // its papers, its sections.
   function moveSectionFocus(d) {
-    var docs = root.projectDocs().length
-    if (root.docFocus >= 0) {
-      var i = root.docFocus + d
-      if (i >= docs && root.sections.length > 0) { root.docFocus = -1; root.sectionFocus = 0 }
-      else root.docFocus = Math.max(0, Math.min(docs - 1, i))
-      return
-    }
-    if (d < 0 && root.sectionFocus === 0 && docs > 0) { root.docFocus = docs - 1; return }
-    if (root.sections.length === 0) return
-    root.sectionFocus = Math.max(0, Math.min(root.sections.length - 1, root.sectionFocus + d))
+    var D = root.projectDocs().length, P = root.projectPapers.length, S = root.sections.length
+    if (D + P + S === 0) return
+    var cur = root.docFocus >= 0 ? root.docFocus : root.projectPaperFocus >= 0 ? D + root.projectPaperFocus : D + P + root.sectionFocus
+    var i = Math.max(0, Math.min(D + P + S - 1, cur + d))
+    root.docFocus = i < D ? i : -1
+    root.projectPaperFocus = i >= D && i < D + P ? i - D : -1
+    if (i >= D + P) root.sectionFocus = i - D - P
   }
 
   // The open project's documents, as the runner listed them with the
@@ -4031,15 +4058,24 @@ Item {
     return []
   }
 
+  // A project's document: a PDF in the vault opens in the page's reader
+  // (since the reader, 2026-11-16), anything else in its own application.
   function openDocument(d) {
     if (!d) return
-    Qt.openUrlExternally("file://" + d.path)
     root.used("document", "open")
+    var vault = svc.configured ? svc.config.vault + "/" : ""
+    if (vault !== "" && String(d.path).indexOf(vault) === 0 && /\.pdf$/i.test(d.path)) {
+      root.remember()
+      root.openPdf(String(d.path).slice(vault.length))
+      return
+    }
+    Qt.openUrlExternally("file://" + d.path)
   }
 
   // Enter in a project: the document picked, or the section.
   function openInProject() {
     if (root.docFocus >= 0) root.openDocument(root.projectDocs()[root.docFocus])
+    else if (root.projectPaperFocus >= 0) { var pp = root.projectPapers[root.projectPaperFocus]; if (pp) { root.used("project-paper"); root.remember(); root.openPdf(pp.pdf) } }
     else root.openSection(root.sections[root.sectionFocus])
   }
 

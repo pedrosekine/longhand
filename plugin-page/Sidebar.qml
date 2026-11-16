@@ -832,7 +832,58 @@ BorderSurface {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: { page.docFocus = index; page.openDocument(modelData) }
-            Tip { host: page; shown: parent.containsMouse; text: page.tip("Open it in the PDF viewer", "listOpen") }
+            Tip { host: page; shown: parent.containsMouse; text: page.tip("Open it", "listOpen") }
+          }
+        }
+      }
+
+      // Its papers (plan.md item 5's first part): every reading note with
+      // its tag, the newest marked first; Enter opens one where it was left.
+      Text {
+        visible: page.projectPapers.length > 0
+        topPadding: page.sp(8)
+        textFormat: Text.PlainText
+        text: "PAPERS"
+        color: page.dim
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.caption)
+      }
+      Repeater {
+        model: page.projectPapers
+        Rectangle {
+          id: paperCell
+          required property var modelData
+          required property int index
+          readonly property bool hot: page.projectPaperFocus === index && sidebarKeys.activeFocus
+          onHotChanged: page.selected(paperCell, "left", hot)
+          width: projectColumn.width
+          height: paperText.implicitHeight + page.sp(6)
+          radius: Style.cornerRadius
+          color: hot ? Style.selectedFill : paperArea.containsMouse && page.handOn ? Style.hoverFill : "transparent"
+          Text {
+            id: paperText
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.leftMargin: page.sp(4)
+            anchors.rightMargin: page.sp(4)
+            anchors.verticalCenter: parent.verticalCenter
+            textFormat: Text.PlainText
+            elide: Text.ElideRight
+            text: modelData.title + "   " + page.readToday.summary(modelData)
+              + (modelData.waiting > 0 ? " · " + modelData.waiting + " waiting" : "")
+            color: page.foreground
+            font.family: page.fontFamily
+            font.styleName: page.fontStyle
+            font.pixelSize: page.fs(Style.font.caption)
+          }
+          MouseArea {
+            id: paperArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: { page.docFocus = -1; page.projectPaperFocus = index; page.openInProject() }
+            Tip { host: page; shown: parent.containsMouse; text: page.tip("Open it where it was left", "listOpen") }
           }
         }
       }
@@ -856,7 +907,7 @@ BorderSurface {
           id: secCell
           required property var modelData
           required property int index
-          readonly property bool hot: page.docFocus < 0 && page.sectionFocus === index && sidebarKeys.activeFocus
+          readonly property bool hot: page.docFocus < 0 && page.projectPaperFocus < 0 && page.sectionFocus === index && sidebarKeys.activeFocus
           onHotChanged: page.selected(secCell, "left", hot)
           Component.onCompleted: if (hot) page.selected(secCell, "left", true)
           width: projectColumn.width
@@ -922,7 +973,7 @@ BorderSurface {
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onClicked: { page.docFocus = -1; page.sectionFocus = index; page.openSection(modelData) }
+            onClicked: { page.docFocus = -1; page.projectPaperFocus = -1; page.sectionFocus = index; page.openSection(modelData) }
             Tip { host: page; shown: parent.containsMouse; text: page.tip(modelData.heading ? "Open the section, on its heading" : "Go to the box", "listOpen") }
           }
         }

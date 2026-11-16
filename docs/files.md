@@ -591,6 +591,12 @@ block, `table` rows.
   when a paper's project meets soon or its deadline nears and questions
   wait, and to propose time for them with the kinds they have.
 
+- **A project's papers** (2026-11-16). Opening a project in the sidebar lists
+  its papers (reading notes carrying its tag) between its documents and its
+  sections, each with its marks and the questions still waiting; `↑↓`
+  walk the three as one, `Enter` opens a paper where it was left. A
+  project's PDF documents open in this reader too.
+
 **Not yet:** a two-column paper fitted one column at a time; a reading view
 (its text reflowed in the page's own face).
 

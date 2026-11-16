@@ -470,6 +470,14 @@ section, word for word, and to the diary's decisions log.
    grilling). Every section of a project in one scroll, newest first,
    editable in place, each edit landing in its day's note. Needs writing
    another day's note while it is on screen and finding blocks by identity.
+   *A first part, 2026-11-16*: the project's view in the sidebar lists its
+   **papers** — every reading note carrying its tag (`longhand-read
+   papers`), the newest marked first, with their highlights, questions and
+   those still waiting — between its documents and its sections, the three
+   walked as one list; Enter opens a paper where it was left. Its documents
+   that are PDFs in the vault open in the page's reader now, not in another
+   application. The continuous, editable page itself is still to be
+   designed with the student.
 6. **A sent block keeps its conversation through word edits.** A tick, a
    date or a priority keep it since `7740b51`; changing the words still
    detaches it. Identity in the layer (its last words and place, followed

@@ -265,6 +265,8 @@ ShellRoot {
       return false
     }
     function pdfPick(id: string): void { page.pdfItem.pick(id) }
+    // The open project's papers (plan.md item 5's first part).
+    function projectPapers(): string { return JSON.stringify({ open: page.projectOpen, papers: page.projectPapers.map(function (x) { return x.title }), focus: page.projectPaperFocus, doc: page.docFocus }) }
     // The project asked for on a paper's first mark.
     function pdfAsk(): string { var p = page.pdfItem; return JSON.stringify({ asking: p.askingTag, choices: p.tagChoices.map(function (c) { return c.tag }), said: p.tagSaid, tags: p.read.tags || [] }) }
     function pdfChooseProject(tag: string): void { page.pdfItem.chooseProject(tag) }

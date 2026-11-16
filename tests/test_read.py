@@ -192,6 +192,14 @@ def main() -> int:
     check(len(lost) == 1 and lost[0]["text"] == "Spacing never compounds" and s["unplaced"] == 1,
           "words found nowhere are listed as not placed, not lost")
 
+    # A project's papers: every reading note carrying its tag.
+    d = subprocess.run([str(READ), "papers", "--tag", "#THESIS"], capture_output=True, text=True, env=env)
+    pp = json.loads(d.stdout)["papers"]
+    check(d.returncode == 0 and [x["title"] for x in pp] == ["Smith 2020"] and pp[0]["h"] >= 1 and pp[0]["q"] == 1
+          and pp[0]["waiting"] == 1, f"papers: a project's papers by tag, any case, with their marks counted ({pp})")
+    d = subprocess.run([str(READ), "papers", "--tag", "nothing"], capture_output=True, text=True, env=env)
+    check(json.loads(d.stdout)["papers"] == [], "…and none for a tag no paper has")
+
     # A name taken by another paper's note: the PDF's folder is added.
     other = "other/Smith 2020.pdf"
     pdf(vault / other, [["A different paper."]])

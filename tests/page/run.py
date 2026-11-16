@@ -3116,6 +3116,13 @@ def checks() -> int:
         p.call("pdfChooseProject", first_tag)
         check(p.wait(lambda: ask()["tags"] == [first_tag] and f"#{first_tag}" in reading.read_text() and not ask()["asking"]),
               f"…chosen, the project's tag is kept in its reading note ({ask()})")
+        # …and the project lists it among its papers.
+        ppx = lambda: json.loads(p.call("projectPapers"))
+        p.call("openProject", next(n for n, x in enumerate(json.loads(p.call("projects"))) if x.startswith(first_tag + "|")))
+        check(p.wait(lambda: ppx()["open"] and ppx()["papers"] == ["Reading"]), f"the project's view lists the paper ({ppx()})")
+        p.call("leaveProject")
+        if p.call("sidebarOpen") == "true":
+            p.call("sidebar")
         if p.call("sidebarOpen") == "true":
             p.call("sidebar")
         r = m1["boxes"][0]["rects"][0]

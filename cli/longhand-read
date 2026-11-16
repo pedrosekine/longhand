@@ -33,6 +33,7 @@ nowhere is reported as not placed, never dropped.
     longhand-read find   --pdf P --page N --text T     (where words are, to show them; nothing kept)
     longhand-read days                                 (what was marked on each day, every paper)
     longhand-read reading [--days N]                   (papers read lately and their waiting questions, for the agent)
+    longhand-read papers --tag T                       (a project's papers, by their reading notes' tags)
     longhand-read ocr    --pdf P                       (a scan read into a copy with words; one line a page)
 
 P is the PDF's path in the vault (or a whole path). Pages are counted from
@@ -715,12 +716,41 @@ def cmd_reading(cfg: dict, days: int, today: dt.date | None = None) -> dict:
     return {"since": since, "papers": papers}
 
 
+def cmd_papers(cfg: dict, tag: str) -> dict:
+    """A project's papers (plan.md item 5's first part, 2026-11-16): every
+    reading note carrying its tag, with its marks counted, the questions
+    still waiting, and the last day it was marked — the newest first."""
+    tag = tag.lstrip("#").lower()
+    folder = Path(cfg["vault"]) / readings_dir(cfg)
+    out = []
+    for f in sorted(folder.glob("*.md")) if folder.is_dir() else []:
+        try:
+            note = Note(f, f.read_text().split("\n"))
+        except OSError:
+            continue
+        if tag not in [t.lower() for t in note.tags()]:
+            continue
+        pdf = next((m.group("target").strip() for line in note.lines[:12] for m in [PDF_FIELD_RE.match(line.strip())] if m), "")
+        if not pdf:
+            continue
+        marks = note.marks()
+        answered = answered_marks(cfg, pdf)
+        out.append({"pdf": pdf, "title": Path(pdf).stem, "h": sum(1 for m in marks if m["kind"] == "h"),
+                    "q": sum(1 for m in marks if m["kind"] == "q"),
+                    "waiting": sum(1 for m in marks if m["kind"] == "q" and m["id"] not in answered),
+                    "last": max((m["day"] for m in marks if m["day"]), default="")})
+    out.sort(key=lambda r: (r["last"], r["title"]), reverse=True)
+    return {"tag": tag, "papers": out}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(prog="longhand-read", description=__doc__.split("\n\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("days")
     rp = sub.add_parser("reading")
     rp.add_argument("--days", type=int, default=7)
+    pp = sub.add_parser("papers")
+    pp.add_argument("--tag", required=True)
     for name in ("state", "mark", "remove", "kind", "note", "tag", "find", "ocr"):
         p = sub.add_parser(name)
         p.add_argument("--pdf", required=True)
@@ -746,6 +776,9 @@ def main() -> int:
     cfg = load_config()
     if a.cmd == "days":
         print(json.dumps(cmd_days(cfg), ensure_ascii=False))
+        return 0
+    if a.cmd == "papers":
+        print(json.dumps(cmd_papers(cfg, a.tag), ensure_ascii=False))
         return 0
     if a.cmd == "reading":
         print(json.dumps(cmd_reading(cfg, max(1, a.days)), ensure_ascii=False))
