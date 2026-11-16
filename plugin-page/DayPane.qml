@@ -178,12 +178,17 @@ BorderSurface {
         required property var modelData
         required property int index
         readonly property bool hot: index === page.paper.at && paperKeys.activeFocus
+        // Picked in the PDF, the keys there: lit still, so the row and the
+        // mark being changed are seen as one.
+        readonly property bool shown: page.pdfItem.picked === modelData.id
         readonly property bool kept: page.paper.kept.indexOf(modelData.id) >= 0
         readonly property string state_: page.paper.markState(modelData)
         width: paperListView.width
         height: markColumn.implicitHeight + page.sp(8)
         radius: Style.cornerRadius
-        color: hot ? Style.selectedFill : "transparent"
+        color: hot || shown ? Style.selectedFill : "transparent"
+        border.width: shown && !hot ? 1 : 0
+        border.color: page.accent
         onHotChanged: page.selected(markRow, "right", hot)
         Rectangle {
           visible: markRow.kept
@@ -246,7 +251,9 @@ BorderSurface {
         MouseArea {
           anchors.fill: parent
           cursorShape: Qt.PointingHandCursor
-          onClicked: { page.paper.pick(markRow.index); paperKeys.forceActiveFocus() }
+          // A click takes the keys to the mark in the PDF, to change or
+          // remove it there; a double click asks about it.
+          onClicked: page.paper.edit(markRow.index)
           onDoubleClicked: { page.paper.attach(markRow.modelData.id); page.paper.showChat() }
         }
       }
@@ -274,7 +281,9 @@ BorderSurface {
       wrapMode: Text.WordWrap
       text: page.keyName("paperOpen") + (page.paper.at < 0 ? " chats about the whole paper · " : " asks about this mark · ")
         + page.keyName("paperKeep") + " keeps several · "
-        + page.keyName("paperChat") + " the chat · 1 2 3 the strip"
+        + page.keyName("paperChat") + " the chat · "
+        + (page.paper.at >= 0 ? page.keyName("paperEdit") + " or a click edits it in the PDF · " : "")
+        + "1 2 3 the strip"
         + (page.paper.waiting.length > 0 ? " · " + page.keyName("paperAskWaiting") + " asks the " + page.paper.waiting.length + " waiting" : "")
         + " · " + page.keyName("paperBack") + " closes"
       color: page.faint

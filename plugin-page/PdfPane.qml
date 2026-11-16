@@ -6,6 +6,7 @@ import qs.Commons
 import qs.Ui
 import "Shortcuts.js" as Sc
 import "PdfPlaces.js" as Places
+import "PdfMarks.js" as Marks
 
 // A PDF in the middle, in the note's place (docs/files.md, step 5,
 // 2026-10-27): Qt's own view, fitted to the column, the pages drawn as they
@@ -559,6 +560,19 @@ Item {
     pane.picked = pane.picked === id ? "" : id
     keys.forceActiveFocus()
   }
+  // A click on the marks of page `index`, at `x`/`y` in the page's own
+  // points: the smallest mark there, again the next larger (PdfMarks.js),
+  // so a word highlighted inside a question can be clicked (2026-11-16).
+  // Each mark's rectangle under the click hears it: it is acted on once.
+  property var lastTap: null
+  function tapAt(index, x, y, s) {
+    if (pane.rel === "") return
+    var now = Date.now(), t = pane.lastTap
+    pane.lastTap = { at: now, index: index, x: x, y: y }
+    if (t && now - t.at < 80 && t.index === index && Math.abs(t.x - x) < 2 && Math.abs(t.y - y) < 2) return
+    pane.picked = Marks.pick(pane.read.marks || [], index, x, y, pane.picked, 1.5 / Math.max(0.01, s))
+    keys.forceActiveFocus()
+  }
   function remove() {
     if (pane.picked === "") return false
     pane.readRun(["remove", "--id", pane.picked])
@@ -641,7 +655,9 @@ Item {
             color: modelData.kind === "q" ? page.palette.blue : page.palette.yellow
             TapHandler {
               acceptedDevices: PointerDevice.AllDevices
-              onTapped: pane.pick(box.modelData.id)
+              onTapped: function (point) {
+                pane.tapAt(sheet.index, (box.x + point.position.x) / sheet.s, (box.y + point.position.y) / sheet.s, sheet.s)
+              }
             }
           }
         }

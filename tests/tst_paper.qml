@@ -1,6 +1,7 @@
 import QtQuick
 import QtTest
 import "../plugin-page"
+import "../plugin-page/PdfMarks.js" as Marks
 
 // The paper's room (Paper.qml) and what was read on a day (ReadToday.qml),
 // against a stand-in page: the rows and their order, which questions
@@ -34,6 +35,7 @@ Item {
       property string readPath: "/bin/true"
       property string picked: ""
       property var shownMark: ""
+      property Item keysRef: pdfKeys
       property var read: ({ text: true, private: false, marks: [
         { id: "h1", kind: "h", page: 1, text: "Retrieval changes the memory", note: "" },
         { id: "h2", kind: "q", page: 2, text: "Sessions a day apart", note: "does sleep matter?" },
@@ -51,6 +53,10 @@ Item {
     function openPdf(rel) { opened = opened.concat([rel]) }
     function readDaysRun() { return true }
   }
+
+  // The PDF's keys, in the window so they can take the focus.
+  Item { id: pdfKeys }
+  Item { id: listKeys }
 
   Paper { id: paper; page: fakePage }
   ReadToday { id: readToday; page: fakePage }
@@ -137,11 +143,52 @@ Item {
       compare(paper.listing, false)
     }
 
+    // A click on a row, or Right, takes the keys to the mark in the PDF,
+    // where m/q/n/x act on it (2026-11-16).
+    function test_a_row_to_the_pdf() {
+      paper.edit(1)
+      compare(paper.at, 1)
+      compare(fakePage.pdfItem.shownMark, "h2", "picked in the PDF")
+      tryVerify(function () { return fakePage.pdfItem.keysRef.activeFocus }, 1000, "the keys go with it")
+      fakePage.pdfItem.shownMark = ""
+      listKeys.forceActiveFocus()
+      paper.at = 0
+      verify(paper.keyPressed(top.key(Qt.Key_Right)))
+      compare(fakePage.pdfItem.shownMark, "h1", "Right does the same")
+      fakePage.pdfItem.shownMark = ""
+      paper.at = -1
+      listKeys.forceActiveFocus()
+      verify(paper.keyPressed(top.key(Qt.Key_Right)))
+      compare(fakePage.pdfItem.shownMark, "", "the whole paper: nothing to edit")
+    }
+
     function test_a_new_pdf_starts_afresh() {
       paper.marks = ["h1"]; paper.at = 2; paper.filter = "q"; paper.listing = false
       fakePage.pdfRel = "lit/Other.pdf"
       compare(paper.marks, []); compare(paper.at, -1); compare(paper.filter, "all"); compare(paper.listing, true)
       fakePage.pdfRel = "lit/Smith 2020.pdf"
+    }
+  }
+
+  // Which mark a click on a page picks (PdfMarks.js): a word highlighted
+  // inside a question's sentence.
+  TestCase {
+    name: "PdfMarks"
+    readonly property var marks: [
+      { id: "q1", boxes: [{ page: 1, rects: [[10, 100, 300, 12], [10, 114, 300, 12]] }] },
+      { id: "h1", boxes: [{ page: 1, rects: [[120, 114, 60, 12]] }] },
+      { id: "h2", boxes: [{ page: 2, rects: [[120, 114, 60, 12]] }] }]
+
+    function test_the_smallest_first_then_larger_then_none() {
+      compare(Marks.under(marks, 1, 150, 120), ["h1", "q1"])
+      compare(Marks.pick(marks, 1, 150, 120, ""), "h1", "the word, not the sentence round it")
+      compare(Marks.pick(marks, 1, 150, 120, "h1"), "q1", "again: the sentence")
+      compare(Marks.pick(marks, 1, 150, 120, "q1"), "", "again: let go")
+      compare(Marks.pick(marks, 1, 20, 104, ""), "q1", "where only the question is")
+      compare(Marks.pick(marks, 1, 20, 104, "q1"), "", "a lone mark again: let go")
+      compare(Marks.pick(marks, 1, 150, 120, "h2"), "h1", "another picked elsewhere")
+      compare(Marks.pick(marks, 1, 500, 500, "h1"), "h1", "no mark there: nothing changes")
+      compare(Marks.under(marks, 1, 309, 99, 1.5), ["q1"], "a little outside still counts")
     }
   }
 

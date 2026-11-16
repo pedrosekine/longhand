@@ -97,6 +97,14 @@ Item {
     if (pp.at >= 0) page.pdfItem.showMark(pp.rows[pp.at].id)
     else page.pdfItem.picked = ""
   }
+  // To the mark in the PDF (2026-11-16): picked there, and the keys with
+  // it, so m/q change its kind, n writes its note, x removes it — the way
+  // to a mark the page will not let a click reach (one inside another).
+  function edit(i) {
+    pp.pick(i)
+    if (pp.at < 0) return
+    Qt.callLater(function () { page.pdfItem.keysRef.forceActiveFocus() })
+  }
   // Every waiting question in one message, each by its name, the answer
   // to come back question by question (the runner asks for that).
   function askWaiting() {
@@ -134,6 +142,7 @@ Item {
       return true
     }
     if (Sc.hit(event, "paperChat")) { pp.showChat(); return true }
+    if (Sc.hit(event, "paperEdit")) { pp.edit(pp.at); return true }
     if (Sc.hit(event, "paperBack")) {
       if (pp.kept.length > 0) { pp.kept = []; return true }
       page.closeDay(); return true

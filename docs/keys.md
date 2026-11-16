@@ -217,6 +217,7 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | To the paper's chat: on the first row, about the paper as a whole; on a mark, with it attached (or the ones kept) | `Enter` | in a paper's marks (the agent's pane, beside a PDF) |
 | Keep this mark, to attach several together (again: let go) | `Space` | in a paper's marks (the agent's pane, beside a PDF) |
 | To the paper's chat, nothing attached | `Tab` | in a paper's marks (the agent's pane, beside a PDF) |
+| To this mark in the PDF, to change its kind, write its note or remove it (a click on the row does the same) | `→` | in a paper's marks (the agent's pane, beside a PDF) |
 | Every mark | `1` | in a paper's marks (the agent's pane, beside a PDF) |
 | Only the highlights | `2` | in a paper's marks (the agent's pane, beside a PDF) |
 | Only the questions, the waiting ones first | `3` | in a paper's marks (the agent's pane, beside a PDF) |
