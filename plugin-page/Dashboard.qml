@@ -1272,16 +1272,16 @@ BorderSurface {
                                                                                     : " pick (shown at once) · " + page.keyName("stripAdd") + " keep it, to add another · ")
             + page.keyName("stripUnfold") + " unfold · " + page.keyName("stripDown") + " the list · " + page.keyName("dashOrder") + " order · "
             + page.keyName("stripClear") + " clear"
+          // The few keys the list is worked with (2026-11-17: twenty in a
+          // row read as none); the rest are in `?`, and each row's hover
+          // hint names its own.
           : page.keyName("dashUp") + page.keyName("dashDown") + " move · "
           + (page.dashOrder === "date" ? page.keyName("dashFold") + page.keyName("dashUnfold") + " fold · " : "")
-          + page.keyName("dashOpen") + " opens the line · "
+          + page.keyName("dashOpen") + " open · "
+          + page.keyName("dashDone") + " done · " + page.keyName("dashWhen") + " when · "
           + page.keyName("dashTalk") + " chat · "
-          + page.keyName("dashDone") + " done · " + page.keyName("dashWhen") + " when · " + page.keyName("dashPriority") + " priority · "
-          + page.keyName("dashShelve") + " set aside · " + page.keyName("dashKeep") + " renew · " + page.keyName("dashGrade") + " grade · "
-          + page.keyName("dashPlan") + " plan now · "
-          + page.keyName("dashSearch") + " search · " + page.keyName("dashCourse") + "… a course · " + page.keyName("dashOrder") + " order · "
-          + page.keyName("dashRename") + " rename · " + page.keyName("dashDrop") + " cancel · " + page.keyName("dashUndo") + " undo · " + page.keyName("dashBack") + " back · "
-          + page.keyName("keysHere") + " all keys"
+          + page.keyName("dashSearch") + " search · "
+          + page.keyName("keysHere") + " every key"
         color: page.faint
         font.family: page.fontFamily
         font.styleName: page.fontStyle

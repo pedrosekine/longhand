@@ -4973,20 +4973,26 @@ def cmd_install(cfg: dict, args) -> int:
         model, variant = job_model(cfg, job)
         if not evallib.passed(paths0.agent_dir, job, new, model_of(dict(cfg, model=model, variant=variant), name)):
             blocked.append(f"{name}.md (prompt {new})")
-    if blocked and not args.force:
-        raise Fail("not installed: " + ", ".join(blocked) + " changed and has not passed its eval cases on the "
-                   "model it runs on. Run `longhand-agent eval run`, or install anyway with --force.")
+    # Each prompt on its own (2026-11-17): one that has not passed keeps the
+    # version installed, and holds back none of the others — a planner fix
+    # that passed is not kept waiting on a day prompt still being worked on.
+    held = set() if args.force else {b.split(" ")[0] for b in blocked}
     # The agent that answers in the margin, and the one that plans; both
     # with every tool denied.
     for name in ("longhand.md", "longhand-plan.md", "longhand-judge.md", "longhand-day.md"):
+        if name in held:
+            continue
         (agents / name).write_text((here / "opencode" / name).read_text())
+    if held:
+        print("installed the others; kept the installed " + ", ".join(blocked) + ": changed, and has not passed its eval cases "
+              "on the model it runs on. Run `longhand-agent eval run`, or install anyway with --force.", file=sys.stderr)
     dst = agents / "longhand.md"
     paths = Paths(cfg, dt.date.today())
     for d in (paths.agent_dir / "daily", paths.knowledge, paths.payloads, paths.cwd, paths.curriculum):
         if d is not None:
             d.mkdir(parents=True, exist_ok=True)
     print(f"agent definition → {dst}\nagent folder → {paths.agent_dir}\npayload log → {paths.payloads}")
-    return 0
+    return 2 if held else 0
 
 
 def main(argv: list[str]) -> int:
