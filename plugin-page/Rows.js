@@ -33,9 +33,13 @@ var TASK_RE = /^([-*+] \[([ xX\-])\] )(.*)$/
 var BULLET_RE = /^([-*+] )(.*)$/
 var ORDERED_RE = /^((\d+)([.)]) )(.*)$/
 var FENCE_RE = /^[ \t]*(?:>[ \t]?)*[ \t]*(```|~~~)/
-// The tail of a checkbox the page draws instead of showing: a due date
-// (and time), the day it was closed (❌ cancelled, ✅ done), then the anchor.
-var TAIL_RE = /^([\s\S]*?)((?:\s+📅\s*(\d{4}-\d{2}-\d{2})(?:\s+(\d{1,2}:\d{2}))?)?(?:\s+[❌✅]\s*(\d{4}-\d{2}-\d{2}))?(?:\s+\^d(\d+))?\s*)$/
+// The tail of a checkbox the page draws instead of showing, in the Tasks
+// plugin's order: a priority, the day it was made (➕), its start (🛫), the
+// day to work on it (⏳), a due date (and time), the day it was closed (❌
+// cancelled, ✅ done), then the anchor. The priority and the do-date are
+// drawn in the pill beside the due date (2026-11-17: a do-date accepted from
+// the planner read "⏫ ⏳ 2026-10-26" in the middle of the person's words).
+var TAIL_RE = /^([\s\S]*?)((?:\s+(⏫|🔼|🔺|🔽|⏬))?(?:\s+➕\s*\d{4}-\d{2}-\d{2})?(?:\s+🛫\s*\d{4}-\d{2}-\d{2})?(?:\s+⏳\s*(\d{4}-\d{2}-\d{2}))?(?:\s+📅\s*(\d{4}-\d{2}-\d{2})(?:\s+(\d{1,2}:\d{2}))?)?(?:\s+[❌✅]\s*(\d{4}-\d{2}-\d{2}))?(?:\s+\^d(\d+))?\s*)$/
 var DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
@@ -140,7 +144,7 @@ function parseLine(raw) {
 // body that merely ends in spaces keeps them (they are being typed).
 function liftTail(t) {
   var m = t.body.match(TAIL_RE)
-  if (!m || !(m[3] || m[5] || m[6])) return
+  if (!m || !(m[3] || m[4] || m[5] || m[7] || m[8])) return
   t.body = m[1]
   t.suffix = m[2]
   // The tail owns one space before it; more are the words' own — a space
@@ -150,14 +154,38 @@ function liftTail(t) {
     t.body += lead.substring(0, lead.length - 1)
     t.suffix = t.suffix.substring(lead.length - 1)
   }
-  t.deadline = m[6] ? parseInt(m[6], 10) : 0
-  if (m[3]) {
-    var d = m[3].split("-")
-    var hm = m[4] ? m[4].split(":") : ["23", "59"]
+  t.deadline = m[8] ? parseInt(m[8], 10) : 0
+  if (m[5]) {
+    var d = m[5].split("-")
+    var hm = m[6] ? m[6].split(":") : ["23", "59"]
     var at = new Date(+d[0], +d[1] - 1, +d[2], +hm[0], +hm[1])
     t.dueAt = at.getTime()
-    t.dueLabel = dayLabel(at, !!m[4])
+    t.dueLabel = dayLabel(at, !!m[6])
   }
+  // The day to work on it, before the day it is owed — said only while it
+  // is still to come and differs from the due day.
+  if (m[4] && !t.checked) {
+    var w = m[4].split("-")
+    var on = new Date(+w[0], +w[1] - 1, +w[2], 23, 59)
+    var due = t.dueAt ? new Date(t.dueAt) : null
+    var sameDay = due && due.getFullYear() === on.getFullYear() && due.getMonth() === on.getMonth() && due.getDate() === on.getDate()
+    if (!sameDay && on.getTime() >= startOfToday())
+      t.dueLabel = "do " + doLabel(on) + (t.dueLabel ? " · " + t.dueLabel : "")
+  }
+  if (m[3]) t.dueLabel = (/⏫|🔼|🔺/.test(m[3]) ? "▲" : "▽") + (t.dueLabel ? " " + t.dueLabel : "")
+}
+
+function startOfToday() {
+  var n = new Date()
+  return new Date(n.getFullYear(), n.getMonth(), n.getDate()).getTime()
+}
+
+// "today", "tomorrow", a weekday within the week, else the day.
+function doLabel(at) {
+  var days = Math.round((new Date(at.getFullYear(), at.getMonth(), at.getDate()).getTime() - startOfToday()) / 86400000)
+  if (days === 0) return "today"
+  if (days === 1) return "tomorrow"
+  return days < 7 ? DAYS[at.getDay()] : dayLabel(at, false)
 }
 
 // "Fri 30 Oct", "Mon 8 Feb 2027", "Fri 16 Oct · 17:00".

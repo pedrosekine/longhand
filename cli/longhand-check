@@ -267,7 +267,11 @@ def check(cfg: dict, open_stem: str = "", now: int | None = None, waiting: set[s
     items = store()
     led = load_ledger()
     seen_ids = {d["id"] for d in items}
+    # What this store once held and holds no more: removed here on purpose.
+    removed = set(led.get("removed") or []) | {int(k) for k, v in led["deadlines"].items()
+                                               if v.get("seen") and int(k) not in seen_ids}
     out: dict = {"cancelled": [], "restored": [], "changed": [], "lines": [], "waiting": [], "stale": [], "hidden": [],
+                 "adopted": [], "foreign": [],
                  "duplicates": sorted(set(dupes))}
     edits: dict[Path, dict[int, str]] = {}
     texts_before = {f: list(ls) for f, ls in texts.items()}
@@ -420,14 +424,46 @@ def check(cfg: dict, open_stem: str = "", now: int | None = None, waiting: set[s
         if new_seen["due"] is not None:
             track_due(rec, new_seen["due"], now)
 
-    # Tags no deadline stands behind (removed outright from the store): the
-    # line keeps its words and its date, and stops pointing at nothing.
+    # Tags no deadline here stands behind. The store is per machine and the
+    # notes sync (2026-11-17: the Air's check took xmg's ^d61–68 off three
+    # notes, and xmg would then have cancelled them), so a tag is only stale
+    # when this store had it and it was removed outright (`pomo deadline rm`,
+    # which the ledger saw): then the line keeps its words and its date and
+    # stops pointing at nothing. A tag this store never had was made on
+    # another machine: it is adopted from its line, under its own id, so both
+    # stores mean the same #N — and the line is not touched.
     for i, where in lines.items():
         if i in seen_ids:
             continue
-        out["stale"].append(i)
-        if where["stem"] != open_stem:
-            edit(where, without_anchor(texts[where["file"]][where["line"]]))
+        if i in removed:
+            out["stale"].append(i)
+            if where["stem"] != open_stem:
+                edit(where, without_anchor(texts[where["file"]][where["line"]]))
+            continue
+        box = where["box"]
+        if not box["due"]:
+            # Nothing to adopt it with: left exactly as it is.
+            out["foreign"].append(i)
+            continue
+        due = epoch_of(box["due"])
+        key = str(i)
+        args = ["add", box["title"] or f"#{i}", "--id", key, "--link", f"[[{where['stem']}#^d{i}]]"]
+        if box["project"]:
+            args += ["--project", box["project"]]
+        pomo(*args, iso_of(due))
+        line_state = state_of(box)
+        if line_state == "done":
+            done_at = epoch_of(box["doneAt"]) if box.get("doneAt") else now
+            pomo("done", key, "--at", str(done_at))
+        elif line_state == "cancelled":
+            pomo("cancel", key)
+            led["deadlines"].setdefault(key, {})["cancelled"] = {"at": now, "status": "open", "doneAt": 0}
+        rec = led["deadlines"].setdefault(key, {})
+        rec.setdefault("origin", "note")
+        rec["seen"] = {"stem": where["stem"], "title": box["title"], "project": box["project"], "state": line_state, "due": due}
+        track_due(rec, due, now)
+        seen_ids.add(i)
+        out["adopted"].append({"id": i, "title": box["title"]})
 
     for f, changed in edits.items():
         # Read again and change only the lines meant: the note may have been
@@ -442,9 +478,17 @@ def check(cfg: dict, open_stem: str = "", now: int | None = None, waiting: set[s
         if applied:
             write_atomic(f, "\n".join(current))
 
+    # Every tag in the notes, whatever came of it: no id a note already
+    # holds is handed out here again (one made on the other machine, not
+    # adopted for want of a date, would otherwise collide with the next).
+    top = max(list(lines) + dupes, default=0)
+    if top and top not in removed:
+        pomo("reserve", str(top))
+
     for key in list(led["deadlines"]):
         if int(key) not in seen_ids or not led["deadlines"][key]:
             led["deadlines"].pop(key)
+    led["removed"] = sorted(removed)
     write_atomic(LEDGER, json.dumps(led, indent=2, ensure_ascii=False) + "\n")
     out["origins"] = {k: {kk: v[kk] for kk in ("origin", "firstTitle", "rewritten") if kk in v}
                       for k, v in led["deadlines"].items() if v.get("origin") == "agent"}
@@ -483,6 +527,8 @@ def main(argv: list[str]) -> int:
             print(f"cancelled #{c['id']} · {c['title']} (its line is gone)")
         for c in out["restored"]:
             print(f"back #{c['id']} · {c['title']}")
+        for c in out["adopted"]:
+            print(f"adopted #{c['id']} · {c['title']} (made on another machine)")
         for c in out["hidden"]:
             print(f"stepped aside #{c['id']} · {c['title']} (a fortnight past its date)")
         if out["lines"]:

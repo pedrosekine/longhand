@@ -675,18 +675,21 @@ require_deadline() { # $1=id -> sets ID TS TITLE STATUS DONE_AT GRADE PROJECT LI
 }
 
 add_usage() {
-  echo 'usage: pomo deadline add <title> [--project <s>] [--link <url-or-path>] <when...>' >&2
+  echo 'usage: pomo deadline add <title> [--project <s>] [--link <url-or-path>] [--id <n>] <when...>' >&2
   echo '  e.g. pomo deadline add "Essay draft" --project stats next friday 17:00' >&2
   exit 1
 }
 
-cmd_deadline_add() { # <title> [--project <s>] [--link <l>] <when...>; flags go anywhere after the title
-  local title="${1:-}" when="" project="" link="" ts id
+cmd_deadline_add() { # <title> [--project <s>] [--link <l>] [--id <n>] <when...>; flags go anywhere after the title
+  local title="${1:-}" when="" project="" link="" ts id want=""
   shift 2>/dev/null || true
   while [ $# -gt 0 ]; do
     case "$1" in
       --project|--subject) [ $# -ge 2 ] || add_usage; project="$2"; shift ;;
       --link)    [ $# -ge 2 ] || add_usage; link="$2"; shift ;;
+      # A deadline another machine made (its `^dN` came with the synced
+      # notes): kept under its own id, so both stores mean the same #N.
+      --id)      [ $# -ge 2 ] || add_usage; want="$2"; shift ;;
       *)         when="${when:+$when }$1" ;;
     esac
     shift
@@ -699,9 +702,31 @@ cmd_deadline_add() { # <title> [--project <s>] [--link <l>] <when...>; flags go 
   title=$(clean_field "$title")
   project=$(clean_field "$project")
   link=$(clean_field "$link")
-  id=$(next_id)
+  if [ -n "$want" ]; then
+    case "$want" in ''|*[!0-9]*|0) add_usage ;; esac
+    if [ -n "$(find_deadline "$want")" ]; then
+      echo "pomo: deadline #$want exists already" >&2
+      exit 1
+    fi
+    id=$want
+    # Never hand this id out again here: the high-water mark moves past it.
+    local seq=0
+    [ -s "$DEADLINE_SEQ" ] && seq=$(tr -cd '0-9' < "$DEADLINE_SEQ" || true)
+    if [ "$id" -gt "${seq:-0}" ]; then printf '%d\n' "$id" > "$DEADLINE_SEQ"; fi
+  else
+    id=$(next_id)
+  fi
   printf '%d\t%d\t%s\topen\t0\t\t%s\t%s\n' "$id" "$ts" "$title" "$project" "$link" >> "$DEADLINE_FILE"
   report "deadline #$id · $(when_text "$ts") · $title${project:+ · $project}"
+}
+
+cmd_deadline_reserve() { # <id>: the high-water mark at least this — an id
+  # another machine handed out (its `^dN` came with the synced notes) is never
+  # handed out here as well.
+  case "${1:-}" in ''|*[!0-9]*) echo "usage: pomo deadline reserve <id>" >&2; exit 1 ;; esac
+  local seq=0
+  [ -s "$DEADLINE_SEQ" ] && seq=$(tr -cd '0-9' < "$DEADLINE_SEQ" || true)
+  if [ "$1" -gt "${seq:-0}" ]; then printf '%d\n' "$1" > "$DEADLINE_SEQ"; fi
 }
 
 set_usage() {
@@ -962,7 +987,7 @@ cmd_deadline() {
   local sub="${1:-list}"
   shift 2>/dev/null || true
   case "$sub" in
-    add|set|edit|done|submit|undone|reopen|grade|hide|unhide|show|cancel|rm|remove)
+    add|set|edit|done|submit|undone|reopen|grade|hide|unhide|show|cancel|rm|remove|reserve)
       # One writer at a time: the page, the popup and the agent can all call
       # in at once, and every change rewrites (or appends to) the file and
       # bumps the id counter. The lock lives beside the file.
@@ -984,6 +1009,7 @@ cmd_deadline() {
     cancel)       cmd_deadline_cancel "${1:-}" ;;
     unhide|show)  cmd_deadline_unhide "${1:-}" ;;
     rm|remove)    cmd_deadline_rm "${1:-}" ;;
+    reserve)      cmd_deadline_reserve "${1:-}" ;;
     next)         cmd_deadline_next "${1:-}" ;;
     when)         cmd_deadline_when "$@" ;;
     --json|--all|--project|--subject) cmd_deadline_list "$sub" "$@" ;;
@@ -1014,6 +1040,7 @@ usage: pomo deadline add <title> [--project <s>] [--link <url-or-path>] <when...
        pomo deadline hide|unhide <id>           # keep the record, drop it from the list
        pomo deadline cancel <id>                # its line is gone: history, off every list
        pomo deadline rm <id>                    # delete outright
+       pomo deadline reserve <id>               # never hand out ids up to this one (another machine has them)
        pomo deadline next [--json]              # the one the bar counts down to
        pomo deadline when <when...>             # how a date phrase reads: epoch<TAB>text
 USAGE

@@ -184,6 +184,7 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | Into a project's notes | `→` | in the sidebar's lists |
 | A project: a new section for it in today's note (# Name #tag) | `s` | in the sidebar's lists |
 | The project's page: its papers, files, notes and deadlines in one scroll (on a project, or inside one) | `p` | in the sidebar's lists |
+| The project's week: what was done, written and read, what is coming, what to ask (on a project, or inside one) | `w` | in the sidebar's lists |
 | A project: put its #tag at the cursor | `t` | in the sidebar's lists |
 | Skip to the next list (after the projects: the calendar) | `Tab` | in the sidebar's lists |
 | Skip to the list before (before the first: the calendar) | `Shift+Tab` | in the sidebar's lists |

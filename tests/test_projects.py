@@ -238,6 +238,47 @@ def project_page() -> None:
     check(folders == {"thesis": "projects/thesis_itu", "dtm": ""},
           f"`projects`: each project's folder, the one under way; none for a project without one ({folders})")
 
+    # The project's week (2026-11-17): done, written, coming up — the hand-in
+    # however far — and what to ask, gathered from disk; the page's head
+    # says the week in one line. A paper is named from a .bib kept beside
+    # the LaTeX, not only at the folder's top.
+    far = int(dt.datetime.combine(TODAY + dt.timedelta(days=200), dt.time(23, 59)).timestamp())
+    with open(state / "longhand" / "deadlines.tsv", "a") as f:
+        f.write(f"3\t{far}\tHand in the thesis\topen\t\t\tthesis\t\n")
+    (cur / "literature" / "pdf" / "moser2026identifying.pdf").write_bytes(b"%PDF-1.4\n")
+    (cur / "proposal").mkdir()
+    (cur / "proposal" / "references.bib").write_text(
+        "@article{moser2026identifying,\n  author = {Moser, Martin and Resch, Bernd and Graf, A.},\n"
+        "  title = {Identifying {Stress} in Cycling},\n  year = {2026},\n}\n")
+    (daily / f"{d1.isoformat()}.md").write_text((daily / f"{d1.isoformat()}.md").read_text().replace(
+        "Sketched the method chapter.", "Sketched the method chapter.\nShould RQ3 ask what explains the disagreements?"))
+    r = subprocess.run([sys.executable, str(AGENT), "week", "--tag", "thesis", "--date", d1.isoformat()],
+                       capture_output=True, text=True, env=env)
+    w = r.stdout
+    check(r.returncode == 0 and w.startswith("# Master Thesis — week "), f"`week` runs ({r.stderr[-300:]})")
+    check("## Coming up" in w and "Draft the method" in w and "**in 10 days**" in w
+          and "Hand in the thesis" in w and "weeks**" in w and "DTM poster" not in w,
+          "coming up: the near deadlines and the last one however far, never another project's")
+    check("## Done" in w and "- read Moser" in w, "…what was ticked in the week")
+    check("## Written" in w and f"{d1:%a %-d %b}" in w, "…the days the project was written in")
+    check("## Still open" in w and "email the supervisor" in w and "⏫" not in w and "^d4" not in w,
+          "…its open boxes, marks off")
+    check("## Questions to bring" in w and "Should RQ3 ask what explains the disagreements?" in w,
+          "…a question written in the week's notes, to bring")
+    check("funding" not in w and "kept to myself" not in w, "…never a private block or day")
+    check("README.md" in w and "## Files worked on" in w, "…the project folder's files changed in the week")
+    r = subprocess.run([sys.executable, str(AGENT), "project-page", "--tag", "thesis"], capture_output=True, text=True, env=env)
+    t = page.read_text()
+    check("**Coming up:**" in t and "**This week**" in t and t.index("**Coming up:**") < t.index("## Now"),
+          "the project's page opens with what is coming and the week so far")
+    check("Moser et al. 2026 — Identifying Stress in Cycling" in t, "a paper named from a .bib kept in a subfolder")
+    r = subprocess.run([sys.executable, str(AGENT), "week", "--tag", "thesis", "--write"], capture_output=True, text=True, env=env)
+    kept = pathlib.Path(json.loads(r.stdout or "{}").get("path", "/nonexistent"))
+    check(kept.is_file() and kept.parent == vault / "agents" / "longhand" / "weeks" and kept.name.startswith("thesis-"),
+          f"--write keeps it in the agent's folder of the vault, to edit or export ({r.stdout}{r.stderr[-200:]})")
+    r = subprocess.run([sys.executable, str(AGENT), "week", "--tag", "thesis", "--write"], capture_output=True, text=True, env=env)
+    check(r.returncode != 0 and "--force" in r.stderr, "…and never over one already there without --force")
+
 
 def main() -> int:
     units()

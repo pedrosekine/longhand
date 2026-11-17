@@ -274,6 +274,38 @@ exec "{POMO}" "$@"
     check("would: write" in r.stdout and note.read_text() == before, "a dry run changes nothing")
     run()
 
+    # Two machines, one vault (2026-11-17): the store is per machine, the
+    # notes sync. Tags the other machine made reach this one with the notes;
+    # this store never had them, so they are adopted under their own ids —
+    # never taken off the line (that would cancel them over there).
+    far = 900
+    third = daily / "2026-10-14.md"
+    third.write_text(f"# Thesis #thesis\n\n- [ ] Finish the proposal 📅 2026-10-30 ^d{far}\n"
+                     f"- [x] Ask about the REC 📅 2026-10-16 17:00 ✅ 2026-10-17 ^d{far + 1}\n"
+                     f"- [-] AI literacy course 📅 2026-10-20 ❌ 2026-10-15 ^d{far + 2}\n"
+                     f"- [ ] No date, still a tag ^d{far + 3}\n")
+    before = third.read_text()
+    out = run()
+    check(third.read_text() == before, "a tag made on another machine stays on its line")
+    check({x["id"] for x in out["adopted"]} == {far, far + 1, far + 2} and not set(out["stale"]) & {far, far + 1, far + 2},
+          f"…it is adopted, not stale ({out['adopted']}, {out['stale']})")
+    check(item(far)["status"] == "open" and item(far)["project"] == "thesis" and item(far)["link"] == f"[[2026-10-14#^d{far}]]",
+          "…under its own id, with its project and where its line is")
+    check(item(far + 1)["status"] == "done" and item(far + 2)["status"] == "cancelled",
+          "…ticked or cancelled as its line says")
+    check(far + 3 in out["foreign"], "one without a date is left exactly as it is")
+    fresh = add("Made here afterwards", "2026-11-01")
+    check(fresh > far + 2, f"the next id made here passes the adopted ones ({fresh})")
+    r = subprocess.run([str(POMO), "deadline", "add", "Taken", "--id", str(far), "2026-11-02"], capture_output=True, text=True, env=env)
+    check(r.returncode != 0 and "exists already" in r.stderr, "an id that is taken is never adopted twice")
+    out = run()
+    check(not out["adopted"] and third.read_text() == before, "a second check adopts nothing more and changes no line")
+    # Removed here on purpose, after this store knew it: stale, as before.
+    pomo("rm", str(far))
+    out = run()
+    check(far in out["stale"] and f"Finish the proposal 📅 2026-10-30\n" in third.read_text(),
+          "one removed here is still stale, and its tag comes off")
+
     # No daily folder: nothing is concluded from it.
     (tmp / "config.json").write_text(json.dumps({"vault": str(vault), "daily": {"dir": "Gone"}}))
     r = subprocess.run([str(CHECK), "--json"], capture_output=True, text=True, env=env)

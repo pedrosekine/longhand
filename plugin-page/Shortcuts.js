@@ -297,6 +297,8 @@ var actions = [
   { id: "listInto", group: "lists", places: ["lists"], does: "Into a project's notes", keys: ["Right"] },
   { id: "listClass", group: "lists", places: ["lists"], does: "A project: a new section for it in today's note (# Name #tag)", keys: ["S"] },
   { id: "listPage", group: "lists", places: ["lists"], does: "The project's page: its papers, files, notes and deadlines in one scroll (on a project, or inside one)", keys: ["P"] },
+  // The week (2026-11-17): the supervisor's update and the research diary.
+  { id: "listWeek", group: "lists", places: ["lists"], does: "The project's week: what was done, written and read, what is coming, what to ask (on a project, or inside one)", keys: ["W"] },
   // `#` went to reaching a project by its letters (2026-11-17), as the
   // switcher's "#th"; the tag is the T of "puts the tag".
   { id: "listTag", group: "lists", places: ["lists"], does: "A project: put its #tag at the cursor", keys: ["T"] },

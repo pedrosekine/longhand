@@ -461,6 +461,7 @@ longhand-agent install                       # opencode agent definition + folde
 longhand-agent context --trigger open        # show exactly what the model would see
 longhand-agent run --trigger open            # one pass over today's note
 longhand-agent sections --tag intsem         # one project's notes across every day (JSON)
+longhand-agent week --tag thesis [--write]   # the project's week: done, written, read, coming up, questions to bring (W in the sidebar)
 longhand-agent context --trigger mention --hash <h>   # incl. that project's earlier notes
 python3 tests/test_agent.py                 # offline, stub opencode
 ```
@@ -498,6 +499,8 @@ Files live in `~/.local/state/longhand/`:
 | `state.json` | current timer, incl. `"for"`: the deadline id the running session is for (0 when none) |
 
 Ids are stable and never reused, so a log line about `#3` always means the same
-deadline. Write through the CLI (`pomo deadline ...`), not to the files, so the
+deadline. The store is per machine and the notes sync: a `^dN` made on the other
+machine is adopted by `longhand-check` under its own id (never taken off its
+line), and no id a note already holds is handed out again. Write through the CLI (`pomo deadline ...`), not to the files, so the
 bar widget and the log stay in step. Design notes for the agent side are in
 `docs/student-os.md`.

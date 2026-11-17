@@ -1214,6 +1214,26 @@ Item {
       compare(Rows.derive("plain 📅 2026-10-16")[0].body, "plain 📅 2026-10-16")
     }
 
+    function test_priority_and_do_date_are_lifted() {
+      // A do-date accepted from the planner, and a priority: drawn in the
+      // pill, never in the words; the line on disk stays as it is.
+      var raw = "- [ ] roles planned ⏫ ⏳ " + today() + " 📅 2099-10-30 ^d7"
+      var r = Rows.derive(raw)[0]
+      compare(r.body, "roles planned")
+      compare(r.deadline, 7)
+      compare(r.dueLabel.indexOf("▲ do today · ") === 0, true, r.dueLabel)
+      compare(r.raw, raw)
+      var only = Rows.derive("- [ ] read ch. 4 ⏳ 2099-01-05")[0]
+      compare(only.body, "read ch. 4"); compare(only.deadline, 0); compare(only.dueAt, 0)
+      compare(only.dueLabel.indexOf("do ") === 0, true, only.dueLabel)
+      // Gone by, or ticked: the do-date has nothing left to say.
+      compare(Rows.derive("- [ ] old ⏳ 2001-01-05")[0].dueLabel, "")
+      compare(Rows.derive("- [x] done ⏳ 2099-01-05 ✅ 2026-11-01")[0].dueLabel, "")
+      // Out of the Tasks order (a priority after the do-date): only what
+      // ends the line is lifted, the rest stays words.
+      compare(Rows.derive("- [ ] odd ⏳ 2099-01-05 ⏫")[0].body, "odd ⏳ 2099-01-05")
+    }
+
     function test_typing_keeps_the_tail() {
       start("\n- [ ] draft 📅 2026-10-16 ^d6", 12)   // end of "draft"
       compare(focused().text, "draft")

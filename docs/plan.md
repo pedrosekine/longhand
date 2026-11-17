@@ -1066,6 +1066,21 @@ this list, with *Open, in order* above. Each says why it waits.
 No work unless they bite; each says what would tell. The first four came
 from 2026-09/10 and still stand.
 
+- **A thesis student's assessment** (2026-11-17, from the usage logs of both
+  machines, the page photographed headless, and the real #thesis data):
+  (1) *two machines, two stores* — the Air's check took xmg's `^d61–68` off
+  three notes (restored from Syncthing's versions the same hour); the check
+  now adopts a tag it never had, under its own id, and reserves every id a
+  note holds (`pomo deadline add --id`, `pomo deadline reserve`;
+  `tests/test_check.py`); (2) a box's priority and do-date are drawn in its
+  pill, no longer as `⏫ ⏳ 2026-10-26` inside the words (`Rows.js`);
+  (3) **the project's week** — `W` in the sidebar, `longhand-agent week`:
+  coming up (the hand-in however far), done, written, read, files worked on,
+  still open, questions to bring; the project's page opens with it, and its
+  papers are named from a `.bib` in a subfolder. What would tell: is `W`
+  opened before a supervisor meeting or a diary is due, and is `--write`
+  used to hand one in.
+
 - **Export from a deadline** (built 2026-11-04, item 13's third slice):
   - Does it find the right section (`export` `deadline`), or is ← → needed?
   - Is the "already made into a PDF" warning enough to stop last week's
