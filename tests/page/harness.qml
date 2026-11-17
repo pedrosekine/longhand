@@ -50,6 +50,15 @@ ShellRoot {
     // window is told never to take focus — the one the cursor sits on.
     function type(s: string): void {
       var e = page.editorItem
+      // A new line typed at the end of a line's words starts after its
+      // tail (its date, priority, do-date), as the Enter key does
+      // (NoteEditor.returnKey); inserted into the field, the tail went down
+      // with the new line's words.
+      var r = e.rows[page.lineIndexAt(e.cursorPosition)]
+      if (s.charAt(0) === "\n" && r && r.suffix !== "" && e.cursorPosition >= r.bodyEnd) {
+        e.insert(r.start + r.raw.length, s)
+        return
+      }
       var it = e.rowItem(e.focusedRow) || e.rowItem(page.lineIndexAt(e.cursorPosition))
       // A row with emphasis in it is rich text, and a rich field reads what
       // is handed to `insert` as html — which keys never are. Go through the

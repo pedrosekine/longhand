@@ -298,7 +298,7 @@ function numbered(r, id, left) {
 // neither. A line whose deadline the store no longer has keeps its date,
 // without the number.
 function caughtUp(r, d, now) {
-  var base = r.raw.slice(0, r.raw.length - r.suffix.length)
+  var base = r.raw.slice(0, r.raw.length - (r.dateTail || "").length)
   if (!d) return base + (r.dueAt > 0 ? tail(r.dueAt, 0) : "")
   var box = d.status === "open" ? " " : d.status === "cancelled" ? "-" : "x"
   base = Task.setState(base, box).replace(/\s*[❌✅]\s*\d{4}-\d{2}-\d{2}/g, "")
