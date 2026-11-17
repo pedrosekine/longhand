@@ -5786,7 +5786,7 @@ Item {
     var r = root.rowByRaw(raw)
     if (!r || r.kind !== "task" || r.deadline > 0) return
     if (auto) root.autoBound = { id: id, raw: raw, made: !!made }
-    root.writeLine(r, r.raw.substring(0, r.prefixLen) + head.replace(/\s+$/, "") + Bound.tail(ms, id))
+    root.writeLine(r, r.raw.substring(0, r.prefixLen) + head.replace(/\s+$/, "") + (r.marks || "") + Bound.tail(ms, id))
     if (editor.typedRaw === raw) editor.typedRaw = ""
     dl.set(id, ["--link", Bound.link(svc.noteDate, id)])
     root.used("bound")
@@ -5858,7 +5858,9 @@ Item {
     if (!w) return false
     var words = c.head.replace(/\s+$/, "")
     // A space after the words, for the next ones; the tail keeps its own.
-    var written = r.raw.substring(0, r.prefixLen) + words + " " + Bound.tail(w.ms, 0)
+    // The marks the line had (a priority, the day to work on it) stay in
+    // front of the date, as the Tasks order has them.
+    var written = r.raw.substring(0, r.prefixLen) + words + " " + (r.marks || "") + Bound.tail(w.ms, 0)
     var rec = { stem: svc.noteDate, raw: r.raw, written: written, ms: w.ms, line: i }
     editor.typedRaw = ""
     root.writeLine(r, written)
@@ -6082,14 +6084,14 @@ Item {
         // Unbound by hand: the date goes, and the deadline is asked about
         // like a deleted line's.
         editor.snapshot(true)
-        editor.replace(r.bodyEnd, r.start + r.raw.length, "")
+        editor.replace(r.bodyEnd + (r.marks || "").length, r.start + r.raw.length, "")
         return
       }
       dl.when(text, function (w) {
         if (!w) { root.showHint("that date did not read: " + text); return }
         dl.set(a.id, dl.words(text))
         var now = root.rowByDeadline(a.id)
-        if (now) root.writeLine(now, now.raw.slice(0, now.raw.length - now.suffix.length) + Bound.tail(w.ms, a.id))
+        if (now) root.writeLine(now, now.raw.slice(0, now.raw.length - (now.dateTail || "").length) + Bound.tail(w.ms, a.id))
       })
       return
     }

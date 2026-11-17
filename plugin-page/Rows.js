@@ -40,6 +40,7 @@ var FENCE_RE = /^[ \t]*(?:>[ \t]?)*[ \t]*(```|~~~)/
 // drawn in the pill beside the due date (2026-11-17: a do-date accepted from
 // the planner read "⏫ ⏳ 2026-10-26" in the middle of the person's words).
 var TAIL_RE = /^([\s\S]*?)((?:\s+(⏫|🔼|🔺|🔽|⏬))?(?:\s+➕\s*\d{4}-\d{2}-\d{2})?(?:\s+🛫\s*\d{4}-\d{2}-\d{2})?(?:\s+⏳\s*(\d{4}-\d{2}-\d{2}))?(?:\s+📅\s*(\d{4}-\d{2}-\d{2})(?:\s+(\d{1,2}:\d{2}))?)?(?:\s+[❌✅]\s*(\d{4}-\d{2}-\d{2}))?(?:\s+\^d(\d+))?\s*)$/
+var MARKS_RE = /^(?:\s+(?:⏫|🔼|🔺|🔽|⏬))?(?:\s+➕\s*\d{4}-\d{2}-\d{2})?(?:\s+🛫\s*\d{4}-\d{2}-\d{2})?(?:\s+⏳\s*\d{4}-\d{2}-\d{2})?/
 var DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
@@ -59,7 +60,7 @@ function make(kind, indent, marker, body) {
     kind: kind, indent: indent, marker: marker, body: body,
     prefixLen: indent.length + marker.length, level: levelOf(indent),
     checked: false, cancelled: false, ordinal: "", headingLevel: 0, callout: "",
-    suffix: "", deadline: 0, dueLabel: "", dueAt: 0, cueAt: -1, cueLabel: "",
+    suffix: "", marks: "", dateTail: "", deadline: 0, dueLabel: "", dueAt: 0, cueAt: -1, cueLabel: "",
     tableRow: -1, tableStart: -1, tableLen: 0,
     quoteLead: "", quoteDepth: 0, outerLevel: 0
   }
@@ -154,6 +155,11 @@ function liftTail(t) {
     t.body += lead.substring(0, lead.length - 1)
     t.suffix = t.suffix.substring(lead.length - 1)
   }
+  // The tail in two: the marks a date never replaces (priority, made,
+  // start, the day to work on it) and the date part every binding,
+  // reschedule and catch-up writes afresh. A writer keeps `marks`.
+  t.marks = t.suffix.match(MARKS_RE)[0]
+  t.dateTail = t.suffix.substring(t.marks.length)
   t.deadline = m[8] ? parseInt(m[8], 10) : 0
   if (m[5]) {
     var d = m[5].split("-")

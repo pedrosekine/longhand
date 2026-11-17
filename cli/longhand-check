@@ -39,11 +39,13 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "agent"))
 import task as tasklib  # noqa: E402
+import dsync  # noqa: E402
 
 CONFIG_PATH = Path(os.environ.get("LONGHAND_CONFIG")
                    or Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "longhand" / "config.json")
@@ -51,6 +53,9 @@ STATE_HOME = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "
 LEDGER = STATE_HOME / "ledger.json"
 # How long an open deadline stays on the list past its date.
 FORTNIGHT = 14 * 86400
+# A deadline that came from another machine waits this long for its note
+# to arrive before a missing line means it is gone.
+ARRIVING = 15 * 60
 POMO = os.environ.get("LONGHAND_POMO") or "pomo"
 DRY: list[str] = []     # --dry-run: what would be done, and nothing done
 DRY_RUN = False
@@ -266,13 +271,30 @@ def check(cfg: dict, open_stem: str = "", now: int | None = None, waiting: set[s
 
     items = store()
     led = load_ledger()
+    out: dict = {"cancelled": [], "restored": [], "changed": [], "lines": [], "waiting": [], "stale": [], "hidden": [],
+                 "adopted": [], "foreign": [], "synced": [], "duplicates": sorted(set(dupes))}
+
+    # The store, the same on every machine (agent/dsync.py): what changed
+    # here goes into this machine's log in the vault, and what the logs say
+    # now comes into this store — before the lines are read against it.
+    logs = dsync.Logs(Path(cfg["vault"]) / cfg.get("agentDir", "agents/longhand") / "deadlines", STATE_HOME, dry=DRY_RUN)
+    logs.note_changes(items, time.time())
+    for i, rec in logs.plan(items):
+        if rec is None:
+            pomo("rm", str(i))
+        else:
+            pomo("put", str(i), "--due", str(rec["due"]), "--title", rec["title"], "--status", rec["status"],
+                 "--done-at", str(rec["done_at"]), "--grade", rec["grade"], "--project", rec["project"],
+                 "--link", rec["link"], "--from", "another machine")
+            led["deadlines"].setdefault(str(i), {})["arrived"] = now
+        logs.agreed(i, rec)
+        out["synced"].append(i)
+    if out["synced"]:
+        items = store()
     seen_ids = {d["id"] for d in items}
     # What this store once held and holds no more: removed here on purpose.
     removed = set(led.get("removed") or []) | {int(k) for k, v in led["deadlines"].items()
                                                if v.get("seen") and int(k) not in seen_ids}
-    out: dict = {"cancelled": [], "restored": [], "changed": [], "lines": [], "waiting": [], "stale": [], "hidden": [],
-                 "adopted": [], "foreign": [],
-                 "duplicates": sorted(set(dupes))}
     edits: dict[Path, dict[int, str]] = {}
     texts_before = {f: list(ls) for f, ls in texts.items()}
 
@@ -307,6 +329,11 @@ def check(cfg: dict, open_stem: str = "", now: int | None = None, waiting: set[s
 
         if where is None:
             if status in ("cancelled", "hidden"):
+                continue
+            if now - int(rec.get("arrived") or 0) < ARRIVING:
+                # Just come from another machine, its note maybe not yet:
+                # the sync of the notes is given time before its line counts
+                # as gone.
                 continue
             if seen or d.get("link"):
                 # It had a line, and no note holds its tag now.
@@ -481,9 +508,13 @@ def check(cfg: dict, open_stem: str = "", now: int | None = None, waiting: set[s
     # Every tag in the notes, whatever came of it: no id a note already
     # holds is handed out here again (one made on the other machine, not
     # adopted for want of a date, would otherwise collide with the next).
-    top = max(list(lines) + dupes, default=0)
+    top = max(list(lines) + dupes + [logs.top()], default=0)
     if top and top not in removed:
         pomo("reserve", str(top))
+
+    # What this check changed in the store goes into the log too.
+    logs.note_changes(store(), time.time())
+    logs.save()
 
     for key in list(led["deadlines"]):
         if int(key) not in seen_ids or not led["deadlines"][key]:
@@ -527,6 +558,8 @@ def main(argv: list[str]) -> int:
             print(f"cancelled #{c['id']} · {c['title']} (its line is gone)")
         for c in out["restored"]:
             print(f"back #{c['id']} · {c['title']}")
+        if out["synced"]:
+            print(f"{len(out['synced'])} deadline(s) brought in line with the other machines: " + ", ".join(f"#{i}" for i in out["synced"]))
         for c in out["adopted"]:
             print(f"adopted #{c['id']} · {c['title']} (made on another machine)")
         for c in out["hidden"]:

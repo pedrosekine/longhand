@@ -1121,6 +1121,17 @@ from 2026-09/10 and still stand.
   now gates each prompt on its own, so the day prompt still failing keeps
   its installed version without holding the planner back. The dashboard's
   footer is seven keys, the rest in `?`.
+- **One store on two machines** (2026-11-17, the student's pick): grades,
+  hides, true done times and deadlines with no line lived on one machine
+  only. Now each machine logs its store's changes, field by field, into its
+  own file in the vault (`agents/longhand/deadlines/<host>.jsonl`), and the
+  check brings its store to the newest value of each field across the logs
+  (`agent/dsync.py`, `pomo deadline put`); a first run writes the store as a
+  seed, settled the same on every machine (done over open, the earliest done
+  time, a grade over none). Rehearsed on copies of both real stores: identical
+  after two rounds, no note touched. `tests/test_dsync.py`. Known limit: a
+  change is stamped when the check sees it, not when it was made, so two
+  edits of one field on two machines between checks go to the later check.
 
 - **Export from a deadline** (built 2026-11-04, item 13's third slice):
   - Does it find the right section (`export` `deadline`), or is ← → needed?

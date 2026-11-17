@@ -75,6 +75,10 @@ if os.path.exists(os.path.join(d, "plan-on")) and payload.startswith("# Plan") \
     data = json.loads(re.search(r"```json\\n(.*?)\\n```", payload, re.S).group(1))
     c = data["candidates"][0]
     day = data["fortnight"][1]["date"]
+    # Asked for another day (the box's tomorrow was declined, and the
+    # planner never offers a declined day again).
+    if os.path.exists(os.path.join(d, "plan-later")):
+        day = data["fortnight"][2]["date"]
     if c["due"] and c["due"][:10] < day:
         day = c["due"][:10]
     reply["proposals"].append({"kind": "do-date", "key": c["key"], "date": day, "why": "Tomorrow is free."})
@@ -2137,8 +2141,20 @@ def checks() -> int:
         p.call("dash")                            # the dashboard opened again reads the new boxes
         p.call("dash")
         p.wait(lambda: any(r.get("text") == "talk it over again" for r in json.loads(p.call("dashRows"))))
+        # The first box is the one whose day was just declined: another day
+        # for it, since a declined day is never proposed again.
+        (p.stub / "plan-later").write_text("")
         p.call("plan", "true")
-        check(p.wait(lambda: any(r["kind"] == "proposal" for _, r in asks()), timeout=15), "a proposal to talk about")
+        def offered():
+            plans = sorted((p.state / "longhand" / "payloads").rglob("*-plan.md")) if (p.state / "longhand" / "payloads").exists() else []
+            if not plans:
+                return "no plan payload"
+            data = json.loads(re.search(r"```json\n(.*?)\n```", plans[-1].read_text(), re.S).group(1))
+            led = json.loads(ledger_file.read_text())["items"] if ledger_file.exists() else []
+            return {"candidates": [(c["title"], c["due"]) for c in data.get("candidates", [])][:4],
+                    "ledger": [(x["kind"], x.get("title"), x.get("date"), x["status"]) for x in led][-6:]}
+        check(p.wait(lambda: any(r["kind"] == "proposal" for _, r in asks()), timeout=15), f"a proposal to talk about ({offered()})")
+        (p.stub / "plan-later").unlink()
         wide = json.loads(p.call("talk"))["dashWidth"]
         ti = next(n for n, r in asks() if r["kind"] == "proposal")
         p.call("dashFocus", ti)
@@ -2353,8 +2369,13 @@ def checks() -> int:
         p.call("plan", "true")
         def acts():
             return [(n, r) for n, r in enumerate(json.loads(p.call("dashRows"))) if r["kind"] in ("proposal", "told")]
+        def essay_record():
+            led = json.loads((p.state / "longhand" / "proposals.json").read_text())["items"]
+            return [(x["id"], x["kind"], x.get("title"), x.get("date") or x.get("priority"), x["status"], x.get("auto"), x["at"][11:19])
+                    for x in led if "essay" in (x.get("title") or "")]
         check(p.wait(lambda: {r.get("ask") for _, r in acts()} >= {"steps", "deadline", "priority", "project"}, timeout=15),
-              f"four kinds arrive as rows ({[(r['kind'], r.get('ask')) for _, r in acts()]}; "
+              f"four kinds arrive as rows ({[(r['kind'], r.get('ask')) for _, r in acts()]}; ledger: {essay_record()}; "
+              f"line: {[l for l in p.note().splitlines() if 'write the essay' in l]}; "
               f"runner: {subprocess.run([str(p.runner), 'proposals'], capture_output=True, text=True, env=p.env).stdout[:600]!r}; "
               f"plan: {(p.state / 'longhand' / 'plan.json').read_text() if (p.state / 'longhand' / 'plan.json').exists() else ''!r}; "
               f"stub: {[f.name for f in p.stub.iterdir()]})")

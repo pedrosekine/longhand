@@ -512,8 +512,15 @@ Files live in `~/.local/state/longhand/`:
 | `state.json` | current timer, incl. `"for"`: the deadline id the running session is for (0 when none) |
 
 Ids are stable and never reused, so a log line about `#3` always means the same
-deadline. The store is per machine and the notes sync: a `^dN` made on the other
-machine is adopted by `longhand-check` under its own id (never taken off its
-line), and no id a note already holds is handed out again. Write through the CLI (`pomo deadline ...`), not to the files, so the
+deadline. Each machine keeps its own store, and the stores agree through the vault the
+notes already sync with: every change goes, field by field, into a log of the
+machine's own (`<vault>/agents/longhand/deadlines/<host>.jsonl`, written by
+that machine only, so the sync tool never sees two versions of a file), and
+`longhand-check` brings each store to the newest value of every field in all
+the logs — grades, hidden ones and deadlines with no line yet included
+(`agent/dsync.py`, `pomo deadline put`). A `^dN` the store has not heard of
+is adopted from its line, no id a note or a log holds is handed out again,
+and a deadline that arrives before its note is given time before a missing
+line counts as gone. Write through the CLI (`pomo deadline ...`), not to the files, so the
 bar widget and the log stay in step. Design notes for the agent side are in
 `docs/student-os.md`.

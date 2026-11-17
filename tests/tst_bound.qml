@@ -187,6 +187,14 @@ TestCase {
     compare(Bound.caughtUp(closed, { id: 7, status: "open", due: sec(2026, 10, 14, 23, 59), doneAt: 0 }), "- [ ] read it 📅 2026-10-14 ^d7")
     // The store has no such deadline: the date stays, the number goes.
     compare(Bound.caughtUp(r, undefined), "- [ ] essay draft #intsem 📅 2026-10-16 17:00")
+    // A priority and the day to work on it are kept, in front of the date
+    // (2026-11-17: they are drawn in the pill, and a catch-up dropped them).
+    var marked = Rows.derive("- [ ] the lab notes [est:: 2h] 🔽 ⏳ 2030-01-03 📅 2030-01-08 ^d87")[0]
+    compare(marked.marks, " 🔽 ⏳ 2030-01-03")
+    compare(marked.dateTail, " 📅 2030-01-08 ^d87")
+    compare(Bound.caughtUp(marked, { id: 87, status: "done", due: sec(2030, 1, 9, 23, 59), doneAt: sec(2030, 1, 7, 9, 0) }),
+            "- [x] the lab notes [est:: 2h] 🔽 ⏳ 2030-01-03 📅 2030-01-09 ✅ 2030-01-07 ^d87")
+    compare(Bound.caughtUp(marked, undefined), "- [ ] the lab notes [est:: 2h] 🔽 ⏳ 2030-01-03 📅 2030-01-08")
   }
 
   // Where a line the page writes goes (2026-11-03): its course's section,
