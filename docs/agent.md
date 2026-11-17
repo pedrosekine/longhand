@@ -577,6 +577,12 @@ subscription login.
   counted and stricter than the day prompt's "two to five sentences", one
   counted "I noted it in your file" (the agent's own knowledge file, which a
   talk may write) as claiming a change.
+  On the revised 20 cases the same evening: GPT-6.1 Sol (high) 20/20, Opus
+  5.5 (medium) 16/20 — day 9/9, plan 4/5, talk 1/2, margin 2/4. Its misses
+  are real and small: a done-date one day off, a two-part question, a plan
+  reason that assumed what a session covers, and "nothing to change" where
+  the student asked how to move a date. The prompts were tuned on GPT; Opus
+  stays in use as a trial, judged by the helpful / not helpful ratings.
 - **Settings chooses the route per job** — for example, replies to blocks
   on the cheap model, planning on a stronger one.
 - **A failing route says so** and does not fall back silently.
