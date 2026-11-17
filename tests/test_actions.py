@@ -129,6 +129,34 @@ def units() -> None:
     check(not plan.record_of({"items": [dict(x, kind="done") for x in items]}, "done")["suggest"],
           "…and never for a question")
 
+    # What is on the student's screen stays put (2026-11-17: 118 questions
+    # about 10 boxes, one reworded 39 times, each replacing the last).
+    led = {"next": 1, "items": []}
+    q1 = {"kind": "question", "key": "intsem\t- Initial paper", "question": "Which of Neffke’s two papers will you review?",
+          "recommended": "the first", "title": "Initial paper", "project": "intsem"}
+    plan.record(led, [], [q1], "2026-11-01T09:00:00")
+    reworded = dict(q1, question="Which of the two class papers do you want to review?")
+    other = dict(q1, key="respro\t- Critical Review", question="Which paper will the critical review be on?", title="Critical Review")
+    new = plan.record(led, [], [reworded, other], "2026-11-03T09:00:00")
+    status = [x["status"] for x in led["items"]]
+    check([x["question"] for x in new] == [other["question"]] and status == ["open", "open"],
+          f"a question still waiting is not asked again in other words, nor replaced; another box's is ({status})")
+    new = plan.record(led, [], [reworded], "2026-11-09T09:00:00")
+    check(len(new) == 1 and led["items"][0]["status"] == "superseded",
+          "…after a week unanswered, it may be asked afresh")
+    d1 = {"kind": "do-date", "key": "k1", "date": "2026-11-05", "title": "essay", "why": "a free day"}
+    plan.record(led, [d1], [], "2026-11-03T09:00:00")
+    new = plan.record(led, [dict(d1, date="2026-11-06")], [], "2026-11-04T09:00:00")
+    check(not new and next(x for x in led["items"] if x["kind"] == "do-date")["status"] == "open",
+          "a do-date still to come keeps its place against another day for the same box")
+    new = plan.record(led, [dict(d1, date="2026-11-10")], [], "2026-11-06T09:00:00")
+    check(len(new) == 1 and [x["status"] for x in led["items"] if x["kind"] == "do-date"] == ["superseded", "open"],
+          "…once its day has gone by, a new one replaces it")
+    w = plan.waiting(led, dt.date(2026, 11, 7))
+    check({(x["kind"], x["key"]) for x in w} == {("question", "intsem\t- Initial paper"), ("question", "respro\t- Critical Review"),
+                                                 ("do-date", "k1")} and all(x.get("question") or x.get("date") for x in w),
+          f"the planner is told what is waiting on the student ({w})")
+
 
 STUB = """#!/usr/bin/env python3
 import json, os, sys

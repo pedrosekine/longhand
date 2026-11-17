@@ -1105,6 +1105,14 @@ from 2026-09/10 and still stand.
   papers are named from a `.bib` in a subfolder. What would tell: is `W`
   opened before a supervisor meeting or a diary is due, and is `--write`
   used to hand one in.
+- **The planner's word stays put** (2026-11-17): it was never told what was
+  waiting on the student, so each plan asked again in new words and replaced
+  the question on screen — 118 questions about 10 boxes, one 39 times, 6
+  answered; 91 of 120 do-dates replaced. Now a question or steps keep their
+  place for a week, a do-date until its day has gone by (`plan.stays`), and
+  the payload carries `waiting_on_the_student`. Replayed over the real
+  ledger's 75 runs: questions 118 → 19, do-dates 120 → 42, steps 32 → 4.
+  What would tell: do more questions get answered, and fewer go stale.
 
 - **Export from a deadline** (built 2026-11-04, item 13's third slice):
   - Does it find the right section (`export` `deadline`), or is ← → needed?

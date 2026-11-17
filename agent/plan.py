@@ -35,6 +35,11 @@ MAX_QUESTIONS = 2
 MAX_CANDIDATES = 12
 MAX_BOXES = 40               # the open boxes the planner sees for the other actions
 MAX_STEPS = 5
+# What is on the student's screen stays put until they act on it (2026-11-17:
+# 118 questions about 10 boxes, one reworded 39 times, each replacing the one
+# before; 6 answered). A question or steps left this long unanswered may be
+# asked afresh; a do-date stands until its day has gone by.
+STANDING_DAYS = 7
 STALE_DAYS = 14              # a box this old, or gone quiet, may be proposed for dropping
 
 # The kinds of action (docs/agent.md, "Actions, and how far each may go"),
@@ -460,17 +465,56 @@ def validate(reply: dict, cands: list[dict], days: list[dict], ledger: dict, tod
     return props, qs
 
 
+def stays(x: dict, today: dt.date) -> bool:
+    """Whether an open item keeps its place against a later plan's word on
+    the same box: a question or steps for STANDING_DAYS, a do-date while
+    its day is still to come. The other kinds give way to a different
+    proposal, as before."""
+    if x.get("auto"):
+        return False
+    if x["kind"] in ("question", "steps"):
+        try:
+            return (today - dt.date.fromisoformat(str(x.get("at", ""))[:10])).days < STANDING_DAYS
+        except ValueError:
+            return False
+    if x["kind"] == "do-date":
+        return str(x.get("date", "")) >= today.isoformat()
+    return False
+
+
+def waiting(ledger: dict, today: dt.date) -> list[dict]:
+    """What is on the student's screen and keeps its place: for the
+    planner, so it asks and proposes about other boxes instead."""
+    out = []
+    for x in open_items(ledger):
+        if stays(x, today):
+            item = {"kind": x["kind"], "key": x.get("key", ""), "title": x.get("title", "")}
+            if x["kind"] == "question":
+                item["question"] = x.get("question", "")
+            if x.get("date"):
+                item["date"] = x["date"]
+            out.append(item)
+    return out
+
+
 def record(ledger: dict, props: list[dict], qs: list[dict], at: str) -> list[dict]:
     """A new plan: what it proposes replaces what an earlier one left open
-    about the same boxes (superseded); the rest of the earlier ones stand."""
+    about the same boxes (superseded) — unless that one keeps its place
+    (`stays`): then the new word on it is dropped. The rest stand."""
+    today = dt.date.fromisoformat(at[:10])
     # A proposal the same as one still open keeps the one on screen (its row
-    # and id stay put); a different one about the same thing replaces it.
+    # and id stay put); a different one about the same thing replaces it,
+    # unless the one on screen is still waiting for the student.
     standing = {ident(x): x for x in open_items(ledger) if x["kind"] != "question"}
-    props = [p for p in props if not _same(standing.get(ident(p)), p)]
+    props = [p for p in props if not _same(standing.get(ident(p)), p)
+             and not (ident(p) in standing and stays(standing[ident(p)], today))]
     # The same goes for a question asked again in the same words: one with
-    # no box was recorded once a plan, and the dashboard asked it twice.
+    # no box was recorded once a plan, and the dashboard asked it twice. And
+    # a box with a question still waiting is not asked about again, in any
+    # words, until the student answers or it has waited STANDING_DAYS.
     still = {norm(x.get("question", "")) for x in open_items(ledger) if x["kind"] == "question"}
-    qs = [q for q in qs if norm(q.get("question", "")) not in still]
+    pending = {x["key"] for x in open_items(ledger) if x["kind"] == "question" and x.get("key") and stays(x, today)}
+    qs = [q for q in qs if norm(q.get("question", "")) not in still and not (q.get("key") and q["key"] in pending)]
     about = {ident(p) for p in props}
     asked = {q["key"] for q in qs if q["key"]}
     for x in open_items(ledger):
