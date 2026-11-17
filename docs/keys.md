@@ -19,6 +19,8 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | Show these keys | `Ctrl+/` | everywhere |
 | Show these keys (where nothing is typed) | `?` | in the dashboard, in the sidebar's lists, in the files, in the calendar, in a PDF |
 | Settings (calendars, sound) | `Ctrl+,` | everywhere |
+| The switcher: a project by its letters (#th), from anywhere; Enter opens it | `Ctrl+O` | everywhere |
+| The sidebar's first, second… project, from anywhere | `Alt+1` · `Alt+2` · `Alt+3` · `Alt+4` · `Alt+5` · `Alt+6` · `Alt+7` · `Alt+8` · `Alt+9` | everywhere |
 | The sidebar: go there, opening it; in it, Time ↔ Files | `Ctrl+1` | everywhere |
 | The middle: go there; in it, the note ↔ the dashboard | `Ctrl+2` | everywhere |
 | The dashboard, from anywhere (pressed on it, it stays) | `Ctrl+Alt+2` | everywhere |
@@ -100,6 +102,16 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | Close find, on the match | `Esc` | in find |
 | Close find, back where you were | `Shift+Esc` | in find |
 
+## The switcher
+
+| | Keys | Works |
+|---|---|---|
+| The match above | `↑` | in the switcher (Ctrl+O) |
+| The match below | `↓` · `Tab` | in the switcher (Ctrl+O) |
+| Open the project (its notes, in the sidebar) | `Enter` | in the switcher (Ctrl+O) |
+| Open the project's page | `Shift+Enter` | in the switcher (Ctrl+O) |
+| Close it, back where you were | `Esc` | in the switcher (Ctrl+O) |
+
 ## Dashboard
 
 | | Keys | Works |
@@ -155,23 +167,28 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | A month on | `Ctrl+→` · `PgDn` | in the calendar |
 | Today | `Home` · `t` | in the calendar |
 | Open the day in the sheet | `Enter` | in the calendar |
-| On to the day's deadlines, the papers read that day, and the projects | `Tab` | in the calendar |
+| Down into the lists under it: the day's deadlines, the papers read that day, the projects | `Tab` | in the calendar |
+| Straight to the projects | `Shift+Tab` | in the calendar |
 | Close the sidebar (back where you were) | `Esc` | in the calendar |
 
 ## Deadlines, projects and sections in the sidebar
 
 | | Keys | Works |
 |---|---|---|
-| Move up | `↑` · `k` | in the sidebar's lists |
-| Move down | `↓` · `j` | in the sidebar's lists |
+| Move up (at a list's top, on into the list above) | `↑` · `k` | in the sidebar's lists |
+| Move down (at a list's end, on into the list below) | `↓` · `j` | in the sidebar's lists |
+| The first row under the calendar | `Home` | in the sidebar's lists |
+| The last project | `End` | in the sidebar's lists |
 | Open it (a deadline: go to its line) | `Enter` | in the sidebar's lists |
 | A deadline: done (again: not done) | `Ctrl+L` | in the sidebar's lists |
 | Into a project's notes | `→` | in the sidebar's lists |
 | A project: a new section for it in today's note (# Name #tag) | `s` | in the sidebar's lists |
 | The project's page: its papers, files, notes and deadlines in one scroll (on a project, or inside one) | `p` | in the sidebar's lists |
-| A project: put its #tag at the cursor | `#` | in the sidebar's lists |
-| On to the next list | `Tab` | in the sidebar's lists |
-| Back out of the list | `Esc` · `Shift+Tab` · `←` | in the sidebar's lists |
+| A project: put its #tag at the cursor | `t` | in the sidebar's lists |
+| Skip to the next list (after the projects: the calendar) | `Tab` | in the sidebar's lists |
+| Skip to the list before (before the first: the calendar) | `Shift+Tab` | in the sidebar's lists |
+| Back out of the lists, to the calendar | `Esc` · `←` | in the sidebar's lists |
+| A project by its letters: # then th picks #thesis, Enter opens it (↑↓ the other matches, Esc stops) | `#` | in the calendar, in the sidebar's lists |
 
 ## Files in the sidebar
 

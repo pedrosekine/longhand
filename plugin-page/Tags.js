@@ -91,3 +91,60 @@ function fromField(text, projects) {
   if (!isTag(tag)) tag = ""
   return { name: name || tag, tag: tag, taken: tag !== "" && isProject(projects, tag) }
 }
+
+// ------------------------------------------------ reaching a project
+
+// Reaching a project by its letters (plan.md item 19, 2026-11-17): in the
+// sidebar `#` and the letters, and the switcher (Ctrl+O). The projects
+// whose tag starts with q, then those with a word of the name starting
+// with it, then those with q anywhere in the tag or name; each group in
+// the list's own order. A leading `#` is the key that started it, not a
+// letter of the tag. An empty q is every project, as listed.
+function reach(projects, q) {
+  q = String(q || "").replace(/^#/, "").toLowerCase()
+  var list = (projects || []).filter(function (p) { return p && p.tag })
+  if (q === "") return list.slice()
+  var starts = [], word = [], within = []
+  for (var i = 0; i < list.length; i++) {
+    var p = list[i]
+    var tag = String(p.tag).toLowerCase()
+    var name = String(p.name || "").toLowerCase()
+    if (tag.indexOf(q) === 0) starts.push(p)
+    else if (name.split(/[^\w]+/).some(function (w) { return w !== "" && w.indexOf(q) === 0 })) word.push(p)
+    else if (tag.indexOf(q) > 0 || name.indexOf(q) >= 0) within.push(p)
+  }
+  return starts.concat(word, within)
+}
+
+// The projects in the order they are used (plan.md item 19): the most
+// reached in the last four weeks first, so the project used most stops
+// sitting last behind those with a session soon. `uses` is { tag: [epoch
+// seconds] }, the times each was reached (opened, a section started, its
+// page, its tag put, by any of the ways in); ties keep the runner's order,
+// soonest session first, which is also the whole order before anything is
+// used. A count over weeks, not the last one used, so the order — and the
+// Alt+digit of each — moves slowly.
+var USE_WINDOW = 28 * 86400
+
+function byUse(projects, uses, nowSec) {
+  var since = nowSec - USE_WINDOW
+  var list = (projects || []).slice()
+  var score = list.map(function (p) {
+    return ((uses || {})[p.tag] || []).filter(function (t) { return t > since }).length
+  })
+  var idx = list.map(function (p, i) { return i })
+  idx.sort(function (a, b) { return score[b] - score[a] || a - b })
+  return idx.map(function (i) { return list[i] })
+}
+
+// One more use of tag at nowSec, and the uses older than the window let go.
+function used(uses, tag, nowSec) {
+  var since = nowSec - USE_WINDOW
+  var out = {}
+  for (var k in (uses || {})) {
+    var kept = (uses[k] || []).filter(function (t) { return t > since })
+    if (kept.length > 0) out[k] = kept
+  }
+  if (tag) out[tag] = (out[tag] || []).concat([nowSec])
+  return out
+}

@@ -12,7 +12,7 @@ in your session, your windows and rules are not touched, and the private
 Hyprland is stopped when it is done.
 
 Run: python3 tests/page/shots.py OUT                         every scene
-     python3 tests/page/shots.py OUT --scene dashboard        one of: dashboard, note, day, keys, chat, project, acronyms
+     python3 tests/page/shots.py OUT --scene dashboard        one of: dashboard, note, day, keys, chat, project, acronyms, reach
      python3 tests/page/shots.py OUT --order date             the dashboard's order (ask, course, date)
      python3 tests/page/shots.py OUT --root DIR               draw another checkout (a variant study)
      python3 tests/page/shots.py OUT --env NAME=VALUE         an environment variable for the page
@@ -294,6 +294,29 @@ def scenes(m, p, out, which):
         p.call("pdfKey", 0x01000004, 0)     # Enter: the chat at it
         time.sleep(0.8)
         shot("answers-1")
+    if which in ("all", "reach"):
+        # Reaching a project (plan.md item 19): `#th` typed in the sidebar,
+        # Hold Ctrl's Alt+digit on each project, the switcher.
+        know = p.vault / "agents" / "longhand" / "knowledge" / "projects"
+        know.mkdir(parents=True, exist_ok=True)
+        for tag, name in [("respro", "Research Proficiency"), ("hfpi", "Human Factors & Psychology"), ("studio", "Design Studio"),
+                          ("dtm", "Design Theory & Methods"), ("coach", "Coaching"), ("thesis", "Master Thesis")]:
+            if not (know / f"{tag}.md").exists():
+                (know / f"{tag}.md").write_text(f"# {name}\n\n- Tag: `#{tag}`\n")
+        p.call("closePanes")
+        p.call("keysToSidebar")
+        p.wait(lambda: len(json.loads(p.call("projects"))) >= 6, 10)
+        p.call("sideType", "#th")
+        shot("reach-0")
+        p.call("sideKey", 0x01000000, 0)
+        p.call("ctrlHold", "true")
+        shot("reach-1")
+        p.call("ctrlHold", "false")
+        p.call("closePanes")
+        p.call("pageKey", 0x4f, 0x04000000)  # Ctrl+O
+        p.call("switcherType", "de")
+        shot("reach-2")
+        p.call("switcherKey", 0x01000000, 0)
     if which in ("all", "keys"):
         p.call("keys")
         shot("keys-0")
@@ -304,7 +327,7 @@ def scenes(m, p, out, which):
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("out", type=pathlib.Path)
-    ap.add_argument("--scene", default="all", choices=["all", "dashboard", "note", "day", "keys", "chat", "project", "acronyms", "answers"])
+    ap.add_argument("--scene", default="all", choices=["all", "dashboard", "note", "day", "keys", "chat", "project", "acronyms", "answers", "reach"])
     ap.add_argument("--order", default="ask", choices=["ask", "course", "date"])
     ap.add_argument("--root", type=pathlib.Path, default=HERE.parent.parent)
     ap.add_argument("--env", action="append", default=[])

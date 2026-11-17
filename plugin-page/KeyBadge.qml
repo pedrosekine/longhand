@@ -13,7 +13,10 @@ Rectangle {
   property string act: ""
   property string words: ""
   property bool place: true     // the thing it names is there to name
-  readonly property string key: badge.host.ctrlKey(badge.act)
+  // A key that is no Ctrl key, named whole (a project's Alt+digit, plan.md
+  // item 19): shown on the thing it reaches while Ctrl is held, all the same.
+  property string fixedKey: ""
+  readonly property string key: badge.fixedKey !== "" ? badge.fixedKey : badge.host.ctrlKey(badge.act)
   visible: host.ctrlShown && place && key !== ""
   z: 60
   width: label.implicitWidth + host.sp(8)

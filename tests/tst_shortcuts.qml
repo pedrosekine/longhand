@@ -105,7 +105,10 @@ TestCase {
   function test_the_rest_of_the_map() {
     verify(Sc.hit(ev(Qt.Key_K, Qt.ControlModifier), "link"))
     verify(Sc.hit(ev(Qt.Key_Question, Qt.ShiftModifier), "keysHere"))
-    verify(Sc.hit(ev(Qt.Key_NumberSign, Qt.ShiftModifier), "listTag"))
+    // `#` reaches a project by its letters since 2026-11-17 (plan.md item
+    // 19); the tag is put with T.
+    verify(Sc.hit(ev(Qt.Key_NumberSign, Qt.ShiftModifier), "sideReach"))
+    verify(Sc.hit(ev(Qt.Key_T, 0), "listTag"))
     verify(Sc.hit(ev(Qt.Key_S, 0), "listClass"))
     verify(!Sc.hit(ev(Qt.Key_Return, Qt.ShiftModifier), "listClass"))
     verify(Sc.hit(ev(Qt.Key_T, Qt.ShiftModifier), "dashNoDate"))
@@ -181,5 +184,19 @@ TestCase {
     verify(r5[r5.length - 1].changed)
     verify(!r5.some(function (x) { return x.kind === "offer" }))
     compare(Sc.rows("super+alt+k", { owned: true, actions: [{ id: "pomoToggle", does: "Pomo toggle", keys: ["Alt+Super+K"], own: ["Alt+Super+P"] }] }).length, 2)
+  }
+
+  // Reaching a project from the keyboard (plan.md item 19, 2026-11-17).
+  function test_reaching_a_project() {
+    verify(Sc.hit(ev(Qt.Key_O, Qt.ControlModifier), "switcher"))
+    verify(Sc.hit(ev(Qt.Key_7, Qt.AltModifier), "projectKey"))
+    verify(!Sc.hit(ev(Qt.Key_0, Qt.AltModifier), "projectKey"))
+    verify(Sc.hit(ev(Qt.Key_Backtab, Qt.ShiftModifier), "calProjects"))
+    verify(Sc.hit(ev(Qt.Key_Backtab, Qt.ShiftModifier), "listPrev"))
+    verify(!Sc.hit(ev(Qt.Key_Backtab, Qt.ShiftModifier), "listBack"))
+    verify(Sc.hit(ev(Qt.Key_Tab, 0), "switchDown"))
+    // Nothing global takes a key of the switcher's box or the lists'.
+    verify(Sc.check("switcher", "Ctrl+O").ok)
+    compare(Sc.check("projectKey", "Alt+7").taken, [])
   }
 }

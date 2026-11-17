@@ -908,6 +908,63 @@ Small, when passing by:
     Needs: which of these is the one way (one key, one action), and
     whether the walk itself stays. Measured by keys pressed from the
     calendar to #thesis: ten today (3 Tab, 6 ↓, Enter).
+    - **One walk under the calendar** (2026-11-17, the student: "I would
+      expect the rest to be navigated through arrows"): Tab only leaves
+      the calendar, whose arrows are the days; below it the deadlines,
+      READ and the projects are one list for ↑↓.
+    **Built, all five, 2026-11-17** (the student: "build all of them"),
+    not yet grilled to one way; the usage log says which is used (`reach`
+    with `walk`, `type`, `key`, `switcher`). Decided while building:
+    - **The walk:** ↓ at a list's end goes on into the next, ↑ back; ↑ at
+      the top stops (the calendar is left and come back to by Tab, so ↑
+      held never starts moving days). Tab and Shift+Tab skip a list (past
+      the ends: the calendar); Home the first row, End the last project;
+      Esc and ← back to the calendar. Shift+Tab in the calendar goes
+      straight to the projects.
+    - **Type to go starts with `#`** ("#th" Enter), not bare letters: the
+      lists' letters are keys (j k s p, the calendar's t) and #thesis
+      starts with t. `#` is the switcher's "#th" too. **Putting the tag
+      moved from `#` to `T`** ("puts the tag"; used once in the log).
+      Matches dim the rest; ↑↓ step through the matches; Esc or Backspace
+      past the `#` stops where it is.
+    - **A key per project is `Alt+1…9`,** global, as a browser's Alt+digit
+      goes to its tab; Hold Ctrl shows each on its row, and the switcher
+      names it beside each match. One chord from anywhere.
+    - **The switcher (`Ctrl+O`)** is built for projects only: Enter its
+      notes, Shift+Enter its page. Notes, tasks and actions (the "find
+      anything" of keys-proposal.md) and the `/` menu are still a task.
+    - **The order is by use:** the projects reached most in the last four
+      weeks first (`projects-used.json` in the state folder), ties as the
+      runner lists them (soonest session). It moves when the sidebar
+      opens, never under the keys; counted over weeks so the Alt+digits
+      move slowly. Before anything is counted it is the old order.
+    - **The sidebar opened again comes back to the row it was left on**
+      (a project by its tag; a deadline or paper while the day is the
+      same). Esc to the calendar forgets it, and a click on the date asks
+      for the calendar.
+    Measured again: from the calendar, #thesis is `#` `t` `h` Enter (4),
+    Shift+Tab then ↓ to it and Enter, or Alt+its number (1) from anywhere.
+    Open: whether one of these should be the only way, once the log has
+    a few weeks.
+20. **A question's answer, one click away** (2026-11-16, the student: "accessing
+    the answer to a question by clicking on it, or a similar experience, not
+    sure"). Follows item 15's reader. Today an answered question is only
+    marked as answered — on the page, in the paper's marks, in the
+    project's Open list — and its answer stays in the paper's chat, so
+    finding it again means opening the chat and scrolling. The idea: a click
+    on the question (or `Enter` on its row) brings its answer up. Undecided,
+    so the "similar experience" is open:
+    - **Where it shows:** the chat scrolled to that answer and lit a
+      moment, as a quoted passage lights on the PDF; or the answer folded
+      open under the question's row; or a card over the mark on the page.
+    - **Which places:** the question on the PDF page, its row in the
+      paper's marks, its row in the project's view — maybe all three,
+      maybe the marks first.
+    - **Needs:** each answer tied to the question it answers in the paper's
+      chat (asked alone, attached, or one of several asked together with
+      `Ctrl+Enter`, item 15's (d)), so the click finds the right turn; a
+      question asked again keeps its answers in order, the newest shown.
+      The answer is still never written into the person's reading note.
 
 - ~~**Tag suggestions while typing**~~ *done 2026-10-18*: `#` and a letter
   offer the tags that exist — the projects', then those written in the

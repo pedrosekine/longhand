@@ -27,6 +27,7 @@ var places = {
   mention: "while @ or # lists tags, or @ blocks in the day's box",
   cue: "while a box's date lights up as it is typed",
   search: "in find",
+  switcher: "in the switcher (Ctrl+O)",
   dash: "in the dashboard",
   strip: "on the dashboard's course strip",
   calendar: "in the calendar",
@@ -44,7 +45,7 @@ var places = {
 // Settings is not one of them since it became a list (2026-10-28): its
 // field types only while its own row is picked, and the list's keys wait
 // until then (Page.qml, settingsKey).
-var typing = { note: true, mention: true, cue: true, search: true, chat: true }
+var typing = { note: true, mention: true, cue: true, search: true, chat: true, switcher: true }
 
 var groups = [
   { id: "page", title: "The page" },
@@ -53,6 +54,7 @@ var groups = [
   { id: "agent", title: "The agent" },
   { id: "mention", title: "@ a project" },
   { id: "find", title: "Find" },
+  { id: "switcher", title: "The switcher" },
   { id: "dash", title: "Dashboard" },
   { id: "calendar", title: "Calendar" },
   { id: "lists", title: "Deadlines, projects and sections in the sidebar" },
@@ -93,6 +95,13 @@ var actions = [
   // Shift (above), so the agent's pane is written Ctrl+|. Ctrl+Alt+2 is
   // the dashboard straight, as Craft gives its views a modifier and a digit
   // (2026-10-30): it only shows, where Ctrl+2 flips.
+  // Reaching a project from anywhere (plan.md item 19, 2026-11-17): the
+  // switcher, Obsidian's quick switcher and Craft's quick open, reserved
+  // for it in docs/keys-proposal.md; and a key per project, as a browser's
+  // Alt+digit goes to its tab, numbered as the sidebar lists them (Hold
+  // Ctrl shows the numbers on the projects).
+  { id: "switcher", group: "page", places: ["any"], does: "The switcher: a project by its letters (#th), from anywhere; Enter opens it", keys: ["Ctrl+O"] },
+  { id: "projectKey", group: "page", places: ["any"], does: "The sidebar's first, second… project, from anywhere", keys: ["Alt+1", "Alt+2", "Alt+3", "Alt+4", "Alt+5", "Alt+6", "Alt+7", "Alt+8", "Alt+9"] },
   { id: "pane1", group: "page", places: ["any"], does: "The sidebar: go there, opening it; in it, Time ↔ Files", keys: ["Ctrl+1"] },
   { id: "pane2", group: "page", places: ["any"], does: "The middle: go there; in it, the note ↔ the dashboard", keys: ["Ctrl+2"] },
   { id: "dashGo", group: "page", places: ["any"], does: "The dashboard, from anywhere (pressed on it, it stays)", keys: ["Ctrl+Alt+2"] },
@@ -179,6 +188,11 @@ var actions = [
   { id: "dayHelpful", group: "agent", places: ["chat"], does: "In the day's chat or a note's: its last answer was helpful (again: take it back)", keys: ["Alt+="] },
   { id: "dayNotHelpful", group: "agent", places: ["chat"], does: "In the day's chat or a note's: its last answer was not helpful (again: take it back)", keys: ["Alt+-"] },
 
+  { id: "switchUp", group: "switcher", places: ["switcher"], does: "The match above", keys: ["Up"] },
+  { id: "switchDown", group: "switcher", places: ["switcher"], does: "The match below", keys: ["Down", "Tab"] },
+  { id: "switchGo", group: "switcher", places: ["switcher"], does: "Open the project (its notes, in the sidebar)", keys: ["Enter"] },
+  { id: "switchPage", group: "switcher", places: ["switcher"], does: "Open the project's page", keys: ["Shift+Enter"] },
+  { id: "switchClose", group: "switcher", places: ["switcher"], does: "Close it, back where you were", keys: ["Esc"] },
   { id: "mentionUp", group: "mention", places: ["mention"], does: "Previous project", keys: ["Up"] },
   { id: "mentionDown", group: "mention", places: ["mention"], does: "Next project", keys: ["Down"] },
   { id: "mentionPick", group: "mention", places: ["mention"], does: "Write its #tag", keys: ["Enter", "Tab"] },
@@ -265,20 +279,32 @@ var actions = [
   { id: "calNextMonth", group: "calendar", places: ["calendar"], does: "A month on", keys: ["Ctrl+Right", "PgDn"] },
   { id: "calToday", group: "calendar", places: ["calendar"], does: "Today", keys: ["Home", "T"] },
   { id: "calOpen", group: "calendar", places: ["calendar"], does: "Open the day in the sheet", keys: ["Enter"] },
-  { id: "calLists", group: "calendar", places: ["calendar"], does: "On to the day's deadlines, the papers read that day, and the projects", keys: ["Tab"] },
+  { id: "calLists", group: "calendar", places: ["calendar"], does: "Down into the lists under it: the day's deadlines, the papers read that day, the projects", keys: ["Tab"] },
+  // The walk the other way round lands on the projects, the list used most
+  // (plan.md item 19, 2026-11-17).
+  { id: "calProjects", group: "calendar", places: ["calendar"], does: "Straight to the projects", keys: ["Shift+Tab"] },
   { id: "calBack", group: "calendar", places: ["calendar"], does: "Close the sidebar (back where you were)", keys: ["Esc"] },
 
-  { id: "listUp", group: "lists", places: ["lists"], does: "Move up", keys: ["Up", "K"] },
-  { id: "listDown", group: "lists", places: ["lists"], does: "Move down", keys: ["Down", "J"] },
+  // One walk under the calendar (plan.md item 19, 2026-11-17): the arrows
+  // go on from one list into the next; Tab only skips a list.
+  { id: "listUp", group: "lists", places: ["lists"], does: "Move up (at a list's top, on into the list above)", keys: ["Up", "K"] },
+  { id: "listDown", group: "lists", places: ["lists"], does: "Move down (at a list's end, on into the list below)", keys: ["Down", "J"] },
+  { id: "listFirst", group: "lists", places: ["lists"], does: "The first row under the calendar", keys: ["Home"] },
+  { id: "listLast", group: "lists", places: ["lists"], does: "The last project", keys: ["End"] },
   { id: "listOpen", group: "lists", places: ["lists"], does: "Open it (a deadline: go to its line)", keys: ["Enter"] },
   // The note's tick, on a deadline of the day (2026-10-17).
   { id: "listDone", group: "lists", places: ["lists"], does: "A deadline: done (again: not done)", keys: ["Ctrl+L"] },
   { id: "listInto", group: "lists", places: ["lists"], does: "Into a project's notes", keys: ["Right"] },
   { id: "listClass", group: "lists", places: ["lists"], does: "A project: a new section for it in today's note (# Name #tag)", keys: ["S"] },
   { id: "listPage", group: "lists", places: ["lists"], does: "The project's page: its papers, files, notes and deadlines in one scroll (on a project, or inside one)", keys: ["P"] },
-  { id: "listTag", group: "lists", places: ["lists"], does: "A project: put its #tag at the cursor", keys: ["#"] },
-  { id: "listNext", group: "lists", places: ["lists"], does: "On to the next list", keys: ["Tab"] },
-  { id: "listBack", group: "lists", places: ["lists"], does: "Back out of the list", keys: ["Esc", "Shift+Tab", "Left"] },
+  // `#` went to reaching a project by its letters (2026-11-17), as the
+  // switcher's "#th"; the tag is the T of "puts the tag".
+  { id: "listTag", group: "lists", places: ["lists"], does: "A project: put its #tag at the cursor", keys: ["T"] },
+  { id: "listNext", group: "lists", places: ["lists"], does: "Skip to the next list (after the projects: the calendar)", keys: ["Tab"] },
+  { id: "listPrev", group: "lists", places: ["lists"], does: "Skip to the list before (before the first: the calendar)", keys: ["Shift+Tab"] },
+  { id: "listBack", group: "lists", places: ["lists"], does: "Back out of the lists, to the calendar", keys: ["Esc", "Left"] },
+  // Type to go (plan.md item 19): no field to open, the letters pick.
+  { id: "sideReach", group: "lists", places: ["calendar", "lists"], does: "A project by its letters: # then th picks #thesis, Enter opens it (↑↓ the other matches, Esc stops)", keys: ["#"] },
 
   { id: "filesUp", group: "files", places: ["files"], does: "Move up", keys: ["Up", "K"] },
   { id: "filesDown", group: "files", places: ["files"], does: "Move down", keys: ["Down", "J"] },
@@ -354,21 +380,21 @@ var fixed = [
   // sends, so a new line in a message is Shift+Enter.
   { group: "typing", places: ["chat"], does: "New line in what you write", show: ["Shift+Enter"], keys: ["Shift+Enter"] },
   { group: "typing", places: ["note"], does: "Nest or un-nest the line (or every line selected)", show: ["Tab", "Shift+Tab"], keys: ["Tab", "Shift+Tab"] },
-  { group: "typing", places: ["note", "search", "chat"], does: "Move; by word with Ctrl", show: ["Left", "Right", "Up", "Down", "Ctrl+Left", "Ctrl+Right"],
+  { group: "typing", places: ["note", "search", "chat", "switcher"], does: "Move; by word with Ctrl", show: ["Left", "Right", "Up", "Down", "Ctrl+Left", "Ctrl+Right"],
     keys: ["Left", "Right", "Ctrl+Left", "Ctrl+Right", "Home", "End"] },
   // Up and down are the note's lines; a one-line box lends them out (the
   // conversation box's ↑ goes to the proposals). Reserved, not shown twice.
   { group: "typing", places: ["note"], does: "Move a line or a screen", show: [], keys: ["Up", "Down", "PgUp", "PgDn"] },
-  { group: "typing", places: ["note", "search", "chat"], does: "Select, across lines too; by word with Ctrl", show: ["Shift+Left", "Shift+Right", "Shift+Up", "Shift+Down"],
+  { group: "typing", places: ["note", "search", "chat", "switcher"], does: "Select, across lines too; by word with Ctrl", show: ["Shift+Left", "Shift+Right", "Shift+Up", "Shift+Down"],
     keys: ["Shift+Left", "Shift+Right", "Shift+Up", "Shift+Down", "Ctrl+Shift+Left", "Ctrl+Shift+Right", "Shift+Home", "Shift+End", "Ctrl+Shift+Home", "Ctrl+Shift+End"] },
   // In the note Ctrl+A climbs (NoteEditor.selectAllStep); the one-line boxes
   // take it as select all. Esc in the note lets go of a selection before it
   // closes anything, so it is shown here and reserved by "close" above.
   { group: "typing", places: ["note"], does: "Select the line; again: its item, list, block, section, a step wider each time, up to the note", show: ["Ctrl+A"], keys: ["Ctrl+A"] },
-  { group: "typing", places: ["search", "chat"], does: "Select all", show: ["Ctrl+A"], keys: ["Ctrl+A"] },
+  { group: "typing", places: ["search", "chat", "switcher"], does: "Select all", show: ["Ctrl+A"], keys: ["Ctrl+A"] },
   { group: "typing", places: ["note"], does: "Let go of a selection (Esc again: close the overlay)", show: ["Esc"], keys: [] },
-  { group: "typing", places: ["note", "search", "chat"], does: "Copy, cut, paste", show: ["Ctrl+C", "Ctrl+X", "Ctrl+V"], keys: ["Ctrl+C", "Ctrl+X", "Ctrl+V"] },
-  { group: "typing", places: ["note", "search", "chat", "strip"], does: "Delete a letter; a word with Ctrl", show: ["Backspace", "Del", "Ctrl+Backspace"],
+  { group: "typing", places: ["note", "search", "chat", "switcher"], does: "Copy, cut, paste", show: ["Ctrl+C", "Ctrl+X", "Ctrl+V"], keys: ["Ctrl+C", "Ctrl+X", "Ctrl+V"] },
+  { group: "typing", places: ["note", "search", "chat", "switcher", "strip"], does: "Delete a letter; a word with Ctrl", show: ["Backspace", "Del", "Ctrl+Backspace"],
     keys: ["Backspace", "Del", "Ctrl+Backspace", "Ctrl+Del"] },
   { group: "typing", places: [], does: "In a box that asks \"when?\": confirm, or leave it", show: ["Enter", "Esc"], keys: [] }
 ]

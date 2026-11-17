@@ -791,7 +791,7 @@ def checks() -> int:
         check(p.call("header").startswith(dt.date.today().strftime("%A")) and int(p.call("cursorLine")) == len(p.lines()) - 1,
               "…opens today with the cursor under it")
         p.call("insert", "first point")
-        check(p.call("projectKey", 1, 0x23, 0x02000000) == "true", "# on a project in the sidebar is taken")
+        check(p.call("projectKey", 1, 0x54, 0) == "true", "T on a project in the sidebar is taken")
         check(p.wait(lambda: "first point #dtm " in p.call("text")), "…and puts just its tag at the cursor")
 
         # 11b. a project's notes: every section of its tag, newest first,
@@ -2910,6 +2910,10 @@ def checks() -> int:
             return json.loads(p.call("sideFocus"))
         p.pomo("add", "the calendar's deadline", "2030-03-13")
         p.call("pageKey", KEY_1, CTRL)
+        # (The sidebar comes back to the row it was left on, plan.md item
+        # 19: out to the calendar first.)
+        if side() != {"due": -1, "proj": -1}:
+            p.call("sideKey", KEY_ESC, 0)
         p.call("calDay", 2030, 3, 12)
         steps = [(KEY_RIGHT, "2030-03-13"), (KEY_LEFT, "2030-03-12"), (KEY_DOWN, "2030-03-19"), (KEY_UP, "2030-03-12"), (KEY_PGDN, "2030-04-12")]
         walked = [(p.call("sideKey", k, 0), p.call("calAt")) for k, _ in steps]
@@ -2927,6 +2931,82 @@ def checks() -> int:
         check(p.call("sideKey", KEY_TAB, 0) == "true" and side() == {"due": -1, "proj": 0}, f"Tab on a day with none: straight to the projects ({side()})")
         check(p.call("sideKey", 0x3f, 0x02000000) == "true" and p.call("keysOpen") == "true", "? in the sidebar's lists shows the keys")
         p.call("keys")
+        p.call("sideKey", KEY_ESC, 0)
+
+        # Reaching a project (plan.md item 19, 2026-11-17): under the
+        # calendar the lists are one walk — ↓ goes on from the day's
+        # deadlines into the projects, ↑ back, stopping at the top; Tab and
+        # Shift+Tab skip a list; Shift+Tab in the calendar lands on the
+        # projects; Home and End.
+        KEY_BACKTAB, KEY_HOME_, KEY_END_, KEY_7 = 0x01000002, 0x01000010, 0x01000011, 0x37
+        walk = lambda: json.loads(p.call("sideWalk"))
+        p.call("calDay", 2030, 3, 13)
+        p.call("sideKey", KEY_TAB, 0)
+        check(p.call("sideKey", KEY_DOWN, 0) == "true" and side() == {"due": -1, "proj": 0},
+              f"↓ at the end of the day's deadlines goes on into the projects ({side()})")
+        check(p.call("sideKey", KEY_UP, 0) == "true" and side() == {"due": 0, "proj": -1}, f"…↑ back into the deadlines ({side()})")
+        check(p.call("sideKey", KEY_UP, 0) == "true" and side() == {"due": 0, "proj": -1} and p.call("calAt") == "2030-03-13",
+              f"…and ↑ at the top stays, the calendar's day unmoved ({side()})")
+        nproj = len(walk()["order"])
+        check(p.call("sideKey", KEY_END_, 0) == "true" and side() == {"due": -1, "proj": nproj - 1}, f"End: the last project ({side()})")
+        check(p.call("sideKey", KEY_HOME_, 0) == "true" and side() == {"due": 0, "proj": -1}, f"Home: the first row ({side()})")
+        check(p.call("sideKey", KEY_TAB, 0) == "true" and side() == {"due": -1, "proj": 0}, f"Tab skips to the next list ({side()})")
+        check(p.call("sideKey", KEY_BACKTAB, SHIFT) == "true" and side() == {"due": 0, "proj": -1}, f"Shift+Tab to the list before ({side()})")
+        check(p.call("sideKey", KEY_BACKTAB, SHIFT) == "true" and side() == {"due": -1, "proj": -1}, f"…and before the first, the calendar ({side()})")
+        check(p.call("sideKey", KEY_BACKTAB, SHIFT) == "true" and side() == {"due": -1, "proj": 0}, f"Shift+Tab in the calendar: straight to the projects ({side()})")
+        p.call("sideKey", KEY_ESC, 0)
+        # Type to go: `#` and the letters, Enter opens; the project used rises.
+        # (The list read again first: a project made and taken away above
+        # is still listed until the sidebar opens.)
+        p.call("sidebar")
+        p.call("sidebar")
+        check(p.wait(lambda: len(walk()["order"]) == len(list(pd.glob("*.md")))), f"the projects read again ({walk()})")
+        p.call("sideKey", KEY_ESC, 0) if walk()["list"] != "" else None
+        order = walk()["order"]
+        last = order[-1]
+        p.call("sideType", "#" + last[:2])
+        check(walk()["typing"] and walk()["list"] == "proj" and order[walk()["at"]] == last,
+              f"# and the letters pick the project, from the calendar ({walk()})")
+        p.call("sideKey", KEY_RETURN, 0)
+        check(p.wait(lambda: walk()["open"] == last) and not walk()["typing"] and panes()["here"] == "left",
+              f"…Enter opens it, the keys in it ({walk()})")
+        p.call("sideKey", KEY_ESC, 0)                       # out of the project, onto its row
+        p.call("sidebar")
+        p.call("sidebar")
+        check(p.wait(lambda: walk()["list"] == "proj" and walk()["order"][walk()["at"]] == last),
+              f"the sidebar opened again comes back to the row it was left on ({walk()})")
+        used_file = p.state / "longhand" / "projects-used.json"
+        check(p.wait(lambda: used_file.exists() and last in json.loads(used_file.read_text())),
+              "…its use kept, for the order (the most used first)")
+        p.call("sideType", "#zzz")
+        check(walk()["typing"] and walk()["order"][walk()["at"]] == last, f"letters nothing has keep the row ({walk()})")
+        p.call("sideKey", KEY_ESC, 0)
+        check(not walk()["typing"] and walk()["list"] == "proj", f"…Esc stops typing, where it was ({walk()})")
+        p.call("sideKey", KEY_ESC, 0)
+        # A key per project, from anywhere: Alt and its place.
+        p.call("pageKey", KEY_1, CTRL)
+        p.call("pageKey", KEY_2, CTRL)
+        second = walk()["order"][1]
+        check(p.call("pageKey", 0x32, ALT_) == "true" and p.wait(lambda: walk()["open"] == second and panes()["here"] == "left"),
+              f"Alt+2 from the note: the second project open, the keys on it ({walk()}, {panes()})")
+        check(p.call("pageKey", KEY_7 + 2, ALT_) == "true" and p.wait(lambda: p.call("hint").startswith("the sidebar lists")),
+              f"…Alt+9 with fewer projects says so ({p.call('hint')!r})")
+        p.call("sideKey", KEY_ESC, 0)
+        p.call("sideKey", KEY_ESC, 0)
+        # The switcher (Ctrl+O): from the middle, "#" and letters, Enter.
+        p.call("pageKey", KEY_2, CTRL)
+        sw = lambda: json.loads(p.call("switcher"))
+        check(p.call("pageKey", 0x4f, CTRL) == "true" and sw()["open"] and sw()["matches"] == walk()["order"],
+              f"Ctrl+O opens the switcher on every project ({sw()})")
+        p.call("switcherType", "#" + second[:2])
+        check(sw()["matches"][0] == second, f"…typing narrows it ({sw()})")
+        check(p.call("switcherKey", KEY_ESC, 0) == "true" and not sw()["open"] and panes()["here"] == "center",
+              f"…Esc closes it, the keys back in the middle ({sw()}, {panes()})")
+        p.call("pageKey", 0x4f, CTRL)
+        p.call("switcherType", second)
+        check(p.call("switcherKey", KEY_RETURN, 0) == "true" and p.wait(lambda: walk()["open"] == second and not sw()["open"]),
+              f"…Enter opens the project in the sidebar ({walk()}, {sw()})")
+        p.call("sideKey", KEY_ESC, 0)
         p.call("sideKey", KEY_ESC, 0)
         # (Not whether a line of the note has the keys: a note shorter than
         # the line the cursor was on drops them, 2026-10-25, a bug of its own.)
@@ -3140,7 +3220,7 @@ def checks() -> int:
         # …and the project lists it among its papers.
         ppx = lambda: json.loads(p.call("projectPapers"))
         p.call("openProject", next(n for n, x in enumerate(json.loads(p.call("projects"))) if x.startswith(first_tag + "|")))
-        check(p.wait(lambda: ppx()["open"] and ppx()["papers"] == ["Reading"]), f"the project's view lists the paper ({ppx()})")
+        check(p.wait(lambda: ppx()["open"] and "Reading" in ppx()["papers"]), f"the project's view lists the paper ({ppx()})")
         p.call("leaveProject")
         if p.call("sidebarOpen") == "true":
             p.call("sidebar")

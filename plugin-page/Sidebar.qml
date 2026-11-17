@@ -125,10 +125,16 @@ BorderSurface {
       else return false
       return true
     }
-    // Tab walks the sidebar: the days, the day's deadlines (when it
-    // has some), the projects, and back to the days.
-    // In the day's deadline list: up/down pick, Enter goes to the line,
-    // Ctrl+L marks it done (again: not done), as in the note.
+    // Type to go (plan.md item 19): once `#` is pressed, the letters pick
+    // a project, wherever the keys are under the calendar or in it.
+    if (page.sideTyping && page.sideTypeKey(event)) return true
+    if (Sc.hit(event, "sideReach")) { page.sideReachStart(); return true }
+    // Under the calendar the lists are one walk (plan.md item 19): the
+    // arrows go on from one list into the next, Tab skips a list, and the
+    // keys of the row (Enter, done, a section…) are the list's own.
+    if (page.sideList !== "" && page.listWalk(event)) return true
+    // In the day's deadline list: Enter goes to the line, Ctrl+L marks it
+    // done (again: not done), as in the note.
     // A key with Ctrl or Alt it does not use goes on to the calendar.
     if (page.dueFocus >= 0) {
       if (page.dueKey(event)) return true
@@ -146,6 +152,8 @@ BorderSurface {
       if (page.focusDue.length > 0) page.dueFocus = 0
       else if (page.readToday.rows.length > 0) page.readToday.at = 0
       else page.projFocus = 0
+    } else if (Sc.hit(event, "calProjects")) {
+      page.sidePut("proj", 0)
     } else if (Sc.hit(event, "calBack")) {
       page.toggleSidebar()
     } else if (Sc.hit(event, "calPrevDay")) {
@@ -174,6 +182,7 @@ BorderSurface {
     id: sidebarKeys
     anchors.fill: parent
     Keys.onPressed: function (event) { if (sidebar.keyPressed(event)) event.accepted = true }
+    onActiveFocusChanged: if (!activeFocus) page.sideTyping = false
   }
 
   Column {
@@ -492,6 +501,17 @@ BorderSurface {
         height: projCol.implicitHeight + page.sp(6)
         radius: Style.cornerRadius
         color: page.projFocus === index && sidebarKeys.activeFocus ? Style.selectedFill : projArea.containsMouse && page.handOn ? Style.hoverFill : "transparent"
+        // While `#` and letters are typed, what does not match steps back.
+        opacity: page.sideTyping && page.sideMatchTags.indexOf(modelData.tag) < 0 ? 0.35 : 1
+        // Its key from anywhere, Alt and its place, shown by Hold Ctrl.
+        KeyBadge {
+          host: page
+          fixedKey: projCell.index < 9 ? "Alt+" + (projCell.index + 1) : ""
+          anchors.right: parent.right
+          anchors.rightMargin: page.sp(2)
+          anchors.top: parent.top
+          anchors.topMargin: page.sp(2)
+        }
         Column {
           id: projCol
           anchors.left: parent.left
@@ -610,15 +630,22 @@ BorderSurface {
       visible: sidebarKeys.activeFocus
       textFormat: Text.PlainText
       wrapMode: Text.WordWrap
-      text: page.projFocus >= 0 && page.projFocus === page.projects.length ? page.keyName("listOpen") + " names a new project · " + page.keyName("listNext") + " back"
+      readonly property var match: page.projects[page.projFocus] && page.sideMatchTags.indexOf(page.projects[page.projFocus].tag) >= 0 ? page.projects[page.projFocus] : null
+      text: page.sideTyping
+        ? "#" + page.sideTyped + (match ? " → #" + match.tag : page.sideTyped === "" ? " and its letters" : " — no project has these letters")
+          + " · " + page.keyName("listUp") + page.keyName("listDown") + " the others · " + page.keyName("listOpen") + " opens · Esc stops"
+        : page.projFocus >= 0 && page.projFocus === page.projects.length ? page.keyName("listOpen") + " names a new project · "
+          + page.keyName("listNext") + " the calendar"
         : page.projFocus >= 0 ? page.keyName("listUp") + page.keyName("listDown") + " pick · " + page.keyName("listOpen") + " its notes · "
-          + page.keyName("listClass") + " new section · " + page.keyName("listTag") + " puts the tag · " + page.keyName("listNext") + " back · "
-          + page.keyName("keysHere") + " keys"
-        : page.dueFocus >= 0 ? page.keyName("listUp") + page.keyName("listDown") + " pick · " + page.keyName("listOpen") + " goes to its line · "
-          + page.keyName("listDone") + " done · " + page.keyName("listNext") + " on to the projects · " + page.keyName("keysHere") + " keys"
+          + page.keyName("listClass") + " new section · " + page.keyName("listTag") + " puts the tag · " + page.keyName("sideReach") + " by its letters · "
+          + page.keyName("listNext") + " the calendar · " + page.keyName("keysHere") + " keys"
+        : page.dueFocus >= 0 ? page.keyName("listUp") + page.keyName("listDown") + " pick, on into the lists below · " + page.keyName("listOpen") + " goes to its line · "
+          + page.keyName("listDone") + " done · " + page.keyName("listNext") + " skips the list · " + page.keyName("keysHere") + " keys"
+        : page.readToday.at >= 0 ? page.keyName("listUp") + page.keyName("listDown") + " pick, on into the projects · " + page.keyName("listOpen") + " opens it · "
+          + page.keyName("listNext") + " skips to the projects · " + page.keyName("keysHere") + " keys"
         : "arrows move · " + page.keyName("calPrevMonth") + page.keyName("calNextMonth") + " month · " + page.keyName("calToday") + " today · "
-          + page.keyName("calOpen") + " opens · " + page.keyName("calLists") + ": " + (page.focusDue.length > 0 ? "this day's deadlines" : "the projects")
-          + " · " + page.keyName("keysHere") + " keys"
+          + page.keyName("calOpen") + " opens · " + page.keyName("calLists") + " the lists under it · " + page.keyName("calProjects") + " the projects · "
+          + page.keyName("sideReach") + " a project by its letters · " + page.keyName("keysHere") + " keys"
       color: page.faint
       font.family: page.fontFamily
       font.styleName: page.fontStyle
