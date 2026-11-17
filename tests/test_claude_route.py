@@ -15,6 +15,10 @@ Run: python3 tests/test_claude_route.py
   transcript to check — is dropped, its words unused
 - a run where Claude Code offered tools anyway is dropped, its words unused
 - an error Claude Code reports is the run's error
+- a session another route began (opencode's `ses_…`) is not resumed: the
+  chat starts afresh, its turns so far carried in the payload
+- a run Claude Code refuses before it begins says why, keeps the session the
+  chat had, and leaves an error turn in the chat, not an empty answer
 """
 import json
 import pathlib
@@ -35,6 +39,12 @@ open(os.path.join(d, "claude_argv.json"), "w").write(json.dumps({"argv": sys.arg
                                                                   "env": {k: v for k, v in os.environ.items()
                                                                           if k.startswith("CLAUDE_CODE_")}}))
 # The transcript Claude Code saves, with what it attached to the run.
+# Refused before any conversation, as `--resume <not its own>` is.
+if os.environ.get("STUB_REFUSE"):
+    print(json.dumps({"type": "result", "subtype": "error_during_execution", "is_error": True, "num_turns": 0,
+                      "session_id": "never-saved", "errors": ["Error: --resume requires a valid session ID. "
+                                                              "Provided value is not a UUID"]}))
+    sys.exit(1)
 if not os.environ.get("STUB_NO_TRANSCRIPT"):
     kinds = ["environment", "model", "session_context", "date", "credential_org", "prompt_snapshot"]
     if os.environ.get("STUB_MEMORY"):
@@ -139,6 +149,31 @@ def main() -> int:
         check(flag(argv, "--resume") == "cc-sess", "the same session")
         check(argv[-2] == "--" and "- [ ] why do you think so?" in argv[-1], "the student's words, never a flag")
 
+        print("-- a session another route began is not resumed")
+        rec_hash = at_block["hash"]
+        s = json.loads(state.read_text())
+        s["blocks"][rec_hash]["session"] = "ses_from_opencode"
+        state.write_text(json.dumps(s))
+        r = t.agent("chat", "--hash", rec_hash, "--message", "and tomorrow instead?", "--date", DAY)
+        check(r.returncode == 0, f"chat exits 0 ({r.stderr.strip()[-300:]})")
+        called = json.loads((t.stub_dir / "claude_argv.json").read_text())
+        check("--resume" not in called["argv"], "no --resume with opencode's session")
+        check("# This chat so far" in called["stdin"] and "why do you think so?" in called["stdin"]
+              and "Read the DORO brief again." in called["stdin"],
+              "the whole context again, with what was said so far")
+        check(json.loads(state.read_text())["blocks"][rec_hash]["session"] == "cc-sess", "Claude Code's session kept from now on")
+
+        print("-- refused before it began: said, and the session kept")
+        t.env["STUB_REFUSE"] = "1"
+        r = t.agent("chat", "--hash", rec_hash, "--message", "one more", "--date", DAY)
+        t.env.pop("STUB_REFUSE")
+        s = json.loads(state.read_text())
+        check(r.returncode != 0 and "Claude Code refused the run" in s["runs"][-1]["error"]
+              and "not a UUID" in s["runs"][-1]["error"], "the error is Claude Code's own words")
+        check(s["blocks"][rec_hash]["session"] == "cc-sess", "the chat's session is not replaced by one never saved")
+        last = s["blocks"][rec_hash]["chat"][-1]
+        check(last["role"] == "agent" and "refused" in last.get("error", "") and last["text"] == "",
+              "the chat holds the failure, not an empty answer")
         print("-- an API key is billed, and says so")
         t.env["STUB_KEY"] = "ANTHROPIC_API_KEY"
         t.agent("run", "--trigger", "mention", "--hash", at_block["hash"], "--date", DAY)
