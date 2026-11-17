@@ -756,9 +756,108 @@ def model_of(cfg: dict, name: str, prompts: Path | None = None) -> str:
         return ""
 
 
+CLAUDE_ROUTE = "claude-code/"
+CLAUDE_EFFORTS = ("low", "medium", "high", "xhigh", "max")
+
+
+def instructions_of(name: str, prompts: Path | None = None) -> str:
+    """An agent's instructions without opencode's frontmatter: what the
+    Claude Code route sends as the whole system prompt. The same file, so
+    the prompt version is the same on every route."""
+    text = agent_def(name, prompts).read_text()
+    m = re.match(r"---\n.*?\n---\n", text, re.S)
+    return (text[m.end():] if m else text).strip() + "\n"
+
+
+def run_claude(cfg: dict, paths: Paths, payload: str, session: str, message: str, env: dict | None) -> dict:
+    """One pass through Claude Code (`claude -p`) on the student's own Claude
+    sign-in (docs/agent.md, "Reaching a model"). Longhand never touches the
+    sign-in: Claude Code, unmodified, does — the use Anthropic's terms allow.
+
+    The agent's rule, flag by flag: no tools (`--tools ""`), no MCP servers
+    (`--strict-mcp-config`), no settings files, so no CLAUDE.md, hooks or
+    memory (`--setting-sources ""`), no skills or slash commands, the agent's
+    own instructions in place of Claude Code's (`--system-prompt`), run from
+    the agent's own empty directory. Claude Code reports the tools and
+    servers it offered; a run that offered any is failed and its words
+    dropped. Claude Code still attaches the account's email, which
+    Anthropic holds anyway; nothing else rides along (checked 2026-11-17).
+
+    On a subscription (`apiKeySource` "none") the run costs nothing per
+    token, so the ledger says 0, as for the ChatGPT route; with an API key
+    it says what Claude Code reports."""
+    name = cfg.get("agent", "longhand")
+    # `claude-code/<model>`, with the effort as `#<variant>` as opencode
+    # writes it, or as the config's `variant`.
+    model, _, effort = cfg["model"][len(CLAUDE_ROUTE):].partition("#")
+    effort = effort or cfg.get("variant") or ""
+    cmd = [cfg.get("claude", "claude"), "-p", "--model", model, "--output-format", "stream-json", "--verbose",
+           "--tools", "", "--strict-mcp-config", "--setting-sources", "", "--disable-slash-commands",
+           "--system-prompt", instructions_of(name, cfg.get("_prompts"))]
+    if effort in CLAUDE_EFFORTS:
+        cmd += ["--effort", effort]
+    elif effort:
+        raise Fail(f"Claude Code has no effort {effort!r} (one of {', '.join(CLAUDE_EFFORTS)})")
+    if session:
+        cmd += ["--resume", session]
+    # A student's line can start with "- [ ]": after `--` it is never a flag.
+    cmd += ["--", message]
+    try:
+        proc = subprocess.run(cmd, input=payload, capture_output=True, text=True, timeout=600,
+                              cwd=str(paths.cwd), env=env)
+    except FileNotFoundError:
+        raise Fail(f"Claude Code not found ({cmd[0]})")
+    except subprocess.TimeoutExpired:
+        raise Fail("Claude Code timed out after 600s")
+
+    out = {"text": "", "session": "", "cost": 0.0,
+           "tokens": {"input": 0, "output": 0, "reasoning": 0, "total": 0},
+           "events": proc.stdout, "error": "",
+           "prompt": prompt_version(name, cfg.get("_prompts")), "model": model_of(cfg, name, cfg.get("_prompts"))}
+    init, result = {}, {}
+    for line in proc.stdout.splitlines():
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(ev, dict):
+            continue
+        if ev.get("type") == "system" and ev.get("subtype") == "init":
+            init = ev
+        elif ev.get("type") == "result":
+            result = ev
+        out["session"] = ev.get("session_id") or out["session"]
+    offered = (init.get("tools") or []) + [s.get("name", "?") if isinstance(s, dict) else str(s)
+                                           for s in init.get("mcp_servers") or []]
+    if offered:
+        out["error"] = "Claude Code offered the agent tools, so the run was dropped: " + ", ".join(map(str, offered))
+        return out
+    if result:
+        u = result.get("usage") or {}
+        tk = out["tokens"]
+        tk["input"] = sum(int(u.get(k) or 0) for k in ("input_tokens", "cache_creation_input_tokens",
+                                                       "cache_read_input_tokens"))
+        tk["output"] = int(u.get("output_tokens") or 0)
+        tk["reasoning"] = int((u.get("output_tokens_details") or {}).get("thinking_tokens") or 0)
+        tk["total"] = tk["input"] + tk["output"]
+        if init.get("apiKeySource", "none") != "none":
+            out["cost"] = float(result.get("total_cost_usd") or 0.0)
+        if result.get("is_error"):
+            out["error"] = str(result.get("result") or result.get("subtype") or "Claude Code reported an error")
+        else:
+            out["text"] = str(result.get("result") or "")
+    if proc.returncode != 0 and not out["error"]:
+        out["error"] = (proc.stderr or "").strip()[-2000:] or f"Claude Code exited {proc.returncode}"
+    if not out["error"] and not out["text"]:
+        out["error"] = ((proc.stderr or "") + (proc.stdout or "")).strip()[-2000:] or "Claude Code said nothing"
+    return out
+
+
 def run_model(cfg: dict, paths: Paths, payload: str, session: str = "", message: str = "Context follows on stdin.",
               env: dict | None = None) -> dict:
-    """Run one opencode pass. Returns {text, session, cost, tokens, events, error}.
+    """Run one pass: through Claude Code when the model is named
+    `claude-code/<model>` (`run_claude`), else through opencode.
+    Returns {text, session, cost, tokens, events, error}.
 
     With `session`, continues an existing opencode session (dive-in), so the
     model keeps what it already said about that block.
@@ -769,6 +868,8 @@ def run_model(cfg: dict, paths: Paths, payload: str, session: str = "", message:
     directory is the agent's own empty one, so nothing of a project —
     AGENTS.md, a repo, a stray file — is ever in scope."""
     paths.cwd.mkdir(parents=True, exist_ok=True)
+    if str(cfg.get("model") or "").startswith(CLAUDE_ROUTE):
+        return run_claude(cfg, paths, payload, session, message, env)
     cmd = [cfg.get("opencode", "opencode"), "run", "--standalone", "--format", "json",
            "--agent", cfg.get("agent", "longhand")]
     # Reasoning effort is named per model and now rides on the model itself,
@@ -4973,20 +5074,26 @@ def cmd_install(cfg: dict, args) -> int:
         model, variant = job_model(cfg, job)
         if not evallib.passed(paths0.agent_dir, job, new, model_of(dict(cfg, model=model, variant=variant), name)):
             blocked.append(f"{name}.md (prompt {new})")
-    if blocked and not args.force:
-        raise Fail("not installed: " + ", ".join(blocked) + " changed and has not passed its eval cases on the "
-                   "model it runs on. Run `longhand-agent eval run`, or install anyway with --force.")
+    # Each prompt on its own (2026-11-17): one that has not passed keeps the
+    # version installed, and holds back none of the others — a planner fix
+    # that passed is not kept waiting on a day prompt still being worked on.
+    held = set() if args.force else {b.split(" ")[0] for b in blocked}
     # The agent that answers in the margin, and the one that plans; both
     # with every tool denied.
     for name in ("longhand.md", "longhand-plan.md", "longhand-judge.md", "longhand-day.md"):
+        if name in held:
+            continue
         (agents / name).write_text((here / "opencode" / name).read_text())
+    if held:
+        print("installed the others; kept the installed " + ", ".join(blocked) + ": changed, and has not passed its eval cases "
+              "on the model it runs on. Run `longhand-agent eval run`, or install anyway with --force.", file=sys.stderr)
     dst = agents / "longhand.md"
     paths = Paths(cfg, dt.date.today())
     for d in (paths.agent_dir / "daily", paths.knowledge, paths.payloads, paths.cwd, paths.curriculum):
         if d is not None:
             d.mkdir(parents=True, exist_ok=True)
     print(f"agent definition → {dst}\nagent folder → {paths.agent_dir}\npayload log → {paths.payloads}")
-    return 0
+    return 2 if held else 0
 
 
 def main(argv: list[str]) -> int:

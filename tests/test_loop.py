@@ -146,8 +146,13 @@ def main() -> int:
     (installed / "longhand.md").write_text((installed / "longhand.md").read_text() + "\n<!-- older again -->\n")
     for f in (agent_dir / "evals" / "results").glob("*.json"):
         f.unlink()
+    before = (installed / "longhand.md").read_text()
+    (installed / "longhand-plan.md").write_text("<!-- an older planner -->\n")
     r = agent("install", ok=False)
-    check(r.returncode != 0 and "has not passed its eval cases" in r.stderr, "one that has not passed is refused")
+    check(r.returncode != 0 and "has not passed its eval cases" in r.stderr and (installed / "longhand.md").read_text() == before,
+          "one that has not passed is refused: the installed one is kept")
+    check("an older planner" not in (installed / "longhand-plan.md").read_text(),
+          "…and holds back none of the others")
     r = agent("install", "--force")
     check(r.returncode == 0, "…unless told to (--force)")
 

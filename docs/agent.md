@@ -533,9 +533,30 @@ subscription login.
   subscription (OpenAI's own tool; opencode's ChatGPT login exists on this
   machine but its token expired on 2026-07-17 and needs a re-login); the
   OpenAI and Anthropic APIs, metered, the cleanest (no tools unless given);
-  `claude -p` (Claude Code) on the Claude subscription, only once the
-  student is comfortable with Anthropic's terms for it — Anthropic reportedly
-  stopped subscription logins in third-party tools in 2026.
+  `claude -p` (Claude Code) on the Claude subscription — **built
+  2026-11-17**, below.
+- **The Claude Code route (built 2026-11-17).** A model named
+  `claude-code/<model>` runs `claude -p` instead of opencode
+  (`run_claude`). Anthropic's terms forbid an app its own Claude login or
+  using subscription credentials itself, and allow a person "signing in to
+  the unmodified Claude Code binary with their own Claude subscription"
+  (code.claude.com/docs/en/legal-and-compliance, read 2026-11-17): Longhand
+  only starts Claude Code and never sees the sign-in. The rule, flag by flag:
+  `--tools ""`, `--strict-mcp-config`, `--setting-sources ""` (no CLAUDE.md,
+  hooks or memory: a run without it carried `~/.claude/CLAUDE.md`, 2,580
+  input tokens against 1,020), `--disable-slash-commands`, and the agent's
+  definition without its frontmatter as the whole `--system-prompt`. Not
+  `--bare`: it refuses the subscription sign-in. Claude Code reports what it
+  offered the model; a run offered any tool or server is dropped. One thing
+  still rides along that the payload log does not show: Claude Code attaches
+  the account's email, which Anthropic holds anyway. The variant is the
+  effort; a subscription run is 0 in the ledger. `tests/test_claude_route.py`.
+  First eval, `claude-code/claude-opus-5-5#high` on the prompts as they
+  were tuned for GPT-6.1 Sol: 12/19 (day 7/9, margin 2/4, plan 2/4, talk
+  1/2), every case answered. It lost on length (replies past "one or two
+  sentences", a second question), one invented detail (a website not in the
+  payload), plan steps not given, and a "moves" card the rule forbids. The
+  live config stays on GPT-6.1 Sol; a switch waits for the eval to pass.
 - **Settings chooses the route per job** — for example, replies to blocks
   on the cheap model, planning on a stronger one.
 - **A failing route says so** and does not fall back silently.

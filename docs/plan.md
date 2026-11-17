@@ -1062,8 +1062,9 @@ this list, with *Open, in order* above. Each says why it waits.
   title and date reach the payload with the deadline store.
 - **The agent's third tier** — the internet, tools for the agent — cuts
   against principle 3; a decision, not a build (item 2 above).
-- **A second model route** (`codex exec`, the APIs; `docs/agent.md`,
-  "Reaching a model") — when a second route is wanted.
+- **A third model route** (`codex exec`, the APIs; `docs/agent.md`,
+  "Reaching a model") — when one is wanted. The second, Claude Code on the
+  student's Claude plan (`claude-code/<model>`), was built 2026-11-17.
 - **Autonomy per project** — per kind of action only, for now.
 - **Mermaid diagrams through Pele** (parked 2026-10-27, the student's call):
   no note in the vault has a diagram yet. Pele is written in a newer
@@ -1113,6 +1114,13 @@ from 2026-09/10 and still stand.
   the payload carries `waiting_on_the_student`. Replayed over the real
   ledger's 75 runs: questions 118 → 19, do-dates 120 → 42, steps 32 → 4.
   What would tell: do more questions get answered, and fewer go stale.
+  Then the prompt (b13964a004): told what `waiting_on_the_student` is and
+  never to ask or propose again about those boxes; a case from the real 10
+  Nov plan that re-asked (`plan-2026-11-10-waiting-questions`, rule
+  `no_ask_about`); 5/5 plan and 2/2 talk cases pass on gpt-6.1-sol. Install
+  now gates each prompt on its own, so the day prompt still failing keeps
+  its installed version without holding the planner back. The dashboard's
+  footer is seven keys, the rest in `?`.
 
 - **Export from a deadline** (built 2026-11-04, item 13's third slice):
   - Does it find the right section (`export` `deadline`), or is ← → needed?
