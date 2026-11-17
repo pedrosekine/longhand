@@ -10,6 +10,9 @@ Run: python3 tests/test_claude_route.py
 - the payload travels on stdin; a dive-in resumes the same session, and the
   student's words come after `--`, so "- [ ] …" is never a flag
 - a subscription run costs 0 in the ledger; an API-key run, what it reports
+- no Claude Code memory (both switches set), and a run whose saved transcript
+  shows anything attached beyond the allowed kinds — or that left no
+  transcript to check — is dropped, its words unused
 - a run where Claude Code offered tools anyway is dropped, its words unused
 - an error Claude Code reports is the run's error
 """
@@ -28,7 +31,19 @@ import json, os, sys
 d = os.environ["STUB_DIR"]
 payload = sys.stdin.read()
 open(os.path.join(d, "claude_argv.json"), "w").write(json.dumps({"argv": sys.argv[1:], "cwd": os.getcwd(),
-                                                                  "stdin": payload}))
+                                                                  "stdin": payload,
+                                                                  "env": {k: v for k, v in os.environ.items()
+                                                                          if k.startswith("CLAUDE_CODE_")}}))
+# The transcript Claude Code saves, with what it attached to the run.
+if not os.environ.get("STUB_NO_TRANSCRIPT"):
+    kinds = ["environment", "model", "session_context", "date", "credential_org", "prompt_snapshot"]
+    if os.environ.get("STUB_MEMORY"):
+        kinds.insert(2, "instructions")
+    t = os.path.join(os.environ["CLAUDE_CONFIG_DIR"], "projects", "-agent-cwd")
+    os.makedirs(t, exist_ok=True)
+    with open(os.path.join(t, "cc-sess.jsonl"), "a") as f:
+        for k in kinds:
+            f.write(json.dumps({"type": "attachment", "attachment": {"type": k}}) + "\\n")
 tools = json.loads(os.environ.get("STUB_TOOLS") or "[]")
 key = os.environ.get("STUB_KEY", "none")
 print(json.dumps({"type": "system", "subtype": "init", "session_id": "cc-sess", "tools": tools,
@@ -64,6 +79,8 @@ def main() -> int:
             print("ok  ", msg)
 
     try:
+        # Claude Code's own folder, a throwaway one: never ~/.claude.
+        t.env["CLAUDE_CONFIG_DIR"] = str(t.tmp / "claude-config")
         stub = t.tmp / "bin" / "claude"
         stub.write_text(STUB)
         stub.chmod(0o755)
@@ -98,6 +115,9 @@ def main() -> int:
               "the agent's own instructions, without opencode's frontmatter, as the whole system prompt")
         check("--resume" not in argv, "a first pass starts a new session")
         check(argv[-2] == "--", "the message after --")
+        check(called["env"].get("CLAUDE_CODE_DISABLE_AUTO_MEMORY") == "1"
+              and called["env"].get("CLAUDE_CODE_DISABLE_ORG_MEMORY") == "1",
+              "no Claude Code memory, the home folder's or the organisation's")
         check(pathlib.Path(called["cwd"]).resolve() == (t.state_home / "longhand" / "agent-cwd").resolve(),
               "run from the agent's own empty directory")
         check("Read the DORO brief again." in called["stdin"] and "SECRET-PRIVATE-LINE" not in called["stdin"],
@@ -136,6 +156,27 @@ def main() -> int:
               "the run fails and says which tools")
         check("WORDS-FROM-A-RUN-WITH-TOOLS" not in (t.vault / "agents" / "longhand" / "daily" / f"{DAY}.md").read_text(),
               "its words never reach the transcript")
+
+        print("-- memory attached anyway: the run is dropped")
+        t.set_reply(reply="WORDS-FROM-A-RUN-WITH-MEMORY")
+        t.env["STUB_MEMORY"] = "1"
+        r = t.agent("run", "--trigger", "mention", "--hash", at_block["hash"], "--date", DAY)
+        t.env.pop("STUB_MEMORY")
+        run = json.loads(state.read_text())["runs"][-1]
+        check(r.returncode != 0 and "attached more than the payload" in run["error"] and "instructions" in run["error"],
+              "the run fails and names what was attached")
+        check("WORDS-FROM-A-RUN-WITH-MEMORY" not in (t.vault / "agents" / "longhand" / "daily" / f"{DAY}.md").read_text(),
+              "its words never reach the transcript")
+        # the transcript keeps every run of the session: start the next ones clean
+        for f in (t.tmp / "claude-config" / "projects").glob("*/cc-sess.jsonl"):
+            f.unlink()
+
+        print("-- no transcript to check: the run is dropped")
+        t.env["STUB_NO_TRANSCRIPT"] = "1"
+        r = t.agent("run", "--trigger", "mention", "--hash", at_block["hash"], "--date", DAY)
+        t.env.pop("STUB_NO_TRANSCRIPT")
+        run = json.loads(state.read_text())["runs"][-1]
+        check(r.returncode != 0 and "no transcript" in run["error"], "unchecked is not trusted")
 
         print("-- an error Claude Code reports")
         t.env["STUB_ERROR"] = "1"
