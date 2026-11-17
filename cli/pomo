@@ -720,6 +720,39 @@ cmd_deadline_add() { # <title> [--project <s>] [--link <l>] [--id <n>] <when...>
   report "deadline #$id · $(when_text "$ts") · $title${project:+ · $project}"
 }
 
+cmd_deadline_put() { # <id> --due <epoch> --title <t> --status <s> [--done-at <n>] [--grade <g>] [--project <p>] [--link <l>] [--from <host>]
+  # The whole record, exactly as another machine has it (longhand-check's
+  # sync through the vault, 2026-11-17): made or replaced as given, nothing
+  # worked out — the state commands would stamp their own time on done_at.
+  local id="${1:-}" due="" title="" status="" done_at=0 grade="" project="" link="" from="" was
+  shift 2>/dev/null || true
+  while [ $# -gt 0 ]; do
+    [ $# -ge 2 ] || { echo "usage: pomo deadline put <id> --due <epoch> --title <t> --status <s> [...]" >&2; exit 1; }
+    case "$1" in
+      --due) due="$2" ;; --title) title="$2" ;; --status) status="$2" ;; --done-at) done_at="$2" ;;
+      --grade) grade="$2" ;; --project) project="$2" ;; --link) link="$2" ;; --from) from="$2" ;;
+      *) echo "pomo: put does not know $1" >&2; exit 1 ;;
+    esac
+    shift 2
+  done
+  case "$id" in ''|*[!0-9]*|0) echo "usage: pomo deadline put <id> ..." >&2; exit 1 ;; esac
+  case "$due" in ''|*[!0-9]*) echo "pomo: put needs --due <epoch>" >&2; exit 1 ;; esac
+  case "$done_at" in ''|*[!0-9]*) done_at=0 ;; esac
+  case "$status" in open|done|hidden|cancelled) ;; *) echo "pomo: put needs --status open|done|hidden|cancelled" >&2; exit 1 ;; esac
+  title=$(clean_field "$title"); grade=$(clean_field "$grade"); project=$(clean_field "$project"); link=$(clean_field "$link")
+  was=$(find_deadline "$id")
+  if [ -n "$was" ]; then
+    write_deadline "$id" "$due" "$title" "$status" "$done_at" "$grade" "$project" "$link"
+  else
+    mkdir -p "$STATE_DIR"
+    printf '%d\t%d\t%s\t%s\t%d\t%s\t%s\t%s\n' "$id" "$due" "$title" "$status" "$done_at" "$grade" "$project" "$link" >> "$DEADLINE_FILE"
+    cmd_deadline_reserve "$id"
+  fi
+  local how="added"
+  [ -n "$was" ] && how="updated"
+  report "deadline #$id $how · $title${from:+ (as on $from)}"
+}
+
 cmd_deadline_reserve() { # <id>: the high-water mark at least this — an id
   # another machine handed out (its `^dN` came with the synced notes) is never
   # handed out here as well.
@@ -987,7 +1020,7 @@ cmd_deadline() {
   local sub="${1:-list}"
   shift 2>/dev/null || true
   case "$sub" in
-    add|set|edit|done|submit|undone|reopen|grade|hide|unhide|show|cancel|rm|remove|reserve)
+    add|set|edit|done|submit|undone|reopen|grade|hide|unhide|show|cancel|rm|remove|reserve|put)
       # One writer at a time: the page, the popup and the agent can all call
       # in at once, and every change rewrites (or appends to) the file and
       # bumps the id counter. The lock lives beside the file.
@@ -1010,6 +1043,7 @@ cmd_deadline() {
     unhide|show)  cmd_deadline_unhide "${1:-}" ;;
     rm|remove)    cmd_deadline_rm "${1:-}" ;;
     reserve)      cmd_deadline_reserve "${1:-}" ;;
+    put)          cmd_deadline_put "$@" ;;
     next)         cmd_deadline_next "${1:-}" ;;
     when)         cmd_deadline_when "$@" ;;
     --json|--all|--project|--subject) cmd_deadline_list "$sub" "$@" ;;
@@ -1041,6 +1075,8 @@ usage: pomo deadline add <title> [--project <s>] [--link <url-or-path>] <when...
        pomo deadline cancel <id>                # its line is gone: history, off every list
        pomo deadline rm <id>                    # delete outright
        pomo deadline reserve <id>               # never hand out ids up to this one (another machine has them)
+       pomo deadline put <id> --due <epoch> --title <t> --status <s> [--done-at <n>] [--grade <g>] [--project <p>] [--link <l>]
+                                                # the whole record as given (the sync between machines)
        pomo deadline next [--json]              # the one the bar counts down to
        pomo deadline when <when...>             # how a date phrase reads: epoch<TAB>text
 USAGE
