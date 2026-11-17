@@ -796,6 +796,28 @@ def claude_attachments(session: str, env: dict | None) -> list[str] | None:
     return kinds
 
 
+def session_fits(cfg: dict, session: str, env: dict | None = None) -> str:
+    """A stored session, when the route the config names now can go on
+    with it; else "", and the conversation starts afresh, its context sent
+    whole. Each route knows only its own: opencode's are `ses_…`; Claude
+    Code's are the ones it saved a transcript of. Found 2026-11-17: a box's
+    chat begun on GPT-6.1 Sol, then a message after the switch to Opus 5.5,
+    and Claude Code refused `--resume ses_…` before it ran."""
+    if not session:
+        return ""
+    if str(cfg.get("model") or "").startswith(CLAUDE_ROUTE):
+        return session if claude_attachments(session, env) is not None else ""
+    return session if session.startswith("ses_") else ""
+
+
+def earlier_turns(turns: list[dict], agent: str = "you") -> list[str]:
+    """A conversation's turns so far, for a fresh session that never saw
+    them (`session_fits` found the old one unusable): the last few, as
+    lines."""
+    said = [t for t in turns if str(t.get("text") or "").strip()][-planlib.TALK_TURNS:]
+    return [f"{agent if t.get('role') == 'agent' else 'student'}: {t['text']}" for t in said]
+
+
 def run_claude(cfg: dict, paths: Paths, payload: str, session: str, message: str, env: dict | None) -> dict:
     """One pass through Claude Code (`claude -p`) on the student's own Claude
     sign-in (docs/agent.md, "Reaching a model"). Longhand never touches the
@@ -858,6 +880,14 @@ def run_claude(cfg: dict, paths: Paths, payload: str, session: str, message: str
         elif ev.get("type") == "result":
             result = ev
         out["session"] = ev.get("session_id") or out["session"]
+    # Refused before a conversation began (no `init`): a session it would
+    # not resume, a model it does not know. Its own words are the error,
+    # and the session it names was never saved, so none is kept.
+    if result.get("is_error") and not init:
+        said = "; ".join(map(str, result.get("errors") or [])) or str(result.get("result") or result.get("subtype") or "")
+        out["error"] = "Claude Code refused the run: " + (said or "it gave no reason")
+        out["session"] = ""
+        return out
     offered = (init.get("tools") or []) + [s.get("name", "?") if isinstance(s, dict) else str(s)
                                            for s in init.get("mcp_servers") or []]
     if offered:
@@ -882,7 +912,8 @@ def run_claude(cfg: dict, paths: Paths, payload: str, session: str, message: str
         if init.get("apiKeySource", "none") != "none":
             out["cost"] = float(result.get("total_cost_usd") or 0.0)
         if result.get("is_error"):
-            out["error"] = str(result.get("result") or result.get("subtype") or "Claude Code reported an error")
+            out["error"] = str(result.get("result") or "; ".join(map(str, result.get("errors") or []))
+                               or result.get("subtype") or "Claude Code reported an error")
         else:
             out["text"] = str(result.get("result") or "")
     if proc.returncode != 0 and not out["error"]:
@@ -1110,6 +1141,12 @@ def apply(cfg: dict, paths: Paths, trigger: str, fired: list[dict], visible: lis
                 rec["key"] = keys[h]
             turns = rec.setdefault("chat", [])
             turns.append({"role": "student", "text": message, "at": at})
+            # A failed run says so in the chat, as the day's does: it used to
+            # leave an empty answer, the message seemingly unheard.
+            if result["error"]:
+                turns.append({"role": "agent", "text": "", "error": result["error"], "at": at,
+                              "model": result.get("model", "")})
+                continue
             # Which of the block's proposals this answer made: the margin
             # draws them under it, in the conversation, not at its top.
             props = rec.setdefault("proposals", [])
@@ -1119,7 +1156,7 @@ def apply(cfg: dict, paths: Paths, trigger: str, fired: list[dict], visible: lis
                           "documents": result.get("reads", []), "proposals": made})
             if refused:
                 turns[-1]["unoffered"] = refused
-            rec["session"] = result["session"] or rec.get("session", "")
+            rec["session"] = result["session"] if result["session"] and not result["error"] else rec.get("session", "")
             rec["read"] = False
             if rec.get("state") != "reply":
                 rec["state"] = "reply"
@@ -1131,7 +1168,8 @@ def apply(cfg: dict, paths: Paths, trigger: str, fired: list[dict], visible: lis
             rec = state["blocks"].setdefault(h, {})
             rec.update({"state": "reply" if reply["reply"] else "seen", "trigger": trigger,
                         "reply": reply["reply"], "proposals": reply["proposals"], "read": False,
-                        "session": result["session"], "at": at, "cost": result["cost"], "head": head,
+                        "session": result["session"] if not result["error"] else rec.get("session", ""),
+                        "at": at, "cost": result["cost"], "head": head,
                         "prompt": result.get("prompt", ""), "model": result.get("model", ""),
                         "payload": str(payload_file), "documents": result.get("reads", []),
                         "key": keys.get(h) or block_key(next(b["text"] for b in fired if b["hash"] == h))})
@@ -1325,7 +1363,7 @@ def cmd_chat(cfg: dict, args) -> int:
     paths = Paths(cfg, date)
     state = load_state(paths)
     rec = state["blocks"].get(args.hash) or {}
-    session = rec.get("session", "")
+    session = session_fits(cfg, rec.get("session", ""))
     try:
         text = paths.note.read_text()
     except FileNotFoundError:
@@ -1401,6 +1439,11 @@ def cmd_chat(cfg: dict, args) -> int:
             payload += f"\n# This box with the planner\n\n{planner_part}"
         if proposable:
             payload += "\n".join(margin_proposable_parts(proposable)) + "\n"
+        so_far = earlier_turns(([{"role": "agent", "text": rec["reply"]}] if rec.get("reply") else [])
+                               + (rec.get("chat") or []))
+        if so_far:
+            payload += ("\n# This chat so far\n\nBegun in a session you no longer have (another model, or a run that"
+                        " failed); what was said:\n\n" + "\n".join(so_far) + "\n")
         payload += f"\n# The student says\n\n{message}\n"
         payload_file.write_text(payload)
         result = run_model(cfg, paths, payload)
@@ -3317,7 +3360,8 @@ def margin_turns(rec: dict | None) -> list[dict]:
     out = [{"role": "agent", "text": rec["reply"], "at": rec.get("at", ""), "who": "margin",
             "cards": cards([i for i in range(len(props)) if i not in claimed])}] if rec.get("reply") else []
     out += [dict({"role": t["role"], "text": t["text"], "at": t.get("at", ""), "who": "margin"},
-                 **({"cards": cards(t.get("proposals") or []), "unoffered": t.get("unoffered") or []}
+                 **({"cards": cards(t.get("proposals") or []), "unoffered": t.get("unoffered") or [],
+                     "error": t.get("error", "")}
                     if t["role"] == "agent" else {}))
             for t in chat]
     return out
@@ -3412,7 +3456,7 @@ def cmd_thread(cfg: dict, args) -> int:
         margin, chat = margin_turns(rec), {"date": task["date"], "hash": h}
     turns = merged_turns(margin, planlib.thread(ledger, key)["turns"])
     print(json.dumps({"thread": key, "title": title, "chat": chat,
-                      "turns": [dict({k: t.get(k, "") for k in ("role", "text", "at", "who", "about", "revised", "settled")},
+                      "turns": [dict({k: t.get(k, "") for k in ("role", "text", "at", "who", "about", "revised", "settled", "error")},
                                      cards=t.get("cards") or []) for t in turns]}, ensure_ascii=False))
     return 0
 
@@ -3958,7 +4002,8 @@ def cmd_day(cfg: dict, args) -> int:
     payload_file = paths.payloads / f"{stamp}-day.md"
     day_cfg = dict(cfg, agent=cfg.get("dayAgent", "longhand-day"))
     proposable, digest = day_proposable(cfg, today)
-    if day.get("session"):
+    day["session"] = session_fits(day_cfg, day.get("session", ""))
+    if day["session"]:
         last = next((t["at"] for t in reversed(day["turns"]) if t["role"] == "agent"), "")
         payload = day_followup(cfg, paths, visible, last, message, args.block,
                                proposable if digest != day.get("proposable") else None)
@@ -3966,6 +4011,11 @@ def cmd_day(cfg: dict, args) -> int:
         result = run_model(day_cfg, paths, "", session=day["session"], message=payload)
     else:
         payload = day_payload(cfg, paths, visible, private, message, args.block, proposable)
+        so_far = earlier_turns(day.get("turns") or [])
+        if so_far:
+            payload = payload.replace("\n# The student says\n", "\n# Today's chat so far\n\nBegun in a session you no"
+                                      " longer have (another model, or a run that failed); what was said:\n\n"
+                                      + "\n".join(so_far) + "\n\n# The student says\n", 1)
         payload_file.write_text(payload)
         result = run_model(day_cfg, paths, payload, message="Context follows on stdin.")
     payload_file.with_suffix(".events.jsonl").write_text(result["events"])
@@ -3982,7 +4032,7 @@ def cmd_day(cfg: dict, args) -> int:
 
     state = load_state(paths)                            # the page or a margin run may have written meanwhile
     day = day_of(state)
-    day["session"] = result["session"] or day.get("session", "")
+    day["session"] = result["session"] if result["session"] and not result["error"] else day.get("session", "")
     if not result["error"]:
         day["proposable"] = digest
     turn = {"role": "student", "text": message, "at": at}
@@ -4254,7 +4304,7 @@ def cmd_note(cfg: dict, args) -> int:
         talk = json.loads(where.read_text())
     except (OSError, ValueError):
         talk = {}
-    talk = {"path": rel, "session": talk.get("session", ""), "turns": talk.get("turns") or [], "seen": talk.get("seen", "")}
+    talk = {"path": rel, "session": session_fits(cfg, talk.get("session", "")), "turns": talk.get("turns") or [], "seen": talk.get("seen", "")}
     at = dt.datetime.now().isoformat(timespec="seconds")
     paths.payloads.mkdir(parents=True, exist_ok=True)
     payload_file = paths.payloads / f"{dt.datetime.now():%Y%m%d-%H%M%S-%f}-note.md"
@@ -4267,6 +4317,11 @@ def cmd_note(cfg: dict, args) -> int:
     else:
         payload = paper_payload(cfg, paths, rel, st, message, marks, True) if paper else \
             note_payload(cfg, paths, rel, shown, message, args.block, True)
+        so_far = earlier_turns(talk["turns"])
+        if so_far:
+            payload = payload.replace("\n# The student says\n", "\n# This chat so far\n\nBegun in a session you no"
+                                      " longer have (another model, or a run that failed); what was said:\n\n"
+                                      + "\n".join(so_far) + "\n\n# The student says\n", 1)
         payload_file.write_text(payload)
         result = run_model(day_cfg, paths, payload, message="Context follows on stdin.")
     payload_file.with_suffix(".events.jsonl").write_text(result["events"])
@@ -4281,7 +4336,7 @@ def cmd_note(cfg: dict, args) -> int:
         talk["turns"] = (json.loads(where.read_text()).get("turns") or talk["turns"])
     except (OSError, ValueError):
         pass
-    talk["session"] = result["session"] or talk["session"]
+    talk["session"] = result["session"] if result["session"] and not result["error"] else talk["session"]
     if not result["error"]:
         talk["seen"] = seen
     turn = {"role": "student", "text": message, "at": at}

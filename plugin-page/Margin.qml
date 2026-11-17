@@ -177,7 +177,8 @@ BorderSurface {
           ChatTurn {
             page: margin.page
             mine: modelData.role !== "agent"
-            text: modelData.text
+            text: modelData.error ? "could not answer: " + page.sayPlanError(modelData.error) : modelData.text
+            color: modelData.error ? page.urgent : page.foreground
           }
           Text {
             visible: text !== ""
@@ -308,7 +309,8 @@ BorderSurface {
             visible: !row.isCard
             page: margin.page
             mine: row.turn.role !== "agent"
-            text: row.turn.text || ""
+            text: row.turn.error ? "could not answer: " + page.sayPlanError(row.turn.error) : row.turn.text || ""
+            color: row.turn.error ? page.urgent : page.foreground
           }
           Text {
             visible: !row.isCard && row.turn.who === "planner" && row.turn.role === "agent"
