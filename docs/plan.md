@@ -974,6 +974,18 @@ Small, when passing by:
       `Ctrl+Enter`, item 15's (d)), so the click finds the right turn; a
       question asked again keeps its answers in order, the newest shown.
       The answer is still never written into the person's reading note.
+21. **Recheck GPT-6.2 Sol, around 2026-11-20** (2026-11-17, the student:
+    "I'll recheck in a few days"). OpenAI released `gpt-6.2-sol` on
+    2026-11-17, but a ChatGPT login can't reach it yet. Through opencode,
+    and through the Codex CLI itself (0.169.0, which has no details for the
+    model yet), the answer is "not supported when using Codex with a
+    ChatGPT account". The runs stay on `gpt-6.1-sol`. Also, opencode 2.3's
+    built-in model list stops at 6.1. **The check:** `codex exec -m
+    gpt-6.2-sol "Reply with just: ok"` answers. **Then:** add the model
+    under `provider.openai.models` in opencode's own config, switch
+    `model` and `planModel` in Longhand's config, and run `longhand-agent
+    eval run --model openai/gpt-6.2-sol` before trusting it. An API key
+    would reach it today but is billed per token, so it isn't the plan.
 
 - ~~**Tag suggestions while typing**~~ *done 2026-10-18*: `#` and a letter
   offer the tags that exist — the projects', then those written in the
