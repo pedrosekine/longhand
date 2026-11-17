@@ -551,6 +551,12 @@ subscription login.
   still rides along that the payload log does not show: Claude Code attaches
   the account's email, which Anthropic holds anyway. The variant is the
   effort; a subscription run is 0 in the ledger. `tests/test_claude_route.py`.
+  First eval, `claude-code/claude-opus-5-5#high` on the prompts as they
+  were tuned for GPT-6.1 Sol: 12/19 (day 7/9, margin 2/4, plan 2/4, talk
+  1/2), every case answered. It lost on length (replies past "one or two
+  sentences", a second question), one invented detail (a website not in the
+  payload), plan steps not given, and a "moves" card the rule forbids. The
+  live config stays on GPT-6.1 Sol; a switch waits for the eval to pass.
 - **Settings chooses the route per job** — for example, replies to blocks
   on the cheap model, planning on a stronger one.
 - **A failing route says so** and does not fall back silently.
