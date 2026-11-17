@@ -547,16 +547,42 @@ subscription login.
   input tokens against 1,020), `--disable-slash-commands`, and the agent's
   definition without its frontmatter as the whole `--system-prompt`. Not
   `--bare`: it refuses the subscription sign-in. Claude Code reports what it
-  offered the model; a run offered any tool or server is dropped. One thing
+  offered the model; a run offered any tool or server is dropped, and so is
+  one whose transcript shows Claude Code attached memory (below). One thing
   still rides along that the payload log does not show: Claude Code attaches
   the account's email, which Anthropic holds anyway. The variant is the
   effort; a subscription run is 0 in the ledger. `tests/test_claude_route.py`.
-  First eval, `claude-code/claude-opus-5-5#high` on the prompts as they
-  were tuned for GPT-6.1 Sol: 12/19 (day 7/9, margin 2/4, plan 2/4, talk
-  1/2), every case answered. It lost on length (replies past "one or two
-  sentences", a second question), one invented detail (a website not in the
-  payload), plan steps not given, and a "moves" card the rule forbids. The
-  live config stays on GPT-6.1 Sol; a switch waits for the eval to pass.
+  **The memory leak (found 2026-11-17, the same day).** The first eval,
+  `claude-code/claude-opus-5-5#high`, scored 12/19, and one "invented"
+  detail, the student's own Astro site, was true: no payload had it. Every
+  run from `~/.local/state/longhand/agent-cwd` had carried Claude Code's
+  auto memory of the home-folder project (`~/.claude/projects/-home-pms/
+  memory/MEMORY.md`: the website, the home network, the student's profile),
+  `--setting-sources ""` notwithstanding; a probe from `/tmp` had not shown
+  it. Claude Code treats that folder as inside a repository and takes the
+  home folder's memory. Fixed two ways: `CLAUDE_CODE_DISABLE_AUTO_MEMORY`
+  and `…_ORG_MEMORY` on every run, and the flags no longer trusted alone —
+  after each run the transcript Claude Code saved is read, and a run with an
+  attachment outside `CLAUDE_ATTACHMENTS_OK` (environment, model, date, the
+  account's email and organisation, the prompt snapshot), or with no
+  transcript to read, is dropped. No real run had used the route yet; the
+  memory reached Anthropic only, in the eval's and the tests' runs. That
+  12/19 is void.
+- **Opus 5.5, medium, in use since 2026-11-17** (the student: "implement
+  opus 5.5 medium and let's give it a try"): `model` and `planModel` are
+  `claude-code/claude-opus-5-5`, `variant` and `planVariant` `medium`;
+  `evalJudgeModel` stays `openai/gpt-6.1-sol`, so the judge is the one the
+  cases were graded by. Three cases were revised the same day, each saying
+  why in its note: two graded a reply's length with its cards' words
+  counted and stricter than the day prompt's "two to five sentences", one
+  counted "I noted it in your file" (the agent's own knowledge file, which a
+  talk may write) as claiming a change.
+  On the revised 20 cases the same evening: GPT-6.1 Sol (high) 20/20, Opus
+  5.5 (medium) 16/20 — day 9/9, plan 4/5, talk 1/2, margin 2/4. Its misses
+  are real and small: a done-date one day off, a two-part question, a plan
+  reason that assumed what a session covers, and "nothing to change" where
+  the student asked how to move a date. The prompts were tuned on GPT; Opus
+  stays in use as a trial, judged by the helpful / not helpful ratings.
 - **Settings chooses the route per job** — for example, replies to blocks
   on the cheap model, planning on a stronger one.
 - **A failing route says so** and does not fall back silently.

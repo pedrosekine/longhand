@@ -460,8 +460,10 @@ A model named `claude-code/<model>` (for `model` or `planModel` in the
 config, e.g. `"claude-code/claude-opus-5-5"`) runs through Claude Code
 instead (`claude -p`), on your own Claude sign-in: Longhand never touches
 it. The pass gets no tools, no MCP servers, no settings files (so no
-CLAUDE.md, hooks or memory), no skills, and the agent's own instructions as
-its whole system prompt; a pass that was offered tools anyway is dropped.
+CLAUDE.md or hooks), no Claude Code memory, no skills, and the agent's own
+instructions as its whole system prompt. Flags are not trusted alone: a pass
+that was offered tools, or whose saved transcript shows Claude Code attached
+anything else (memory, files), is dropped.
 `variant` becomes the effort (`low` … `max`). On a subscription the ledger
 says 0 per pass, since it is not billed per token; it counts against the
 plan's usage limits. `"claude"` in the config names the binary if it is not

@@ -769,6 +769,33 @@ def instructions_of(name: str, prompts: Path | None = None) -> str:
     return (text[m.end():] if m else text).strip() + "\n"
 
 
+# What Claude Code may attach to a run besides the payload: where and when
+# it runs, the model's name, the account's email and organisation, the
+# system prompt as sent. Anything else (memory, instructions, files) fails
+# the run: on 2026-11-17 every eval run carried the home folder's Claude
+# Code memory, `--setting-sources ""` notwithstanding.
+CLAUDE_ATTACHMENTS_OK = {"environment", "model", "date", "session_context", "credential_org", "prompt_snapshot"}
+
+
+def claude_attachments(session: str, env: dict | None) -> list[str] | None:
+    """What Claude Code attached to `session`, read from the transcript it
+    saved (`$CLAUDE_CONFIG_DIR` or ~/.claude, projects/*/<session>.jsonl);
+    None when there is no transcript to read."""
+    home = Path((env or os.environ).get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude")
+    found = sorted((home / "projects").glob(f"*/{session}.jsonl")) if session and re.fullmatch(r"[\w-]+", session) else []
+    if not found:
+        return None
+    kinds = []
+    for line in found[0].read_text(errors="replace").splitlines():
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(ev, dict) and ev.get("type") == "attachment":
+            kinds.append(str((ev.get("attachment") or {}).get("type")))
+    return kinds
+
+
 def run_claude(cfg: dict, paths: Paths, payload: str, session: str, message: str, env: dict | None) -> dict:
     """One pass through Claude Code (`claude -p`) on the student's own Claude
     sign-in (docs/agent.md, "Reaching a model"). Longhand never touches the
@@ -777,11 +804,14 @@ def run_claude(cfg: dict, paths: Paths, payload: str, session: str, message: str
     The agent's rule, flag by flag: no tools (`--tools ""`), no MCP servers
     (`--strict-mcp-config`), no settings files, so no CLAUDE.md, hooks or
     memory (`--setting-sources ""`), no skills or slash commands, the agent's
-    own instructions in place of Claude Code's (`--system-prompt`), run from
-    the agent's own empty directory. Claude Code reports the tools and
-    servers it offered; a run that offered any is failed and its words
-    dropped. Claude Code still attaches the account's email, which
-    Anthropic holds anyway; nothing else rides along (checked 2026-11-17).
+    own instructions in place of Claude Code's (`--system-prompt`), no
+    Claude Code memory, the home folder's or the organisation's
+    (`CLAUDE_CODE_DISABLE_AUTO_MEMORY`, `…_ORG_MEMORY`), run from the agent's
+    own empty directory. Flags are not trusted alone: Claude Code reports
+    the tools and servers it offered, and its transcript says what it
+    attached; a run that offered a tool or attached anything outside
+    `CLAUDE_ATTACHMENTS_OK` is failed and its words dropped. What still
+    rides along: the account's email, which Anthropic holds anyway.
 
     On a subscription (`apiKeySource` "none") the run costs nothing per
     token, so the ledger says 0, as for the ChatGPT route; with an API key
@@ -803,8 +833,9 @@ def run_claude(cfg: dict, paths: Paths, payload: str, session: str, message: str
     # A student's line can start with "- [ ]": after `--` it is never a flag.
     cmd += ["--", message]
     try:
-        proc = subprocess.run(cmd, input=payload, capture_output=True, text=True, timeout=600,
-                              cwd=str(paths.cwd), env=env)
+        proc = subprocess.run(cmd, input=payload, capture_output=True, text=True, timeout=600, cwd=str(paths.cwd),
+                              env=dict(env or os.environ, CLAUDE_CODE_DISABLE_AUTO_MEMORY="1",
+                                       CLAUDE_CODE_DISABLE_ORG_MEMORY="1"))
     except FileNotFoundError:
         raise Fail(f"Claude Code not found ({cmd[0]})")
     except subprocess.TimeoutExpired:
@@ -831,6 +862,14 @@ def run_claude(cfg: dict, paths: Paths, payload: str, session: str, message: str
                                            for s in init.get("mcp_servers") or []]
     if offered:
         out["error"] = "Claude Code offered the agent tools, so the run was dropped: " + ", ".join(map(str, offered))
+        return out
+    attached = claude_attachments(out["session"], env)
+    if out["session"] and attached is None:
+        out["error"] = "Claude Code saved no transcript to check what it sent, so the run was dropped"
+        return out
+    extra = sorted(set(attached or []) - CLAUDE_ATTACHMENTS_OK)
+    if extra:
+        out["error"] = "Claude Code attached more than the payload, so the run was dropped: " + ", ".join(extra)
         return out
     if result:
         u = result.get("usage") or {}
