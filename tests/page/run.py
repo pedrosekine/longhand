@@ -3161,6 +3161,10 @@ def checks() -> int:
         check(mk()["picked"] == m1["id"], "…which stays picked")
         p.call("pdfKey", KEY_ESC, 0)
         check(p.wait(lambda: mk()["picked"] == "") and pd()["shown"], "Esc lets go of the mark clicked, and the PDF stays")
+        p.call("pdfClick", "0", str(r[0] + r[2] / 2), str(r[1] + r[3] / 2))
+        p.wait(lambda: mk()["picked"] == m1["id"])
+        p.call("pdfClick", "0", str(r[0] + r[2] / 2), str(r[1] + r[3] + 120))
+        check(p.wait(lambda: mk()["picked"] == "") and pd()["shown"], f"…as does a click on the page away from it ({mk()['picked']!r})")
         p.call("pdfPick", m1["id"])
         p.call("pdfKey", 0x58, 0)                           # x
         check(p.wait(lambda: mk()["read"]["marks"] == [] and mk()["drawn"] == 0 and m1["id"] not in reading.read_text()

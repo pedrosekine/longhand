@@ -25,7 +25,8 @@ import "Answers.js" as Answers
 //
 // Marks (plan.md, item 15, 2026-11-15): words selected with the mouse, then
 // `m` keeps them as a highlight and `q` as a question; a mark clicked is
-// picked, and then `m`/`q` switch its kind and `x`/Del/Backspace remove it;
+// picked, and then `m`/`q` switch its kind and `x`/Del/Backspace remove it
+// (Esc, or a click on the page away from the marks, lets go of it);
 // `n` writes a note under the mark picked, else the last one made. Every
 // mark is kept in the paper's reading note in the vault by
 // `longhand-read`, which also finds its words on the page again and hands
@@ -774,6 +775,14 @@ Item {
     if (a !== "") { pane.acroGo(a); return }
     if (p !== undefined) { pane.picked = p; keys.forceActiveFocus() }
   }
+  // A click on the page away from every mark lets go of the mark picked,
+  // as Esc does (2026-11-17: picked, it stayed until another was clicked).
+  // The marks under a click hear it themselves (tapAt).
+  function tapAway(index, x, y, s) {
+    if (pane.picked === "" || pane.noting) return
+    if (Marks.under(pane.read.marks || [], index, x, y, 1.5 / Math.max(0.01, s)).length > 0) return
+    pane.picked = ""
+  }
   function remove() {
     if (pane.picked === "") return false
     pane.readRun(["remove", "--id", pane.picked])
@@ -834,6 +843,10 @@ Item {
       readonly property int index: holder ? holder.index : -1
       readonly property real s: paper && paper.pageScale ? paper.pageScale : 1
       readonly property int count: drawn.count
+      TapHandler {
+        acceptedDevices: PointerDevice.AllDevices
+        onTapped: function (point) { pane.tapAway(sheet.index, point.position.x / sheet.s, point.position.y / sheet.s, sheet.s) }
+      }
       // The marks solid, and see-through as one: where two cover the same
       // words the colour is the same, never darker (2026-11-15), and where
       // a question crosses a highlight the later one shows.
@@ -1322,7 +1335,7 @@ Item {
         + (pane.read.unplaced > 0 ? ", " + pane.read.unplaced + " not found on its page" : "")
         + "   " + (pane.jumpBack ? page.keyName("linkBack") + " back to where you were · " : "")
         + (pane.selected() ? page.keyName("pdfMark") + " highlight · " + page.keyName("pdfQuestion") + " question"
-                   : pane.picked !== "" ? page.keyName("pdfMark") + "/" + page.keyName("pdfQuestion") + " its kind · " + page.keyName("pdfNote") + " a note · " + page.keyName("pdfRemove") + " remove"
+                   : pane.picked !== "" ? page.keyName("pdfMark") + "/" + page.keyName("pdfQuestion") + " its kind · " + page.keyName("pdfNote") + " a note · " + page.keyName("pdfRemove") + " remove · " + page.keyName("pdfClose") + " or a click away lets go"
                    : (pane.markable ? "select words to mark them · " : "")
                      + (pane.acro.list.length > 0 ? page.keyName("pdfAcronyms") + " acronyms · " : "")
                      + page.keyName("pdfOpen") + " opens it elsewhere")
