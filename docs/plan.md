@@ -1092,6 +1092,24 @@ this list, with *Open, in order* above. Each says why it waits.
 No work unless they bite; each says what would tell. The first four came
 from 2026-09/10 and still stand.
 
+- **A PDF's marks on the wrong page** (fixed 2026-11-17, `80bf949`, item
+  15): a screenshot showed page 5's two questions over page 2's words and
+  page 2's own marks missing. Never reproduced: the same path (opened on
+  page 5, touchpad up to page 2) drew right, plain Qt and the real page,
+  on a GPU. Taken to be the per-page layer (an offscreen texture) keeping
+  the page before's marks when Qt handed its holder the next page; the
+  layer is gone (`PdfMarks.paint`). *What would tell:* a mark seen on the
+  wrong page again means the layer was not it — then look at whether the
+  holder's `index`, its picture's `currentFrame` and the marks layer's
+  `index` agree (a harness call listing the three per holder was used to
+  look, 2026-11-17, and dropped).
+- **Ctrl+F in a PDF** (built 2026-11-17, `longhand-read search`): does the
+  loose match ever find what was not meant (inside words: "stress" finds
+  "stressors", as a browser's does), does a capital making the case count
+  surprise, does the find bar over the page's lower right hide the words
+  being read, and is the list of every place read or only the count. Not
+  built yet, worth it if finding leads to marking: `m`/`q` on the place
+  shown, marking it (needs Qt's selection set from the code).
 - **A thesis student's assessment** (2026-11-17, from the usage logs of both
   machines, the page photographed headless, and the real #thesis data):
   (1) *two machines, two stores* — the Air's check took xmg's `^d61–68` off

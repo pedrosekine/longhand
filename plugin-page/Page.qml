@@ -4228,7 +4228,11 @@ Item {
   function sideReachStart() {
     root.sideTyping = true
     root.sideTyped = ""
-    root.sideToMatch(0)
+    // `#` alone, on a project: the keys stay on it until a letter is typed.
+    // It went to the first project, and so off the row it was on whenever
+    // the order by use had moved it (plan.md item 19; the live check
+    // "letters nothing has keep the row" failed so, 2026-11-17).
+    if (!root.projects[root.projFocus]) root.sideToMatch(0)
   }
   function sideToMatch(i) {
     var m = root.sideMatches[i]
@@ -4545,6 +4549,7 @@ Item {
     if (/api_key_expired|has expired/.test(e)) return "its model key has expired — make a new one and log opencode in again"
     if (/401|authentication|unauthori/i.test(e)) return "its model login was refused — log opencode in again"
     if (/timed out|ENOTFOUND|network|connect/i.test(e)) return "the model could not be reached"
+    if (/^Claude Code refused the run: /.test(e)) return "Claude Code refused it: " + e.replace(/^Claude Code refused the run: (Error: )?/, "").slice(0, 120)
     return "the model said: " + e.slice(0, 80)
   }
 
@@ -7339,7 +7344,14 @@ Item {
       }
     }
     stderr: StdioCollector {
-      onStreamFinished: if (text.trim() !== "") { console.warn("longhand.page talk: " + text.trim()); root.pendingTalk = null; root.refreshProposals() }
+      // A failed run says so (2026-11-17: a message to a task's chat
+      // failed in a second, and the pane looked as if it never went).
+      onStreamFinished: if (text.trim() !== "") {
+        console.warn("longhand.page talk: " + text.trim())
+        root.pendingTalk = null
+        root.showHint("the agent could not answer — " + Queue.failure(text))
+        root.refreshProposals()
+      }
     }
   }
 
