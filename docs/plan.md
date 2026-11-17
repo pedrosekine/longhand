@@ -946,6 +946,15 @@ Small, when passing by:
     Shift+Tab then ↓ to it and Enter, or Alt+its number (1) from anywhere.
     Open: whether one of these should be the only way, once the log has
     a few weeks.
+    - **The sidebar's foot** (2026-11-17, the student: "really
+      conflicting"): with more projects than fit, the lists ran under the
+      foot and the four-line key hint was drawn over "time files today
+      keys settings". Now the calendar and its lists (and a project's
+      view) scroll, following the keys, faded where more is beyond; the
+      keys' hint is pinned above the foot, at most three keys for where
+      you are and `?` for every key, broken only between keys, shown
+      while the sidebar has the keys (Files and a project's view too);
+      a hairline keeps what scrolls apart from the foot that stays.
 20. **A question's answer, one click away** (2026-11-16, the student: "accessing
     the answer to a question by clicking on it, or a similar experience, not
     sure"). Follows item 15's reader. Today an answered question is only

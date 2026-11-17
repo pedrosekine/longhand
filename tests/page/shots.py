@@ -300,7 +300,9 @@ def scenes(m, p, out, which):
         know = p.vault / "agents" / "longhand" / "knowledge" / "projects"
         know.mkdir(parents=True, exist_ok=True)
         for tag, name in [("respro", "Research Proficiency"), ("hfpi", "Human Factors & Psychology"), ("studio", "Design Studio"),
-                          ("dtm", "Design Theory & Methods"), ("coach", "Coaching"), ("thesis", "Master Thesis")]:
+                          ("dtm", "Design Theory & Methods"), ("coach", "Coaching"), ("thesis", "Master Thesis"),
+                          ("intsem", "Interdisciplinary Seminar"), ("stats", "Applied Statistics"), ("ethics", "Design Ethics"),
+                          ("lab", "Prototyping Lab"), ("writing", "Academic Writing"), ("ux", "UX Research Methods")]:
             if not (know / f"{tag}.md").exists():
                 (know / f"{tag}.md").write_text(f"# {name}\n\n- Tag: `#{tag}`\n")
         p.call("closePanes")
@@ -312,6 +314,10 @@ def scenes(m, p, out, which):
         p.call("ctrlHold", "true")
         shot("reach-1")
         p.call("ctrlHold", "false")
+        # More projects than the sidebar's height: the list scrolls under
+        # the pinned hint, never under the foot, and End follows the keys.
+        p.call("sideKey", 0x01000011, 0)     # End
+        shot("reach-3")
         p.call("closePanes")
         p.call("pageKey", 0x4f, 0x04000000)  # Ctrl+O
         p.call("switcherType", "de")

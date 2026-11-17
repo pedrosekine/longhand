@@ -185,471 +185,496 @@ BorderSurface {
     onActiveFocusChanged: if (!activeFocus) page.sideTyping = false
   }
 
-  Column {
-    id: calendar
+  // What the keys are on, scrolled into view: the lists grow with every
+  // project, and the calendar and its lists scroll, clipped above the foot
+  // (2026-11-17: they ran under it). Margin enough to see the row's
+  // neighbour, so a walk never ends at the very edge.
+  function reveal(item, flick, content) {
+    Qt.callLater(function () {
+      if (!item || !flick.visible) return
+      var y = item.mapToItem(content, 0, 0).y
+      var pad = page.sp(24)
+      var top = flick.contentY, bottom = flick.contentY + flick.height
+      var to = top
+      if (y - pad < top) to = y - pad
+      else if (y + item.height + pad > bottom) to = y + item.height + pad - flick.height
+      flick.contentY = Math.max(0, Math.min(to, flick.contentHeight - flick.height))
+    })
+  }
+
+  // A clipped edge with more beyond it fades out, so a row cut in half
+  // reads as "there is more", not as a mistake (2026-11-17).
+  component EdgeFade: Rectangle {
+    required property Flickable flick
+    property bool atTop: false
+    visible: flick.visible && (atTop ? flick.contentY > 1 : flick.contentY + flick.height < flick.contentHeight - 1)
+    x: flick.x
+    width: flick.width
+    y: atTop ? flick.y : flick.y + flick.height - height
+    height: page.sp(28)
+    z: 5
+    transform: Translate { x: sidebar.spaceShift }
+    gradient: Gradient {
+      GradientStop { position: 0; color: Qt.rgba(sidebar.color.r, sidebar.color.g, sidebar.color.b, atTop ? 1 : 0) }
+      GradientStop { position: 1; color: Qt.rgba(sidebar.color.r, sidebar.color.g, sidebar.color.b, atTop ? 0 : 1) }
+    }
+  }
+  EdgeFade { flick: timeFlick; atTop: true }
+  EdgeFade { flick: timeFlick }
+  EdgeFade { flick: projectFlick; atTop: true }
+  EdgeFade { flick: projectFlick }
+
+  Flickable {
+    id: timeFlick
     visible: page.sidebarSpace === "time" && !page.projectOpen
     transform: Translate { x: sidebar.spaceShift }
-    anchors.fill: parent
+    anchors.top: parent.top
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.bottom: footTop.top
     anchors.topMargin: sidebar.contentTopInset
     anchors.leftMargin: sidebar.contentLeftInset
     anchors.rightMargin: sidebar.contentRightInset
-    anchors.bottomMargin: sidebar.contentBottomInset + sidebarFoot.height + page.sp(12)
-    spacing: page.sp(10)
+    clip: true
+    contentWidth: width
+    contentHeight: calendar.implicitHeight
+    boundsBehavior: Flickable.StopAtBounds
+    TouchScroll { flickable: timeFlick }
 
-    readonly property real cell: Math.floor(width / 7)
+    Column {
+      id: calendar
+      width: timeFlick.width
+      spacing: page.sp(10)
 
-    // Month, with a way to step it by mouse.
-    Item {
-      width: parent.width
-      height: monthText.implicitHeight
+      readonly property real cell: Math.floor(width / 7)
 
-      Text {
-        anchors.left: parent.left
-        anchors.verticalCenter: parent.verticalCenter
-        textFormat: Text.PlainText
-        text: "‹"
-        color: prevArea.containsMouse && page.handOn ? page.accent : page.dim
-        font.family: page.fontFamily
-        font.styleName: page.fontStyle
-        font.pixelSize: page.fs(Style.font.title)
-        MouseArea {
-          id: prevArea
-          anchors.fill: parent
-          anchors.margins: -page.sp(6)
-          hoverEnabled: true
-          cursorShape: Qt.PointingHandCursor
-          onClicked: page.moveCalendar(0, -1)
-          Tip { host: page; shown: parent.containsMouse; text: page.tip("A month back", "calPrevMonth") }
-        }
-      }
-      Text {
-        id: monthText
-        anchors.horizontalCenter: parent.horizontalCenter
-        textFormat: Text.PlainText
-        text: Days.monthLabel(page.calFocus)
-        color: page.foreground
-        font.family: page.fontFamily
-        font.pixelSize: page.fs(Style.font.body)
-        font.weight: Font.DemiBold
-      }
-      Text {
-        anchors.right: parent.right
-        anchors.verticalCenter: parent.verticalCenter
-        textFormat: Text.PlainText
-        text: "›"
-        color: nextArea.containsMouse && page.handOn ? page.accent : page.dim
-        font.family: page.fontFamily
-        font.styleName: page.fontStyle
-        font.pixelSize: page.fs(Style.font.title)
-        MouseArea {
-          id: nextArea
-          anchors.fill: parent
-          anchors.margins: -page.sp(6)
-          hoverEnabled: true
-          cursorShape: Qt.PointingHandCursor
-          onClicked: page.moveCalendar(0, 1)
-          Tip { host: page; shown: parent.containsMouse; text: page.tip("A month on", "calNextMonth") }
-        }
-      }
-    }
+      // Month, with a way to step it by mouse.
+      Item {
+        width: parent.width
+        height: monthText.implicitHeight
 
-    Grid {
-      columns: 7
-
-      // Weekday initials, from the locale's first day.
-      Repeater {
-        model: 7
         Text {
-          required property int index
-          width: calendar.cell
-          horizontalAlignment: Text.AlignHCenter
+          anchors.left: parent.left
+          anchors.verticalCenter: parent.verticalCenter
           textFormat: Text.PlainText
-          text: Qt.locale().dayName((page.firstDow + index) % 7, Locale.NarrowFormat)
-          color: page.faint
+          text: "‹"
+          color: prevArea.containsMouse && page.handOn ? page.accent : page.dim
+          font.family: page.fontFamily
+          font.styleName: page.fontStyle
+          font.pixelSize: page.fs(Style.font.title)
+          MouseArea {
+            id: prevArea
+            anchors.fill: parent
+            anchors.margins: -page.sp(6)
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: page.moveCalendar(0, -1)
+            Tip { host: page; shown: parent.containsMouse; text: page.tip("A month back", "calPrevMonth") }
+          }
+        }
+        Text {
+          id: monthText
+          anchors.horizontalCenter: parent.horizontalCenter
+          textFormat: Text.PlainText
+          text: Days.monthLabel(page.calFocus)
+          color: page.foreground
+          font.family: page.fontFamily
+          font.pixelSize: page.fs(Style.font.body)
+          font.weight: Font.DemiBold
+        }
+        Text {
+          anchors.right: parent.right
+          anchors.verticalCenter: parent.verticalCenter
+          textFormat: Text.PlainText
+          text: "›"
+          color: nextArea.containsMouse && page.handOn ? page.accent : page.dim
+          font.family: page.fontFamily
+          font.styleName: page.fontStyle
+          font.pixelSize: page.fs(Style.font.title)
+          MouseArea {
+            id: nextArea
+            anchors.fill: parent
+            anchors.margins: -page.sp(6)
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: page.moveCalendar(0, 1)
+            Tip { host: page; shown: parent.containsMouse; text: page.tip("A month on", "calNextMonth") }
+          }
+        }
+      }
+
+      Grid {
+        columns: 7
+
+        // Weekday initials, from the locale's first day.
+        Repeater {
+          model: 7
+          Text {
+            required property int index
+            width: calendar.cell
+            horizontalAlignment: Text.AlignHCenter
+            textFormat: Text.PlainText
+            text: Qt.locale().dayName((page.firstDow + index) % 7, Locale.NarrowFormat)
+            color: page.faint
+            font.family: page.fontFamily
+            font.styleName: page.fontStyle
+            font.pixelSize: page.fs(Style.font.caption)
+          }
+        }
+
+        // The days: full where a note exists, faded where none does.
+        Repeater {
+          model: page.calCells
+          Item {
+            id: dayCell
+            required property var modelData
+            readonly property string k: modelData ? Days.key(modelData) : ""
+            readonly property bool hasNote: k !== "" && !!page.dayIndex[k]
+            readonly property bool isOpen: k !== "" && k === page.openKey
+            readonly property bool isCursor: k !== "" && k === Days.key(page.calFocus)
+            readonly property bool isToday: k !== "" && k === sidebar.todayKey
+            width: calendar.cell
+            height: Math.round(calendar.cell * 0.92)
+            // The pointer follows the keys (page.selected).
+            readonly property bool lit: dayCell.isCursor && sidebarKeys.activeFocus
+            onLitChanged: { page.selected(dayCell, "left", lit); if (lit) sidebar.reveal(dayCell, timeFlick, calendar) }
+            Component.onCompleted: if (lit) page.selected(dayCell, "left", true)
+
+            Rectangle {
+              anchors.fill: parent
+              anchors.margins: 1
+              radius: Style.cornerRadius
+              visible: dayCell.isCursor && sidebarKeys.activeFocus
+              color: Style.selectedFill
+            }
+            Rectangle {
+              anchors.fill: parent
+              anchors.margins: 1
+              radius: Style.cornerRadius
+              visible: dayArea.containsMouse && page.handOn && !(dayCell.isCursor && sidebarKeys.activeFocus)
+              color: Style.hoverFill
+            }
+            Rectangle {
+              anchors.fill: parent
+              anchors.margins: 1
+              radius: Style.cornerRadius
+              visible: dayCell.isOpen
+              color: "transparent"
+              border.width: 1
+              border.color: page.dim
+            }
+            Text {
+              id: dayNum
+              anchors.centerIn: parent
+              textFormat: Text.PlainText
+              text: modelData ? modelData.getDate() : ""
+              color: dayCell.isToday || dayCell.hasNote ? page.foreground : page.faint
+              font.family: page.fontFamily
+              font.pixelSize: page.fs(Style.font.body)
+              font.weight: dayCell.isOpen || dayCell.isToday ? Font.DemiBold : Font.Normal
+            }
+            // Today: a short bar close under the number, in the text colour
+            // (2026-10-19). It marks the day without looking like a choice —
+            // the open day's outline and the keys' fill stay the only marks
+            // of what is selected — and, close to the digits, it never meets
+            // the outline's edge. It was a dot in the accent, lost in a theme
+            // whose accent is grey; a coloured disc read as a selection.
+            Rectangle {
+              visible: dayCell.isToday
+              anchors.horizontalCenter: parent.horizontalCenter
+              y: dayNum.y + dayNum.baselineOffset + page.sp(2)
+              width: Math.round(calendar.cell * 0.25)
+              height: Math.max(2, page.sp(2))
+              radius: height / 2
+              color: page.foreground
+            }
+            // Deadlines on this day: a corner mark — accent while one is
+            // open, urgent when one is late, hollow when all are done.
+            Rectangle {
+              readonly property var due: dayCell.k !== "" ? (page.dueByDay[dayCell.k] || []) : []
+              readonly property bool open: due.some(function (d) { return d.status === "open" })
+              readonly property bool late: due.some(function (d) { return d.status === "open" && d.due * 1000 < Date.now() })
+              visible: due.length > 0
+              anchors.top: parent.top
+              anchors.right: parent.right
+              anchors.topMargin: Math.round(calendar.cell * 0.12)
+              anchors.rightMargin: Math.round(calendar.cell * 0.12)
+              width: Math.max(4, Math.round(calendar.cell * 0.16))
+              height: width
+              radius: Math.max(1, Math.round(width * 0.3))
+              color: late ? page.urgent : (open ? page.accent : "transparent")
+              border.width: open ? 0 : 1
+              border.color: page.dim
+            }
+            MouseArea {
+              id: dayArea
+              anchors.fill: parent
+              enabled: !!modelData
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: page.openCalendarDay(modelData)
+              Tip { host: page; shown: parent.containsMouse && !!modelData; text: page.tips([["Open the day in the sheet", "calOpen"], ["Today", "calToday"]]) }
+            }
+          }
+        }
+      }
+
+      // The day under the cursor, and whether it has a note yet.
+      Text {
+        width: parent.width
+        textFormat: Text.PlainText
+        wrapMode: Text.WordWrap
+        text: svc.configured
+          ? Days.longLabel(Days.format(page.calFocus, svc.dailyFormat()), svc.dailyFormat())
+            + (page.dayIndex[Days.key(page.calFocus)] ? "" : " · no note")
+          : ""
+        color: page.dim
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.bodySmall)
+      }
+
+      // That day's deadlines. Tab goes into the list; Enter or a click
+      // goes to the line that stands for one, Ctrl+L marks it done.
+      Repeater {
+        model: page.focusDue
+        Rectangle {
+          id: dueCell
+          required property var modelData
+          required property int index
+          readonly property bool late: modelData.status === "open" && modelData.due * 1000 < Date.now()
+          readonly property bool lit: page.dueFocus === index && sidebarKeys.activeFocus
+          onLitChanged: { page.selected(dueCell, "left", lit); if (lit) sidebar.reveal(dueCell, timeFlick, calendar) }
+          Component.onCompleted: if (lit) page.selected(dueCell, "left", true)
+          width: calendar.width
+          height: dueRow.implicitHeight + page.sp(6)
+          radius: Style.cornerRadius
+          color: page.dueFocus === index && sidebarKeys.activeFocus ? Style.selectedFill : dueArea.containsMouse && page.handOn ? Style.hoverFill : "transparent"
+          Text {
+            id: dueRow
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.leftMargin: page.sp(4)
+            anchors.verticalCenter: parent.verticalCenter
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
+            text: (modelData.status === "open" ? "○ " : "✓ ") + modelData.title
+              + " · " + Qt.formatTime(new Date(modelData.due * 1000), "HH:mm")
+              + (modelData.project ? " · " + modelData.project : "")
+              + (Bound.parseLink(modelData.link) ? "" : " · no line")
+            color: late ? page.urgent : (modelData.status === "open" ? page.foreground : page.dim)
+            font.family: page.fontFamily
+            font.styleName: page.fontStyle
+            font.pixelSize: page.fs(Style.font.bodySmall)
+          }
+          MouseArea {
+            id: dueArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: page.goToDeadline(modelData)
+            Tip { host: page; shown: parent.containsMouse; text: page.tips([["Go to its line", "listOpen"], ["Done (again: not done)", "listDone"]]) }
+          }
+        }
+      }
+
+      // The papers marked that day (plan.md item 15, step 3): Tab goes into
+      // the list after the deadlines; Enter or a click opens one where it
+      // was left.
+      Text {
+        visible: page.readToday.rows.length > 0
+        topPadding: page.sp(8)
+        textFormat: Text.PlainText
+        text: "READ"
+        color: page.dim
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.caption)
+      }
+      Repeater {
+        model: page.readToday.rows
+        Rectangle {
+          id: readCell
+          required property var modelData
+          required property int index
+          readonly property bool lit: page.readToday.at === index && sidebarKeys.activeFocus
+          onLitChanged: { page.selected(readCell, "left", lit); if (lit) sidebar.reveal(readCell, timeFlick, calendar) }
+          width: calendar.width
+          height: readRow.implicitHeight + page.sp(6)
+          radius: Style.cornerRadius
+          color: lit ? Style.selectedFill : readArea.containsMouse && page.handOn ? Style.hoverFill : "transparent"
+          Text {
+            id: readRow
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.leftMargin: page.sp(4)
+            anchors.verticalCenter: parent.verticalCenter
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
+            text: modelData.title + " · " + page.readToday.summary(modelData)
+            color: page.foreground
+            font.family: page.fontFamily
+            font.styleName: page.fontStyle
+            font.pixelSize: page.fs(Style.font.bodySmall)
+          }
+          MouseArea {
+            id: readArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: { page.remember(); page.openPdf(readCell.modelData.pdf) }
+            Tip { host: page; shown: parent.containsMouse; text: page.tips([["Open it where it was left", "listOpen"]]) }
+          }
+        }
+      }
+
+      // The projects that exist: the tags to write, soonest session first.
+      Text {
+        topPadding: page.sp(8)
+        textFormat: Text.PlainText
+        text: "PROJECTS"
+        color: page.dim
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.caption)
+      }
+      Repeater {
+        model: page.projects
+        Rectangle {
+          id: projCell
+          required property var modelData
+          required property int index
+          readonly property bool lit: page.projFocus === index && sidebarKeys.activeFocus
+          onLitChanged: { page.selected(projCell, "left", lit); if (lit) sidebar.reveal(projCell, timeFlick, calendar) }
+          Component.onCompleted: if (lit) page.selected(projCell, "left", true)
+          width: calendar.width
+          height: projCol.implicitHeight + page.sp(6)
+          radius: Style.cornerRadius
+          color: page.projFocus === index && sidebarKeys.activeFocus ? Style.selectedFill : projArea.containsMouse && page.handOn ? Style.hoverFill : "transparent"
+          // While `#` and letters are typed, what does not match steps back.
+          opacity: page.sideTyping && page.sideMatchTags.indexOf(modelData.tag) < 0 ? 0.35 : 1
+          // Its key from anywhere, Alt and its place, shown by Hold Ctrl.
+          KeyBadge {
+            host: page
+            fixedKey: projCell.index < 9 ? "Alt+" + (projCell.index + 1) : ""
+            anchors.right: parent.right
+            anchors.rightMargin: page.sp(2)
+            anchors.top: parent.top
+            anchors.topMargin: page.sp(2)
+          }
+          Column {
+            id: projCol
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.leftMargin: page.sp(4)
+            anchors.verticalCenter: parent.verticalCenter
+            Text {
+              width: parent.width
+              textFormat: Text.PlainText
+              elide: Text.ElideRight
+              text: "#" + modelData.tag + "  " + modelData.name
+              color: page.foreground
+              font.family: page.fontFamily
+              font.styleName: page.fontStyle
+              font.pixelSize: page.fs(Style.font.bodySmall)
+            }
+            Text {
+              visible: !!modelData.next
+              width: parent.width
+              textFormat: Text.PlainText
+              elide: Text.ElideRight
+              text: page.sessionLabel(modelData.next)
+              color: page.dim
+              font.family: page.fontFamily
+              font.styleName: page.fontStyle
+              font.pixelSize: page.fs(Style.font.caption)
+            }
+          }
+          MouseArea {
+            id: projArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            Tip {
+              host: page
+              shown: parent.containsMouse
+              text: page.tips([["Its notes", "listOpen"], ["Shift-click: a new section for it", "listClass"], ["Ctrl-click: put its #tag at the cursor", "listTag"]])
+            }
+            onClicked: function (mouse) {
+              if (mouse.modifiers & Qt.ControlModifier) page.insertTag(modelData)
+              else if (mouse.modifiers & Qt.ShiftModifier) page.startClass(modelData)
+              else page.openProject(modelData)
+            }
+          }
+        }
+      }
+
+      // A new project (2026-10-22): its name, and its #tag when it should not
+      // be the name's words. The runner makes its file; the list reads it.
+      Rectangle {
+        id: newCell
+        visible: !page.addingProject
+        readonly property bool lit: page.projFocus === page.projects.length && sidebarKeys.activeFocus
+        onLitChanged: { page.selected(newCell, "left", lit); if (lit) sidebar.reveal(newCell, timeFlick, calendar) }
+        width: calendar.width
+        height: newText.implicitHeight + page.sp(6)
+        radius: Style.cornerRadius
+        color: page.projFocus === page.projects.length && sidebarKeys.activeFocus ? Style.selectedFill : newArea.containsMouse && page.handOn ? Style.hoverFill : "transparent"
+        Text {
+          id: newText
+          anchors.left: parent.left
+          anchors.leftMargin: page.sp(4)
+          anchors.verticalCenter: parent.verticalCenter
+          textFormat: Text.PlainText
+          text: "+ new project"
+          color: newArea.containsMouse && page.handOn ? page.accent : page.dim
+          font.family: page.fontFamily
+          font.styleName: page.fontStyle
+          font.pixelSize: page.fs(Style.font.bodySmall)
+        }
+        MouseArea {
+          id: newArea
+          anchors.fill: parent
+          hoverEnabled: true
+          cursorShape: Qt.PointingHandCursor
+          onClicked: { page.projFocus = page.projects.length; page.openSidebarProject() }
+          Tip { host: page; shown: parent.containsMouse; text: page.tip("Make a project: in the sidebar, @ and #", "listOpen") }
+        }
+      }
+      Column {
+        visible: page.addingProject
+        width: calendar.width
+        spacing: page.sp(2)
+        readonly property var made: Tags.fromField(projectField.text, page.projects)
+        TextField {
+          id: projectField
+          width: parent.width
+          placeholderText: "Master Thesis #thesis"
+          font.family: page.fontFamily
+          font.styleName: page.fontStyle
+          font.pixelSize: page.fs(Style.font.bodySmall)
+          foreground: page.foreground
+          onVisibleChanged: if (visible) text = ""
+          Keys.onPressed: function (event) {
+            if (page.anywhereKey(event)) { event.accepted = true; return }
+            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { page.submitSidebarProject(text); event.accepted = true }
+            else if (event.key === Qt.Key_Escape) { page.closeSidebarProject(); event.accepted = true }
+          }
+        }
+        Text {
+          width: parent.width
+          textFormat: Text.PlainText
+          wrapMode: Text.WordWrap
+          text: parent.made.tag === "" ? "its name, and its #tag when not the name's words · Esc leaves it"
+            : parent.made.taken ? "#" + parent.made.tag + " is a project already"
+            : "Enter makes #" + parent.made.tag + "  " + parent.made.name
+          color: parent.made.taken ? page.urgent : page.faint
           font.family: page.fontFamily
           font.styleName: page.fontStyle
           font.pixelSize: page.fs(Style.font.caption)
         }
       }
 
-      // The days: full where a note exists, faded where none does.
-      Repeater {
-        model: page.calCells
-        Item {
-          id: dayCell
-          required property var modelData
-          readonly property string k: modelData ? Days.key(modelData) : ""
-          readonly property bool hasNote: k !== "" && !!page.dayIndex[k]
-          readonly property bool isOpen: k !== "" && k === page.openKey
-          readonly property bool isCursor: k !== "" && k === Days.key(page.calFocus)
-          readonly property bool isToday: k !== "" && k === sidebar.todayKey
-          width: calendar.cell
-          height: Math.round(calendar.cell * 0.92)
-          // The pointer follows the keys (page.selected).
-          readonly property bool lit: dayCell.isCursor && sidebarKeys.activeFocus
-          onLitChanged: page.selected(dayCell, "left", lit)
-          Component.onCompleted: if (lit) page.selected(dayCell, "left", true)
-
-          Rectangle {
-            anchors.fill: parent
-            anchors.margins: 1
-            radius: Style.cornerRadius
-            visible: dayCell.isCursor && sidebarKeys.activeFocus
-            color: Style.selectedFill
-          }
-          Rectangle {
-            anchors.fill: parent
-            anchors.margins: 1
-            radius: Style.cornerRadius
-            visible: dayArea.containsMouse && page.handOn && !(dayCell.isCursor && sidebarKeys.activeFocus)
-            color: Style.hoverFill
-          }
-          Rectangle {
-            anchors.fill: parent
-            anchors.margins: 1
-            radius: Style.cornerRadius
-            visible: dayCell.isOpen
-            color: "transparent"
-            border.width: 1
-            border.color: page.dim
-          }
-          Text {
-            id: dayNum
-            anchors.centerIn: parent
-            textFormat: Text.PlainText
-            text: modelData ? modelData.getDate() : ""
-            color: dayCell.isToday || dayCell.hasNote ? page.foreground : page.faint
-            font.family: page.fontFamily
-            font.pixelSize: page.fs(Style.font.body)
-            font.weight: dayCell.isOpen || dayCell.isToday ? Font.DemiBold : Font.Normal
-          }
-          // Today: a short bar close under the number, in the text colour
-          // (2026-10-19). It marks the day without looking like a choice —
-          // the open day's outline and the keys' fill stay the only marks
-          // of what is selected — and, close to the digits, it never meets
-          // the outline's edge. It was a dot in the accent, lost in a theme
-          // whose accent is grey; a coloured disc read as a selection.
-          Rectangle {
-            visible: dayCell.isToday
-            anchors.horizontalCenter: parent.horizontalCenter
-            y: dayNum.y + dayNum.baselineOffset + page.sp(2)
-            width: Math.round(calendar.cell * 0.25)
-            height: Math.max(2, page.sp(2))
-            radius: height / 2
-            color: page.foreground
-          }
-          // Deadlines on this day: a corner mark — accent while one is
-          // open, urgent when one is late, hollow when all are done.
-          Rectangle {
-            readonly property var due: dayCell.k !== "" ? (page.dueByDay[dayCell.k] || []) : []
-            readonly property bool open: due.some(function (d) { return d.status === "open" })
-            readonly property bool late: due.some(function (d) { return d.status === "open" && d.due * 1000 < Date.now() })
-            visible: due.length > 0
-            anchors.top: parent.top
-            anchors.right: parent.right
-            anchors.topMargin: Math.round(calendar.cell * 0.12)
-            anchors.rightMargin: Math.round(calendar.cell * 0.12)
-            width: Math.max(4, Math.round(calendar.cell * 0.16))
-            height: width
-            radius: Math.max(1, Math.round(width * 0.3))
-            color: late ? page.urgent : (open ? page.accent : "transparent")
-            border.width: open ? 0 : 1
-            border.color: page.dim
-          }
-          MouseArea {
-            id: dayArea
-            anchors.fill: parent
-            enabled: !!modelData
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: page.openCalendarDay(modelData)
-            Tip { host: page; shown: parent.containsMouse && !!modelData; text: page.tips([["Open the day in the sheet", "calOpen"], ["Today", "calToday"]]) }
-          }
-        }
-      }
-    }
-
-    // The day under the cursor, and whether it has a note yet.
-    Text {
-      width: parent.width
-      textFormat: Text.PlainText
-      wrapMode: Text.WordWrap
-      text: svc.configured
-        ? Days.longLabel(Days.format(page.calFocus, svc.dailyFormat()), svc.dailyFormat())
-          + (page.dayIndex[Days.key(page.calFocus)] ? "" : " · no note")
-        : ""
-      color: page.dim
-      font.family: page.fontFamily
-      font.styleName: page.fontStyle
-      font.pixelSize: page.fs(Style.font.bodySmall)
-    }
-
-    // That day's deadlines. Tab goes into the list; Enter or a click
-    // goes to the line that stands for one, Ctrl+L marks it done.
-    Repeater {
-      model: page.focusDue
-      Rectangle {
-        id: dueCell
-        required property var modelData
-        required property int index
-        readonly property bool late: modelData.status === "open" && modelData.due * 1000 < Date.now()
-        readonly property bool lit: page.dueFocus === index && sidebarKeys.activeFocus
-        onLitChanged: page.selected(dueCell, "left", lit)
-        Component.onCompleted: if (lit) page.selected(dueCell, "left", true)
-        width: calendar.width
-        height: dueRow.implicitHeight + page.sp(6)
-        radius: Style.cornerRadius
-        color: page.dueFocus === index && sidebarKeys.activeFocus ? Style.selectedFill : dueArea.containsMouse && page.handOn ? Style.hoverFill : "transparent"
-        Text {
-          id: dueRow
-          anchors.left: parent.left
-          anchors.right: parent.right
-          anchors.leftMargin: page.sp(4)
-          anchors.verticalCenter: parent.verticalCenter
-          textFormat: Text.PlainText
-          wrapMode: Text.WordWrap
-          text: (modelData.status === "open" ? "○ " : "✓ ") + modelData.title
-            + " · " + Qt.formatTime(new Date(modelData.due * 1000), "HH:mm")
-            + (modelData.project ? " · " + modelData.project : "")
-            + (Bound.parseLink(modelData.link) ? "" : " · no line")
-          color: late ? page.urgent : (modelData.status === "open" ? page.foreground : page.dim)
-          font.family: page.fontFamily
-          font.styleName: page.fontStyle
-          font.pixelSize: page.fs(Style.font.bodySmall)
-        }
-        MouseArea {
-          id: dueArea
-          anchors.fill: parent
-          hoverEnabled: true
-          cursorShape: Qt.PointingHandCursor
-          onClicked: page.goToDeadline(modelData)
-          Tip { host: page; shown: parent.containsMouse; text: page.tips([["Go to its line", "listOpen"], ["Done (again: not done)", "listDone"]]) }
-        }
-      }
-    }
-
-    // The papers marked that day (plan.md item 15, step 3): Tab goes into
-    // the list after the deadlines; Enter or a click opens one where it
-    // was left.
-    Text {
-      visible: page.readToday.rows.length > 0
-      topPadding: page.sp(8)
-      textFormat: Text.PlainText
-      text: "READ"
-      color: page.dim
-      font.family: page.fontFamily
-      font.styleName: page.fontStyle
-      font.pixelSize: page.fs(Style.font.caption)
-    }
-    Repeater {
-      model: page.readToday.rows
-      Rectangle {
-        id: readCell
-        required property var modelData
-        required property int index
-        readonly property bool lit: page.readToday.at === index && sidebarKeys.activeFocus
-        onLitChanged: page.selected(readCell, "left", lit)
-        width: calendar.width
-        height: readRow.implicitHeight + page.sp(6)
-        radius: Style.cornerRadius
-        color: lit ? Style.selectedFill : readArea.containsMouse && page.handOn ? Style.hoverFill : "transparent"
-        Text {
-          id: readRow
-          anchors.left: parent.left
-          anchors.right: parent.right
-          anchors.leftMargin: page.sp(4)
-          anchors.verticalCenter: parent.verticalCenter
-          textFormat: Text.PlainText
-          wrapMode: Text.WordWrap
-          text: modelData.title + " · " + page.readToday.summary(modelData)
-          color: page.foreground
-          font.family: page.fontFamily
-          font.styleName: page.fontStyle
-          font.pixelSize: page.fs(Style.font.bodySmall)
-        }
-        MouseArea {
-          id: readArea
-          anchors.fill: parent
-          hoverEnabled: true
-          cursorShape: Qt.PointingHandCursor
-          onClicked: { page.remember(); page.openPdf(readCell.modelData.pdf) }
-          Tip { host: page; shown: parent.containsMouse; text: page.tips([["Open it where it was left", "listOpen"]]) }
-        }
-      }
-    }
-
-    // The projects that exist: the tags to write, soonest session first.
-    Text {
-      topPadding: page.sp(8)
-      textFormat: Text.PlainText
-      text: "PROJECTS"
-      color: page.dim
-      font.family: page.fontFamily
-      font.styleName: page.fontStyle
-      font.pixelSize: page.fs(Style.font.caption)
-    }
-    Repeater {
-      model: page.projects
-      Rectangle {
-        id: projCell
-        required property var modelData
-        required property int index
-        readonly property bool lit: page.projFocus === index && sidebarKeys.activeFocus
-        onLitChanged: page.selected(projCell, "left", lit)
-        Component.onCompleted: if (lit) page.selected(projCell, "left", true)
-        width: calendar.width
-        height: projCol.implicitHeight + page.sp(6)
-        radius: Style.cornerRadius
-        color: page.projFocus === index && sidebarKeys.activeFocus ? Style.selectedFill : projArea.containsMouse && page.handOn ? Style.hoverFill : "transparent"
-        // While `#` and letters are typed, what does not match steps back.
-        opacity: page.sideTyping && page.sideMatchTags.indexOf(modelData.tag) < 0 ? 0.35 : 1
-        // Its key from anywhere, Alt and its place, shown by Hold Ctrl.
-        KeyBadge {
-          host: page
-          fixedKey: projCell.index < 9 ? "Alt+" + (projCell.index + 1) : ""
-          anchors.right: parent.right
-          anchors.rightMargin: page.sp(2)
-          anchors.top: parent.top
-          anchors.topMargin: page.sp(2)
-        }
-        Column {
-          id: projCol
-          anchors.left: parent.left
-          anchors.right: parent.right
-          anchors.leftMargin: page.sp(4)
-          anchors.verticalCenter: parent.verticalCenter
-          Text {
-            width: parent.width
-            textFormat: Text.PlainText
-            elide: Text.ElideRight
-            text: "#" + modelData.tag + "  " + modelData.name
-            color: page.foreground
-            font.family: page.fontFamily
-            font.styleName: page.fontStyle
-            font.pixelSize: page.fs(Style.font.bodySmall)
-          }
-          Text {
-            visible: !!modelData.next
-            width: parent.width
-            textFormat: Text.PlainText
-            elide: Text.ElideRight
-            text: page.sessionLabel(modelData.next)
-            color: page.dim
-            font.family: page.fontFamily
-            font.styleName: page.fontStyle
-            font.pixelSize: page.fs(Style.font.caption)
-          }
-        }
-        MouseArea {
-          id: projArea
-          anchors.fill: parent
-          hoverEnabled: true
-          cursorShape: Qt.PointingHandCursor
-          Tip {
-            host: page
-            shown: parent.containsMouse
-            text: page.tips([["Its notes", "listOpen"], ["Shift-click: a new section for it", "listClass"], ["Ctrl-click: put its #tag at the cursor", "listTag"]])
-          }
-          onClicked: function (mouse) {
-            if (mouse.modifiers & Qt.ControlModifier) page.insertTag(modelData)
-            else if (mouse.modifiers & Qt.ShiftModifier) page.startClass(modelData)
-            else page.openProject(modelData)
-          }
-        }
-      }
-    }
-
-    // A new project (2026-10-22): its name, and its #tag when it should not
-    // be the name's words. The runner makes its file; the list reads it.
-    Rectangle {
-      id: newCell
-      visible: !page.addingProject
-      readonly property bool lit: page.projFocus === page.projects.length && sidebarKeys.activeFocus
-      onLitChanged: page.selected(newCell, "left", lit)
-      width: calendar.width
-      height: newText.implicitHeight + page.sp(6)
-      radius: Style.cornerRadius
-      color: page.projFocus === page.projects.length && sidebarKeys.activeFocus ? Style.selectedFill : newArea.containsMouse && page.handOn ? Style.hoverFill : "transparent"
-      Text {
-        id: newText
-        anchors.left: parent.left
-        anchors.leftMargin: page.sp(4)
-        anchors.verticalCenter: parent.verticalCenter
-        textFormat: Text.PlainText
-        text: "+ new project"
-        color: newArea.containsMouse && page.handOn ? page.accent : page.dim
-        font.family: page.fontFamily
-        font.styleName: page.fontStyle
-        font.pixelSize: page.fs(Style.font.bodySmall)
-      }
-      MouseArea {
-        id: newArea
-        anchors.fill: parent
-        hoverEnabled: true
-        cursorShape: Qt.PointingHandCursor
-        onClicked: { page.projFocus = page.projects.length; page.openSidebarProject() }
-        Tip { host: page; shown: parent.containsMouse; text: page.tip("Make a project: in the sidebar, @ and #", "listOpen") }
-      }
-    }
-    Column {
-      visible: page.addingProject
-      width: calendar.width
-      spacing: page.sp(2)
-      readonly property var made: Tags.fromField(projectField.text, page.projects)
-      TextField {
-        id: projectField
-        width: parent.width
-        placeholderText: "Master Thesis #thesis"
-        font.family: page.fontFamily
-        font.styleName: page.fontStyle
-        font.pixelSize: page.fs(Style.font.bodySmall)
-        foreground: page.foreground
-        onVisibleChanged: if (visible) text = ""
-        Keys.onPressed: function (event) {
-          if (page.anywhereKey(event)) { event.accepted = true; return }
-          if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { page.submitSidebarProject(text); event.accepted = true }
-          else if (event.key === Qt.Key_Escape) { page.closeSidebarProject(); event.accepted = true }
-        }
-      }
-      Text {
-        width: parent.width
-        textFormat: Text.PlainText
-        wrapMode: Text.WordWrap
-        text: parent.made.tag === "" ? "its name, and its #tag when not the name's words · Esc leaves it"
-          : parent.made.taken ? "#" + parent.made.tag + " is a project already"
-          : "Enter makes #" + parent.made.tag + "  " + parent.made.name
-        color: parent.made.taken ? page.urgent : page.faint
-        font.family: page.fontFamily
-        font.styleName: page.fontStyle
-        font.pixelSize: page.fs(Style.font.caption)
-      }
-    }
-
-    Text {
-      width: parent.width
-      visible: sidebarKeys.activeFocus
-      textFormat: Text.PlainText
-      wrapMode: Text.WordWrap
-      readonly property var match: page.projects[page.projFocus] && page.sideMatchTags.indexOf(page.projects[page.projFocus].tag) >= 0 ? page.projects[page.projFocus] : null
-      text: page.sideTyping
-        ? "#" + page.sideTyped + (match ? " → #" + match.tag : page.sideTyped === "" ? " and its letters" : " — no project has these letters")
-          + " · " + page.keyName("listUp") + page.keyName("listDown") + " the others · " + page.keyName("listOpen") + " opens · Esc stops"
-        : page.projFocus >= 0 && page.projFocus === page.projects.length ? page.keyName("listOpen") + " names a new project · "
-          + page.keyName("listNext") + " the calendar"
-        : page.projFocus >= 0 ? page.keyName("listUp") + page.keyName("listDown") + " pick · " + page.keyName("listOpen") + " its notes · "
-          + page.keyName("listClass") + " new section · " + page.keyName("listTag") + " puts the tag · " + page.keyName("sideReach") + " by its letters · "
-          + page.keyName("listNext") + " the calendar · " + page.keyName("keysHere") + " keys"
-        : page.dueFocus >= 0 ? page.keyName("listUp") + page.keyName("listDown") + " pick, on into the lists below · " + page.keyName("listOpen") + " goes to its line · "
-          + page.keyName("listDone") + " done · " + page.keyName("listNext") + " skips the list · " + page.keyName("keysHere") + " keys"
-        : page.readToday.at >= 0 ? page.keyName("listUp") + page.keyName("listDown") + " pick, on into the projects · " + page.keyName("listOpen") + " opens it · "
-          + page.keyName("listNext") + " skips to the projects · " + page.keyName("keysHere") + " keys"
-        : "arrows move · " + page.keyName("calPrevMonth") + page.keyName("calNextMonth") + " month · " + page.keyName("calToday") + " today · "
-          + page.keyName("calOpen") + " opens · " + page.keyName("calLists") + " the lists under it · " + page.keyName("calProjects") + " the projects · "
-          + page.keyName("sideReach") + " a project by its letters · " + page.keyName("keysHere") + " keys"
-      color: page.faint
-      font.family: page.fontFamily
-      font.styleName: page.fontStyle
-      font.pixelSize: page.fs(Style.font.caption)
     }
   }
 
@@ -665,11 +690,85 @@ BorderSurface {
     sidebar: sidebar
     visible: page.sidebarSpace === "files"
     transform: Translate { x: sidebar.spaceShift }
-    anchors.fill: parent
+    anchors.top: parent.top
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.bottom: footTop.top
     anchors.topMargin: sidebar.contentTopInset
     anchors.leftMargin: sidebar.contentLeftInset
     anchors.rightMargin: sidebar.contentRightInset
-    anchors.bottomMargin: sidebar.contentBottomInset + sidebarFoot.height + page.sp(12)
+  }
+
+  // The keys for where you are, pinned above the foot (2026-11-17): at most
+  // three, the ones not guessed — no arrows, no Esc — then `?` for every
+  // key. It was a line at the end of each list, four lines long, moving
+  // with the list and running under the foot. Only while the sidebar has
+  // the keys: it is the keyboard's hint, as hover is the mouse's.
+  readonly property string hintText: {
+    page.keysVersion
+    var k = function (id) { return page.keyName(id) }
+    var all = k("keysHere") + " every key"
+    var items
+    if (page.sidebarSpace === "files") items = [k("filesOpen") + " open", k("filesFilter") + " filter by name", all]
+    else if (page.projectOpen) items = [k("listOpen") + " open", k("listPage") + " the project's page", all]
+    else if (page.sideTyping) {
+      var on = page.projects[page.projFocus]
+      var hit = on && page.sideMatchTags.indexOf(on.tag) >= 0
+      items = hit ? ["#" + page.sideTyped + " → #" + on.tag, k("listOpen") + " opens", "Esc stops"]
+        : page.sideTyped === "" ? ["# and its letters", "Esc stops"]
+        : ["#" + page.sideTyped + ": no project", "Esc stops"]
+    }
+    else if (page.projFocus >= 0 && page.projFocus === page.projects.length) items = [k("listOpen") + " names a new project"]
+    else if (page.projFocus >= 0) items = [k("listOpen") + " its notes", k("listClass") + " new section", k("listTag") + " put the tag", all]
+    else if (page.dueFocus >= 0) items = [k("listOpen") + " to its line", k("listDone") + " done", all]
+    else if (page.readToday.at >= 0) items = [k("listOpen") + " open where it was left", all]
+    else items = [k("calOpen") + " open the day", k("calLists") + " the lists", k("sideReach") + " a project", all]
+    // A line breaks between two keys, never inside one.
+    return items.map(function (t) { return t.replace(/ /g, "\u00a0") }).join(" · ")
+  }
+  readonly property bool hintShown: page.here === "left" && !page.addingProject
+
+  // Where the scrolling stops: above the hint while it shows, else above
+  // the rule over the foot.
+  Item {
+    id: footTop
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.bottom: sidebar.hintShown ? keysHint.top : footRule.top
+    anchors.bottomMargin: page.sp(8)
+    height: 0
+  }
+  Text {
+    id: keysHint
+    visible: sidebar.hintShown
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.bottom: footRule.top
+    anchors.leftMargin: sidebar.contentLeftInset
+    anchors.rightMargin: sidebar.contentRightInset
+    anchors.bottomMargin: page.sp(8)
+    textFormat: Text.PlainText
+    wrapMode: Text.WordWrap
+    maximumLineCount: 2
+    elide: Text.ElideRight
+    text: sidebar.hintText
+    color: page.dim
+    font.family: page.fontFamily
+    font.styleName: page.fontStyle
+    font.pixelSize: page.fs(Style.font.caption)
+  }
+  // What scrolls, and the foot that stays: a hairline between.
+  Rectangle {
+    id: footRule
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.bottom: sidebarFoot.top
+    anchors.leftMargin: sidebar.contentLeftInset
+    anchors.rightMargin: sidebar.contentRightInset
+    anchors.bottomMargin: page.sp(10)
+    height: 1
+    color: page.faint
+    opacity: 0.6
   }
 
   // The foot, the same in every space (Zen's essentials): which space is
@@ -744,11 +843,13 @@ BorderSurface {
     id: projectFlick
     visible: page.sidebarSpace === "time" && page.projectOpen
     transform: Translate { x: sidebar.spaceShift }
-    anchors.fill: parent
+    anchors.top: parent.top
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.bottom: footTop.top
     anchors.topMargin: sidebar.contentTopInset
     anchors.leftMargin: sidebar.contentLeftInset
     anchors.rightMargin: sidebar.contentRightInset
-    anchors.bottomMargin: sidebar.contentBottomInset + sidebarFoot.height + page.sp(12)
     clip: true
     contentWidth: width
     contentHeight: projectColumn.implicitHeight
@@ -857,7 +958,7 @@ BorderSurface {
           readonly property string rowKey: modelData.key
           readonly property string kind: modelData.kind
           readonly property bool hot: !!modelData.pick && page.projectFocusKey === modelData.key && sidebarKeys.activeFocus
-          onHotChanged: page.selected(rowCell, "left", hot)
+          onHotChanged: { page.selected(rowCell, "left", hot); if (hot) sidebar.reveal(rowCell, projectFlick, projectColumn) }
           Component.onCompleted: if (hot) page.selected(rowCell, "left", true)
           width: projectColumn.width
           height: kind === "cap" ? capText.implicitHeight : rowCol.implicitHeight + page.sp(kind === "fold" || kind === "doc" || kind === "paper" ? 4 : 8)
@@ -953,19 +1054,6 @@ BorderSurface {
         }
       }
 
-      Text {
-        width: parent.width
-        visible: sidebarKeys.activeFocus
-        topPadding: page.sp(6)
-        textFormat: Text.PlainText
-        wrapMode: Text.WordWrap
-        text: page.keyName("listUp") + page.keyName("listDown") + " pick · " + page.keyName("listOpen") + " opens it (a fold: unfolds) · "
-          + page.keyName("listBack") + " back to the projects"
-        color: page.faint
-        font.family: page.fontFamily
-        font.styleName: page.fontStyle
-        font.pixelSize: page.fs(Style.font.caption)
-      }
     }
   }
 }
