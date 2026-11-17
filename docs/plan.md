@@ -996,6 +996,31 @@ Small, when passing by:
     `model` and `planModel` in Longhand's config, and run `longhand-agent
     eval run --model openai/gpt-6.2-sol` before trusting it. An API key
     would reach it today but is billed per token, so it isn't the plan.
+22. **The agent's chat: stop a request, rewind to an earlier turn**
+    (2026-11-17, the student: "agent chat with the ability to stop the
+    request, rewind the chat to an earlier state (rewinding the state of
+    the pdf as well, not sure what would happen to the highlights,
+    though)"). Parked, not designed. Today a message once sent runs to its
+    end: nothing in the pane or in `longhand-agent` stops a run, and a
+    conversation (the day's, a block's, a paper's room) only grows.
+    - **Stop:** a key (and the seal, or a mark in the pane) ends the run
+      that is going; what was answered so far is kept and marked stopped,
+      or dropped. Needs: the run killed cleanly through opencode, no
+      half-written state (a proposal, a brief), and the run still logged.
+    - **Rewind:** pick an earlier turn and go back to it; the turns after
+      it are dropped (or kept aside to come back to), and the box holds
+      that message again to edit and resend.
+    - **The PDF rewound with it,** in a paper's room: back to where the
+      paper stood at that turn — the page it was on, the marks attached.
+    - **Open: the highlights.** The marks live in the reading note, which
+      is the person's own writing, so a rewind that deletes the
+      highlights and questions made since that turn would undo the
+      person's work, not the agent's. Options to grill: the marks are
+      never rewound (only the chat and where the PDF was); or they are,
+      but only after asking, listing what would go; or a question asked
+      after that turn goes back to waiting (its answer was in the dropped
+      turns) while the highlights stay. The same for a block's or the
+      day's chat: a proposal done after that turn stays done.
 
 - ~~**Tag suggestions while typing**~~ *done 2026-10-18*: `#` and a letter
   offer the tags that exist — the projects', then those written in the
