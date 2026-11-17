@@ -77,10 +77,23 @@ Item {
   property bool queued: false
   property string queuedText: ""
   property string error: ""
+  // A write that never says it landed. Quickshell drops a write's `saved`
+  // when the `setText` ran inside its own `loadFailed` (2026-11-17: today's
+  // note seeded from the template that way, `saving` never went false, and
+  // every later save waited behind it in memory for 71 minutes until the
+  // shell restarted and the text was gone). `landWait` after a write with no
+  // `saved`, the service lets go of it and writes what it holds again;
+  // `stalled` says so until a write lands, and the page shows it.
+  property int landWait: 4000
+  property bool stalled: false
+  property int stalls: 0
+  onSavingChanged: if (saving) landWatch.restart(); else landWatch.stop()
+  Timer { id: landWatch; interval: root.landWait; onTriggered: root.unstick() }
 
   signal loaded()
   signal externalChange()
   signal savedNow()
+  signal stall()
 
   // Where the runner lives and where it writes. The page only reads these.
   readonly property string runner: (config && config.runner) || (Quickshell.env("HOME") + "/.local/bin/longhand-agent")
@@ -248,11 +261,41 @@ Item {
   function write(content) {
     if (noteFile.text() === content) {
       root.saving = false
+      root.stalled = false
       root.pending = false
       root.savedNow()
       return
     }
     root.saving = true
+    landWatch.restart()
+    noteFile.setText(content)
+  }
+
+  // A write that never said it landed: let go of it and write the newest
+  // text again, from here, outside any FileView handler. `lastWritten` is
+  // always the newest text handed in (a queued one included).
+  function unstick() {
+    if (!root.saving) return
+    // Another file still loading: its text is not known yet, so wait.
+    if (!root.ready) { landWatch.restart(); return }
+    console.warn("longhand.page: a write to " + root.notePath + " never said it landed; writing again")
+    root.stalls += 1
+    root.stalled = true
+    root.stall()
+    root.saving = false
+    root.queued = false
+    if (root.readOnly || root.error !== "") return
+    root.write(root.lastWritten)
+  }
+
+  // Today's note seeded from the template, one tick after `loadFailed`:
+  // a `setText` inside that handler lands but never says `saved`. Only if
+  // the same file is still open; a save asked for meanwhile is newer and
+  // goes instead.
+  function seed(p, content) {
+    if (noteFile.path !== p || !root.saving) return
+    if (root.queued) { root.queued = false; content = root.queuedText }
+    landWatch.restart()
     noteFile.setText(content)
   }
 
@@ -329,7 +372,9 @@ Item {
         if (root.noteDate === root.todayStamp()) {
           root.lastWritten = seed
           root.exists = seed !== ""
-          if (seed !== "") root.write(seed)
+          // Not from in here (see `seed`): the write goes a tick later,
+          // `saving` from now, so a keystroke meanwhile waits behind it.
+          if (seed !== "") { root.saving = true; Qt.callLater(root.seed, root.notePath, seed) }
         } else {
           root.lastWritten = ""
           root.exists = false
@@ -342,6 +387,7 @@ Item {
     }
     onSaved: {
       root.exists = true
+      root.stalled = false
       // Not from in here: Quickshell says `saved` while the write that
       // landed still counts as its live one, and a `setText` now would
       // finish it again, say `saved` again, and lose the new write's own.

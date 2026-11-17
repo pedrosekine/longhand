@@ -6475,6 +6475,8 @@ Item {
     // asked for again by openSection, once it has loaded).
     onFilePathChanged: editor.focusTag = ""
     onLoaded: { root.applyText(svc.body); root.reconcilePending = true; root.startCheck(); root.reconcile(); root.openPass(); root.refreshDated() }
+    // A write that never said it landed, written again (Service.unstick).
+    onStall: root.showHint("a save did not land: writing it again")
     onExternalChange: { root.applyText(svc.body, true); root.reconcilePending = true; root.startCheck(); root.reconcile(); root.notesChanged(); root.refreshDated() }
     onSavedNow: {
       root.notesChanged()
@@ -7708,13 +7710,14 @@ Item {
             }
 
             // Saved / unsaved: a dot that brightens while a write is
-            // pending and settles once it landed.
+            // pending and settles once it landed; urgent while a write
+            // that never said it landed is being written again.
             Rectangle {
               anchors.verticalCenter: parent.verticalCenter
               width: root.sp(6)
               height: width
               radius: width / 2
-              color: root.problem !== "" ? root.urgent : (svc.pending || svc.saving ? root.foreground : root.faint)
+              color: root.problem !== "" || svc.stalled ? root.urgent : (svc.pending || svc.saving ? root.foreground : root.faint)
               Behavior on color { ColorAnimation { duration: 180 } }
             }
           }
