@@ -583,6 +583,22 @@ subscription login.
   reason that assumed what a session covers, and "nothing to change" where
   the student asked how to move a date. The prompts were tuned on GPT; Opus
   stays in use as a trial, judged by the helpful / not helpful ratings.
+  **Prompts for Opus (same evening, the student: "improve the prompts so
+  Opus passes all 20").** General rules, each for a failure that came back:
+  the deadline report's times are Unix seconds, never worked out into a
+  day or a span (Opus once made 16 Oct "15 Oct", once "the same second");
+  one question is one thing asked, and two joined by "and" are two (margin
+  and day); the page opening gets one or two sentences about one thing, or
+  nothing; a day reply's five sentences are a ceiling, the card's `why` not
+  repeated; a planner's reason rests on what the data says of a session,
+  never on what it supposes the session covers; when the five slots are
+  full, steps for a big box come before drops; a talk asked for what is
+  already so says so and still says how. Found on the way: local code cut
+  every step at 100 characters mid-word into the note ("map … to"); it now
+  cuts at a word with "…", and the prompt names the limit. Then Opus 5.5
+  medium 20/20 and 17/20 on two full runs (its misses each pass most
+  runs), GPT-6.1 Sol 19/20 (the synthetic seed it also failed before the
+  change). The runs vary: a single 20/20 is not a guarantee.
 - **Settings chooses the route per job** — for example, replies to blocks
   on the cheap model, planning on a stronger one.
 - **A failing route says so** and does not fall back silently.

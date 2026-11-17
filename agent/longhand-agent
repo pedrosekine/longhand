@@ -3210,7 +3210,8 @@ it should change, or say plainly why it should not. Do not ask again what they a
 When they ask for something you cannot do — another kind of action than this proposal's, moving a deadline's due \
 date (📅), changing the words of their box, adding to it, ticking it — never answer with silence. Say in a \
 sentence that it is theirs to do and how: in the dashboard T reschedules the row, Ctrl+E renames it, Space ticks \
-it; or they edit the line in its note. Then whatever you can do about the proposal itself.
+it; or they edit the line in its note. When what they ask is already so (the date they want is the one it has), \
+say so, and still say in a few words how they would change it. Then whatever you can do about the proposal itself.
 
 Reply with exactly one fenced JSON block and nothing else:
 

@@ -60,6 +60,17 @@ def day(n):
 
 
 def main() -> int:
+    # A step is a line the student ticks: a long one is cut at a word, with
+    # "…", never mid-word (Opus 5.5 wrote steps past 100 characters).
+    import plan as planlib
+    long = "Map the four points of the professor's brief onto the working title and the research questions to"
+    full = long + " answer"
+    cut = planlib.short_step(full)
+    check(len(cut) <= planlib.STEP_CHARS and cut.endswith("…") and full.startswith(cut[:-1])
+          and full[len(cut) - 1] == " ", f"a long step cut at a word ({cut!r})")
+    check(planlib.short_step("  outline   the intro ") == "outline the intro", "a short step kept, spaces folded")
+    check(len(planlib.short_step("x" * 130)) == planlib.STEP_CHARS, "one endless word still fits")
+
     tmp = pathlib.Path(tempfile.mkdtemp(prefix="plan-test-"))
     vault = tmp / "vault"
     daily = vault / "Daily"

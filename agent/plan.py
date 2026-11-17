@@ -35,6 +35,18 @@ MAX_QUESTIONS = 2
 MAX_CANDIDATES = 12
 MAX_BOXES = 40               # the open boxes the planner sees for the other actions
 MAX_STEPS = 5
+STEP_CHARS = 100
+
+
+def short_step(text) -> str:
+    """A step as a line the student can tick: one line, at most STEP_CHARS,
+    cut at a word with "…" when the model wrote it longer — never in the
+    middle of a word, which once left "map … to" in a note."""
+    s = re.sub(r"\s+", " ", str(text)).strip()
+    if len(s) <= STEP_CHARS:
+        return s
+    cut = s[:STEP_CHARS - 1].rsplit(" ", 1)[0].rstrip(" ,;:—-")
+    return cut + "…"
 # What is on the student's screen stays put until they act on it (2026-11-17:
 # 118 questions about 10 boxes, one reworded 39 times, each replacing the one
 # before; 6 answered). A question or steps left this long unanswered may be
@@ -428,7 +440,7 @@ def validate(reply: dict, cands: list[dict], days: list[dict], ledger: dict, tod
                     continue
                 item = dict(base, priority=lv, was=b["priority"])
             elif kind == "steps":
-                steps = [re.sub(r"\s+", " ", str(x)).strip()[:100] for x in (p.get("steps") or []) if str(x).strip()]
+                steps = [short_step(x) for x in (p.get("steps") or []) if str(x).strip()]
                 if not steps or b["steps_under_it"]:
                     continue
                 item = dict(base, steps=steps[:MAX_STEPS])
