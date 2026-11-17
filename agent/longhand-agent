@@ -2816,6 +2816,10 @@ def cmd_plan(cfg: dict, args) -> int:
         "deadlines": [{"title": x["title"], "due": x["due"].strftime("%Y-%m-%d %H:%M"), "project": x["project"]}
                       for x in sorted(deadlines, key=lambda x: x["due"])][:20],
         "your_record": planlib.summary(ledger),
+        # On the student's screen, unanswered, and kept there until they act:
+        # do not ask or propose again about these boxes; a new word on one
+        # is dropped. Plan around them.
+        "waiting_on_the_student": planlib.waiting(ledger, today),
         # Every open box, for the actions that are not about a day, and what
         # the student allows: a kind at "never" is not to be proposed.
         "open_boxes": boxes,
