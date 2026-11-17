@@ -49,4 +49,33 @@ TestCase {
     compare(Tags.fromField("", projects).tag, "")
     compare(Tags.fromField("Über", projects).tag, "ber")
   }
+  // Reaching a project by its letters (plan.md item 19).
+  property var reachList: [{ tag: "respro", name: "Research Proficiency" }, { tag: "studio", name: "Design Studio" },
+                           { tag: "dtm", name: "Design Theory & Methods" }, { tag: "intsem", name: "Interdisciplinary Seminar" },
+                           { tag: "thesis", name: "Master Thesis" }]
+  function tags(l) { return l.map(function (p) { return p.tag }) }
+
+  function test_reach_tag_then_word_then_within() {
+    compare(tags(Tags.reach(reachList, "th")), ["thesis", "dtm"])
+    compare(tags(Tags.reach(reachList, "#TH")), ["thesis", "dtm"])     // the # that started it is no letter
+    compare(tags(Tags.reach(reachList, "design")), ["studio", "dtm"])  // the list's order inside a group
+    compare(tags(Tags.reach(reachList, "sem")), ["intsem"])
+    compare(tags(Tags.reach(reachList, "")), tags(reachList))
+    compare(Tags.reach(reachList, "zzz"), [])
+  }
+
+  function test_by_use_most_reached_first_ties_as_listed() {
+    var now = 100 * 86400
+    var uses = { thesis: [now - 10, now - 20, now - 30], dtm: [now - 40], studio: [now - 29 * 86400, now - 30 * 86400] }
+    // studio's uses are older than four weeks: it keeps its place.
+    compare(tags(Tags.byUse(reachList, uses, now)), ["thesis", "dtm", "respro", "studio", "intsem"])
+    compare(tags(Tags.byUse(reachList, {}, now)), tags(reachList))
+  }
+
+  function test_used_counts_and_forgets() {
+    var now = 100 * 86400
+    var u = Tags.used({ old: [now - 40 * 86400], thesis: [now - 5] }, "thesis", now)
+    compare(u.thesis, [now - 5, now])
+    verify(u.old === undefined)
+  }
 }

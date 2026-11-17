@@ -916,7 +916,8 @@ Item {
   property bool dayTasksOpen: false
   property int dueFocus: -1          // in the list under the calendar (-1: the grid has the keys)
   property int projFocus: -1         // in the projects list (-1: not there)
-  property var projects: []          // [{ tag, name, next: { at, room } }]
+  property var projects: []          // [{ tag, name, next: { at, room } }], the most used first (orderProjects)
+  property var projectsListed: []    // as the runner lists them: soonest session first
   property int pendingGoto: 0        // a deadline whose line to land on once its note is open
   property var pendingTask: null     // { text, line }: a task's line to land on, the same way
   readonly property int sideSpace: root.sidebarOpen && root.problem === "" ? root.sidebarWidth + root.marginGap : 0
@@ -1950,6 +1951,8 @@ Item {
     if (Sc.hit(event, "today")) { root.goToday(); return true }
     if (Sc.hit(event, "pin")) { root.togglePin(); return true }
     if (Sc.hit(event, "copyPath")) { root.copyPath(); return true }
+    if (Sc.hit(event, "switcher")) { root.toggleSwitcher(); return true }
+    if (Sc.hit(event, "projectKey")) { root.projectByKey(event); return true }
     return false
   }
 
@@ -2250,7 +2253,7 @@ Item {
     var rest = v === "note" ? [["bold", "bold"], ["italic", "italic"], ["link", "link"], ["deadline", "a date"], ["privateBlock", "private"], ["find", "find"], ["undo", "undo"]]
       : v === "dash" ? [["dashPlan", "plan now"], ["dashUndo", "undo"]]
       : []
-    return rest.concat([["linkBack", "back"], ["keys", "every key"]])
+    return rest.concat([["switcher", "a project"], ["linkBack", "back"], ["keys", "every key"]])
       .map(function (a) { return { key: root.ctrlKey(a[0]), words: a[1] } })
       .filter(function (a) { return a.key !== "" })
   }
@@ -3993,7 +3996,8 @@ Item {
   // place. The claiming rule lives in `longhand-agent sections`.
   function openProject(pr) {
     if (!pr) return
-    root.used("project-notes")
+    root.used("project-notes", pr.tag)
+    root.reached(pr.tag)
     root.projectTag = pr.tag
     root.projectFolder = pr.folder || ""
     root.projectName = pr.name || pr.tag
@@ -4037,17 +4041,12 @@ Item {
   // use. A function, as projectsKey is, so the page can be driven without
   // a keyboard (tests/page/run.py).
   function dueKey(event) {
-    var n = root.focusDue.length
-    if (Sc.hit(event, "listUp")) root.dueFocus = Math.max(0, root.dueFocus - 1)
-    else if (Sc.hit(event, "listDown")) root.dueFocus = Math.min(n - 1, root.dueFocus + 1)
-    else if (Sc.hit(event, "listOpen")) root.goToDeadline(root.focusDue[root.dueFocus])
+    if (Sc.hit(event, "listOpen")) root.goToDeadline(root.focusDue[root.dueFocus])
     else if (Sc.hit(event, "listDone")) {
       var d = root.focusDue[root.dueFocus]
       if (d && d.status === "open") root.tickSound()
       root.tickDeadline(d)
     }
-    else if (Sc.hit(event, "listNext")) { root.dueFocus = -1; if (root.readToday.rows.length > 0) root.readToday.at = 0; else root.projFocus = 0 }
-    else if (Sc.hit(event, "listBack")) root.dueFocus = -1
     else return false
     return true
   }
@@ -4061,15 +4060,250 @@ Item {
   function projectsKey(event) {
     // The row after the last project makes a new one.
     var pr = root.projects[root.projFocus]
-    if (Sc.hit(event, "listUp")) root.projFocus = Math.max(0, root.projFocus - 1)
-    else if (Sc.hit(event, "listDown")) root.projFocus = Math.min(root.projects.length, root.projFocus + 1)
-    else if (Sc.hit(event, "listPage")) { if (pr) root.openProjectPage(pr.tag) }
+    if (Sc.hit(event, "listPage")) { if (pr) root.openProjectPage(pr.tag) }
     else if (Sc.hit(event, "listTag")) { if (pr) root.insertTag(pr) }
     else if (Sc.hit(event, "listClass")) { if (pr) root.startClass(pr) }
-    else if (Sc.hit(event, "listOpen")) { if (pr) root.openProject(pr); else root.openSidebarProject() }
-    else if (Sc.hit(event, "listInto")) { if (pr) root.openProject(pr) }
-    else if (Sc.hit(event, "listNext") || Sc.hit(event, "listBack")) root.projFocus = -1
+    else if (Sc.hit(event, "listOpen")) { if (pr) { root.used("reach", "walk"); root.openProject(pr) } else root.openSidebarProject() }
+    else if (Sc.hit(event, "listInto")) { if (pr) { root.used("reach", "walk"); root.openProject(pr) } }
     else if (!(event.modifiers & Qt.ControlModifier)) { root.projFocus = -1; return false }
+    else return false
+    return true
+  }
+
+  // ---------------------------------------- reaching a project (plan.md item 19)
+
+  // The lists under the calendar as one walk (2026-11-17, the student: "I
+  // would expect the rest to be navigated through arrows"): the arrows go
+  // on from the day's deadlines into what was read and on into the
+  // projects; Tab only skips a list, and Tab is still how the calendar is
+  // left, its own arrows being the days. Which lists have rows, in order:
+  function sideLists() {
+    var l = []
+    if (root.focusDue.length > 0) l.push("due")
+    if (root.readToday.rows.length > 0) l.push("read")
+    l.push("proj")
+    return l
+  }
+  // How many rows a list has; the projects' last is the one that makes a new one.
+  function sideRows(list) {
+    return list === "due" ? root.focusDue.length : list === "read" ? root.readToday.rows.length : root.projects.length + 1
+  }
+  // Where the keys are under the calendar ("" in the calendar itself).
+  readonly property string sideList: root.dueFocus >= 0 ? "due" : root.readToday.at >= 0 ? "read" : root.projFocus >= 0 ? "proj" : ""
+  function sideAt() {
+    return root.sideList === "due" ? root.dueFocus : root.sideList === "read" ? root.readToday.at : root.projFocus
+  }
+  // The keys onto a list's row; "" is the calendar.
+  function sidePut(list, row) {
+    root.dueFocus = list === "due" ? row : -1
+    root.readToday.at = list === "read" ? row : -1
+    root.projFocus = list === "proj" ? row : -1
+    if (list === "") root.sideLast = null
+  }
+  // The walk's keys, the same in every list; false for a key it leaves to
+  // the list (Enter, done, a new section…).
+  function listWalk(event) {
+    var lists = root.sideLists(), here = root.sideList, i = lists.indexOf(here), at = root.sideAt()
+    if (i < 0) return false
+    if (Sc.hit(event, "listDown")) {
+      if (at < root.sideRows(here) - 1) root.sidePut(here, at + 1)
+      else if (i < lists.length - 1) root.sidePut(lists[i + 1], 0)
+    } else if (Sc.hit(event, "listUp")) {
+      // At the top of the first list the walk stops: the calendar is left
+      // and come back to by Tab, so ↑ held down never starts moving days.
+      if (at > 0) root.sidePut(here, at - 1)
+      else if (i > 0) root.sidePut(lists[i - 1], root.sideRows(lists[i - 1]) - 1)
+    } else if (Sc.hit(event, "listFirst")) root.sidePut(lists[0], 0)
+    else if (Sc.hit(event, "listLast")) root.sidePut("proj", Math.max(0, root.projects.length - 1))
+    else if (Sc.hit(event, "listNext")) root.sidePut(i < lists.length - 1 ? lists[i + 1] : "", 0)
+    else if (Sc.hit(event, "listPrev")) root.sidePut(i > 0 ? lists[i - 1] : "", 0)
+    else if (Sc.hit(event, "listBack")) root.sidePut("", -1)
+    else return false
+    return true
+  }
+
+  // The sidebar opened again comes back to the row it was left on (item
+  // 19's "remembering the last list and row"): a project by its tag, a
+  // deadline or a paper only while the calendar is on the same day. Backing
+  // out to the calendar forgets it, so the calendar is where Esc left you.
+  property var sideLast: null        // { list, key, day }
+  function noteSide() {
+    // From the rows themselves: inside their change handlers the sideList
+    // binding may not have caught up yet.
+    var l = root.dueFocus >= 0 ? "due" : root.readToday.at >= 0 ? "read" : root.projFocus >= 0 ? "proj" : ""
+    if (l === "") return
+    var day = Days.key(root.calFocus)
+    if (l === "proj") {
+      if (root.projects.length === 0) return
+      var pr = root.projects[root.projFocus]
+      root.sideLast = { list: l, key: pr ? pr.tag : "+", day: day }
+    } else if (l === "due") {
+      var d = root.focusDue[root.dueFocus]
+      if (d) root.sideLast = { list: l, key: d.id, day: day }
+    } else {
+      var r = root.readToday.rows[root.readToday.at]
+      if (r) root.sideLast = { list: l, key: r.pdf, day: day }
+    }
+  }
+  onProjFocusChanged: root.noteSide()
+  onDueFocusChanged: root.noteSide()
+  Connections { target: root.readToday; function onAtChanged() { root.noteSide() } }
+  function restoreSide() {
+    var s = root.sideLast
+    if (!s) return
+    if (s.list === "proj") {
+      var i = s.key === "+" ? root.projects.length : root.projects.findIndex(function (p) { return p.tag === s.key })
+      if (i >= 0) root.sidePut("proj", i)
+      return
+    }
+    if (s.day !== Days.key(root.calFocus)) return
+    if (s.list === "due") {
+      var j = root.focusDue.findIndex(function (d) { return d.id === s.key })
+      if (j >= 0) root.sidePut("due", j)
+    } else {
+      var k = root.readToday.rows.findIndex(function (r) { return r.pdf === s.key })
+      if (k >= 0) root.sidePut("read", k)
+    }
+  }
+
+  // The projects, the most used first (Tags.byUse); the keys stay on the
+  // project they were on while the list is read again.
+  property var projectUses: ({})     // projects-used.json: { tag: [epoch seconds] }
+  function orderProjects() {
+    var on = root.projects[root.projFocus]
+    var tag = root.projFocus >= 0 && on ? on.tag : ""
+    var wasNew = root.projFocus >= 0 && root.projFocus === root.projects.length
+    root.projects = Tags.byUse(root.projectsListed, root.projectUses, Math.floor(Date.now() / 1000))
+    if (tag !== "") {
+      var i = root.projects.findIndex(function (p) { return p.tag === tag })
+      root.projFocus = i >= 0 ? i : Math.min(root.projFocus, root.projects.length)
+    } else if (wasNew) root.projFocus = root.projects.length
+    else root.projFocus = Math.min(root.projFocus, root.projects.length)
+  }
+  // One more use of a project, whichever way it was reached. The order
+  // moves the next time the list is read (the sidebar opened), never under
+  // the keys.
+  function reached(tag) {
+    if (!tag) return
+    root.projectUses = Tags.used(root.projectUses, tag, Math.floor(Date.now() / 1000))
+    projectUsesFile.setText(JSON.stringify(root.projectUses) + "\n")
+  }
+
+  // To a project's notes in the sidebar from wherever the keys are, by the
+  // way it was reached (logged, so the ways can be weighed: plan.md item
+  // 19 measures keys pressed): "type", "key", "switcher".
+  function reachProject(pr, how) {
+    if (!pr) return
+    root.used("reach", how)
+    root.switcherOpen = false
+    root.sideTyping = false
+    if (!root.sidebarOpen) root.noteFrom("left")
+    if (root.sidebarSpace !== "time") { root.spaceStep = -1; root.sidebarSpace = "time" }
+    root.openProject(pr)
+  }
+  // Alt+1…9: the sidebar's first, second… project, as numbered there.
+  function projectByKey(event) {
+    var n = event.key - Qt.Key_0
+    var pr = root.projects[n - 1]
+    if (pr) root.reachProject(pr, "key")
+    else root.showHint(root.projects.length === 0 ? "no projects yet" : "the sidebar lists " + root.projects.length + (root.projects.length === 1 ? " project" : " projects"))
+  }
+
+  // Type to go: `#` and the letters, in the calendar or its lists, with no
+  // field to open (`#`, since bare letters are the lists' own keys and
+  // #thesis starts with the calendar's T). The keys go to the first match
+  // as each letter is typed, the rest dim; ↑↓ step through the matches,
+  // Enter opens, Esc or Backspace past the # stops where it is.
+  property bool sideTyping: false
+  property string sideTyped: ""
+  readonly property var sideMatches: root.sideTyping ? Tags.reach(root.projects, root.sideTyped) : []
+  // By tag: a project handed to QML (a row's modelData) is a copy, never
+  // the same object as the list's.
+  readonly property var sideMatchTags: root.sideMatches.map(function (p) { return p.tag })
+  function projectIndex(tag) { return root.projects.findIndex(function (p) { return p.tag === tag }) }
+  function sideReachStart() {
+    root.sideTyping = true
+    root.sideTyped = ""
+    root.sideToMatch(0)
+  }
+  function sideToMatch(i) {
+    var m = root.sideMatches[i]
+    if (m) root.sidePut("proj", root.projectIndex(m.tag))
+  }
+  function sideTypeKey(event) {
+    var mods = event.modifiers & (Qt.ControlModifier | Qt.AltModifier)
+    var ch = event.text || ""
+    var on = root.projects[root.projFocus]
+    var at = on ? root.sideMatchTags.indexOf(on.tag) : -1
+    if (event.key === Qt.Key_Escape) { root.sideTyping = false; return true }
+    if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+      var pr = at >= 0 ? root.sideMatches[at] : root.sideMatches[0]
+      root.sideTyping = false
+      if (pr) root.reachProject(pr, "type")
+      return true
+    }
+    if (event.key === Qt.Key_Backspace) {
+      if (root.sideTyped === "") root.sideTyping = false
+      else { root.sideTyped = root.sideTyped.slice(0, -1); root.sideToMatch(0) }
+      return true
+    }
+    if (event.key === Qt.Key_Up || event.key === Qt.Key_Down) {
+      var n = root.sideMatches.length
+      if (n > 0) root.sideToMatch(((at < 0 ? 0 : at) + (event.key === Qt.Key_Down ? 1 : n - 1)) % n)
+      return true
+    }
+    if (!mods && ch.length === 1 && /[\w\/-]/.test(ch)) {
+      root.sideTyped += ch
+      root.sideToMatch(0)
+      return true
+    }
+    if (!mods && ch === "#") return true
+    // Anything else ends the typing and is the key it always was.
+    root.sideTyping = false
+    return false
+  }
+
+  // The switcher (Ctrl+O, docs/keys-proposal.md's "find anything", built
+  // for projects first: plan.md item 19): "#th" Enter from anywhere. It
+  // floats over the middle; Esc gives the keys back where they were.
+  property bool switcherOpen: false
+  readonly property var switcherField: switcherBox.fieldRef
+  property string switcherText: ""
+  property int switcherPick: 0
+  property string switcherFrom: "center"
+  readonly property var switcherMatches: root.switcherOpen ? Tags.reach(root.projects, root.switcherText) : []
+  onSwitcherTextChanged: root.switcherPick = 0
+  function toggleSwitcher() {
+    if (root.switcherOpen) { root.closeSwitcher(); return }
+    root.switcherFrom = root.here
+    root.used("switcher")
+    root.switcherText = ""
+    root.switcherPick = 0
+    root.switcherOpen = true
+    if (root.projectsListed.length === 0) root.refreshProjects()
+    switcherBox.fieldRef.text = ""
+    switcherBox.fieldRef.forceActiveFocus()
+  }
+  function closeSwitcher() {
+    root.switcherOpen = false
+    if (!root.focusPane(root.switcherFrom)) root.focusCenter()
+  }
+  function switcherGo(asPage) {
+    var pr = root.switcherMatches[root.switcherPick]
+    if (!pr) return
+    if (asPage) {
+      root.closeSwitcher()
+      root.used("reach", "switcher-page")
+      root.openProjectPage(pr.tag)
+    } else root.reachProject(pr, "switcher")
+  }
+  function switcherKey(event) {
+    var n = root.switcherMatches.length
+    if (Sc.hit(event, "switchUp")) { if (n > 0) root.switcherPick = (root.switcherPick + n - 1) % n }
+    else if (Sc.hit(event, "switchDown")) { if (n > 0) root.switcherPick = (root.switcherPick + 1) % n }
+    else if (Sc.hit(event, "switchGo")) root.switcherGo(false)
+    else if (Sc.hit(event, "switchPage")) root.switcherGo(true)
+    else if (Sc.hit(event, "switchClose")) root.closeSwitcher()
     else return false
     return true
   }
@@ -4108,7 +4342,8 @@ Item {
   // written. Written again each time it is opened.
   function openProjectPage(tag) {
     if (!tag) return
-    root.used("project-page")
+    root.used("project-page", tag)
+    root.reached(tag)
     root.showHint("gathering #" + tag + "…")
     projectPageProc.command = [svc.runner, "project-page", "--tag", tag]
     projectPageProc.running = true
@@ -6180,6 +6415,8 @@ Item {
   // a click lands on the side where the thing appears.
   function dateClicked() {
     root.used("date")
+    // The date clicked asks for the calendar, not the row the keys were on.
+    root.sideLast = null
     root.toggleSidebar()
   }
 
@@ -6219,6 +6456,8 @@ Item {
     root.calFocus = p ? p.date : new Date()
     root.dueFocus = -1
     root.projFocus = -1
+    root.readToday.at = -1
+    root.restoreSide()
     root.refreshProjects()
     sidebar.sidebarKeysRef.forceActiveFocus()
   }
@@ -6231,7 +6470,11 @@ Item {
     root.calFocus = d
   }
 
+  // Asked while a read is under way: once more when it ends, so a project
+  // just made is never missed, and two reads never cut each other short.
+  property bool projectsAgain: false
   function refreshProjects() {
+    if (projectsProc.running) { root.projectsAgain = true; return }
     projectsProc.command = [svc.runner, "projects"]
     projectsProc.running = true
   }
@@ -6258,6 +6501,7 @@ Item {
   property var pendingClass: null
   function startClass(p) {
     root.used("class", p.tag)
+    root.reached(p.tag)
     root.pendingClass = p
     root.projFocus = -1
     if (svc.isToday && svc.ready) root.writeClass()
@@ -6279,6 +6523,7 @@ Item {
   // `#`: just the tag, where the cursor is.
   function insertTag(p) {
     root.used("tag", p.tag)
+    root.reached(p.tag)
     root.projFocus = -1
     root.showNote()
     var pos = editor.cursorPosition
@@ -6818,11 +7063,17 @@ Item {
     id: projectsProc
     stdout: StdioCollector {
       onStreamFinished: {
-        try { root.projects = JSON.parse(text) || [] } catch (e) { root.projects = [] }
-        root.projFocus = Math.min(root.projFocus, root.projects.length - 1)
+        // A read cut short (asked again while running) says nothing; it
+        // never empties the list under the keys.
+        if (text.trim() === "") return
+        try { root.projectsListed = JSON.parse(text) || [] } catch (e) { return }
+        root.orderProjects()
       }
     }
-    onExited: function (code, status) { root.fetched() }
+    onExited: function (code, status) {
+      root.fetched()
+      if (root.projectsAgain) { root.projectsAgain = false; Qt.callLater(root.refreshProjects) }
+    }
   }
   Timer { interval: 300000; running: root.usageBuf.length > 0; repeat: true; onTriggered: root.flushUsage() }
 
@@ -6835,6 +7086,19 @@ Item {
     printErrors: false
     onLoaded: {
       try { var o = JSON.parse(text()); if (o && typeof o === "object") root.taught = o } catch (e) { console.warn("longhand.page taught.json: " + e) }
+    }
+  }
+
+  // projects-used.json: when each project was last reached, four weeks of
+  // it (Tags.byUse orders the sidebar's projects by it; plan.md item 19).
+  // The machine's state, beside taught.json.
+  FileView {
+    id: projectUsesFile
+    path: (Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state") + "/longhand/projects-used.json"
+    atomicWrites: true
+    printErrors: false
+    onLoaded: {
+      try { var o = JSON.parse(text()); if (o && typeof o === "object") { root.projectUses = o; root.orderProjects() } } catch (e) { console.warn("longhand.page projects-used.json: " + e) }
     }
   }
 
@@ -7302,6 +7566,10 @@ Item {
     // answers to, under where it works, each one movable. A list, so it
     // takes the dashboard's shape rather than the note's measure. (KeysSheet.qml)
     KeysSheet { id: keysSheet; page: root }
+
+    // The switcher (Ctrl+O): a project by its letters, over whatever the
+    // middle shows. (Switcher.qml)
+    Switcher { id: switcherBox; page: root }
 
     BorderSurface {
       id: sheet

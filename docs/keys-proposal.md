@@ -1,7 +1,7 @@
 # Keys: a proposal after the benchmark apps
 
 _Proposed and grilled 2026-10-27; decided. All five slices built 2026-10-28,
-and the dashboard's own key, `Ctrl+Alt+2`, on 2026-10-30; the switcher and the `/` menu, and a new note, wait as tasks of their own. Building moves each row into `plugin-page/Shortcuts.js`, and
+and the dashboard's own key, `Ctrl+Alt+2`, on 2026-10-30; the switcher and the `/` menu, and a new note, wait as tasks of their own (the switcher built for projects on 2026-11-17, plan.md item 19: notes, tasks and actions still wait). Building moves each row into `plugin-page/Shortcuts.js`, and
 `tools/keys_guide.py` rewrites [keys.md](keys.md); navigation.md, the
 agent's manual and the keys sheet follow._
 
@@ -55,7 +55,7 @@ every layout.
 | The day before / after | `Alt+[` / `Alt+]` · `Ctrl+PgUp` / `PgDn` | unchanged | No benchmark (Obsidian's daily notes leave it unassigned) |
 | Settings | `Ctrl+,` | unchanged | All four |
 | The keys | `Ctrl+/` | `Ctrl+/` · **`?`** in lists | Todoist `?`; Google apps `Ctrl+/` |
-| Find anything (notes, tasks, actions) | — | **`Ctrl+O`**, not built | Obsidian palette `Ctrl+P`, quick switcher `Ctrl+O`; Notion `Ctrl+P`/`Ctrl+K`; Craft quick open `Cmd+O` |
+| Find anything (notes, tasks, actions) | — | **`Ctrl+O`**, built for projects (2026-11-17) | Obsidian palette `Ctrl+P`, quick switcher `Ctrl+O`; Notion `Ctrl+P`/`Ctrl+K`; Craft quick open `Cmd+O` |
 | Overlay or window | `F11` · `Ctrl+Alt+P` | unchanged | Fullscreen convention |
 
 Dropped: `Ctrl+T`, `Ctrl+Shift+B`, `Ctrl+{`/`Ctrl+}`, and the brackets as
@@ -243,7 +243,7 @@ opened view after the day's note (85 times, 15–28 October).
   give way to the list's own keys: `↑↓` to a setting, `Space`/`Enter`
   changes it, as in any settings list. `Ctrl+Shift+S` then means
   strikethrough only.
-- **Decided (grilling, 2026-10-27):** the sidebar's `#` puts the tag, and
+- **Decided (grilling, 2026-10-27):** the sidebar's `#` puts the tag (`T` since 2026-11-17, when `#` went to reaching a project by its letters: plan.md item 19), and
   settings becomes a list. Found while deciding: `↑↓` in settings walks
   only the calendars today; the sound, the pointer, the notebook, what the
   agent may do and what it may search are reached only by their own
@@ -377,7 +377,7 @@ done, so a move made of several is one step.
 - **The note:** `Ctrl+K` makes a link: with words selected, `[words]()`
   with the cursor in the parentheses for the address, as Obsidian does;
   with none, `[]()` with the cursor in the brackets.
-- **The sidebar's lists:** `#` puts the tag; "start the class" becomes "new
+- **The sidebar's lists:** `#` puts the tag (`T` since 2026-11-17, when `#` went to reaching a project by its letters: plan.md item 19); "start the class" becomes "new
   section" on `S` (and `Shift+Enter` in the `@` list); `?` opens the keys.
 - **Settings as a list:** `↑↓` walks every setting, not only the calendars;
   `Space`/`Enter` changes or opens it; `Del` removes a calendar or forgets

@@ -150,6 +150,7 @@ ShellRoot {
     function untaught(): void { Sc.takeUses(); page.taught = {} }
     // Hold Ctrl (docs/hints.md, F): shown, and what it shows.
     function ctrlShown(): bool { return page.ctrlShown }
+    function ctrlHold(on: bool): void { if (on) page.ctrlShow(); else page.ctrlLetGo() }
     function ctrlKey(id: string): string { return page.ctrlKey(id) }
     function ctrlStrip(): string { return JSON.stringify(page.ctrlStripItems) }
     // A hint drawn on demand, for a look at it (tools, not the suite).
@@ -398,6 +399,26 @@ ShellRoot {
       return sb.keyPressed({ key: key, text: "", modifiers: mods })
     }
     function sideFocus(): string { return JSON.stringify({ due: page.dueFocus, proj: page.projFocus }) }
+    // Reaching a project (plan.md item 19): letters typed into the sidebar
+    // as keys give them (after `#`), where the walk stands, the project
+    // open, the switcher.
+    function sideType(s: string): void {
+      var sb = page.contentItem.children.filter(function (k) { return k.sidebarKeysRef !== undefined })[0]
+      for (var i = 0; i < s.length; i++) {
+        var c = s.charAt(i)
+        sb.keyPressed({ key: c === "#" ? Qt.Key_NumberSign : c.toUpperCase().charCodeAt(0), text: c, modifiers: c === "#" ? Qt.ShiftModifier : 0 })
+      }
+    }
+    function sideWalk(): string {
+      return JSON.stringify({ list: page.sideList, at: page.sideAt(), typing: page.sideTyping,
+                              open: page.projectOpen ? page.projectTag : "", order: page.projects.map(function (p) { return p.tag }) })
+    }
+    function switcher(): string {
+      return JSON.stringify({ open: page.switcherOpen, here: page.here, pick: page.switcherPick,
+                              matches: page.switcherMatches.map(function (p) { return p.tag }) })
+    }
+    function switcherType(s: string): void { page.switcherField.text = s }
+    function switcherKey(key: int, mods: int): bool { return page.switcherKey({ key: key, text: "", modifiers: mods }) }
     function goFirstDue(): void { page.goToDeadline(page.focusDue[0]) }
     // The day's deadline list as the keyboard drives it: focus a row, a key.
     function dueKey(i: int, key: int, mods: int): bool { page.dueFocus = i; return page.dueKey({ key: key, text: "", modifiers: mods }) }
