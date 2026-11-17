@@ -31,6 +31,7 @@ nowhere is reported as not placed, never dropped.
     longhand-read note   --pdf P --id hN --text T      (empty: the note goes)
     longhand-read tag    --pdf P --tag T
     longhand-read find   --pdf P --page N --text T     (where words are, to show them; nothing kept)
+    longhand-read search --pdf P --text T              (every place the words are, with the words around each)
     longhand-read days                                 (what was marked on each day, every paper)
     longhand-read reading [--days N]                   (papers read lately and their waiting questions, for the agent)
     longhand-read papers --tag T                       (a project's papers, by their reading notes' tags)
@@ -129,6 +130,13 @@ def readings_dir(cfg: dict) -> str:
 def key(s: str) -> str:
     """Letters and digits only, lower case, ligatures and accents undone."""
     s = unicodedata.normalize("NFKD", s).casefold()
+    return "".join(c for c in s if c.isalnum())
+
+
+def key_cased(s: str) -> str:
+    """As `key`, its capitals kept: a search typed with a capital in it
+    finds only those (ANS, not trANSport)."""
+    s = unicodedata.normalize("NFKD", s)
     return "".join(c for c in s if c.isalnum())
 
 
@@ -267,12 +275,12 @@ def text_span(pages: list[list[dict]]) -> dict | None:
     return {"x0": round(left, 1), "x1": round(right, 1), "w": round(width, 1)}
 
 
-def page_keys(words: list[dict]) -> tuple[str, list[int]]:
+def page_keys(words: list[dict], keyed=key) -> tuple[str, list[int]]:
     """A page's words as one key string, and for each of its characters the
     word it came from."""
     s, owner = [], []
     for i, w in enumerate(words):
-        k = key(w["t"])
+        k = keyed(w["t"])
         s.append(k)
         owner.extend([i] * len(k))
     return "".join(s), owner
@@ -350,6 +358,66 @@ def place(pages: list[list[dict]], text: str, page: int, after: str = "", y: flo
                             "boxes": [{"page": p, "rects": rects(pages[p], first, len(pages[p]) - 1)},
                                       {"page": p + 1, "rects": rects(pages[p + 1], 0, last)}]}
     return None
+
+
+SEARCH_LIMIT = 500
+HYPHENS = ("-", "\u00ad", "\u2010", "\ufffe")
+
+
+def search_keys(words: list[dict], keyed) -> tuple[str, list[int]]:
+    """A page's words as `page_keys` has them, a space kept between two
+    words (a search for "ans" is not in "human sensing"), none after a word
+    a line broke with a hyphen ("Auton- omous" is "autonomous")."""
+    s, owner = [], []
+    for i, w in enumerate(words):
+        k = keyed(w["t"])
+        s.append(k)
+        owner.extend([i] * len(k))
+        if k and not w["t"].rstrip().endswith(HYPHENS):
+            s.append(" ")
+            owner.append(i)
+    return "".join(s), owner
+
+
+def plain(words: list[dict]) -> str:
+    """Words for a line of text: what pdftotext keeps of a table's tabs and
+    marks between them is a space."""
+    text = re.sub(r"[\s\x00-\x1f]+", " ", " ".join(w["t"] for w in words)).strip()
+    return re.sub(r"(\w)[-\u00ad] (?=\w)", r"\1-", text)
+
+
+def search(pages: list[list[dict]], text: str, limit: int = SEARCH_LIMIT) -> dict:
+    """Every place `text` is in the paper, page by page (Ctrl+F in a PDF,
+    2026-11-17), matched as a mark's words are, loosely: letters and digits
+    only, so a word broken over a line, a ligature or an accent never hides
+    one; only the spaces between words are kept. All in small letters finds
+    any case; a capital typed makes the case count. Each hit: its page
+    (from 0), its rectangles, and the words before it, its own, and after,
+    for a list of them. The first `limit` are given, and how many there are."""
+    words = clean_quote(text)
+    cased = any(c.isupper() for c in words)
+    keyed = key_cased if cased else key
+    q = " ".join(k for k in (keyed(w) for w in words.split()) if k)
+    out = {"hits": [], "total": 0, "cased": cased}
+    if len(q.replace(" ", "")) < 2:
+        return out
+    for p, ws in enumerate(pages):
+        s, owner = search_keys(ws, keyed)
+        at, last_span = s.find(q), None
+        while at >= 0:
+            first, last = owner[at], owner[at + len(q) - 1]
+            # Twice in one word (a word that holds it twice) is one place.
+            if (first, last) != last_span:
+                last_span = (first, last)
+                out["total"] += 1
+                if len(out["hits"]) < limit:
+                    out["hits"].append({
+                        "page": p, "rects": rects(ws, first, last),
+                        "before": plain(ws[max(0, first - 6):first]),
+                        "match": plain(ws[first:last + 1])[:300],
+                        "after": plain(ws[last + 1:last + 7])})
+            at = s.find(q, at + len(q))
+    return out
 
 
 def before_words(words: list[dict], first: int, count: int = 3) -> str:
@@ -1389,13 +1457,15 @@ def main() -> int:
     pp = sub.add_parser("papers")
     pp.add_argument("--tag", required=True)
     pp.add_argument("--dir", default="", help="the project's folder in the vault: its PDFs too, marked or not")
-    for name in ("state", "mark", "remove", "kind", "note", "tag", "find", "ocr", "move", "acronyms"):
+    for name in ("state", "mark", "remove", "kind", "note", "tag", "find", "search", "ocr", "move", "acronyms"):
         p = sub.add_parser(name)
         p.add_argument("--pdf", required=True)
         if name == "move":
             p.add_argument("--to", required=True, help="its new path in the vault (a folder: the same name there)")
         if name == "find":
             p.add_argument("--page", type=int, required=True)
+            p.add_argument("--text", required=True)
+        if name == "search":
             p.add_argument("--text", required=True)
         if name == "mark":
             p.add_argument("--page", type=int, required=True)
@@ -1430,6 +1500,10 @@ def main() -> int:
     if a.cmd == "acronyms":
         # Read only: nothing settled or written in the vault.
         print(json.dumps(cmd_acronyms(cfg, rel, path), ensure_ascii=False))
+        return 0
+    if a.cmd == "search":
+        # Read only, as `find`: nothing settled or written.
+        print(json.dumps({"pdf": rel, "search": a.text, **search(words_of(path), a.text)}, ensure_ascii=False))
         return 0
     if a.cmd != "find":
         settle(cfg, rel, path)

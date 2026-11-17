@@ -190,6 +190,32 @@ Item {
       compare(Marks.pick(marks, 1, 500, 500, "h1"), "h1", "no mark there: nothing changes")
       compare(Marks.under(marks, 1, 309, 99, 1.5), ["q1"], "a little outside still counts")
     }
+
+    // Painted with no layer (2026-11-17): every point covered once, the
+    // later mark where two cross, a lone line one rounded piece.
+    function cover(pieces, x, y) {
+      var n = 0, kind = ""
+      pieces.forEach(function (p) { if (x > p.x && x < p.x + p.w && y > p.y && y < p.y + p.h) { n++; kind = p.kind } })
+      return { n: n, kind: kind }
+    }
+    function test_paint_never_twice() {
+      var rects = [{ kind: "q", r: [10, 100, 300, 12] }, { kind: "q", r: [10, 111, 300, 12] }, { kind: "h", r: [120, 111, 60, 12] }]
+      var pieces = Marks.paint(rects, 0)
+      for (var x = 11; x < 310; x += 7)
+        for (var y = 101.25; y < 123; y += 0.5)
+          compare(cover(pieces, x, y).n, 1, "covered once at " + x + "," + y)
+      compare(cover(pieces, 150, 118).kind, "h", "the later mark shows where they cross")
+      compare(cover(pieces, 150, 105).kind, "q")
+      compare(cover(pieces, 150, 111.5).kind, "h", "…also where the lines overlap")
+      verify(pieces.every(function (p) { return !p.round }), "pieces that meet are square")
+      var lone = Marks.paint([{ kind: "h", r: [10, 10, 50, 12] }, { kind: "q", r: [200, 10, 50, 12] }], 1.5)
+      compare(lone.length, 2)
+      verify(lone[0].round && lone[1].round, "apart: each rounded")
+      compare(lone[0].x, 8.5, "widened by the pad")
+      compare(lone[0].w, 53)
+      compare(Marks.paint([], 1).length, 0)
+      compare(Marks.paint([{ kind: "h", r: [0, 0, 0, 10] }]).length, 0, "nothing of no size")
+    }
   }
 
   TestCase {

@@ -275,6 +275,28 @@ def main() -> int:
     f = run("find", "--pdf", paper, "--page", "1", "--text", "words that are nowhere at all")
     check(f["found"] == 0 and f["boxes"] == [], "…and nothing when they are nowhere")
 
+    # Ctrl+F (2026-11-17): every place, loosely, with the words round each.
+    before = reading.read_text()
+    f = run("search", "--pdf", paper, "--text", "testing is RETRIEVAL".lower())
+    check(f["total"] == 2 and [h["page"] for h in f["hits"]] == [0, 1] and not f["cased"],
+          f"search: every place the words are, page by page ({[(h['page'], h['match']) for h in f['hits']]})")
+    h = f["hits"][0]
+    check(h["match"] == "Testing is retrieval." and h["before"].endswith("next one easier.") and h["rects"],
+          f"…each with its rectangles and the words around it ({h})")
+    f = run("search", "--pdf", paper, "--text", "psychological")
+    check(f["total"] == 1 and len(f["hits"][0]["rects"]) == 2 and f["hits"][0]["match"] == "psycho-logical",
+          f"…a word a line broke with a hyphen is found whole ({f['hits']})")
+    check(run("search", "--pdf", paper, "--text", "esting")["total"] == 3, "…inside words too, as a browser finds")
+    check(run("search", "--pdf", paper, "--text", "it retrieves")["total"] == 1
+          and run("search", "--pdf", paper, "--text", "itretrieves")["total"] == 0,
+          "…the space between two words kept: words run together are not found")
+    f = run("search", "--pdf", paper, "--text", "Testing")
+    g = run("search", "--pdf", paper, "--text", "testing")
+    check(f["cased"] and f["total"] == 2 and g["total"] == 3,
+          f"…a capital typed makes the case count ({f['total']} with it, {g['total']} without)")
+    check(run("search", "--pdf", paper, "--text", "e")["hits"] == [], "…one letter finds nothing yet")
+    check(reading.read_text() == before, "…and nothing is written")
+
     # What was read on each day, from the reading notes alone.
     d = subprocess.run([str(READ), "days"], capture_output=True, text=True, env=env)
     days = json.loads(d.stdout)["days"]

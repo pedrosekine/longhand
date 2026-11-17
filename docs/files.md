@@ -452,13 +452,33 @@ block, `table` rows.
   are free):
   - ↑↓ or j/k scroll;
   - PgUp/PgDn and Space/Shift+Space turn a page; Home/End go to the ends;
-  - `Ctrl+F` or `/` finds (Enter for the next match, Shift+Enter the one
-    before);
+  - `Ctrl+F` or `/` finds (2026-11-17): `longhand-read search` finds the
+    words as a mark's are found, loosely (a word broken over a line, a
+    ligature, an accent never hides one; only the spaces between words
+    count; a capital typed makes the case count). Typing shows the next
+    place from where it is read; every place is lit on the pages and
+    listed with the words round it, the count beside the field. Enter or
+    ↓ the next, Shift+Enter or ↑ the one before, a row clicked to it.
+    Esc closes, the view left where it was found; Ctrl+[ returns to where
+    the reading was. Words selected when it opens are what it finds. Qt's
+    own search (pdfium's, exact) is not used;
   - `+` / `-` / `0` size it;
   - `o` opens it in its own application;
   - Esc closes it, back to the note.
 - **A known shortcut.** Qt's view keeps its scroller to itself, so the pane
   finds it among the view's children to scroll by keys.
+- **The page said is the page read** (2026-11-17). Qt's `currentPage` moves
+  only on a jump or a scrollbar drag, so after the touchpad the foot said
+  the page last jumped to ("page 5" over page 2). The pane works out the
+  page across the view's middle as it scrolls, and PgUp/PgDn turn from
+  there.
+- **Marks painted flat** (2026-11-17). The marks of a page were drawn into a
+  layer (an offscreen texture per page) so two marks crossing kept one
+  colour. Qt hands a page's holder the next page as the view scrolls, and
+  the texture could keep the page before's marks: a page-5 question showed
+  over page 2's words. `PdfMarks.paint` cuts the marks into pieces that
+  never overlap, each painted once with no layer (a texture a page less,
+  too); unseen rectangles of each mark still take the hover and the click.
 - **A drag selects, never pans** (2026-11-15). Qt's view is a Flickable a
   little wider than the column, so a mouse drag slid the pages instead of
   selecting words. Its dragging is off; the touchpad scrolls it through

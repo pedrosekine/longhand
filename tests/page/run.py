@@ -3215,6 +3215,8 @@ def checks() -> int:
         p.call("pdfKey", 0x46, CTRL)                        # Ctrl+F
         p.call("pdfFind", "thematic")
         check(p.wait(lambda: pd()["finding"] and pd()["found"] >= 1), f"Ctrl+F finds in it ({pd()})")
+        p.call("pdfFindKey", KEY_ESC, 0)
+        check(p.wait(lambda: not pd()["finding"]), "Esc closes the find bar, the PDF stays")
         # Marks (plan.md, item 15): words selected, `m` keeps them in the
         # paper's reading note and draws them; clicked, `q` makes it a
         # question; `n` writes a note under it; `x` removes it.
@@ -3524,6 +3526,55 @@ def checks() -> int:
         p.call("pdfKey", KEY_ESC, 0)
         check(p.wait(lambda: not pd()["shown"] and places.is_file() and long_rel not in json.loads(places.read_text())),
               "left at its top, nothing is kept for it")
+        # Ctrl+F (2026-11-17): every place the words are, loosely, listed;
+        # Enter goes on from where it is read, Esc leaves the view there
+        # and Ctrl+[ goes back. The page said in the foot follows the view.
+        from test_read import pdf as lined_pdf
+        lined_pdf(course / "Bikes.pdf", [["Stress on bikes", "Riders felt stress at the junc-", "tion near the bridge."],
+                                        ["The bridge again: stress rose.", "Nothing else here."],
+                                        ["A last stress, at the end.", "Coda."]])
+        fd = lambda: json.loads(p.call("pdfFound"))
+        p.call("openFile", "Studies/Course A/Bikes.pdf", "false")
+        check(p.wait(lambda: pd()["settled"] and pd()["pages"] == 3 and fd()["page"] == 0), f"a paper of three pages, at its first ({fd()})")
+        p.call("pdfKey", 0x46, CTRL)                        # Ctrl+F
+        check(p.wait(lambda: fd()["finding"] and fd()["focus"]), f"Ctrl+F: the find bar, the keys in it ({fd()})")
+        p.call("pdfFind", "stress")
+        check(p.wait(lambda: fd()["total"] == 4 and fd()["at"] == 0 and fd()["count"] == "1 of 4"),
+              f"typed, every place is found, any case, the first shown ({fd()})")
+        for _ in range(2):
+            p.call("pdfFindKey", KEY_RETURN, 0)
+        check(p.wait(lambda: fd()["at"] == 2 and fd()["page"] == 1), f"Enter, Enter: the third, on page 2, the page said ({fd()})")
+        p.call("pdfFindKey", KEY_RETURN, SHIFT)
+        check(p.wait(lambda: fd()["at"] == 1), f"Shift+Enter: the one before ({fd()})")
+        for _ in range(3):
+            p.call("pdfFindKey", KEY_RETURN, 0)
+        check(p.wait(lambda: fd()["at"] == 0 and "from the top" in fd()["said"]), f"past the last, from the top again ({fd()})")
+        p.call("pdfFind", "junction")
+        check(p.wait(lambda: fd()["for"] == "junction" and fd()["hits"] == ["0:junc-tion"]),
+              f"a word a line broke with a hyphen is found ({fd()})")
+        p.call("pdfFind", "Stress")
+        check(p.wait(lambda: fd()["for"] == "Stress" and fd()["total"] == 1 and fd()["cased"] and "capitals count" in fd()["says"]),
+              f"a capital typed: the case counts ({fd()})")
+        p.call("pdfFind", "zebra")
+        check(p.wait(lambda: fd()["for"] == "zebra" and fd()["count"] == "none" and "not in this paper" in fd()["says"]),
+              f"nothing found says so ({fd()})")
+        p.call("pdfFind", "bridge")
+        check(p.wait(lambda: fd()["total"] == 2 and fd()["at"] == 0), f"…typed again, found again ({fd()})")
+        p.call("pdfFindKey", KEY_RETURN, 0)
+        check(p.wait(lambda: fd()["at"] == 1 and fd()["page"] == 1), f"Enter: the second, on page 2 ({fd()})")
+        p.call("pdfFindKey", KEY_ESC, 0)
+        check(p.wait(lambda: not fd()["finding"] and fd()["total"] == 0 and fd()["back"] is not None and fd()["page"] == 1),
+              f"Esc: the bar goes, the view stays where it was found, the way back kept ({fd()})")
+        p.call("pdfKey", KEY_LBRACKET, CTRL)
+        check(p.wait(lambda: fd()["page"] == 0 and (fd()["here"] or {}).get("frac", 1) < 0.05 and fd()["back"] is None),
+              f"Ctrl+[: back to where the reading was ({fd()})")
+        p.call("pdfKey", KEY_END, 0)
+        check(p.wait(lambda: fd()["page"] == 2), f"the page said follows the view, not Qt's last jump ({fd()})")
+        p.call("pdfKey", 0x01000016, 0)                     # PgUp
+        check(p.wait(lambda: fd()["page"] == 1), f"PgUp: the page before the one read ({fd()})")
+        p.call("pdfKey", KEY_HOME, 0)
+        p.call("pdfKey", KEY_ESC, 0)
+        p.wait(lambda: not pd()["shown"])
         # Fitted by its text (plan.md item 15, 2026-11-15): a paper's
         # margins out of view, the text across the column; `0` switches to
         # the whole page and back.
