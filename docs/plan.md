@@ -1062,8 +1062,9 @@ this list, with *Open, in order* above. Each says why it waits.
   title and date reach the payload with the deadline store.
 - **The agent's third tier** — the internet, tools for the agent — cuts
   against principle 3; a decision, not a build (item 2 above).
-- **A second model route** (`codex exec`, the APIs; `docs/agent.md`,
-  "Reaching a model") — when a second route is wanted.
+- **A third model route** (`codex exec`, the APIs; `docs/agent.md`,
+  "Reaching a model") — when one is wanted. The second, Claude Code on the
+  student's Claude plan (`claude-code/<model>`), was built 2026-11-17.
 - **Autonomy per project** — per kind of action only, for now.
 - **Mermaid diagrams through Pele** (parked 2026-10-27, the student's call):
   no note in the vault has a diagram yet. Pele is written in a newer
