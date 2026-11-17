@@ -3318,6 +3318,11 @@ def checks() -> int:
         rest_on_mark(hid, tip=False)
         p.wait(lambda: ac()["tip"], 1)
         check(ac()["mark"] == hid and not ac()["tip"], f"a highlight with no note shows no tip ({ac()['says']!r})")
+        turns_before = len(json.loads(p.call("dayTurns")))
+        p.call("pdfKey", KEY_RETURN, 0)
+        check(p.wait(lambda: not pr()["list"] and pr()["marks"] == [hid])
+              and len(json.loads(p.call("dayTurns"))) == turns_before,
+              f"…Enter on it opens the paper's chat with it attached, nothing sent ({pr()})")
         p.call("pdfHover", "0", "300", "600")
         p.call("setPointer", "every")
         p.call("dayKey", KEY_ESC, 0)

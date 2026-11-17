@@ -185,7 +185,8 @@ Item {
   function markTip(id) {
     var m = pane.markById(id)
     if (!m) return null
-    if (m.kind !== "q") return m.note ? { line: pane.esc(m.note), more: "your note · " + page.keyName("pdfGo") + " edits it" } : null
+    if (m.kind !== "q") return m.note ? { line: pane.esc(m.note), more: "your note · " + page.keyName("pdfNote") + " edits it"
+      + (page.paper.askable ? " · " + page.keyName("pdfGo") + " talks about it in the paper's chat" : "") } : null
     var a = Answers.forMark(page.noteTalk && page.noteTalk.turns ? page.noteTalk.turns : [], id)
     if (a) {
       var g = Answers.gist(a.text, 260)
@@ -196,15 +197,22 @@ Item {
     if (!page.paper.askable) return { line: "<i>your question</i>", more: pane.read.private ? "a private PDF is never sent to the agent" : "" }
     return { line: "<i>your question, not asked yet</i>", more: page.keyName("pdfGo") + " asks it" }
   }
-  // Enter on a mark: an answered question's exchange in the chat; one not
-  // asked yet, the chat with it attached, for its words; a highlight's note.
+  // Enter on a mark: an answered question's exchange in the chat; else the
+  // paper's chat with it attached, for the words to be typed — a question
+  // not asked yet, or a highlight to talk about (2026-11-17: Enter on a
+  // highlight wrote its note, as `n` does, and nothing took a highlight to
+  // the agent from the page; now Enter does here what it does on a row of
+  // the paper's marks). Nothing is sent by Enter.
   function markGo(id) {
     var m = pane.markById(id)
     if (!m) return false
     pane.tipOn = false
     pane.markHovers = []
-    if (m.kind !== "q") { pane.picked = id; pane.startNote(); return true }
-    if (page.paper.showAnswer(id)) return true
+    if (m.kind === "q" && page.paper.showAnswer(id)) return true
+    if (!page.paper.askable) {
+      pane.readError = pane.read.private ? "a private PDF is never sent to the agent" : "this PDF has no words to ask about"
+      return true
+    }
     page.paper.askAbout(id)
     return true
   }
@@ -1335,7 +1343,7 @@ Item {
         + (pane.read.unplaced > 0 ? ", " + pane.read.unplaced + " not found on its page" : "")
         + "   " + (pane.jumpBack ? page.keyName("linkBack") + " back to where you were · " : "")
         + (pane.selected() ? page.keyName("pdfMark") + " highlight · " + page.keyName("pdfQuestion") + " question"
-                   : pane.picked !== "" ? page.keyName("pdfMark") + "/" + page.keyName("pdfQuestion") + " its kind · " + page.keyName("pdfNote") + " a note · " + page.keyName("pdfRemove") + " remove · " + page.keyName("pdfClose") + " or a click away lets go"
+                   : pane.picked !== "" ? (page.paper.askable ? page.keyName("pdfGo") + " to the paper's chat · " : "") + page.keyName("pdfMark") + "/" + page.keyName("pdfQuestion") + " its kind · " + page.keyName("pdfNote") + " a note · " + page.keyName("pdfRemove") + " remove · " + page.keyName("pdfClose") + " or a click away lets go"
                    : (pane.markable ? "select words to mark them · " : "")
                      + (pane.acro.list.length > 0 ? page.keyName("pdfAcronyms") + " acronyms · " : "")
                      + page.keyName("pdfOpen") + " opens it elsewhere")
