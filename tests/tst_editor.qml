@@ -18,6 +18,9 @@ Item {
     fontFamily: "monospace"   // so "the same place on the next line" is a column
   }
 
+  // Somewhere else the keys can be: another pane's box.
+  TextInput { id: elsewhere; y: 790; width: 100; height: 10 }
+
   SignalSpy { id: kept; target: ed; signalName: "cueDismissed" }
 
   TestCase {
@@ -100,6 +103,28 @@ Item {
       verify(ed.focusedRow < ed.rows.length, "focused row is inside the note (" + ed.focusedRow + "/" + ed.rows.length + ")")
       ed.setCursor(ed.length, true)
       compare(ed.rowItem(ed.focusedRow).field.text, "short")
+    }
+
+    // A note changed on disk (the agent, Syncthing, the check) can rebuild
+    // the line the keys were in. A line must still hold them, or every
+    // shortcut goes deaf until a click (2026-11-17).
+    function test_a_reload_keeps_the_keys_in_the_note() {
+      start("\nline one\nline two\nline three\nline four")
+      ed.load("\nline one")
+      verify(ed.hasFocus, "a line still holds the keys")
+      verify(ed.focusedRow < ed.rows.length, "and it is in the note")
+      type("!")
+      compare(ed.text, "\nline one!")
+    }
+
+    // But a reload never takes the keys from somewhere else.
+    function test_a_reload_leaves_the_keys_where_they_were() {
+      start("\nline one\nline two")
+      elsewhere.forceActiveFocus()
+      verify(!ed.holdsFocus(), "the box has them")
+      ed.load("\nline one")
+      verify(elsewhere.activeFocus, "and keeps them")
+      verify(!ed.hasFocus)
     }
 
     // Emphasis writes the markers the file keeps; nothing is drawn styled.

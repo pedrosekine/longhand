@@ -2495,7 +2495,7 @@ Item {
     root.applying = false
     // Line indices belong to the text they were taken from.
     root.lastLine = -1
-    if (keepCursor) editor.setCursor(Math.min(at, editor.length))
+    if (keepCursor) editor.setCursor(Math.min(at, editor.length), editor.holdsFocus())
     root.tickedCount = Queue.countTicked(t)
     root.scheduleRepaint()
   }
@@ -7264,13 +7264,31 @@ Item {
   }
 
   // One content tree, whichever window is showing.
-  Item {
+  FocusScope {
     id: content
     parent: root.overlayOpen ? panel.contentItem : win.contentItem
     anchors.fill: parent
+    focus: true
     // Ctrl let go, wherever the keys are: a release no pane takes comes
     // up to here.
     Keys.onReleased: function (event) { if (event.key === Qt.Key_Control) root.ctrlLetGo() }
+
+    // The keys in no pane at all: Hyprland has the window, but nothing in
+    // it was given them (the place they were went away). Then a window
+    // coming to the front, or a key pressed, puts them back in the middle,
+    // and that key's page-wide meaning still counts (2026-11-17).
+    function keysNowhere() {
+      var f = content.Window.activeFocusItem
+      return !f || f === content || f === content.parent
+    }
+    Window.onActiveChanged: Qt.callLater(function () {
+      if (content.Window.active && content.keysNowhere()) root.focusCenter()
+    })
+    Keys.onPressed: function (event) {
+      if (!content.keysNowhere()) return
+      root.focusCenter()
+      if (root.anywhereKey(event)) event.accepted = true
+    }
 
     Rectangle {
       anchors.fill: parent
