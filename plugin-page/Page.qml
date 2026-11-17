@@ -2498,7 +2498,7 @@ Item {
     root.applying = false
     // Line indices belong to the text they were taken from.
     root.lastLine = -1
-    if (keepCursor) editor.setCursor(Math.min(at, editor.length))
+    if (keepCursor) editor.setCursor(Math.min(at, editor.length), editor.holdsFocus())
     root.tickedCount = Queue.countTicked(t)
     root.scheduleRepaint()
   }
@@ -3336,6 +3336,9 @@ Item {
     ;(t.files || []).forEach(function (f) { bits.push("read " + f.path.replace(/^.*\//, "")) })
     var docs = root.sayReads(t)
     if (docs !== "") bits.push(docs)
+    // Documents it was asked to file: moved at once, so said, not a card.
+    ;(t.filed || []).forEach(function (f) { bits.push("filed “" + f.name.replace(/\.pdf$/i, "") + "” in #" + f.project) })
+    ;(t.unfiled || []).forEach(function (x) { bits.push("not filed: " + x) })
     return bits.join(" · ")
   }
 
@@ -6720,6 +6723,8 @@ Item {
     // asked for again by openSection, once it has loaded).
     onFilePathChanged: editor.focusTag = ""
     onLoaded: { root.applyText(svc.body); root.reconcilePending = true; root.startCheck(); root.reconcile(); root.openPass(); root.refreshDated() }
+    // A write that never said it landed, written again (Service.unstick).
+    onStall: root.showHint("a save did not land: writing it again")
     onExternalChange: { root.applyText(svc.body, true); root.reconcilePending = true; root.startCheck(); root.reconcile(); root.notesChanged(); root.refreshDated() }
     onSavedNow: {
       root.notesChanged()
@@ -7523,13 +7528,31 @@ Item {
   }
 
   // One content tree, whichever window is showing.
-  Item {
+  FocusScope {
     id: content
     parent: root.overlayOpen ? panel.contentItem : win.contentItem
     anchors.fill: parent
+    focus: true
     // Ctrl let go, wherever the keys are: a release no pane takes comes
     // up to here.
     Keys.onReleased: function (event) { if (event.key === Qt.Key_Control) root.ctrlLetGo() }
+
+    // The keys in no pane at all: Hyprland has the window, but nothing in
+    // it was given them (the place they were went away). Then a window
+    // coming to the front, or a key pressed, puts them back in the middle,
+    // and that key's page-wide meaning still counts (2026-11-17).
+    function keysNowhere() {
+      var f = content.Window.activeFocusItem
+      return !f || f === content || f === content.parent
+    }
+    Window.onActiveChanged: Qt.callLater(function () {
+      if (content.Window.active && content.keysNowhere()) root.focusCenter()
+    })
+    Keys.onPressed: function (event) {
+      if (!content.keysNowhere()) return
+      root.focusCenter()
+      if (root.anywhereKey(event)) event.accepted = true
+    }
 
     Rectangle {
       anchors.fill: parent
@@ -7976,13 +7999,14 @@ Item {
             }
 
             // Saved / unsaved: a dot that brightens while a write is
-            // pending and settles once it landed.
+            // pending and settles once it landed; urgent while a write
+            // that never said it landed is being written again.
             Rectangle {
               anchors.verticalCenter: parent.verticalCenter
               width: root.sp(6)
               height: width
               radius: width / 2
-              color: root.problem !== "" ? root.urgent : (svc.pending || svc.saving ? root.foreground : root.faint)
+              color: root.problem !== "" || svc.stalled ? root.urgent : (svc.pending || svc.saving ? root.foreground : root.faint)
               Behavior on color { ColorAnimation { duration: 180 } }
             }
           }

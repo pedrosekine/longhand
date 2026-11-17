@@ -534,6 +534,15 @@ def checks() -> int:
         tmpf.write_text(f.read_text() + "written by rename\n")
         tmpf.rename(f)
         check(p.wait(lambda: "written by rename" in p.call("text")), "…also when written by rename (atomic save)")
+        # The line the keys are in, taken away outside (2026-11-17): its
+        # field is rebuilt, and the keys went with it — every shortcut deaf
+        # until a click. A line must still hold them.
+        p.call("cursor", p.offset_of_line(p.line_of("written by rename")))
+        check(json.loads(p.call("noteFocus"))["active"], "the keys are in the line about to go")
+        f.write_text(f.read_text().replace("written by rename\n", ""))
+        check(p.wait(lambda: "written by rename" not in p.call("text")), "the page re-reads a line taken away outside")
+        kept = json.loads(p.call("noteFocus"))
+        check(kept["active"], f"…and a line of the note still has the keys ({kept})")
         # Saves that overlap (2026-11-15): a save begun over one still on its
         # way was taken as landed when the older did, and the check read
         # the note a write too early (a line Ctrl+Z had just brought back

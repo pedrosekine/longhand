@@ -855,7 +855,7 @@ def record_cost(ledger: Path, at: str, stamp: str, trigger: str, block: str, res
 
 def parse_reply(text: str) -> dict:
     """The contract is one fenced JSON block; anything else becomes the reply."""
-    empty = {"reply": "", "proposals": [], "suggestions": [], "knowledge": [], "read": [], "search": []}
+    empty = {"reply": "", "proposals": [], "suggestions": [], "knowledge": [], "read": [], "search": [], "file": []}
     m = None
     for m in re.finditer(r"```(?:json)?\s*\n(.*?)\n```", text, re.S):
         pass
@@ -869,7 +869,7 @@ def parse_reply(text: str) -> dict:
         if isinstance(obj, dict):
             out = dict(empty)
             out["reply"] = str(obj.get("reply") or "")
-            for k in ("proposals", "suggestions", "knowledge", "read", "search"):
+            for k in ("proposals", "suggestions", "knowledge", "read", "search", "file"):
                 v = obj.get(k)
                 out[k] = [x for x in v if isinstance(x, dict)] if isinstance(v, list) else []
             return out
@@ -3179,8 +3179,15 @@ def day_proposable(cfg: dict, today: dt.date) -> tuple[dict, str]:
               "project": d.get("project") or ""} for d in deadlines if not d.get("linked")]
     data = {"fortnight": days, "candidates": cands, "open_boxes": boxes, "deadlines_with_no_line": loose,
             "you_may": sorted(k for k, v in allowed.items() if v != "never" and k != "file")}
+    # Filing is not a card: the student asks, local code files (`day_file`).
+    # What waits in the inbox is named so a request can point at it; absent,
+    # filing is "never" or there is no inbox.
+    if allowed.get("file") != "never" and cfg.get("inbox"):
+        data["documents_waiting"] = [{"document": Path(x["name"]).stem, "project": x["project"], "why": x.get("why", "")}
+                                     for x in inbox_waiting(cfg)]
     return data, planlib.inputs_hash(cands, days) + hashlib.sha256(
-        json.dumps([boxes, loose, data["you_may"]], sort_keys=True, default=str).encode()).hexdigest()[:8]
+        json.dumps([boxes, loose, data["you_may"], data.get("documents_waiting")], sort_keys=True,
+                   default=str).encode()).hexdigest()[:8]
 
 
 def proposable_parts(data: dict, again: bool = False) -> list[str]:
@@ -3247,6 +3254,115 @@ def ledger_proposals(cfg: dict, proposals: list[dict], result: dict, payload_fil
 def day_proposals(cfg: dict, reply: dict, result: dict, payload_file: Path, at: str) -> tuple[list[dict], list[str]]:
     """The day's agent proposed: its cards (`ledger_proposals`)."""
     return ledger_proposals(cfg, reply.get("proposals") or [], result, payload_file, at)
+
+
+def inbox_waiting(cfg: dict) -> list[dict]:
+    """The documents in the Downloads inbox waiting to be filed: the
+    inbox looked at as the dashboard looks at it (`inbox_pass`, its rows
+    recorded), then its open proposals. None when filing is "never" or no
+    inbox is set."""
+    if not cfg.get("inbox") or planlib.autonomy(cfg)["file"] == "never":
+        return []
+    lock = planlib.hold(PROPOSALS)
+    ledger = planlib.load_ledger(PROPOSALS)
+    if inbox_pass(cfg, ledger, dt.datetime.now().isoformat(timespec="seconds")):
+        planlib.save_ledger(PROPOSALS, ledger)
+    lock.close()
+    return [x for x in planlib.open_items(ledger) if x["kind"] == "file"]
+
+
+def day_file(cfg: dict, asks: list[dict], message: str, at: str) -> tuple[list[dict], list[str]]:
+    """Documents the student asked the day's agent to file (2026-11-17):
+    asking is the consent, so local code files them at once — unless
+    filing is "never". A document is one waiting in the inbox (by the name
+    the agent was shown, or its file's), or a PDF in the inbox whose name
+    the student's own words give: the agent never sees the rest of the
+    folder, so it cannot name a file the student did not. A dashboard row
+    about the same document is settled by it. Returns what was filed and,
+    for the rest, why not."""
+    asks = [a for a in asks if isinstance(a, dict)][:planlib.MAX_PROPOSALS]
+    if not asks:
+        return [], []
+
+    def plain(text: str) -> str:                       # a file's name read as words: "_" parts them too
+        return " ".join(re.sub(r"[\W_]+", " ", text.lower()).split())
+
+    def what(a: dict) -> str:
+        return str(a.get("document") or "").strip() or "a document"
+
+    if planlib.autonomy(cfg)["file"] == "never":
+        return [], [f"{what(a)}: filing documents is set to never" for a in asks]
+    if not cfg.get("inbox"):
+        return [], [f"{what(a)}: no Downloads inbox is set in the config" for a in asks]
+    inbox = Path(cfg["inbox"]).expanduser()
+    names = {t: n for _, n, t in course_codes(cfg, dt.date.today()) if t}
+    projects_dir = cfg.get("projectsDir", "projects")
+    paths = Paths(cfg, dt.date.today())
+    said = words(plain(message))
+    exports = {x["sha256"] for x in load_exports()}
+    filed, refused = [], []
+    lock = planlib.hold(PROPOSALS)
+    ledger = planlib.load_ledger(PROPOSALS)
+    try:
+        pdfs = doclib.inbox_pdfs(inbox) if inbox.is_dir() else []
+    except OSError:
+        pdfs = []
+    for a in asks:
+        doc_words, tag = what(a), str(a.get("project") or "").strip().lstrip("#").lower()
+        if tag not in names:
+            refused.append(f"{doc_words}: #{tag} is not a project" if tag else f"{doc_words}: no project named")
+            continue
+        want = plain(re.sub(r"\.pdf$", "", doc_words, flags=re.I))
+        waiting = [x for x in planlib.open_items(ledger) if x["kind"] == "file" and Path(x["src"]).is_file()]
+        hits = [x for x in waiting if want in (plain(Path(x["name"]).stem), plain(Path(x["src"]).stem))]
+        src = Path(hits[0]["src"]) if len(hits) == 1 else None
+        if src is None and not hits:
+            asked = words(want)
+            if asked and asked <= said:                 # the student's own words name it
+                found = [p for p in pdfs if plain(p.stem) == want] or \
+                    [p for p in pdfs if asked <= words(plain(p.stem))]
+                src = found[0] if len(found) == 1 else None
+                if len(found) > 1:
+                    refused.append(f"{doc_words}: more than one PDF in Downloads goes by that name")
+                    continue
+        if src is None:
+            refused.append(f"{doc_words}: " + ("more than one document waiting goes by that name" if len(hits) > 1
+                                               else "not found in Downloads"))
+            continue
+        try:
+            doc = doclib.content_hash(src)
+        except OSError:
+            refused.append(f"{doc_words}: not found in Downloads")
+            continue
+        if doc in exports:
+            refused.append(f"{doc_words}: it is one of your own exports")
+            continue
+        same = [x for x in planlib.open_items(ledger) if x["kind"] == "file" and x.get("doc") == doc]
+        if same:
+            item = same[0]
+        else:                                           # never proposed: its row is made now, as done
+            got = dt.datetime.fromtimestamp(src.stat().st_mtime)
+            item = {"kind": "file", "key": "", "doc": doc,
+                    "name": f"{got:%Y-%m-%d} {doclib.title_of(src, doclib.pdf_info(src))}.pdf", "at": at}
+        # Filed where the student said, whatever course it was proposed for.
+        item.update({"src": str(src), "project": tag, "title": names[tag], "from": "day",
+                     "why": "asked for in the day's conversation"})
+        try:
+            item["filed"] = doclib.file_one(item, paths.vault, projects_dir, lambda d: guard_write(paths, d))
+        except (OSError, Fail) as e:
+            refused.append(f"{doc_words}: {e}")
+            continue
+        if not same:
+            item.update(id=ledger["next"], status="open")
+            ledger["next"] += 1
+            ledger["items"].append(item)
+        planlib.resolve(ledger, item["id"], "accepted", at)
+        for x in same[1:]:
+            x["status"], x["resolved"] = "superseded", at
+        filed.append({"name": Path(item["filed"]).name, "project": tag, "path": item["filed"], "id": item["id"]})
+    planlib.save_ledger(PROPOSALS, ledger)
+    lock.close()
+    return filed, refused
 
 
 MARGIN_KINDS = ("do-date", "drop")   # what a block's chat proposes into the one list; a deadline is its own card
@@ -3330,6 +3446,11 @@ def day_followup(cfg: dict, paths: Paths, visible: list[dict], last: str, messag
     if gone:
         parts += ["# Your last proposals local code did not offer as cards", "",
                   "The student saw no card for these; do not point at one:", ""] + [f"- {x}" for x in gone] + [""]
+    last_turn = next((t for t in reversed(turns) if t["role"] == "agent"), {})
+    if last_turn.get("filed") or last_turn.get("unfiled"):
+        parts += ["# What local code did with the documents you asked to file", ""] + \
+            [f"- filed “{f['name']}” in #{f['project']}" for f in last_turn.get("filed") or []] + \
+            [f"- not filed: {x}" for x in last_turn.get("unfiled") or []] + [""]
     parts += block_reference(paths, visible, block) if block else []
     parts += proposable_parts(proposable, again=True) if proposable else []
     parts += ["", "# The student says", "", message, "", "Answer with the same JSON contract."]
@@ -3507,6 +3628,7 @@ def cmd_day(cfg: dict, args) -> int:
         result, reply, fetched = day_follow(cfg, paths, tag, result, reply, payload_file)
 
     proposed, unoffered = day_proposals(cfg, reply, result, payload_file, at) if not result["error"] else ([], [])
+    filed, unfiled = day_file(cfg, reply.get("file") or [], message, at) if not result["error"] else ([], [])
 
     state = load_state(paths)                            # the page or a margin run may have written meanwhile
     day = day_of(state)
@@ -3524,7 +3646,8 @@ def cmd_day(cfg: dict, args) -> int:
                              "cost": result["cost"], "prompt": result.get("prompt", ""), "model": result.get("model", ""),
                              "payload": str(payload_file), "documents": fetched["documents"],
                              "searched": fetched["searched"], "files": fetched["files"], "withheld": fetched["withheld"],
-                             "proposals": proposed, "unoffered": unoffered, "read": False})
+                             "proposals": proposed, "unoffered": unoffered, "filed": filed, "unfiled": unfiled,
+                             "read": False})
     written = []
     write_knowledge(paths, reply.get("knowledge") or [], written)
     state.setdefault("runs", []).append({"at": at, "trigger": "day", "block": args.block or "", "session": result["session"],
@@ -3537,6 +3660,7 @@ def cmd_day(cfg: dict, args) -> int:
         print(f"error: {result['error']}", file=sys.stderr)
         return 1
     print(f"day: {'reply' if reply['reply'] else 'silent'}" + (f" · {len(proposed)} proposed" if proposed else "")
+          + (f" · {len(filed)} filed" if filed else "")
           + f" · ${result['cost']:.4f} · {result['tokens'].get('total', 0)} tokens")
     return 0
 

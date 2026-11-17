@@ -335,9 +335,22 @@ Item {
 
   // ------------------------------------------------------------ the text
 
+  // Whether a line holds the window's keys: `focus`, not `activeFocus`,
+  // which every line gives up while the window is behind another.
+  function holdsFocus() {
+    for (var i = 0; i < rep.count; i++) {
+      var it = rep.itemAt(i)
+      if (it && it.field.focus) return true
+    }
+    return false
+  }
+
   // Replace everything (a load from disk). The cursor goes to the end and
-  // the undo history starts over.
+  // the undo history starts over. If a line held the keys, a line still
+  // does: the one they were in may be rebuilt, and the keys would go with
+  // it, leaving every shortcut deaf until a click (2026-11-17).
   function load(t) {
+    var held = ed.holdsFocus()
     ed.loading = true
     ed.shown = null
     ed.clearSelection()
@@ -347,7 +360,7 @@ Item {
     ed.undoStack = []
     ed.redoStack = []
     ed.commit(t, t.length)
-    ed.placeCursor(false)
+    ed.placeCursor(held)
     ed.loading = false
   }
 

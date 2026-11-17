@@ -482,7 +482,17 @@ the PDF is better.
   that does not match is ever listed, named or shown to the agent — the
   folder also holds invoices and an ID certificate whose number is in its
   file name. Filing is action 6, so it starts at "ask me". A file can also
-  be handed over by hand.
+  be handed over by hand, or **asked for in the day's conversation**
+  (2026-11-17): the reply's `file` key names a document and a project;
+  asking is the consent, so local code (`day_file`) files it at once —
+  unless filing is "never" — and settles the dashboard's row about it as
+  accepted, in the project asked for. The agent is shown only what waits
+  (`documents_waiting`); any other PDF is found only when the student's
+  own words name it. The answer says "filed … in #tag", and the next
+  message tells the agent what was and was not filed. Found on the way: a
+  filing proposal was known by its course's name, so a second paper for a
+  course was taken for the one still waiting and never proposed; it is
+  known by its contents now (`plan.ident`).
 - **They live in the vault but outside git:** `projects/<course>/docs/`,
   synced between the machines, ignored by the hourly commit (they can be
   downloaded again from the portal). A project's page in the sidebar lists

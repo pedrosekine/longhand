@@ -70,6 +70,17 @@ def units() -> None:
     rules, _ = evals.check_day(s, {"reply": "I think it was Neffke."})
     check(not next(r for r in rules if r["check"] == "asks to search")["pass"], "…answering from memory when it should search fails")
 
+    f = evals.new_case("day", PAYLOAD, "x-day.md")
+    f["rules"].update(file=["hfpi:Temporal"])
+    rules, answer = evals.check_day(f, {"reply": "Filing it.", "file": [{"document": "2026-11-17 Temporal Aspects", "project": "hfpi"}]})
+    check(all(r["pass"] for r in rules) and "Temporal Aspects → #hfpi" in answer,
+          "a document filed where the case wants it passes, and the judge reads what was filed")
+    rules, _ = evals.check_day(f, {"reply": "Filing it.", "file": [{"document": "2026-11-17 Temporal Aspects", "project": "respro"}]})
+    check(not next(r for r in rules if r["check"] == "files hfpi:Temporal")["pass"], "…into another project fails")
+    f["rules"].update(file=[], no_file=True)
+    rules, _ = evals.check_day(f, {"reply": "Two wait.", "file": [{"document": "x", "project": "hfpi"}]})
+    check(not next(r for r in rules if r["check"] == "files nothing")["pass"], "filing unasked fails")
+
     b = evals.new_case("day", "# Brief\n", "x-brief-2026-10-20.md")
     good, _ = evals.check_day(b, {"reply": "- one\n- two\n- three"})
     bad, _ = evals.check_day(b, {"reply": "One paragraph that says everything at once."})
