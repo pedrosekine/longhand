@@ -3333,6 +3333,9 @@ Item {
     ;(t.files || []).forEach(function (f) { bits.push("read " + f.path.replace(/^.*\//, "")) })
     var docs = root.sayReads(t)
     if (docs !== "") bits.push(docs)
+    // Documents it was asked to file: moved at once, so said, not a card.
+    ;(t.filed || []).forEach(function (f) { bits.push("filed “" + f.name.replace(/\.pdf$/i, "") + "” in #" + f.project) })
+    ;(t.unfiled || []).forEach(function (x) { bits.push("not filed: " + x) })
     return bits.join(" · ")
   }
 

@@ -40,6 +40,27 @@ print(json.dumps({"type": "step_finish", "sessionID": "ses_docs", "part": {"type
 print(json.dumps({"type": "text", "sessionID": "ses_docs", "part": {"type": "text", "text": "```json\\n" + json.dumps(reply) + "\\n```"}}))
 """
 
+# The day's agent asked to file: every document it was shown waiting, into
+# hfpi, and what extra.json adds (as if the student had named them); a
+# follow-up in its session files nothing more.
+DAYSTUB = """#!/usr/bin/env python3
+import json, os, re, sys
+d = os.environ["STUB_DIR"]
+args = sys.argv[1:]
+if args[:1] != ["run"]:
+    sys.exit(0)
+n = len([f for f in os.listdir(d) if f.startswith("call-")])
+stdin = sys.stdin.read()
+json.dump({"argv": args, "stdin": stdin}, open(os.path.join(d, f"call-{n}.json"), "w"))
+files = []
+m = re.search(r"# What you may propose.*?```json\\n(.*?)\\n```", stdin, re.S)
+if m:
+    files = [{"document": x["document"], "project": "hfpi"} for x in json.loads(m.group(1)).get("documents_waiting", [])]
+files += json.load(open(os.path.join(d, "extra.json")))
+reply = {"reply": "Filing them.", "proposals": [], "knowledge": [], "search": [], "read": [], "file": files}
+print(json.dumps({"type": "text", "sessionID": "ses_day", "part": {"type": "text", "text": "```json\\n" + json.dumps(reply) + "\\n```"}}))
+"""
+
 
 def check(cond, what):
     global failures
@@ -144,6 +165,17 @@ def main() -> int:
     again = json.loads(agent("proposals").stdout)
     check(len([x for x in again["open"] if x["kind"] == "file"]) == 3, "asked again: the same three, not six")
 
+    # A second paper from the same class, downloaded once the first is
+    # already waiting, is proposed too, and the first stays (2026-11-17: it
+    # was taken for the same proposal, by its course's name, and dropped).
+    pdf(inbox / "Stetson_time_slow_down.pdf", "Does time really slow down", when=in_class)
+    more = [x for x in json.loads(agent("proposals").stdout)["open"] if x["kind"] == "file"]
+    check(len(more) == 4 and sum(x["project"] == "intsem" for x in more) == 2
+          and any(x["id"] == by["intsem"]["id"] for x in more),
+          f"a second paper for a course is proposed beside the first ({[x['name'] for x in more]})")
+    (inbox / "Stetson_time_slow_down.pdf").unlink()
+    agent("proposals")
+
     # Accepting files it; declining is remembered.
     agent("proposal", "accept", "--id", str(by["intsem"]["id"]))
     dest = vault / "projects" / "intsem" / "docs" / by["intsem"]["name"]
@@ -243,6 +275,62 @@ def main() -> int:
     note.write_text("A quiet day.\n")
     agent("run", "--trigger", "open")
     check(len(list(stub.glob("call-*.json"))) == 1, "a run about no course follows no request")
+
+    # Asked in the day's conversation (2026-11-17): the agent names what it
+    # was shown waiting, or the student's own words for one; local code
+    # files it at once where the student said, and the dashboard's row about
+    # it is settled. Nothing the student did not name is filed.
+    (bindir / "opencode").write_text(DAYSTUB)
+    pdf(inbox / "Temporal_Aspects.pdf", "Temporal aspects of explanations", title="Temporal Aspects of AI Explanations", when=in_class)
+    pdf(inbox / "Stetson_time.pdf", "Does time really slow down", when=in_class)
+    pdf(inbox / "Unmatched_paper_xyz.pdf", "Nothing about any course")
+    waiting = [x for x in json.loads(agent("proposals").stdout)["open"] if x["kind"] == "file"]
+    check(sorted(x["project"] for x in waiting) == ["intsem", "intsem"], f"two papers wait, guessed for the seminar ({waiting})")
+    for f in stub.glob("call-*.json"):
+        f.unlink()
+    (stub / "extra.json").write_text(json.dumps([{"document": "Unmatched paper xyz", "project": "hfpi"},
+                                                  {"document": "Meldezettel ID", "project": "hfpi"},
+                                                  {"document": "Unmatched paper xyz", "project": "nosuch"}]))
+    agent("day", "--message", "put the two papers from the seminar into hfpi, and the unmatched paper xyz too")
+    first = json.loads(sorted(stub.glob("call-*.json"))[0].read_text())["stdin"]
+    check('"documents_waiting"' in first and "Temporal Aspects of AI Explanations" in first,
+          "the day's agent is shown the documents waiting, by name")
+    check(not any(w in first for w in ("Unmatched", "Meldezettel", "Rechnung")),
+          "…and nothing else in Downloads")
+    hdocs = vault / "projects" / "hfpi" / "docs"
+    got = sorted(p.name for p in hdocs.glob("*.pdf")) if hdocs.is_dir() else []
+    check(len(got) == 3 and any("Temporal Aspects" in n for n in got) and any("Unmatched paper xyz" in n for n in got),
+          f"filed into the project the student named, the one it was not guessed for, and the one they named ({got})")
+    check(not (inbox / "Temporal_Aspects.pdf").exists() and (inbox / "Meldezettel_ID_998877.pdf").exists(),
+          "moved out of Downloads; the file the student never named stays")
+    items = json.loads((state / "longhand" / "proposals.json").read_text())["items"]
+    rows = {x["id"]: x for x in items}
+    check(all(rows[x["id"]]["status"] == "accepted" and rows[x["id"]]["project"] == "hfpi" for x in waiting),
+          "the dashboard's rows about them are settled, as filed where asked")
+    check(not [x for x in items if x["kind"] == "file" and x["status"] == "open"], "…so the dashboard offers them no more")
+    check(any(x.get("src", "").endswith("Unmatched_paper_xyz.pdf") and x["status"] == "accepted" for x in items),
+          "one never proposed is recorded as filed, so it is not proposed later")
+    turn = json.loads(next((vault / "agents/longhand/daily").glob(f"{dt.date.today().isoformat()}.json")).read_text())["day"]["turns"][-1]
+    check(len(turn.get("filed", [])) == 3 and all(f["project"] == "hfpi" for f in turn["filed"]), "the turn says what was filed")
+    unfiled = " | ".join(turn.get("unfiled", []))
+    check("Meldezettel ID: not found in Downloads" in unfiled and "#nosuch is not a project" in unfiled,
+          f"…and why the rest was not ({unfiled})")
+    (stub / "extra.json").write_text("[]")
+    agent("day", "--message", "thanks")
+    later = json.loads(sorted(stub.glob("call-*.json"))[-1].read_text())["argv"][-1]
+    check("# What local code did with the documents you asked to file" in later and "in #hfpi" in later
+          and "not filed: Meldezettel ID" in later, "the next message tells the agent what was done")
+
+    # Filing set to never: nothing waiting is shown, and a request is refused.
+    cfg.write_text(json.dumps(dict(json.loads(cfg.read_text()), autonomy={"file": "never"})))
+    pdf(inbox / "Stetson_again.pdf", "Again", when=in_class)
+    (stub / "extra.json").write_text(json.dumps([{"document": "Stetson again", "project": "hfpi"}]))
+    for f in stub.glob("call-*.json"):
+        f.unlink()
+    agent("day", "--message", "file stetson again into hfpi")
+    turn = json.loads(next((vault / "agents/longhand/daily").glob(f"{dt.date.today().isoformat()}.json")).read_text())["day"]["turns"][-1]
+    check((inbox / "Stetson_again.pdf").exists() and "set to never" in " ".join(turn.get("unfiled", [])),
+          "filing set to never: refused, and said")
 
     # An unpacked export: its folder is read one level down, by the same rules.
     deep = tmp / "Downloads-deep"

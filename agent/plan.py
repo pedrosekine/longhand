@@ -278,7 +278,11 @@ def same_deadline(title: str, date: str, d: dict) -> bool:
 def ident(x: dict) -> tuple[str, str]:
     """What one proposal is about: its kind and its box, or, for a deadline
     (which has no box yet), its words; for a project, its tag; for a drop of
-    a deadline that has no line, its number."""
+    a deadline that has no line, its number; for a document to file, its
+    contents (2026-11-17: by its course's name, a second paper for a course
+    was "the same" as the one still waiting and never proposed)."""
+    if x["kind"] == "file" and x.get("doc"):
+        return (x["kind"], x["doc"])
     if x["kind"] == "project":
         return (x["kind"], str(x.get("project") or "").lower())
     if not x.get("key") and x.get("deadline"):

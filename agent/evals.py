@@ -270,6 +270,17 @@ def check_day(case: dict, reply: dict) -> tuple[list[dict], str]:
         out.append({"check": f"proposes {spec}", "pass": _matches(spec, props), "why": kept or "nothing kept"})
     for spec in r.get("no_propose") or []:
         out.append({"check": f"does not propose {spec}", "pass": not _matches(spec, props), "why": kept or "nothing kept"})
+    # Documents it asked to file (2026-11-17): `file` lists `tag:pattern`
+    # (the pattern on the document's name), `no_file` that it files nothing.
+    files = [f for f in reply.get("file") or [] if isinstance(f, dict)]
+    filed = " | ".join(f"#{f.get('project', '')}: {f.get('document', '')}" for f in files)
+    for spec in r.get("file") or []:
+        tag, _, pat = spec.partition(":")
+        out.append({"check": f"files {spec}", "pass": any(
+            str(f.get("project") or "").lstrip("#").lower() == tag.lower()
+            and re.search(pat, str(f.get("document") or ""), re.I) for f in files), "why": filed or "nothing filed"})
+    if r.get("no_file"):
+        out.append({"check": "files nothing", "pass": not files, "why": filed or "nothing filed"})
     if len(props) > r.get("max_proposals", planlib.MAX_PROPOSALS):
         out.append({"check": f"at most {r['max_proposals']} proposals", "pass": False, "why": f"{len(props)}"})
     if r.get("brief_lines"):
@@ -281,6 +292,9 @@ def check_day(case: dict, reply: dict) -> tuple[list[dict], str]:
     answer = text or "(silence)"
     if fetching:
         answer = "(asks first: " + " | ".join([f"search “{w}”" for w in asked] + [f"read {x}" for x in reads]) + ")"
+    if files:
+        answer += "\n\nWhat it asked local code to file (the `file` key; local code files it after this answer):\n" + "\n".join(
+            f"- {f.get('document', '')} → #{f.get('project', '')}" for f in files)
     if props:
         answer += "\n\nCards (what it proposed, as the student sees them after the checks):\n" + "\n".join(
             f"◇ {p['kind']}: {p.get('title', '')} {p.get('date') or p.get('priority') or ' · '.join(p.get('steps') or [])} — {p.get('why', '')}"

@@ -207,7 +207,11 @@ With `inbox` set in the config, PDFs in Downloads (or one folder inside
 it) that belong to a course (named for it, or downloaded during one of its
 classes) are proposed in the dashboard for filing into the course's documents; nothing else in the
 folder is ever listed. A course's documents are in its project in the
-sidebar; the agent sees their titles and can ask to read one.
+sidebar; the agent sees their titles and can ask to read one. To file one
+yourself, ask the day's conversation ("put the two papers from today's
+class into hfpi"): it is filed at once into the project you name, the
+dashboard's row about it goes, and the answer says what was filed. A PDF
+it was not offered is found by the name you give it.
 
 ## Reading a paper
 
