@@ -380,15 +380,25 @@ def load_state(paths: Paths) -> dict:
 # the config are candidates; the first is the default when a block is too
 # short or too ambiguous to tell. The model is then *told* the language, so
 # it never has to guess — a guess is how an English note got a Dutch reply.
+#
+# A word two candidates share counts for neither: "a" and "as" are English
+# as much as Portuguese, and counting them for Portuguese is how "so a
+# static building counts as … a car, a tram" got a Portuguese answer
+# (2026-11-17). A language wins only by LEAD words over the one it would
+# replace, so one ambiguous line never flips a conversation.
 STOPWORDS = {
     "English": {"the", "and", "is", "are", "to", "of", "in", "on", "what", "this", "that", "with", "for", "it",
-                "was", "have", "has", "not", "do", "did", "does", "my", "you", "i", "we", "about", "week", "how"},
+                "was", "have", "has", "not", "do", "did", "does", "my", "you", "i", "we", "about", "week", "how",
+                "a", "an", "as", "so", "or", "be", "but", "if", "can", "there", "which", "then", "than", "from",
+                "at", "by", "it's", "i'm", "don't", "isn't", "one", "they", "would", "should", "could", "why"},
     "German": {"der", "die", "das", "und", "ist", "sind", "nicht", "ich", "du", "wir", "mit", "für", "auf", "ein",
                "eine", "wie", "was", "habe", "hat", "haben", "noch", "auch", "diese", "dieser", "über", "zu", "im"},
     "Portuguese": {"o", "a", "os", "as", "e", "é", "são", "não", "eu", "você", "nós", "com", "para", "um", "uma",
-                   "que", "como", "tenho", "tem", "esta", "este", "sobre", "semana", "mais", "muito", "isso", "está"},
+                   "que", "como", "tenho", "tem", "esta", "este", "sobre", "semana", "mais", "muito", "isso", "está",
+                   "do", "da", "dos", "das", "no", "na", "em", "mas", "então", "porque", "também", "isto"},
     "Spanish": {"el", "la", "los", "las", "y", "es", "son", "no", "yo", "tú", "nosotros", "con", "para", "un", "una",
-                "que", "cómo", "tengo", "tiene", "esta", "este", "sobre", "semana", "más", "muy", "esto", "está"},
+                "que", "cómo", "tengo", "tiene", "esta", "este", "sobre", "semana", "más", "muy", "esto", "está",
+                "del", "en", "pero", "entonces", "porque", "también", "qué"},
     "Dutch": {"de", "het", "een", "en", "is", "zijn", "niet", "ik", "je", "wij", "met", "voor", "op", "wat", "hoe",
               "heb", "heeft", "hebben", "nog", "ook", "deze", "over", "naar", "van"},
     "French": {"le", "la", "les", "et", "est", "sont", "pas", "je", "tu", "nous", "avec", "pour", "un", "une",
@@ -396,6 +406,7 @@ STOPWORDS = {
     "Italian": {"il", "la", "gli", "le", "e", "è", "sono", "non", "io", "tu", "noi", "con", "per", "un", "una",
                 "che", "come", "ho", "ha", "abbiamo", "questa", "questo", "sulla", "settimana", "più", "molto"},
 }
+LEAD = 2
 
 
 def languages(cfg: dict) -> list[str]:
@@ -405,27 +416,39 @@ def languages(cfg: dict) -> list[str]:
     return [str(cfg.get("language") or "English")]
 
 
-def detect_language(text: str, candidates: list[str]) -> str:
-    words = re.findall(r"[\w']+", text.lower())
-    best, best_n = candidates[0], 0
-    for lang in candidates:
-        sw = STOPWORDS.get(lang)
-        if not sw:
-            continue
-        n = sum(1 for w in words if w in sw)
-        if n > best_n:
-            best, best_n = lang, n
-    return best if best_n >= 2 else candidates[0]
+def language_scores(text: str, candidates: list[str]) -> dict[str, int]:
+    """Per candidate, the words of `text` that only it of the candidates
+    claims."""
+    words = re.findall(r"[\w']+", text.lower().replace("\u2019", "'"))
+    sets = {lang: STOPWORDS.get(lang) or set() for lang in candidates}
+    return {lang: sum(1 for w in words if w in sw and not any(w in o for l, o in sets.items() if l != lang))
+            for lang, sw in sets.items()}
 
 
-def language_line(cfg: dict, sample: str = "") -> str:
+def detect_language(text: str, candidates: list[str], before: str = "") -> str:
+    """The language `text` is in. The default is the conversation's
+    language so far (`before`, the student's earlier messages in it), else
+    the first candidate; another wins only by LEAD words over it."""
+    default = detect_language(before, candidates) if before else candidates[0]
+    scores = language_scores(text, candidates)
+    best = max(candidates, key=lambda l: scores[l])     # a tie keeps the earlier
+    return best if scores[best] - scores.get(default, 0) >= LEAD else default
+
+
+def language_line(cfg: dict, sample: str = "", before: str = "") -> str:
     ls = languages(cfg)
-    chosen = detect_language(sample, ls) if sample else ls[0]
+    chosen = detect_language(sample, ls, before) if sample else (detect_language(before, ls) if before else ls[0])
     others = ", ".join(l for l in ls if l != chosen)
     line = f"The student wrote this in {chosen}. Answer in {chosen}."
     if others:
         line += f" The student also uses {others}; never answer in any other language than these."
     return line
+
+
+def said_before(turns: list[dict], n: int = 3) -> str:
+    """The student's last `n` messages of a conversation, for the language
+    it has been held in."""
+    return "\n".join(t.get("text") or "" for t in [t for t in turns or [] if t.get("role") == "student"][-n:])
 
 
 def outcomes(cfg: dict, days: int = 14, visible_only: bool = False) -> list[dict]:
@@ -1425,7 +1448,8 @@ def cmd_chat(cfg: dict, args) -> int:
                      "do not point at one:\n\n" + "\n".join(f"- {x}" for x in gone) + "\n\n") if gone else ""
         offer_part = "\n".join(margin_proposable_parts(proposable, again=True)).lstrip() + "\n\n" \
             if proposable and digest != rec.get("proposable") else ""
-        payload = (f"{language_line(cfg, message)}\n\n{since}{planner_part}{docs_part}{gone_part}{offer_part}"
+        lang = language_line(cfg, message, said_before(rec.get("chat")))
+        payload = (f"{lang}\n\n{since}{planner_part}{docs_part}{gone_part}{offer_part}"
                    f"The student replies about block {args.hash}:\n\n{message}\n\n"
                    "Answer with the same JSON contract.\n")
         payload_file.write_text(payload)
@@ -3831,11 +3855,11 @@ def day_followup(cfg: dict, paths: Paths, visible: list[dict], last: str, messag
     """A later message: the session already holds the day's context; only
     what is new travels — the note as it reads now when it changed, the
     other conversations since the last answer, a block pointed at."""
-    parts = [language_line(cfg, message), ""]
+    turns = (load_state(paths).get("day") or {}).get("turns") or []
+    parts = [language_line(cfg, message, said_before(turns)), ""]
     other = today_conversations(cfg, paths, since=last)
     if other:
         parts += ["# Since your last answer, in today's other conversations", ""] + other
-    turns = (load_state(paths).get("day") or {}).get("turns") or []
     gone = next((t.get("unoffered") or [] for t in reversed(turns) if t["role"] == "agent"), [])
     if gone:
         parts += ["# Your last proposals local code did not offer as cards", "",
@@ -4102,11 +4126,11 @@ def note_talk(paths: Paths, rel: str) -> tuple[str, list[dict], str]:
 
 
 def note_payload(cfg: dict, paths: Paths, rel: str, shown: list[dict], message: str, block: str, first: bool,
-                 changed: bool = False) -> str:
+                 changed: bool = False, before: str = "") -> str:
     """The first message: what this conversation is, the note whole, the
     notebook, what may be searched. A later one: the note again only when
     it `changed`. Either way the block pointed at, and the message."""
-    parts = [language_line(cfg, message), ""]
+    parts = [language_line(cfg, message, before), ""]
     if first:
         on = [f for f, y in searchlib.switched(paths.vault, cfg).items() if y]
         parts += ["# This conversation", "",
@@ -4225,12 +4249,12 @@ def paper_marks(st: dict) -> list[str]:
 
 
 def paper_payload(cfg: dict, paths: Paths, rel: str, st: dict, message: str, marks: list[str], first: bool,
-                  changed: bool = False) -> str:
+                  changed: bool = False, before: str = "") -> str:
     """The first message: what this conversation is, the paper's marks, the
     notebook, what may be searched. A later one: the marks again only when
     they changed. Either way the marks pointed at, with their pages' text,
     and the message."""
-    parts = [language_line(cfg, message), ""]
+    parts = [language_line(cfg, message, before), ""]
     if first:
         on = [f for f, y in searchlib.switched(paths.vault, cfg).items() if y]
         parts += ["# This conversation", "",
@@ -4310,8 +4334,11 @@ def cmd_note(cfg: dict, args) -> int:
     payload_file = paths.payloads / f"{dt.datetime.now():%Y%m%d-%H%M%S-%f}-note.md"
     day_cfg = dict(cfg, agent=cfg.get("dayAgent", "longhand-day"))
     if talk["session"]:
-        payload = paper_payload(cfg, paths, rel, st, message, marks, False, changed=seen != talk["seen"]) if paper else \
-            note_payload(cfg, paths, rel, shown, message, args.block, False, changed=seen != talk["seen"])
+        before = said_before(talk["turns"])
+        payload = paper_payload(cfg, paths, rel, st, message, marks, False, changed=seen != talk["seen"],
+                                before=before) if paper else \
+            note_payload(cfg, paths, rel, shown, message, args.block, False, changed=seen != talk["seen"],
+                         before=before)
         payload_file.write_text(payload)                 # logged before inference
         result = run_model(day_cfg, paths, "", session=talk["session"], message=payload)
     else:
