@@ -34,8 +34,9 @@ canonical assets, and historical studies.
 
 ## Install
 
-Needs Omarchy (for `omarchy-shell`) and [opencode](https://opencode.ai) with
-one model key.
+Needs Omarchy (for `omarchy-shell`) and a way to reach a model: either
+[opencode](https://opencode.ai) with one model key, or Claude Code signed in
+to your own Claude plan (below).
 
 ```bash
 mkdir -p ~/.config/longhand
@@ -455,6 +456,17 @@ pass has a server of its own that dies with it and nothing of any project is
 ever in scope. The ledger (`~/.local/state/longhand/cost.tsv`) reads
 each pass's price back from its session.
 
+A model named `claude-code/<model>` (for `model` or `planModel` in the
+config, e.g. `"claude-code/claude-opus-5-5"`) runs through Claude Code
+instead (`claude -p`), on your own Claude sign-in: Longhand never touches
+it. The pass gets no tools, no MCP servers, no settings files (so no
+CLAUDE.md, hooks or memory), no skills, and the agent's own instructions as
+its whole system prompt; a pass that was offered tools anyway is dropped.
+`variant` becomes the effort (`low` … `max`). On a subscription the ledger
+says 0 per pass, since it is not billed per token; it counts against the
+plan's usage limits. `"claude"` in the config names the binary if it is not
+on `PATH`.
+
 ```bash
 ln -s "$PWD/agent/longhand-agent" ~/.local/bin/longhand-agent
 longhand-agent install                       # opencode agent definition + folders
@@ -464,6 +476,7 @@ longhand-agent sections --tag intsem         # one project's notes across every 
 longhand-agent week --tag thesis [--write]   # the project's week: done, written, read, coming up, questions to bring (W in the sidebar)
 longhand-agent context --trigger mention --hash <h>   # incl. that project's earlier notes
 python3 tests/test_agent.py                 # offline, stub opencode
+python3 tests/test_claude_route.py          # offline, stub claude
 ```
 
 ## The timer and the deadline store
