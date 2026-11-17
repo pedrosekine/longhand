@@ -327,7 +327,7 @@ var actions = [
   { id: "pdfBigger", group: "pdf", places: ["pdf"], does: "Larger", keys: ["Plus", "="] },
   { id: "pdfSmaller", group: "pdf", places: ["pdf"], does: "Smaller", keys: ["-"] },
   { id: "pdfFit", group: "pdf", places: ["pdf"], does: "Fit again; fitted, switch between its text and the whole page", keys: ["0"] },
-  { id: "pdfFind", group: "pdf", places: ["pdf"], does: "Find in it (Enter: next, Shift+Enter: before)", keys: ["Ctrl+F", "/"] },
+  { id: "pdfFind", group: "pdf", places: ["pdf"], does: "Find in it, every place listed (Enter: next, Shift+Enter: before)", keys: ["Ctrl+F", "/"] },
   { id: "pdfOpen", group: "pdf", places: ["pdf"], does: "Open it in its own application", keys: ["O"] },
   { id: "pdfDark", group: "pdf", places: ["pdf"], does: "Dark pages: the paper in the theme's colours (again: as printed); kept for this paper", keys: ["I"] },
   { id: "pdfOcr", group: "pdf", places: ["pdf"], does: "A scan: read its words (OCR), into a copy that takes its place; the scan is not written", keys: ["R"] },

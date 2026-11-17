@@ -218,7 +218,7 @@ ShellRoot {
     function pdf(): string {
       var p = page.pdfItem
       return JSON.stringify({ shown: page.pdfShown, label: page.noteLabel, ready: p.ready, pages: p.pages, finding: p.finding,
-        found: p.view && p.view.searchModel ? p.view.searchModel.count : 0, here: page.here,
+        found: p.findTotal, here: page.here,
         at: p.here(), settled: p.settled, resumed: p.resumed, zoom: p.zoom,
         scale: p.view ? p.view.renderScale : 0, x: p.table() ? p.table().contentX : 0, whole: p.wholePage, width: p.width,
         span: p.read && p.read.span ? p.read.span : null, dark: p.dark,
@@ -239,12 +239,11 @@ ShellRoot {
         var kids = h.selection.parent.children
         for (var k = 0; k < kids.length; k++) {
           if (kids[k].holder === undefined || kids[k].count === undefined) continue
-          var groups = kids[k].children
-          for (var gi = 0; gi < groups.length; gi++) {
-            var boxes = groups[gi].children
-            for (var b = 0; b < boxes.length; b++)
-              if (boxes[b].modelData !== undefined && boxes[b].color.a > 0.5 && boxes[b].width > 4 && boxes[b].height > 4) drawn++
-          }
+          // The pieces painted (PdfMarks.paint), each with a size and a colour.
+          var boxes = kids[k].children
+          for (var b = 0; b < boxes.length; b++)
+            if (boxes[b].modelData !== undefined && boxes[b].modelData.kind !== undefined && boxes[b].color !== undefined
+                && boxes[b].color.a > 0.2 && boxes[b].width > 4 && boxes[b].height > 4) drawn++
         }
       }
       var sel = p.selected()
@@ -369,6 +368,20 @@ ShellRoot {
     function exportKey(key: int, mods: int): bool { return page.exportKey({ key: key, text: "", modifiers: mods }) }
     function exportTitle(s: string): void { page.exportTitle = s }
     function pdfFind(text: string): void { page.pdfItem.findRef.text = text }
+    // Ctrl+F (2026-11-17): what it found, the one shown, what the bar says,
+    // which page is across the view's middle, where the back key goes.
+    function pdfFound(): string {
+      var p = page.pdfItem
+      return JSON.stringify({ finding: p.finding, text: p.findRef.text, for: p.findFor, total: p.findTotal, at: p.findAt,
+        hits: p.findHits.map(function (h) { return h.page + ":" + h.match }), cased: p.findCased,
+        count: p.findBarRef.count, says: p.findBarRef.says, said: p.findSaid, busy: p.findBusy,
+        page: p.current, back: p.jumpBack, here: p.here(), focus: p.findRef.activeFocus })
+    }
+    function pdfFindKey(key: int, mods: int): bool {
+      var ev = { key: key, text: "", modifiers: mods, accepted: false }
+      // The field's own keys, as it hears them.
+      return page.pdfItem.findKey(ev)
+    }
     // The read view (docs/files.md): what each line is drawn as.
     function rowKinds(): string { return JSON.stringify(page.editorItem.rows.map(function (r) { return r.kind })) }
     function imageShown(i: int): string {

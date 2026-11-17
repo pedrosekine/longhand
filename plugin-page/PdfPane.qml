@@ -19,6 +19,15 @@ import "Answers.js" as Answers
 // Space a page, Home/End the ends, Ctrl+F finds, + / - / 0 size it, o opens
 // it in its own application, Esc closes it (back to the note under it).
 //
+// Find (Ctrl+F or /, 2026-11-17): `longhand-read search` finds the words as
+// a mark's are found, loosely — a word broken over a line, a ligature, an
+// accent never hides one; a capital typed makes the case count. As letters
+// are typed the next place from where it is read is shown, every place lit
+// on the pages and listed with the words round it; Enter goes on, Shift+
+// Enter back, ↑/↓ too, a row clicked to it. Esc closes, leaving the view
+// where it was found, and the back key returns to where the reading was.
+// Words selected when it opens are what it finds.
+//
 // Each PDF opens where it was left (plan.md, item 9, "Left by the build"):
 // the page, how far down it, the size, kept in pdfs.json in the state
 // folder by the file's path. Never in the vault: it is the machine's.
@@ -52,6 +61,7 @@ Item {
   property string rel: ""
   property alias keysRef: keys
   property alias findRef: findField
+  property alias findBarRef: findBar
   property alias noteRef: noteField
   property alias acroFieldRef: acroField
   // What the tip under the pointer says, for the harness.
@@ -60,7 +70,12 @@ Item {
   property bool finding: false
   readonly property var view: loader.item ? loader.item.view : null
   readonly property int pages: loader.item ? loader.item.doc.pageCount : 0
-  readonly property int current: view ? view.currentPage : 0
+  // The page being read: the one across the view's middle. Qt's own
+  // currentPage moves only on a jump or a scrollbar drag, so after the
+  // touchpad, the wheel or the keys it said the page jumped to last (the
+  // foot read "page 5" over page 2, 2026-11-17); it is worked out here
+  // from where the view is instead, as it scrolls.
+  property int current: 0
   readonly property bool ready: loader.item ? loader.item.doc.status === PdfDocument.Ready : false
   readonly property string error: loader.item && loader.item.doc.status === PdfDocument.Error ? "this PDF could not be read" : ""
 
@@ -143,6 +158,11 @@ Item {
     pane.acro = { byShort: by, list: list, spots: o.spots || {} }
   }
   function esc(t) { return String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") }
+  // A place found, as a row: a few words before it, it, the words after.
+  function findRow(h) {
+    var before = h.before.length > 42 ? "…" + h.before.substring(h.before.length - 42).replace(/^\S*\s/, "") : h.before
+    return pane.esc(before) + (before ? " " : "") + "<b><font color=\"" + page.foreground + "\">" + pane.esc(h.match) + "</font></b> " + pane.esc(h.after)
+  }
   function acroOn(index) { return pane.acro.spots[String(index)] || [] }
   // Is the spot `r` on page `index` (from 0) the place the acronym is spelled out?
   function acroIsDef(a, index, r) {
@@ -301,7 +321,7 @@ Item {
 
   visible: rel !== ""
   onRelChanged: {
-    pane.zoom = 1; pane.finding = false; findField.text = ""
+    pane.zoom = 1; pane.finding = false; findField.text = ""; pane.clearFind()
     pane.settled = false; pane.resumed = null
     pane.read = ({ marks: [], unplaced: 0, text: true, note: "", tags: [] })
     pane.wholePage = false
@@ -316,16 +336,41 @@ Item {
     Qt.callLater(pane.arrive)
   }
 
-  // Where the view is now, or null while there is nothing to read.
-  function here() {
+  // Where the view is now, or null while there is nothing to read: the
+  // page and how far down it at the view's top, or `down` (0 to 1) of the
+  // way down the view.
+  function here(down) {
     var t = pane.table()
     if (!t || !pane.ready || !loader.item) return null
     var doc = loader.item.doc, s = pane.view.renderScale, heights = []
     for (var i = 0; i < pane.pages; i++) heights.push(doc.pagePointSize(i).height * s)
-    var at = Places.at(heights, t.rowSpacing || 0, t.contentY - t.originY)
+    var at = Places.at(heights, t.rowSpacing || 0, t.contentY - t.originY + (down || 0) * t.height)
     if (!at) return null
     at.zoom = pane.zoom
     return at
+  }
+  function track() {
+    var at = pane.here(0.5)
+    pane.current = at ? at.page : 0
+  }
+  Timer { id: trackTimer; interval: 50; onTriggered: pane.track() }
+  Connections {
+    target: pane.table()
+    ignoreUnknownSignals: true
+    function onContentYChanged() { trackTimer.restart() }
+    function onHeightChanged() { trackTimer.restart() }
+  }
+  // A page down or up (PgDn, Space, PgUp): as far down the next page as
+  // the view's top is down this one. Qt's goToPage counted from its own
+  // current page, which the touchpad never moved.
+  function turn(d) {
+    var at = pane.here()
+    if (!at || !pane.view) return
+    var to = Math.max(0, Math.min(pane.pages - 1, at.page + d))
+    if (to === at.page) return
+    var h = loader.item.doc.pagePointSize(to).height
+    pane.view.goToLocation(to, Qt.point(0, at.frac * h + 10 / pane.view.renderScale), 0)
+    pane.alignSoon()
   }
   // Note where this PDF is, now; Page.qml asks before it opens another or
   // closes this one, and a pause in scrolling asks too.
@@ -355,6 +400,7 @@ Item {
         pane.resumed = p
       }
       pane.settled = true
+      pane.track()
       pane.dress()
       pane.alignSoon()
       pane.showPending()
@@ -451,11 +497,148 @@ Item {
     }
   }
 
-  function find(dir) {
-    if (!pane.view) return
-    pane.view.searchString = findField.text
-    if (dir > 0) pane.view.searchForward()
-    else if (dir < 0) pane.view.searchBack()
+  // ---------------------------------------------------------- find
+
+  property var findHits: []             // longhand-read search's: { page, rects, before, match, after }
+  property var findOnPage: ({})         // page (from 0) → [{ r, i }]
+  property int findTotal: 0             // how many there are (the first 500 are listed)
+  property int findAt: -1               // the one shown
+  property bool findCased: false        // a capital typed: the case counts
+  property string findFor: ""           // the words the hits are for
+  property string findSaid: ""          // "from the top again", a moment
+  property var findFrom: null           // where the reading was before the first shown
+  readonly property bool findBusy: searchProc.running || findTimer.running
+  Timer { id: findTimer; interval: 120; onTriggered: pane.runFind() }
+  Timer { id: findSaidTimer; interval: 2500; onTriggered: pane.findSaid = "" }
+
+  function openFind() {
+    if (pane.rel === "") return
+    var sel = pane.selected(), was = findField.text
+    if (sel) findField.text = sel.text.replace(/[\ufffe\u00ad]\s*/g, "").replace(/\s+/g, " ").trim().substring(0, 120)
+    pane.finding = true
+    pane.findFrom = null
+    findField.forceActiveFocus()
+    findField.selectAll()
+    // The same words as before: their places again, from where it is now.
+    if (findField.text === was) { findTimer.stop(); pane.runFind() }
+    page.used("pdf", "find")
+  }
+  // The find field's keys; the rest are typed.
+  function findKey(event) {
+    if (page.anywhereKey(event)) return true
+    var seq = Sc.fromEvent(event)
+    if (seq === "Enter" || seq === "Down") pane.findGo(1)
+    else if (seq === "Shift+Enter" || seq === "Up") pane.findGo(-1)
+    else if (seq === "Esc") pane.closeFind()
+    else if (Sc.hit(event, "pdfFind") && seq !== "/") findField.selectAll()
+    else if (seq === "PgDn") pane.turn(1)
+    else if (seq === "PgUp") pane.turn(-1)
+    else return false
+    return true
+  }
+  function clearFind() {
+    findTimer.stop()
+    pane.findHits = []; pane.findOnPage = ({}); pane.findTotal = 0; pane.findAt = -1
+    pane.findFor = ""; pane.findSaid = ""; pane.findCased = false
+  }
+  // Esc: the view stays where it was found; the back key returns to where
+  // the reading was, if it moved.
+  function closeFind() {
+    var from = pane.findFrom, now = pane.here()
+    pane.finding = false
+    pane.clearFind()
+    if (from && now && (from.page !== now.page || Math.abs(from.frac - now.frac) > 0.02)) pane.jumpBack = from
+    pane.findFrom = null
+    keys.forceActiveFocus()
+  }
+  function runFind() {
+    findTimer.stop()
+    var q = findField.text.trim()
+    if (q.length < 2 || pane.rel === "") { pane.clearFind(); return }
+    if (searchProc.running) { searchProc.again = true; return }
+    searchProc.command = [pane.readPath, "search", "--pdf", pane.rel, "--text", q]
+    searchProc.running = true
+  }
+  function findDone(out) {
+    var o = null
+    try { o = JSON.parse(out) } catch (e) { o = null }
+    if (!o || o.pdf !== pane.rel || !pane.finding || o.search !== findField.text.trim()) return
+    var by = {}
+    o.hits.forEach(function (h, i) {
+      var k = String(h.page)
+      by[k] = (by[k] || []).concat(h.rects.map(function (r) { return { r: r, i: i } }))
+    })
+    var start = pane.findStart(o.hits)
+    pane.findHits = o.hits
+    pane.findOnPage = by
+    pane.findTotal = o.total
+    pane.findCased = !!o.cased
+    pane.findFor = o.search
+    pane.findAt = -1
+    if (start >= 0) pane.findShow(start)
+  }
+  // The first place at or after the one shown, else at or after the top of
+  // the view: typing on narrows from where it is, never back to page 1.
+  function findStart(hits) {
+    if (hits.length === 0) return -1
+    var from = null
+    var cur = pane.findAt >= 0 ? pane.findHits[pane.findAt] : null
+    if (cur) from = { page: cur.page, y: cur.rects[0][1] }
+    else {
+      var at = pane.here()
+      if (at && loader.item) from = { page: at.page, y: at.frac * loader.item.doc.pagePointSize(at.page).height }
+    }
+    if (!from) return 0
+    for (var i = 0; i < hits.length; i++)
+      if (hits[i].page > from.page || (hits[i].page === from.page && hits[i].rects[0][1] >= from.y - 1)) return i
+    pane.findSaid = "from the top again"
+    findSaidTimer.restart()
+    return 0
+  }
+  function findGo(d) {
+    if (findTimer.running) { pane.runFind(); return }
+    var n = pane.findHits.length
+    if (n === 0) return
+    var i = pane.findAt + d
+    if (i >= n) { i = 0; pane.findSaid = "from the top again"; findSaidTimer.restart() }
+    else if (i < 0) { i = n - 1; pane.findSaid = "from the end again"; findSaidTimer.restart() }
+    else pane.findSaid = ""
+    pane.findShow(i)
+  }
+  function findShow(i) {
+    var h = pane.findHits[i]
+    if (!h) return
+    if (pane.findFrom === null) pane.findFrom = pane.here()
+    pane.findAt = i
+    pane.reveal(h)
+  }
+  // A place brought into view, a third of the way down it, unless it is in
+  // view already (above the find bar): the pages move only when they must.
+  function reveal(box) {
+    if (!pane.view || !box || !box.rects || box.rects.length === 0) return
+    var s = pane.view.renderScale, first = box.rects[0], last = box.rects[box.rects.length - 1]
+    for (var k = 0; k < pane.dressed.length; k++) {
+      var h = pane.dressed[k]
+      if (!h || h.index !== box.page || !h.visible || !h.selection || !h.selection.parent) continue
+      var top = h.selection.parent.mapToItem(pane, 0, first[1] * s).y
+      var foot = h.selection.parent.mapToItem(pane, 0, (last[1] + last[3]) * s).y
+      var bottom = pane.finding ? findBar.y : pane.height
+      if (top >= page.sp(24) && foot <= bottom - page.sp(12)) return
+      break
+    }
+    var room = (pane.finding ? findBar.y : pane.height) * 0.3
+    pane.view.goToLocation(box.page, Qt.point(0, Math.max(0, first[1] - room / s)), 0)
+    pane.alignSoon()
+  }
+  Process {
+    id: searchProc
+    property bool again: false
+    stdout: StdioCollector { id: searchOut; onStreamFinished: pane.findDone(searchOut.text) }
+    stderr: StdioCollector {
+      id: searchErr
+      onStreamFinished: { var t = searchErr.text.trim(); if (t !== "") console.warn("longhand.page search: " + t) }
+    }
+    onRunningChanged: if (!running && again) { again = false; Qt.callLater(pane.runFind) }
   }
 
   // ---------------------------------------------------------- marks
@@ -592,12 +775,21 @@ Item {
       if (h.selection === undefined || h.index === undefined || pane.dressed.indexOf(h) >= 0) continue
       var paper = h.selection.parent
       if (!paper) continue
+      // Another PDF opened in its place keeps the view and its holders: a
+      // holder already dressed for the one before is not dressed again
+      // (it drew every mark twice, a shade darker).
+      if (pane.hasLayer(paper)) { pane.dressed = pane.dressed.concat([h]); continue }
       marksLayer.createObject(paper, { holder: h, paper: paper })
       pane.watch(h)
       pane.touchpad(paper)
       pane.darken(paper)
       pane.dressed = pane.dressed.concat([h])
     }
+  }
+  function hasLayer(paper) {
+    for (var i = 0; i < paper.children.length; i++)
+      if (paper.children[i].holder !== undefined && paper.children[i].count !== undefined) return true
+    return false
   }
   // Dark pages (plan.md item 15, step 4): `i` draws the paper's pages in
   // the theme's colours — white paper the ground, black ink the text, a
@@ -850,39 +1042,48 @@ Item {
       anchors.fill: parent
       readonly property int index: holder ? holder.index : -1
       readonly property real s: paper && paper.pageScale ? paper.pageScale : 1
-      readonly property int count: drawn.count
+      readonly property var rects: pane.rectsOn(sheet.index)
+      readonly property int count: painted.count
       TapHandler {
         acceptedDevices: PointerDevice.AllDevices
         onTapped: function (point) { pane.tapAway(sheet.index, point.position.x / sheet.s, point.position.y / sheet.s, sheet.s) }
       }
-      // The marks solid, and see-through as one: where two cover the same
-      // words the colour is the same, never darker (2026-11-15), and where
-      // a question crosses a highlight the later one shows.
-      Item {
-        anchors.fill: parent
-        opacity: 0.4
-        layer.enabled: drawn.count > 0
-        Repeater {
-          id: drawn
-          model: pane.rectsOn(sheet.index)
-          delegate: Rectangle {
-            id: box
-            required property var modelData
-            readonly property real pad: 1.5
-            x: modelData.r[0] * sheet.s - pad
-            y: modelData.r[1] * sheet.s
-            width: modelData.r[2] * sheet.s + 2 * pad
-            height: modelData.r[3] * sheet.s
-            radius: 2
-            color: modelData.kind === "q" ? page.palette.blue : page.palette.yellow
-            HoverHandler {
-              onHoveredChanged: hovered ? pane.markHover(box.modelData.id, box, box.width * box.height) : pane.markLeave(box)
-            }
-            TapHandler {
-              acceptedDevices: PointerDevice.AllDevices
-              onTapped: function (point) {
-                pane.tapAt(sheet.index, (box.x + point.position.x) / sheet.s, (box.y + point.position.y) / sheet.s, sheet.s)
-              }
+      // The marks see-through, each place painted once: where two cover the
+      // same words the colour is the same, never darker (2026-11-15), and
+      // where a question crosses a highlight the later one shows. No layer
+      // (PdfMarks.paint says why).
+      Repeater {
+        id: painted
+        model: Marks.paint(sheet.rects, 1.5 / sheet.s)
+        delegate: Rectangle {
+          required property var modelData
+          x: modelData.x * sheet.s
+          y: modelData.y * sheet.s
+          width: modelData.w * sheet.s
+          height: modelData.h * sheet.s
+          radius: modelData.round ? 2 : 0
+          readonly property color ink: modelData.kind === "q" ? page.palette.blue : page.palette.yellow
+          color: Qt.rgba(ink.r, ink.g, ink.b, 0.4)
+        }
+      }
+      // Each mark's own rectangles, unseen: what the pointer hovers and clicks.
+      Repeater {
+        model: sheet.rects
+        delegate: Item {
+          id: box
+          required property var modelData
+          readonly property real pad: 1.5
+          x: modelData.r[0] * sheet.s - pad
+          y: modelData.r[1] * sheet.s
+          width: modelData.r[2] * sheet.s + 2 * pad
+          height: modelData.r[3] * sheet.s
+          HoverHandler {
+            onHoveredChanged: hovered ? pane.markHover(box.modelData.id, box, box.width * box.height) : pane.markLeave(box)
+          }
+          TapHandler {
+            acceptedDevices: PointerDevice.AllDevices
+            onTapped: function (point) {
+              pane.tapAt(sheet.index, (box.x + point.position.x) / sheet.s, (box.y + point.position.y) / sheet.s, sheet.s)
             }
           }
         }
@@ -936,9 +1137,25 @@ Item {
           Behavior on opacity { NumberAnimation { duration: 400 } }
         }
       }
+      // What Ctrl+F found, lit while it is open; the one shown, outlined.
+      Repeater {
+        model: pane.finding ? pane.findOnPage[String(sheet.index)] || [] : []
+        delegate: Rectangle {
+          required property var modelData
+          readonly property bool shown: modelData.i === pane.findAt
+          x: modelData.r[0] * sheet.s - 2
+          y: modelData.r[1] * sheet.s - 1
+          width: modelData.r[2] * sheet.s + 4
+          height: modelData.r[3] * sheet.s + 2
+          radius: 2
+          color: Qt.rgba(page.accent.r, page.accent.g, page.accent.b, shown ? 0.3 : 0.14)
+          border.width: shown ? 2 : 0
+          border.color: page.accent
+        }
+      }
       // The mark picked, outlined at full strength above them.
       Repeater {
-        model: pane.picked === "" ? [] : pane.rectsOn(sheet.index).filter(function (r) { return r.id === pane.picked })
+        model: pane.picked === "" ? [] : sheet.rects.filter(function (r) { return r.id === pane.picked })
         delegate: Rectangle {
           required property var modelData
           x: modelData.r[0] * sheet.s - 1.5
@@ -979,8 +1196,8 @@ Item {
     var step = page.sp(60)
     if (Sc.hit(event, "pdfDown")) pane.scrollBy(step)
     else if (Sc.hit(event, "pdfUp")) pane.scrollBy(-step)
-    else if (Sc.hit(event, "pdfNextPage")) { if (pane.view) pane.view.goToPage(Math.min(pane.pages - 1, pane.current + 1)) }
-    else if (Sc.hit(event, "pdfPrevPage")) { if (pane.view) pane.view.goToPage(Math.max(0, pane.current - 1)) }
+    else if (Sc.hit(event, "pdfNextPage")) pane.turn(1)
+    else if (Sc.hit(event, "pdfPrevPage")) pane.turn(-1)
     // The ends: the top of the first page, the top of the last (as far as
     // it goes). goToPage keeps the place inside the page, so it is not
     // used for them: from the foot of a page it would land on another's foot.
@@ -993,7 +1210,7 @@ Item {
       if (Math.abs(pane.zoom - 1) > 0.01) pane.zoom = 1
       else { pane.wholePage = !pane.wholePage; Qt.callLater(pane.fit) }
     }
-    else if (Sc.hit(event, "pdfFind")) { pane.finding = true; findField.forceActiveFocus(); findField.selectAll() }
+    else if (Sc.hit(event, "pdfFind")) pane.openFind()
     else if (Sc.hit(event, "pdfOpen")) { page.used("pdf", "open-elsewhere"); Qt.openUrlExternally(pane.url()) }
     else if (Sc.hit(event, "pdfClose")) page.closePdf()
     else return false
@@ -1004,27 +1221,6 @@ Item {
     id: keys
     anchors.fill: parent
     Keys.onPressed: function (event) { if (pane.key(event)) event.accepted = true }
-  }
-
-  TextField {
-    id: findField
-    visible: pane.finding
-    anchors.top: parent.top
-    width: Math.min(parent.width, page.sp(360))
-    placeholderText: "find in this PDF"
-    font.family: page.fontFamily
-    font.styleName: page.fontStyle
-    font.pixelSize: page.fs(Style.font.bodySmall)
-    foreground: page.foreground
-    Keys.priority: Keys.BeforeItem
-    Keys.onPressed: function (event) {
-      if (page.anywhereKey(event)) { event.accepted = true; return }
-      var seq = Sc.fromEvent(event)
-      if (seq === "Enter") { pane.find(1); event.accepted = true }
-      else if (seq === "Shift+Enter") { pane.find(-1); event.accepted = true }
-      else if (seq === "Esc") { pane.finding = false; keys.forceActiveFocus(); event.accepted = true }
-    }
-    onTextChanged: if (pane.view) pane.view.searchString = text
   }
 
   TextField {
@@ -1124,6 +1320,131 @@ Item {
         font.family: page.fontFamily
         font.styleName: page.fontStyle
         font.pixelSize: page.fs(Style.font.caption)
+      }
+    }
+  }
+
+  // Ctrl+F: the words to find, how many places, and each with the words
+  // round it; the one shown is the row lit.
+  Rectangle {
+    id: findBar
+    visible: pane.finding
+    z: 3
+    anchors.bottom: foot.top
+    anchors.bottomMargin: page.sp(6)
+    anchors.right: parent.right
+    width: Math.min(parent.width, page.sp(480))
+    height: findColumn.implicitHeight + page.sp(16)
+    radius: Style.cornerRadius
+    color: page.palette.background
+    border.width: 1
+    border.color: page.accent
+    readonly property string count: findField.text.trim().length < 2 ? ""
+      : pane.findBusy && pane.findFor !== findField.text.trim() ? "…"
+      : pane.findTotal === 0 ? "none"
+      : (pane.findAt + 1) + " of " + pane.findTotal
+    readonly property string says: pane.read.text === false && !pane.read.ocr
+        ? (pane.ocrable ? "a scan, no words to find: " + page.keyName("pdfOcr") + " reads it" : "no words in this PDF to find")
+      : findField.text.trim().length < 2 ? "words to find in this paper · Esc"
+      : pane.findFor !== "" && pane.findTotal === 0 && !pane.findBusy
+        ? "not in this paper" + (pane.findCased ? " (with these capitals: small letters find any)" : "")
+      : "Enter next · Shift+Enter before · Esc closes"
+        + (pane.findCased ? " · capitals count" : "")
+        + (pane.findTotal > pane.findHits.length ? " · the first " + pane.findHits.length + " listed" : "")
+    Column {
+      id: findColumn
+      x: page.sp(10)
+      y: page.sp(8)
+      width: parent.width - page.sp(20)
+      spacing: page.sp(4)
+      Text {
+        width: parent.width
+        textFormat: Text.PlainText
+        wrapMode: Text.WordWrap
+        text: findBar.says + (pane.findSaid !== "" ? " · " + pane.findSaid : "")
+        color: page.dim
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.caption)
+      }
+      Item {
+        width: parent.width
+        height: findField.implicitHeight
+        TextField {
+          id: findField
+          anchors.left: parent.left
+          anchors.right: findCount.left
+          anchors.rightMargin: page.sp(8)
+          placeholderText: "find in this paper"
+          font.family: page.fontFamily
+          font.styleName: page.fontStyle
+          font.pixelSize: page.fs(Style.font.bodySmall)
+          foreground: page.foreground
+          Keys.priority: Keys.BeforeItem
+          Keys.onPressed: function (event) { if (pane.findKey(event)) event.accepted = true }
+          onTextChanged: if (pane.finding) findTimer.restart()
+        }
+        Text {
+          id: findCount
+          anchors.right: parent.right
+          anchors.verticalCenter: parent.verticalCenter
+          textFormat: Text.PlainText
+          text: findBar.count
+          color: findBar.count === "none" ? page.urgent : page.faint
+          font.family: page.fontFamily
+          font.styleName: page.fontStyle
+          font.pixelSize: page.fs(Style.font.caption)
+        }
+      }
+      ListView {
+        id: findRows
+        visible: pane.findHits.length > 0
+        width: parent.width
+        height: visible ? Math.min(contentHeight, page.sp(200)) : 0
+        clip: true
+        model: pane.findHits
+        currentIndex: pane.findAt
+        onCurrentIndexChanged: if (currentIndex >= 0) positionViewAtIndex(currentIndex, ListView.Contain)
+        delegate: Rectangle {
+          required property var modelData
+          required property int index
+          width: findRows.width
+          height: findRowText.implicitHeight + page.sp(4)
+          radius: Style.cornerRadius
+          color: pane.findAt === index ? Style.selectedFill : "transparent"
+          Text {
+            id: findRowText
+            anchors.left: parent.left
+            anchors.leftMargin: page.sp(4)
+            anchors.right: findRowPage.left
+            anchors.rightMargin: page.sp(8)
+            anchors.verticalCenter: parent.verticalCenter
+            elide: Text.ElideRight
+            textFormat: Text.StyledText
+            text: pane.findRow(modelData)
+            color: page.dim
+            font.family: page.fontFamily
+            font.styleName: page.fontStyle
+            font.pixelSize: page.fs(Style.font.bodySmall)
+          }
+          Text {
+            id: findRowPage
+            anchors.right: parent.right
+            anchors.rightMargin: page.sp(4)
+            anchors.verticalCenter: parent.verticalCenter
+            textFormat: Text.PlainText
+            text: "p. " + (modelData.page + 1)
+            color: page.faint
+            font.family: page.fontFamily
+            font.styleName: page.fontStyle
+            font.pixelSize: page.fs(Style.font.caption)
+          }
+          MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            onClicked: { pane.findSaid = ""; pane.findShow(parent.index); findField.forceActiveFocus() }
+          }
+        }
       }
     }
   }
@@ -1304,8 +1625,7 @@ Item {
   Loader {
     id: loader
     active: pane.rel !== ""
-    anchors.top: pane.finding ? findField.bottom : parent.top
-    anchors.topMargin: pane.finding ? page.sp(8) : 0
+    anchors.top: parent.top
     anchors.left: parent.left
     anchors.right: parent.right
     anchors.bottom: foot.top
@@ -1333,7 +1653,6 @@ Item {
       : pane.readError !== "" ? pane.readError
       : pane.flashMissed !== "" ? "those words are " + pane.flashMissed
       : "page " + (pane.current + 1) + " of " + pane.pages
-        + (pane.view && pane.finding && pane.view.searchModel.count > 0 ? " · " + pane.view.searchModel.count + " found" : "")
         + (pane.ocrProgress ? " · reading the scan, page " + Math.max(1, pane.ocrProgress.page) + " of " + (pane.ocrProgress.pages || pane.pages) + "…"
            : pane.ocrable ? " · a scan, no words in it: " + page.keyName("pdfOcr") + " reads it (a few seconds a page)"
            : pane.read.ocr ? " · read from a scan" : "")
