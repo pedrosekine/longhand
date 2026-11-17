@@ -4064,6 +4064,7 @@ Item {
     // The row after the last project makes a new one.
     var pr = root.projects[root.projFocus]
     if (Sc.hit(event, "listPage")) { if (pr) root.openProjectPage(pr.tag) }
+    else if (Sc.hit(event, "listWeek")) { if (pr) root.openProjectWeek(pr.tag) }
     else if (Sc.hit(event, "listTag")) { if (pr) root.insertTag(pr) }
     else if (Sc.hit(event, "listClass")) { if (pr) root.startClass(pr) }
     else if (Sc.hit(event, "listOpen")) { if (pr) { root.used("reach", "walk"); root.openProject(pr) } else root.openSidebarProject() }
@@ -4348,18 +4349,32 @@ Item {
     root.used("project-page", tag)
     root.reached(tag)
     root.showHint("gathering #" + tag + "…")
+    projectPageProc.what = "the project's page"
     projectPageProc.command = [svc.runner, "project-page", "--tag", tag]
+    projectPageProc.running = true
+  }
+  // The project's week (2026-11-17): done, written, read, what is coming
+  // and what to ask — gathered by the runner (`week --page`), read-only, the
+  // same way as the project's page.
+  function openProjectWeek(tag) {
+    if (!tag) return
+    root.used("project-week", tag)
+    root.reached(tag)
+    root.showHint("gathering #" + tag + "'s week…")
+    projectPageProc.what = "the project's week"
+    projectPageProc.command = [svc.runner, "week", "--tag", tag, "--page"]
     projectPageProc.running = true
   }
   Process {
     id: projectPageProc
+    property string what: "the project's page"
     stdout: StdioCollector {
       id: projectPageOut
       onStreamFinished: {
         var o = null
         try { o = JSON.parse(projectPageOut.text) } catch (e) { o = null }
         if (o && o.path) { root.hint = ""; root.openFile(o.path, true) }
-        else root.showHint("the project's page could not be made")
+        else root.showHint(projectPageProc.what + " could not be made")
       }
     }
   }

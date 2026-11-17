@@ -118,6 +118,7 @@ BorderSurface {
     // projects.
     if (page.projectOpen) {
       if (Sc.hit(event, "listPage")) { page.openProjectPage(page.projectTag); return true }
+      if (Sc.hit(event, "listWeek")) { page.openProjectWeek(page.projectTag); return true }
       if (Sc.hit(event, "listUp")) page.moveSectionFocus(-1)
       else if (Sc.hit(event, "listDown")) page.moveSectionFocus(1)
       else if (Sc.hit(event, "listOpen")) page.openInProject()
@@ -710,7 +711,7 @@ BorderSurface {
     var all = k("keysHere") + " every key"
     var items
     if (page.sidebarSpace === "files") items = [k("filesOpen") + " open", k("filesFilter") + " filter by name", all]
-    else if (page.projectOpen) items = [k("listOpen") + " open", k("listPage") + " the project's page", all]
+    else if (page.projectOpen) items = [k("listOpen") + " open", k("listPage") + " the project's page", k("listWeek") + " its week", all]
     else if (page.sideTyping) {
       var on = page.projects[page.projFocus]
       var hit = on && page.sideMatchTags.indexOf(on.tag) >= 0
@@ -929,6 +930,22 @@ BorderSurface {
           hoverEnabled: true
           cursorShape: Qt.PointingHandCursor
           onClicked: page.openProjectPage(page.projectTag)
+        }
+      }
+      // Its week: the supervisor's update, the research diary (W).
+      Text {
+        textFormat: Text.PlainText
+        text: "→ this week  W"
+        color: weekLink.containsMouse ? page.foreground : page.dim
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.caption)
+        MouseArea {
+          id: weekLink
+          anchors.fill: parent
+          hoverEnabled: true
+          cursorShape: Qt.PointingHandCursor
+          onClicked: page.openProjectWeek(page.projectTag)
         }
       }
 

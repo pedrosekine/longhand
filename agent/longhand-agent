@@ -32,6 +32,7 @@
     longhand-agent search [--folders | --words W [--folder F] | --file F]   # what the day's agent may search, JSON
     longhand-agent day --message M [--block HASH]               # the day's conversation: talk to the day, not a line
     longhand-agent install [--force]                            # opencode agent defs (checked by their evals) + dirs
+    longhand-agent week --tag T [--date D] [--write]             # a project's week: done, written, read, coming, to ask
     longhand-agent export [--date D | --file F] [--line N | --select A:B] [--blocks H,…] [--title T]
                           [--look minimal|omarchy] [--out DIR] [--list]   # blocks of a note as a PDF (export.py)
 
@@ -1694,6 +1695,218 @@ def wiki(rel: str, label: str = "") -> str:
     return f"[[{target}|{label}]]" if label else f"[[{target}]]"
 
 
+def project_papers(tag: str, folder: str) -> list[dict]:
+    """The project's papers and documents (longhand-read papers), each with
+    `name`: its authors, year and title from the project's .bib when it has
+    one there, else its file name."""
+    try:
+        r = subprocess.run([sys.executable, str(READ_CLI), "papers", "--tag", tag] + (["--dir", folder] if folder else []),
+                           capture_output=True, text=True, timeout=120, env=dict(os.environ, LONGHAND_CONFIG=str(CONFIG_PATH)))
+        rows = json.loads(r.stdout).get("papers") or [] if r.returncode == 0 else []
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        rows = []
+    for x in rows:
+        c = x.get("cite") or {}
+        x["name"] = (f"{c['authors']} {c.get('year', '')}".strip() + (f" — {c['title']}" if c.get("title") else "")
+                     if c.get("authors") else x["title"])
+    return rows
+
+
+# The project's week (2026-11-17, from a thesis student's assessment): what
+# was done, written and read on it this week, what is coming and what is
+# waiting to be asked — the supervisor's weekly update and the research
+# diary, gathered from what is already on disk. Nothing is sent anywhere and
+# no model is asked: every line is the student's own, or a count.
+WEEK_FILES = {".md", ".tex", ".bib", ".docx", ".odt", ".py", ".r", ".ipynb", ".qmd", ".csv"}
+
+
+def week_bounds(day: dt.date) -> tuple[dt.date, dt.date]:
+    monday = day - dt.timedelta(days=day.weekday())
+    return monday, monday + dt.timedelta(days=6)
+
+
+def until_text(days: int) -> str:
+    if days < 0:
+        return f"{-days} day{'s' if days != -1 else ''} late"
+    if days == 0:
+        return "today"
+    if days == 1:
+        return "tomorrow"
+    if days < 21:
+        return f"in {days} days"
+    return f"in {days // 7} weeks"
+
+
+def coming_up(tag: str, now: dt.datetime, horizon: int = 21) -> list[str]:
+    """The project's open deadlines: the late ones (each asking whether it
+    was done), those within three weeks, and the last one however far — a
+    thesis's hand-in is the date every other one is measured against."""
+    dls = sorted((d for d in planlib.store_deadlines(STATE_HOME / "deadlines.tsv") if (d["project"] or "").lower() == tag),
+                 key=lambda d: d["due"])
+    today = now.date()
+
+    def line(d: dict) -> str:
+        days = (d["due"].date() - today).days
+        at = f"{d['due']:%a %-d %b}" + (f" {d['due']:%Y}" if d["due"].year != today.year else "") \
+            + (f" {d['due']:%H:%M}" if d["due"].strftime("%H:%M") != "23:59" else "")
+        return f"- {d['title']} · {at} · **{until_text(days)}**" + (" — still open: done? tick its line" if days < 0 else "")
+    near = [d for d in dls if (d["due"].date() - today).days <= horizon]
+    out = [line(d) for d in near]
+    if dls and dls[-1] not in near:
+        out.append(line(dls[-1]))
+    return out
+
+
+def week_lines(cfg: dict, tag: str, now: dt.datetime, folder: str, day: dt.date | None = None, brief: bool = False) -> list[str]:
+    """The project's week as markdown lines: coming up, done, written, read,
+    files worked on, still open, questions to bring. `brief`: the head of the
+    project's page — coming up and this week's counts in a few lines."""
+    tag = tag.lstrip("#").lower()
+    vault = Path(cfg["vault"])
+    start, end = week_bounds(day or now.date())
+    in_week = lambda iso: bool(iso) and start.isoformat() <= iso[:10] <= end.isoformat()
+    # Sections and boxes of the tag, never from a note marked private.
+    secs, cache = [], {}
+    for sec in tagged_sections(cfg, tag, 0, boxes=True):
+        f = sec.get("file") or ""
+        if f not in cache:
+            try:
+                cache[f] = blocklib.split(Path(f).read_text())
+            except OSError:
+                cache[f] = []
+        if not note_is_private(cache[f]):
+            secs.append(sec)
+    done, opened, written, asked = [], [], [], []
+    seen_boxes = set()
+    for sec in secs:
+        # A section's boxes are in its text; a day's stray boxes in `boxes`.
+        # A box tagged for another project is that project's.
+        inside = []
+        for line in (sec.get("text") or "").split("\n"):
+            m = BOX_LINE.match(line)
+            if m and not any(t.lower() != tag for t in re.findall(r"(?:^|\s)#([\w/-]+)", line)):
+                inside.append({"text": line, "state": m.group(2)})
+        for b in inside + list(sec.get("boxes") or []):
+            raw = b.get("text") or ""
+            key = (sec["file"], raw)
+            if key in seen_boxes:
+                continue
+            seen_boxes.add(key)
+            shown = re.sub(r"\s*#[\w/-]+", "", page_box(raw if raw.lstrip().startswith(("-", "*", "+")) else f"- [{b.get('state', ' ')}] {raw}")).strip()
+            shown = re.sub(r"^[-*+]\s+", "", re.sub(r"^\s*[☐☑☒◐]\s*", "", shown.lstrip("-*+ ")))
+            ticked = re.search(r"✅\s*(\d{4}-\d{2}-\d{2})", raw)
+            if b.get("state") in ("x", "X") and ((ticked and in_week(ticked.group(1))) or (not ticked and in_week(sec["date"]))):
+                done.append(shown)
+            elif b.get("state") == " ":
+                opened.append((sec["date"], shown))
+        if in_week(sec["date"]):
+            words = sec.get("words") or 0
+            written.append(f"- {dt.date.fromisoformat(sec['date']):%a %-d %b} — {sec['title'] or '#' + tag}"
+                           + (f" · {words} words" if words else ""))
+            for line in (sec.get("text") or "").split("\n"):
+                t = line.strip()
+                if t.endswith("?") and not t.startswith(">") and len(t) > 3:
+                    asked.append(f"- {re.sub(r'^[-*+]\s+(\[.\]\s+)?', '', t)} *(your note, {dt.date.fromisoformat(sec['date']):%a %-d %b})*")
+    papers = [x for x in project_papers(tag, folder) if x.get("kind", "paper") == "paper"]
+    read = []
+    for x in papers:
+        h = sum(v["h"] for d, v in (x.get("days") or {}).items() if in_week(d))
+        q = sum(v["q"] for d, v in (x.get("days") or {}).items() if in_week(d))
+        if h or q:
+            read.append(f"- {x['name']} — {h} highlight{'s' if h != 1 else ''}, {q} question{'s' if q != 1 else ''}")
+        for qq in x.get("questions") or []:
+            asked.append(f"- {x['name'].split(' — ')[0]}, p. {qq['page']}: “{qq['text']}”" + (f" — {qq['note']}" if qq.get("note") else ""))
+    files = []
+    if folder and (vault / folder).is_dir():
+        lo = dt.datetime.combine(start, dt.time()).timestamp()
+        hi = dt.datetime.combine(end + dt.timedelta(days=1), dt.time()).timestamp()
+        for f in sorted((vault / folder).rglob("*")):
+            rel = f.relative_to(vault / folder)
+            if not f.is_file() or f.suffix.lower() not in WEEK_FILES or any(
+                    part.startswith(".") or part in ("archive", "build") for part in rel.parts):
+                continue
+            mt = f.stat().st_mtime
+            if lo <= mt < hi:
+                files.append((mt, rel))
+    files.sort(reverse=True)
+    upcoming = coming_up(tag, now)
+    if brief:
+        out = []
+        if upcoming:
+            out += ["**Coming up:**"] + upcoming + [""]
+        counts = [f"{len(done)} done" if done else "", f"{len(written)} day{'s' if len(written) != 1 else ''} written" if written else "",
+                  f"{len(read)} paper{'s' if len(read) != 1 else ''} read" if read else "",
+                  f"{len(files)} file{'s' if len(files) != 1 else ''} worked on" if files else ""]
+        counts = [c for c in counts if c]
+        out += [f"**This week** ({start:%a %-d} – {end:%a %-d %b}): " + (" · ".join(counts) if counts else "nothing yet")
+                + f" — the whole week: `longhand-agent week --tag {tag}`", ""]
+        return out
+    out = []
+    if upcoming:
+        out += ["## Coming up", ""] + upcoming + [""]
+    out += ["## Done", ""] + ([f"- {t}" for t in done] or ["*Nothing ticked this week.*"]) + [""]
+    out += ["## Written", ""] + (written or ["*No section of this project written this week.*"]) + [""]
+    if read:
+        out += ["## Read", ""] + read + [""]
+    if files:
+        out += ["## Files worked on", ""] + [f"- {wiki(f'{folder}/{rel}', str(rel))} · {dt.datetime.fromtimestamp(mt):%a %-d %b}" for mt, rel in files[:15]] \
+            + ([f"- *and {len(files) - 15} more*"] if len(files) > 15 else []) + [""]
+    if opened:
+        opened.sort(reverse=True)
+        out += ["## Still open", ""] + [f"- {t} *(written {dt.date.fromisoformat(d):%a %-d %b})*" for d, t in opened[:12]] \
+            + ([f"- *and {len(opened) - 12} more*"] if len(opened) > 12 else []) + [""]
+    if asked:
+        out += ["## Questions to bring", ""] + asked + [""]
+    return out
+
+
+def project_week(cfg: dict, tag: str, now: dt.datetime, day: dt.date | None = None) -> str:
+    tag = tag.lstrip("#").lower()
+    projects = project_list(cfg, now, timetable.sessions(cfg, STATE_HOME, fetch=False))
+    pr = next((p for p in projects if p["tag"].lower() == tag), {"tag": tag, "name": tag, "file": "", "next": None})
+    folder = project_folder(cfg, tag, pr.get("file") or "")
+    start, end = week_bounds(day or now.date())
+    head = [f"# {pr['name']} — week {start.isocalendar()[1]}", "",
+            f"*#{tag}, {start:%a %-d %b} – {end:%a %-d %b %Y}: what was done, written and read, what is coming and what to ask. "
+            f"Gathered from your notes, papers and deadlines at {now:%a %-d %b, %H:%M}; nothing was sent anywhere.*", ""]
+    return "\n".join(head + week_lines(cfg, tag, now, folder, day)).rstrip() + "\n"
+
+
+def cmd_week(cfg: dict, args) -> int:
+    """The project's week: printed, or with --write kept in the vault
+    (agents/longhand/weeks/<tag>-<year>-W<nn>.md) to edit, send or export."""
+    now = dt.datetime.now()
+    try:
+        day = dt.date.fromisoformat(args.date) if args.date else None
+    except ValueError:
+        raise Fail("--date is YYYY-MM-DD")
+    text = project_week(cfg, args.tag, now, day)
+    if args.page:
+        # For the page: read-only in the state folder, as the project's page.
+        PAGES.mkdir(parents=True, exist_ok=True)
+        out = PAGES / f"{args.tag.lstrip('#').lower()}-week.md"
+        tmp = out.with_suffix(".tmp")
+        tmp.write_text(text + f"\n*To keep it in the vault, to edit or hand in: `longhand-agent week --tag {args.tag.lstrip('#').lower()} --write`.*\n")
+        os.replace(tmp, out)
+        print(json.dumps({"path": str(out)}))
+        return 0
+    if not args.write:
+        print(text, end="")
+        return 0
+    start, _ = week_bounds(day or now.date())
+    iso = start.isocalendar()
+    rel = f"{cfg.get('agentDir', 'agents/longhand').strip('/')}/weeks/{args.tag.lstrip('#').lower()}-{iso[0]}-W{iso[1]:02d}.md"
+    target = Path(cfg["vault"]) / rel
+    if target.exists() and not args.force:
+        raise Fail(f"{rel} is there already (yours to edit); --force writes it again")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_suffix(".tmp")
+    tmp.write_text(text)
+    os.replace(tmp, target)
+    print(json.dumps({"path": str(target), "file": rel}))
+    return 0
+
+
 def project_page(cfg: dict, tag: str, now: dt.datetime) -> tuple[str, str]:
     """The page's text, and the folder it found ("" if none)."""
     tag = tag.lstrip("#").lower()
@@ -1709,44 +1922,36 @@ def project_page(cfg: dict, tag: str, now: dt.datetime) -> tuple[str, str]:
     if nxt.get("at"):
         at = dt.datetime.fromisoformat(nxt["at"])
         out.append(f"**Next session:** {at:%a %-d %b, %H:%M}" + (f" · {nxt['room']}" if nxt.get("room") else ""))
-    dls = sorted((d for d in planlib.store_deadlines(STATE_HOME / "deadlines.tsv") if (d["project"] or "").lower() == tag),
-                 key=lambda d: d["due"])
-    if dls:
-        out += ([""] if out[-1] != "" else []) + ["**Deadlines:**"] + [f"- {d['title']} · {d['due']:%a %-d %b}" + (f" {d['due']:%H:%M}" if d["due"].strftime("%H:%M") != "23:59" else "")
-                                          + (" · overdue" if d["due"] < now else "") for d in dls]
-    if nxt.get("at") or dls:
+    if nxt.get("at"):
         out.append("")
+    # What is coming, and the week so far, before anything else.
+    out += week_lines(cfg, tag, now, folder, brief=True)
     now_lines = readme_now(vault, folder) if folder else []
     if now_lines:
         out += ["## Now", "", f"*From {wiki(folder + '/README.md', 'the folder’s README')}.*", ""] + now_lines + [""]
     # Papers, and the questions still waiting in them.
-    try:
-        r = subprocess.run([sys.executable, str(READ_CLI), "papers", "--tag", tag] + (["--dir", folder] if folder else []),
-                           capture_output=True, text=True, timeout=120, env=dict(os.environ, LONGHAND_CONFIG=str(CONFIG_PATH)))
-        rows = json.loads(r.stdout).get("papers") or [] if r.returncode == 0 else []
-    except (OSError, subprocess.TimeoutExpired, ValueError):
-        rows = []
+    rows = project_papers(tag, folder)
     papers = [x for x in rows if x.get("kind", "paper") == "paper"]
     documents = [x for x in rows if x.get("kind") == "document"]
     if papers:
         waiting = [x for x in papers if x["waiting"]]
         marked = [x for x in papers if (x["h"] or x["q"]) and not x["waiting"]]
-        unopened = sorted((x for x in papers if not (x["h"] or x["q"])), key=lambda x: x["title"].lower())
+        unopened = sorted((x for x in papers if not (x["h"] or x["q"])), key=lambda x: x["name"].lower())
         out += ["## Papers", ""]
         if waiting:
             out += ["### Questions waiting", ""]
             for x in waiting:
-                out.append(f"- {wiki(x['pdf'], x['title'])} — {x['waiting']} waiting" + (f", last read {x['last']}" if x["last"] else ""))
+                out.append(f"- {wiki(x['pdf'], x['name'])} — {x['waiting']} waiting" + (f", last read {x['last']}" if x["last"] else ""))
                 for q in x.get("questions") or []:
                     out.append(f"  - p. {q['page']}: “{q['text']}”" + (f" — {q['note']}" if q.get("note") else ""))
             out.append("")
         if marked:
             out += ["### Being read", ""] + [
-                f"- {wiki(x['pdf'], x['title'])} — {x['h']} highlight{'s' if x['h'] != 1 else ''}, {x['q']} question{'s' if x['q'] != 1 else ''}"
+                f"- {wiki(x['pdf'], x['name'])} — {x['h']} highlight{'s' if x['h'] != 1 else ''}, {x['q']} question{'s' if x['q'] != 1 else ''}"
                 + (f", last read {x['last']}" if x["last"] else "") + (f" · {wiki(x['note'], 'its reading note')}" if x.get("note") else "")
                 for x in marked] + [""]
         if unopened:
-            out += ["### Not marked yet", ""] + [f"- {wiki(x['pdf'], x['title'])}" for x in unopened] + [""]
+            out += ["### Not marked yet", ""] + [f"- {wiki(x['pdf'], x['name'])}" for x in unopened] + [""]
     # The folder's working files: its notes at the top, its own documents.
     files = []
     if folder:
@@ -4803,6 +5008,12 @@ def main(argv: list[str]) -> int:
     p.add_argument("--days", default="7")
     p = sub.add_parser("project-page")
     p.add_argument("--tag", required=True)
+    p = sub.add_parser("week", help="a project's week: done, written, read, coming up, questions to bring")
+    p.add_argument("--tag", required=True)
+    p.add_argument("--date", default="", help="a day in the week (YYYY-MM-DD); today's week by default")
+    p.add_argument("--write", action="store_true", help="keep it in the vault (agents/longhand/weeks/), to edit or export")
+    p.add_argument("--force", action="store_true", help="with --write: write it again over an earlier one")
+    p.add_argument("--page", action="store_true", help="for the page: written read-only into the state folder")
     p = sub.add_parser("sections")
     p.add_argument("--tag", required=True)
     p.add_argument("--days", default="0", help="0: every day there is")
@@ -4908,7 +5119,7 @@ def main(argv: list[str]) -> int:
     args = ap.parse_args(argv)
     try:
         cfg = load_config()
-        return {"run": cmd_run, "chat": cmd_chat, "ack": cmd_ack, "accept": cmd_accept, "tasks": cmd_tasks, "sections": cmd_sections, "project-page": cmd_project_page,
+        return {"run": cmd_run, "chat": cmd_chat, "ack": cmd_ack, "accept": cmd_accept, "tasks": cmd_tasks, "sections": cmd_sections, "project-page": cmd_project_page, "week": cmd_week,
                 "next": cmd_next, "dated": cmd_dated, "box": cmd_box, "rate": cmd_rate, "eval": cmd_eval, "review": cmd_review, "plan": cmd_plan, "proposals": cmd_proposals, "proposal": cmd_proposal, "talk": cmd_talk, "thread": cmd_thread, "timetable": cmd_timetable, "notebook": cmd_notebook, "documents": cmd_documents, "day": cmd_day, "search": cmd_search, "horizon": cmd_horizon, "note": cmd_note, "autonomy": cmd_autonomy, "dismiss": cmd_dismiss, "curriculum": cmd_curriculum,
                 "context": cmd_context, "state": cmd_state, "install": cmd_install, "stats": cmd_stats,
                 "projects": cmd_projects, "project": cmd_project, "export": cmd_export}[args.cmd](cfg, args)
