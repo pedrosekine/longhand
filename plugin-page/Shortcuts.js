@@ -334,7 +334,7 @@ var actions = [
   { id: "pdfNote", group: "pdf", places: ["pdf"], does: "A note under the mark clicked, else the last one made", keys: ["N"] },
   { id: "pdfRemove", group: "pdf", places: ["pdf"], does: "Remove the mark clicked, and its note", keys: ["X", "Del", "Backspace"] },
   { id: "pdfAcronyms", group: "pdf", places: ["pdf"], does: "The paper's acronyms: each underlined on the pages, and a list to find one by its letters or words", keys: ["A"] },
-  { id: "pdfGo", group: "pdf", places: ["pdf"], does: "On what is under the pointer (or the mark clicked): an acronym, to where the paper spells it out (back: the back key); a question, its answer in the paper's chat, or asked; a highlight, its note", keys: ["Enter"] },
+  { id: "pdfGo", group: "pdf", places: ["pdf"], does: "On what is under the pointer (or the mark clicked): an acronym, to where the paper spells it out (back: the back key); a question, its answer in the paper's chat; else (a highlight, a question not asked) the paper's chat with it attached", keys: ["Enter"] },
   { id: "pdfClose", group: "pdf", places: ["pdf"], does: "Let go of the mark clicked (a click on the page away from it does too) or the words selected; then close it, back to the note", keys: ["Esc"] },
   { id: "paperUp", group: "paper", places: ["paper"], does: "The mark above (the PDF goes to it)", keys: ["Up", "K"] },
   { id: "paperDown", group: "paper", places: ["paper"], does: "The mark below (the PDF goes to it)", keys: ["Down", "J"] },
