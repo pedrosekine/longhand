@@ -955,7 +955,17 @@ Small, when passing by:
       you are and `?` for every key, broken only between keys, shown
       while the sidebar has the keys (Files and a project's view too);
       a hairline keeps what scrolls apart from the foot that stays.
-20. **A question's answer, one click away** (2026-11-16, the student: "accessing
+20. ~~**A question's answer, one click away**~~ *built 2026-11-16* with
+    item 18's "a question's answer, hovered" (`0af67ba`, `5e2062a`;
+    `docs/files.md`, "A question's answer, hovered"). The answer shows
+    over the mark on hover, under "you asked: …"; `Enter`, or a click on the
+    mark, opens the paper's chat at that exchange, lit and held there; the
+    paper's marks list shows each answer's first words; a question's row in
+    the project's view opens the paper on that mark. Each answer is tied to
+    its question in the chat (`Answers.js`, its own `hN:` part when asked
+    together), and "N more answers after it" when the talk went on. What
+    was asked (2026-11-16, the student: "accessing
+
     the answer to a question by clicking on it, or a similar experience, not
     sure"). Follows item 15's reader. Today an answered question is only
     marked as answered — on the page, in the paper's marks, in the
