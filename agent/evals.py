@@ -199,6 +199,11 @@ def check_plan(case: dict, reply: dict) -> tuple[list[dict], dict]:
     asked = " | ".join(q["question"] for q in qs)
     for pat in r.get("ask_about") or []:
         out.append({"check": f"asks about /{pat}/", "pass": bool(re.search(pat, asked, re.I)), "why": asked[:160]})
+    # A box whose question is still waiting on the student is not asked
+    # about again, in any words (2026-11-17): by the question or its box.
+    about = " | ".join(f"{q['question']} [{q.get('title', '')}]" for q in qs)
+    for pat in r.get("no_ask_about") or []:
+        out.append({"check": f"does not ask again about /{pat}/", "pass": not re.search(pat, about, re.I), "why": about[:160]})
     dated = " | ".join(p["title"] for p in dates)
     for pat in r.get("date_for") or []:
         out.append({"check": f"dates /{pat}/", "pass": bool(re.search(pat, dated, re.I)), "why": dated[:160]})
