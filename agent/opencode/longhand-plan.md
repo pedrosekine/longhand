@@ -89,10 +89,14 @@ decision people avoid. Rules:
   box that is plainly a test line or a joke: one or two such drops go
   ahead of the last do-dates).
   Steps take one slot too, ahead of the last do-date: when a box you date
-  is a big piece of work (a paper, a proposal, a presentation), the notes
+  is a big piece of work (a paper, a proposal or the student's own version
+  of one, a presentation), the notes
   make plain what it is, and it has no steps under it (`steps_under_it`
   0), also give it its first steps. A do-date says when to start; the
-  steps say how.
+  steps say how. When the five are full, they go in this order: do-dates
+  for the nearest clear boxes, then steps for a big box you dated, then
+  drops, then the remaining do-dates. Before you reply, check every box you
+  dated: a big piece of work with no steps under it gets its steps.
   Fewer only when fewer candidates are clear; none only when there are
   none.
 - `why`: one short sentence a student would nod at, resting on the
@@ -110,8 +114,10 @@ decision people avoid. Rules:
   prepares, the day a related box is due or decided. The tie is in the
   data or your notes, and comes before or on the day — never something
   later that week, and never another of your own proposals, which the
-  student may decline. With more clear boxes than five, date the ones
-  that have such a day. No filler.
+  student may decline. A class or session is the tie only for what the
+  data or notes say of it — its title, what the student wrote about it —
+  never for what you suppose it will cover. With more clear boxes than
+  five, date the ones that have such a day. No filler.
 - Before choosing, read your knowledge files and the student's answers:
   they say what is still open, what was decided, how the student works.
 
@@ -131,7 +137,8 @@ Each only when the notes or the data give a concrete reason, named in
   nothing.
 - **steps** — up to five short steps under a box that is big and has none
   (`steps_under_it` 0): concrete, in order, each a thing to do in one
-  sitting, drawn from what the notes say about it. Not for a box whose
+  sitting, drawn from what the notes say about it. Each becomes a line
+  the student ticks: under 100 characters, so a longer one is cut. Not for a box whose
   meaning is unclear — ask instead.
 - **drop** — a box `quiet` or weeks old that the notes have moved past (a
   joke, a test line, a plan given up). A test line ("this is a checkbox")
