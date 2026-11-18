@@ -122,6 +122,10 @@ def main() -> int:
     os.utime(inbox / "The_Seven_Deadly_Myths (1).pdf", (in_class.timestamp(), in_class.timestamp()))
     pdf(inbox / "Rechnung_2026_4711.pdf", "Invoice total 120 EUR")
     pdf(inbox / "Meldezettel_ID_998877.pdf", "Identity certificate")
+    # Personal documents downloaded in class (2026-11-18: a SEPA mandate was
+    # proposed for the course it was downloaded after): by name, by contents.
+    pdf(inbox / "SEPA_Lastschrift_ausgefuellt.pdf", "Direct debit", when=in_class)
+    pdf(inbox / "scan_0042.pdf", "Account IBAN DE89 3704 0044 0532 0130 00 holder", when=in_class)
     pdf(inbox / "Design_Theory_old_handout.pdf", "old", when=dt.datetime.now() - dt.timedelta(days=200))
 
     state = tmp / "state"
@@ -160,6 +164,8 @@ def main() -> int:
     shown = json.dumps(out) + (state / "longhand" / "inbox.json").read_text() + (state / "longhand" / "proposals.json").read_text()
     check(not any(w in shown for w in ("Rechnung", "Meldezettel", "998877", "4711")),
           "an invoice and an ID are never listed, named or remembered")
+    check(not any(w in shown for w in ("SEPA", "Lastschrift", "scan_0042", "DE89")),
+          "…nor, downloaded in class, a SEPA mandate (by its name) or a page with an IBAN (by its contents)")
     check("old_handout" not in shown, "a download older than the semester is not looked at")
 
     again = json.loads(agent("proposals").stdout)
@@ -197,6 +203,19 @@ def main() -> int:
     check(doclib.proposals(found, [], vault, "projects") and not doclib.proposals(found, expired, vault, "projects"),
           "a document whose proposal expired unanswered is not proposed again")
     late.unlink()
+
+    # A proposal already waiting for a document that turns out personal
+    # (it was proposed before the rule) is moot, its name and path not kept.
+    form = inbox / "form_handout.pdf"
+    pdf(form, "A handout", when=in_class)
+    waiting = [x for x in json.loads(agent("proposals").stdout)["open"] if x["kind"] == "file" and x["src"] == str(form)]
+    pdf(form, "Mandatsreferenz M-2026-17 for the account", when=in_class)
+    agent("proposals")
+    items = json.loads((state / "longhand" / "proposals.json").read_text())["items"]
+    was = next((x for x in items if waiting and x["id"] == waiting[0]["id"]), {})
+    check(waiting and was.get("status") == "moot" and not was.get("src") and not was.get("name"),
+          f"a waiting proposal whose document is personal is moot, and forgotten ({was})")
+    form.unlink()
 
     # The index: for the sidebar, and for the agent on a run about the course.
     docs = json.loads(agent("documents", "--tag", "intsem").stdout)["intsem"]

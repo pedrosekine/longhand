@@ -39,15 +39,8 @@ import documents as doclib
 DEFAULT_ON = {"human/Daily", "human/Studies", "projects", "human/Reference", "human/Career", "human/Archive"}
 NEVER_DIRS = {"_Secrets", ".obsidian", ".git", ".stversions", ".stfolder", ".trash"}
 TYPES = {".md", ".txt", ".pdf"}
-NAMES = re.compile(
-    r"pass(port)?\b|reisepass|ausweis|\bid[ _-]|identity|meldezettel|meldebest|visa\b|aufenthalt|residence|birth|geburt"
-    r"|invoice|rechnung|\bbank|iban|kontoauszug|statement|payslip|lohn|gehalt|salary|steuer|\btax|finanz|kredit|loan"
-    r"|receipt|quittung|beleg"
-    r"|medical|befund|arzt|doctor|health|gesundheit|insurance|versicherung|e-?card"
-    r"|contract|vertrag|\bnda\b|\bdpa\b|agreement|vereinbarung|signed|unterschrieben"
-    r"|\.env|secret|password|passwort|token|credential|api[_-]?key|private[_-]?key|id_rsa|\.pem\b|\.key\b",
-    re.I)
-IBAN = re.compile(r"\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){3,7}(?: ?[A-Z0-9]{1,3})?\b")
+NAMES = doclib.NAMES          # the inbox's rule (documents.py `personal`), by name
+IBAN = doclib.IBAN
 CARD = re.compile(r"\b(?:\d[ -]?){13,19}\b")
 PASSAGES = 8
 PASSAGE_CHARS = 600

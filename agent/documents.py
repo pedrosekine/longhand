@@ -5,7 +5,9 @@ The inbox is the Downloads folder (and the folders directly in it, such as
 an unpacked export), which also holds invoices and an ID certificate. So matching is local and quiet: a PDF belongs to a course when
 its file name or its first two pages name the course (its code or its
 title), or when it was downloaded during one of the course's classes or in
-the two hours after. A PDF that matches nothing is never listed, named,
+the two hours after — and never when it is a personal document (`personal`:
+identity, money, health, contracts, secrets, by its name or by what its
+first pages carry). A PDF that matches nothing is never listed, named,
 stored or shown to the agent — the scan's cache keeps only a hash of its
 name. A match becomes a proposal ("file it in Human Factors as …?"), and
 only the person's accepting moves it.
@@ -30,6 +32,38 @@ from pathlib import Path
 WINDOW_DAYS = 60                         # older downloads are not the semester's
 AFTER_CLASS = dt.timedelta(hours=2)
 BEFORE_CLASS = dt.timedelta(minutes=15)
+
+# A personal document is never a course's, whenever it was downloaded
+# (2026-11-18: a SEPA direct-debit mandate, downloaded just after a class,
+# was proposed for filing in that course). By name, English and German —
+# search.py keeps the same documents out of what the agent may read — and
+# by what the first pages carry: an IBAN, a mandate's or a creditor's
+# reference, an invoice's or a customer's number, a tax or social-security
+# number, an identity document's number.
+NAMES = re.compile(
+    r"pass(port)?\b|reisepass|ausweis|\bid[ _-]|identity|meldezettel|meldebest|visa\b|aufenthalt|residence|birth|geburt"
+    r"|invoice|rechnung|\bbank|iban|kontoauszug|statement|payslip|lohn|gehalt|salary|steuer|\btax|finanz|kredit|loan"
+    r"|receipt|quittung|beleg|sepa|lastschrift|mandat|[uü]e?berweisung|zahlung|payment|\bbill\b"
+    r"|medical|befund|arzt|doctor|health|gesundheit|insurance|versicherung|e-?card"
+    r"|contract|vertrag|\bnda\b|\bdpa\b|agreement|vereinbarung|signed|unterschrieben"
+    r"|\.env|secret|password|passwort|token|credential|api[_-]?key|private[_-]?key|id_rsa|\.pem\b|\.key\b",
+    re.I)
+IBAN = re.compile(r"\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){3,7}(?: ?[A-Z0-9]{1,3})?\b")
+PERSONAL_TEXT = re.compile(
+    r"mandatsreferenz|mandate reference|gl[aä]e?ubiger-?(?:identifikations|id\b)|creditor identifier"
+    r"|rechnungsnummer|rechnungs-?nr|invoice (?:no\b|number)|kundennummer|kunden-?nr|customer (?:no\b|number)"
+    r"|steuernummer|steuer-?id|steuer-?identifikations|tax (?:id|number)|sozialversicherungsnummer|social security number"
+    r"|passport (?:no\b|number)|reisepassnummer|ausweisnummer|personalausweis",
+    re.I)
+
+
+def personal(name: str, text: str = "") -> bool:
+    """Whether a document is personal (see NAMES): by its name, or by its
+    first pages. An IBAN counts only with the digits one has, so a run of
+    capitals on a slide is not taken for one."""
+    if NAMES.search(name) or PERSONAL_TEXT.search(text):
+        return True
+    return any(sum(ch.isdigit() for ch in m.group(0)) >= 10 for m in IBAN.finditer(text))
 
 
 def _name_key(p: Path, st: os.stat_result) -> str:
@@ -131,12 +165,16 @@ def scan(inbox: Path, courses: list[dict], events: list[dict], cache: dict, now:
     if not inbox.is_dir():
         return out
     since = now - dt.timedelta(days=WINDOW_DAYS)
+    seen = set()
     for p in inbox_pdfs(inbox):
         st = p.stat()
         got = dt.datetime.fromtimestamp(st.st_mtime)
         if got < since:
             continue
+        if personal(p.stem):
+            continue                       # by its name: nothing read, nothing kept
         key = _name_key(p, st)
+        seen.add(key)
         if key in cache:
             hit = cache[key]
         else:
@@ -166,8 +204,17 @@ def scan(inbox: Path, courses: list[dict], events: list[dict], cache: dict, now:
                     else f"downloaded just after {course['name']} on {e['start']:%a %d %b}"
         if course is None:
             continue
+        # A match, read for what makes it personal, once (by name it was
+        # looked at above): only what would be proposed is read.
+        seen.add("p:" + key)
+        if "p:" + key not in cache:
+            cache["p:" + key] = personal("", first_pages(p))
+        if cache["p:" + key]:
+            continue
         out.append({"src": str(p), "tag": course["tag"], "course": course["name"], "why": why,
                     "got": got.isoformat(timespec="minutes")})
+    for key in [k for k in cache if k not in seen]:
+        del cache[key]                     # a file gone, renamed, or past the window
     return out
 
 

@@ -3102,6 +3102,13 @@ def inbox_pass(cfg: dict, ledger: dict, at: str) -> int:
     cache = doclib.load_cache(INBOX_CACHE)
     found = doclib.scan(inbox, courses, events, cache, now, timetable.matches)
     doclib.save_cache(INBOX_CACHE, cache)
+    # One that no longer matches a course (2026-11-18: personal documents are
+    # never one's) is moot, and its name and path are not kept.
+    matched = {f["src"] for f in found}
+    for x in planlib.open_items(ledger):
+        if x["kind"] == "file" and not x.get("auto") and x.get("src") and x["src"] not in matched:
+            x.update(status="moot", resolved=at, src="", name="", title="")
+            n += 1
     paths = Paths(cfg, now.date())
     new = doclib.proposals(found, ledger["items"], paths.vault, cfg.get("projectsDir", "projects"),
                            skip={x["sha256"] for x in load_exports()})
