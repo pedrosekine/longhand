@@ -1190,6 +1190,15 @@ this list, with *Open, in order* above. Each says why it waits.
 No work unless they bite; each says what would tell. The first four came
 from 2026-09/10 and still stand.
 
+- **A page showing another page's picture, on opening** (fixed
+  2026-11-18, the student's screenshot: page 2's words under page 5's two
+  questions, "page 5" in the foot). Not the marks: they were in place for
+  page 5. Qt draws a page's picture asynchronously; restoring the place
+  left and the fit to the text (whose span arrives after the PDF) asked
+  twice, and the older drawing landed last. Each page shown is now drawn
+  again once the view settles — after opening, a fit, a scroll
+  (`PdfPane.redrawPages`). Not reproduced headless (the test PDF has one
+  page): watch whether it comes back.
 - **Answering passages of the agent's** (built 2026-11-18, the student:
   "ability to answer what the agent tells me. Many answers at the same
   time … my first answer stays connected to the first passage"). In any

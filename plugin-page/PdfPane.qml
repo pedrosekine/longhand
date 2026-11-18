@@ -403,6 +403,7 @@ Item {
       pane.track()
       pane.dress()
       pane.alignSoon()
+      pane.redrawSoon()
       pane.showPending()
     })
   }
@@ -452,6 +453,7 @@ Item {
     else pane.view.scaleToWidth(w, pane.height)
     pane.view.renderScale = pane.view.renderScale * pane.zoom
     pane.alignSoon()
+    pane.redrawSoon()
   }
   // The view's own column is a little wider than the pane (its scrollbar);
   // centred in it, so the page's middle is the pane's.
@@ -462,6 +464,33 @@ Item {
   }
   Timer { id: alignTimer; interval: 60; onTriggered: pane.align() }
   function alignSoon() { alignTimer.restart() }
+  // A page's picture is drawn asynchronously by Qt, and two drawings can
+  // race: the page the view was put back to on opening, and the same pages
+  // again at the size the fit to the text makes (the text's span arrives
+  // after the PDF). The older could land last, and a page showed another
+  // page's picture under its own marks (2026-11-18: page 2's words, page 5's
+  // two questions, "page 5" in the foot). So once things settle — after
+  // opening, a fit, a scroll — each page shown is drawn again, its own:
+  // the same frame at a size one pixel off, which Qt draws anew, the old
+  // picture kept until the new one is ready.
+  property bool nudged: false
+  Timer { id: redrawTimer; interval: 350; onTriggered: pane.redrawPages() }
+  function redrawSoon() { redrawTimer.restart() }
+  function redrawPages() {
+    pane.nudged = !pane.nudged
+    for (var i = 0; i < pane.dressed.length; i++) {
+      var h = pane.dressed[i]
+      var paper = h && h.selection ? h.selection.parent : null
+      if (!paper) continue
+      for (var k = 0; k < paper.data.length; k++) {
+        var o = paper.data[k]
+        if (String(o).indexOf("PdfPageImage") < 0) continue
+        if (o.currentFrame !== h.index) o.currentFrame = h.index
+        var w = paper.pagePointSize.width * pane.view.renderScale * Screen.devicePixelRatio
+        o.sourceSize.width = Math.round(w) + (pane.nudged ? 1 : 0)
+      }
+    }
+  }
   Connections {
     target: pane.table()
     ignoreUnknownSignals: true
@@ -888,6 +917,9 @@ Item {
   // PDF opened from the Files tree leaves them in the sidebar): `m` and `q`
   // must reach the words just selected.
   function watch(h) {
+    // A holder handed another page as the view scrolls: drawn again once
+    // the scrolling stops (redrawPages says why).
+    h.indexChanged.connect(function () { pane.redrawSoon() })
     h.selection.textChanged.connect(function () {
       pane.selectionRev++
       if (h.selection && h.selection.text !== "" && !pane.noting) keys.forceActiveFocus()
