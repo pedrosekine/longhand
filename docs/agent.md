@@ -681,14 +681,41 @@ a conversation surviving a change of model, the note's look.
    - **What planning proposed**, still open, is a line of "everything"
      ("proposals · from planning · N waiting"), opening the dashboard on
      the next one: settled where it is listed.
-   - *Not yet:* a deadline moved from the day's chat (said back: the
-     task's own chat has the card) — slice 4, with the other actions
-     from anywhere.
+   - *A deadline moved from the day's chat* came with slice 4.
    - Evals: two cases from a scratch copy of the vault, `day-chat-move-
      themenvorschlag` (a task's chat moves #61, adds none) and
      `day-move-from-the-day`; `check_day` reads `moves` and
      `no_new_deadline`.
-4. The new actions: add a task, tick, open, file from anywhere.
+4. ~~The new actions~~ *built 2026-11-18:* what one message can do,
+   from any chat — the day's, a block's or a task's, a note's, a paper's.
+   - **Three kinds for a conversation only** (plan.py `ASKED_ONLY`, never
+     from a planning pass): `task` (a box the student asks for, written
+     by the page into today's note under its course, the agent's line;
+     undone by taking the line out), `move` (a deadline by its number to
+     a new day, keeping the day it had, `was`, for the undo; each day
+     moved to its own proposal, a newer one superseding an open older
+     one; a declined one blocks no other), `undone` (a box ticked in the
+     last seven days, `ticked_lately`, reopened).
+   - **Done at once when asked:** `done` with `"asked": true` (the
+     student said to tick it) and `undone` are carried out by the page
+     as soon as they arrive, as at "do it and tell me", and shown as a
+     card to let stand or undo (Del). A `done` without `asked` is still
+     the card "looks done — tick it?". An undone tick does not block the
+     next one asked for.
+   - **Open:** the answer may name one thing to open (`open`: a vault
+     path, a day, a box key), checked by local code (`open_targets`); the
+     page opens it when that answer arrives, never again on a later read.
+     The prompt says a path not seen is searched for, never guessed.
+   - **A note's and a paper's chat** propose what the student asks for,
+     file and open, as the day's does; they proposed nothing before.
+   - **A block's chat** keeps its own card for a move (`chat_card`);
+     everywhere else a move is a card of the one list.
+   - The new kinds are in Settings → what the agent may do, at "ask me";
+     "never" turns one off.
+   - Evals: `day-move-from-the-day` (now a card), `day-add-task`,
+     `day-tick-when-asked`, `day-open-when-asked`; `check_day` reads
+     `ticks` and `opens`. Tests: `tests/test_anywhere.py`; live checks for
+     a new task's card, a tick done at once and undone, opening.
 5. The read tool, last: the one with a risk to privacy and to speed.
 
 **How it is judged,** read at the check-in after two weeks of use: the

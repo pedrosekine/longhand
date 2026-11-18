@@ -144,7 +144,10 @@ function sayAsk(x, under, now) {
       + (under ? "" : " · " + x.title)
     : x.kind === "steps" ? "steps: " + x.steps.join(" · ")
     : x.kind === "drop" ? "drop it?" + (under ? "" : " · " + x.title)
-    : x.kind === "done" ? "looks done — tick it?" + (under ? "" : " · " + x.title)
+    : x.kind === "done" ? (x.auto || x.told ? "ticked" : "looks done — tick it?") + (under ? "" : " · " + x.title)
+    : x.kind === "task" ? "new task: " + x.title + (x.project ? " #" + x.project : "")
+    : x.kind === "move" ? "move #" + x.deadline + " to " + sayDate(x.date, now) + (under ? "" : " · " + x.title)
+    : x.kind === "undone" ? "reopened" + (under ? "" : " · " + x.title)
     : x.title || ""
   return x.told ? "done: " + what : what
 }

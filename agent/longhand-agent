@@ -1104,7 +1104,7 @@ def record_cost(ledger: Path, at: str, stamp: str, trigger: str, block: str, res
 
 def parse_reply(text: str) -> dict:
     """The contract is one fenced JSON block; anything else becomes the reply."""
-    empty = {"reply": "", "proposals": [], "suggestions": [], "knowledge": [], "read": [], "search": [], "file": []}
+    empty = {"reply": "", "proposals": [], "suggestions": [], "knowledge": [], "read": [], "search": [], "file": [], "open": []}
     m = None
     for m in re.finditer(r"```(?:json)?\s*\n(.*?)\n```", text, re.S):
         pass
@@ -1118,7 +1118,7 @@ def parse_reply(text: str) -> dict:
         if isinstance(obj, dict):
             out = dict(empty)
             out["reply"] = str(obj.get("reply") or "")
-            for k in ("proposals", "suggestions", "knowledge", "read", "search", "file"):
+            for k in ("proposals", "suggestions", "knowledge", "read", "search", "file", "open"):
                 v = obj.get(k)
                 out[k] = [x for x in v if isinstance(x, dict)] if isinstance(v, list) else []
             return out
@@ -1463,10 +1463,7 @@ CHAT_INTRO = """# This conversation
 
 The student is talking with you about one block of their notes: the block they point at, below — in its margin, or
 beside the dashboard when it is a task. Answer about it, with the rest of what you know as background. Changes to it
-are proposals as anywhere else. A deadline it has can be moved too, which only here has a card: a `deadline` proposal
-with `"moves": <n>`, the number of the open deadline on the list, and the new `date` (its `title` as the list has it).
-Always name the number: without one, a deadline proposal adds a new deadline. If two deadlines could be meant and
-nothing settles which, ask first, naming both ("#63 on the 20th, or #32 in January?")."""
+are proposals as anywhere else; a deadline it has is moved with a `move` naming its number."""
 
 
 def chat_card(p: dict) -> dict:
@@ -1475,8 +1472,9 @@ def chat_card(p: dict) -> dict:
     Its date said as the card says it."""
     out = {"kind": "deadline", "title": str(p.get("title") or "").strip(), "when": str(p.get("when") or p.get("date") or ""),
            "project": str(p.get("project") or "").lstrip("#")}
-    if p.get("moves") not in (None, "", 0):
-        out["moves"] = p["moves"]
+    moves = p.get("moves") if p.get("kind") != "move" else p.get("deadline") or p.get("moves")
+    if moves not in (None, "", 0):
+        out["moves"] = moves
     return out
 
 
@@ -1611,9 +1609,10 @@ def cmd_chat(cfg: dict, args) -> int:
     # goes into the one list, checked as the day's are; the margin keeps a
     # copy saying which item it is.
     props = [x for x in reply.get("proposals") or [] if isinstance(x, dict)]
-    reply["proposals"] = [chat_card(x) for x in props if x.get("kind") == "deadline"]
+    own = [x for x in props if x.get("kind") in ("deadline", "move")]
+    reply["proposals"] = [chat_card(x) for x in own]
     reply["suggestions"] = []
-    asked = [x for x in props if x.get("kind") != "deadline"]
+    asked = [x for x in props if x.get("kind") not in ("deadline", "move")]
     cards, unoffered = [], []
     if asked and not result["error"]:
         made, unoffered = ledger_proposals(cfg, asked, result, payload_file, at, "margin", proposable)
@@ -1630,8 +1629,9 @@ def cmd_chat(cfg: dict, args) -> int:
             r["docs_seen"] = sorted(d["name"] for d in docs)
             r["props_seen"] = props_seen
             last = next((tt for tt in reversed(r.get("chat") or []) if tt.get("role") == "agent"), None)
-            if last is not None and (fetched["searched"] or fetched["files"] or filed):
-                last.update(searched=fetched["searched"], files=fetched["files"], filed=filed)
+            opened = open_targets(cfg, reply.get("open") or [])
+            if last is not None and (fetched["searched"] or fetched["files"] or filed or opened):
+                last.update(searched=fetched["searched"], files=fetched["files"], filed=filed, open=opened)
         write_atomic(paths, paths.state, json.dumps(state, indent=2, ensure_ascii=False) + "\n")
     convo_merge(cfg)
     if result["error"]:
@@ -4220,6 +4220,41 @@ def day_of(state: dict) -> dict:
     return state.setdefault("day", {"session": "", "turns": []})
 
 
+def open_targets(cfg: dict, asks: list[dict]) -> list[dict]:
+    """What the agent asked the page to open for the student (slice 4 of
+    "One conversation": done at once, undone by going back): a note or a
+    paper of the vault, a day's note, a task — one, checked here. The page
+    opens it when the answer arrives."""
+    vault = Path(cfg["vault"]).resolve()
+    for a in [a for a in asks if isinstance(a, dict)][:1]:
+        if a.get("file"):
+            rel = str(a["file"]).strip().lstrip("/")
+            f = (vault / rel).resolve()
+            if vault in f.parents and f.is_file() and f.suffix.lower() in (".md", ".pdf") and not searchlib._never(rel):
+                return [{"kind": "file", "rel": str(f.relative_to(vault)), "name": f.stem}]
+        elif a.get("day"):
+            d = stamp_date(cfg, str(a["day"])[:10]) if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(a["day"])[:10]) \
+                else dt.date.fromisoformat(str(a["day"])[:10])
+            if d and Paths(cfg, d).note.is_file():
+                return [{"kind": "day", "date": day_stamp(cfg, d), "name": d.strftime("%a %-d %b")}]
+        elif a.get("task"):
+            task = next((x for x in plan_tasks(cfg) if x.get("key") == a["task"]), None)
+            if task:
+                return [{"kind": "task", "key": task["key"], "date": task.get("date", ""), "name": task.get("title", "")}]
+    return []
+
+
+TICKED_DAYS = 7      # how far back a ticked box may be reopened from a chat
+
+
+def ticked_boxes(cfg: dict) -> list[dict]:
+    """The boxes ticked in the last TICKED_DAYS days' notes, never a private
+    one: what a chat may reopen when the student asks (`undone`)."""
+    return [{"key": lifespan.key_of(r), "title": r.get("title") or r.get("text") or "", "project": r.get("project") or "",
+             "date": r.get("date") or ""}
+            for r in outcomes(cfg, days=TICKED_DAYS, visible_only=True) if r.get("done")]
+
+
 def day_proposable(cfg: dict, today: dt.date) -> tuple[dict, str]:
     """What the day's agent may propose about (docs/agent.md, "The day
     conversation", slice 3): the planner's own inputs — the fortnight, the
@@ -4230,6 +4265,7 @@ def day_proposable(cfg: dict, today: dt.date) -> tuple[dict, str]:
     loose = [{"deadline": d["id"], "title": d["title"], "due": d["due"].strftime("%Y-%m-%d %H:%M"),
               "project": d.get("project") or ""} for d in deadlines if not d.get("linked")]
     data = {"fortnight": days, "candidates": cands, "open_boxes": boxes, "deadlines_with_no_line": loose,
+            "ticked_lately": [{k: b[k] for k in ("key", "title", "project")} for b in ticked_boxes(cfg)][-30:],
             "you_may": sorted(k for k, v in allowed.items() if v != "never" and k != "file")}
     # Filing is not a card: the student asks, local code files (`day_file`).
     # What waits in the inbox is named so a request can point at it; absent,
@@ -4270,10 +4306,17 @@ def ledger_proposals(cfg: dict, proposals: list[dict], result: dict, payload_fil
     ledger = planlib.load_ledger(PROPOSALS)
     closed = planlib.store_deadlines(STATE_HOME / "deadlines.tsv", ("done", "cancelled"))
     props, _ = planlib.validate({"proposals": proposals, "questions": []}, cands, days, ledger, today,
-                                boxes, deadlines, allowed, closed, project_tags(cfg), asked=True)
+                                boxes, deadlines, allowed, closed, project_tags(cfg), asked=True,
+                                ticked=ticked_boxes(cfg))
     for item in props:
         item.update({"from": frm, "prompt": result.get("prompt", ""), "model": result.get("model", ""),
                      "payload": str(payload_file)})
+    # A deadline moved to another day than a move still open: that one goes.
+    for item in props:
+        if item["kind"] == "move":
+            for x in planlib.open_items(ledger):
+                if x["kind"] == "move" and x.get("deadline") == item["deadline"] and x.get("date") != item["date"]:
+                    x.update(status="superseded", resolved=at)
     # Asked for in a conversation: the student is there, so no budget.
     new = planlib.record(ledger, props, [], at, budget=False)
     # One the same as a proposal still open keeps that one: the card shows it.
@@ -4281,7 +4324,7 @@ def ledger_proposals(cfg: dict, proposals: list[dict], result: dict, payload_fil
             if x["kind"] != "question" and planlib.ident(x) == planlib.ident(p) and x not in new]
     planlib.save_ledger(PROPOSALS, ledger)
     lock.close()
-    keep = ("id", "kind", "key", "deadline", "title", "project", "date", "priority", "steps", "why", "auto")
+    keep = ("id", "kind", "key", "deadline", "title", "project", "date", "priority", "steps", "why", "auto", "was")
     offered = {planlib.ident(x) for x in props}
     titles = {b["key"]: b["title"] for b in boxes}
     by_number = {b["deadline"]: b["key"] for b in boxes if b.get("deadline")}
@@ -4291,6 +4334,14 @@ def ledger_proposals(cfg: dict, proposals: list[dict], result: dict, payload_fil
             continue
         kind, key = str(p.get("kind") or ""), str(p.get("key") or "")
         num = str(p.get("deadline") or "").lstrip("#")
+        if kind == "deadline" and p.get("moves") not in (None, "", 0):
+            kind, num = "move", str(p.get("moves")).lstrip("#")
+        if kind == "move":
+            about = (kind, f"#{num}@{str(p.get('date') or '')[:10]}")
+            if about not in offered:
+                unoffered.append(f"move deadline #{num}" + (f" to {p.get('date')}" if p.get("date") else "")
+                                 + " · not an open deadline, or not a day it can move to")
+            continue
         if kind == "project":
             about = (kind, str(p.get("tag") or "").strip().lstrip("#").lower())
         elif not key and num.isdigit():
@@ -4701,12 +4752,7 @@ def cmd_day(cfg: dict, args) -> int:
             if first_block and any(b["hash"] == first_block for b in visible) else ""
         result, reply, fetched = day_follow(cfg, paths, tag, result, reply, payload_file)
 
-    # Moving a deadline has its card in a block's chat only, for now.
-    moving = [x for x in reply.get("proposals") or [] if isinstance(x, dict) and x.get("kind") == "deadline" and x.get("moves")]
-    reply["proposals"] = [x for x in reply.get("proposals") or [] if not any(x is m for m in moving)]
     proposed, unoffered = day_proposals(cfg, reply, result, payload_file, at) if not result["error"] else ([], [])
-    unoffered += [f"move deadline #{str(x['moves']).lstrip('#')} · moved from the task's own chat (C on its row), not here"
-                  for x in moving]
     filed, unfiled = day_file(cfg, reply.get("file") or [], message, at) if not result["error"] else ([], [])
 
     state = load_state(paths)                            # the page or a margin run may have written meanwhile
@@ -4733,7 +4779,7 @@ def cmd_day(cfg: dict, args) -> int:
                              "payload": str(payload_file), "documents": fetched["documents"],
                              "searched": fetched["searched"], "files": fetched["files"], "withheld": fetched["withheld"],
                              "proposals": proposed, "unoffered": unoffered, "filed": filed, "unfiled": unfiled,
-                             "read": False})
+                             "open": open_targets(cfg, reply.get("open") or []), "read": False})
     written = []
     write_knowledge(paths, reply.get("knowledge") or [], written)
     state.setdefault("runs", []).append({"at": at, "trigger": "day", "block": first_block, "session": result["session"],
@@ -4799,7 +4845,9 @@ def note_payload(cfg: dict, paths: Paths, rel: str, shown: list[dict], message: 
         parts += ["# This conversation", "",
                   "The student opened a note of theirs and asks you about it. It is not today's note and this is not "
                   "the day's conversation: answer about this note, with it as your evidence, and say where in it. "
-                  "Propose nothing: `proposals` stays empty. You may search and read as the day does.", "",
+                  "Propose only what the student asks for — a task, a day to work on one, a deadline moved, a box "
+                  "ticked — from \"# What you may propose\"; otherwise `proposals` stays empty. You may search, "
+                  "read, file and open as the day does.", "",
                   f"# The note: `{rel}`", "", "(its private callouts are left out)", ""]
         parts += ["\n\n".join(b["text"] for b in shown) or "(empty)"]
         parts += knowledge_parts(paths)
@@ -4923,8 +4971,9 @@ def paper_payload(cfg: dict, paths: Paths, rel: str, st: dict, message: str, mar
         parts += ["# This conversation", "",
                   "The student is reading a paper, a PDF in their vault, and marks passages in it: a highlight, or a "
                   "question (a passage they want to understand). This is the paper's own conversation, not the day's: "
-                  "answer about the paper, briefly, as someone who knows it well. Propose nothing: `proposals` stays "
-                  "empty.",
+                  "answer about the paper, briefly, as someone who knows it well. Propose only what the student asks "
+                  "for (a task from it, a day to read on), from \"# What you may propose\"; otherwise `proposals` "
+                  "stays empty.",
                   "",
                   f"Its full text is not in this message. When a question needs the paper as a whole (a summary, its "
                   f"main concepts, its argument, a part not quoted here), ask to read it: `read` with "
@@ -4992,13 +5041,19 @@ def cmd_note(cfg: dict, args) -> int:
     except (OSError, ValueError):
         talk = {}
     talk = {"path": rel, "session": session_fits(cfg, talk.get("session", "")), "turns": talk.get("turns") or [],
-            "seen": talk.get("seen", ""), "memory": talk.get("memory") or []}
+            "seen": talk.get("seen", ""), "memory": talk.get("memory") or [], "proposable": talk.get("proposable", "")}
     # The one conversation's memory (2026-11-18): what was said elsewhere
     # today, and about this note or paper; until then this place saw
     # nothing of the others.
     thread = ("paper:" if paper else "note:") + rel
     carried = list(talk["memory"]) if talk["session"] else []
     mem, mem_ids = convo_memory(cfg, [thread], thread, carried, again=bool(talk["session"]))
+    # What it may propose when the student asks (slice 4 of "One
+    # conversation": from anywhere), as the day's chat; again only when it
+    # changed.
+    proposable, digest = day_proposable(cfg, today)
+    offer = proposable_parts(proposable, again=bool(talk["session"])) \
+        if not talk["session"] or digest != talk.get("proposable") else []
     at = dt.datetime.now().isoformat(timespec="seconds")
     paths.payloads.mkdir(parents=True, exist_ok=True)
     payload_file = paths.payloads / f"{dt.datetime.now():%Y%m%d-%H%M%S-%f}-note.md"
@@ -5009,15 +5064,15 @@ def cmd_note(cfg: dict, args) -> int:
                                 before=before) if paper else \
             note_payload(cfg, paths, rel, shown, message, args.block, False, changed=seen != talk["seen"],
                          before=before)
-        if mem:
-            payload = payload.replace("\n# The student says\n", "\n".join(mem) + "\n\n# The student says\n", 1)
+        if mem or offer:
+            payload = payload.replace("\n# The student says\n", "\n".join(mem + offer) + "\n\n# The student says\n", 1)
         payload_file.write_text(payload)                 # logged before inference
         result = run_model(day_cfg, paths, "", session=talk["session"], message=payload)
     else:
         payload = paper_payload(cfg, paths, rel, st, message, marks, True) if paper else \
             note_payload(cfg, paths, rel, shown, message, args.block, True)
-        if mem:
-            payload = payload.replace("\n# The student says\n", "\n".join(mem) + "\n\n# The student says\n", 1)
+        if mem or offer:
+            payload = payload.replace("\n# The student says\n", "\n".join(mem + offer) + "\n\n# The student says\n", 1)
         so_far = earlier_turns(talk["turns"])
         if so_far:
             payload = payload.replace("\n# The student says\n", "\n# This chat so far\n\nBegun in a session you no"
@@ -5038,9 +5093,12 @@ def cmd_note(cfg: dict, args) -> int:
     except (OSError, ValueError):
         pass
     talk["session"] = result["session"] if result["session"] and not result["error"] else talk["session"]
+    proposed, unoffered = day_proposals(cfg, reply, result, payload_file, at) if not result["error"] else ([], [])
+    filed, unfiled = day_file(cfg, reply.get("file") or [], message, at) if not result["error"] else ([], [])
     if not result["error"]:
         talk["seen"] = seen
         talk["memory"] = convolib.carry(carried, mem_ids)
+        talk["proposable"] = digest
     turn = {"role": "student", "text": message, "at": at}
     if args.block:
         turn["block"] = args.block
@@ -5056,7 +5114,9 @@ def cmd_note(cfg: dict, args) -> int:
         talk["turns"].append({"role": "agent", "text": reply["reply"], "at": dt.datetime.now().isoformat(timespec="seconds"),
                               "cost": result["cost"], "prompt": result.get("prompt", ""), "model": result.get("model", ""),
                               "payload": str(payload_file), "documents": fetched["documents"],
-                              "searched": fetched["searched"], "files": fetched["files"], "withheld": fetched["withheld"]})
+                              "searched": fetched["searched"], "files": fetched["files"], "withheld": fetched["withheld"],
+                              "proposals": proposed, "unoffered": unoffered, "filed": filed, "unfiled": unfiled,
+                              "open": open_targets(cfg, reply.get("open") or [])})
     written = []
     write_knowledge(paths, reply.get("knowledge") or [], written)
     write_atomic(paths, where, json.dumps(talk, indent=2, ensure_ascii=False) + "\n")

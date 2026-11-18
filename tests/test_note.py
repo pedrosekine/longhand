@@ -93,13 +93,15 @@ def main() -> int:
     pay = first["stdin"]
     check("Reflexive thematic analysis: themes are built." in pay and f"# The note: `{rel}`" in pay,
           "the first message carries the note whole, by its path")
-    check("not today's note" in pay and "Propose nothing" in pay, "…told what this conversation is")
+    check("not today's note" in pay and "Propose only what the student asks for" in pay and "# What you may propose" in pay,
+          "…told what this conversation is, and what it may propose when asked (slice 4 of One conversation)")
     check("SECRET-CALLOUT" not in pay and "agent: false" not in pay, "…never its private callout, nor its frontmatter")
     check(pay.rstrip().endswith("what did I say about themes?"), "…and what the student says")
     t = json.loads(talk.read_text())
     check(t["path"] == rel and t["session"] == "ses_note" and [x["role"] for x in t["turns"]] == ["student", "agent"]
           and t["turns"][1]["text"] == "answer 0", "kept in the agent's folder by the note's md5, with its session")
-    check("proposals" not in t["turns"][1], "a proposal made anyway is not taken")
+    check(t["turns"][1].get("proposals") == [] and t["turns"][1].get("unoffered") == ["deadline · made up"],
+          f"a proposal that does not hold is not taken, and said ({t['turns'][1].get('unoffered')})")
     check(note.read_text() == text, "the note is never written")
 
     box = next(b for b in blocks.split(note.read_text()) if "Braun" in b["text"])

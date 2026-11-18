@@ -163,14 +163,14 @@ def main() -> int:
     again = json.loads((tmp / "state" / "longhand" / "proposals.json").read_text())
     check(len(again["items"]) == len(ledger["items"]) and sorted(x["id"] for x in state()["day"]["turns"][-1]["proposals"]) == sorted(x["id"] for x in mine),
           "the same proposal again is the same card: no new item")
-    # A deadline move has its card in a task's own chat only, for now (slice
-    # 3 of "One conversation"): proposed here, it is said back, not made.
+    # A deadline move is a card in the day's chat too (slice 4 of "One
+    # conversation"); one that names no open deadline is said back.
     before = len(json.loads((tmp / "state" / "longhand" / "proposals.json").read_text())["items"])
     agent("day", "--message", "MOVE it to January")
     turn = state()["day"]["turns"][-1]
-    check(turn.get("unoffered") == ["move deadline #7 · moved from the task's own chat (C on its row), not here"]
+    check(turn.get("unoffered") == ["move deadline #7 to 2030-01-02 · not an open deadline, or not a day it can move to"]
           and len(json.loads((tmp / "state" / "longhand" / "proposals.json").read_text())["items"]) == before,
-          f"a deadline move asked in the day's chat is said back, no card and no new deadline ({turn.get('unoffered')})")
+          f"a move naming no open deadline is said back, no card and no new deadline ({turn.get('unoffered')})")
     st = json.loads((cfgdir / "longhand" / "settings.json").read_text()) if (cfgdir / "longhand" / "settings.json").exists() else {}
     st["autonomy"] = {"do-date": "never"}
     (cfgdir / "longhand" / "settings.json").write_text(json.dumps(st))

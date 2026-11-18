@@ -278,14 +278,26 @@ def check_day(case: dict, reply: dict) -> tuple[list[dict], str]:
     # A deadline moved in a chat about one block (2026-11-18, the one
     # agent): `moves` lists the numbers it must move, `no_new_deadline` that
     # it adds none — the card a move without its number would make.
-    raw = [p for p in reply.get("proposals") or [] if isinstance(p, dict) and p.get("kind") == "deadline"]
-    said = " | ".join(f"#{p.get('moves')} → {p.get('date') or p.get('when')}" if p.get("moves") else f"new: {p.get('title')}"
+    raw = [p for p in reply.get("proposals") or [] if isinstance(p, dict) and p.get("kind") in ("deadline", "move")]
+    moved = lambda p: p.get("deadline") if p.get("kind") == "move" else p.get("moves")  # noqa: E731
+    said = " | ".join(f"#{moved(p)} → {p.get('date') or p.get('when')}" if moved(p) else f"new: {p.get('title')}"
                       for p in raw) or "no deadline card"
     for n in r.get("moves") or []:
-        out.append({"check": f"moves deadline #{n}", "pass": any(str(p.get("moves") or "").lstrip("#") == str(n) for p in raw),
+        out.append({"check": f"moves deadline #{n}", "pass": any(str(moved(p) or "").lstrip("#") == str(n) for p in raw),
                     "why": said})
     if r.get("no_new_deadline"):
-        out.append({"check": "adds no new deadline", "pass": not any(not p.get("moves") for p in raw), "why": said})
+        out.append({"check": "adds no new deadline", "pass": not any(not moved(p) for p in raw), "why": said})
+    # Done at once because the student asked (slice 4): `ticks` lists
+    # patterns on the box's words, `opens` on what it opens.
+    ticks = [p for p in reply.get("proposals") or [] if isinstance(p, dict) and p.get("kind") == "done" and p.get("asked")]
+    titles = {b["key"]: b["title"] for b in (data or {}).get("open_boxes") or []}
+    for pat in r.get("ticks") or []:
+        out.append({"check": f"ticks /{pat}/ (asked)", "pass": any(re.search(pat, titles.get(p.get("key"), ""), re.I) for p in ticks),
+                    "why": " | ".join(titles.get(p.get("key"), str(p.get("key"))) for p in ticks) or "nothing ticked"})
+    opens = [o for o in reply.get("open") or [] if isinstance(o, dict)]
+    for pat in r.get("opens") or []:
+        out.append({"check": f"opens /{pat}/", "pass": any(re.search(pat, str(o.get("file") or o.get("day") or o.get("task") or ""), re.I)
+                                                           for o in opens), "why": json.dumps(opens)[:160] or "nothing"})
     # Documents it asked to file (2026-11-17): `file` lists `tag:pattern`
     # (the pattern on the document's name), `no_file` that it files nothing.
     files = [f for f in reply.get("file") or [] if isinstance(f, dict)]

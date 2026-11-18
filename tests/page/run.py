@@ -122,6 +122,9 @@ if "--agent" in args and args[args.index("--agent") + 1] == "longhand-day" \
             if "key_of" in p:
                 want = p.pop("key_of")
                 p["key"] = next((b["key"] for b in data["open_boxes"] if b["title"] == want), "")
+    # …and what it opens (slice 4 of "One conversation"): day-open.json.
+    if os.path.exists(os.path.join(d, "day-open.json")):
+        reply["open"] = json.load(open(os.path.join(d, "day-open.json")))
 ev = lambda t, part: print(json.dumps({"type": t, "sessionID": "ses_page", "part": part}))
 ev("text", {"type": "text", "text": "```json\\n" + json.dumps(reply) + "\\n```"})
 ev("step_finish", {"type": "step-finish", "cost": 0.0001, "tokens": {"input": 1, "output": 1, "reasoning": 0, "total": 2}})
@@ -2540,7 +2543,7 @@ def checks() -> int:
         KEY_M, KEY_RIGHT = 0x4d, 0x01000014
         p.call("settingsPick", "autonomy")
         check(p.call("settingsKey", KEY_RETURN, 0) == "true" and p.call("settingsView") == "autonomy", "Enter on what the agent may do opens it")
-        check(p.wait(lambda: "priority=do" in p.call("autonomyKinds") and len(json.loads(p.call("autonomyKinds"))) == 8),
+        check(p.wait(lambda: "priority=do" in p.call("autonomyKinds") and len(json.loads(p.call("autonomyKinds"))) == 11),
               f"…every kind with its level ({p.call('autonomyKinds')})")
         p.call("autonomyFocus", 0)
         p.call("autonomyKey", KEY_RIGHT, 0)
@@ -2600,6 +2603,35 @@ def checks() -> int:
               "Alt+= says the day's last answer was helpful, kept on its turn")
         p.call("dayKey", 0x3d, 0x08000000)
         check(p.wait(lambda: "rating" not in json.loads(day_state.read_text())["day"]["turns"][-1]), "…and again takes it back")
+        # What one message can do from anywhere (slice 4 of "One
+        # conversation"): a task asked for, a card that writes it into
+        # today's note under its course; a box ticked because the student
+        # asked, done at once and told, one key undoing it; something opened.
+        (p.stub / "day-reply.json").write_text(json.dumps([
+            {"kind": "task", "title": "email the dean about the exam", "project": "", "why": "asked"},
+            {"kind": "done", "key_of": "read the ethics chapter", "asked": True, "why": "asked"}]))
+        p.call("dayType", "add a task and PROPOSE ticking the chapter")
+        p.call("dayKey", KEY_RETURN, 0)
+        check(p.wait(lambda: re.search(r"- \[x\] read the ethics chapter", p.note()), timeout=15),
+              f"a box ticked because the student asked is ticked at once, by the page ({p.note()[-160:]!r})")
+        check(p.wait(lambda: sorted(json.loads(p.call("dayOpenCardKinds"))) == ["done", "task"], timeout=8),
+              f"…shown as a card to let stand or undo, beside the new task's ({p.call('dayCards')})")
+        (p.stub / "day-reply.json").unlink()
+        idx = json.loads(p.call("dayOpenCardKinds")).index("task")
+        p.call("dayCardAt", idx)
+        check(p.call("dayKey", KEY_RETURN, 0) == "true" and p.wait(lambda: "- [ ] email the dean about the exam" in p.note()),
+              f"Enter on the task's card writes it into today's note ({p.note()[-160:]!r})")
+        idx = json.loads(p.call("dayOpenCardKinds")).index("done")
+        p.call("dayCardAt", idx)
+        check(p.call("dayKey", 0x01000007, 0) == "true" and p.wait(lambda: re.search(r"- \[ \] read the ethics chapter", p.note())),
+              f"Del on the tick undoes it: the box open again ({p.note()[-160:]!r})")
+        (p.stub / "day-open.json").write_text(json.dumps([{"day": str(dt.date.today() - dt.timedelta(days=1))}]))
+        p.call("dayType", "open yesterday")
+        p.call("dayKey", KEY_RETURN, 0)
+        yday = (dt.date.today() - dt.timedelta(days=1)).strftime("%Y.%m.%d")
+        check(p.wait(lambda: p.call("noteDate") == yday, timeout=15), f"what it opens is opened when the answer arrives ({p.call('noteDate')})")
+        (p.stub / "day-open.json").unlink()
+        p.call("openDay", TODAY)
         p.call("dayKey", 0x01000000, 0)
 
         # 12b. the keys sheet: every key the page answers to, listed; one
