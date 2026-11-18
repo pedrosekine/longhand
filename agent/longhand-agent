@@ -58,6 +58,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import signal
 import subprocess
 import sys
@@ -3385,6 +3386,26 @@ def cmd_proposal(cfg: dict, args) -> int:
         return answer_proposal(cfg, args)
 
 
+def unfile(item: dict) -> str:
+    """A filed document moved back where it came from — never over another
+    file there (the name takes a number), and to Downloads itself when the
+    folder it was in is gone. Returns where it went."""
+    filed = Path(str(item.get("filed") or ""))
+    if not filed.is_file():
+        raise Fail(f"“{filed.name}” is no longer where it was filed")
+    src = Path(str(item.get("src") or ""))
+    folder = src.parent if src.parent.is_dir() else Path.home() / "Downloads"
+    dest, n = folder / src.name, 2
+    while dest.exists():
+        dest = folder / f"{src.stem} ({n}){src.suffix}"
+        n += 1
+    try:
+        shutil.move(str(filed), str(dest))
+    except OSError as e:
+        raise Fail(f"could not move it back: {e}")
+    return str(dest)
+
+
 def answer_proposal(cfg: dict, args) -> int:
     """The person's answer to one proposal or question. Accepting a do-date
     is recorded here; the do-date itself is written into the note by the
@@ -3402,13 +3423,19 @@ def answer_proposal(cfg: dict, args) -> int:
     # moved back here).
     if item["status"] == "told" and args.how in ("accept", "undo"):
         if args.how == "undo" and item["kind"] == "file" and item.get("filed"):
-            try:
-                os.replace(item["filed"], item["src"])
-            except OSError as e:
-                raise Fail(f"could not move it back: {e}")
+            item["unfiled"] = unfile(item)
         item["status"], item["resolved"] = ("accepted" if args.how == "accept" else "undone"), at
         planlib.save_ledger(PROPOSALS, ledger)
         print(json.dumps({"id": args.id, "status": item["status"], "changed": True}))
+        return 0
+    # A document the student filed (accepting its row, or asking in a chat):
+    # put back where it was (2026-11-18: one was filed by a key pressed in
+    # passing, and nothing could take it back). It is not proposed again.
+    if args.how == "undo" and item["kind"] == "file" and item["status"] == "accepted":
+        back = unfile(item)
+        item["status"], item["resolved"], item["unfiled"] = "undone", at, back
+        planlib.save_ledger(PROPOSALS, ledger)
+        print(json.dumps({"id": args.id, "status": "undone", "changed": True, "back": back}))
         return 0
     if item["status"] != "open":
         print(json.dumps({"id": args.id, "status": item["status"], "changed": False}))

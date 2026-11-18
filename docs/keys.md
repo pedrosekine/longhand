@@ -140,7 +140,7 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | Follow the link in its line (a paper: open it where it was left) | `Alt+Enter` | in the dashboard |
 | Chat about it (the agent's pane opens on it) | `c` · `Ctrl+Enter` | in the dashboard |
 | Export its section as a PDF, named after it (it stays open) | `Ctrl+Shift+E` | in the dashboard |
-| Take the last tick back | `Ctrl+Z` | in the dashboard |
+| Take back the last tick, or a document just filed | `Ctrl+Z` | in the dashboard |
 | Back to the note | `Esc` | in the dashboard |
 | How Longhand feels this week: the one-minute check-in | `f` | in the dashboard |
 | Search the list: the strip's ⌕, typing (words, or a #tag) | `/` | in the dashboard, on the dashboard's course strip |

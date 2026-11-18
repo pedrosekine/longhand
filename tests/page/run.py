@@ -2479,6 +2479,19 @@ def checks() -> int:
         check(p.wait(lambda: filed.is_file() and not (inbox / "DTM_handout.pdf").exists()),
               "…moved from the inbox into projects/dtm/docs/")
         check((inbox / "Rechnung_4711.pdf").exists(), "…and nothing else moved")
+        # Filed by a key pressed in passing (2026-11-18): Ctrl+Z on the
+        # dashboard puts it back where it came from, and it is not offered
+        # again.
+        check(json.loads(p.call("lastUndo")) == {"unfile": frow["id"]}, "…with Ctrl+Z ready to put it back")
+        check(p.call("dashKey", 0x5a, CTRL) == "true"
+              and p.wait(lambda: (inbox / "DTM_handout.pdf").is_file() and not filed.exists(), timeout=10),
+              "Ctrl+Z puts the document back in the inbox")
+        p.call("refreshProposals")
+        time.sleep(1.5)
+        check(not filing(), f"…and it is not offered again ({filing()})")
+        (inbox / "DTM_handout.pdf").rename(filed)       # filed again by hand, as the checks after this expect
+        time.sleep(1)                                    # the put-back's own read of the projects, done
+        p.call("refreshProjects")
         p.call("dash")
         side_was = p.call("sidebarOpen")
         check(p.wait(lambda: "dtm|" in "".join(json.loads(p.call("projects")))), "the projects are listed")

@@ -400,6 +400,8 @@ ShellRoot {
     function dayTurns(): string { return JSON.stringify(page.dayTurns.map(function (t) { return t.role + ": " + t.text })) }
     function dayBlockText(): string { return page.dayBlockText }
     function dayChips(): string { return JSON.stringify(page.dayChips) }
+    function refreshProjects(): void { page.refreshProjects() }
+    function lastUndo(): string { var h = page.tickHistory; return JSON.stringify(h.length ? h[h.length - 1] : null) }
     function leftOutSample(): string {
       return page.sayLeftOut(["do-date · no such box", "drop · deadline #999", "deadline · made up",
                               "move deadline #7 to 2030-01-02 · not an open deadline, or not a day it can move to"])

@@ -195,6 +195,21 @@ def main() -> int:
     items = json.loads((state / "longhand" / "proposals.json").read_text())["items"]
     check(next(x for x in items if x["id"] == by["hfpi"]["id"])["status"] == "moot", "a file that left the inbox is moot")
     check(agent("proposal", "accept", "--id", str(by["dtm"]["id"])).returncode == 0, "a declined one stays declined")
+    # Filed by the student, then taken back (2026-11-18: one was filed by a
+    # key pressed in passing, and nothing could undo it): moved back to
+    # Downloads, never over another file there, and not proposed again.
+    r = agent("proposal", "undo", "--id", str(by["intsem"]["id"]))
+    back = json.loads(r.stdout).get("back", "")
+    check(r.returncode == 0 and not dest.exists() and back == str(inbox / "The_Seven_Deadly_Myths.pdf")
+          and pathlib.Path(back).is_file(), f"a filing the student made is put back where it came from ({r.stderr.strip()})")
+    items = json.loads((state / "longhand" / "proposals.json").read_text())["items"]
+    out = json.loads(agent("proposals").stdout)
+    check(next(x for x in items if x["id"] == by["intsem"]["id"])["status"] == "undone"
+          and not any(x["kind"] == "file" and x.get("src") == back for x in out["open"]),
+          "…and it is not proposed again")
+    r = agent("proposal", "undo", "--id", str(by["intsem"]["id"]))
+    check(json.loads(r.stdout).get("changed") is False and pathlib.Path(back).is_file(), "…once: a second undo does nothing")
+    pathlib.Path(back).rename(dest)        # filed again by hand, as the rest of this test expects it
     # Left unanswered until it expired (plan.EXPIRE_DAYS): not proposed again.
     late = inbox / "late_reading.pdf"
     pdf(late, "A reading nobody filed", when=in_class)

@@ -5320,7 +5320,16 @@ Item {
     // What the agent did on its own: Space lets it stand.
     if (row.kind === "told") { root.resolveProposal(p, "accept", ""); return }
     // A document: the runner moves it into the course's folder.
-    if (p.kind === "file") { root.resolveProposal(p, "accept", ""); root.showHint("filed in " + (p.title || p.project)); return }
+    // A document: the runner moves it into the course's folder; Ctrl+Z
+    // puts it back (2026-11-18: filed by a key pressed in passing, and
+    // nothing could take it back).
+    if (p.kind === "file") {
+      root.resolveProposal(p, "accept", "")
+      root.tickHistory = root.tickHistory.concat([{ unfile: p.id }])
+      root.showHint("filed “" + String(p.name || "").replace(/\.pdf$/i, "") + "” in " + (p.title || p.project)
+                    + " · " + root.keyName("dashUndo") + " puts it back")
+      return
+    }
     if (p.kind === "project") { root.resolveProposal(p, "accept", ""); root.showHint("#" + p.project + " is a project now"); return }
     if (!root.applyProposal(p, row.task)) return
     root.resolveProposal(p, "accept", "")
@@ -6283,7 +6292,22 @@ Item {
     if (t.deadline) { dl.reopen(t.deadline); root.tickBoundLine(t.deadline, false); return }
     if (t.drop) { root.editTask(t.drop, "undrop", ""); return }
     if (t.uncancel) { dl.reopen(t.uncancel); return }
+    if (t.unfile) { root.unfile(t.unfile); return }
     root.editTask(t, "undone", "")
+  }
+  // A document filed — from its row, or asked for in a chat — moved back
+  // where it came from by the runner; it is not proposed again.
+  property var unfiled: ({})
+  function unfile(id) {
+    if (root.unfiled[id]) return
+    var u = Object.assign({}, root.unfiled)
+    u[id] = true
+    root.unfiled = u
+    root.proposalQueue = root.proposalQueue.concat([[svc.runner, "proposal", "undo", "--id", String(id)]])
+    root.nextProposal()
+    root.used("proposal", "unfile")
+    root.showHint("put back where it was")
+    Qt.callLater(root.refreshProjects)
   }
 
   // Tick in the original note, through the one edit path, with the day it
