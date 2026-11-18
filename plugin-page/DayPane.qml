@@ -758,6 +758,12 @@ BorderSurface {
         font.pixelSize: page.fs(Style.font.caption)
       }
     }
+    // Words selected in an answer, offered for a reply.
+    ReplyOffer {
+      page: dayPane.page
+      width: parent.width
+      pane: "day"
+    }
     // Replies attached to this message, a pill each (design A).
     ReplyPills {
       page: dayPane.page

@@ -412,6 +412,12 @@ BorderSurface {
         shown: chatField.visible && !!page.dayMention && page.dayMention.margin
         onPicked: chatField.forceActiveFocus()
       }
+      ReplyOffer {
+        page: margin.page
+        width: parent.width
+        pane: "margin"
+        visible: chatField.visible && !!page.replyOffer && page.replyOffer.pane === "margin"
+      }
       ReplyPills {
         page: margin.page
         width: parent.width

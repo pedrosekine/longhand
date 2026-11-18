@@ -405,6 +405,26 @@ ShellRoot {
     function replying(pane: string): string { return JSON.stringify(page.replyingOf(pane)) }
     function editReply(pane: string, i: int): void { page.editReply(pane, i) }
     function marksOf(pane: string, at: string): string { return JSON.stringify(page.passageMarks(pane, at)) }
+    // Selects `words` in an answer of the day's pane, as a drag would.
+    // Says what it found: "selected", or how many answer texts it saw.
+    function selectInAnswer(words: string): string {
+      var seen = 0
+      function walk(it, depth) {
+        if (!it || depth > 60) return null
+        if (it.persistentSelection !== undefined && it.positionToRectangle !== undefined && it.getText !== undefined) {
+          seen++
+          var plain = it.getText(0, it.length), i = plain.indexOf(words)
+          if (i >= 0 && it.readOnly && it.parent && it.parent.answerable === true) { it.select(i, i + words.length); return it }
+        }
+        var kids = it.children || []
+        for (var k = 0; k < kids.length; k++) { var f = walk(kids[k], depth + 1); if (f) return f }
+        if (it.contentItem && kids.indexOf(it.contentItem) < 0) return walk(it.contentItem, depth + 1)
+        return null
+      }
+      return walk(page.dayPaneItem, 0) ? "selected" : "none of " + seen
+    }
+    function replyOffer(): string { var o = page.replyOffer; return JSON.stringify(o ? { pane: o.pane, quote: o.quote, at: o.at } : null) }
+    function takeOffer(): void { page.takeOffer() }
     function lastAgentAt(): string { var t = page.dayTurns; for (var i = t.length - 1; i >= 0; i--) if (t[i].role === "agent" && t[i].at) return t[i].at; return "" }
     function partsOf(text: string): string { return JSON.stringify(page.passageParts(text)) }
     function followPassage(pane: string, quote: string): void { page.showPassage(pane, quote) }

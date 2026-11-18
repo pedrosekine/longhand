@@ -66,6 +66,8 @@ Column {
     page: turn.page
     mine: turn.mine
     answerable: !turn.mine && !turn.away && !turn.t.error && (turn.t.text || "") !== ""
+    pane: turn.pane
+    at: String(turn.t.at || "")
     text: turn.t.error ? "could not answer: " + page.sayPlanError(turn.t.error)
       : turn.t.role === "agent" ? page.linkCitations(turn.t.text || "") : (turn.t.text || "")
     color: turn.t.error ? page.urgent : turn.away ? page.dim : page.foreground

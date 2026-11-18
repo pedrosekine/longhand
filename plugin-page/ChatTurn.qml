@@ -20,6 +20,8 @@ Item {
   // "answer" at the end of the selection, or Ctrl+R; several at once, each
   // its own answer above the box.
   property bool answerable: false
+  property string pane: "day"          // the pane this turn is in, and its time: what a reply is to
+  property string at: ""
   // The passages replied to in these words (Page.passageMarks): lit while
   // the reply is written ("open"), underlined with their number once
   // attached or sent.
@@ -176,41 +178,60 @@ Item {
     font.styleName: page.fontStyle
     font.pixelSize: turn.pixelSize
     onLinkActivated: function (link) { turn.linkActivated(link) }
-    onSelectedTextChanged: if (selectedText !== "") page.chatSelected(said)
+    onSelectedTextChanged: {
+      if (selectedText !== "") page.chatSelected(said)
+      // Offered over the box too, while it is selected (the bar, cue 3).
+      if (turn.answerable && selectedText.trim() !== "")
+        page.replyOffer = { pane: turn.pane, at: turn.at, quote: String(selectedText).replace(/\s+/g, " ").trim(), item: turn }
+      else if (page.replyOffer && page.replyOffer.item === turn) page.replyOffer = null
+    }
     HoverHandler { cursorShape: said.hoveredLink !== "" ? Qt.PointingHandCursor : Qt.IBeamCursor }
   }
 
-  // "answer", where the selection ends.
+  // "reply", over the words selected (2026-11-18): drawn as the hover
+  // hints are — the sheet's darker paper, a faint edge, no shadow — the word
+  // and its key set apart, above the selection's first line so it never
+  // covers what is picked. The word turns accent under the pointer, as every
+  // button of the page does.
   Rectangle {
-    id: answerChip
-    readonly property rect end: said.positionToRectangle(said.selectionEnd)
+    id: replyTool
+    readonly property rect start: said.positionToRectangle(Math.min(said.selectionStart, said.selectionEnd))
+    readonly property color edge: Qt.rgba(page.foreground.r, page.foreground.g, page.foreground.b, 0.16)
     visible: turn.answerable && said.selectedText.trim() !== "" && page.chatSelection === said
-    x: Math.min(said.x + end.x + page.sp(4), turn.width - width)
-    y: said.y + end.y + end.height + page.sp(2)
-    z: 2
-    width: answerWord.implicitWidth + page.sp(12)
-    height: answerWord.implicitHeight + page.sp(4)
+    x: Math.max(0, Math.min(said.x + start.x - page.sp(2), turn.width - width))
+    y: said.y + start.y - height - page.sp(8)
+    z: 3
+    width: toolRow.implicitWidth + page.sp(22)
+    height: toolRow.implicitHeight + page.sp(12)
     radius: Style.cornerRadius
-    color: page.background
+    color: page.sunk
     border.width: 1
-    border.color: answerArea.containsMouse ? page.accent : page.faint
-    Text {
-      id: answerWord
+    border.color: edge
+    Row {
+      id: toolRow
       anchors.centerIn: parent
-      textFormat: Text.PlainText
-      text: "reply"
-      color: answerArea.containsMouse ? page.accent : page.dim
-      font.family: page.fontFamily
-      font.styleName: page.fontStyle
-      font.pixelSize: Math.round(page.textSize * 0.78)
+      spacing: page.sp(18)
+      Text {
+        anchors.verticalCenter: parent.verticalCenter
+        textFormat: Text.PlainText
+        text: "reply"
+        color: toolArea.containsMouse && page.handOn ? page.accent : page.foreground
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.bodySmall)
+      }
+      KeyCaps {
+        anchors.verticalCenter: parent.verticalCenter
+        page: turn.page
+        key: page.keyName("chatAnswer")
+      }
     }
     MouseArea {
-      id: answerArea
+      id: toolArea
       anchors.fill: parent
       hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
       onClicked: turn.answerSelection()
     }
-    Tip { host: turn.page; shown: answerArea.containsMouse; text: turn.page.tip("Reply to these words", "chatAnswer") }
   }
 }

@@ -1204,7 +1204,10 @@ from 2026-09/10 and still stand.
   time … my first answer stays connected to the first passage"; redone the
   same evening as design A, after the first try lost a reply and had two
   boxes that looked alike). Select words in one of the agent's answers,
-  Ctrl+R or "reply" at the selection's end: the pane's one box becomes a
+  Ctrl+R, "reply" in a toolbar over the selection (the hover hints' darker
+  paper, a faint edge, the word and its keycaps set apart; KeyCaps.qml), or
+  the offer over the box ("↩ reply to “…”", its words in the accent, the
+  frame faint; ReplyOffer.qml): the pane's one box becomes a
   reply to them — a bar inside it ("↩ replying to ② “…” × esc"), the label
   REPLY n OF n, keys that say "Enter attaches · Esc cancels", the passage
   lit and numbered in the answer; what the box held is set aside and comes
