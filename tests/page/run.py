@@ -1809,7 +1809,8 @@ def checks() -> int:
         # or an open task of another day; Backspace in the empty box lets
         # go of the last; the turn keeps them.
         chips = lambda: json.loads(p.call("dayChips"))
-        check(chips() == [], f"a block that is not a task does not attach itself ({chips()})")
+        check([(c["kind"], c.get("auto")) for c in chips()] == [("block", True)] and "ask the dean" in chips()[0]["head"],
+              f"the paragraph under the cursor attaches itself too, as a block (the student's call, 2026-11-18) ({chips()})")
         p.call("dayKey", 0x01000000, 0)
         p.call("cursorEnd")
         p.call("type", "\n\n- [ ] email the dean about the shortlist")

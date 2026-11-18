@@ -1071,9 +1071,11 @@ Small, when passing by:
        (earlier days and today's other chats folded to a line each,
        `FoldLine.qml`, `conversation --view`); "about this" (a task's or
        a block's chat with what was said about it elsewhere,
-       `conversation --elsewhere`). Left: `@` for a note or a paper, more
-       than one subject in a task's own chat, the two pane components
-       made one reading the log, the old stores of turns retired. Watch:
+       `conversation --elsewhere`). The same day: any block under the
+       cursor attaches itself, a paragraph too; `@` adds notes and papers
+       the agent may see (never a private one). Moved after slice 3: more
+       than one subject in a task's own chat, the two pane components made
+       one reading the log, the old stores of turns retired. Watch:
        is the automatic chip right (how often `chip auto-removed` in the
        usage log), and are the folded lines read or scrolled past?
     3. One voice: one prompt; the morning line and the planner's

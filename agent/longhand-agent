@@ -3707,6 +3707,64 @@ def block_subjects(stamp: str, visible: list[dict], boxes: list[dict], h: str, r
 
 
 REFS_MAX = 6          # what one message may point at
+REF_NOTE_MAX = 12_000  # characters of a note pointed at, carried with the message
+
+
+def file_ref(cfg: dict, paths: Paths, rel: str) -> dict | None:
+    """A note or a paper pointed at with `@` in the day's chat (One
+    conversation, slice 2): only one the agent may see anyway — switched on
+    in Settings, not never-shared, not marked private, not a day before the
+    horizon. Asking about a private note stays in that note's own chat,
+    where asking is the consent (the student's choice, 2026-11-18). A note
+    comes whole (its private callouts left out, what looks like a secret
+    withheld), up to REF_NOTE_MAX; a paper by its name, read when the agent
+    asks to."""
+    rel = str(rel or "").strip().lstrip("/")
+    root = paths.vault.resolve()
+    f = (root / rel).resolve()
+    if root not in f.parents or not f.is_file() or f.suffix.lower() not in (".md", ".pdf"):
+        return None
+    rel = str(f.relative_to(root))
+    if not note_shared(cfg, paths, rel):
+        return None
+    kind = "paper" if f.suffix.lower() == ".pdf" else "note"
+    s = f"{kind}:{rel}"
+    out = {"file": rel, "kind": kind, "subjects": [s], "names": {s: f.stem}, "head": f.stem, "text": ""}
+    if kind == "note":
+        shown = [b for b in visible_blocks(blocklib.split(f.read_text(errors="replace"))) if b["kind"] != "frontmatter"]
+        bad = searchlib.leaks([b["text"] for b in shown])
+        text = "\n\n".join("[withheld: looked like a secret]" if i in bad else searchlib.mask(b["text"])
+                            for i, b in enumerate(shown))
+        out["text"] = text[:REF_NOTE_MAX] + ("\n\n[…cut here: ask to read it whole]" if len(text) > REF_NOTE_MAX else "")
+    return out
+
+
+def file_refs_list(cfg: dict, paths: Paths) -> list[dict]:
+    """What `@` may offer in the day's chat besides blocks and tasks: every
+    note and paper the agent may see (`file_ref`'s rules), newest first.
+    Daily notes are left to their blocks and tasks."""
+    on = searchlib.switched(paths.vault, cfg)
+    daily = str(cfg["daily"]["dir"]).strip("/")
+    out = []
+    for f in searchlib.files(paths.vault, on, {}, horizon_hide(cfg)):
+        rel = str(f.relative_to(paths.vault))
+        if f.suffix.lower() not in (".md", ".pdf") or rel.startswith(daily + "/"):
+            continue
+        if any(part.startswith((".", "_")) for part in Path(rel).parts):
+            continue
+        try:
+            st = f.stat()
+            if f.suffix.lower() == ".md":
+                with open(f, errors="replace") as fh:
+                    head = fh.read(600)
+                if head.startswith("---") and re.search(r"^agent:\s*false\s*$", head, re.M):
+                    continue
+        except OSError:
+            continue
+        out.append({"rel": rel, "kind": "paper" if f.suffix.lower() == ".pdf" else "note", "name": f.stem,
+                    "at": st.st_mtime})
+    out.sort(key=lambda x: -x["at"])
+    return out
 
 
 def stamp_note(cfg: dict, stamp: str, cache: dict) -> tuple[list[dict], list[dict], bool]:
@@ -3733,6 +3791,14 @@ def resolve_refs(cfg: dict, today: str, asked: list[dict], cache: dict | None = 
     cache = {} if cache is None else cache
     out, gone, seen = [], 0, set()
     for r in [r for r in asked if isinstance(r, dict)][:REFS_MAX]:
+        if r.get("file"):
+            fr = file_ref(cfg, Paths(cfg, stamp_date(cfg, today) or dt.date.today()), r["file"])
+            if fr is None:
+                gone += 1
+            elif ("file", fr["file"]) not in seen:
+                seen.add(("file", fr["file"]))
+                out.append(fr)
+            continue
         stamp = str(r.get("date") or today)
         blks, boxes, hidden = stamp_note(cfg, stamp, cache)
         block = None
@@ -3757,15 +3823,25 @@ def refs_parts(refs: list[dict], gone: int, today: str) -> list[str]:
     """The payload's words for what the student points at."""
     def quoted(r):
         return "\n".join("> " + l for l in r["text"].split("\n"))
+    files = [r for r in refs if r.get("file")]
+    blocks_ = [r for r in refs if not r.get("file")]
     out = []
-    if len(refs) == 1 and refs[0]["date"] == today:
-        out = ["", "# The block the student points at", "", quoted(refs[0])]
-    elif refs:
+    if len(blocks_) == 1 and blocks_[0]["date"] == today:
+        out = ["", "# The block the student points at", "", quoted(blocks_[0])]
+    elif blocks_:
         out = ["", "# The blocks the student points at", ""]
-        for r in refs:
+        for r in blocks_:
             out += [("In today's note" if r["date"] == today else f"In the note of {r['date']}")
                     + (" (a task):" if r["kind"] == "task" else ":"), "", quoted(r), ""]
         out.pop()
+    for r in files:
+        if r["kind"] == "note":
+            out += ["", f"# The note the student points at: `{r['file']}`", "", "(its private callouts are left out)",
+                    "", r["text"] or "(empty)"]
+        else:
+            out += ["", f"# The paper the student points at: `{r['file']}`", "",
+                    f"Its text is not in this message. To answer about it, ask to read it: `read` with "
+                    f"{{\"file\": \"{r['file']}\"}}."]
     if gone:
         out += ["", f"({gone} more they pointed at cannot be shown to you: private, or no longer there.)"]
     return out
@@ -4043,6 +4119,10 @@ def cmd_conversation(cfg: dict, args) -> int:
     today's; `--view` the pane's "everything"; `--elsewhere` what was said
     about a task (`--task`) or a block (`--date`, `--hash`) outside its own
     chat."""
+    if args.files:
+        print(json.dumps({"files": [{k: x[k] for k in ("rel", "kind", "name")}
+                                    for x in file_refs_list(cfg, Paths(cfg, dt.date.today()))]}, ensure_ascii=False))
+        return 0
     added = convo_merge(cfg, everything=args.merge)
     turns = convo_log(cfg).read()
     if args.view:
@@ -4520,7 +4600,7 @@ def cmd_day(cfg: dict, args) -> int:
         raise Fail("--refs is not a JSON list")
     refs, gone = resolve_refs(cfg, paths.stamp, asked)
     pointed = refs_parts(refs, gone, paths.stamp)
-    first_block = next((r["hash"] for r in refs if r["date"] == paths.stamp), "")
+    first_block = next((r["hash"] for r in refs if not r.get("file") and r["date"] == paths.stamp), "")
     thread = f"day:{paths.stamp}"
     subjects = [thread] + [s for r in refs for s in r["subjects"]]
     carried = list(day.get("memory") or []) if day["session"] else []
@@ -4562,7 +4642,8 @@ def cmd_day(cfg: dict, args) -> int:
     if first_block:
         turn["block"] = first_block
     if refs:
-        turn["refs"] = [{k: r[k] for k in ("date", "hash", "kind", "head")} for r in refs]
+        turn["refs"] = [{k: r[k] for k in ("file", "kind", "head")} if r.get("file") else
+                        {k: r[k] for k in ("date", "hash", "kind", "head")} for r in refs]
     if result["error"] != STOPPED:
         day["turns"].append(turn)
     if result["error"] == STOPPED:
@@ -5756,6 +5837,7 @@ def main(argv: list[str]) -> int:
     p.add_argument("--turns", action="store_true", help="list every turn")
     p.add_argument("--view", action="store_true", help='the pane\'s "everything": earlier days and today\'s places, a line each')
     p.add_argument("--elsewhere", action="store_true", help="what was said about a task or a block outside its own chat")
+    p.add_argument("--files", action="store_true", help="the notes and papers @ may point at in the day's chat")
     p.add_argument("--task", default="", help="a task's key")
     p.add_argument("--date", default="")
     p.add_argument("--hash", default="")

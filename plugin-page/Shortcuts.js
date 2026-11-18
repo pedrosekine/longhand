@@ -24,7 +24,7 @@
 var places = {
   any: "everywhere",
   note: "in the note",
-  mention: "while @ or # lists tags, or @ blocks and tasks in the day's box",
+  mention: "while @ or # lists tags, or @ blocks, tasks, notes and papers in the day's box",
   cue: "while a box's date lights up as it is typed",
   search: "in find",
   switcher: "in the switcher (Ctrl+O)",
