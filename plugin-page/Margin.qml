@@ -23,6 +23,7 @@ BorderSurface {
   required property Item page
   readonly property var sheet: page.sheetItem
   property alias chatFieldRef: chatField
+  readonly property bool busy: margin.talk ? page.talking || page.thinkHeld === "talk" : page.answering || page.thinkHeld === "margin"
   readonly property string thinkingText: thinking.text
   property alias marginKeysRef: marginKeys
 
@@ -354,15 +355,16 @@ BorderSurface {
       // seconds it says how long it has been — which is the difference
       // between a slow pass and a hung one. The word is the agent's
       // own state, not a spinner: nothing else in the page moves.
+      // How long (2026-11-18); the box below has the square that stops it,
+      // and a click on the word stops it too.
+      Row {
+        width: parent.width
+        visible: margin.busy
       Text {
         id: thinking
         property double since: 0
-        width: parent.width
-        visible: margin.talk ? page.talking || page.thinkHeld === "talk" : page.answering || page.thinkHeld === "margin"
         textFormat: Text.PlainText
-        // How long, and how to stop it (2026-11-18): a click on it stops too.
         text: "thinking" + (thinking.elapsed >= 2 ? " · " + thinking.elapsed + "s" : "")
-          + "  ·  " + page.keyName("marginBack") + " stops"
         property int elapsed: 0
         color: page.dim
         font.family: page.fontFamily
@@ -390,6 +392,7 @@ BorderSurface {
           NumberAnimation { to: 0.35; duration: 900; easing.type: Easing.InOutSine }
           NumberAnimation { to: 1.0; duration: 900; easing.type: Easing.InOutSine }
         }
+      }
       }
 
       Text {
@@ -425,7 +428,9 @@ BorderSurface {
       height: implicitHeight
       visible: page.marginOpen || margin.talk
       readOnly: margin.talk && !page.talkCanSend
-      placeholderText: margin.talk && !page.talkCanSend ? "" : "…"
+      placeholderText: margin.busy ? page.keyName("marginBack") + " stops" : margin.talk && !page.talkCanSend ? "" : "…"
+      busy: margin.busy
+      onStop: page.stopAgent(margin.talk ? "talk" : "margin")
       onKeyPressed: function (event) {
         if (page.copyChatSelection(event, chatField)) { event.accepted = true; return }
         if (page.anywhereKey(event)) { event.accepted = true; return }
