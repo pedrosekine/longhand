@@ -1,8 +1,8 @@
 """The day conversation, the runner's side (docs/agent.md, "The day
 conversation", 2026-10-21): one session a day, the day's context on the
-first message and only what is new after, today's other conversations seen
-in full, a block pointed at, a private day, the margin seeing the day's
-last turns, proposals checked and recorded as the planner's are, and the
+first message and only what is new after, what was said elsewhere today
+carried once (the one conversation's memory, convo.py), a block pointed
+at, a private day, the margin seeing what the day's chat said about it, proposals checked and recorded as the planner's are, and the
 day's brief written the morning after — against a stub model, a throwaway
 vault and state.
 
@@ -110,8 +110,8 @@ def main() -> int:
     pay = first["stdin"]
     check("Shortlist: Frauenberger or Neffke." in pay and "# Your knowledge files" in pay,
           "…carrying the day's context: the note and the notebook")
-    check("# Today's other conversations" in pay and "By when do you need it?" in pay and "student: before winter" in pay,
-          "…and today's other conversations, in full")
+    check("# Elsewhere in your one conversation" in pay and "By when do you need it?" in pay and "student: before winter" in pay,
+          "…and what was said elsewhere today (the one conversation's memory)")
     check(pay.rstrip().endswith("what should I do first today?"), "…and what the student says")
     d = state()["day"]
     check(d["session"] == "ses_day" and [t["role"] for t in d["turns"]] == ["student", "agent"]
@@ -128,16 +128,17 @@ def main() -> int:
     check("--session" in second["argv"] and "ses_day" in second["argv"] and second["stdin"] == "",
           "a later message continues the same session, sending no context again")
     msg = second["argv"][-1]
-    check("# Since your last answer, in today's other conversations" in msg and "student: or a bike?" in msg
-          and "before winter" not in msg, "…only what is new in the other conversations")
+    check("# Since then, elsewhere in your one conversation" in msg and "student: or a bike?" in msg
+          and "before winter" not in msg, "…only what is new elsewhere, never what it was given before")
     check("# The block the student points at" in msg and "> - [ ] email the supervisor" in msg,
           "…and the block the student points at")
     check(state()["day"]["turns"][2].get("block") == box["hash"], "the student's turn keeps the block it pointed at")
 
     # Cross-visibility: the margin sees the day's last turns.
     ctx = agent("context", "--trigger", "question", "--hash", box["hash"]).stdout
-    check("# The day conversation, its last turns" in ctx and "Longhand: answer 1" in ctx and "student: and this one?" in ctx,
-          "a block's payload carries the day conversation's last turns")
+    check("# Elsewhere in your one conversation" in ctx and "## About the task “email the supervisor”" in ctx
+          and "Longhand: answer 1" in ctx and "student: and this one?" in ctx,
+          "a block's payload carries what the day's chat said about it, under the task it is")
 
     # Proposing: checked as the planner's are, recorded in the one ledger,
     # the turn keeps their ids; a second time, the same card, not a new one.
