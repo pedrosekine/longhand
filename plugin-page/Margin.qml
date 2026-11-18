@@ -116,39 +116,6 @@ BorderSurface {
         font.styleName: page.fontStyle
         font.pixelSize: page.fs(Style.font.caption)
       }
-      Column {
-        width: marginColumn.width
-        spacing: page.sp(4)
-        visible: page.elsewhereTurns.length > 0
-        FoldLine {
-          page: margin.page
-          width: parent.width
-          day: true
-          unfolded: page.elsewhereOpen
-          head: page.elsewhereTurns.length + (page.elsewhereTurns.length === 1 ? " turn" : " turns") + " about this elsewhere"
-          tail: page.elsewhereOpen || page.elsewhereTurns.length === 0 ? ""
-            : page.elsewhereTurns[page.elsewhereTurns.length - 1].place + ", " + page.elsewhereTurns[page.elsewhereTurns.length - 1].when
-          onAct: { page.elsewhereOpen = !page.elsewhereOpen; page.used("view", "elsewhere") }
-        }
-        Repeater {
-          model: page.elsewhereOpen ? page.elsewhereTurns : []
-          Text {
-            required property var modelData
-            x: page.sp(14)
-            width: marginColumn.width - x
-            textFormat: Text.PlainText
-            wrapMode: Text.WordWrap
-            maximumLineCount: 6
-            elide: Text.ElideRight
-            text: modelData.when + ", " + modelData.place + "\n" + (modelData.role === "agent" ? "◇ " : "you: ") + modelData.text
-            color: page.dim
-            font.family: page.fontFamily
-            font.styleName: page.fontStyle
-            font.pixelSize: page.fs(Style.font.caption)
-          }
-        }
-      }
-
       // The proposal talked about, pinned at the top: what it is, and why.
       Rectangle {
         id: pinned
@@ -219,41 +186,20 @@ BorderSurface {
         }
       }
 
-      // The box's one conversation with the planner, every proposal's turns.
+      // The task's one conversation: its own turns (its margin, its talks
+      // about proposals) and what was said about it anywhere else, read
+      // from the log, in the order said (page.talkStream).
       Repeater {
-        model: margin.talk ? page.talkTurns : []
+        model: margin.talk ? page.talkStream : []
         Column {
           required property var modelData
           width: marginColumn.width
           spacing: page.sp(2)
-          ChatTurn {
+          Turn {
             page: margin.page
-            mine: modelData.role !== "agent"
-            text: modelData.error ? "could not answer: " + page.sayPlanError(modelData.error) : modelData.text
-            color: modelData.error ? page.urgent : page.foreground
-          }
-          Text {
-            visible: text !== ""
-            textFormat: Text.PlainText
-            text: modelData.role !== "agent" ? ""
-              : [modelData.who === "planner" ? "the planner" : "",
-                 modelData.settled === "accept" ? "◇ settled: accepted" : modelData.settled === "decline" ? "◇ settled: declined"
-                 : modelData.revised ? "◇ revised the proposal" : ""].filter(function (x) { return x !== "" }).join(" · ")
-            color: page.faint
-            font.family: page.fontFamily
-            font.styleName: page.fontStyle
-            font.pixelSize: page.fs(Style.font.caption)
-          }
-          Text {
-            visible: modelData.role === "agent" && (modelData.unoffered || []).length > 0
             width: parent.width
-            textFormat: Text.PlainText
-            wrapMode: Text.WordWrap
-            text: "◇ not offered as a card: " + (modelData.unoffered || []).join("; ")
-            color: page.faint
-            font.family: page.fontFamily
-            font.styleName: page.fontStyle
-            font.pixelSize: page.fs(Style.font.caption)
+            t: modelData
+            onLinkActivated: function (link) { page.openCitation(link) }
           }
           // What the margin agent proposed in the task's chat: its cards,
           // under the answer that made them, as beside the note
@@ -346,7 +292,7 @@ BorderSurface {
       // what changes, the day as a pill. Done only when the student says
       // so: Enter on a card runs it through the CLI.
       Repeater {
-        model: margin.talk ? [] : page.marginRows
+        model: margin.talk ? [] : page.marginStream
         Column {
           id: row
           required property var modelData
@@ -357,35 +303,12 @@ BorderSurface {
           width: marginColumn.width
           spacing: page.sp(2)
 
-          ChatTurn {
+          Turn {
             visible: !row.isCard
             page: margin.page
-            mine: row.turn.role !== "agent"
-            text: row.turn.error ? "could not answer: " + page.sayPlanError(row.turn.error) : row.turn.text || ""
-            color: row.turn.error ? page.urgent : page.foreground
-          }
-          Text {
-            visible: !row.isCard && row.turn.who === "planner" && row.turn.role === "agent"
-            textFormat: Text.PlainText
-            text: "the planner"
-            color: page.faint
-            font.family: page.fontFamily
-            font.styleName: page.fontStyle
-            font.pixelSize: page.fs(Style.font.caption)
-          }
-          // What it proposed that local code did not offer: said here, as
-          // in the day's conversation, so a reply pointing at a card that
-          // is not there is not the last word.
-          Text {
-            visible: !row.isCard && row.turn.role === "agent" && (row.turn.unoffered || []).length > 0
             width: parent.width
-            textFormat: Text.PlainText
-            wrapMode: Text.WordWrap
-            text: "◇ not offered as a card: " + (row.turn.unoffered || []).join("; ")
-            color: page.faint
-            font.family: page.fontFamily
-            font.styleName: page.fontStyle
-            font.pixelSize: page.fs(Style.font.caption)
+            t: row.turn
+            onLinkActivated: function (link) { page.openCitation(link) }
           }
 
           MarginCard {
@@ -467,21 +390,40 @@ BorderSurface {
     anchors.rightMargin: margin.contentRightInset
     anchors.bottom: parent.bottom
     anchors.bottomMargin: margin.contentBottomInset
-    height: chatField.visible ? chatField.implicitHeight + (aboutChips.visible ? aboutChips.height + page.sp(6) : 0) : 0
+    height: chatField.visible ? chatField.implicitHeight + above.height + (above.height > 0 ? page.sp(6) : 0) : 0
 
-    // What this chat is about: its one chip. Letting it go leaves for the
-    // day's chat, with what was typed.
-    Chips {
-      id: aboutChips
-      page: margin.page
+    // Over the box, as in the day's: what `@` offers, then what this
+    // message is about — this chat's own thing (letting it go leaves for
+    // the day's chat, with what was typed) and what `@` added.
+    Column {
+      id: above
       anchors.left: parent.left
       anchors.right: parent.right
       anchors.bottom: chatField.top
-      anchors.bottomMargin: page.sp(6)
-      fixed: true
-      visible: chatField.visible && page.aboutChip !== null
-      refs: page.aboutChip ? [page.aboutChip] : []
-      onDrop: page.aboutToDay()
+      anchors.bottomMargin: height > 0 ? page.sp(6) : 0
+      spacing: page.sp(6)
+      MentionList {
+        page: margin.page
+        width: parent.width
+        shown: chatField.visible && !!page.dayMention && page.dayMention.margin
+        onPicked: chatField.forceActiveFocus()
+      }
+      Chips {
+        id: aboutChips
+        page: margin.page
+        width: parent.width
+        fixed: true
+        visible: chatField.visible && page.aboutChip !== null
+        refs: page.aboutChip ? [page.aboutChip] : []
+        onDrop: page.aboutToDay()
+      }
+      Chips {
+        page: margin.page
+        width: parent.width
+        visible: chatField.visible && page.marginRefs.length > 0
+        refs: page.marginRefs
+        onDrop: function (i) { page.marginRefs = page.marginRefs.filter(function (r, k) { return k !== i }); chatField.forceActiveFocus() }
+      }
     }
 
     ChatField {
@@ -493,11 +435,15 @@ BorderSurface {
       height: implicitHeight
       visible: page.marginOpen || margin.talk
       readOnly: margin.talk && !page.talkCanSend
-      placeholderText: margin.busy ? page.keyName("marginBack") + " stops" : margin.talk && !page.talkCanSend ? "" : "…"
+      placeholderText: margin.busy ? page.keyName("marginBack") + " stops" : margin.talk && !page.talkCanSend ? ""
+        : page.marginCanPoint ? "@ points at a task, a note, a paper…" : "…"
       busy: margin.busy
       onStop: page.stopAgent(margin.talk ? "talk" : "margin")
+      onTextChanged: Qt.callLater(page.updateMarginMention)
+      onCursorPositionChanged: Qt.callLater(page.updateMarginMention)
       onKeyPressed: function (event) {
         if (page.copyChatSelection(event, chatField)) { event.accepted = true; return }
+        if (page.marginMentionKey(event)) { event.accepted = true; return }
         if (page.anywhereKey(event)) { event.accepted = true; return }
         if (margin.talk) {
           if (Sc.hit(event, "chatSend")) page.sendTalk()

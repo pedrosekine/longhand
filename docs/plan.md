@@ -1073,9 +1073,11 @@ Small, when passing by:
        a block's chat with what was said about it elsewhere,
        `conversation --elsewhere`). The same day: any block under the
        cursor attaches itself, a paragraph too; `@` adds notes and papers
-       the agent may see (never a private one). Moved after slice 3: more
-       than one subject in a task's own chat, the two pane components made
-       one reading the log, the old stores of turns retired. Watch:
+       the agent may see (never a private one). The rest, built after
+       slice 4: `Turn.qml` draws a turn in every pane; "about this" is one
+       stream with what was said elsewhere, read from the log; `@` and
+       chips in a task's or a block's chat. Each place's store stays, by
+       the student's choice. Watch:
        is the automatic chip right (how often `chip auto-removed` in the
        usage log), and are the folded lines read or scrolled past?
     3. ~~One voice~~ *built 2026-11-18*: one agent (`longhand-day.md`)

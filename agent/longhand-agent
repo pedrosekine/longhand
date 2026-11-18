@@ -1533,8 +1533,14 @@ def cmd_chat(cfg: dict, args) -> int:
     payload_file = paths.payloads / f"{stamp}-chat-{args.hash}.md"
     at = dt.datetime.now().isoformat(timespec="seconds")
 
-    refs, _ = resolve_refs(cfg, tpaths.stamp, [{"date": paths.stamp, "hash": about["hash"]}]) if about else ([], 0)
-    pointed = [""] + CHAT_INTRO.split("\n") + refs_parts(refs, 0, tpaths.stamp)
+    # The block, and what else the message points at (the chips above the
+    # box: `--refs`, slice 2 of "One conversation", 2026-11-18).
+    try:
+        more = list(json.loads(args.refs)) if getattr(args, "refs", "") else []
+    except (ValueError, TypeError):
+        raise Fail("--refs is not a JSON list")
+    refs, gone = resolve_refs(cfg, tpaths.stamp, ([{"date": paths.stamp, "hash": about["hash"]}] if about else []) + more)
+    pointed = [""] + CHAT_INTRO.split("\n") + refs_parts(refs, gone, tpaths.stamp)
     tag = project_of_block(visible, about) if about else ""
     _, _, open_props = box_thread(cfg, paths, about) if about else ("", [], [])
     props_lines = ["# Your open proposals about this box (the student settles them in the dashboard, or here)", ""] + \
@@ -1548,6 +1554,7 @@ def cmd_chat(cfg: dict, args) -> int:
         pointed += ["", f"# Documents filed for #{tag} (an index only: their contents are not available to you; ask to"
                         " read one in `read` by its name)", ""] + doc_lines(docs)
     subjects, _ = block_subjects(paths.stamp, visible, tasklib.scan(text), args.hash, rec, about)
+    subjects += [s for r in refs[1:] for s in r["subjects"] if s not in subjects]
     thread = margin_thread(paths.stamp, rec, args.hash)
     carried = list(rec.get("memory") or []) if session else []
     mem, mem_ids = convo_memory(cfg, subjects, thread, carried, again=bool(session))
@@ -1568,6 +1575,8 @@ def cmd_chat(cfg: dict, args) -> int:
         parts = [lang, ""]
         if now:
             parts += ["# The block now reads", "", "\n".join("> " + l for l in now["text"].split("\n")), ""]
+        if more:
+            parts += refs_parts(refs[1:] if about else refs, gone, tpaths.stamp)[1:] + [""]
         if mem:
             parts += mem[1:] + [""]
         gone = next((tt.get("unoffered") or [] for tt in reversed(rec.get("chat") or []) if tt["role"] == "agent"), [])
@@ -1628,6 +1637,11 @@ def cmd_chat(cfg: dict, args) -> int:
             r["proposable"] = digest
             r["docs_seen"] = sorted(d["name"] for d in docs)
             r["props_seen"] = props_seen
+            asked_turn = next((tt for tt in reversed(r.get("chat") or []) if tt.get("role") == "student"), None)
+            extra = refs[1:] if about else refs
+            if asked_turn is not None and extra:
+                asked_turn["refs"] = [{k: x[k] for k in ("file", "kind", "head")} if x.get("file") else
+                                      {k: x[k] for k in ("date", "hash", "kind", "head")} for x in extra]
             last = next((tt for tt in reversed(r.get("chat") or []) if tt.get("role") == "agent"), None)
             opened = open_targets(cfg, reply.get("open") or [])
             if last is not None and (fetched["searched"] or fetched["files"] or filed or opened):
@@ -3929,11 +3943,17 @@ def state_turns(cfg: dict, paths: Paths, state: dict) -> list[dict]:
         last = str(rec.get("at") or "")
         if rec.get("reply"):
             out.append(convolib.turn("margin", thread, "agent", rec["reply"], last, subjects, names, closed=hidden))
+        now_s, now_n = subjects, names
         for t in rec.get("chat") or []:
             if not isinstance(t, dict) or t.get("role") not in ("student", "agent"):
                 continue
             last = str(t.get("at") or last)
-            out.append(convolib.turn("margin", thread, t["role"], str(t.get("text") or ""), last, subjects, names,
+            if t["role"] == "student":            # what else it pointed at; its answer is about the same
+                now_s, now_n = subjects, names
+                if isinstance(t.get("refs"), list) and not hidden:
+                    for r in resolve_refs(cfg, stamp, t["refs"], {})[0]:
+                        now_s, now_n = now_s + [s for s in r["subjects"] if s not in now_s], dict(now_n, **r["names"])
+            out.append(convolib.turn("margin", thread, t["role"], str(t.get("text") or ""), last, now_s, now_n,
                                      closed=hidden, error=t.get("error", "")))
     day_s = f"day:{stamp}"
     for o in state.get("observations") or []:
@@ -5988,6 +6008,7 @@ def main(argv: list[str]) -> int:
     p = sub.add_parser("chat")
     p.add_argument("--hash", required=True)
     p.add_argument("--message", required=True)
+    p.add_argument("--refs", default="", help='what else the message points at, JSON, as `day --refs`')
     p.add_argument("--date", default="")
     p = sub.add_parser("ack")
     p.add_argument("--hash", required=True)

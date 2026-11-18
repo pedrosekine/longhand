@@ -1270,7 +1270,6 @@ Item {
   // only this place's): the day's chat pointing at it, another day's
   // margin for the same task. `longhand-agent conversation --elsewhere`.
   property var elsewhere: null
-  property bool elsewhereOpen: false
   readonly property string elsewhereWant: {
     if (root.talkOpen) {
       var d = root.talkData
@@ -1282,11 +1281,11 @@ Item {
     return ""
   }
   property string elsewhereFor: ""
-  onElsewhereWantChanged: root.loadElsewhere()
+  onElsewhereWantChanged: { root.marginRefs = []; root.loadElsewhere() }
   function loadElsewhere() {
     var w = root.elsewhereWant
     if (w === root.elsewhereFor && root.elsewhere) return
-    if (w.split("|")[0] !== root.elsewhereFor.split("|")[0] || w === "") { root.elsewhere = null; root.elsewhereOpen = false }
+    if (w.split("|")[0] !== root.elsewhereFor.split("|")[0] || w === "") root.elsewhere = null
     if (w === "" || !svc.configured) { root.elsewhereFor = ""; return }
     var parts = w.split("|")
     var cmd = [svc.runner, "conversation", "--elsewhere"]
@@ -1299,6 +1298,24 @@ Item {
     elsewhereProc.running = true
   }
   readonly property var elsewhereTurns: root.elsewhere && root.elsewhereFor === root.elsewhereWant ? (root.elsewhere.turns || []) : []
+  // "About this", one stream: a task's or a block's own turns, and those
+  // said about it anywhere else (from the log), in the order said. A turn
+  // with no time keeps its place after the one before it.
+  function streamed(own, wrap) {
+    var rows = [], last = ""
+    own.forEach(function (r, i) {
+      var at = r.turn ? String(r.turn.at || "") : r.at !== undefined ? String(r.at || "") : ""
+      last = at || last
+      rows.push({ at: last, n: i, row: r })
+    })
+    root.elsewhereTurns.forEach(function (e, i) {
+      rows.push({ at: String(e.at || ""), n: -1000 + i, row: wrap(Object.assign({ elsewhere: true }, e)) })
+    })
+    rows.sort(function (a, b) { return a.at < b.at ? -1 : a.at > b.at ? 1 : a.n - b.n })
+    return rows.map(function (x) { return x.row })
+  }
+  readonly property var talkStream: root.talkOpen ? root.streamed(root.talkTurns, function (e) { return e }) : []
+  readonly property var marginStream: root.marginOpen ? root.streamed(root.marginRows, function (e) { return { turn: e } }) : root.marginRows
 
   // What a task's or a block's chat is about, as its one chip; letting it
   // go leaves for the day's chat with what was typed.
@@ -1548,22 +1565,32 @@ Item {
   // note calls a project: the list narrows as you type, newest writing
   // first, never a private block; Enter or Tab makes it the "↳" the next
   // message carries.
-  property var dayMention: null         // { start, query, items: [{ hash, head }] }
+  property var dayMention: null         // { start, query, items: [{ hash, head }], margin }
   property int dayMentionFocus: 0
-  function updateDayMention() {
-    var f = dayPane.dayFieldRef
-    if (root.paper.room) { root.paper.updateMention(); return }
+  // What a task's or a block's chat points at besides its own thing (its
+  // chips after the fixed one): `@` adds tasks, notes and papers there too
+  // (slice 2 of "One conversation").
+  property var marginRefs: []
+  readonly property bool marginCanPoint: (root.marginOpen && !root.projectOpen) || (root.talkOpen && !root.talkToPlanner)
+  function updateMarginMention() { root.updateDayMention(true) }
+  function updateDayMention(inMargin) {
+    inMargin = inMargin === true
+    var f = inMargin ? margin.chatFieldRef : dayPane.dayFieldRef
+    if (!inMargin && root.paper.room) { root.paper.updateMention(); return }
     var m = f.text.substring(0, f.cursorPosition).match(/(^|\s)@([^\s@]*)$/)
-    if (!m || !root.dayCanSend) { root.dayMention = null; return }
+    if (!m || (inMargin ? !root.marginCanPoint : !root.dayCanSend)) { root.dayMention = null; return }
     var q = m[2].toLowerCase()
-    var items = Blocks.split(editor.text).filter(function (b) {
+    // Beside the dashboard the note in the sheet is not what is talked
+    // about: its blocks are offered only from the note.
+    var noteBlocks = !inMargin || (root.marginOpen && root.centerView === "note" && root.dayNote)
+    var items = (noteBlocks ? Blocks.split(editor.text) : []).filter(function (b) {
       return !b.private && b.kind !== "frontmatter" && b.text.trim() !== "" && (q === "" || b.text.toLowerCase().indexOf(q) >= 0)
     }).reverse().slice(0, root.noteRoom ? 8 : 5).map(function (b) {
       return { hash: b.hash, head: root.blockHead(b.hash), kind: /^\s*[-*+] \[.\] /.test(b.text.split("\n")[0]) ? "task" : "block" }
     })
     // …and, in the day's chat, the open tasks of other days (slice 2 of
     // "One conversation"): a task is talked about from anywhere.
-    if (!root.noteRoom) {
+    if (inMargin || !root.noteRoom) {
       var seen = {}
       items = items.concat(root.tasks.filter(function (t) {
         var name = root.taskName(t)
@@ -1583,25 +1610,31 @@ Item {
           return { file: f.rel, kind: f.kind, name: f.name, head: f.kind + " · " + f.name }
         }))
     }
-    root.dayMention = { start: f.cursorPosition - m[2].length - 1, query: m[2], items: items }
+    root.dayMention = { start: f.cursorPosition - m[2].length - 1, query: m[2], items: items, margin: inMargin }
     if (root.dayMentionFocus > items.length - 1) root.dayMentionFocus = Math.max(0, items.length - 1)
+  }
+  function addMarginRef(r) {
+    var k = root.refKey(r)
+    if (root.marginRefs.some(function (x) { return root.refKey(x) === k })) return
+    root.marginRefs = root.marginRefs.concat([r]).slice(-5)
   }
   function pickDayMention(i) {
     var m = root.dayMention
     var it = m && m.items[i]
     if (!it) return
-    if (it.mark) {
+    if (it.mark && !m.margin) {
       dayPane.dayFieldRef.remove(m.start, dayPane.dayFieldRef.cursorPosition)
       root.paper.attach(it.mark)
       root.dayMention = null
       root.used("paper-talk", "caret")
       return
     }
-    var f = dayPane.dayFieldRef
+    var f = m.margin ? margin.chatFieldRef : dayPane.dayFieldRef
     f.remove(m.start, f.cursorPosition)
-    if (it.file) root.addDayRef({ file: it.file, head: it.name, kind: it.kind })
-    else if (it.task) root.addDayRef({ date: it.task.date, line: it.task.line, head: it.name, kind: "task" })
-    else root.addDayRef({ date: root.noteRoom ? "" : svc.noteDate, hash: it.hash, head: it.head, kind: it.kind || "block" })
+    var add = m.margin ? root.addMarginRef : root.addDayRef
+    if (it.file) add({ file: it.file, head: it.name, kind: it.kind })
+    else if (it.task) add({ date: it.task.date, line: it.task.line, head: it.name, kind: "task" })
+    else add({ date: root.noteRoom ? "" : svc.noteDate, hash: it.hash, head: it.head, kind: it.kind || "block" })
     root.dayMention = null
     root.used("day", it.file ? "at-" + it.kind : it.task ? "at-task" : "at")
   }
@@ -3025,11 +3058,12 @@ Item {
   // `hash` is the record's, `mark` the block's as the note has it now (they
   // differ once a box answered has been ticked): the record is asked, the
   // block is the one drawn as away.
-  function requestChat(hash, message, mark) {
+  function requestChat(hash, message, mark, refs) {
     if (!root.agentOn) return
     root.markSending([mark || hash])
     root.flush()
-    root.enqueue([svc.runner, "chat", "--hash", hash, "--message", message, "--date", svc.noteDate], mark || hash)
+    root.enqueue([svc.runner, "chat", "--hash", hash, "--message", message, "--date", svc.noteDate]
+                 .concat(refs && refs.length > 0 ? ["--refs", JSON.stringify(refs)] : []), mark || hash)
     root.holdThinking("margin")
   }
 
@@ -5146,8 +5180,10 @@ Item {
     root.pendingTalk = { thread: root.talkThread, text: msg }
     margin.chatFieldRef.text = ""
     var c = root.talkData ? root.talkData.chat : null
+    var refs = root.talkToPlanner ? [] : root.takeMarginRefs()
     talkProc.command = root.talkToPlanner ? [svc.runner, "talk", "--id", String(root.talkId), "--message", msg]
       : [svc.runner, "chat", "--hash", c.hash, "--message", msg, "--date", c.date]
+        .concat(refs.length > 0 ? ["--refs", JSON.stringify(refs)] : [])
     talkProc.running = true
     root.holdThinking("talk")
     root.used("talk", root.talkToPlanner ? "send" : "chat")
@@ -7232,7 +7268,34 @@ Item {
     if (msg === "" || root.currentHash === "") return
     margin.chatFieldRef.text = ""
     root.pendingChat = { hash: root.currentRec, text: msg }
-    root.requestChat(root.currentRec, msg, root.currentHash)
+    root.requestChat(root.currentRec, msg, root.currentHash, root.takeMarginRefs())
+  }
+  // The chips a task's or a block's message carries besides its own
+  // thing, as the runner reads them; the box lets go of them.
+  function takeMarginRefs() {
+    var refs = root.marginRefs.map(function (r) {
+      return r.file ? { file: r.file } : r.hash ? { date: r.date, hash: r.hash } : { date: r.date, line: r.line }
+    })
+    if (refs.length > 0) root.used("chip", "sent-margin-" + refs.length)
+    root.marginRefs = []
+    return refs
+  }
+  // In a task's or a block's box: the `@` list's keys, then Backspace in
+  // the empty box letting go of the last chip it added. True when taken.
+  function marginMentionKey(event) {
+    var m = root.dayMention
+    if (m && m.margin && m.items.length > 0) {
+      if (Sc.hit(event, "mentionUp")) { root.dayMentionFocus = Math.max(0, root.dayMentionFocus - 1); return true }
+      if (Sc.hit(event, "mentionDown")) { root.dayMentionFocus = Math.min(m.items.length - 1, root.dayMentionFocus + 1); return true }
+      if (Sc.hit(event, "mentionPick") || Sc.hit(event, "mentionClass")) { root.pickDayMention(root.dayMentionFocus); return true }
+      if (Sc.hit(event, "mentionClose")) { root.dayMention = null; return true }
+    }
+    if (event.key === Qt.Key_Backspace && margin.chatFieldRef.text === "" && root.marginRefs.length > 0) {
+      root.marginRefs = root.marginRefs.slice(0, -1)
+      root.used("chip", "removed")
+      return true
+    }
+    return false
   }
 
   // The runner has written the turn the page was holding: let go of it, so
@@ -7870,11 +7933,8 @@ Item {
       onStreamFinished: {
         try {
           var d = JSON.parse(text)
-          var same = root.elsewhere && root.elsewhereFor.split("|")[0] === elsewhereProc.asked.split("|")[0]
           root.elsewhere = d
           root.elsewhereFor = elsewhereProc.asked
-          // Short enough to read at once: shown; long: folded to a line.
-          if (!same) root.elsewhereOpen = (d.turns || []).length > 0 && (d.turns || []).length <= 3
         } catch (e) {}
       }
     }

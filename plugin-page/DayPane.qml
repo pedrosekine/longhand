@@ -475,28 +475,11 @@ BorderSurface {
             font.styleName: page.fontStyle
             font.pixelSize: page.fs(Style.font.caption)
           }
-          // The block a message pointed at, over its bubble.
-          Text {
-            visible: modelData.role === "student" && (!!modelData.block || (!!modelData.refs && modelData.refs.length > 0))
-            width: parent.width
-            textFormat: Text.PlainText
-            elide: Text.ElideRight
-            horizontalAlignment: Text.AlignRight
-            // What it was about: its chips, as they were sent.
-            text: modelData.refs && modelData.refs.length > 0
-              ? modelData.refs.map(function (r) { return "↳ " + page.sayChip(r) }).join("   ")
-              : "↳ " + page.blockHead(modelData.block)
-            color: page.faint
-            font.family: page.fontFamily
-            font.styleName: page.fontStyle
-            font.pixelSize: page.fs(Style.font.caption)
-          }
-          ChatTurn {
+          // The turn, drawn as every pane draws one (Turn.qml).
+          Turn {
             page: dayPane.page
-            mine: modelData.role !== "agent"
-            text: modelData.error ? "could not answer: " + page.sayPlanError(modelData.error)
-              : modelData.role === "agent" ? page.linkCitations(modelData.text) : modelData.text
-            color: modelData.error ? page.urgent : page.foreground
+            width: turn.width
+            t: modelData
             onLinkActivated: function (link) { page.openCitation(link) }
           }
           // What it proposed: a card each, the same item as the dashboard's
@@ -613,21 +596,6 @@ BorderSurface {
               }
             }
           }
-          // What it proposed that local code did not offer (refused, or a
-          // key it made up): said here, so a reply pointing at a card that
-          // is not there is not the last word (2026-10-27).
-          Text {
-            visible: modelData.role === "agent" && (modelData.unoffered || []).length > 0
-            width: parent.width
-            textFormat: Text.PlainText
-            wrapMode: Text.WordWrap
-            text: "◇ not offered as a card: " + (modelData.unoffered || []).join("; ")
-            color: page.faint
-            font.family: page.fontFamily
-            font.styleName: page.fontStyle
-            font.pixelSize: page.fs(Style.font.caption)
-          }
-
           // Helpful or not: the student's word on the answer, for the
           // weekly review and the eval cases. A word again takes it back.
           Row {
@@ -776,36 +744,12 @@ BorderSurface {
     anchors.bottomMargin: dayPane.contentBottomInset
     spacing: page.sp(6)
 
-    // `@`: the blocks of the open note to point at.
-    Repeater {
-      model: page.dayMention ? page.dayMention.items : []
-      Rectangle {
-        required property var modelData
-        required property int index
-        width: dayBox.width
-        height: mentionText.implicitHeight + page.sp(4)
-        radius: Style.cornerRadius
-        color: page.dayMentionFocus === index ? Style.selectedFill : "transparent"
-        Text {
-          id: mentionText
-          anchors.left: parent.left
-          anchors.right: parent.right
-          anchors.leftMargin: page.sp(4)
-          anchors.verticalCenter: parent.verticalCenter
-          textFormat: Text.PlainText
-          elide: Text.ElideRight
-          text: "↳ " + modelData.head
-          color: page.foreground
-          font.family: page.fontFamily
-          font.styleName: page.fontStyle
-          font.pixelSize: page.fs(Style.font.bodySmall)
-        }
-        MouseArea {
-          anchors.fill: parent
-          cursorShape: Qt.PointingHandCursor
-          onClicked: { page.dayMentionFocus = index; page.pickDayMention(index); dayField.forceActiveFocus() }
-        }
-      }
+    // `@`: what to point at (MentionList.qml, the same in every box).
+    MentionList {
+      page: dayPane.page
+      width: dayBox.width
+      shown: !!page.dayMention && !page.dayMention.margin
+      onPicked: dayField.forceActiveFocus()
     }
 
     // The marks the next message points at; Backspace in the empty box

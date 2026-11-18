@@ -54,6 +54,8 @@ path = daily / (stem + ".json")
 state = json.loads(path.read_text()) if path.exists() else {"date": stem, "blocks": {}}
 rec = state["blocks"].setdefault(h, {"state": "seen"})
 rec.setdefault("chat", []).append({"role": "student", "text": msg, "at": at})
+if "--refs" in args:                    # kept as sent; the runner names them (tests/test_convo.py)
+    rec["chat"][-1]["refs"] = json.loads(args[args.index("--refs") + 1])
 rec["chat"].append({"role": "agent", "text": "stub answer to: " + msg, "at": at})
 rec["state"] = "reply"
 rec["read"] = False
@@ -1880,6 +1882,42 @@ def checks() -> int:
         p.call("back")
         check(p.wait(lambda: p.call("dayShown") == "true"), "…and leaving it comes back to the day")
         p.call("dayKey", 0x01000000, 0)
+        # "About this" (slice 2, the rest): a task's chat beside the
+        # dashboard is one stream, its own turns and what the day's chat said
+        # about it, read from the log; `@` there adds a task of another day
+        # as a chip, sent with the message.
+        p.call("closePanes")
+        p.call("dash")
+        p.wait(lambda: any(r.get("text") == "email the dean about the shortlist" for r in json.loads(p.call("dashRows"))), 10)
+        p.call("dashFocus", next(i for i, r in enumerate(json.loads(p.call("dashRows"))) if r.get("text") == "email the dean about the shortlist"))
+        p.call("dashKey", 0x43, 0)          # C: its chat
+        stream = lambda: json.loads(p.call("talkStream"))
+        check(p.wait(lambda: any(s["elsewhere"] and s["text"] == "these two" for s in stream()), timeout=12),
+              f"a task's chat shows what the day's chat said about it, in one stream ({stream()})")
+        check(any(s["elsewhere"] and s["place"] == "in the day's chat" for s in stream()), "…each such turn saying where it was said")
+        p.call("chatBoxType", "@rubric")
+        check(p.wait(lambda: any("task · ask about the rubric" in h for h in json.loads(p.call("marginMention")))),
+              f"@ in a task's chat offers a task of another day ({p.call('marginMention')})")
+        p.call("chatBoxKey", 0x01000004)    # Enter: picked
+        check(p.wait(lambda: [r["head"] for r in json.loads(p.call("marginRefs"))] == ["ask about the rubric"])
+              and p.call("chatBoxText") == "", f"…picked, it is a chip of its own, the words gone from the box ({p.call('marginRefs')})")
+        p.call("chatBoxKey", 0x01000003)    # Backspace in the empty box
+        check(json.loads(p.call("marginRefs")) == [], "…Backspace in the empty box lets go of it")
+        p.call("chatBoxType", "@rubric")
+        p.wait(lambda: json.loads(p.call("marginMention")))
+        p.call("chatBoxKey", 0x01000004)
+        p.call("talkSend", "with the rubric?")
+        st_path = p.vault / "agents" / "longhand" / "daily" / f"{TODAY}.json"
+        def asked_refs():
+            for rec in json.loads(st_path.read_text())["blocks"].values():
+                for tt in rec.get("chat") or []:
+                    if tt.get("text") == "with the rubric?":
+                        return tt.get("refs") or []
+            return None
+        check(p.wait(lambda: asked_refs() and asked_refs()[0].get("date") == YDAY and "line" in asked_refs()[0], timeout=15)
+              and json.loads(p.call("marginRefs")) == [],
+              f"…sent with the message, kept on its turn, the box letting go of it ({asked_refs()})")
+        p.call("closePanes")
         # The note as the sections after this one expect it.
         (p.daily / f"{TODAY}.md").write_text(note_before)
         p.open_fresh()

@@ -277,6 +277,21 @@ def runner(tmp: pathlib.Path) -> None:
           and "note:human/Studies/open.md" in last["subjects"] and "paper:human/Studies/paper.pdf" in last["subjects"],
           f"…the turn keeps them, and the log has it about the note and the paper ({last['subjects']})")
 
+    # A block's chat points at more than its block (`chat --refs`): the
+    # message carries it, the turn keeps it, the log files it under it.
+    agent("chat", "--hash", th, "--message", "and the methods note?", "--date", str(today),
+          "--refs", json.dumps([{"file": "human/Studies/open.md"}]))
+    pay = calls()[-1]["stdin"] or calls()[-1]["argv"][-1]
+    check("# The note the student points at: `human/Studies/open.md`" in pay and "Interviews, twelve of them." in pay,
+          "a block's chat may point at a note too, carried with the message")
+    rec = json.loads((agent_dir / "daily" / f"{today}.json").read_text())["blocks"][th]
+    asked = next(x for x in rec["chat"] if x.get("text") == "and the methods note?")
+    last = [json.loads(l) for l in (log / "here.jsonl").read_text().splitlines()]
+    said = next(x for x in last if x["text"] == "and the methods note?")
+    check(asked.get("refs") == [{"file": "human/Studies/open.md", "kind": "note", "head": "open"}]
+          and "note:human/Studies/open.md" in said["subjects"] and "task:" + key in said["subjects"],
+          f"…the turn keeps it, and the log files the message under the task and the note ({said['subjects']})")
+
     # The pane's "everything": earlier days a line each with their places,
     # today's places other than the day's own chat.
     v = convo_("--view")
@@ -309,7 +324,8 @@ def runner(tmp: pathlib.Path) -> None:
     e = json.loads(agent("conversation", "--elsewhere", "--task", key, "--date", str(yday), "--hash", yh).stdout)
     said = [(t["where"], t["text"]) for t in e["turns"]]
     check(("day", "where was I with this?") in said and ("day", "these two together?") in said
-          and not any(w in ("margin", "planner") for w, _ in said) and e["turns"][0]["place"] == "in the day's chat",
+          and not any(w == "planner" or x in ("is mine too long?", "Yes: cut the second paragraph.") for w, x in said)
+          and e["turns"][0]["place"] == "in the day's chat",
           f"about this: what the day's chat said about a task, not its own margin or the planner ({said})")
 
 
