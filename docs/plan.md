@@ -1003,10 +1003,22 @@ Small, when passing by:
     though)"). Parked, not designed. Today a message once sent runs to its
     end: nothing in the pane or in `longhand-agent` stops a run, and a
     conversation (the day's, a block's, a paper's room) only grows.
-    - **Stop:** a key (and the seal, or a mark in the pane) ends the run
-      that is going; what was answered so far is kept and marked stopped,
-      or dropped. Needs: the run killed cleanly through opencode, no
-      half-written state (a proposal, a brief), and the run still logged.
+    - ~~**Stop:**~~ *built 2026-11-18*: Esc in the chat's box while the
+      agent thinks (or a click on "thinking", which now says how long and
+      "Esc stops", and is seen for 0.7 s at least) ends the run. The page
+      sends SIGTERM; `longhand-agent` takes it as a stop for the commands
+      that call a model (run, chat, day, note, talk, plan): the model's
+      process group is ended (`run_child`), the run is logged as
+      `stopped`, no turn is written, and the session stays as it was; a
+      message still queued is taken out. What was sent goes back in the
+      box. Any other command still dies on SIGTERM at once. Every pane:
+      the day's, a note's, a paper's, a block's, a task's. Tests:
+      `tests/test_claude_route.py` (a slow Claude Code stopped, nothing
+      left running), the live check in `tests/page/run.py` (11h);
+      screenshots `tests/page/shots.py --scene stop`, in the vault's
+      `projects/longhand/ux-evidence/`. Left as designed: a stopped run
+      drops what was answered so far (Claude Code and opencode answer
+      whole, not as a stream the page shows).
     - **Rewind:** pick an earlier turn and go back to it; the turns after
       it are dropped (or kept aside to come back to), and the box holds
       that message again to edit and resend.

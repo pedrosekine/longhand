@@ -19,6 +19,8 @@ Run: python3 tests/test_claude_route.py
   chat starts afresh, its turns so far carried in the payload
 - a run Claude Code refuses before it begins says why, keeps the session the
   chat had, and leaves an error turn in the chat, not an empty answer
+- a run stopped from the page (SIGTERM) ends at once, Claude Code with it;
+  it is logged as stopped and leaves no turn in the chat
 """
 import json
 import pathlib
@@ -39,6 +41,11 @@ open(os.path.join(d, "claude_argv.json"), "w").write(json.dumps({"argv": sys.arg
                                                                   "env": {k: v for k, v in os.environ.items()
                                                                           if k.startswith("CLAUDE_CODE_")}}))
 # The transcript Claude Code saves, with what it attached to the run.
+# A slow run, to be stopped: its pid, then a long wait.
+if os.environ.get("STUB_SLOW"):
+    open(os.path.join(d, "slow.pid"), "w").write(str(os.getpid()))
+    import time
+    time.sleep(30)
 # Refused before any conversation, as `--resume <not its own>` is.
 if os.environ.get("STUB_REFUSE"):
     print(json.dumps({"type": "result", "subtype": "error_during_execution", "is_error": True, "num_turns": 0,
@@ -174,6 +181,37 @@ def main() -> int:
         last = s["blocks"][rec_hash]["chat"][-1]
         check(last["role"] == "agent" and "refused" in last.get("error", "") and last["text"] == "",
               "the chat holds the failure, not an empty answer")
+        print("-- stopped from the page")
+        import os, signal, subprocess, time
+        before = len(json.loads(state.read_text())["blocks"][rec_hash]["chat"])
+        t.env["STUB_SLOW"] = "1"
+        (t.stub_dir / "slow.pid").unlink(missing_ok=True)
+        run = subprocess.Popen([sys.executable, str(base.AGENT), "chat", "--hash", rec_hash, "--message", "never mind",
+                                "--date", DAY], env=t.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        for _ in range(100):
+            if (t.stub_dir / "slow.pid").exists():
+                break
+            time.sleep(0.05)
+        t0 = time.time()
+        run.send_signal(signal.SIGTERM)
+        out, err = run.communicate(timeout=15)
+        took = time.time() - t0
+        t.env.pop("STUB_SLOW")
+        pid = int((t.stub_dir / "slow.pid").read_text())
+        gone = False
+        for _ in range(40):
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                gone = True
+                break
+            time.sleep(0.05)
+        s = json.loads(state.read_text())
+        check(took < 5 and run.returncode != 0 and "stopped" in err, f"it ends at once, and says so ({took:.1f}s, {err.strip()[-80:]})")
+        check(gone, "…Claude Code with it, nothing left running")
+        check(len(s["blocks"][rec_hash]["chat"]) == before and s["blocks"][rec_hash]["session"] == "cc-sess",
+              "…no turn in the chat, the session as it was")
+        check(s["runs"][-1]["error"] == "stopped", "…and the run logged as stopped")
         print("-- an API key is billed, and says so")
         t.env["STUB_KEY"] = "ANTHROPIC_API_KEY"
         t.agent("run", "--trigger", "mention", "--hash", at_block["hash"], "--date", DAY)

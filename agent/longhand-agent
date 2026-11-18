@@ -56,6 +56,7 @@ import hashlib
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 import tempfile
@@ -843,6 +844,44 @@ def earlier_turns(turns: list[dict], agent: str = "you") -> list[str]:
     return [f"{agent if t.get('role') == 'agent' else 'student'}: {t['text']}" for t in said]
 
 
+# Stopping a run (2026-11-18, plan item 22's "stop"): the page sends this
+# process SIGTERM. A command that talks to a model takes it as "stop": the
+# model's process (its whole group) is ended, the run is logged as stopped,
+# and no turn is written — the page gives the student's words back to the
+# box. Any other command still dies on it at once, as before.
+STOPPED = "stopped"
+_STOP: dict = {"asked": False, "child": None}
+
+
+def _on_stop(signum, frame) -> None:
+    _STOP["asked"] = True
+    child = _STOP["child"]
+    if child is not None and child.poll() is None:
+        try:
+            os.killpg(child.pid, signal.SIGTERM)
+        except OSError:
+            pass
+
+
+def run_child(cmd: list[str], payload: str, timeout: int, cwd: str, env: dict | None) -> subprocess.CompletedProcess:
+    """A model's process, as subprocess.run would run it, but in a group of
+    its own that a stop ends whole; a stop already asked starts nothing."""
+    if _STOP["asked"]:
+        return subprocess.CompletedProcess(cmd, -signal.SIGTERM, "", "")
+    p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                         cwd=cwd, env=env, start_new_session=True)
+    _STOP["child"] = p
+    try:
+        out, err = p.communicate(payload, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        os.killpg(p.pid, signal.SIGKILL)
+        p.communicate()
+        raise
+    finally:
+        _STOP["child"] = None
+    return subprocess.CompletedProcess(cmd, p.returncode, out, err)
+
+
 def run_claude(cfg: dict, paths: Paths, payload: str, session: str, message: str, env: dict | None) -> dict:
     """One pass through Claude Code (`claude -p`) on the student's own Claude
     sign-in (docs/agent.md, "Reaching a model"). Longhand never touches the
@@ -880,9 +919,8 @@ def run_claude(cfg: dict, paths: Paths, payload: str, session: str, message: str
     # A student's line can start with "- [ ]": after `--` it is never a flag.
     cmd += ["--", message]
     try:
-        proc = subprocess.run(cmd, input=payload, capture_output=True, text=True, timeout=600, cwd=str(paths.cwd),
-                              env=dict(env or os.environ, CLAUDE_CODE_DISABLE_AUTO_MEMORY="1",
-                                       CLAUDE_CODE_DISABLE_ORG_MEMORY="1"))
+        proc = run_child(cmd, payload, 600, str(paths.cwd),
+                         dict(env or os.environ, CLAUDE_CODE_DISABLE_AUTO_MEMORY="1", CLAUDE_CODE_DISABLE_ORG_MEMORY="1"))
     except FileNotFoundError:
         raise Fail(f"Claude Code not found ({cmd[0]})")
     except subprocess.TimeoutExpired:
@@ -950,6 +988,16 @@ def run_claude(cfg: dict, paths: Paths, payload: str, session: str, message: str
 
 def run_model(cfg: dict, paths: Paths, payload: str, session: str = "", message: str = "Context follows on stdin.",
               env: dict | None = None) -> dict:
+    """One pass (`_run_model`); a pass the student stopped says so, its
+    words unused."""
+    out = _run_model(cfg, paths, payload, session, message, env)
+    if _STOP["asked"]:
+        out.update(error=STOPPED, text="")
+    return out
+
+
+def _run_model(cfg: dict, paths: Paths, payload: str, session: str = "", message: str = "Context follows on stdin.",
+               env: dict | None = None) -> dict:
     """Run one pass: through Claude Code when the model is named
     `claude-code/<model>` (`run_claude`), else through opencode.
     Returns {text, session, cost, tokens, events, error}.
@@ -979,8 +1027,7 @@ def run_model(cfg: dict, paths: Paths, payload: str, session: str = "", message:
         cmd += ["--session", session]
     cmd.append(message)
     try:
-        proc = subprocess.run(cmd, input=payload, capture_output=True, text=True, timeout=600,
-                              cwd=str(paths.cwd), env=env)
+        proc = run_child(cmd, payload, 600, str(paths.cwd), env)
     except FileNotFoundError:
         raise Fail(f"opencode not found ({cmd[0]})")
     except subprocess.TimeoutExpired:
@@ -1159,7 +1206,8 @@ def apply(cfg: dict, paths: Paths, trigger: str, fired: list[dict], visible: lis
     # Every block the model saw is now "seen"; the fired ones get the reply.
     for b in visible:
         state["blocks"].setdefault(b["hash"], {"state": "seen", "at": at})
-    if chat:
+    stopped = result["error"] == STOPPED          # it never happened: the box has the words again
+    if chat and not stopped:
         for h in group_of(state, hash_):
             rec = state["blocks"].setdefault(h, {"state": "seen", "at": at})
             if h in keys and "key" not in rec:
@@ -1187,7 +1235,7 @@ def apply(cfg: dict, paths: Paths, trigger: str, fired: list[dict], visible: lis
                 rec["state"] = "reply"
                 rec["reply"] = rec.get("reply") or ""
             listed = fresh
-    elif fired:
+    elif fired and not stopped:
         head = " / ".join(b["text"].split("\n")[0] for b in fired)
         for h in hashes:
             rec = state["blocks"].setdefault(h, {})
@@ -4090,8 +4138,11 @@ def cmd_day(cfg: dict, args) -> int:
     turn = {"role": "student", "text": message, "at": at}
     if args.block:
         turn["block"] = args.block
-    day["turns"].append(turn)
-    if result["error"]:
+    if result["error"] != STOPPED:
+        day["turns"].append(turn)
+    if result["error"] == STOPPED:
+        pass                                             # stopped: no turn, the words go back to the box
+    elif result["error"]:
         day["turns"].append({"role": "agent", "text": "", "error": result["error"], "at": at})
     else:
         day["turns"].append({"role": "agent", "text": reply["reply"], "at": dt.datetime.now().isoformat(timespec="seconds"),
@@ -4399,8 +4450,11 @@ def cmd_note(cfg: dict, args) -> int:
         turn["block"] = args.block
     if marks:
         turn["marks"] = marks
-    talk["turns"].append(turn)
-    if result["error"]:
+    if result["error"] != STOPPED:
+        talk["turns"].append(turn)
+    if result["error"] == STOPPED:
+        pass                                             # stopped: no turn, the words go back to the box
+    elif result["error"]:
         talk["turns"].append({"role": "agent", "text": "", "error": result["error"], "at": at})
     else:
         talk["turns"].append({"role": "agent", "text": reply["reply"], "at": dt.datetime.now().isoformat(timespec="seconds"),
@@ -4601,7 +4655,8 @@ def cmd_talk(cfg: dict, args) -> int:
             resolved = True
         if not (current["kind"] == "question" and settled == "accept"):
             current["reason"] = message       # an answered question keeps its answer instead
-    th = planlib.add_turns(ledger, key, title, [
+    th = {"turns": (ledger.get("threads") or {}).get(key, {}).get("turns") or []} if result["error"] == STOPPED else \
+        planlib.add_turns(ledger, key, title, [
         {"role": "student", "text": message, "at": at, "about": item["id"]},
         {"role": "agent", "text": reply["reply"] or ("(the planner could not answer: " + result["error"][:120] + ")"
                                                      if result["error"] else
@@ -5378,6 +5433,10 @@ def main(argv: list[str]) -> int:
     p.add_argument("--since", default="", help="YYYY-MM-DD; overrides --days")
     p.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
+    # A model's run can be stopped from the page (STOPPED); anything else
+    # still ends on SIGTERM at once.
+    if args.cmd in ("run", "chat", "day", "note", "talk", "plan"):
+        signal.signal(signal.SIGTERM, _on_stop)
     try:
         cfg = load_config()
         return {"run": cmd_run, "chat": cmd_chat, "ack": cmd_ack, "accept": cmd_accept, "tasks": cmd_tasks, "sections": cmd_sections, "project-page": cmd_project_page, "week": cmd_week,

@@ -508,6 +508,11 @@ ShellRoot {
     function heldTurn(): string { return JSON.stringify(page.pendingChat) }
     function chatFocused(): bool { return page.marginFocus === page.currentProposals.length }
     function sendChat(text: string): void { page.pendingChat = { hash: page.currentRec, text: text }; page.requestChat(page.currentRec, text, page.currentHash) }
+    // A key in the margin's chat box, through its own handler (Esc: 0x01000000).
+    function chatBoxKey(key: int): void { page.marginItem.chatFieldRef.keyPressed({ key: key, modifiers: 0, text: "", accepted: false }) }
+    function chatBoxText(): string { return page.marginItem.chatFieldRef.text }
+    function chatBoxClear(): void { page.marginItem.chatFieldRef.text = "" }
+    function thinkingSays(): string { return page.marginItem.thinkingText }
     function reply(): string { var r = page.currentRecord; return r && r.reply ? r.reply : "" }
     function askWord(): string { return Queue.answered(page.currentRecord) ? "reply" : "ask" }
     function insertTag(i: int): void { page.insertTag(page.projects[i]) }

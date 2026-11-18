@@ -370,7 +370,7 @@ var actions = [
   // Esc backs out one level: a block's or a task's conversation to the
   // day's, when that is open (the pane's home); else the pane closes and
   // the keys go back where they were.
-  { id: "marginBack", group: "margin", places: ["margin", "chat"], does: "Back out: to the day's chat if it is open, else close the pane", keys: ["Esc"] }
+  { id: "marginBack", group: "margin", places: ["margin", "chat"], does: "While the agent answers: stop it, your words back in the box; else back out: to the day's chat if it is open, else close the pane", keys: ["Esc"] }
 ]
 
 // The text field's own keys: shown, never moved, and never taken. `keys`

@@ -360,6 +360,23 @@ def scenes(m, p, out, which):
         p.call("switcherType", "de")
         shot("reach-2")
         p.call("switcherKey", 0x01000000, 0)
+    if which == "stop":
+        # Stopping the agent mid-answer (2026-11-18): a task's chat, beside
+        # the dashboard, while it thinks; then Esc, the words back in the box.
+        p.call("dash")
+        p.wait(lambda: any(r.get("kind") == "task" for r in json.loads(p.call("dashRows"))), 8)
+        rows = json.loads(p.call("dashRows"))
+        p.call("dashFocus", next(i for i, r in enumerate(rows) if r.get("kind") == "task"))
+        p.call("dashKey", 0x43, 0)          # C: its chat, beside
+        time.sleep(0.8)
+        p.call("talkSend", "can you give me the long version, with every step?")
+        time.sleep(0.5)
+        shot("stop-0")
+        p.call("chatBoxKey", 0x01000000)    # Esc while it thinks
+        time.sleep(0.3)
+        shot("stop-1")
+        p.call("closePanes")
+        p.call("dash")
     if which == "calm":
         p.call("dash")
         p.wait(lambda: sum(r.get("kind") == "deadline" for r in json.loads(p.call("dashRows"))) >= 3, 10)
@@ -384,7 +401,7 @@ def scenes(m, p, out, which):
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("out", type=pathlib.Path)
-    ap.add_argument("--scene", default="all", choices=["all", "dashboard", "note", "day", "keys", "chat", "project", "acronyms", "answers", "reach", "calm"])
+    ap.add_argument("--scene", default="all", choices=["all", "dashboard", "note", "day", "keys", "chat", "project", "acronyms", "answers", "reach", "calm", "stop"])
     ap.add_argument("--order", default="ask", choices=["ask", "course", "date"])
     ap.add_argument("--root", type=pathlib.Path, default=HERE.parent.parent)
     ap.add_argument("--env", action="append", default=[])
