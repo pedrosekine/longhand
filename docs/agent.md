@@ -650,12 +650,29 @@ a conversation surviving a change of model, the note's look.
      margin for the same task (`conversation --elsewhere`): shown when
      short, folded to a line when long. Ctrl+3 in the pane goes between
      the two views, as it did between the day's chat and a block's.
-   - *Left, and moved after slice 3* (the student agreed, 2026-11-18):
-     more than one subject in a task's own chat, and the two components
-     made one that reads turns and cards from the log, the places'
-     stores of turns retired. A task's chat is answered by another agent
-     than the day's, with a session a block; slice 3 makes them one, and
-     then both are one move, not three.
+   - *The rest, built 2026-11-18 after slice 4:*
+     - **One way to draw a turn** (`Turn.qml`), in every pane — the day's
+       chat, a note's, a paper's, a block's, a task's: what it pointed
+       at, where and when when it was said elsewhere, the words, how a
+       talk ended, what was not offered. `MentionList.qml`, the `@` list,
+       the same in every box.
+     - **"About this" is one stream:** a task's or a block's own turns
+       and what was said about it anywhere else, read from the one
+       conversation's log, in the order said; a turn from elsewhere drawn
+       dim under "19:17, in the day's chat" (`talkStream`,
+       `marginStream`). It replaces the folded "N turns about this
+       elsewhere".
+     - **`@` and chips in a task's or a block's chat:** tasks of other
+       days, notes and papers, as in the day's; `chat --refs` carries them,
+       the turn keeps them, the log files the message under them.
+     - **Each place's own store stays** (the student's choice): the
+       day's file, a note's, the proposals list keep ratings, cards,
+       unread marks, sessions and cost, and what reads them (the review,
+       the stats, the briefs, the planner) is unchanged. The panes'
+       components stay two files (`DayPane.qml`, `Margin.qml`): the
+       pinned proposal and the block's proposal rows are the margin's,
+       the paper's marks the day pane's; what they share is drawn by the
+       shared components.
 3. ~~One voice~~ *built 2026-11-18:* one agent answers whatever the
    student types, wherever.
    - **A block's or a task's chat** is answered by the one agent

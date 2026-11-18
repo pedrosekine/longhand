@@ -403,7 +403,7 @@ ShellRoot {
     function dayOpenings(): string { return JSON.stringify([0, 1, 2, 3].map(function (i) { return page.openingBefore(i).map(function (o) { return o.text }) })) }
     function convoRows(): string { return JSON.stringify(page.convoRows.map(function (r) { return { key: r.key, head: r.day ? r.day.label : page.sayFold(r.group) } })) }
     function dayFoldKey(): string { return page.dayFoldKey }
-    function elsewhere(): string { return JSON.stringify({ want: page.elsewhereWant, turns: page.elsewhereTurns, open: page.elsewhereOpen, chip: page.aboutChip }) }
+    function elsewhere(): string { return JSON.stringify({ want: page.elsewhereWant, turns: page.elsewhereTurns, chip: page.aboutChip }) }
     function dayType(text: string): void { var f = page.dayFieldItem(); f.text = text; f.cursorPosition = text.length }
     function dayFieldText(): string { return page.dayFieldItem().text }
     function dayReadOnly(): bool { return page.dayFieldItem().readOnly }
@@ -519,6 +519,10 @@ ShellRoot {
     // A key in the margin's chat box, through its own handler (Esc: 0x01000000).
     function chatBoxKey(key: int): void { page.marginItem.chatFieldRef.keyPressed({ key: key, modifiers: 0, text: "", accepted: false }) }
     function chatBoxText(): string { return page.marginItem.chatFieldRef.text }
+    function chatBoxType(text: string): void { var f = page.marginItem.chatFieldRef; f.text = text; f.cursorPosition = text.length }
+    function marginMention(): string { return JSON.stringify(page.dayMention && page.dayMention.margin ? page.dayMention.items.map(function (m) { return m.head }) : []) }
+    function marginRefs(): string { return JSON.stringify(page.marginRefs) }
+    function talkStream(): string { return JSON.stringify(page.talkStream.map(function (t) { return { elsewhere: !!t.elsewhere, text: t.text || "", place: t.place || "" } })) }
     function checkin(): string { return JSON.stringify({ due: page.checkinDue, view: page.settingsOpen ? page.settingsView : "", answers: page.checkinAnswers, center: page.centerView }) }
     function checkinKey(key: int): bool { return page.checkinKey({ key: key, modifiers: 0, text: "" }) }
     function chatBoxClear(): void { page.marginItem.chatFieldRef.text = "" }
