@@ -59,12 +59,14 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import blocks as blocklib  # noqa: E402
 import lifespan  # noqa: E402
 import plan as planlib  # noqa: E402
+import psync  # noqa: E402
 import evals as evallib  # noqa: E402
 import notebook as nb  # noqa: E402
 import documents as doclib  # noqa: E402
@@ -3149,6 +3151,15 @@ def cmd_documents(cfg: dict, args) -> int:
     return 0
 
 
+def proposal_logs(cfg: dict) -> "psync.Logs | None":
+    """The proposal logs in the vault, unless `shareProposals` is false or
+    there is no vault to share through."""
+    vault = Path(cfg.get("vault") or "")
+    if cfg.get("shareProposals") is False or not cfg.get("vault") or not vault.is_dir():
+        return None
+    return psync.Logs(vault / cfg.get("agentDir", "agents/longhand") / "proposals", STATE_HOME)
+
+
 def cmd_proposals(cfg: dict, args) -> int:
     """What the agent proposes or asks, open, for the dashboard — each with
     where its box is — and the do-dates accepted lately (their pills carry
@@ -3164,8 +3175,15 @@ def cmd_proposals(cfg: dict, args) -> int:
     changed += planlib.expire(ledger, at)
     changed += planlib.settle_projects(ledger, project_tags(cfg), at)
     changed += inbox_pass(cfg, ledger, at)
-    if changed:
+    # The same ledger on every machine (psync.py): what changed here goes
+    # into this machine's log in the vault, and what the logs say comes in.
+    logs = proposal_logs(cfg)
+    if logs is not None:
+        changed += logs.sync(ledger, time.time())
+    if changed or logs is not None:
         planlib.save_ledger(PROPOSALS, ledger)
+    if logs is not None:
+        logs.save()
     lock.close()
     by_key = {t["key"]: t for t in tasks}
     out = []
@@ -3782,7 +3800,7 @@ def day_file(cfg: dict, asks: list[dict], message: str, at: str) -> tuple[list[d
             continue
         if not same:
             item.update(id=ledger["next"], status="open")
-            ledger["next"] += 1
+            ledger["next"] += ledger.get("stride", 1)
             ledger["items"].append(item)
         planlib.resolve(ledger, item["id"], "accepted", at)
         for x in same[1:]:

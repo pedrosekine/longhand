@@ -1092,6 +1092,17 @@ this list, with *Open, in order* above. Each says why it waits.
 No work unless they bite; each says what would tell. The first four came
 from 2026-09/10 and still stand.
 
+- **One proposal ledger on two machines** (built 2026-11-18, `agent/psync.py`,
+  the UX evaluation's F3): the deadlines' pattern — a log per machine in the
+  vault, merged on each read of the list; the student's answer outranks a
+  machine's settling; Downloads proposals stay local; ids in a slot per
+  machine. Rehearsed on copies of both real ledgers: 272 of the Air's 291
+  items turned out to be the same items as xmg's (the ledger had been copied
+  once), 19 were its own and were renumbered; identical after two rounds; a
+  quiet round writes nothing. Known limit: a card in a chat written on the
+  Air before today that names one of those 19 by its old id points at xmg's
+  item of that number. *What would tell:* an answer given on one machine
+  seen settled on the other.
 - **What waits on the student, kept small** (built 2026-11-18, after the UX
   evaluation in the vault, `projects/longhand/ux-evaluation-2026-11-18.md`:
   12–18 proposals a day, 9% acted on, 5% of questions answered). Unasked, a

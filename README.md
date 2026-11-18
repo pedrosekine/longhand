@@ -524,5 +524,14 @@ the logs — grades, hidden ones and deadlines with no line yet included
 is adopted from its line, no id a note or a log holds is handed out again,
 and a deadline that arrives before its note is given time before a missing
 line counts as gone. Write through the CLI (`pomo deadline ...`), not to the files, so the
-bar widget and the log stay in step. Design notes for the agent side are in
+bar widget and the log stay in step.
+
+The agent's proposals and the student's answers to them (`proposals.json`)
+travel the same way, through `<vault>/agents/longhand/proposals/<host>.jsonl`
+(`agent/psync.py`, run with each read of the dashboard's list): each field
+its newest value, except that the student's answer outranks a machine's own
+settling (expired, superseded, moot). A document proposed from a machine's
+Downloads stays that machine's. Each machine numbers new items in a slot of
+its own (from its host name, or `LONGHAND_SLOT`), so two never give one id to
+two items; `"shareProposals": false` in config.json keeps the ledger local. Design notes for the agent side are in
 `docs/student-os.md`.
