@@ -106,7 +106,8 @@ if "talk with you about one of your proposals" in sys.argv[-1]:
         reply["revise"] = {"kind": "do-date", "key": prop["key"], "date": day, "why": "the day you asked for"}
 # The day conversation (2026-10-21): the day agent says back what it was told.
 args = sys.argv[1:]
-if "--agent" in args and args[args.index("--agent") + 1] == "longhand-day":
+if "--agent" in args and args[args.index("--agent") + 1] == "longhand-day" \
+        and "talk with you about one of your proposals" not in args[-1]:   # a talk is the one agent's too (slice 3)
     said = re.findall(r"# The student says\\n\\n(.*?)(?:\\n\\nAnswer|\\n*$)", payload if payload.strip() else args[-1], re.S)
     reply = {"reply": "day: " + (said[-1].strip() if said else ""), "knowledge": [], "read": []}
     # What it may propose about, as last given (slice 3); a scripted
@@ -1848,6 +1849,17 @@ def checks() -> int:
         refs = st["day"]["turns"][-2].get("refs") or []
         check([r["kind"] for r in refs] == ["task", "block"] and "email the dean" in refs[0]["head"],
               f"…and its turn keeps what it pointed at ({refs})")
+        # One voice (slice 3): what the agent said on opening the page is a
+        # turn in its place among the day's, answered in the box like any.
+        st = json.loads((p.vault / "agents" / "longhand" / "daily" / f"{TODAY}.json").read_text())
+        turns = st["day"]["turns"]
+        st.setdefault("observations", []).append({"text": "Two things are due this week.", "trigger": "open",
+                                                  "at": turns[1]["at"] if len(turns) > 1 and turns[1].get("at") else f"{TODAY}T00:00:01"})
+        (p.vault / "agents" / "longhand" / "daily" / f"{TODAY}.json").write_text(json.dumps(st))
+        want = [[], [], ["Two things are due this week."], []] if len(turns) > 1 and turns[1].get("at") \
+            else [["Two things are due this week."], [], [], []]
+        check(p.wait(lambda: json.loads(p.call("dayOpenings")) == want, timeout=8),
+              f"what was said on opening the page is a turn in its place, after the turns said by then ({p.call('dayOpenings')})")
         # "Everything": today's other places, folded to a line each, among
         # the day's turns; ↑ from the empty box goes to them, Enter opens.
         check(p.wait(lambda: len(json.loads(p.call("convoRows"))) > 0, timeout=10),

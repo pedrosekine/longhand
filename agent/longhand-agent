@@ -1457,8 +1457,37 @@ def follow_reads(cfg: dict, paths: Paths, tag: str, result: dict, reply: dict, p
                 read_payload=str(read_file)), again
 
 
+VOICE = "one"         # a block's session begun by the one agent (One conversation, slice 3)
+
+CHAT_INTRO = """# This conversation
+
+The student is talking with you about one block of their notes: the block they point at, below — in its margin, or
+beside the dashboard when it is a task. Answer about it, with the rest of what you know as background. Changes to it
+are proposals as anywhere else. A deadline it has can be moved too, which only here has a card: a `deadline` proposal
+with `"moves": <n>`, the number of the open deadline on the list, and the new `date` (its `title` as the list has it).
+Always name the number: without one, a deadline proposal adds a new deadline. If two deadlines could be meant and
+nothing settles which, ask first, naming both ("#63 on the 20th, or #32 in January?")."""
+
+
+def chat_card(p: dict) -> dict:
+    """A deadline the one agent proposes in a block's chat, as the block's
+    own card (`accept`): moved when it names one (`moves`), added when not.
+    Its date said as the card says it."""
+    out = {"kind": "deadline", "title": str(p.get("title") or "").strip(), "when": str(p.get("when") or p.get("date") or ""),
+           "project": str(p.get("project") or "").lstrip("#")}
+    if p.get("moves") not in (None, "", 0):
+        out["moves"] = p["moves"]
+    return out
+
+
 def cmd_chat(cfg: dict, args) -> int:
-    """Dive in: the student talks to the agent about one block."""
+    """The student talks about one block — in its margin, or a task beside
+    the dashboard. Answered by the one agent (`longhand-day`, since slice 3
+    of "One conversation", 2026-11-18; the margin's own agent before),
+    with the block as what the message points at: the day's context, the
+    one conversation's memory, search and read. Its turns are kept on the
+    block, as before; a deadline it proposes is the block's own card (a
+    move among them), anything else goes into the one list."""
     message = (args.message or "").strip()
     if not message:
         raise Fail("--message is empty")
@@ -1467,7 +1496,10 @@ def cmd_chat(cfg: dict, args) -> int:
     paths = Paths(cfg, date)
     state = load_state(paths)
     rec = state["blocks"].get(args.hash) or {}
-    session = session_fits(cfg, rec.get("session", ""))
+    day_cfg = dict(cfg, agent=cfg.get("dayAgent", "longhand-day"))
+    # A session the margin's own agent began is not this agent's: it starts
+    # afresh, the chat so far carried.
+    session = session_fits(day_cfg, rec.get("session", "")) if rec.get("voice") == VOICE else ""
     try:
         text = paths.note.read_text()
     except FileNotFoundError:
@@ -1485,102 +1517,121 @@ def cmd_chat(cfg: dict, args) -> int:
     if block is None and rec.get("key"):
         now = next((b for b in visible if block_key(b["text"]) == rec["key"]), None)
     if block is None and now is None:
-        # Its words changed in the page: the block that carries it now.
         carried = carried_threads(paths, visible)
         now = next((b for b in visible if carried.get(b["hash"]) == args.hash), None)
+    about = block or now
+    if about is None and not session:
+        raise Fail(f"block {args.hash} has no session and is not in the visible note")
+    today = dt.date.today()
+    tpaths = Paths(cfg, today)
+    try:
+        tblks = blocklib.split(tpaths.note.read_text())
+    except FileNotFoundError:
+        tblks = []
+    tprivate = note_is_private(tblks)
+    tvisible = [] if tprivate else visible_blocks(tblks)
     paths.payloads.mkdir(parents=True, exist_ok=True)
     stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
     payload_file = paths.payloads / f"{stamp}-chat-{args.hash}.md"
-    # A box's one conversation (2026-10-20): what the student said with the
-    # planner about it, and its open proposals, travel with the message —
-    # whatever the margin has not seen yet.
-    about_block = block or now
-    box_key, planned, open_props = box_thread(cfg, paths, about_block) if about_block else ("", [], [])
-    # What was said elsewhere about this block and the task it is — with
-    # the planner, in the day's chat, in another day's margin, on the other
-    # machine — and elsewhere today, travels with the message: once (the
-    # one conversation's memory, 2026-11-18; before it, only the planner's
-    # turns about the box and the day's last six).
-    subjects, _ = block_subjects(paths.stamp, visible, tasklib.scan(text), args.hash, rec, about_block)
+    at = dt.datetime.now().isoformat(timespec="seconds")
+
+    refs, _ = resolve_refs(cfg, tpaths.stamp, [{"date": paths.stamp, "hash": about["hash"]}]) if about else ([], 0)
+    pointed = [""] + CHAT_INTRO.split("\n") + refs_parts(refs, 0, tpaths.stamp)
+    tag = project_of_block(visible, about) if about else ""
+    _, _, open_props = box_thread(cfg, paths, about) if about else ("", [], [])
+    props_lines = ["# Your open proposals about this box (the student settles them in the dashboard, or here)", ""] + \
+        [f"- #{x['id']} {x['kind']}" + (f" {x['date']}" if x.get("date") else "")
+         + (f": {x['question']}" if x.get("question") else "") + f" — {x.get('why', '')}" for x in open_props]
+    props_seen = sorted(x["id"] for x in open_props)
+    if open_props:
+        pointed += [""] + props_lines
+    docs = filed_docs(cfg, paths, tag)
+    if docs:
+        pointed += ["", f"# Documents filed for #{tag} (an index only: their contents are not available to you; ask to"
+                        " read one in `read` by its name)", ""] + doc_lines(docs)
+    subjects, _ = block_subjects(paths.stamp, visible, tasklib.scan(text), args.hash, rec, about)
     thread = margin_thread(paths.stamp, rec, args.hash)
     carried = list(rec.get("memory") or []) if session else []
     mem, mem_ids = convo_memory(cfg, subjects, thread, carried, again=bool(session))
-    mem_part = "\n".join(mem).lstrip("\n") + "\n\n" if mem else ""
-    planner_part = ""
-    if open_props:
-        planner_part += ("The planner's open proposals about this box (the student settles them in the dashboard):\n\n"
-                         + "\n".join(f"- {x['kind']}" + (f" {x['date']}" if x.get("date") else "")
-                                      + (f": {x['question']}" if x.get("question") else "") + f" — {x.get('why', '')}"
-                                      for x in open_props) + "\n\n")
-    # The project's filed documents (docs/agent.md, slice 4): a session saw
-    # the index as it was when it began, so a document filed since travels
-    # with the next message — the whole index again, once.
-    doc_tag = project_of_block(visible, about_block) if about_block else ""
-    docs = filed_docs(cfg, paths, doc_tag)
-    docs_part = ""
-    if session and {d["name"] for d in docs} - set(rec.get("docs_seen") or []):
-        docs_part = (f"Documents filed for #{doc_tag} since, the index as it is now (an index only: their contents are"
-                     " not available to you; name one if the student should open it):\n\n" + "\n".join(doc_lines(docs)) + "\n\n")
-    # A day for the box, or dropping it or one like it (2026-11-15): the
-    # boxes it may name travel with the first message, and again when they
-    # changed; and what local code did not offer last time is said, so the
-    # agent does not point at a card that is not there.
-    proposable, digest = margin_proposable(cfg, about_block) if about_block else (None, "")
+    # What it may propose: the day's whole list (one agent, the same cards
+    # anywhere), with the boxes and loose deadlines that read like this
+    # block named first — what a "tidy the duplicates" asks about.
+    proposable, digest = day_proposable(cfg, today)
+    if about:
+        near, _ = margin_proposable(cfg, about)
+        proposable = dict(proposable, like_this_block=[b["key"] for b in near["open_boxes"]],
+                          deadlines_like_this_block=[d["deadline"] for d in near["deadlines_with_no_line"]])
+        digest = hashlib.sha256(json.dumps(proposable, sort_keys=True, default=str).encode()).hexdigest()[:12]
     if session:
-        # The session already holds the context and the first reply; only the
-        # student's words travel. Logged all the same.
-        since = f"The block now reads:\n\n{now['text']}\n\n" if now else ""
-        gone = next((t.get("unoffered") or [] for t in reversed(rec.get("chat") or []) if t["role"] == "agent"), [])
-        gone_part = ("Your last proposals local code did not offer as cards — the student saw no card for these; "
-                     "do not point at one:\n\n" + "\n".join(f"- {x}" for x in gone) + "\n\n") if gone else ""
-        offer_part = "\n".join(margin_proposable_parts(proposable, again=True)).lstrip() + "\n\n" \
-            if proposable and digest != rec.get("proposable") else ""
+        # The session holds the day's context, this block and the chat; what
+        # is new travels: how the block reads now, what was said elsewhere
+        # since, what it may propose when that changed, what was not offered.
         lang = language_line(cfg, message, said_before(rec.get("chat")))
-        payload = (f"{lang}\n\n{since}{planner_part}{docs_part}{gone_part}{offer_part}{mem_part}"
-                   f"The student replies about block {args.hash}:\n\n{message}\n\n"
-                   "Answer with the same JSON contract.\n")
-        payload_file.write_text(payload)
-        result = run_model(cfg, paths, "", session=session, message=payload)
+        parts = [lang, ""]
+        if now:
+            parts += ["# The block now reads", "", "\n".join("> " + l for l in now["text"].split("\n")), ""]
+        if mem:
+            parts += mem[1:] + [""]
+        gone = next((tt.get("unoffered") or [] for tt in reversed(rec.get("chat") or []) if tt["role"] == "agent"), [])
+        if gone:
+            parts += ["# Your last proposals local code did not offer as cards", "",
+                      "The student saw no card for these; do not point at one:", ""] + [f"- {x}" for x in gone] + [""]
+        if digest != rec.get("proposable"):
+            parts += proposable_parts(proposable, again=True) + [""]
+        # The project's filed documents: a session saw the index as it was
+        # when it began, so a document filed since travels with the next
+        # message — the whole index again, once.
+        if open_props and props_seen != rec.get("props_seen"):
+            parts += props_lines + [""]
+        if {d["name"] for d in docs} - set(rec.get("docs_seen") or []):
+            parts += [f"# Documents filed for #{tag} since, the index as it is now (ask to read one in `read` by its"
+                      " name)", ""] + doc_lines(docs) + [""]
+        parts += ["# The student says", "", message, "", "Answer with the same JSON contract."]
+        payload = "\n".join(parts) + "\n"
+        payload_file.write_text(payload)                 # logged before inference
+        result = run_model(day_cfg, tpaths, "", session=session, message=payload)
     else:
-        block = block or now
-        if block is None:
-            raise Fail(f"block {args.hash} has no session and is not in the visible note")
-        payload = build_payload(paths, "mention", [block], visible, cfg, mem)
-        if planner_part:
-            payload += f"\n# This box with the planner\n\n{planner_part}"
-        if proposable:
-            payload += "\n".join(margin_proposable_parts(proposable)) + "\n"
+        payload = day_payload(cfg, tpaths, tvisible, tprivate, message, pointed, proposable, mem)
         so_far = earlier_turns(([{"role": "agent", "text": rec["reply"]}] if rec.get("reply") else [])
                                + (rec.get("chat") or []))
         if so_far:
-            payload += ("\n# This chat so far\n\nBegun in a session you no longer have (another model, or a run that"
-                        " failed); what was said:\n\n" + "\n".join(so_far) + "\n")
-        payload += f"\n# The student says\n\n{message}\n"
+            payload = payload.replace("\n# The student says\n", "\n# This chat so far\n\nWhat was said about this block"
+                                      " before, in a session you do not have:\n\n" + "\n".join(so_far)
+                                      + "\n\n# The student says\n", 1)
         payload_file.write_text(payload)
-        result = run_model(cfg, paths, payload)
+        result = run_model(day_cfg, tpaths, payload, message="Context follows on stdin.")
     payload_file.with_suffix(".events.jsonl").write_text(result["events"])
     reply = parse_reply(result["text"]) if not result["error"] else \
-        {"reply": "", "proposals": [], "suggestions": [], "knowledge": []}
-    about = block or now
-    tag = project_of_block(visible, about) if about else ""
-    result, reply = follow_reads(cfg, paths, tag, result, reply, payload_file)
-    # A day or a drop goes into the one list, checked as the day's are; the
-    # margin keeps a copy saying which item it is.
-    asked = [x for x in reply["proposals"] if x.get("kind") != "deadline"]
+        {"reply": "", "proposals": [], "suggestions": [], "knowledge": [], "read": [], "search": [], "file": []}
+    fetched = {"searched": [], "files": [], "documents": [], "withheld": {}}
+    if not result["error"]:
+        result, reply, fetched = day_follow(cfg, tpaths, tag, result, reply, payload_file)
+    result["reads"] = fetched["documents"]
+    # A deadline is the block's own card (a move among them); anything else
+    # goes into the one list, checked as the day's are; the margin keeps a
+    # copy saying which item it is.
+    props = [x for x in reply.get("proposals") or [] if isinstance(x, dict)]
+    reply["proposals"] = [chat_card(x) for x in props if x.get("kind") == "deadline"]
+    reply["suggestions"] = []
+    asked = [x for x in props if x.get("kind") != "deadline"]
     cards, unoffered = [], []
     if asked and not result["error"]:
-        at = dt.datetime.now().isoformat(timespec="seconds")
-        made, unoffered = ledger_proposals(cfg, asked, result, payload_file, at, "margin",
-                                           proposable or {"candidates": [], "open_boxes": []})
+        made, unoffered = ledger_proposals(cfg, asked, result, payload_file, at, "margin", proposable)
         cards = [dict({k: v for k, v in x.items() if k != "id"}, ledger=x["id"], at=at) for x in made]
+    filed, unfiled = day_file(cfg, reply.get("file") or [], message, at) if not result["error"] else ([], [])
+    unoffered += [f"not filed: {x}" for x in unfiled]
     state = apply(cfg, paths, "chat", [], visible, result, reply, payload_file, hash_=args.hash, message=message,
                   ledger_cards=cards, unoffered=unoffered, carried=convolib.carry(carried, mem_ids))
-    if (docs or proposable) and not result["error"]:
+    if not result["error"]:
         for h in group_of(state, args.hash):
-            if docs:
-                state["blocks"][h]["docs_seen"] = sorted(d["name"] for d in docs)
-            if proposable:
-                state["blocks"][h]["proposable"] = digest
+            r = state["blocks"][h]
+            r["voice"] = VOICE
+            r["proposable"] = digest
+            r["docs_seen"] = sorted(d["name"] for d in docs)
+            r["props_seen"] = props_seen
+            last = next((tt for tt in reversed(r.get("chat") or []) if tt.get("role") == "agent"), None)
+            if last is not None and (fetched["searched"] or fetched["files"] or filed):
+                last.update(searched=fetched["searched"], files=fetched["files"], filed=filed)
         write_atomic(paths, paths.state, json.dumps(state, indent=2, ensure_ascii=False) + "\n")
     convo_merge(cfg)
     if result["error"]:
@@ -3404,8 +3455,8 @@ TALK_MESSAGE = """The student wants to talk with you about one of your proposals
 then the proposal, what came of your others about the same box, the box as it stands, and your conversation so far \
 about it — the last message is theirs.
 
-Answer them as the planner who made the proposal: in a few plain sentences, from the specifics in the data and \
-their notes. When they push back or tell you something you did not know, take it seriously: change the proposal if \
+Answer them as Longhand, who made the proposal (the planning pass is yours too): in a few plain sentences, from \
+the specifics in the data and their notes. When they push back or tell you something you did not know, take it seriously: change the proposal if \
 it should change, or say plainly why it should not. Do not ask again what they already answered.
 
 When they ask for something you cannot do — another kind of action than this proposal's, moving a deadline's due \
@@ -4085,7 +4136,28 @@ def convo_view(turns: list[dict], today: dt.date) -> dict:
                      "subjects": len({s for t in by_day[d] for s in t.get("subjects") or [] if not s.startswith(("day:", "block:"))})
                      or len(groups), "groups": groups})
     mine = [t for t in by_day.get(iso, []) if t.get("where") not in ("day", "open")]
-    return {"today": iso, "days": days, "groups": convo_groups(turns, mine)}
+    groups = convo_groups(turns, mine)
+    # What the planning pass proposed or asks, still open, said in the
+    # conversation as a line of its own (slice 3, "One voice"): one voice
+    # speaks, and its proposals are settled where they are listed.
+    asks = [x for x in planlib.open_items(planlib.load_ledger(PROPOSALS))
+            if not x.get("from") and x.get("kind") != "file" and not x.get("auto")]
+    if asks:
+        last = max(asks, key=lambda x: str(x.get("at") or ""))
+        words = last.get("question") or Say_ask(last)
+        groups.append({"thread": "asks", "where": "plan", "kind": "proposals", "name": "from planning",
+                       "turns": len(asks), "at": str(last.get("at") or ""), "role": "agent", "text": words[:160],
+                       "open": {"kind": "asks"}})
+        groups.sort(key=lambda g: g["at"])
+    return {"today": iso, "days": days, "groups": groups}
+
+
+def Say_ask(x: dict) -> str:
+    """A proposal in a few words, for its line in the conversation."""
+    title = str(x.get("title") or "").strip()
+    return {"do-date": f"work on “{title}” on {x.get('date', '')}", "drop": f"drop “{title}”",
+            "steps": f"steps for “{title}”", "priority": f"a priority for “{title}”", "done": f"“{title}” is done",
+            "deadline": f"a deadline: “{title}” on {x.get('date', '')}"}.get(x.get("kind"), title)
 
 
 def convo_elsewhere(cfg: dict, turns: list[dict], key: str, stamp: str, h: str) -> dict:
@@ -4629,7 +4701,12 @@ def cmd_day(cfg: dict, args) -> int:
             if first_block and any(b["hash"] == first_block for b in visible) else ""
         result, reply, fetched = day_follow(cfg, paths, tag, result, reply, payload_file)
 
+    # Moving a deadline has its card in a block's chat only, for now.
+    moving = [x for x in reply.get("proposals") or [] if isinstance(x, dict) and x.get("kind") == "deadline" and x.get("moves")]
+    reply["proposals"] = [x for x in reply.get("proposals") or [] if not any(x is m for m in moving)]
     proposed, unoffered = day_proposals(cfg, reply, result, payload_file, at) if not result["error"] else ([], [])
+    unoffered += [f"move deadline #{str(x['moves']).lstrip('#')} · moved from the task's own chat (C on its row), not here"
+                  for x in moving]
     filed, unfiled = day_file(cfg, reply.get("file") or [], message, at) if not result["error"] else ([], [])
 
     state = load_state(paths)                            # the page or a margin run may have written meanwhile
@@ -5137,7 +5214,9 @@ def cmd_talk(cfg: dict, args) -> int:
     stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
     payload_file = paths.payloads / f"{stamp}-talk-{item['id']}.md"
     payload_file.write_text(payload)          # logged before inference
-    result, reply = talk_run(plan_cfg_of(cfg), paths, payload, talk_message(item))
+    # The one agent answers (slice 3 of "One conversation", 2026-11-18):
+    # the planner plans, but the student talks with one voice.
+    result, reply = talk_run(dict(cfg, agent=cfg.get("dayAgent", "longhand-day")), paths, payload, talk_message(item))
     payload_file.with_suffix(".events.jsonl").write_text(result["events"])
 
     at = dt.datetime.now().isoformat(timespec="seconds")
@@ -5271,7 +5350,9 @@ def cmd_notebook(cfg: dict, args) -> int:
 REPO_PROMPTS = Path(__file__).resolve().parent / "opencode"
 # A talk is the planner's, about one of its proposals: its own job in the
 # evals (2026-10-23), since the planner's prompt was never checked at it.
-JOB_AGENT = {"margin": "longhand", "plan": "longhand-plan", "day": "longhand-day", "talk": "longhand-plan"}
+# A talk about a proposal is the one agent's since slice 3 of "One
+# conversation" (2026-11-18): the planner plans, the one agent talks.
+JOB_AGENT = {"margin": "longhand", "plan": "longhand-plan", "day": "longhand-day", "talk": "longhand-day"}
 
 
 def job_model(cfg: dict, job: str, override: str = "") -> tuple[str, str]:
@@ -5279,7 +5360,7 @@ def job_model(cfg: dict, job: str, override: str = "") -> tuple[str, str]:
     the planner's own `planModel` for a plan."""
     if override:
         return override, ""
-    if job in ("plan", "talk") and cfg.get("planModel"):
+    if job == "plan" and cfg.get("planModel"):
         return cfg["planModel"], cfg.get("planVariant", "")
     return cfg.get("model", ""), cfg.get("variant", "")
 

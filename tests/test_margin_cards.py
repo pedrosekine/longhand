@@ -51,7 +51,7 @@ n = len([f for f in os.listdir(d) if f.startswith("call-")])
 json.dump({"argv": args, "stdin": stdin}, open(os.path.join(d, f"call-{n}.json"), "w"))
 seen = "".join(json.load(open(os.path.join(d, f)))["stdin"] + json.load(open(os.path.join(d, f)))["argv"][-1]
                for f in sorted(os.listdir(d)) if f.startswith("call-"))
-offered = [json.loads(m) for m in re.findall(r"# What you may propose about this box.*?```json\n(.*?)\n```", seen, re.S)]
+offered = [json.loads(m) for m in re.findall(r"# What you may propose.*?```json\n(.*?)\n```", seen, re.S)]
 keys = {b["title"]: b["key"] for o in offered for b in o["open_boxes"]}
 reply = json.load(open(os.path.join(d, "reply.json")))
 def fill(x):
@@ -155,15 +155,19 @@ def run(tmp: pathlib.Path) -> int:
     r = agent("chat", "--hash", h, "--message", "do I have duplicates of this task now?")
     check(r.returncode == 0, f"a chat runs ({r.stderr.strip()[-300:]})")
     first = calls()[-1]["stdin"]
-    check("# What you may propose about this box" in first, "the first message carries what the margin may propose about")
+    # Since slice 3 of "One conversation" (2026-11-18) the one agent answers:
+    # it may propose what the day's chat may, about every box, with the
+    # boxes and loose deadlines that read like this block named.
+    check("# What you may propose" in first, "the first message carries what may be proposed")
     import re
-    offered = json.loads(re.search(r"# What you may propose about this box.*?```json\n(.*?)\n```", first, re.S).group(1))
-    titles = sorted(b["title"] for b in offered["open_boxes"])
-    check(titles == ["AI Literacy course", "AI literacy"], f"…the boxes that read like it, not the supervisor's ({titles})")
-    check([d["deadline"] for d in offered["deadlines_with_no_line"]] == [64],
-          f"…and the deadline with no line, by its number ({offered['deadlines_with_no_line']})")
-    check(sorted(offered["you_may"]) == ["do-date", "drop"], "…and what it may propose there: a day, a drop")
-    check({b["title"]: b["deadline"] for b in offered["open_boxes"]} == {"AI Literacy course": 63, "AI literacy": 32},
+    offered = json.loads(re.search(r"# What you may propose.*?```json\n(.*?)\n```", first, re.S).group(1))
+    by_key = {b["key"]: b for b in offered["open_boxes"]}
+    like = sorted(by_key[k]["title"] for k in offered["like_this_block"])
+    check(like == ["AI Literacy course", "AI literacy"], f"…naming the boxes that read like it, not the supervisor's ({like})")
+    check(offered["deadlines_like_this_block"] == [64] and 64 in [d["deadline"] for d in offered["deadlines_with_no_line"]],
+          f"…and the deadline with no line that reads like it, by its number ({offered['deadlines_like_this_block']})")
+    check({"do-date", "drop"} <= set(offered["you_may"]), "…and what it may propose: a day, a drop, and the rest the day may")
+    check({by_key[k]["title"]: by_key[k]["deadline"] for k in offered["like_this_block"]} == {"AI Literacy course": 63, "AI literacy": 32},
           "…each box with its deadline's number, to tell them apart")
 
     # 2. "remove the one from the 18th, and the 20th; a day for the January
@@ -176,7 +180,7 @@ def run(tmp: pathlib.Path) -> int:
     ])
     r = agent("chat", "--hash", h, "--message", "remove the one from the 18, the one from the 20. A day for the January one")
     check(r.returncode == 0, f"…the chat runs ({r.stderr.strip()[-300:]})")
-    check("# What you may propose about this box" not in calls()[-1]["argv"][-1],
+    check("# What you may propose" not in calls()[-1]["argv"][-1],
           "a later message does not carry the boxes again while they are unchanged")
     mine = [x for x in ledger()["items"] if x.get("from") == "margin"]
     kinds = sorted((x["kind"], str(x.get("deadline") or x["key"].split("\t")[-1])) for x in mine)

@@ -276,8 +276,8 @@ def main() -> int:
           f"the planner answers, and nothing changes on its own ({out})")
     argv = json.loads((stub / "argv.json").read_text())
     talked = (stub / "payload.md").read_text()
-    check(argv[argv.index("--agent") + 1] == "longhand-plan" and "talk with you about one of your proposals" in argv[-1],
-          "…as the planner, told it is a conversation")
+    check(argv[argv.index("--agent") + 1] == "longhand-day" and "talk with you about one of your proposals" in argv[-1],
+          "…by the one agent (slice 3 of One conversation, 2026-11-18), told it is a conversation")
     check(talked.startswith(plan_payload.rstrip()) and "# The student says now\n\nwhy Wednesday?" in talked,
           "…given the very plan it made, then what the student says")
     check(sorted((state / "longhand" / "payloads").glob(f"*-talk-{dd['id']}.md"))[-1].read_text() == talked,

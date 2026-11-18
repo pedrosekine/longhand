@@ -656,8 +656,38 @@ a conversation surviving a change of model, the note's look.
      stores of turns retired. A task's chat is answered by another agent
      than the day's, with a session a block; slice 3 makes them one, and
      then both are one move, not three.
-3. One voice: one prompt; the morning line and the planner's proposals as
-   turns.
+3. ~~One voice~~ *built 2026-11-18:* one agent answers whatever the
+   student types, wherever.
+   - **A block's or a task's chat** is answered by the one agent
+     (`longhand-day.md`, "Longhand, the one voice"), no longer the
+     margin's own (`cmd_chat`): the day's context, the block as what the
+     message points at ("# This conversation", `CHAT_INTRO`), the chat so
+     far, the one conversation's memory, search and read, and what the
+     day's chat may propose — every box, with the boxes and loose
+     deadlines that read like this block named (`like_this_block`). Its
+     turns stay on the block. A deadline it proposes is the block's own
+     card, so a move (`"moves": n`) still has one there; anything else
+     goes into the one list. A session the margin's agent began is not
+     reused (`voice`); the first message carries the chat so far.
+   - **A talk about a proposal** is the one agent's too (`cmd_talk`;
+     its message says "as Longhand, who made the proposal"); the planner
+     still plans, as a pass of its own. The eval job `talk` checks the
+     day's prompt now.
+   - **The margin's own agent** (`longhand.md`) is left the passes the
+     page starts unasked: a box written, a question, a tick, the page
+     opening. Its words reach the one conversation as before.
+   - **The morning line** is a turn in its place among the day's turns
+     ("when you opened the page · 08:12"), answered in the box like any.
+   - **What planning proposed**, still open, is a line of "everything"
+     ("proposals · from planning · N waiting"), opening the dashboard on
+     the next one: settled where it is listed.
+   - *Not yet:* a deadline moved from the day's chat (said back: the
+     task's own chat has the card) — slice 4, with the other actions
+     from anywhere.
+   - Evals: two cases from a scratch copy of the vault, `day-chat-move-
+     themenvorschlag` (a task's chat moves #61, adds none) and
+     `day-move-from-the-day`; `check_day` reads `moves` and
+     `no_new_deadline`.
 4. The new actions: add a task, tick, open, file from anywhere.
 5. The read tool, last: the one with a risk to privacy and to speed.
 

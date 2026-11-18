@@ -1078,8 +1078,15 @@ Small, when passing by:
        one reading the log, the old stores of turns retired. Watch:
        is the automatic chip right (how often `chip auto-removed` in the
        usage log), and are the folded lines read or scrolled past?
-    3. One voice: one prompt; the morning line and the planner's
-       proposals as turns that can be answered.
+    3. ~~One voice~~ *built 2026-11-18*: one agent (`longhand-day.md`)
+       answers a block's and a task's chat and a talk about a proposal;
+       the margin's own agent keeps the passes the page starts unasked,
+       the planner its planning. The morning line is a turn in its place;
+       what planning proposed is a line of "everything". A deadline is
+       moved from the task's chat only, for now (slice 4). Watch: does a
+       task's chat stay as quick and as sure with the bigger context,
+       and is the move by number still right (eval
+       `day-chat-move-themenvorschlag`)?
     4. The new actions from anywhere: add a task, tick, open, file.
     5. The read tool (search the vault, read a note, a paper, a course
        document; never what is private; each lookup logged and shown).

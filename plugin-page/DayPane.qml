@@ -417,29 +417,6 @@ BorderSurface {
         }
       }
 
-      // What the morning's pass noticed, waiting at the top.
-      Repeater {
-        model: page.dayOpening
-        Column {
-          required property var modelData
-          width: dayColumn.width
-          spacing: page.sp(2)
-          Text {
-            textFormat: Text.PlainText
-            text: "this morning"
-            color: page.faint
-            font.family: page.fontFamily
-            font.styleName: page.fontStyle
-            font.pixelSize: page.fs(Style.font.caption)
-          }
-          ChatTurn {
-            page: dayPane.page
-            text: modelData
-            color: page.dim
-          }
-        }
-      }
-
       Repeater {
         id: turnsRep
         model: page.dayTurns
@@ -449,6 +426,28 @@ BorderSurface {
           required property int index
           width: dayColumn.width
           spacing: page.sp(2)
+          // What the agent said unasked on opening the page, before this
+          // turn: a turn of its own, answered in the box like any other.
+          Repeater {
+            model: page.openingBefore(turn.index)
+            Column {
+              required property var modelData
+              width: turn.width
+              spacing: page.sp(2)
+              Text {
+                textFormat: Text.PlainText
+                text: "when you opened the page" + (modelData.at ? " · " + modelData.at.slice(11, 16) : "")
+                color: page.faint
+                font.family: page.fontFamily
+                font.styleName: page.fontStyle
+                font.pixelSize: page.fs(Style.font.caption)
+              }
+              ChatTurn {
+                page: dayPane.page
+                text: modelData.text
+              }
+            }
+          }
           // Today's other places — a task's chat, a paper's — said before
           // this turn: a line each, in the order said.
           Repeater {
@@ -668,6 +667,27 @@ BorderSurface {
         }
       }
 
+      // The morning's words with no turn after them yet.
+      Repeater {
+        model: page.openingBefore(page.dayTurns.length)
+        Column {
+          required property var modelData
+          width: dayColumn.width
+          spacing: page.sp(2)
+          Text {
+            textFormat: Text.PlainText
+            text: "when you opened the page" + (modelData.at ? " · " + modelData.at.slice(11, 16) : "")
+            color: page.faint
+            font.family: page.fontFamily
+            font.styleName: page.fontStyle
+            font.pixelSize: page.fs(Style.font.caption)
+          }
+          ChatTurn {
+            page: dayPane.page
+            text: modelData.text
+          }
+        }
+      }
       // …and those said since the day's last turn.
       Column {
         width: dayColumn.width
