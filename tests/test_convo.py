@@ -24,7 +24,8 @@ The runner, against a stub model and a throwaway vault:
 - a later message is not given again what its session has
 - slice 2: a message points at several things (a task of another day, a
   block of today's; a private one counted, never shown), the turn keeps
-  them; `--view` (earlier days and today's places, a line each, with how to
+  them; a note or a paper the agent may see anyway (never a private one,
+  `--files` lists them); `--view` (earlier days and today's places, a line each, with how to
   open them) and `--elsewhere` (what was said about a task outside its own
   chat)
 """
@@ -251,6 +252,28 @@ def runner(tmp: pathlib.Path) -> None:
     last = [json.loads(l) for l in (log / "here.jsonl").read_text().splitlines()][-1]
     check(last["role"] == "agent" and "task:" + key in last["subjects"] and f"block:{yday}:{yh}" in last["subjects"]
           and f"block:{today}:{line_today}" in last["subjects"], f"…and is about all of it in the log ({last['subjects']})")
+
+    # …a note or a paper, only one the agent may see anyway: a private note
+    # is talked about in its own chat, never through @ (2026-11-18).
+    (studies / "paper.pdf").write_bytes(b"%PDF-1.4\n%%EOF\n")
+    files = json.loads(agent("conversation", "--files").stdout)["files"]
+    rels = {f["rel"]: f["kind"] for f in files}
+    check(rels.get("human/Studies/open.md") == "note" and rels.get("human/Studies/paper.pdf") == "paper"
+          and "human/Studies/closed.md" not in rels and not any(r.startswith("human/Daily/") for r in rels),
+          f"@ may offer the notes and papers the agent may see, never a private one, never a daily note ({sorted(rels)})")
+    agent("day", "--message", "and these?", "--refs", json.dumps([
+        {"file": "human/Studies/open.md"}, {"file": "human/Studies/paper.pdf"}, {"file": "human/Studies/closed.md"}]))
+    msg = calls()[-1]["argv"][-1]
+    check("# The note the student points at: `human/Studies/open.md`" in msg and "Interviews, twelve of them." in msg
+          and "# The paper the student points at: `human/Studies/paper.pdf`" in msg and '"file": "human/Studies/paper.pdf"' in msg,
+          "a note pointed at comes whole; a paper by its name, to be read when asked")
+    check("Something of my own" not in msg and "(1 more they pointed at cannot be shown to you" in msg,
+          "…a private note pointed at is counted, never shown")
+    st = json.loads((agent_dir / "daily" / f"{today}.json").read_text())["day"]["turns"][-2]
+    last = [json.loads(l) for l in (log / "here.jsonl").read_text().splitlines()][-1]
+    check([(r["kind"], r["head"]) for r in st["refs"]] == [("note", "open"), ("paper", "paper")]
+          and "note:human/Studies/open.md" in last["subjects"] and "paper:human/Studies/paper.pdf" in last["subjects"],
+          f"…the turn keeps them, and the log has it about the note and the paper ({last['subjects']})")
 
     # The pane's "everything": earlier days a line each with their places,
     # today's places other than the day's own chat.

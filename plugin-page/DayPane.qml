@@ -735,7 +735,7 @@ BorderSurface {
           : page.noteRoom
           ? "Chat about this note. Chatting shares it with the agent, for this chat only; the note itself is never written. Point at a part with @."
           : page.dayCanSend
-          ? "The day's chat: your tasks, your courses, what you wrote. Point at a block or a task with @."
+          ? "The day's chat: your tasks, your courses, what you wrote. Point at a block, a task, a note or a paper with @."
           : "Nothing was said on this day."
         color: page.faint
         font.family: page.fontFamily
@@ -842,7 +842,7 @@ BorderSurface {
       wrapMode: Text.WordWrap
       text: page.paper.room ? page.keyName("chatSend") + " sends · ^ attaches a mark · quotes link to the page · "
           + page.keyName("marginBack") + " back to the marks"
-        : page.keyName("chatSend") + " sends · Shift+Enter a new line · @ points at a block" + (page.noteRoom ? "" : " or a task")
+        : page.keyName("chatSend") + " sends · Shift+Enter a new line · @ points at " + (page.noteRoom ? "a part of it" : "a block, a task, a note")
         + (page.dayOpenCards.length > 0 ? " · " + page.keyName("marginUp") + " to its proposals"
            : page.convoRows.length > 0 ? " · " + page.keyName("marginUp") + " to the other chats" : "")
         + " · " + page.keyName("marginBack") + " closes · " + page.keyName("dayChat") + " from anywhere"

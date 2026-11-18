@@ -1113,12 +1113,13 @@ Item {
   // slice 2, 2026-11-18): the chips above the box, each seen before it is
   // sent and removable. `dayRefs` are the ones put there (`@`, or a block
   // pointed at): { date, hash | line, head, kind }, a block of the open
-  // note or a task from another day's. Before them, dimmer, what the
-  // student is looking at when it is a task (`dayAuto`): it follows the
-  // selection until typing starts, is then fixed for that message, and
-  // can be let go like any other.
+  // note or a task from another day's; or { file, head, kind }, a note or
+  // a paper. Before them, dimmer, what the student is looking at (`dayAuto`):
+  // the selected task beside the dashboard, the block under the cursor in
+  // the note. It follows the selection until typing starts, is then fixed
+  // for that message, and can be let go like any other.
   property var dayRefs: []
-  function refKey(r) { return r ? (r.date || "") + ":" + (r.hash || ("L" + r.line)) : "" }
+  function refKey(r) { return !r ? "" : r.file ? "f:" + r.file : (r.date || "") + ":" + (r.hash || ("L" + r.line)) }
   function refToday(r) { return !!r && !!r.hash && (!r.date || r.date === svc.noteDate) }
   readonly property string dayBlock: { for (var i = 0; i < root.dayRefs.length; i++) if (root.refToday(root.dayRefs[i])) return root.dayRefs[i].hash; return "" }
   readonly property string dayBlockText: { for (var i = 0; i < root.dayRefs.length; i++) if (root.refToday(root.dayRefs[i])) return root.dayRefs[i].head; return "" }
@@ -1132,9 +1133,13 @@ Item {
       return t && t.key && !t.private && t.date ? { date: t.date, line: t.line, head: root.taskName(t), kind: "task", auto: true } : null
     }
     if (root.centerView !== "note" || !root.dayNote || root.currentHash === "" || !root.agentOn) return null
+    // The block under the cursor, whatever it is (the student's call,
+    // 2026-11-18: a paragraph too, not only a box) — never an empty one, a
+    // private one, or the frontmatter.
     var b = root.blockBounds(root.currentHash)
-    if (!b || b.private || !/^\s*[-*+] \[.\] \S/.test(b.text.split("\n")[0])) return null
-    return { date: svc.noteDate, hash: root.currentHash, head: root.blockHead(root.currentHash), kind: "task", auto: true }
+    if (!b || b.private || b.kind === "frontmatter" || b.text.trim() === "") return null
+    return { date: svc.noteDate, hash: root.currentHash, head: root.blockHead(root.currentHash),
+             kind: /^\s*[-*+] \[.\] /.test(b.text.split("\n")[0]) ? "task" : "block", auto: true }
   }
   readonly property string dayAutoKey: root.refKey(root.dayAutoNow)
   onDayAutoKeyChanged: root.dayAutoOff = false
@@ -1175,7 +1180,16 @@ Item {
   property var convoOpenDays: ({})
   property string dayFoldKey: ""        // the folded line the keys are on; "": the box
   readonly property bool convoShown: root.dayShown && !root.noteRoom && !root.paper.room && svc.isToday && svc.configured
-  onConvoShownChanged: { root.dayFoldKey = ""; if (root.convoShown) root.loadConvoView() }
+  onConvoShownChanged: { root.dayFoldKey = ""; if (root.convoShown) { root.loadConvoView(); root.loadRefFiles() } }
+  // The notes and papers `@` may point at in the day's chat: those the
+  // agent may see anyway (`conversation --files`), read each time the pane
+  // shows. A private note is talked about in its own chat only.
+  property var refFiles: []
+  function loadRefFiles() {
+    if (refFilesProc.running) return
+    refFilesProc.command = [svc.runner, "conversation", "--files"]
+    refFilesProc.running = true
+  }
   onWorkingChanged: if (!root.working && root.convoShown) root.loadConvoView()
   function loadConvoView() {
     if (convoViewProc.running) return
@@ -1460,12 +1474,14 @@ Item {
     var chips = root.noteRoom ? root.dayRefs.slice(0, 1) : root.dayChips.slice()
     if (root.noteRoom) { if (root.dayBlock !== "") cmd = cmd.concat(["--block", root.dayBlock]) }
     else if (chips.length > 0)
-      cmd = cmd.concat(["--refs", JSON.stringify(chips.map(function (r) { return r.hash ? { date: r.date, hash: r.hash } : { date: r.date, line: r.line } }))])
+      cmd = cmd.concat(["--refs", JSON.stringify(chips.map(function (r) {
+        return r.file ? { file: r.file } : r.hash ? { date: r.date, hash: r.hash } : { date: r.date, line: r.line }
+      }))])
     var marks = root.paper.room ? root.paper.marks.slice() : []
     if (marks.length > 0) cmd = cmd.concat(["--marks", marks.join(",")])
     root.paper.marks = []
     root.dayPending = { text: msg, block: root.dayBlock, marks: marks,
-                        refs: chips.map(function (r) { return { date: r.date, hash: r.hash || "", kind: r.kind, head: r.head } }) }
+                        refs: chips.map(function (r) { return { date: r.date || "", hash: r.hash || "", file: r.file || "", kind: r.kind, head: r.head } }) }
     if (chips.length > 0) root.used("chip", "sent-" + chips.length + (chips[0].auto ? "-auto" : ""))
     root.dayRefs = []
     root.dayAutoHeld = null
@@ -1516,6 +1532,13 @@ Item {
         var name = root.taskName(t).slice(0, 80)
         return { task: t, name: name, head: "task · " + name }
       }))
+      // …and the notes and papers it may see, once a word is typed.
+      if (q !== "" && items.length < 8)
+        items = items.concat(root.refFiles.filter(function (f) {
+          return f.name.toLowerCase().indexOf(q) >= 0 || f.rel.toLowerCase().indexOf(q) >= 0
+        }).slice(0, 8 - items.length).map(function (f) {
+          return { file: f.rel, kind: f.kind, name: f.name, head: f.kind + " · " + f.name }
+        }))
     }
     root.dayMention = { start: f.cursorPosition - m[2].length - 1, query: m[2], items: items }
     if (root.dayMentionFocus > items.length - 1) root.dayMentionFocus = Math.max(0, items.length - 1)
@@ -1533,10 +1556,11 @@ Item {
     }
     var f = dayPane.dayFieldRef
     f.remove(m.start, f.cursorPosition)
-    if (it.task) root.addDayRef({ date: it.task.date, line: it.task.line, head: it.name, kind: "task" })
+    if (it.file) root.addDayRef({ file: it.file, head: it.name, kind: it.kind })
+    else if (it.task) root.addDayRef({ date: it.task.date, line: it.task.line, head: it.name, kind: "task" })
     else root.addDayRef({ date: root.noteRoom ? "" : svc.noteDate, hash: it.hash, head: it.head, kind: it.kind || "block" })
     root.dayMention = null
-    root.used("day", it.task ? "at-task" : "at")
+    root.used("day", it.file ? "at-" + it.kind : it.task ? "at-task" : "at")
   }
 
   // The cards under the day's answers (slice 3): what it proposed, the
@@ -7752,6 +7776,13 @@ Item {
     id: convoViewProc
     stdout: StdioCollector {
       onStreamFinished: { try { root.convoView = JSON.parse(text) } catch (e) {} }
+    }
+  }
+
+  Process {
+    id: refFilesProc
+    stdout: StdioCollector {
+      onStreamFinished: { try { root.refFiles = JSON.parse(text).files || [] } catch (e) {} }
     }
   }
 

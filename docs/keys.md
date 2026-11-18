@@ -86,11 +86,11 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 
 | | Keys | Works |
 |---|---|---|
-| Previous project | `↑` | while @ or # lists tags, or @ blocks and tasks in the day's box |
-| Next project | `↓` | while @ or # lists tags, or @ blocks and tasks in the day's box |
-| Write its #tag | `Enter` · `Tab` | while @ or # lists tags, or @ blocks and tasks in the day's box |
-| New section (# Name #tag) | `Shift+Enter` | while @ or # lists tags, or @ blocks and tasks in the day's box |
-| Close the list | `Esc` | while @ or # lists tags, or @ blocks and tasks in the day's box |
+| Previous project | `↑` | while @ or # lists tags, or @ blocks, tasks, notes and papers in the day's box |
+| Next project | `↓` | while @ or # lists tags, or @ blocks, tasks, notes and papers in the day's box |
+| Write its #tag | `Enter` · `Tab` | while @ or # lists tags, or @ blocks, tasks, notes and papers in the day's box |
+| New section (# Name #tag) | `Shift+Enter` | while @ or # lists tags, or @ blocks, tasks, notes and papers in the day's box |
+| Close the list | `Esc` | while @ or # lists tags, or @ blocks, tasks, notes and papers in the day's box |
 
 ## Find
 
