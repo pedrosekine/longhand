@@ -110,20 +110,29 @@ Column {
       width: turn.width
       spacing: page.sp(4)
       topPadding: part.index > 0 || (turn.split && turn.split.intro !== "") ? page.sp(8) : 0
-      Rectangle {
+      // The student's reply, quoted as a mail reply quotes (design C1,
+      // 2026-11-18): no fill, so nothing in the student's colour stands on
+      // the agent's side and it never reads as a message sent; their words
+      // in italic, dim, behind a faint rule. Under the pointer only colours
+      // change (the rule and the number in accent, the words in ink), and
+      // the hint floats over the page: nothing moves.
+      Item {
         id: echo
         visible: part.modelData.reply !== ""
         readonly property bool hot: echoArea.containsMouse
-        width: Math.min(part.width, echoRow.implicitWidth + page.sp(16))
-        height: echoRow.implicitHeight + page.sp(8)
-        radius: Style.cornerRadius
-        color: Util.alpha(page.accent, 0.14)
-        border.width: 1
-        border.color: echo.hot ? page.accent : "transparent"
+        width: Math.min(part.width, echoRow.implicitWidth + page.sp(12))
+        height: echoRow.implicitHeight + page.sp(4)
+        Rectangle {
+          anchors.left: parent.left
+          anchors.top: parent.top
+          anchors.bottom: parent.bottom
+          width: page.sp(2)
+          color: echo.hot ? page.accent : page.faint
+        }
         Row {
           id: echoRow
           anchors.left: parent.left
-          anchors.leftMargin: page.sp(8)
+          anchors.leftMargin: page.sp(10)
           anchors.verticalCenter: parent.verticalCenter
           spacing: page.sp(6)
           Rectangle {
@@ -151,9 +160,10 @@ Column {
             maximumLineCount: 3
             elide: Text.ElideRight
             text: part.modelData.reply
-            color: page.foreground
+            color: echo.hot ? page.foreground : page.dim
             font.family: page.fontFamily
             font.styleName: page.fontStyle
+            font.italic: true
             font.pixelSize: Math.round(page.textSize * 0.85)
           }
         }
