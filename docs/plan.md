@@ -1092,6 +1092,17 @@ this list, with *Open, in order* above. Each says why it waits.
 No work unless they bite; each says what would tell. The first four came
 from 2026-09/10 and still stand.
 
+- **A calmer dashboard** (built 2026-11-18, the UX evaluation's F4 and F5;
+  before and after in the vault, `projects/longhand/ux-evidence/`, from
+  `tests/page/shots.py --scene calm --order date`). By day, what was closed
+  today waits folded in DONE TODAY after TODAY (it stood at full size among
+  the open, one "3 days late"); a closed row has no day pill; a deadline's
+  pill says "due …" beside the do-date's "do …"; a chat's last word is said
+  under the first of the rows that share it, and a deadline the agent named
+  by its number by its words ("its deadline", "“Title”"); a card no longer
+  says "#61"; a band of rows with no day says no day (it said "Thu 1 Jan").
+  *What would tell:* is DONE TODAY opened (`dash-fold` with `done` in the
+  usage log), and does a tick that vanishes into it ever surprise.
 - **One proposal ledger on two machines** (built 2026-11-18, `agent/psync.py`,
   the UX evaluation's F3): the deadlines' pattern — a log per machine in the
   vault, merged on each read of the list; the student's answer outranks a

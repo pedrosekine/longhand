@@ -110,6 +110,14 @@ function sayDate(iso, now) {
   return say + (parts[1] && parts[1] !== "23:59" ? " " + parts[1] : "")
 }
 
+// A deadline's day on its pill: "due today", "due Fri 20 Nov", or how late
+// it is — said beside a do-date ("do tomorrow"), the two must not read
+// alike (2026-11-18, the UX evaluation's F4: "do today" beside "today").
+function sayDue(iso, now) {
+  var s = sayDate(iso, now)
+  return /late/.test(s) ? s : "due " + s
+}
+
 function sayAge(age) {
   return age === 0 ? "written today" : age === 1 ? "written yesterday" : "written " + age + " days ago"
 }

@@ -196,7 +196,13 @@ function byDate(b, s, now) {
     return dx - dy || (x.closed ? 1 : 0) - (y.closed ? 1 : 0) || x.ms - y.ms
   })
   var spans = bands(now), groups = []
+  // What was closed today waits in a band of its own after TODAY, folded
+  // (2026-11-18, the UX evaluation's F4: four ticked rows at full size, one
+  // "3 days late", stood between the open ones). There to be seen and
+  // undone, never in the way of what is next.
+  var closed = { id: "done", text: "DONE TODAY", items: [] }
   for (var k = 0; k < dated.length; k++) {
+    if (dated[k].closed) { closed.items.push(dated[k]); continue }
     var ms = dated[k].ms
     var at = 0
     while (at + 1 < spans.length && ms >= spans[at + 1].from) at++
@@ -214,17 +220,24 @@ function byDate(b, s, now) {
   if (rest.length > 0) groups.push({ id: "none", text: "NO DAY YET", items: rest.map(function (t) { return { row: { kind: "task", task: t } } }) })
   // Today is said even when nothing is due: the line that says so is the
   // answer to the first question the list is opened with.
-  if (groups.length > 0 && !groups.some(function (x) { return x.id === "today" }))
+  if ((groups.length > 0 || closed.items.length > 0) && !groups.some(function (x) { return x.id === "today" }))
     groups.splice(groups.length > 0 && groups[0].id === "late" ? 1 : 0, 0, { id: "today", text: "TODAY", items: [] })
+  if (closed.items.length > 0) {
+    var ti = 0
+    while (ti < groups.length && groups[ti].id !== "today") ti++
+    groups.splice(ti + 1, 0, closed)
+  }
   var words = String(s.query || "").split(/\s+/).some(function (x) { return x !== "" && x.charAt(0) !== "#" })
   var rows = []
   for (var n = 0; n < groups.length; n++) {
     var gr = groups[n]
     var open = gr.id === "late" || words || bandOpen(s.folds, gr.id)
     var first = gr.items.length > 0 ? gr.items[0] : null
+    // A band's next is a day to come; what has no day says none.
+    var nextMs = first ? (first.ms !== undefined ? first.ms : Say.taskMs(first.row.task)) : 0
     rows.push({ kind: "band", id: gr.id, text: gr.text, count: gr.items.length, open: open, fixed: gr.id === "late",
-                next: first ? { title: first.row.kind === "deadline" ? first.row.deadline.title : Say.taskTitle(first.row.task),
-                                ms: first.ms !== undefined ? first.ms : Say.taskMs(first.row.task) } : null })
+                next: first && gr.id !== "done" ? { title: first.row.kind === "deadline" ? first.row.deadline.title : Say.taskTitle(first.row.task),
+                                ms: nextMs > 0 ? nextMs : 0 } : null })
     if (open) for (var r = 0; r < gr.items.length; r++) rows.push(gr.items[r].row)
   }
   return rows

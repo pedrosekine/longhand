@@ -905,7 +905,8 @@ BorderSurface {
                   horizontalAlignment: Text.AlignRight
                   elide: Text.ElideRight
                   textFormat: Text.PlainText
-                  text: !visible ? "" : "next: " + modelData.next.title + ",  " + Qt.formatDate(new Date(modelData.next.ms), "ddd d MMM")
+                  text: !visible ? "" : "next: " + modelData.next.title
+                    + (modelData.next.ms > 0 ? ",  " + Qt.formatDate(new Date(modelData.next.ms), "ddd d MMM") : "")
                   color: page.dim
                   font.family: page.fontFamily
                   font.styleName: page.fontStyle
@@ -1195,12 +1196,12 @@ BorderSurface {
                 // (◇, as its marks are), or yours. One line, so a long or
                 // many-lined turn never makes the row taller.
                 Text {
-                  visible: !!dashRow.chat
+                  visible: !!dashRow.chat && !!page.chatLeads[dashRow.rowId]
                   width: parent.width
                   textFormat: Text.PlainText
                   elide: Text.ElideRight
                   maximumLineCount: 1
-                  text: dashRow.chat ? (dashRow.chat.role === "agent" ? "◇ " : "you: ") + dashRow.chat.text : ""
+                  text: visible ? (dashRow.chat.role === "agent" ? "◇ " : "you: ") + page.sayChat(dashRow.chat.text, dashRow.modelData) : ""
                   color: dashRow.chatState === "unread" ? page.foreground : page.dim
                   font.family: page.fontFamily
                   font.styleName: page.fontStyle
