@@ -1100,7 +1100,12 @@ Small, when passing by:
     5. ~~The read tool~~ *built 2026-11-18* as the lookup loop that was
        there (the student's choice over a tool the model calls itself):
        four rounds a message, lookups in talks about a proposal, what was
-       looked up said under every answer. Watch: does it look things up
+       looked up said under every answer. After the UX evaluation's re-run
+       (vault, `projects/longhand/ux-evaluation-2026-11-18-rerun.md`): what
+       waits above 3 a course is set aside, the newest staying
+       (`trim_to_budget`; 14 on the real list); task names, not numbers, in
+       the move cards; no chat line under a done row; what was left out
+       said in the student's words. Watch: does it look things up
        when it should (the day's chat did twice in 13 answers), and does
        a fourth round ever help?
     To watch once it is in use, read at the check-in two weeks after

@@ -65,7 +65,7 @@ Rectangle {
         anchors.rightMargin: cardPill.visible ? page.sp(8) : 0
         textFormat: Text.PlainText
         wrapMode: Text.WordWrap
-        text: card.listed ? page.dayCardFacts(card.p) + (card.p.deadline && !card.p.key ? " · deadline #" + card.p.deadline + ", in no note" : "")
+        text: card.listed ? page.dayCardFacts(card.p) + (card.p.deadline && !card.p.key ? " · a deadline in no note" : "")
           : card.p.kind === "deadline" ? page.marginCardFacts(card.p) : JSON.stringify(card.p)
         color: page.foreground
         font.family: page.fontFamily

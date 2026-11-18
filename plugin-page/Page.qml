@@ -982,11 +982,19 @@ Item {
     var out = {}, seen = {}, rows = root.taskRows
     for (var i = 0; i < rows.length; i++) {
       var c = root.chatOf(rows[i])
-      if (!c || seen[c.thread]) continue
+      // A row done or dropped says nothing more of its chat: its last line
+      // was about it being open (the re-run of the UX evaluation, F5).
+      if (!c || seen[c.thread] || root.rowClosed(rows[i])) continue
       seen[c.thread] = true
       out[root.dashRowIds[i] || ""] = true
     }
     return out
+  }
+  function rowClosed(row) {
+    if (!row) return false
+    if (row.kind === "deadline") return !!row.deadline && row.deadline.status !== "open"
+    if (row.kind === "task") return !!row.task && (row.task.done || row.task.cancelled)
+    return false
   }
   // A chat's words as a row says them: a deadline the agent named by its
   // number (#61) by its words instead, and the row's own as "its" / "this".
@@ -1343,6 +1351,24 @@ Item {
   }
 
   function taskName(t) { return String((t && (t.title || t.text)) || "").replace(/\s+/g, " ").trim() }
+  // What was left out of an answer, as the student would say it: the
+  // runner keeps it in its own words for the agent ("do-date · no such
+  // box", "move deadline #7 …"); here, what it would have done.
+  function sayLeftOut(list) {
+    var words = { "do-date": "a day for", "drop": "dropping", "deadline": "a deadline for", "priority": "a priority for",
+                  "steps": "steps for", "done": "ticking", "task": "adding", "project": "the project", "undone": "reopening" }
+    return (list || []).map(function (s) {
+      s = String(s)
+      if (/^move deadline/.test(s)) return "moving a deadline that is not open, or to a day it cannot have"
+      if (/^not filed: /.test(s)) return s
+      var m = /^([\w-]+) · (.*)$/.exec(s)
+      if (!m) return s
+      var what = m[2]
+      if (/^deadline #\d+$/.test(what)) return (words[m[1]] || m[1]) + " a deadline that is not open"
+      if (/^no such box$/.test(what)) return (words[m[1]] || m[1]) + " a box that is not on the list"
+      return (words[m[1]] || m[1]) + " “" + what + "”"
+    }).join("; ")
+  }
   function sayChip(r) { return (r.kind || "block") + " · " + (r.head || "a block") }
   property var dayPending: null         // { text, block }: sent, its turn not written yet
   // A note's own conversation (docs/files.md, "Talking about a note",
@@ -1679,7 +1705,7 @@ Item {
     if (x.kind === "steps") return (x.title || "") + (x.steps || []).map(function (s, i) { return "\n" + (i + 1) + ". " + s }).join("")
     if (x.kind === "project") return (x.title || "") + " #" + x.project
     if (x.kind === "task") return (x.title || "") + (x.project ? " #" + x.project : "") + " · in today's note"
-    if (x.kind === "move") return "#" + x.deadline + " " + (x.title || "") + (x.was ? " · was " + Say.sayDate(x.was.slice(0, 10)) : "")
+    if (x.kind === "move") return (x.title || "its deadline") + (x.was ? " · was " + Say.sayDate(x.was.slice(0, 10)) : "")
     return x.title || ""
   }
   function dayCardPill(x) {
@@ -7889,6 +7915,10 @@ Item {
             .filter(function (x) { return !root.settledHere[x.id] })
           root.proposalsReadAt = root.proposalsAsked
           root.applyAuto(p.open || [])
+          // What waited above the cap went quiet: said once, when it goes.
+          if (p.trimmed > 0)
+            root.showHint(p.trimmed + (p.trimmed === 1 ? " older proposal" : " older proposals")
+                          + " set aside · the newest 3 a course wait for you")
           // Kept, not replaced: a conversation whose proposal was just
           // settled stays in the margin until it is closed.
           root.threads = p.threads || {}

@@ -13,6 +13,7 @@ Against plan.py directly:
 - a box ticked because the student asked is done at once (`auto`); one
   that only looks done is still a card; a ticked box reopened when asked,
   only among those ticked lately; undoing a tick does not block the next
+- what waits above the cap of 3 a course goes, the newest staying
 """
 import datetime as dt
 import pathlib
@@ -78,6 +79,23 @@ def main() -> int:
              {"kind": "undone", "key": "thesis\t- not ticked"}])
     check([(x["kind"], x["title"], x.get("auto")) for x in got] == [("undone", "book the room", True)],
           f"a ticked box reopened when asked, at once; only one ticked lately ({got})")
+    # What waits above the cap (2026-11-18, the evaluation's re-run): the
+    # newest 3 a course stay; never a document, nor what a chat proposed,
+    # nor what it does on its own.
+    led = {"next": 20, "items": [dict({"id": i, "kind": "question", "key": f"k{i}", "project": "intsem", "status": "open",
+                                       "at": f"2026-11-{10 + i:02d}T09:00:00"}) for i in range(1, 6)]
+           + [{"id": 10, "kind": "do-date", "key": "r", "project": "respro", "status": "open", "at": "2026-11-01T09:00:00"},
+              {"id": 11, "kind": "file", "key": "", "project": "intsem", "status": "open", "at": "2026-11-01T09:00:00"},
+              {"id": 12, "kind": "task", "key": "", "project": "intsem", "status": "open", "at": "2026-11-01T09:00:00", "from": "day"},
+              {"id": 13, "kind": "done", "key": "d", "project": "intsem", "status": "open", "at": "2026-11-01T09:00:00", "auto": True}]}
+    n = plan.trim_to_budget(led, "2026-11-18T20:00:00")
+    by = {x["id"]: x for x in led["items"]}
+    check(n == 2 and [by[i]["status"] for i in (1, 2, 3, 4, 5)] == ["expired", "expired", "open", "open", "open"]
+          and by[1].get("over_cap") and by[1]["resolved"] == "2026-11-18T20:00:00",
+          f"what waits above the cap goes, the newest 3 a course staying ({n})")
+    check(all(by[i]["status"] == "open" for i in (10, 11, 12, 13)),
+          "…never another course's, a document, what a chat proposed, or what it does on its own")
+    check(plan.trim_to_budget(led, "2026-11-18T20:01:00") == 0, "…and once is enough")
     print("FAIL" if FAILS else "PASS")
     return 1 if FAILS else 0
 
