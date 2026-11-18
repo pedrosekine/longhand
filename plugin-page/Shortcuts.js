@@ -24,7 +24,7 @@
 var places = {
   any: "everywhere",
   note: "in the note",
-  mention: "while @ or # lists tags, or @ blocks in the day's box",
+  mention: "while @ or # lists tags, or @ blocks and tasks in the day's box",
   cue: "while a box's date lights up as it is typed",
   search: "in find",
   switcher: "in the switcher (Ctrl+O)",
@@ -105,7 +105,7 @@ var actions = [
   { id: "pane1", group: "page", places: ["any"], does: "The sidebar: go there, opening it; in it, Time ↔ Files", keys: ["Ctrl+1"] },
   { id: "pane2", group: "page", places: ["any"], does: "The middle: go there; in it, the note ↔ the dashboard", keys: ["Ctrl+2"] },
   { id: "dashGo", group: "page", places: ["any"], does: "The dashboard, from anywhere (pressed on it, it stays)", keys: ["Ctrl+Alt+2"] },
-  { id: "pane3", group: "page", places: ["any"], does: "The agent's pane: go there, opening it; in it, the day's chat ↔ this block's or task's", keys: ["Ctrl+3"] },
+  { id: "pane3", group: "page", places: ["any"], does: "The agent's pane: go there, opening it; in it, everything (the day's chat) ↔ this block's or task's chat", keys: ["Ctrl+3"] },
   { id: "sidebar", group: "page", places: ["any"], does: "The sidebar: open or close", keys: ["Ctrl+\\"] },
   { id: "day", group: "page", places: ["any"], does: "The agent's pane: open (on the day's chat) or close", keys: ["Ctrl+|"] },
   { id: "paneLeft", group: "page", places: ["any"], does: "The open pane to the left", keys: ["Alt+Left"] },
@@ -361,7 +361,7 @@ var actions = [
   { id: "exportWrite", group: "export", places: ["export"], does: "Write the PDF and open it", keys: ["Enter"] },
   { id: "exportClose", group: "export", places: ["export"], does: "Close it, back to the note (or the dashboard it came from)", keys: ["Esc"] },
 
-  { id: "marginUp", group: "margin", places: ["margin", "chat"], does: "Previous proposal (from an empty box: into the proposals)", keys: ["Up"] },
+  { id: "marginUp", group: "margin", places: ["margin", "chat"], does: "Previous proposal (from an empty box: into the proposals, or the other chats' lines)", keys: ["Up"] },
   { id: "marginDown", group: "margin", places: ["margin"], does: "Next proposal, then the box", keys: ["Down"] },
   { id: "marginAccept", group: "margin", places: ["margin"], does: "Do what the proposal says", keys: ["Enter", "Space"] },
   { id: "marginDecline", group: "margin", places: ["margin"], does: "Decline what you are talking about (a question: set it aside; a thing done: undo it)", keys: ["Del"] },

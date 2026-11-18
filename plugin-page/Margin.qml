@@ -100,6 +100,55 @@ BorderSurface {
       width: parent.width
       spacing: page.sp(12)
 
+      // "About this" (docs/agent.md, "One conversation", slice 2): the one
+      // conversation's turns about this task or block. Its own chat is
+      // below; what was said about it elsewhere — the day's chat pointing
+      // at it, another day's margin for the same task — is here first,
+      // folded when it is long.
+      Text {
+        visible: page.aboutChip !== null
+        width: marginColumn.width
+        textFormat: Text.PlainText
+        elide: Text.ElideRight
+        text: page.aboutChip ? "ABOUT THIS " + String(page.aboutChip.kind).toUpperCase() + "  ·  " + page.keyName("pane3") + " everything" : ""
+        color: page.dim
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.caption)
+      }
+      Column {
+        width: marginColumn.width
+        spacing: page.sp(4)
+        visible: page.elsewhereTurns.length > 0
+        FoldLine {
+          page: margin.page
+          width: parent.width
+          day: true
+          unfolded: page.elsewhereOpen
+          head: page.elsewhereTurns.length + (page.elsewhereTurns.length === 1 ? " turn" : " turns") + " about this elsewhere"
+          tail: page.elsewhereOpen || page.elsewhereTurns.length === 0 ? ""
+            : page.elsewhereTurns[page.elsewhereTurns.length - 1].place + ", " + page.elsewhereTurns[page.elsewhereTurns.length - 1].when
+          onAct: { page.elsewhereOpen = !page.elsewhereOpen; page.used("view", "elsewhere") }
+        }
+        Repeater {
+          model: page.elsewhereOpen ? page.elsewhereTurns : []
+          Text {
+            required property var modelData
+            x: page.sp(14)
+            width: marginColumn.width - x
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
+            maximumLineCount: 6
+            elide: Text.ElideRight
+            text: modelData.when + ", " + modelData.place + "\n" + (modelData.role === "agent" ? "◇ " : "you: ") + modelData.text
+            color: page.dim
+            font.family: page.fontFamily
+            font.styleName: page.fontStyle
+            font.pixelSize: page.fs(Style.font.caption)
+          }
+        }
+      }
+
       // The proposal talked about, pinned at the top: what it is, and why.
       Rectangle {
         id: pinned
@@ -418,13 +467,29 @@ BorderSurface {
     anchors.rightMargin: margin.contentRightInset
     anchors.bottom: parent.bottom
     anchors.bottomMargin: margin.contentBottomInset
-    height: chatField.visible ? chatField.implicitHeight : 0
+    height: chatField.visible ? chatField.implicitHeight + (aboutChips.visible ? aboutChips.height + page.sp(6) : 0) : 0
+
+    // What this chat is about: its one chip. Letting it go leaves for the
+    // day's chat, with what was typed.
+    Chips {
+      id: aboutChips
+      page: margin.page
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.bottom: chatField.top
+      anchors.bottomMargin: page.sp(6)
+      fixed: true
+      visible: chatField.visible && page.aboutChip !== null
+      refs: page.aboutChip ? [page.aboutChip] : []
+      onDrop: page.aboutToDay()
+    }
 
     ChatField {
       id: chatField
       page: margin.page
       anchors.left: parent.left
       anchors.right: parent.right
+      anchors.bottom: parent.bottom
       height: implicitHeight
       visible: page.marginOpen || margin.talk
       readOnly: margin.talk && !page.talkCanSend

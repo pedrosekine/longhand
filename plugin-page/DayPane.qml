@@ -80,7 +80,7 @@ BorderSurface {
     textFormat: Text.PlainText
     text: page.paper.room ? (dayPane.listing ? "MARKS · " : "CHAT · ") + (page.noteLabel || "").toUpperCase()
       : page.noteRoom ? "ABOUT " + (page.noteLabel || "").toUpperCase()
-      : page.noteService.isToday ? "TODAY" : (page.dateLabel || "").toUpperCase()
+      : page.noteService.isToday ? "EVERYTHING · TODAY" : (page.dateLabel || "").toUpperCase()
     color: page.dim
     font.family: page.fontFamily
     font.styleName: page.fontStyle
@@ -377,6 +377,46 @@ BorderSurface {
       width: parent.width
       spacing: page.sp(12)
 
+      // "Everything": the earlier days, a line each; unfolded, the places
+      // talked in that day, a line each, opening what they are about.
+      Column {
+        width: dayColumn.width
+        spacing: 0
+        visible: page.convoDays.length > 0
+        Repeater {
+          model: page.convoDays
+          Column {
+            id: dayFold
+            required property var modelData
+            width: parent.width
+            spacing: 0
+            FoldLine {
+              page: dayPane.page
+              width: parent.width
+              day: true
+              rowKey: "d:" + dayFold.modelData.date
+              unfolded: !!page.convoOpenDays[dayFold.modelData.date]
+              head: dayFold.modelData.label + " · " + dayFold.modelData.subjects
+                + (dayFold.modelData.subjects === 1 ? " subject · " : " subjects · ") + dayFold.modelData.turns + " turns"
+              onAct: page.convoAct(rowKey)
+            }
+            Repeater {
+              model: page.convoOpenDays[dayFold.modelData.date] ? dayFold.modelData.groups : []
+              FoldLine {
+                required property var modelData
+                page: dayPane.page
+                width: dayFold.width
+                indent: page.sp(14)
+                rowKey: "g:" + dayFold.modelData.date + ":" + modelData.thread
+                head: page.sayFold(modelData)
+                tail: page.sayFoldLast(modelData)
+                onAct: page.convoAct(rowKey)
+              }
+            }
+          }
+        }
+      }
+
       // What the morning's pass noticed, waiting at the top.
       Repeater {
         model: page.dayOpening
@@ -409,6 +449,20 @@ BorderSurface {
           required property int index
           width: dayColumn.width
           spacing: page.sp(2)
+          // Today's other places — a task's chat, a paper's — said before
+          // this turn: a line each, in the order said.
+          Repeater {
+            model: page.convoBefore(turn.index)
+            FoldLine {
+              required property var modelData
+              page: dayPane.page
+              width: turn.width
+              rowKey: "g::" + modelData.thread
+              head: page.sayFold(modelData)
+              tail: page.sayFoldLast(modelData)
+              onAct: page.convoAct(rowKey)
+            }
+          }
           // The marks a message about a paper pointed at, over its bubble.
           Text {
             visible: modelData.role === "student" && !!modelData.marks && modelData.marks.length > 0
@@ -424,12 +478,15 @@ BorderSurface {
           }
           // The block a message pointed at, over its bubble.
           Text {
-            visible: modelData.role === "student" && !!modelData.block
+            visible: modelData.role === "student" && (!!modelData.block || (!!modelData.refs && modelData.refs.length > 0))
             width: parent.width
             textFormat: Text.PlainText
             elide: Text.ElideRight
             horizontalAlignment: Text.AlignRight
-            text: "↳ " + page.blockHead(modelData.block)
+            // What it was about: its chips, as they were sent.
+            text: modelData.refs && modelData.refs.length > 0
+              ? modelData.refs.map(function (r) { return "↳ " + page.sayChip(r) }).join("   ")
+              : "↳ " + page.blockHead(modelData.block)
             color: page.faint
             font.family: page.fontFamily
             font.styleName: page.fontStyle
@@ -611,6 +668,26 @@ BorderSurface {
         }
       }
 
+      // …and those said since the day's last turn.
+      Column {
+        width: dayColumn.width
+        spacing: 0
+        visible: tailRep.count > 0
+        Repeater {
+          id: tailRep
+          model: page.convoBefore(page.dayTurns.length)
+          FoldLine {
+            required property var modelData
+            page: dayPane.page
+            width: dayColumn.width
+            rowKey: "g::" + modelData.thread
+            head: page.sayFold(modelData)
+            tail: page.sayFoldLast(modelData)
+            onAct: page.convoAct(rowKey)
+          }
+        }
+      }
+
       // How long (2026-11-18); the box below has the square that stops it,
       // and a click on the word stops it too.
       Row {
@@ -658,7 +735,7 @@ BorderSurface {
           : page.noteRoom
           ? "Chat about this note. Chatting shares it with the agent, for this chat only; the note itself is never written. Point at a part with @."
           : page.dayCanSend
-          ? "The day's chat: your tasks, your courses, what you wrote. Point at a block with @."
+          ? "The day's chat: your tasks, your courses, what you wrote. Point at a block or a task with @."
           : "Nothing was said on this day."
         color: page.faint
         font.family: page.fontFamily
@@ -727,17 +804,17 @@ BorderSurface {
         font.pixelSize: page.fs(Style.font.caption)
       }
     }
-    // The block the next message points at; Backspace in the empty box lets go.
-    Text {
-      visible: page.dayBlock !== ""
+    // What the next message is about: its chips. Backspace in the empty
+    // box lets go of the last; a click on one lets it go.
+    Chips {
+      page: dayPane.page
       width: parent.width
-      textFormat: Text.PlainText
-      elide: Text.ElideRight
-      text: "↳ " + page.dayBlockText
-      color: page.dim
-      font.family: page.fontFamily
-      font.styleName: page.fontStyle
-      font.pixelSize: page.fs(Style.font.caption)
+      refs: page.noteRoom ? page.dayRefs : page.dayChips
+      onDrop: function (i) {
+        if (page.noteRoom) page.dayRefs = []
+        else page.dropDayChip(i)
+        dayField.forceActiveFocus()
+      }
     }
 
     ChatField {
@@ -755,7 +832,7 @@ BorderSurface {
         : page.noteRoom ? "chat about this note…"
         : page.dayCanSend ? "chat with the day…" : "a past day: today's is where you chat (" + page.keyName("today") + ")"
       onKeyPressed: function (event) { if (page.dayKey(event)) event.accepted = true }
-      onTextChanged: Qt.callLater(page.updateDayMention)
+      onTextChanged: { page.dayTyped(text); Qt.callLater(page.updateDayMention) }
       onCursorPositionChanged: Qt.callLater(page.updateDayMention)
     }
 
@@ -765,8 +842,9 @@ BorderSurface {
       wrapMode: Text.WordWrap
       text: page.paper.room ? page.keyName("chatSend") + " sends · ^ attaches a mark · quotes link to the page · "
           + page.keyName("marginBack") + " back to the marks"
-        : page.keyName("chatSend") + " sends · Shift+Enter a new line · @ points at a block"
-        + (page.dayOpenCards.length > 0 ? " · " + page.keyName("marginUp") + " to its proposals" : "")
+        : page.keyName("chatSend") + " sends · Shift+Enter a new line · @ points at a block" + (page.noteRoom ? "" : " or a task")
+        + (page.dayOpenCards.length > 0 ? " · " + page.keyName("marginUp") + " to its proposals"
+           : page.convoRows.length > 0 ? " · " + page.keyName("marginUp") + " to the other chats" : "")
         + " · " + page.keyName("marginBack") + " closes · " + page.keyName("dayChat") + " from anywhere"
       color: page.faint
       font.family: page.fontFamily

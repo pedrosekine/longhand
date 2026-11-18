@@ -399,6 +399,10 @@ ShellRoot {
     function dayKey(key: int, mods: int): bool { return page.dayKey({ key: key, text: "", modifiers: mods }) }
     function dayTurns(): string { return JSON.stringify(page.dayTurns.map(function (t) { return t.role + ": " + t.text })) }
     function dayBlockText(): string { return page.dayBlockText }
+    function dayChips(): string { return JSON.stringify(page.dayChips) }
+    function convoRows(): string { return JSON.stringify(page.convoRows.map(function (r) { return { key: r.key, head: r.day ? r.day.label : page.sayFold(r.group) } })) }
+    function dayFoldKey(): string { return page.dayFoldKey }
+    function elsewhere(): string { return JSON.stringify({ want: page.elsewhereWant, turns: page.elsewhereTurns, open: page.elsewhereOpen, chip: page.aboutChip }) }
     function dayType(text: string): void { var f = page.dayFieldItem(); f.text = text; f.cursorPosition = text.length }
     function dayFieldText(): string { return page.dayFieldItem().text }
     function dayReadOnly(): bool { return page.dayFieldItem().readOnly }

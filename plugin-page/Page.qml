@@ -1109,8 +1109,203 @@ Item {
   // leaving it comes back here. The open note's day is shown (a past day's,
   // read-only); only today's is talked in.
   property bool dayOpen: false
-  property string dayBlock: ""          // a block pointed at, going with the next message
-  property string dayBlockText: ""
+  // What the next message points at (docs/agent.md, "One conversation",
+  // slice 2, 2026-11-18): the chips above the box, each seen before it is
+  // sent and removable. `dayRefs` are the ones put there (`@`, or a block
+  // pointed at): { date, hash | line, head, kind }, a block of the open
+  // note or a task from another day's. Before them, dimmer, what the
+  // student is looking at when it is a task (`dayAuto`): it follows the
+  // selection until typing starts, is then fixed for that message, and
+  // can be let go like any other.
+  property var dayRefs: []
+  function refKey(r) { return r ? (r.date || "") + ":" + (r.hash || ("L" + r.line)) : "" }
+  function refToday(r) { return !!r && !!r.hash && (!r.date || r.date === svc.noteDate) }
+  readonly property string dayBlock: { for (var i = 0; i < root.dayRefs.length; i++) if (root.refToday(root.dayRefs[i])) return root.dayRefs[i].hash; return "" }
+  readonly property string dayBlockText: { for (var i = 0; i < root.dayRefs.length; i++) if (root.refToday(root.dayRefs[i])) return root.dayRefs[i].head; return "" }
+  property bool dayAutoOff: false       // the automatic chip was let go, until the selection moves
+  property var dayAutoHeld: null        // …or fixed, since typing started
+  readonly property var dayAutoNow: {
+    if (!root.dayShown || root.noteRoom || root.paper.room || !root.dayCanSend) return null
+    if (root.dashOpen) {
+      var row = root.taskRows[root.taskFocus]
+      var t = !row ? null : row.kind === "task" ? row.task : row.kind === "deadline" ? root.taskOfAnchor(row.deadline.id) : null
+      return t && t.key && !t.private && t.date ? { date: t.date, line: t.line, head: root.taskName(t), kind: "task", auto: true } : null
+    }
+    if (root.centerView !== "note" || !root.dayNote || root.currentHash === "" || !root.agentOn) return null
+    var b = root.blockBounds(root.currentHash)
+    if (!b || b.private || !/^\s*[-*+] \[.\] \S/.test(b.text.split("\n")[0])) return null
+    return { date: svc.noteDate, hash: root.currentHash, head: root.blockHead(root.currentHash), kind: "task", auto: true }
+  }
+  readonly property string dayAutoKey: root.refKey(root.dayAutoNow)
+  onDayAutoKeyChanged: root.dayAutoOff = false
+  readonly property var dayAuto: root.dayAutoHeld ? root.dayAutoHeld : root.dayAutoOff ? null : root.dayAutoNow
+  readonly property var dayChips: {
+    var a = root.dayAuto, k = root.refKey(a)
+    var own = root.dayRefs
+    return (a && !own.some(function (r) { return root.refKey(r) === k || (r.hash && r.hash === a.hash) }) ? [a] : []).concat(own)
+  }
+  function addDayRef(r) {
+    var k = root.refKey(r)
+    if (root.dayRefs.some(function (x) { return root.refKey(x) === k })) return
+    // A note's own chat points at one block of it (`note --block`).
+    root.dayRefs = root.noteRoom ? [r] : root.dayRefs.concat([r]).slice(-6)
+  }
+  function dropDayChip(i) {
+    var c = root.dayChips[i]
+    if (!c) return false
+    if (c.auto) { root.dayAutoHeld = null; root.dayAutoOff = true; root.used("chip", "auto-removed") }
+    else { var k = root.refKey(c); root.dayRefs = root.dayRefs.filter(function (r) { return root.refKey(r) !== k }); root.used("chip", "removed") }
+    return true
+  }
+  // Typing fixes the automatic chip: what was being looked at when the
+  // message began is what it is about, wherever the selection goes next.
+  function dayTyped(text) {
+    if (String(text) === "") { root.dayAutoHeld = null; return }
+    if (!root.dayAutoHeld && !root.dayAutoOff && root.dayAutoNow) root.dayAutoHeld = root.dayAutoNow
+  }
+  // The pane's two views (the same design). "Everything" is the day's
+  // chat grown: above its turns, the earlier days folded to a line each
+  // (unfolded: that day's places, a line each); among them, in the order
+  // said, today's other places — a task's chat, a paper's — folded to
+  // their last words. A line opens what it is about ("about this": a
+  // task's chat beside the dashboard, a paper's, a note's). From
+  // `longhand-agent conversation --view`, read when the pane shows and
+  // after each answer.
+  property var convoView: null
+  property var convoOpenDays: ({})
+  property string dayFoldKey: ""        // the folded line the keys are on; "": the box
+  readonly property bool convoShown: root.dayShown && !root.noteRoom && !root.paper.room && svc.isToday && svc.configured
+  onConvoShownChanged: { root.dayFoldKey = ""; if (root.convoShown) root.loadConvoView() }
+  onWorkingChanged: if (!root.working && root.convoShown) root.loadConvoView()
+  function loadConvoView() {
+    if (convoViewProc.running) return
+    convoViewProc.command = [svc.runner, "conversation", "--view"]
+    convoViewProc.running = true
+  }
+  readonly property var convoDays: root.convoShown && root.convoView ? (root.convoView.days || []) : []
+  readonly property var convoToday: root.convoShown && root.convoView ? (root.convoView.groups || []) : []
+  // Today's other places said before the day's turn `i` (after the one
+  // before it); `i` past the last: those said since.
+  function convoBefore(i) {
+    var turns = root.dayTurns, gs = root.convoToday
+    if (gs.length === 0) return []
+    var lower = i > 0 && turns[i - 1] ? String(turns[i - 1].at || "") : ""
+    var upper = i < turns.length ? String(turns[i].at || "9") : "9"
+    // A turn with no time yet (sent, not written): nothing is before it
+    // that is not before the end.
+    if (i < turns.length && !turns[i].at) return []
+    if (i >= turns.length) for (var j = turns.length - 1; j >= 0 && lower === ""; j--) lower = String(turns[j].at || "")
+    return gs.filter(function (g) { return String(g.at) > lower && String(g.at) <= upper })
+  }
+  readonly property var convoRows: {
+    var out = [], open = root.convoOpenDays
+    root.convoDays.forEach(function (d) {
+      out.push({ key: "d:" + d.date, day: d })
+      if (open[d.date]) d.groups.forEach(function (g) { out.push({ key: "g:" + d.date + ":" + g.thread, group: g }) })
+    })
+    root.convoToday.forEach(function (g) { out.push({ key: "g::" + g.thread, group: g }) })
+    return out
+  }
+  function sayFold(g) {
+    return (g.kind ? g.kind + " · " : "") + (g.name || "…") + " · " + g.turns + (g.turns === 1 ? " turn" : " turns")
+  }
+  function sayFoldLast(g) { return g.text ? (g.role === "agent" ? "◇ " : "you: ") + g.text : "" }
+  function convoAct(key) {
+    var row = null
+    for (var i = 0; i < root.convoRows.length; i++) if (root.convoRows[i].key === key) row = root.convoRows[i]
+    if (!row) return
+    if (row.day) {
+      var o = Object.assign({}, root.convoOpenDays)
+      o[row.day.date] = !o[row.day.date]
+      root.convoOpenDays = o
+      root.used("view", o[row.day.date] ? "unfold-day" : "fold-day")
+      return
+    }
+    root.openConvo(row.group.open)
+  }
+  // "About this": what a folded line is about, opened where it is talked
+  // about — a task's chat beside the dashboard, a paper's or a note's
+  // room, a day's note.
+  function openConvo(o) {
+    if (!o || !o.kind) { root.showHint("nothing to open for this"); return }
+    root.used("view", "about-" + o.kind)
+    root.dayFoldKey = ""
+    if (o.kind === "task") {
+      var t = null
+      for (var i = 0; i < root.tasks.length && !t; i++) if (root.tasks[i].key === o.key) t = root.tasks[i]
+      if (t && !t.private) {
+        if (!root.dashOpen) root.toggleDash()
+        root.openTaskTalk(t)
+      } else if (o.date) { root.openNote(o.date); root.showHint("that task is closed: this is its note") }
+      else root.showHint("that task is closed")
+      return
+    }
+    if (o.kind === "file") { if (/\.pdf$/i.test(o.rel)) root.openPdf(o.rel); else root.openFile(o.rel, false); return }
+    if (o.date) root.openNote(o.date)
+  }
+
+  // What was said elsewhere about the task or block a chat is about (the
+  // same design: "about this" is every turn that mentions the thing, not
+  // only this place's): the day's chat pointing at it, another day's
+  // margin for the same task. `longhand-agent conversation --elsewhere`.
+  property var elsewhere: null
+  property bool elsewhereOpen: false
+  readonly property string elsewhereWant: {
+    if (root.talkOpen) {
+      var d = root.talkData
+      if (!d || !d.thread || "?~#".indexOf(String(d.thread).charAt(0)) >= 0) return ""
+      return d.thread + "|" + (d.chat ? d.chat.date + "|" + d.chat.hash : "|")
+    }
+    if (root.marginOpen && !root.projectOpen && root.dayNote && (root.currentRec !== "" || root.currentHash !== ""))
+      return "|" + svc.noteDate + "|" + (root.currentRec !== "" ? root.currentRec : root.currentHash)
+    return ""
+  }
+  property string elsewhereFor: ""
+  onElsewhereWantChanged: root.loadElsewhere()
+  function loadElsewhere() {
+    var w = root.elsewhereWant
+    if (w === root.elsewhereFor && root.elsewhere) return
+    if (w.split("|")[0] !== root.elsewhereFor.split("|")[0] || w === "") { root.elsewhere = null; root.elsewhereOpen = false }
+    if (w === "" || !svc.configured) { root.elsewhereFor = ""; return }
+    var parts = w.split("|")
+    var cmd = [svc.runner, "conversation", "--elsewhere"]
+    if (parts[0] !== "") cmd = cmd.concat(["--task", parts[0]])
+    if (parts[1] !== "" && parts[2] !== "") cmd = cmd.concat(["--date", parts[1], "--hash", parts[2]])
+    elsewhereProc.wanted = w
+    if (elsewhereProc.running) return
+    elsewhereProc.asked = w
+    elsewhereProc.command = cmd
+    elsewhereProc.running = true
+  }
+  readonly property var elsewhereTurns: root.elsewhere && root.elsewhereFor === root.elsewhereWant ? (root.elsewhere.turns || []) : []
+
+  // What a task's or a block's chat is about, as its one chip; letting it
+  // go leaves for the day's chat with what was typed.
+  readonly property var aboutChip: {
+    if (root.talkOpen) {
+      if (!root.talkData) return null
+      return { kind: root.talkItem ? (root.talkItem.kind === "question" ? "question" : "proposal") : "task", head: root.talkData.title || "", auto: true }
+    }
+    if (root.marginOpen && !root.projectOpen && root.dayNote && root.currentHash !== "") {
+      var b = root.blockBounds(root.currentHash)
+      return { kind: b && /^\s*[-*+] \[.\] /.test(b.text.split("\n")[0]) ? "task" : "block", head: root.blockHead(root.currentHash), auto: true }
+    }
+    return null
+  }
+  function aboutToDay() {
+    var text = String(margin.chatFieldRef.text || "")
+    margin.chatFieldRef.text = ""
+    root.used("chip", "about-removed")
+    root.openDay("")
+    Qt.callLater(function () {
+      root.dayAutoHeld = null
+      root.dayAutoOff = true
+      if (text !== "") { dayPane.dayFieldRef.text = text; dayPane.dayFieldRef.cursorPosition = text.length }
+    })
+  }
+
+  function taskName(t) { return String((t && (t.title || t.text)) || "").replace(/\s+/g, " ").trim() }
+  function sayChip(r) { return (r.kind || "block") + " · " + (r.head || "a block") }
   property var dayPending: null         // { text, block }: sent, its turn not written yet
   // A note's own conversation (docs/files.md, "Talking about a note",
   // 2026-10-27): the same pane and view, another room. What the agent does
@@ -1175,13 +1370,13 @@ Item {
     root.marginOpen = false
     root.marginFocus = -1
     root.closeTalk(false)
-    if (note !== root.noteRoom) { root.dayPending = null; root.dayBlock = ""; root.dayBlockText = ""; root.paper.marks = [] }
+    if (note !== root.noteRoom) { root.dayPending = null; root.dayRefs = []; root.dayAutoHeld = null; root.paper.marks = [] }
     root.noteRoom = !!note
     root.dayOpen = true
     if (block) {
       var b = root.blockBounds(block)
-      root.dayBlock = b ? block : ""
-      root.dayBlockText = b ? b.text.split("\n")[0].replace(/^\s*([-*+] (\[.\] )?|#+ )/, "").slice(0, 80) : ""
+      if (b) root.addDayRef({ date: root.noteRoom ? "" : svc.noteDate, hash: block, head: root.blockHead(block),
+                              kind: /^\s*[-*+] \[.\] /.test(b.text.split("\n")[0]) ? "task" : "block" })
     }
     root.used(note ? (root.paper.shown ? "paper-talk" : "note-talk") : "day", block ? "block" : "")
     if (root.paper.room && root.paper.listing) Qt.callLater(function () { dayPane.paperKeysRef.forceActiveFocus() })
@@ -1203,8 +1398,8 @@ Item {
     var was = root.here
     root.dayOpen = false
     root.noteRoom = false
-    root.dayBlock = ""
-    root.dayBlockText = ""
+    root.dayRefs = []
+    root.dayAutoHeld = null
     root.giveBack("right", was, "right")
   }
 
@@ -1262,13 +1457,18 @@ Item {
     var msg = String(text || "").trim()
     if (msg === "" || !root.dayCanSend) return false
     var cmd = root.noteRoom ? [svc.runner, "note", "--file", root.roomRel, "--message", msg] : [svc.runner, "day", "--message", msg]
-    if (root.dayBlock !== "") cmd = cmd.concat(["--block", root.dayBlock])
+    var chips = root.noteRoom ? root.dayRefs.slice(0, 1) : root.dayChips.slice()
+    if (root.noteRoom) { if (root.dayBlock !== "") cmd = cmd.concat(["--block", root.dayBlock]) }
+    else if (chips.length > 0)
+      cmd = cmd.concat(["--refs", JSON.stringify(chips.map(function (r) { return r.hash ? { date: r.date, hash: r.hash } : { date: r.date, line: r.line } }))])
     var marks = root.paper.room ? root.paper.marks.slice() : []
     if (marks.length > 0) cmd = cmd.concat(["--marks", marks.join(",")])
     root.paper.marks = []
-    root.dayPending = { text: msg, block: root.dayBlock, marks: marks }
-    root.dayBlock = ""
-    root.dayBlockText = ""
+    root.dayPending = { text: msg, block: root.dayBlock, marks: marks,
+                        refs: chips.map(function (r) { return { date: r.date, hash: r.hash || "", kind: r.kind, head: r.head } }) }
+    if (chips.length > 0) root.used("chip", "sent-" + chips.length + (chips[0].auto ? "-auto" : ""))
+    root.dayRefs = []
+    root.dayAutoHeld = null
     root.flush()
     root.enqueue(cmd, root.roomHash)
     root.holdThinking("day")
@@ -1299,7 +1499,24 @@ Item {
     var q = m[2].toLowerCase()
     var items = Blocks.split(editor.text).filter(function (b) {
       return !b.private && b.kind !== "frontmatter" && b.text.trim() !== "" && (q === "" || b.text.toLowerCase().indexOf(q) >= 0)
-    }).reverse().slice(0, 8).map(function (b) { return { hash: b.hash, head: root.blockHead(b.hash) } })
+    }).reverse().slice(0, root.noteRoom ? 8 : 5).map(function (b) {
+      return { hash: b.hash, head: root.blockHead(b.hash), kind: /^\s*[-*+] \[.\] /.test(b.text.split("\n")[0]) ? "task" : "block" }
+    })
+    // …and, in the day's chat, the open tasks of other days (slice 2 of
+    // "One conversation"): a task is talked about from anywhere.
+    if (!root.noteRoom) {
+      var seen = {}
+      items = items.concat(root.tasks.filter(function (t) {
+        var name = root.taskName(t)
+        if (!t.key || t.private || !t.date || t.date === svc.noteDate || seen[t.key] || name === "") return false
+        if (q !== "" && name.toLowerCase().indexOf(q) < 0) return false
+        seen[t.key] = true
+        return true
+      }).slice(0, 8 - items.length).map(function (t) {
+        var name = root.taskName(t).slice(0, 80)
+        return { task: t, name: name, head: "task · " + name }
+      }))
+    }
     root.dayMention = { start: f.cursorPosition - m[2].length - 1, query: m[2], items: items }
     if (root.dayMentionFocus > items.length - 1) root.dayMentionFocus = Math.max(0, items.length - 1)
   }
@@ -1316,10 +1533,10 @@ Item {
     }
     var f = dayPane.dayFieldRef
     f.remove(m.start, f.cursorPosition)
-    root.dayBlock = it.hash
-    root.dayBlockText = it.head
+    if (it.task) root.addDayRef({ date: it.task.date, line: it.task.line, head: it.name, kind: "task" })
+    else root.addDayRef({ date: root.noteRoom ? "" : svc.noteDate, hash: it.hash, head: it.head, kind: it.kind || "block" })
     root.dayMention = null
-    root.used("day", "at")
+    root.used("day", it.task ? "at-task" : "at")
   }
 
   // The cards under the day's answers (slice 3): what it proposed, the
@@ -1454,10 +1671,32 @@ Item {
     // On the cards: ↑↓ between them, Enter or Space does what one says, Del
     // declines it (a thing done by itself: undoes it), Esc or ↓ past the
     // last goes back to the box; typing goes back too.
+    // On the folded lines of "everything" (earlier days, today's other
+    // places): ↑↓ between them, Enter or Space unfolds a day or opens what
+    // a line is about, Esc or ↓ past the last goes back to the box.
+    if (root.dayFoldKey !== "") {
+      var rows = root.convoRows, at = -1
+      for (var r = 0; r < rows.length; r++) if (rows[r].key === root.dayFoldKey) at = r
+      if (at < 0) root.dayFoldKey = ""
+      else {
+        if (Sc.hit(event, "marginUp")) { root.dayFoldKey = rows[Math.max(0, at - 1)].key; return true }
+        if (Sc.hit(event, "marginDown")) {
+          if (at < rows.length - 1) root.dayFoldKey = rows[at + 1].key
+          else { root.dayFoldKey = ""; if (root.dayOpenCards.length > 0) root.dayCardFocus = 0 }
+          return true
+        }
+        if (Sc.hit(event, "marginAccept")) { root.convoAct(root.dayFoldKey); return true }
+        if (Sc.hit(event, "marginBack")) { root.dayFoldKey = ""; return true }
+        root.dayFoldKey = ""
+      }
+    }
     if (root.dayCardFocus >= 0) {
       var n = root.dayOpenCards.length
       if (n === 0) root.dayCardFocus = -1
       else {
+        if (Sc.hit(event, "marginUp") && root.dayCardFocus === 0 && root.convoRows.length > 0) {
+          root.dayCardFocus = -1; root.dayFoldKey = root.convoRows[root.convoRows.length - 1].key; return true
+        }
         if (Sc.hit(event, "marginUp")) { root.dayCardFocus = Math.max(0, root.dayCardFocus - 1); return true }
         if (Sc.hit(event, "marginDown")) { root.dayCardFocus = root.dayCardFocus >= n - 1 ? -1 : root.dayCardFocus + 1; return true }
         if (Sc.hit(event, "marginAccept")) { root.settleDayCard(root.dayCardFocus, "accept"); return true }
@@ -1467,6 +1706,9 @@ Item {
       }
     } else if (Sc.hit(event, "marginUp") && dayPane.dayFieldRef.text === "" && !root.dayMention && root.dayOpenCards.length > 0) {
       root.dayCardFocus = root.dayOpenCards.length - 1
+      return true
+    } else if (Sc.hit(event, "marginUp") && dayPane.dayFieldRef.text === "" && !root.dayMention && root.convoRows.length > 0) {
+      root.dayFoldKey = root.convoRows[root.convoRows.length - 1].key
       return true
     }
     if (root.dayMention && root.dayMention.items.length > 0) {
@@ -1485,8 +1727,8 @@ Item {
       root.paper.marks = root.paper.marks.slice(0, -1); return true
     }
     // Backspace in an empty box lets go of the block pointed at.
-    if (event.key === Qt.Key_Backspace && dayPane.dayFieldRef.text === "" && root.dayBlock !== "") {
-      root.dayBlock = ""; root.dayBlockText = ""; return true
+    if (event.key === Qt.Key_Backspace && dayPane.dayFieldRef.text === "" && root.dayChips.length > 0) {
+      root.dropDayChip(root.dayChips.length - 1); return true
     }
     return false
   }
@@ -2491,8 +2733,8 @@ Item {
     root.closeTalk(false)
     root.dayOpen = false
     root.noteRoom = false
-    root.dayBlock = ""
-    root.dayBlockText = ""
+    root.dayRefs = []
+    root.dayAutoHeld = null
     root.giveBack("right", was, "right")
   }
 
@@ -7504,6 +7746,32 @@ Item {
         } catch (e) {}
       }
     }
+  }
+
+  Process {
+    id: convoViewProc
+    stdout: StdioCollector {
+      onStreamFinished: { try { root.convoView = JSON.parse(text) } catch (e) {} }
+    }
+  }
+
+  Process {
+    id: elsewhereProc
+    property string asked: ""
+    property string wanted: ""
+    stdout: StdioCollector {
+      onStreamFinished: {
+        try {
+          var d = JSON.parse(text)
+          var same = root.elsewhere && root.elsewhereFor.split("|")[0] === elsewhereProc.asked.split("|")[0]
+          root.elsewhere = d
+          root.elsewhereFor = elsewhereProc.asked
+          // Short enough to read at once: shown; long: folded to a line.
+          if (!same) root.elsewhereOpen = (d.turns || []).length > 0 && (d.turns || []).length <= 3
+        } catch (e) {}
+      }
+    }
+    onExited: function (code, status) { if (elsewhereProc.wanted !== elsewhereProc.asked) Qt.callLater(root.loadElsewhere) }
   }
 
   Process {
