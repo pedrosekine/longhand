@@ -88,7 +88,7 @@ Column {
     width: parent.width
     textFormat: Text.PlainText
     wrapMode: Text.WordWrap
-    text: "◇ not offered as a card: " + (turn.t.unoffered || []).join("; ")
+    text: "◇ left out: " + page.sayLeftOut(turn.t.unoffered)
     color: page.faint
     font.family: page.fontFamily
     font.styleName: page.fontStyle

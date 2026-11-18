@@ -1922,6 +1922,19 @@ def checks() -> int:
         (p.daily / f"{TODAY}.md").write_text(note_before)
         p.open_fresh()
 
+        # Words, not numbers (the UX evaluation's re-run, F5): what an answer
+        # left out said as the student would; a move named by its task; a
+        # row done or dropped shows no line of its chat.
+        check(p.call("leftOutSample")
+              == "a day for a box that is not on the list; dropping a deadline that is not open; a deadline for “made up”; "
+                 "moving a deadline that is not open, or to a day it cannot have",
+              f"what an answer left out reads as what it would have done, no numbers ({p.call('leftOutSample')})")
+        check("#61" not in p.call("moveSaid", "row") and "Finish the Themenvorschlag" in p.call("moveSaid", "row")
+              and "#61" not in p.call("moveSaid", "under"), f"a move's row names its task, not its number ({p.call('moveSaid', 'row')})")
+        check(p.call("rowClosedOf", "deadline", "done") == "true" and p.call("rowClosedOf", "task", "cancelled") == "true"
+              and p.call("rowClosedOf", "deadline", "open") == "false" and p.call("rowClosedOf", "task", "open") == "false",
+              "a row done or dropped is closed, and says no more of its chat")
+
         # 12c''. what the day may search (slice 2): Settings → Ctrl+F lists the
         # vault's folders, the daily notes' own on; a switch is kept in
         # settings.json; a citation in an answer opens the note at its line.

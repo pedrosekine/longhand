@@ -653,6 +653,28 @@ def expire(ledger: dict, at: str) -> int:
     return n
 
 
+def trim_to_budget(ledger: dict, at: str) -> int:
+    """What waits above the cap (OPEN_PER_COURSE a course), from before the
+    cap was set or after it was lowered, goes quiet as an expiry does: the
+    newest stay (2026-11-18: the re-run of the UX evaluation found 11
+    waiting for one course and 9 for another, under a cap of 3). Only what
+    the planning pass made: never a document to file (its own rule), what a
+    conversation proposed (the student asked), or what it is doing on its
+    own. Returns how many went."""
+    by_course: dict[str, list[dict]] = {}
+    for x in open_items(ledger):
+        if x.get("auto") or x.get("from") or x["kind"] == "file":
+            continue
+        by_course.setdefault(x.get("project") or "", []).append(x)
+    n = 0
+    for xs in by_course.values():
+        xs.sort(key=lambda x: (str(x.get("at") or ""), x.get("id", 0)), reverse=True)
+        for x in xs[OPEN_PER_COURSE:]:
+            x.update(status="expired", resolved=at, over_cap=True)
+            n += 1
+    return n
+
+
 def _same(old: dict | None, new: dict) -> bool:
     return old is not None and all(old.get(k) == new.get(k) for k in ("date", "priority", "steps", "title"))
 

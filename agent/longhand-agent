@@ -3207,6 +3207,7 @@ def cmd_plan(cfg: dict, args) -> int:
     lock = planlib.hold(PROPOSALS)
     ledger = planlib.load_ledger(PROPOSALS)
     planlib.expire(ledger, at)
+    planlib.trim_to_budget(ledger, at)
     props, qs = planlib.validate(reply, cands, days, ledger, today, boxes, deadlines, allowed, closed,
                                  project_tags(cfg))
     for item in props + qs:
@@ -3345,6 +3346,8 @@ def cmd_proposals(cfg: dict, args) -> int:
         if (STATE_HOME / "deadlines.tsv").exists() else None    # a store that is not there is not "none open"
     changed = planlib.settle_moot(ledger, tasks, at, open_ids)
     changed += planlib.expire(ledger, at)
+    trimmed = planlib.trim_to_budget(ledger, at)
+    changed += trimmed
     changed += planlib.settle_projects(ledger, project_tags(cfg), at)
     changed += inbox_pass(cfg, ledger, at)
     # The same ledger on every machine (psync.py): what changed here goes
@@ -3372,7 +3375,7 @@ def cmd_proposals(cfg: dict, args) -> int:
     accepted = [{"key": x["key"], "date": x["date"]} for x in ledger["items"]
                 if x["kind"] == "do-date" and x["status"] == "accepted" and x.get("resolved", "") >= since]
     told = [dict(x, where=None) for x in planlib.told(ledger)]
-    print(json.dumps({"open": out, "told": told, "accepted": accepted, "threads": threads,
+    print(json.dumps({"open": out, "told": told, "accepted": accepted, "threads": threads, "trimmed": trimmed,
                       "count": len(out) + len(told)}, ensure_ascii=False))
     return 0
 

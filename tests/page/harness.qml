@@ -400,6 +400,17 @@ ShellRoot {
     function dayTurns(): string { return JSON.stringify(page.dayTurns.map(function (t) { return t.role + ": " + t.text })) }
     function dayBlockText(): string { return page.dayBlockText }
     function dayChips(): string { return JSON.stringify(page.dayChips) }
+    function leftOutSample(): string {
+      return page.sayLeftOut(["do-date · no such box", "drop · deadline #999", "deadline · made up",
+                              "move deadline #7 to 2030-01-02 · not an open deadline, or not a day it can move to"])
+    }
+    function rowClosedOf(kind: string, state: string): bool {
+      return page.rowClosed(kind === "deadline" ? { kind: "deadline", deadline: { status: state } }
+                                                : { kind: "task", task: { done: state === "done", cancelled: state === "cancelled" } })
+    }
+    function moveSaid(under: string): string {
+      return Say.sayAsk({ kind: "move", deadline: 61, title: "Finish the Themenvorschlag", date: "2030-01-04" }, under === "under")
+    }
     function dayOpenings(): string { return JSON.stringify([0, 1, 2, 3].map(function (i) { return page.openingBefore(i).map(function (o) { return o.text }) })) }
     function convoRows(): string { return JSON.stringify(page.convoRows.map(function (r) { return { key: r.key, head: r.day ? r.day.label : page.sayFold(r.group) } })) }
     function dayFoldKey(): string { return page.dayFoldKey }

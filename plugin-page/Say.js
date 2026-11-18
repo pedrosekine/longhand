@@ -146,7 +146,7 @@ function sayAsk(x, under, now) {
     : x.kind === "drop" ? "drop it?" + (under ? "" : " · " + x.title)
     : x.kind === "done" ? (x.auto || x.told ? "ticked" : "looks done — tick it?") + (under ? "" : " · " + x.title)
     : x.kind === "task" ? "new task: " + x.title + (x.project ? " #" + x.project : "")
-    : x.kind === "move" ? "move #" + x.deadline + " to " + sayDate(x.date, now) + (under ? "" : " · " + x.title)
+    : x.kind === "move" ? "move " + (under ? "its deadline" : "“" + x.title + "”") + " to " + sayDate(x.date, now)
     : x.kind === "undone" ? "reopened" + (under ? "" : " · " + x.title)
     : x.title || ""
   return x.told ? "done: " + what : what
