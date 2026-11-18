@@ -1092,6 +1092,17 @@ this list, with *Open, in order* above. Each says why it waits.
 No work unless they bite; each says what would tell. The first four came
 from 2026-09/10 and still stand.
 
+- **What waits on the student, kept small** (built 2026-11-18, after the UX
+  evaluation in the vault, `projects/longhand/ux-evaluation-2026-11-18.md`:
+  12–18 proposals a day, 9% acted on, 5% of questions answered). Unasked, a
+  course has at most 3 items waiting (`plan.OPEN_PER_COURSE`); one over it
+  is not recorded and comes back when there is room; a conversation is never
+  held back. What waits 14 days unanswered expires (`plan.EXPIRE_DAYS`), and
+  an expired document is not proposed again. On the real ledger it retired
+  12 of 45 at once. With 2026-11-17's "stays put" (`28ef7bf`). *What would
+  tell:* the share acted on, weekly, from `proposals.json` — 40% or more
+  means the budget is right; a course whose real work never shows because
+  it is full means 3 is too few.
 - **A PDF's marks on the wrong page** (fixed 2026-11-17, `80bf949`, item
   15): a screenshot showed page 5's two questions over page 2's words and
   page 2's own marks missing. Never reproduced: the same path (opened on

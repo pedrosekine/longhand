@@ -3055,6 +3055,7 @@ def cmd_plan(cfg: dict, args) -> int:
     # thought is kept, and checked against.
     lock = planlib.hold(PROPOSALS)
     ledger = planlib.load_ledger(PROPOSALS)
+    planlib.expire(ledger, at)
     props, qs = planlib.validate(reply, cands, days, ledger, today, boxes, deadlines, allowed, closed,
                                  project_tags(cfg))
     for item in props + qs:
@@ -3153,6 +3154,7 @@ def cmd_proposals(cfg: dict, args) -> int:
     open_ids = {d["id"] for d in planlib.store_deadlines(STATE_HOME / "deadlines.tsv")} \
         if (STATE_HOME / "deadlines.tsv").exists() else None    # a store that is not there is not "none open"
     changed = planlib.settle_moot(ledger, tasks, at, open_ids)
+    changed += planlib.expire(ledger, at)
     changed += planlib.settle_projects(ledger, project_tags(cfg), at)
     changed += inbox_pass(cfg, ledger, at)
     if changed:
@@ -3640,7 +3642,8 @@ def ledger_proposals(cfg: dict, proposals: list[dict], result: dict, payload_fil
     for item in props:
         item.update({"from": frm, "prompt": result.get("prompt", ""), "model": result.get("model", ""),
                      "payload": str(payload_file)})
-    new = planlib.record(ledger, props, [], at)
+    # Asked for in a conversation: the student is there, so no budget.
+    new = planlib.record(ledger, props, [], at, budget=False)
     # One the same as a proposal still open keeps that one: the card shows it.
     same = [x for p in props for x in planlib.open_items(ledger)
             if x["kind"] != "question" and planlib.ident(x) == planlib.ident(p) and x not in new]

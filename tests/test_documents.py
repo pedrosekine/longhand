@@ -189,6 +189,14 @@ def main() -> int:
     items = json.loads((state / "longhand" / "proposals.json").read_text())["items"]
     check(next(x for x in items if x["id"] == by["hfpi"]["id"])["status"] == "moot", "a file that left the inbox is moot")
     check(agent("proposal", "accept", "--id", str(by["dtm"]["id"])).returncode == 0, "a declined one stays declined")
+    # Left unanswered until it expired (plan.EXPIRE_DAYS): not proposed again.
+    late = inbox / "late_reading.pdf"
+    pdf(late, "A reading nobody filed", when=in_class)
+    found = [{"src": str(late), "tag": "intsem", "course": "Interdisciplinary Seminar", "why": "", "got": "2026-11-01T10:00"}]
+    expired = [{"kind": "file", "doc": doclib.content_hash(late), "status": "expired"}]
+    check(doclib.proposals(found, [], vault, "projects") and not doclib.proposals(found, expired, vault, "projects"),
+          "a document whose proposal expired unanswered is not proposed again")
+    late.unlink()
 
     # The index: for the sidebar, and for the agent on a run about the course.
     docs = json.loads(agent("documents", "--tag", "intsem").stdout)["intsem"]

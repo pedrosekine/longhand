@@ -178,10 +178,11 @@ def docs_dir(vault: Path, projects_dir: str, tag: str) -> Path:
 def proposals(found: list[dict], ledger_items: list[dict], vault: Path, projects_dir: str,
               skip: set[str] = frozenset()) -> list[dict]:
     """What is new to propose: one per document (by its contents), none for
-    one already filed, declined, or waiting, nor for one of the person's
-    own exports (`skip`, their contents' hashes)."""
+    one already filed, declined, waiting, or left unanswered until it
+    expired, nor for one of the person's own exports (`skip`, their
+    contents' hashes)."""
     known = {x.get("doc") for x in ledger_items if x.get("kind") == "file"
-             and x.get("status") in ("open", "declined", "accepted")}
+             and x.get("status") in ("open", "declined", "accepted", "expired")}
     out, seen = [], set()
     # Of two copies of one download, the original rather than "… (1)".
     copy = re.compile(r"[ _]?\(\d+\)$|_\d+$")

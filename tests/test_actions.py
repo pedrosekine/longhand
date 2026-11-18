@@ -157,6 +157,38 @@ def units() -> None:
                                                  ("do-date", "k1")} and all(x.get("question") or x.get("date") for x in w),
           f"the planner is told what is waiting on the student ({w})")
 
+    # What waits on the student is kept small (2026-11-18, the UX evaluation:
+    # 12–18 proposals a day, 9% acted on): a course has at most
+    # OPEN_PER_COURSE waiting, and what waits EXPIRE_DAYS unanswered expires.
+    cap = plan.OPEN_PER_COURSE
+    led = {"next": 1, "items": []}
+    many = [{"kind": "do-date", "key": f"r{i}", "date": "2026-11-20", "title": f"read {i}", "project": "respro",
+             "why": "a free day"} for i in range(cap + 2)]
+    ask = {"kind": "question", "key": "r-q", "question": "Which paper?", "recommended": "the first",
+           "title": "review", "project": "respro"}
+    elsewhere = dict(many[0], key="s1", project="studio")
+    new = plan.record(led, many, [ask], "2026-11-10T09:00:00") + plan.record(led, [elsewhere], [], "2026-11-10T09:00:00")
+    respro = [x for x in new if x["project"] == "respro"]
+    check(len(respro) == cap and [x["key"] for x in respro] == [f"r{i}" for i in range(cap)],
+          f"a course has at most {cap} items waiting, the plan's first ones kept ({[x['key'] for x in respro]})")
+    check(any(x["project"] == "studio" for x in new), "…another course has its own room")
+    new = plan.record(led, [dict(many[0], date="2026-11-21")], [], "2026-11-21T09:00:00")
+    check(len(new) == 1 and led["items"][0]["status"] == "superseded",
+          "…one that takes the place of an item already open needs no room")
+    new = plan.record(led, [many[cap]], [], "2026-11-21T09:00:00", budget=False)
+    check(len(new) == 1, "…and what the student asks for in a conversation is never held back")
+    n = plan.expire(led, "2026-11-24T09:00:00")
+    old = [x for x in led["items"] if x["at"].startswith("2026-11-10")]
+    check(n == len([x for x in old if x["status"] == "expired"]) and n > 0
+          and all(x["status"] in ("expired", "superseded") for x in old)
+          and all(x["status"] == "open" for x in led["items"] if x["at"].startswith("2026-11-21")),
+          f"what waited {plan.EXPIRE_DAYS} days unanswered expires; what is newer stays ({n})")
+    told = {"kind": "file", "id": 99, "status": "open", "auto": True, "at": "2026-10-01T09:00:00", "project": "dtm"}
+    led["items"].append(told)
+    plan.expire(led, "2026-11-24T09:00:00")
+    check(told["status"] == "open", "…but not what the agent did on its own, which the page settles")
+    check(plan.record_of(led, "do-date")["all_answered"] == 0, "an expired item is not an answer: the record is not moved")
+
 
 STUB = """#!/usr/bin/env python3
 import json, os, sys
