@@ -445,6 +445,25 @@ def scenes(m, p, out, which):
         shot("one-3")
         p.call("closePanes")
         p.call("dash")
+    if which == "answer":
+        # Answering passages of the agent's (2026-11-18): two drafts over the
+        # box, then the message sent, each answer under its passage.
+        CTRL = 0x04000000
+        p.call("keyPage", 0x7c, CTRL)       # Ctrl+|: the day's chat
+        p.wait(lambda: p.call("dayShown") == "true", 6)
+        p.call("daySend", "Should I start the methods section or the poster first?")
+        p.wait(lambda: len(json.loads(p.call("dayTurns"))) >= 2 and json.loads(p.call("dayTurns"))[-1].startswith("agent"), 12)
+        p.call("answerPassage", "day", "start the methods section")
+        p.call("answerPassage", "day", "or the poster first")
+        p.call("setAnswer", "day", 0, "the methods section needs the interviews done first")
+        time.sleep(0.8)
+        shot("answer-0")
+        p.call("setAnswer", "day", 1, "the poster is due Friday")
+        p.call("daySend", "so which?")
+        p.wait(lambda: len(json.loads(p.call("dayTurns"))) >= 4, 12)
+        time.sleep(1)
+        shot("answer-1")
+        p.call("closePanes")
     if which == "calm":
         p.call("dash")
         p.wait(lambda: sum(r.get("kind") == "deadline" for r in json.loads(p.call("dashRows"))) >= 3, 10)
@@ -469,7 +488,7 @@ def scenes(m, p, out, which):
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("out", type=pathlib.Path)
-    ap.add_argument("--scene", default="all", choices=["all", "dashboard", "note", "day", "keys", "chat", "project", "acronyms", "answers", "reach", "calm", "stop", "checkin", "one"])
+    ap.add_argument("--scene", default="all", choices=["all", "dashboard", "note", "day", "keys", "chat", "project", "acronyms", "answers", "reach", "calm", "stop", "checkin", "one", "answer"])
     ap.add_argument("--order", default="ask", choices=["ask", "course", "date"])
     ap.add_argument("--root", type=pathlib.Path, default=HERE.parent.parent)
     ap.add_argument("--env", action="append", default=[])

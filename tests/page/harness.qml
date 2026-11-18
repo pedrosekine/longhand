@@ -400,6 +400,12 @@ ShellRoot {
     function dayTurns(): string { return JSON.stringify(page.dayTurns.map(function (t) { return t.role + ": " + t.text })) }
     function dayBlockText(): string { return page.dayBlockText }
     function dayChips(): string { return JSON.stringify(page.dayChips) }
+    function answerPassage(pane: string, passage: string): void { page.addReply(pane, passage) }
+    function setAnswer(pane: string, i: int, text: string): void { page.repliesOf(pane)[i].text = text }
+    function replies(pane: string): string { return JSON.stringify(page.repliesOf(pane)) }
+    function partsOf(text: string): string { return JSON.stringify(page.passageParts(text)) }
+    function followPassage(pane: string, quote: string): void { page.showPassage(pane, quote) }
+    function litPassage(): string { return page.litPassage }
     function refreshProjects(): void { page.refreshProjects() }
     function lastUndo(): string { var h = page.tickHistory; return JSON.stringify(h.length ? h[h.length - 1] : null) }
     function leftOutSample(): string {

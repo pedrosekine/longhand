@@ -1190,6 +1190,23 @@ this list, with *Open, in order* above. Each says why it waits.
 No work unless they bite; each says what would tell. The first four came
 from 2026-09/10 and still stand.
 
+- **Answering passages of the agent's** (built 2026-11-18, the student:
+  "ability to answer what the agent tells me. Many answers at the same
+  time … my first answer stays connected to the first passage"). In any
+  chat, select words in one of the agent's answers and press Ctrl+R or
+  click "answer" at the end of the selection: the passage becomes a draft
+  above the box, quoted, with a field of its own; a second adds a second,
+  never in the place of the first (`ReplyDrafts.qml`, `dayReplies` /
+  `marginReplies`). One send sends them all: the box's words first, then
+  each answer under its passage (`> …`). The agent is told to take them
+  in turn, each part headed by its passage (`with_passages`, no prompt
+  change). In the sent message each answer sits under its quote
+  (`Turn.qml`, `passageParts`); a click on the quote lights the answer it
+  came from. Screenshots: vault `ux-evidence/2026-11-18-answer-passages-*`.
+  Watch (the student: "let's test it and see if changing is needed"): is
+  a field per passage right, or would quoting into the one box do; does
+  the agent keep to one part per passage?
+
 - **How Longhand feels, once a week** (built 2026-11-18, the UX
   evaluation's F7: two ratings in five weeks, so nothing said whether the
   student was satisfied). The short User Experience Questionnaire (UEQ-S,

@@ -480,6 +480,8 @@ BorderSurface {
             page: dayPane.page
             width: turn.width
             t: modelData
+            pane: "day"
+            flick: dayFlick
             onLinkActivated: function (link) { page.openCitation(link) }
           }
           // What it proposed: a card each, the same item as the dashboard's
@@ -756,6 +758,15 @@ BorderSurface {
         font.pixelSize: page.fs(Style.font.caption)
       }
     }
+    // Answers to passages of the agent's, each under its own (Ctrl+R).
+    ReplyDrafts {
+      page: dayPane.page
+      width: parent.width
+      pane: "day"
+      box: dayField
+      onSend: { if (page.sendDay(dayField.text)) dayField.text = "" }
+    }
+
     // What the next message is about: its chips. Backspace in the empty
     // box lets go of the last; a click on one lets it go.
     Chips {
@@ -795,6 +806,7 @@ BorderSurface {
       text: page.paper.room ? page.keyName("chatSend") + " sends · ^ attaches a mark · quotes link to the page · "
           + page.keyName("marginBack") + " back to the marks"
         : page.keyName("chatSend") + " sends · Shift+Enter a new line · @ points at " + (page.noteRoom ? "a part of it" : "a block, a task, a note")
+        + " · " + page.keyName("chatAnswer") + " answers words you select"
         + (page.dayOpenCards.length > 0 ? " · " + page.keyName("marginUp") + " to its proposals"
            : page.convoRows.length > 0 ? " · " + page.keyName("marginUp") + " to the other chats" : "")
         + " · " + page.keyName("marginBack") + " closes · " + page.keyName("dayChat") + " from anywhere"

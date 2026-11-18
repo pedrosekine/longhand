@@ -1595,11 +1595,11 @@ def cmd_chat(cfg: dict, args) -> int:
             parts += [f"# Documents filed for #{tag} since, the index as it is now (ask to read one in `read` by its"
                       " name)", ""] + doc_lines(docs) + [""]
         parts += ["# The student says", "", message, "", "Answer with the same JSON contract."]
-        payload = "\n".join(parts) + "\n"
+        payload = with_passages("\n".join(parts) + "\n", message)
         payload_file.write_text(payload)                 # logged before inference
         result = run_model(day_cfg, tpaths, "", session=session, message=payload)
     else:
-        payload = day_payload(cfg, tpaths, tvisible, tprivate, message, pointed, proposable, mem)
+        payload = with_passages(day_payload(cfg, tpaths, tvisible, tprivate, message, pointed, proposable, mem), message)
         so_far = earlier_turns(([{"role": "agent", "text": rec["reply"]}] if rec.get("reply") else [])
                                + (rec.get("chat") or []))
         if so_far:
@@ -3808,6 +3808,27 @@ def block_subjects(stamp: str, visible: list[dict], boxes: list[dict], h: str, r
     return out, names
 
 
+PASSAGES = """# The student answers parts of what you said
+
+Their message quotes passages of your earlier answers, each (`> `) above what they say about it. Take them in
+order: begin each part of your reply with that passage's first few words, quoted (`> …`), then your answer to
+it. What they wrote above the first quote, under none, answer last."""
+
+
+def with_passages(payload: str, message: str) -> str:
+    """A message answering passages of the agent's (the student picked
+    words in an answer and answered them, several at once; 2026-11-18):
+    told so, just before the student's words, so each is answered in
+    turn and headed by its passage."""
+    if not re.search(r"(?m)^> \S", message or ""):
+        return payload
+    for head in ("\n# The student says now\n", "\n# The student says\n"):
+        i = payload.rfind(head)
+        if i >= 0:
+            return payload[:i] + "\n" + PASSAGES + "\n" + payload[i:]
+    return payload.rstrip() + "\n\n" + PASSAGES + "\n"
+
+
 REFS_MAX = 6          # what one message may point at
 REF_NOTE_MAX = 12_000  # characters of a note pointed at, carried with the message
 
@@ -4788,12 +4809,12 @@ def cmd_day(cfg: dict, args) -> int:
     mem, mem_ids = convo_memory(cfg, subjects, thread, carried, again=bool(day["session"]))
     if day["session"]:
         last = next((t["at"] for t in reversed(day["turns"]) if t["role"] == "agent"), "")
-        payload = day_followup(cfg, paths, visible, last, message, pointed,
-                               proposable if digest != day.get("proposable") else None, mem)
+        payload = with_passages(day_followup(cfg, paths, visible, last, message, pointed,
+                                             proposable if digest != day.get("proposable") else None, mem), message)
         payload_file.write_text(payload)                 # logged before inference
         result = run_model(day_cfg, paths, "", session=day["session"], message=payload)
     else:
-        payload = day_payload(cfg, paths, visible, private, message, pointed, proposable, mem)
+        payload = with_passages(day_payload(cfg, paths, visible, private, message, pointed, proposable, mem), message)
         so_far = earlier_turns(day.get("turns") or [])
         if so_far:
             payload = payload.replace("\n# The student says\n", "\n# Today's chat so far\n\nBegun in a session you no"
@@ -5124,6 +5145,7 @@ def cmd_note(cfg: dict, args) -> int:
                          before=before)
         if mem or offer:
             payload = payload.replace("\n# The student says\n", "\n".join(mem + offer) + "\n\n# The student says\n", 1)
+        payload = with_passages(payload, message)
         payload_file.write_text(payload)                 # logged before inference
         result = run_model(day_cfg, paths, "", session=talk["session"], message=payload)
     else:
@@ -5131,6 +5153,7 @@ def cmd_note(cfg: dict, args) -> int:
             note_payload(cfg, paths, rel, shown, message, args.block, True)
         if mem or offer:
             payload = payload.replace("\n# The student says\n", "\n".join(mem + offer) + "\n\n# The student says\n", 1)
+        payload = with_passages(payload, message)
         so_far = earlier_turns(talk["turns"])
         if so_far:
             payload = payload.replace("\n# The student says\n", "\n# This chat so far\n\nBegun in a session you no"
@@ -5327,7 +5350,7 @@ def cmd_talk(cfg: dict, args) -> int:
         or item.get("title", "")
     fresh = plan_payload(cfg, paths, today, {"today": today.isoformat(), "fortnight": days, "candidates": cands,
                                               "open_boxes": boxes}, notes)
-    payload = talk_payload(cfg, item, ledger, key, tasks, fresh, message)
+    payload = with_passages(talk_payload(cfg, item, ledger, key, tasks, fresh, message), message)
     paths.payloads.mkdir(parents=True, exist_ok=True)
     stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
     payload_file = paths.payloads / f"{stamp}-talk-{item['id']}.md"
