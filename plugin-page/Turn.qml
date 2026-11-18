@@ -70,7 +70,8 @@ Column {
       : turn.t.role === "agent" ? page.linkCitations(turn.t.text || "") : (turn.t.text || "")
     color: turn.t.error ? page.urgent : turn.away ? page.dim : page.foreground
     onLinkActivated: function (link) { turn.linkActivated(link) }
-    onAnswer: function (passage) { page.addReply(turn.pane, passage) }
+    onAnswer: function (passage) { page.addReply(turn.pane, passage, turn.t.at) }
+    marks: !turn.mine && !turn.away ? page.passageMarks(turn.pane, turn.t.at) : []
     Rectangle {
       anchors.fill: parent
       anchors.margins: -page.sp(4)
@@ -80,42 +81,86 @@ Column {
       visible: turn.lit
     }
   }
-  // Answers to passages: each under its own, the quote a way back to it.
-  Repeater {
-    model: turn.answers ? turn.parts : []
-    Column {
-      required property var modelData
-      width: turn.width
-      spacing: page.sp(2)
-      Text {
-        visible: modelData.quote !== ""
-        width: parent.width
-        textFormat: Text.PlainText
-        wrapMode: Text.WordWrap
-        maximumLineCount: 3
-        elide: Text.ElideRight
-        horizontalAlignment: Text.AlignRight
-        text: "“" + modelData.quote + "”"
-        color: quoteArea.containsMouse && page.handOn ? page.accent : page.faint
-        font.family: page.fontFamily
-        font.styleName: page.fontStyle
-        font.italic: true
-        font.pixelSize: page.fs(Style.font.caption)
+  // Replies to passages: attached to the message, a pill each (its
+  // number, the reply's start), over the message's own words. A click goes
+  // back to the passage, lit in the answer it came from.
+  Flow {
+    visible: turn.answers
+    width: turn.width
+    layoutDirection: Qt.RightToLeft
+    spacing: page.sp(6)
+    Repeater {
+      model: turn.answers ? turn.parts.filter(function (x) { return x.quote !== "" }) : []
+      Rectangle {
+        id: sentPill
+        required property var modelData
+        required property int index
+        readonly property bool hot: sentArea.containsMouse && page.handOn
+        width: Math.min(turn.width * 0.8, sentRow.implicitWidth + page.sp(16))
+        height: sentRow.implicitHeight + page.sp(6)
+        radius: Style.cornerRadius
+        color: Util.alpha(page.accent, 0.10)
+        border.width: 1
+        border.color: sentPill.hot ? page.accent : Util.alpha(page.accent, 0.35)
+        Row {
+          id: sentRow
+          anchors.left: parent.left
+          anchors.leftMargin: page.sp(6)
+          anchors.verticalCenter: parent.verticalCenter
+          spacing: page.sp(6)
+          Rectangle {
+            anchors.verticalCenter: parent.verticalCenter
+            width: Math.max(height, sentNum.implicitWidth + page.sp(8))
+            height: sentNum.implicitHeight + page.sp(2)
+            radius: height / 2
+            color: page.dim
+            Text {
+              id: sentNum
+              anchors.centerIn: parent
+              textFormat: Text.PlainText
+              text: String(sentPill.index + 1)
+              color: page.background
+              font.family: page.fontFamily
+              font.pixelSize: Math.round(page.textSize * 0.68)
+            }
+          }
+          Text {
+            anchors.verticalCenter: parent.verticalCenter
+            width: Math.min(implicitWidth, turn.width * 0.8 - page.sp(48))
+            textFormat: Text.PlainText
+            elide: Text.ElideRight
+            text: "↩ " + sentPill.modelData.text
+            color: turn.away ? page.dim : page.foreground
+            font.family: page.fontFamily
+            font.styleName: page.fontStyle
+            font.pixelSize: Math.round(page.textSize * 0.82)
+          }
+        }
         MouseArea {
-          id: quoteArea
+          id: sentArea
           anchors.fill: parent
           hoverEnabled: true
           cursorShape: Qt.PointingHandCursor
-          onClicked: page.showPassage(turn.pane, modelData.quote)
+          onClicked: page.showPassage(turn.pane, sentPill.modelData.quote)
+        }
+        Tip {
+          host: turn.page
+          shown: sentArea.containsMouse
+          text: "“" + sentPill.modelData.quote + "” → " + sentPill.modelData.text + "  ·  click: its passage"
         }
       }
-      ChatTurn {
-        visible: modelData.text !== ""
-        page: turn.page
-        mine: true
-        text: modelData.text
-        color: turn.away ? page.dim : page.foreground
-      }
+    }
+  }
+  // The message's own words, under its replies.
+  Repeater {
+    model: turn.answers ? turn.parts.filter(function (x) { return x.quote === "" && x.text !== "" }) : []
+    ChatTurn {
+      required property var modelData
+      width: turn.width
+      page: turn.page
+      mine: true
+      text: modelData.text
+      color: turn.away ? page.dim : page.foreground
     }
   }
   // How a talk about a proposal ended, said under the answer.

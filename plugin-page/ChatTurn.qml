@@ -20,6 +20,10 @@ Item {
   // "answer" at the end of the selection, or Ctrl+R; several at once, each
   // its own answer above the box.
   property bool answerable: false
+  // The passages replied to in these words (Page.passageMarks): lit while
+  // the reply is written ("open"), underlined with their number once
+  // attached or sent.
+  property var marks: []
   signal linkActivated(string link)
   signal answer(string passage)
   function answerSelection() {
@@ -70,6 +74,89 @@ Item {
     color: Util.alpha(page.accent, 0.14)
   }
 
+  // Where a passage's words are, as rectangles a line each, in the words'
+  // own frame. Found by its words, whitespace and case aside.
+  FontMetrics { id: wordMetrics; font: said.font }
+  function passageRects(quote) {
+    var plain = said.getText(0, said.length), norm = "", map = [], space = false
+    for (var i = 0; i < plain.length; i++) {
+      var c = plain.charAt(i)
+      if (/\s/.test(c)) { if (!space && norm !== "") { norm += " "; map.push(i) } space = true; continue }
+      space = false
+      norm += c.toLowerCase()
+      map.push(i)
+    }
+    var want = String(quote || "").replace(/ …$/, "").replace(/\s+/g, " ").trim().toLowerCase()
+    var at = want === "" ? -1 : norm.indexOf(want)
+    if (at < 0) return []
+    var a = map[at], b = map[at + want.length - 1] + 1, lines = []
+    for (var k = a; k < b; k++) {
+      var r = said.positionToRectangle(k), next = said.positionToRectangle(k + 1)
+      var right = Math.abs(next.y - r.y) < 1 ? next.x : r.x + wordMetrics.averageCharacterWidth
+      var line = lines.length > 0 && Math.abs(lines[lines.length - 1].y - r.y) < 1 ? lines[lines.length - 1] : null
+      if (!line) { line = { x: r.x, y: r.y, w: 0, h: r.height }; lines.push(line) }
+      line.w = Math.max(line.w, right - line.x)
+    }
+    return lines
+  }
+  readonly property var markRects: {
+    said.contentWidth; said.contentHeight; said.text; turn.width
+    return turn.marks.map(function (m) { return { m: m, rects: turn.passageRects(m.quote) } }).filter(function (x) { return x.rects.length > 0 })
+  }
+  Repeater {
+    model: turn.markRects
+    Item {
+      id: markItem
+      required property var modelData
+      x: said.x
+      y: said.y
+      readonly property bool open: modelData.m.state === "open"
+      readonly property var last: modelData.rects[modelData.rects.length - 1]
+      Repeater {
+        model: markItem.modelData.rects
+        Item {
+          required property var modelData
+          x: modelData.x
+          y: modelData.y
+          width: modelData.w
+          height: modelData.h
+          Rectangle {
+            visible: markItem.open
+            anchors.fill: parent
+            radius: 2
+            color: page.palette.selection
+          }
+          Rectangle {
+            visible: !markItem.open
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            height: 1
+            color: markItem.modelData.m.state === "sent" ? page.dim : page.accent
+          }
+        }
+      }
+      // Its number, at the end of its words.
+      Rectangle {
+        x: markItem.last.x + markItem.last.w + 1
+        y: markItem.last.y - height / 3
+        width: Math.max(height, markNum.implicitWidth + 6)
+        height: markNum.implicitHeight + 1
+        radius: height / 2
+        color: markItem.open ? page.accent : page.dim
+        Text {
+          id: markNum
+          anchors.centerIn: parent
+          textFormat: Text.PlainText
+          text: String(markItem.modelData.m.n)
+          color: page.background
+          font.family: page.fontFamily
+          font.pixelSize: Math.round(page.textSize * 0.6)
+        }
+      }
+    }
+  }
+
   TextEdit {
     id: said
     x: turn.mine ? bubble.x + turn.padX : 0
@@ -111,7 +198,7 @@ Item {
       id: answerWord
       anchors.centerIn: parent
       textFormat: Text.PlainText
-      text: "answer"
+      text: "reply"
       color: answerArea.containsMouse ? page.accent : page.dim
       font.family: page.fontFamily
       font.styleName: page.fontStyle
@@ -124,6 +211,6 @@ Item {
       cursorShape: Qt.PointingHandCursor
       onClicked: turn.answerSelection()
     }
-    Tip { host: turn.page; shown: answerArea.containsMouse; text: turn.page.tip("Answer these words", "chatAnswer") }
+    Tip { host: turn.page; shown: answerArea.containsMouse; text: turn.page.tip("Reply to these words", "chatAnswer") }
   }
 }

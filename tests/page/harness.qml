@@ -400,9 +400,12 @@ ShellRoot {
     function dayTurns(): string { return JSON.stringify(page.dayTurns.map(function (t) { return t.role + ": " + t.text })) }
     function dayBlockText(): string { return page.dayBlockText }
     function dayChips(): string { return JSON.stringify(page.dayChips) }
-    function answerPassage(pane: string, passage: string): void { page.addReply(pane, passage) }
-    function setAnswer(pane: string, i: int, text: string): void { page.repliesOf(pane)[i].text = text }
+    function answerPassage(pane: string, passage: string, at: string): void { page.addReply(pane, passage, at) }
     function replies(pane: string): string { return JSON.stringify(page.repliesOf(pane)) }
+    function replying(pane: string): string { return JSON.stringify(page.replyingOf(pane)) }
+    function editReply(pane: string, i: int): void { page.editReply(pane, i) }
+    function marksOf(pane: string, at: string): string { return JSON.stringify(page.passageMarks(pane, at)) }
+    function lastAgentAt(): string { var t = page.dayTurns; for (var i = t.length - 1; i >= 0; i--) if (t[i].role === "agent" && t[i].at) return t[i].at; return "" }
     function partsOf(text: string): string { return JSON.stringify(page.passageParts(text)) }
     function followPassage(pane: string, quote: string): void { page.showPassage(pane, quote) }
     function litPassage(): string { return page.litPassage }

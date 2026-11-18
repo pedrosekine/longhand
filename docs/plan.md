@@ -1199,23 +1199,24 @@ from 2026-09/10 and still stand.
   again once the view settles — after opening, a fit, a scroll
   (`PdfPane.redrawPages`). Not reproduced headless (the test PDF has one
   page): watch whether it comes back.
-- **Answering passages of the agent's** (built 2026-11-18, the student:
+- **Replying to passages of the agent's** (built 2026-11-18, the student:
   "ability to answer what the agent tells me. Many answers at the same
-  time … my first answer stays connected to the first passage"). In any
-  chat, select words in one of the agent's answers and press Ctrl+R or
-  click "answer" at the end of the selection: the passage becomes a draft
-  above the box, quoted, with a field of its own; a second adds a second,
-  never in the place of the first (`ReplyDrafts.qml`, `dayReplies` /
-  `marginReplies`). One send sends them all: the box's words first, then
-  each answer under its passage (`> …`). The agent is told to take them
-  in turn, each part headed by its passage (`with_passages`, no prompt
-  change). In the sent message each answer sits under its quote
-  (`Turn.qml`, `passageParts`); a click on the quote lights the answer it
-  came from. Screenshots: vault `ux-evidence/2026-11-18-answer-passages-*`.
-  Watch (the student: "let's test it and see if changing is needed"): is
-  a field per passage right, or would quoting into the one box do; does
-  the agent keep to one part per passage?
-
+  time … my first answer stays connected to the first passage"; redone the
+  same evening as design A, after the first try lost a reply and had two
+  boxes that looked alike). Select words in one of the agent's answers,
+  Ctrl+R or "reply" at the selection's end: the pane's one box becomes a
+  reply to them — a bar inside it ("↩ replying to ② “…” × esc"), the label
+  REPLY n OF n, keys that say "Enter attaches · Esc cancels", the passage
+  lit and numbered in the answer; what the box held is set aside and comes
+  back. Enter attaches it as a pill over the box (click: back in the box to
+  change; ×: gone), the passage underlined with its number. Enter with no
+  reply open sends the box's words, then each reply under its passage
+  (`> …`); the agent takes them in turn (`with_passages`). The sent message
+  carries its replies as pills over its words; a click goes back to the
+  passage. `ChatField` (the bar), `ReplyPills.qml`, `ChatTurn` (the
+  passage's marks), `Turn.qml`. Screenshots: vault
+  `ux-evidence/2026-11-18-reply-*`. Watch: is attaching by Enter clear, and
+  do the pills say enough of a reply?
 - **How Longhand feels, once a week** (built 2026-11-18, the UX
   evaluation's F7: two ratings in five weeks, so nothing said whether the
   student was satisfied). The short User Experience Questionnaire (UEQ-S,

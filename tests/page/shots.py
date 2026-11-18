@@ -446,23 +446,32 @@ def scenes(m, p, out, which):
         p.call("closePanes")
         p.call("dash")
     if which == "answer":
-        # Answering passages of the agent's (2026-11-18): two drafts over the
-        # box, then the message sent, each answer under its passage.
+        # Replying to passages of the agent's (2026-11-18, design A): the box
+        # a reply, the passage lit; one attached as a pill, a second open;
+        # the message sent with its replies as pills.
         CTRL = 0x04000000
         p.call("keyPage", 0x7c, CTRL)       # Ctrl+|: the day's chat
         p.wait(lambda: p.call("dayShown") == "true", 6)
         p.call("daySend", "Should I start the methods section or the poster first?")
         p.wait(lambda: len(json.loads(p.call("dayTurns"))) >= 2 and json.loads(p.call("dayTurns"))[-1].startswith("agent"), 12)
-        p.call("answerPassage", "day", "start the methods section")
-        p.call("answerPassage", "day", "or the poster first")
-        p.call("setAnswer", "day", 0, "the methods section needs the interviews done first")
+        at = p.call("lastAgentAt")
+        p.call("dayType", "so which?")
+        p.call("answerPassage", "day", "start the methods section", at)
+        p.call("dayType", "the interviews aren't transcribed yet")
         time.sleep(0.8)
         shot("answer-0")
-        p.call("setAnswer", "day", 1, "the poster is due Friday")
-        p.call("daySend", "so which?")
+        p.call("dayKey", 0x01000004, 0)     # Enter: attached
+        p.call("answerPassage", "day", "or the poster first", at)
+        p.call("dayType", "the poster is due Friday")
+        time.sleep(0.8)
+        shot("answer-1")
+        p.call("dayKey", 0x01000004, 0)     # Enter: attached
+        time.sleep(0.6)
+        shot("answer-2")
+        p.call("dayKey", 0x01000004, 0)     # Enter: sent
         p.wait(lambda: len(json.loads(p.call("dayTurns"))) >= 4, 12)
         time.sleep(1)
-        shot("answer-1")
+        shot("answer-3")
         p.call("closePanes")
     if which == "calm":
         p.call("dash")

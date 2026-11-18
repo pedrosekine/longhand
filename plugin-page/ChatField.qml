@@ -27,8 +27,15 @@ FocusScope {
   // `event.accepted`.
   signal keyPressed(var event)
   function remove(a, b) { area.remove(a, b) }
+  // Replying to a passage of the agent's (2026-11-18, design A): the box
+  // itself says so — a bar inside it, its number and the words, × to let
+  // it go — and keeps the accent while it is a reply.
+  property string replyQuote: ""
+  property int replyN: 0
+  signal cancelReply()
+  readonly property bool replying: replyQuote !== ""
 
-  readonly property var borderSpec: Border.controlSpec(area.activeFocus ? "focus" : area.hovered && page.handOn ? "hover-cursor" : "normal", page.foreground, page.accent)
+  readonly property var borderSpec: Border.controlSpec(area.activeFocus || box.replying ? "focus" : area.hovered && page.handOn ? "hover-cursor" : "normal", page.foreground, page.accent)
   FontMetrics { id: lineMetrics; font: area.font }
   implicitHeight: Math.min(area.implicitHeight, Math.ceil(lineMetrics.lineSpacing * box.maxLines) + area.topPadding + area.bottomPadding)
 
@@ -51,13 +58,78 @@ FocusScope {
       font.pixelSize: page.fs(Style.font.body)
       leftPadding: Style.spacing.controlPaddingX + Border.left(box.borderSpec)
       rightPadding: Style.spacing.controlPaddingX + Border.right(box.borderSpec) + (box.busy ? stopArea.width + page.sp(6) : 0)
-      topPadding: Style.spacing.inputPaddingY + Border.top(box.borderSpec)
+      topPadding: Style.spacing.inputPaddingY + Border.top(box.borderSpec) + (box.replying ? replyBar.height + page.sp(6) : 0)
       bottomPadding: Style.spacing.inputPaddingY + Border.bottom(box.borderSpec)
       Keys.onPressed: function (event) { box.keyPressed(event) }
       background: BorderSurface {
         color: Style.controlFill(area.activeFocus, area.hovered, page.foreground, page.accent)
         borderSpec: box.borderSpec
         radius: Style.cornerRadius
+      }
+    }
+  }
+
+  // "↩ replying to ① “…”", inside the box, over what is typed.
+  Item {
+    id: replyBar
+    visible: box.replying
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.top: parent.top
+    anchors.leftMargin: Style.spacing.controlPaddingX + Border.left(box.borderSpec) - page.sp(4)
+    anchors.rightMargin: Style.spacing.controlPaddingX + Border.right(box.borderSpec)
+    anchors.topMargin: Style.spacing.inputPaddingY + Border.top(box.borderSpec)
+    height: barText.implicitHeight + page.sp(4)
+    Rectangle { width: 2; height: parent.height; color: page.accent }
+    Rectangle {
+      id: barNumber
+      x: page.sp(10)
+      anchors.verticalCenter: parent.verticalCenter
+      width: Math.max(height, barN.implicitWidth + page.sp(8))
+      height: barN.implicitHeight + page.sp(2)
+      radius: height / 2
+      color: page.accent
+      Text {
+        id: barN
+        anchors.centerIn: parent
+        textFormat: Text.PlainText
+        text: String(box.replyN)
+        color: page.background
+        font.family: page.fontFamily
+        font.pixelSize: Math.round(page.textSize * 0.68)
+      }
+    }
+    Text {
+      id: barText
+      anchors.left: barNumber.right
+      anchors.leftMargin: page.sp(6)
+      anchors.right: barCancel.left
+      anchors.rightMargin: page.sp(8)
+      anchors.verticalCenter: parent.verticalCenter
+      textFormat: Text.PlainText
+      elide: Text.ElideRight
+      text: "↩ replying to “" + box.replyQuote + "”"
+      color: page.dim
+      font.family: page.fontFamily
+      font.styleName: page.fontStyle
+      font.pixelSize: page.fs(Style.font.caption)
+    }
+    Text {
+      id: barCancel
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      textFormat: Text.PlainText
+      text: "× esc"
+      color: cancelArea.containsMouse && page.handOn ? page.accent : page.faint
+      font.family: page.fontFamily
+      font.pixelSize: page.fs(Style.font.caption)
+      MouseArea {
+        id: cancelArea
+        anchors.fill: parent
+        anchors.margins: -page.sp(4)
+        hoverEnabled: true
+        cursorShape: Qt.PointingHandCursor
+        onClicked: box.cancelReply()
       }
     }
   }

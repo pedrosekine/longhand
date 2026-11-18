@@ -1854,26 +1854,49 @@ def checks() -> int:
         refs = st["day"]["turns"][-2].get("refs") or []
         check([r["kind"] for r in refs] == ["task", "block"] and "email the dean" in refs[0]["head"],
               f"…and its turn keeps what it pointed at ({refs})")
-        # Answering passages of the agent's (2026-11-18): words picked in an
-        # answer, each a draft with its own answer; a second adds, never
-        # replaces; one send sends both, each under its passage; a quote
-        # followed back lights the answer it came from.
-        reps = lambda: json.loads(p.call("replies", "day"))
-        p.call("answerPassage", "day", "day: these two")
-        p.call("answerPassage", "day", "these")
-        p.call("answerPassage", "day", "day: these two")
-        check([r["quote"] for r in reps()] == ["day: these two", "these"], f"a second passage adds a draft, the first kept, none twice ({reps()})")
-        p.call("setAnswer", "day", 0, "yes, both")
-        p.call("setAnswer", "day", 1, "and why these?")
-        p.call("daySend", "anything else?")
-        sent = "anything else?\n\n> day: these two\nyes, both\n\n> these\nand why these?"
+        # Replying to passages of the agent's (2026-11-18, design A): words
+        # picked make the box a reply to them, what it held set aside; Enter
+        # attaches it (a pill) and gives the box back; a second is attached
+        # beside the first, never in its place; a pill clicked is back in
+        # the box to change; Esc cancels; Enter with none open sends them
+        # all, each under its passage; a quote followed back lights its answer.
+        reps = lambda: [(r["quote"], r["text"]) for r in json.loads(p.call("replies", "day"))]
+        rep_open = lambda: json.loads(p.call("replying", "day"))
+        at = p.call("lastAgentAt")
+        p.call("dayType", "anything else?")
+        p.call("answerPassage", "day", "day: these two", at)
+        check(rep_open() and rep_open()["quote"] == "day: these two" and p.call("dayFieldText") == "",
+              f"reply picks a passage: the box is a reply to it, what it held set aside ({rep_open()})")
+        check(json.loads(p.call("marksOf", "day", at)) == [{"quote": "day: these two", "n": 1, "state": "open"}],
+              "…the passage lit and numbered in the answer while it is written")
+        p.call("dayType", "yes, both")
+        check(p.call("dayKey", KEY_RETURN, 0) == "true" and reps() == [("day: these two", "yes, both")] and not rep_open()
+              and p.call("dayFieldText") == "anything else?",
+              f"Enter attaches the reply, nothing sent, the box's own words back ({reps()}, {p.call('dayFieldText')!r})")
+        p.call("answerPassage", "day", "these", at)
+        p.call("dayType", "and why these?")
+        p.call("answerPassage", "day", "two", at)
+        check(reps() == [("day: these two", "yes, both"), ("these", "and why these?")] and rep_open()["quote"] == "two",
+              f"a second reply goes beside the first; picking a third attaches the one open ({reps()})")
+        check(p.call("dayKey", 0x01000000, 0) == "true" and not rep_open() and p.call("dayFieldText") == "anything else?"
+              and p.call("dayShown") == "true", "Esc cancels the reply open, the box's words back, the pane still open")
+        p.call("editReply", "day", 0)
+        check(rep_open()["quote"] == "day: these two" and p.call("dayFieldText") == "yes, both" and len(reps()) == 1,
+              "a pill clicked is back in the box, to change")
+        p.call("dayType", "yes, both of them")
+        p.call("dayKey", KEY_RETURN, 0)
+        p.call("dayKey", KEY_RETURN, 0)       # none open: sends
+        sent = "anything else?\n\n> these\nand why these?\n\n> day: these two\nyes, both of them"
         check(p.wait(lambda: json.loads(p.call("dayTurns"))[-2:-1] == ["student: " + sent], timeout=12) and reps() == [],
-              f"one send sends both answers, each under its passage, the box's words first; the drafts let go ({json.loads(p.call('dayTurns'))[-2:]})")
+              f"Enter with no reply open sends the box's words and every reply, each under its passage ({json.loads(p.call('dayTurns'))[-2:]})")
         parts = json.loads(p.call("partsOf", sent))
-        check([(x["quote"], x["text"]) for x in parts] == [("", "anything else?"), ("day: these two", "yes, both"), ("these", "and why these?")],
-              f"…and it reads back as its parts, each answer with its passage ({parts})")
+        check([(x["quote"], x["text"]) for x in parts] == [("", "anything else?"), ("these", "and why these?"), ("day: these two", "yes, both of them")],
+              f"…and it reads back as its parts ({parts})")
+        check(sorted((m["quote"], m["n"], m["state"]) for m in json.loads(p.call("marksOf", "day", at)))
+              == [("day: these two", 2, "sent"), ("these", 1, "sent")],
+              f"…the answer keeps both passages numbered as the message numbered them ({p.call('marksOf', 'day', at)})")
         p.call("followPassage", "day", "day: these two")
-        check(p.wait(lambda: p.call("litPassage").endswith("|day")), f"a quote followed back lights the answer it came from ({p.call('litPassage')!r})")
+        check(p.wait(lambda: p.call("litPassage").endswith("|day")), f"a reply followed back lights the answer it came from ({p.call('litPassage')!r})")
         # One voice (slice 3): what the agent said on opening the page is a
         # turn in its place among the day's, answered in the box like any.
         st = json.loads((p.vault / "agents" / "longhand" / "daily" / f"{TODAY}.json").read_text())

@@ -1289,7 +1289,7 @@ Item {
     return ""
   }
   property string elsewhereFor: ""
-  onElsewhereWantChanged: { root.marginRefs = []; root.marginReplies = []; root.loadElsewhere() }
+  onElsewhereWantChanged: { root.marginRefs = []; root.clearReplies("margin"); root.loadElsewhere() }
   function loadElsewhere() {
     var w = root.elsewhereWant
     if (w === root.elsewhereFor && root.elsewhere) return
@@ -1350,49 +1350,144 @@ Item {
     })
   }
 
-  // Answering passages of the agent's (2026-11-18): words picked in one of
-  // its answers become a draft above the box — the passage, quoted, and a
-  // field of its own for the answer. Picking another adds another, never in
-  // the place of the first; one send sends them all, each under its
-  // passage (`> …`), what the box holds last. Per pane: the day's (with a
-  // note's and a paper's) and the margin's (a block's, a task's). The
-  // answer typed is kept on the draft itself, not by replacing the list,
-  // so a field keeps its focus while it is typed in.
-  property var dayReplies: []
+  // Replying to passages of the agent's (2026-11-18; design A, chosen the
+  // same evening after the first try lost a reply and had two boxes that
+  // looked alike). Words picked in one of its answers make the pane's one
+  // box a reply to them: a bar inside it says so, the passage stays lit and
+  // numbered in the answer, and the box's keys change — Enter attaches,
+  // Esc cancels. An attached reply is a pill over the box (click: edit it
+  // again; ×: let it go) and the passage keeps its number; what the box
+  // held before is set aside meanwhile and comes back. Enter with no reply
+  // open sends the box's words with every reply attached, each under its
+  // passage (`> …`). Per pane: the day's (with a note's and a paper's) and
+  // the margin's (a block's, a task's). Kept by replacing the lists, never
+  // in a copy (the first try's reply vanished so).
+  property var dayReplies: []          // attached: [{ quote, text, at }]
   property var marginReplies: []
-  property int replyFocus: -1
+  property var dayReplying: null       // the reply the box is: { quote, at }
+  property var marginReplying: null
+  property string dayStash: ""         // what the box held before it was a reply
+  property string marginStash: ""
   function repliesOf(pane) { return pane === "margin" ? root.marginReplies : root.dayReplies }
-  function addReply(pane, passage) {
+  function replyingOf(pane) { return pane === "margin" ? root.marginReplying : root.dayReplying }
+  function replyField(pane) { return pane === "margin" ? margin.chatFieldRef : dayPane.dayFieldRef }
+  function setReplies(pane, list) { if (pane === "margin") root.marginReplies = list; else root.dayReplies = list }
+  function setReplying(pane, r, stash) {
+    if (pane === "margin") { root.marginReplying = r; if (stash !== undefined) root.marginStash = stash }
+    else { root.dayReplying = r; if (stash !== undefined) root.dayStash = stash }
+  }
+  function stashOf(pane) { return pane === "margin" ? root.marginStash : root.dayStash }
+  // The number the reply being written will have: its place among them.
+  function replyNumber(pane) { return root.repliesOf(pane).length + 1 }
+  function addReply(pane, passage, at) {
     var q = String(passage || "").replace(/\s+/g, " ").trim()
     if (q === "") return
     if (q.length > 400) q = q.slice(0, 400).replace(/\s+\S*$/, "") + " …"
-    var list = root.repliesOf(pane)
-    if (list.some(function (r) { return r.quote === q })) return
-    var next = list.concat([{ quote: q, text: "" }])
-    if (pane === "margin") root.marginReplies = next; else root.dayReplies = next
-    root.replyFocus = next.length - 1
-    root.used("answer", pane)
+    var f = root.replyField(pane)
+    var open = root.replyingOf(pane)
+    if (open && String(f.text).trim() !== "" && !root.attachReply(pane)) return
+    open = root.replyingOf(pane)
+    var stash = open ? root.stashOf(pane) : String(f.text)
+    // A passage already answered: its reply back in the box, to change.
+    var list = root.repliesOf(pane), had = -1
+    for (var i = 0; i < list.length; i++) if (list[i].quote === q) had = i
+    var text = had >= 0 ? list[had].text : ""
+    if (had >= 0) root.setReplies(pane, list.filter(function (r, k) { return k !== had }))
+    root.setReplying(pane, { quote: q, at: String(at || (had >= 0 ? list[had].at : "")) }, stash)
+    f.text = text
+    f.cursorPosition = text.length
+    Qt.callLater(function () { root.replyField(pane).forceActiveFocus() })
+    root.used("reply", had >= 0 ? "edit" : pane)
+  }
+  // Enter while the box is a reply: attached, the box given back.
+  function attachReply(pane) {
+    var r = root.replyingOf(pane), f = root.replyField(pane)
+    if (!r) return false
+    var text = String(f.text).trim()
+    if (text === "") { root.showHint("write your reply first · " + root.keyName("marginBack") + " cancels it"); return false }
+    root.setReplies(pane, root.repliesOf(pane).concat([{ quote: r.quote, text: text, at: r.at }]))
+    var stash = root.stashOf(pane)
+    root.setReplying(pane, null, "")
+    f.text = stash
+    f.cursorPosition = stash.length
+    root.showHint("reply attached · " + root.keyName("chatSend") + " sends")
+    root.used("reply", "attached")
+    return true
+  }
+  function cancelReply(pane) {
+    if (!root.replyingOf(pane)) return false
+    var f = root.replyField(pane), stash = root.stashOf(pane)
+    root.setReplying(pane, null, "")
+    f.text = stash
+    f.cursorPosition = stash.length
+    return true
+  }
+  function editReply(pane, i) {
+    var r = root.repliesOf(pane)[i]
+    if (r) root.addReply(pane, r.quote, r.at)
   }
   function dropReply(pane, i) {
-    var next = root.repliesOf(pane).filter(function (r, k) { return k !== i })
-    if (pane === "margin") root.marginReplies = next; else root.dayReplies = next
+    root.setReplies(pane, root.repliesOf(pane).filter(function (r, k) { return k !== i }))
+    root.used("reply", "removed")
   }
   // The message, as sent and as kept: the box's words first (under no
-  // quote, so never read as part of an answer), then each passage
-  // answered, quoted above what was said about it. A passage with no
-  // answer typed is left out.
+  // quote, so never read as part of a reply), then each reply under its
+  // passage. A reply still open in the box is attached first.
   function composed(pane, text) {
-    var bits = root.repliesOf(pane).filter(function (r) { return String(r.text || "").trim() !== "" }).map(function (r) {
-      return "> " + r.quote + "\n" + String(r.text).trim()
-    })
+    var bits = root.repliesOf(pane).map(function (r) { return "> " + r.quote + "\n" + String(r.text).trim() })
     var main = String(text || "").trim()
     if (main !== "") bits.unshift(main)
     return bits.join("\n\n")
   }
   function clearReplies(pane) {
-    if (pane === "margin") root.marginReplies = []; else root.dayReplies = []
-    root.replyFocus = -1
+    root.setReplies(pane, [])
+    root.setReplying(pane, null, "")
   }
+  // The pane's box keys while it is a reply: Enter attaches, Esc cancels.
+  function replyKey(pane, event) {
+    if (!root.replyingOf(pane)) return false
+    if (Sc.hit(event, "chatSend")) { root.attachReply(pane); return true }
+    if (Sc.hit(event, "marginBack")) { root.cancelReply(pane); return true }
+    return false
+  }
+  // The passages of one answer the student is replying to, or has: lit
+  // while written, numbered once attached, and once sent, numbered as the
+  // message numbered them — for its words to be marked in the answer.
+  function passageMarks(pane, at) {
+    if (!at) return []
+    var out = []
+    root.repliesOf(pane).forEach(function (r, i) { if (r.at === at) out.push({ quote: r.quote, n: i + 1, state: "attached" }) })
+    var open = root.replyingOf(pane)
+    if (open && open.at === at) out.push({ quote: open.quote, n: root.replyNumber(pane), state: "open" })
+    var sent = (pane === "margin" ? root.marginSent : root.daySent)[at] || []
+    sent.forEach(function (s) { if (!out.some(function (o) { return o.quote === s.quote })) out.push({ quote: s.quote, n: s.n, state: "sent" }) })
+    return out
+  }
+  // Passages answered in sent messages, by the answer they came from (the
+  // nearest before the message whose words hold them).
+  function sentOf(turns) {
+    var map = {}
+    for (var i = 0; i < turns.length; i++) {
+      var t = turns[i]
+      if (!t || t.role === "agent" || !/(^|\n)> \S/.test(t.text || "")) continue
+      var n = 0
+      root.passageParts(t.text).forEach(function (p) {
+        if (p.quote === "") return
+        n++
+        var want = root.plainWords(p.quote).replace(/ …$/, "")
+        for (var k = i - 1; k >= 0; k--) {
+          var a = turns[k]
+          if (a && a.role === "agent" && a.at && root.plainWords(a.text).indexOf(want) >= 0) {
+            (map[a.at] = map[a.at] || []).push({ quote: p.quote, n: n })
+            break
+          }
+        }
+      })
+    }
+    return map
+  }
+  readonly property var daySent: root.sentOf(root.dayTurns)
+  readonly property var marginSent: root.sentOf(root.talkOpen ? root.talkStream : root.marginStream.map(function (r) { return r.turn || {} }))
   // A sent message read back as its parts: { quote, text } each.
   function passageParts(text) {
     var parts = [], cur = null
@@ -1537,7 +1632,7 @@ Item {
     root.marginOpen = false
     root.marginFocus = -1
     root.closeTalk(false)
-    if (note !== root.noteRoom) { root.dayPending = null; root.dayRefs = []; root.dayAutoHeld = null; root.paper.marks = []; root.dayReplies = [] }
+    if (note !== root.noteRoom) { root.dayPending = null; root.dayRefs = []; root.dayAutoHeld = null; root.paper.marks = []; root.clearReplies("day") }
     root.noteRoom = !!note
     root.dayOpen = true
     if (block) {
@@ -1940,6 +2035,7 @@ Item {
       if (Sc.hit(event, "mentionPick") || Sc.hit(event, "mentionClass")) { root.pickDayMention(root.dayMentionFocus); return true }
       if (Sc.hit(event, "mentionClose")) { root.dayMention = null; return true }
     }
+    if (root.replyKey("day", event)) return true
     if (root.anywhereKey(event)) return true
     if (Sc.hit(event, "marginBack") && root.stopAgent("day")) return true
     if (root.paper.room && Sc.hit(event, "marginBack")) { root.paper.showList(); return true }

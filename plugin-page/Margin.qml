@@ -412,13 +412,21 @@ BorderSurface {
         shown: chatField.visible && !!page.dayMention && page.dayMention.margin
         onPicked: chatField.forceActiveFocus()
       }
-      ReplyDrafts {
+      ReplyPills {
         page: margin.page
         width: parent.width
         pane: "margin"
-        box: chatField
         visible: chatField.visible && page.marginReplies.length > 0
-        onSend: { if (margin.talk) page.sendTalk(); else page.sendChat() }
+      }
+      Text {
+        visible: chatField.visible && !!page.marginReplying
+        textFormat: Text.PlainText
+        text: "REPLY " + page.replyNumber("margin") + " OF " + page.replyNumber("margin") + "  ·  "
+          + page.keyName("chatSend") + " attaches · " + page.keyName("marginBack") + " cancels"
+        color: page.accent
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.caption)
       }
       Chips {
         id: aboutChips
@@ -447,7 +455,12 @@ BorderSurface {
       height: implicitHeight
       visible: page.marginOpen || margin.talk
       readOnly: margin.talk && !page.talkCanSend
+      replyQuote: page.marginReplying ? page.marginReplying.quote : ""
+      replyN: page.replyNumber("margin")
+      onCancelReply: { page.cancelReply("margin"); chatField.forceActiveFocus() }
       placeholderText: margin.busy ? page.keyName("marginBack") + " stops" : margin.talk && !page.talkCanSend ? ""
+        : page.marginReplying ? "your reply…"
+        : page.marginReplies.length > 0 ? "write, or reply to another passage…"
         : page.marginCanPoint ? "@ points at a task, a note, a paper…" : "…"
       busy: margin.busy
       onStop: page.stopAgent(margin.talk ? "talk" : "margin")
@@ -457,6 +470,7 @@ BorderSurface {
         if (page.copyChatSelection(event, chatField)) { event.accepted = true; return }
         if (page.marginMentionKey(event)) { event.accepted = true; return }
         if (page.answerSelected(event)) { event.accepted = true; return }
+        if (page.replyKey("margin", event)) { event.accepted = true; return }
         if (page.anywhereKey(event)) { event.accepted = true; return }
         if (margin.talk) {
           if (Sc.hit(event, "chatSend")) page.sendTalk()

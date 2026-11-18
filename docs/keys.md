@@ -270,7 +270,7 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | The reply was helpful (again: take it back) | `+` · `=` | in the margin |
 | The reply was not helpful (again: take it back) | `-` | in the margin |
 | Send what you wrote | `Enter` | in the chat's box |
-| Answer the words selected in the agent's reply (several at once) | `Ctrl+R` | in the chat's box |
+| Reply to the words selected in the agent's answer (several, each attached) | `Ctrl+R` | in the chat's box |
 | While the agent answers: stop it, your words back in the box; else back out: to the day's chat if it is open, else close the pane | `Esc` | in the margin, in the chat's box |
 
 ## Settings

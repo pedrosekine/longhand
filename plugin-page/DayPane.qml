@@ -758,13 +758,11 @@ BorderSurface {
         font.pixelSize: page.fs(Style.font.caption)
       }
     }
-    // Answers to passages of the agent's, each under its own (Ctrl+R).
-    ReplyDrafts {
+    // Replies attached to this message, a pill each (design A).
+    ReplyPills {
       page: dayPane.page
       width: parent.width
       pane: "day"
-      box: dayField
-      onSend: { if (page.sendDay(dayField.text)) dayField.text = "" }
     }
 
     // What the next message is about: its chips. Backspace in the empty
@@ -780,6 +778,16 @@ BorderSurface {
       }
     }
 
+    // While the box is a reply: which one it is.
+    Text {
+      visible: !!page.dayReplying
+      textFormat: Text.PlainText
+      text: "REPLY " + page.replyNumber("day") + " OF " + page.replyNumber("day")
+      color: page.accent
+      font.family: page.fontFamily
+      font.styleName: page.fontStyle
+      font.pixelSize: page.fs(Style.font.caption)
+    }
     ChatField {
       id: dayField
       page: dayPane.page
@@ -791,9 +799,14 @@ BorderSurface {
       busy: page.dayThinking || page.thinkHeld === "day"
       onStop: page.stopAgent("day")
       placeholderText: busy ? page.keyName("marginBack") + " stops"
+        : page.dayReplying ? "your reply…"
+        : page.dayReplies.length > 0 ? "write, or reply to another passage…"
         : page.paper.room ? (page.paper.marks.length > 0 ? "ask about it…" : "ask about this paper…")
         : page.noteRoom ? "chat about this note…"
         : page.dayCanSend ? "chat with the day…" : "a past day: today's is where you chat (" + page.keyName("today") + ")"
+      replyQuote: page.dayReplying ? page.dayReplying.quote : ""
+      replyN: page.replyNumber("day")
+      onCancelReply: { page.cancelReply("day"); dayField.forceActiveFocus() }
       onKeyPressed: function (event) { if (page.dayKey(event)) event.accepted = true }
       onTextChanged: { page.dayTyped(text); Qt.callLater(page.updateDayMention) }
       onCursorPositionChanged: Qt.callLater(page.updateDayMention)
@@ -803,10 +816,15 @@ BorderSurface {
       width: parent.width
       textFormat: Text.PlainText
       wrapMode: Text.WordWrap
-      text: page.paper.room ? page.keyName("chatSend") + " sends · ^ attaches a mark · quotes link to the page · "
+      text: page.dayReplying ? page.keyName("chatSend") + " attaches this reply · " + page.keyName("marginBack")
+          + " cancels it · Shift+Enter a new line · the passage stays lit above"
+        : page.dayReplies.length > 0 ? page.dayReplies.length + (page.dayReplies.length === 1 ? " reply" : " replies")
+          + " attached · " + page.keyName("chatSend") + " sends · click a pill to change it · "
+          + page.keyName("chatAnswer") + " replies to more"
+        : page.paper.room ? page.keyName("chatSend") + " sends · ^ attaches a mark · quotes link to the page · "
           + page.keyName("marginBack") + " back to the marks"
         : page.keyName("chatSend") + " sends · Shift+Enter a new line · @ points at " + (page.noteRoom ? "a part of it" : "a block, a task, a note")
-        + " · " + page.keyName("chatAnswer") + " answers words you select"
+        + " · " + page.keyName("chatAnswer") + " replies to words you select"
         + (page.dayOpenCards.length > 0 ? " · " + page.keyName("marginUp") + " to its proposals"
            : page.convoRows.length > 0 ? " · " + page.keyName("marginUp") + " to the other chats" : "")
         + " · " + page.keyName("marginBack") + " closes · " + page.keyName("dayChat") + " from anywhere"
