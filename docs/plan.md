@@ -1062,8 +1062,20 @@ Small, when passing by:
        "Elsewhere in your one conversation" section stay short and to
        the point (it is logged with every message), and does the agent
        use it without answering it?
-    2. The pane, reading the one store: chips, the two views, Ctrl+Enter and C opening it, the
-       margin's chat retired, the gutter bar kept. No new key.
+    2. The pane, reading the one store: chips, the two views, Ctrl+Enter
+       and C opening it, the margin's chat retired, the gutter bar kept.
+       No new key. *The first part built 2026-11-18* over the places as
+       they are (`docs/agent.md` says each piece): chips above the day's
+       box (`Chips.qml`; the task looked at attaches itself, `@` adds
+       blocks and open tasks of other days, `day --refs`); "everything"
+       (earlier days and today's other chats folded to a line each,
+       `FoldLine.qml`, `conversation --view`); "about this" (a task's or
+       a block's chat with what was said about it elsewhere,
+       `conversation --elsewhere`). Left: `@` for a note or a paper, more
+       than one subject in a task's own chat, the two pane components
+       made one reading the log, the old stores of turns retired. Watch:
+       is the automatic chip right (how often `chip auto-removed` in the
+       usage log), and are the folded lines read or scrolled past?
     3. One voice: one prompt; the morning line and the planner's
        proposals as turns that can be answered.
     4. The new actions from anywhere: add a task, tick, open, file.

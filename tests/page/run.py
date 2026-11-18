@@ -43,8 +43,9 @@ class PageFrozen(Exception):
 # What the runner writes when the student talks to a block: both turns, the
 # way `longhand-agent chat` records them. Enough for the page to settle the
 # message it was holding and draw the answer.
-CHAT_STUB = """import json, pathlib, sys
+CHAT_STUB = """import datetime, json, pathlib, sys
 
+at = datetime.datetime.now().isoformat(timespec="seconds")   # as the runner does: the one conversation orders by it
 daily, args = pathlib.Path(sys.argv[1]), sys.argv[2:]
 h = args[args.index("--hash") + 1]
 msg = args[args.index("--message") + 1]
@@ -52,8 +53,8 @@ stem = args[args.index("--date") + 1]
 path = daily / (stem + ".json")
 state = json.loads(path.read_text()) if path.exists() else {"date": stem, "blocks": {}}
 rec = state["blocks"].setdefault(h, {"state": "seen"})
-rec.setdefault("chat", []).append({"role": "student", "text": msg})
-rec["chat"].append({"role": "agent", "text": "stub answer to: " + msg})
+rec.setdefault("chat", []).append({"role": "student", "text": msg, "at": at})
+rec["chat"].append({"role": "agent", "text": "stub answer to: " + msg, "at": at})
 rec["state"] = "reply"
 rec["read"] = False
 rec.setdefault("reply", "")
@@ -221,7 +222,7 @@ if [ "$1" = projects ]; then
   exit $rc
 fi
 case "$1" in
-  accept|projects|project|project-page|sections|next|dated|tasks|box|timetable|plan|proposals|proposal|talk|thread|rate|notebook|autonomy|day|search|horizon|note|export|checkin) exec "{ROOT}/agent/longhand-agent" "$@" ;;
+  accept|projects|project|project-page|sections|next|dated|tasks|box|timetable|plan|proposals|proposal|talk|thread|rate|notebook|autonomy|day|search|horizon|note|export|checkin|conversation) exec "{ROOT}/agent/longhand-agent" "$@" ;;
   run) sleep 2; exit 0 ;;
   chat) sleep 2; exec python3 "{chatstub}" "{self.vault}/agents/longhand/daily" "$@" ;;
 esac
@@ -1801,6 +1802,62 @@ def checks() -> int:
               and p.call("dayBlockText") == "", "…the block goes with the message, and the box lets go of it")
         st = json.loads((p.vault / "agents" / "longhand" / "daily" / f"{TODAY}.json").read_text())
         check(st["day"]["turns"][-2].get("block", "") != "", "…and the message keeps which block it pointed at")
+        # One conversation, slice 2 (2026-11-18): what a message is about is a
+        # row of chips above the box, seen before it is sent and removable.
+        # The cursor's block, when it is a task, attaches itself (dimmer)
+        # and follows the selection until typing starts; `@` adds a block
+        # or an open task of another day; Backspace in the empty box lets
+        # go of the last; the turn keeps them.
+        chips = lambda: json.loads(p.call("dayChips"))
+        check(chips() == [], f"a block that is not a task does not attach itself ({chips()})")
+        p.call("dayKey", 0x01000000, 0)
+        p.call("cursorEnd")
+        p.call("type", "\n\n- [ ] email the dean about the shortlist")
+        p.wait(lambda: "email the dean" in p.note())
+        p.call("cursor", p.offset_of_line(p.line_of("email the dean")) + 8)
+        p.call("pageKey", 0x7c, CTRL)
+        check(p.wait(lambda: p.call("dayShown") == "true" and [(c["kind"], c.get("auto")) for c in chips()] == [("task", True)])
+              and "email the dean" in chips()[0]["head"],
+              f"the task under the cursor attaches itself to the day's chat, as its automatic chip ({chips()})")
+        p.call("dayType", "@Should")
+        p.wait(lambda: json.loads(p.call("dayMention")))
+        heads = json.loads(p.call("dayMention"))
+        check(len(heads) == 1 and "ask the dean" in heads[0] and p.call("dayKey", KEY_ENTER, 0) == "true"
+              and p.wait(lambda: [c["kind"] for c in chips()] == ["task", "block"]),
+              f"@ adds a second thing to point at, beside the automatic one ({chips()})")
+        check(p.call("dayKey", 0x01000003, 0) == "true" and [c["kind"] for c in chips()] == ["task"]
+              and p.call("dayKey", 0x01000003, 0) == "true" and chips() == [],
+              f"Backspace in the empty box lets go of the last chip, then of the automatic one ({chips()})")
+        p.call("dayType", "x")
+        p.call("dayType", "")
+        check(chips() == [], "…and it stays let go while the selection has not moved")
+        p.call("dayKey", 0x01000000, 0)
+        p.call("cursor", p.offset_of_line(p.line_of("ask the dean")) + 6)
+        p.call("cursor", p.offset_of_line(p.line_of("email the dean")) + 8)
+        p.call("pageKey", 0x7c, CTRL)
+        check(p.wait(lambda: p.call("dayShown") == "true" and len(chips()) == 1), "…the selection moved: it attaches itself again")
+        p.call("dayType", "@Should")
+        p.wait(lambda: json.loads(p.call("dayMention")))
+        p.call("dayKey", KEY_ENTER, 0)
+        p.call("dayType", "these two")
+        p.call("daySend", "these two")
+        check(p.wait(lambda: json.loads(p.call("dayTurns"))[-1] == "agent: day: these two", timeout=12),
+              f"a message with two chips is answered ({p.call('dayTurns')})")
+        st = json.loads((p.vault / "agents" / "longhand" / "daily" / f"{TODAY}.json").read_text())
+        refs = st["day"]["turns"][-2].get("refs") or []
+        check([r["kind"] for r in refs] == ["task", "block"] and "email the dean" in refs[0]["head"],
+              f"…and its turn keeps what it pointed at ({refs})")
+        # "Everything": today's other places, folded to a line each, among
+        # the day's turns; ↑ from the empty box goes to them, Enter opens.
+        check(p.wait(lambda: len(json.loads(p.call("convoRows"))) > 0, timeout=10),
+              f"the pane reads the one conversation's view: today's other chats, a line each ({p.call('convoRows')})")
+        p.call("dayType", "")
+        rows = json.loads(p.call("convoRows"))
+        check(p.call("dayKey", 0x01000013, 0) == "true" and p.call("dayFoldKey") == rows[-1]["key"],
+              f"↑ from the empty box goes to the last folded line ({p.call('dayFoldKey')!r})")
+        check(p.call("dayKey", 0x01000000, 0) == "true" and p.call("dayFoldKey") == "" and p.call("dayShown") == "true",
+              "…Esc goes back to the box, the pane still open")
+        p.call("cursor", p.offset_of_line(p.line_of("ask the dean")) + 6)
         p.call("dive")
         check(p.wait(lambda: p.call("dayShown") == "false") and json.loads(p.call("panel"))["margin"],
               "a block's own conversation is a room stepped into from the day")

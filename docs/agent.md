@@ -609,6 +609,45 @@ a conversation surviving a change of model, the note's look.
 2. The pane, reading the one store (and the places' own stores of turns
    retired with it): chips, the two views, Ctrl+Enter and C opening it,
    the margin's chat retired, the gutter bar kept.
+   *The first part built 2026-11-18,* over the places as they are:
+   - **Chips** (`Chips.qml`), above the box of the day's chat: what the
+     next message is about, each `kind · name` with a ×. The task the
+     student is looking at attaches itself, dimmer — the selected row
+     beside the dashboard, the cursor's block when it is a box (prose
+     does not: every message would drag a paragraph along) — following
+     the selection until the first character, then fixed for that
+     message (`dayAuto`, `dayTyped`). `@` lists the open note's blocks
+     and, new, the open tasks of other days; several can go with one
+     message. Backspace in the empty box lets go of the last, then of the
+     automatic one, which stays let go until the selection moves. A sent
+     turn keeps its chips over it. The usage log counts `chip`
+     (`auto-removed`, `removed`, `sent-N`), for "how it is judged".
+   - **The runner:** `day --refs` takes what a message points at, blocks
+     of today's note by hash or of any day's by line (`resolve_refs`: a
+     private one, or one before the horizon, is counted and never
+     shown); the turn keeps them (`refs`), and the log has the message,
+     and its answer, about all of them.
+   - **"Everything"** is the day's chat grown (`EVERYTHING · TODAY`):
+     above its turns the earlier days, a line each (fourteen at most),
+     unfolding to the places talked in that day; among its turns, in the
+     order said, today's other places (a task's chat, a paper's), folded
+     to how many turns and their last words (`FoldLine.qml`,
+     `conversation --view`). ↑ from the empty box goes to the lines (after
+     the cards, when there are any), Enter or a click opens what a line
+     is about: a task's chat beside the dashboard, a paper's or a note's
+     room, a closed task's note.
+   - **"About this"** is a task's or a block's chat as it was
+     (`Margin.qml`), saying so, with its one chip above the box (× leaves
+     for the day's chat with what was typed) and, first, what was said
+     about it elsewhere — the day's chat pointing at it, another day's
+     margin for the same task (`conversation --elsewhere`): shown when
+     short, folded to a line when long. Ctrl+3 in the pane goes between
+     the two views, as it did between the day's chat and a block's.
+   - *Left for the second part:* `@` adding a note or a paper; chips in a
+     note's or a paper's room beyond its one block or its marks; more
+     than one subject in a task's own chat; the two components made one
+     that reads turns and cards from the log, and the places' stores of
+     turns retired.
 3. One voice: one prompt; the morning line and the planner's proposals as
    turns.
 4. The new actions: add a task, tick, open, file from anywhere.

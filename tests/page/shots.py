@@ -400,6 +400,51 @@ def scenes(m, p, out, which):
         shot("stop-1")
         p.call("closePanes")
         p.call("dash")
+    if which == "one":
+        # One conversation, slice 2 (2026-11-18): the chips above the box,
+        # the pane's "everything" with the other chats folded to a line
+        # each, and a task's chat with what was said about it elsewhere.
+        sys.path.insert(0, str(m.ROOT / "agent"))
+        import convo
+        y = (dt.date.today() - dt.timedelta(days=1)).isoformat()
+        paper, task = "paper:papers/moser2026.pdf", "task:thesis\t- Draft the methods section"
+        names = {paper: "moser2026", task: "Draft the methods section", f"day:{y}": y}
+        convo.Log(p.vault / "agents" / "longhand" / "conversation", "other").append([
+            convo.turn("paper", paper, "student", "what is the sample?", f"{y}T10:00:00", [paper], names),
+            convo.turn("paper", paper, "agent", "Twelve interviews, all in one lab.", f"{y}T10:00:09", [paper], names),
+            convo.turn("margin", f"margin:{y}:aaaa1111", "student", "is one lab enough?", f"{y}T11:00:00", [task], names),
+            convo.turn("margin", f"margin:{y}:aaaa1111", "agent", "Say it as a limit, and why it still answers your question.", f"{y}T11:00:07", [task], names),
+            convo.turn("day", f"day:{y}", "student", "what is left this week?", f"{y}T18:00:00", [f"day:{y}"], names),
+            convo.turn("day", f"day:{y}", "agent", "The methods section and the poster.", f"{y}T18:00:05", [f"day:{y}"], names)])
+        CTRL = 0x04000000
+        p.call("dash")
+        p.wait(lambda: any(r.get("kind") == "task" for r in json.loads(p.call("dashRows"))), 8)
+        rows = json.loads(p.call("dashRows"))
+        p.call("dashFocus", next(i for i, r in enumerate(rows) if r.get("kind") == "task"))
+        p.call("keyPage", 0x7c, CTRL)       # Ctrl+|: the pane, the selected task attached by itself
+        p.wait(lambda: len(json.loads(p.call("dayChips"))) == 1, 6)
+        p.call("dayType", "can this wait until Friday?")
+        shot("one-0")
+        p.call("daySend", "can this wait until Friday?")
+        p.call("dayType", "")
+        p.wait(lambda: len(json.loads(p.call("dayTurns"))) >= 2 and json.loads(p.call("dayTurns"))[-1].startswith("agent"), 12)
+        p.call("dashKey", 0x43, 0)          # C: the task's own chat — "about this"
+        time.sleep(0.8)
+        p.call("talkSend", "and split it into steps?")
+        p.wait(lambda: len(json.loads(p.call("elsewhere"))["turns"]) > 0, 12)
+        time.sleep(1.5)
+        shot("one-1")
+        p.call("keyPage", 0x33, CTRL)       # Ctrl+3, in the pane: everything
+        p.wait(lambda: p.call("dayShown") == "true" and len(json.loads(p.call("convoRows"))) >= 2, 10)
+        time.sleep(0.8)
+        shot("one-2")
+        p.call("dayKey", 0x01000013, 0)     # ↑: the last folded line (today's task chat)
+        p.call("dayKey", 0x01000013, 0)     # ↑: yesterday
+        p.call("dayKey", 0x01000004, 0)     # Enter: unfolded
+        time.sleep(0.5)
+        shot("one-3")
+        p.call("closePanes")
+        p.call("dash")
     if which == "calm":
         p.call("dash")
         p.wait(lambda: sum(r.get("kind") == "deadline" for r in json.loads(p.call("dashRows"))) >= 3, 10)
@@ -424,7 +469,7 @@ def scenes(m, p, out, which):
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("out", type=pathlib.Path)
-    ap.add_argument("--scene", default="all", choices=["all", "dashboard", "note", "day", "keys", "chat", "project", "acronyms", "answers", "reach", "calm", "stop", "checkin"])
+    ap.add_argument("--scene", default="all", choices=["all", "dashboard", "note", "day", "keys", "chat", "project", "acronyms", "answers", "reach", "calm", "stop", "checkin", "one"])
     ap.add_argument("--order", default="ask", choices=["ask", "course", "date"])
     ap.add_argument("--root", type=pathlib.Path, default=HERE.parent.parent)
     ap.add_argument("--env", action="append", default=[])

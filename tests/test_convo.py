@@ -22,6 +22,11 @@ The runner, against a stub model and a throwaway vault:
   a note marked private is kept and carried nowhere
 - a message's turns reach the log, written by this machine only
 - a later message is not given again what its session has
+- slice 2: a message points at several things (a task of another day, a
+  block of today's; a private one counted, never shown), the turn keeps
+  them; `--view` (earlier days and today's places, a line each, with how to
+  open them) and `--elsewhere` (what was said about a task outside its own
+  chat)
 """
 import datetime as dt
 import hashlib
@@ -224,6 +229,48 @@ def runner(tmp: pathlib.Path) -> None:
     check(sub["hash"] == yh, "(the box under it is in the task's block)")
     c = convo_(env=there)
     check(c["hosts"].get("here", 0) >= 15 and "there" not in c["hosts"], f"the other machine reads it all, having written none ({c['hosts']})")
+
+    # Slice 2: a message points at several things (the chips above the
+    # box) — a task of another day by its line, a block of today's by its
+    # hash; what may not be shown is counted, never shown.
+    note_today = daily_notes / f"{today}.md"
+    note_today.write_text(note_today.read_text() + "\n> [!private]\n> - [ ] SECRET-BOX of my own\n")
+    line_today = next(b for b in blocks.split(note_today.read_text()) if "A line of today" in b["text"])["hash"]
+    secret = next(b for b in blocks.split(note_today.read_text()) if "SECRET-BOX" in b["text"])["hash"]
+    agent("day", "--message", "these two together?", "--refs", json.dumps([
+        {"date": str(yday), "line": 2}, {"date": str(today), "hash": line_today}, {"date": str(today), "hash": secret}]))
+    msg = calls()[-1]["argv"][-1]
+    check("# The blocks the student points at" in msg and f"In the note of {yday} (a task):" in msg
+          and "> - [ ] write the intro" in msg and "In today's note:" in msg and "> A line of today." in msg,
+          "a message points at several things: a task of another day, a block of today's")
+    check("SECRET-BOX" not in msg and "(1 more they pointed at cannot be shown to you" in msg,
+          "…a private one is counted, never shown")
+    st = json.loads((agent_dir / "daily" / f"{today}.json").read_text())["day"]["turns"][-2]
+    check([(r["date"], r["kind"], r["head"]) for r in st["refs"]] == [(str(yday), "task", "write the intro"), (str(today), "block", "A line of today.")]
+          and st["block"] == line_today, f"…the turn keeps what it pointed at, for its chips ({st.get('refs')})")
+    last = [json.loads(l) for l in (log / "here.jsonl").read_text().splitlines()][-1]
+    check(last["role"] == "agent" and "task:" + key in last["subjects"] and f"block:{yday}:{yh}" in last["subjects"]
+          and f"block:{today}:{line_today}" in last["subjects"], f"…and is about all of it in the log ({last['subjects']})")
+
+    # The pane's "everything": earlier days a line each with their places,
+    # today's places other than the day's own chat.
+    v = convo_("--view")
+    yd = v["days"][-1]
+    names = {(g["kind"], g["name"]): g for g in yd["groups"]}
+    check(v["today"] == str(today) and yd["date"] == str(yday) and yd["turns"] == 10
+          and ("day", "the day's chat") in names and names[("task", "write the intro")]["open"]["kind"] == "task"
+          and names[("task", "write the intro")]["open"]["key"] == key,
+          f"everything: an earlier day, a line a place, each saying how to open what it is about ({sorted(names)})")
+    tg = {(g["kind"], g["name"]): g for g in v["groups"]}
+    check(("note", "open") in tg and tg[("note", "open")]["open"] == {"kind": "file", "rel": "human/Studies/open.md"}
+          and tg[("note", "open")]["role"] == "agent" and not any(g["where"] == "day" for g in v["groups"]),
+          f"…and today's other places, never the day's own chat ({sorted(tg)})")
+    # "About this": what was said about a task outside its own chat.
+    e = json.loads(agent("conversation", "--elsewhere", "--task", key, "--date", str(yday), "--hash", yh).stdout)
+    said = [(t["where"], t["text"]) for t in e["turns"]]
+    check(("day", "where was I with this?") in said and ("day", "these two together?") in said
+          and not any(w in ("margin", "planner") for w, _ in said) and e["turns"][0]["place"] == "in the day's chat",
+          f"about this: what the day's chat said about a task, not its own margin or the planner ({said})")
 
 
 def main() -> int:
