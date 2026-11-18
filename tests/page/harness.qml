@@ -512,6 +512,8 @@ ShellRoot {
     function chatBoxKey(key: int): void { page.marginItem.chatFieldRef.keyPressed({ key: key, modifiers: 0, text: "", accepted: false }) }
     function chatBoxText(): string { return page.marginItem.chatFieldRef.text }
     function chatBoxClear(): void { page.marginItem.chatFieldRef.text = "" }
+    function clickStop(): void { page.marginItem.chatFieldRef.stop() }
+    function stopShown(): string { var f = page.marginItem.chatFieldRef; return JSON.stringify({ square: f.busy, placeholder: f.placeholderText }) }
     function thinkingSays(): string { return page.marginItem.thinkingText }
     function reply(): string { var r = page.currentRecord; return r && r.reply ? r.reply : "" }
     function askWord(): string { return Queue.answered(page.currentRecord) ? "reply" : "ask" }

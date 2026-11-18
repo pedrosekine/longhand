@@ -611,11 +611,15 @@ BorderSurface {
         }
       }
 
+      // How long (2026-11-18); the box below has the square that stops it,
+      // and a click on the word stops it too.
+      Row {
+        spacing: page.sp(12)
+        visible: page.dayThinking || page.thinkHeld === "day"
       Text {
         id: dayThinking
-        visible: page.dayThinking || page.thinkHeld === "day"
+        anchors.verticalCenter: parent.verticalCenter
         textFormat: Text.PlainText
-        // How long, and how to stop it (2026-11-18): a click on it stops too.
         property double since: 0
         property int elapsed: 0
         onVisibleChanged: { since = visible ? Date.now() : 0; elapsed = 0 }
@@ -630,7 +634,7 @@ BorderSurface {
           cursorShape: Qt.PointingHandCursor
           onClicked: page.stopAgent("day")
         }
-        text: "thinking" + (elapsed >= 2 ? " · " + elapsed + "s" : "") + "  ·  " + page.keyName("marginBack") + " stops"
+        text: "thinking" + (elapsed >= 2 ? " · " + elapsed + "s" : "")
         color: page.faint
         font.family: page.fontFamily
         font.styleName: page.fontStyle
@@ -641,6 +645,7 @@ BorderSurface {
           NumberAnimation { to: 0.35; duration: 900; easing.type: Easing.InOutSine }
           NumberAnimation { to: 1; duration: 900; easing.type: Easing.InOutSine }
         }
+      }
       }
 
       Text {
@@ -743,7 +748,10 @@ BorderSurface {
       // Read-only rather than disabled on a past day: the pane still takes
       // the keys, so Esc and the panes' keys work in it.
       readOnly: !page.dayCanSend
-      placeholderText: page.paper.room ? (page.paper.marks.length > 0 ? "ask about it…" : "ask about this paper…")
+      busy: page.dayThinking || page.thinkHeld === "day"
+      onStop: page.stopAgent("day")
+      placeholderText: busy ? page.keyName("marginBack") + " stops"
+        : page.paper.room ? (page.paper.marks.length > 0 ? "ask about it…" : "ask about this paper…")
         : page.noteRoom ? "chat about this note…"
         : page.dayCanSend ? "chat with the day…" : "a past day: today's is where you chat (" + page.keyName("today") + ")"
       onKeyPressed: function (event) { if (page.dayKey(event)) event.accepted = true }

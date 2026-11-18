@@ -1004,8 +1004,11 @@ Small, when passing by:
     end: nothing in the pane or in `longhand-agent` stops a run, and a
     conversation (the day's, a block's, a paper's room) only grows.
     - ~~**Stop:**~~ *built 2026-11-18*: Esc in the chat's box while the
-      agent thinks (or a click on "thinking", which now says how long and
-      "Esc stops", and is seen for 0.7 s at least) ends the run. The page
+      agent thinks, or a click on the square at the box's end (as a send
+      button turns into one in the chat apps, drawn the page's way: flat,
+      dim, the accent under the pointer; the empty box says "Esc stops"),
+      ends the run. "thinking" says how long, and is seen for 0.7 s at
+      least. The page
       sends SIGTERM; `longhand-agent` takes it as a stop for the commands
       that call a model (run, chat, day, note, talk, plan): the model's
       process group is ended (`run_child`), the run is logged as
