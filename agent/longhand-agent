@@ -31,6 +31,7 @@
                                                                 # what the agent knows, and the student's corrections
     longhand-agent search [--folders | --words W [--folder F] | --file F]   # what the day's agent may search, JSON
     longhand-agent day --message M [--block HASH]               # the day's conversation: talk to the day, not a line
+    longhand-agent conversation [--merge] [--about S | --today | --turns]   # the one conversation, every place's turns, JSON
     longhand-agent install [--force]                            # opencode agent defs (checked by their evals) + dirs
     longhand-agent week --tag T [--date D] [--write]             # a project's week: done, written, read, coming, to ask
     longhand-agent export [--date D | --file F] [--line N | --select A:B] [--blocks H,…] [--title T]
@@ -68,6 +69,7 @@ import blocks as blocklib  # noqa: E402
 import lifespan  # noqa: E402
 import plan as planlib  # noqa: E402
 import psync  # noqa: E402
+import convo as convolib  # noqa: E402
 import checkin as checkinlib  # noqa: E402
 import evals as evallib  # noqa: E402
 import notebook as nb  # noqa: E402
@@ -647,7 +649,8 @@ def doc_lines(docs: list[dict]) -> list[str]:
     return [f"- {d['name']} ({d['pages']} pages)" if d["pages"] else f"- {d['name']}" for d in docs]
 
 
-def build_payload(paths: Paths, trigger: str, fired: list[dict], visible: list[dict], cfg: dict | None = None) -> str:
+def build_payload(paths: Paths, trigger: str, fired: list[dict], visible: list[dict], cfg: dict | None = None,
+                  memory: list[str] | None = None) -> str:
     sample = "\n".join(b["text"] for b in fired) if fired else "\n".join(b["text"] for b in visible[-3:])
     parts = ["# Language", language_line(cfg or {}, sample), "", "# Trigger", f"kind: {trigger}"]
     if fired:
@@ -688,10 +691,10 @@ def build_payload(paths: Paths, trigger: str, fired: list[dict], visible: list[d
 
     parts += knowledge_parts(paths)
 
-    # The day conversation's last turns (cross-visibility, 2026-10-21): what
-    # the student was just talking about with the day, beside this block.
-    if trigger != "day":
-        parts += day_tail(paths)
+    # What was said elsewhere in the one conversation about this block, and
+    # elsewhere today (`convo_memory`; until 2026-11-18 the day's last six
+    # turns only).
+    parts += memory or []
 
     sessions = timetable_section(cfg, dt.datetime.now()) if cfg else []
     if sessions:
@@ -1187,7 +1190,8 @@ def card_places(props: list[dict], new: list[dict], at: str) -> tuple[list[int],
 
 def apply(cfg: dict, paths: Paths, trigger: str, fired: list[dict], visible: list[dict],
           result: dict, reply: dict, payload_file: Path, hash_: str = "", message: str = "",
-          ledger_cards: list[dict] | None = None, unoffered: list[str] | None = None) -> dict:
+          ledger_cards: list[dict] | None = None, unoffered: list[str] | None = None,
+          carried: list[str] | None = None) -> dict:
     """What a margin run or a block's chat answered, kept. Its own cards are
     deadlines (`accept`); a chat's day or drop is in the one list already
     (`ledger_cards`, by `ledger_proposals`) and sits among them, a copy
@@ -1232,6 +1236,8 @@ def apply(cfg: dict, paths: Paths, trigger: str, fired: list[dict], visible: lis
                 turns[-1]["unoffered"] = refused
             rec["session"] = result["session"] if result["session"] and not result["error"] else rec.get("session", "")
             rec["read"] = False
+            if carried is not None:
+                rec["memory"] = carried               # what of the one conversation its session was given
             if rec.get("state") != "reply":
                 rec["state"] = "reply"
                 rec["reply"] = rec.get("reply") or ""
@@ -1247,6 +1253,8 @@ def apply(cfg: dict, paths: Paths, trigger: str, fired: list[dict], visible: lis
                         "prompt": result.get("prompt", ""), "model": result.get("model", ""),
                         "payload": str(payload_file), "documents": result.get("reads", []),
                         "key": keys.get(h) or block_key(next(b["text"] for b in fired if b["hash"] == h))})
+            if not result["error"]:
+                rec["memory"] = list(carried or [])
             if len(hashes) > 1:
                 rec["group"] = hashes
             else:
@@ -1360,8 +1368,27 @@ def carried_threads(paths: Paths, visible: list[dict]) -> dict[str, str]:
 
 def cmd_context(cfg: dict, args) -> int:
     paths, visible, fired = prepare(cfg, args)
-    sys.stdout.write(build_payload(paths, args.trigger, fired, visible, cfg))
+    mem, _, _ = run_memory(cfg, paths, visible, fired)
+    sys.stdout.write(build_payload(paths, args.trigger, fired, visible, cfg, mem))
     return 0
+
+
+def run_memory(cfg: dict, paths: Paths, visible: list[dict], fired: list[dict]) -> tuple[list[str], list[str], str]:
+    """For a pass the page started (a box, a question, a tick, the page
+    opening): what the one conversation says elsewhere about the block it
+    fired on — on opening, about the day — as (the payload's lines, the
+    turns' ids, the pass's own place)."""
+    if not fired:
+        thread, subjects = f"open:{paths.stamp}", [f"day:{paths.stamp}"]
+    else:
+        thread = f"margin:{paths.stamp}:{fired[0]['hash']}"
+        try:
+            boxes = tasklib.scan(paths.note.read_text())
+        except OSError:
+            boxes = []
+        subjects = [s for b in fired for s in block_subjects(paths.stamp, visible, boxes, b["hash"], None, b)[0]]
+    mem, mem_ids = convo_memory(cfg, subjects, thread)
+    return mem, mem_ids, thread
 
 
 def cmd_run(cfg: dict, args) -> int:
@@ -1374,7 +1401,8 @@ def cmd_run(cfg: dict, args) -> int:
         if all(b["hash"] in known or b["hash"] in carried for b in visible):
             print("open: nothing new since the last pass")
             return 0
-    payload = build_payload(paths, args.trigger, fired, visible, cfg)
+    mem, mem_ids, _ = run_memory(cfg, paths, visible, fired)
+    payload = build_payload(paths, args.trigger, fired, visible, cfg, mem)
     paths.payloads.mkdir(parents=True, exist_ok=True)
     stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
     payload_file = paths.payloads / f"{stamp}-{args.trigger}-{fired[0]['hash'] if fired else 'open'}.md"
@@ -1386,7 +1414,8 @@ def cmd_run(cfg: dict, args) -> int:
     tag = next((t for t in (project_of_block(visible, b) for b in fired) if t), "")
     if fired:                         # the open pass is offered nothing to read
         result, reply = follow_reads(cfg, paths, tag, result, reply, payload_file)
-    apply(cfg, paths, args.trigger, fired, visible, result, reply, payload_file)
+    apply(cfg, paths, args.trigger, fired, visible, result, reply, payload_file, carried=mem_ids)
+    convo_merge(cfg)
     if result["error"]:
         print(f"error: {result['error']}", file=sys.stderr)
         return 1
@@ -1466,11 +1495,17 @@ def cmd_chat(cfg: dict, args) -> int:
     # whatever the margin has not seen yet.
     about_block = block or now
     box_key, planned, open_props = box_thread(cfg, paths, about_block) if about_block else ("", [], [])
-    seen = int(rec.get("planner_seen") or 0) if session else 0
+    # What was said elsewhere about this block and the task it is — with
+    # the planner, in the day's chat, in another day's margin, on the other
+    # machine — and elsewhere today, travels with the message: once (the
+    # one conversation's memory, 2026-11-18; before it, only the planner's
+    # turns about the box and the day's last six).
+    subjects, _ = block_subjects(paths.stamp, visible, tasklib.scan(text), args.hash, rec, about_block)
+    thread = margin_thread(paths.stamp, rec, args.hash)
+    carried = list(rec.get("memory") or []) if session else []
+    mem, mem_ids = convo_memory(cfg, subjects, thread, carried, again=bool(session))
+    mem_part = "\n".join(mem).lstrip("\n") + "\n\n" if mem else ""
     planner_part = ""
-    if planned[seen:]:
-        planner_part += ("Meanwhile, about this box, the student talked with Longhand's planner (read-only):\n\n"
-                         + "\n".join(planner_lines(planned[seen:][-planlib.TALK_TURNS:])) + "\n\n")
     if open_props:
         planner_part += ("The planner's open proposals about this box (the student settles them in the dashboard):\n\n"
                          + "\n".join(f"- {x['kind']}" + (f" {x['date']}" if x.get("date") else "")
@@ -1500,7 +1535,7 @@ def cmd_chat(cfg: dict, args) -> int:
         offer_part = "\n".join(margin_proposable_parts(proposable, again=True)).lstrip() + "\n\n" \
             if proposable and digest != rec.get("proposable") else ""
         lang = language_line(cfg, message, said_before(rec.get("chat")))
-        payload = (f"{lang}\n\n{since}{planner_part}{docs_part}{gone_part}{offer_part}"
+        payload = (f"{lang}\n\n{since}{planner_part}{docs_part}{gone_part}{offer_part}{mem_part}"
                    f"The student replies about block {args.hash}:\n\n{message}\n\n"
                    "Answer with the same JSON contract.\n")
         payload_file.write_text(payload)
@@ -1509,7 +1544,7 @@ def cmd_chat(cfg: dict, args) -> int:
         block = block or now
         if block is None:
             raise Fail(f"block {args.hash} has no session and is not in the visible note")
-        payload = build_payload(paths, "mention", [block], visible, cfg)
+        payload = build_payload(paths, "mention", [block], visible, cfg, mem)
         if planner_part:
             payload += f"\n# This box with the planner\n\n{planner_part}"
         if proposable:
@@ -1538,16 +1573,15 @@ def cmd_chat(cfg: dict, args) -> int:
                                            proposable or {"candidates": [], "open_boxes": []})
         cards = [dict({k: v for k, v in x.items() if k != "id"}, ledger=x["id"], at=at) for x in made]
     state = apply(cfg, paths, "chat", [], visible, result, reply, payload_file, hash_=args.hash, message=message,
-                  ledger_cards=cards, unoffered=unoffered)
-    if (planned or docs or proposable) and not result["error"]:
+                  ledger_cards=cards, unoffered=unoffered, carried=convolib.carry(carried, mem_ids))
+    if (docs or proposable) and not result["error"]:
         for h in group_of(state, args.hash):
-            if planned:
-                state["blocks"][h]["planner_seen"] = len(planned)
             if docs:
                 state["blocks"][h]["docs_seen"] = sorted(d["name"] for d in docs)
             if proposable:
                 state["blocks"][h]["proposable"] = digest
         write_atomic(paths, paths.state, json.dumps(state, indent=2, ensure_ascii=False) + "\n")
+    convo_merge(cfg)
     if result["error"]:
         print(f"error: {result['error']}", file=sys.stderr)
         return 1
@@ -3522,21 +3556,6 @@ def merged_turns(margin: list[dict], planner: list[dict]) -> list[dict]:
     return [r[3] for r in rows]
 
 
-def margin_talk(cfg: dict, task: dict | None) -> list[str]:
-    """What was said about this box in the margin of its note, if anything,
-    for the planner to read."""
-    found = box_block(cfg, task) if task else None
-    if not found:
-        return []
-    paths, visible, block = found
-    _, rec = block_record(paths, visible, block, load_state(paths)["blocks"])
-    return [f"{'the margin' if t['role'] == 'agent' else 'student'}: {t['text']}" for t in margin_turns(rec)]
-
-
-def planner_lines(turns: list[dict]) -> list[str]:
-    return [f"{'the planner' if t['role'] == 'agent' else 'student'}: {t['text']}" for t in turns]
-
-
 def box_thread(cfg: dict, paths: Paths, block: dict) -> tuple[str, list[dict], list[dict]]:
     """For a block in the margin: the key of the box it is (its first line),
     what the student said with the planner about it, and the planner's open
@@ -3623,66 +3642,270 @@ def task_chats(cfg: dict, tasks: list[dict]) -> None:
                      "hash": h, "thread": key, "cards": open_cards(rec) if t["key"] == key else 0}
 
 
+# ------------------------------------------------- the one conversation
+#
+# docs/agent.md, "One conversation" (slice 1, 2026-11-18). Every turn, said
+# in whatever place, is also a line in this machine's log in the vault
+# (convo.py), and each message carries what was said elsewhere about what
+# it is about. The places still keep and show their own turns (the pane
+# that reads the one store is slice 2): after a place writes, what it
+# wrote is merged into the log from its own store (`convo_merge`), the
+# same way the conversations from before this were brought in — one path,
+# and a turn's id (where, when, who, the words) keeps it one turn however
+# often, and on however many machines, that runs.
+
+CONVO_MERGED = STATE_HOME / "conversation.merged"    # when this machine last merged the places' stores
+
+
+def convo_log(cfg: dict) -> convolib.Log:
+    return convolib.Log(Path(cfg["vault"]) / cfg.get("agentDir", "agents/longhand") / convolib.FOLDER,
+                        psync.dsync.host_name())
+
+
+def margin_thread(stamp: str, rec: dict | None, h: str) -> str:
+    """A block's conversation in the margin; a list sent as one shares one
+    (its first item's)."""
+    g = (rec or {}).get("group")
+    return f"margin:{stamp}:{g[0] if isinstance(g, list) and g and h in g else h}"
+
+
+def task_subject(boxes: list[dict], block: dict | None) -> tuple[str, str] | None:
+    """The task a block is: the box on its first line, or the open box that
+    one is under, all the way up (a box under a task is never a subject of
+    its own; plan.py `root_key` walks the same way)."""
+    box = next((b for b in boxes if block and b["line"] == block["start"]), None)
+    if box is None or box.get("private"):
+        return None
+    by_line = {b["line"]: b for b in boxes}
+    seen = set()
+    while box.get("parent", -1) in by_line and box["line"] not in seen:
+        up = by_line[box["parent"]]
+        if up.get("done") or up.get("cancelled") or up.get("private"):
+            break
+        seen.add(box["line"])
+        box = up
+    return lifespan.key_of(box), box.get("title") or ""
+
+
+def block_subjects(stamp: str, visible: list[dict], boxes: list[dict], h: str, rec: dict | None,
+                   block: dict | None = None) -> tuple[list[str], dict]:
+    """What a block's turns are about: the task it is, and the block."""
+    if block is None:
+        block = next((b for b in visible if b["hash"] == h), None)
+    if block is None and (rec or {}).get("key"):
+        block = next((b for b in visible if block_key(b["text"]) == rec["key"]), None)
+    s = f"block:{stamp}:{h}"
+    head = (block["text"].split("\n")[0] if block else (rec or {}).get("head") or "").strip()
+    names = {s: re.sub(r"^\s*[-*+] \[.\] ", "", head) or f"a block of {stamp}"}
+    out = [s]
+    t = task_subject(boxes, block)
+    if t:
+        out.insert(0, "task:" + t[0])
+        names[out[0]] = t[1] or names[s]
+    return out, names
+
+
+def planner_subject(key: str) -> str:
+    """A box's conversation with the planner is about the task; a question
+    about no box, or a deadline found in the writing, about itself."""
+    return ("ask:" if key[:1] in "?~" else "task:") + key
+
+
+def state_turns(cfg: dict, paths: Paths, state: dict) -> list[dict]:
+    """A day's state as turns: the margin's (each block's first reply and
+    its chat), what was said on opening the page, and the day's chat."""
+    stamp = paths.stamp
+    try:
+        text = paths.note.read_text()
+        blks = blocklib.split(text)
+    except OSError:
+        text, blks = "", []
+    hidden = not blks or note_is_private(blks) or before_horizon(cfg, stamp)
+    visible = [] if hidden else visible_blocks(blks)
+    boxes = tasklib.scan(text) if visible else []
+    out, done = [], set()
+    blocks = state.get("blocks") if isinstance(state.get("blocks"), dict) else {}
+    for h, rec in blocks.items():
+        if not isinstance(rec, dict) or not (rec.get("reply") or rec.get("chat")):
+            continue
+        thread = margin_thread(stamp, rec, h)
+        if thread in done:
+            continue
+        done.add(thread)
+        subjects, names = block_subjects(stamp, visible, boxes, thread.rsplit(":", 1)[-1], rec)
+        last = str(rec.get("at") or "")
+        if rec.get("reply"):
+            out.append(convolib.turn("margin", thread, "agent", rec["reply"], last, subjects, names, closed=hidden))
+        for t in rec.get("chat") or []:
+            if not isinstance(t, dict) or t.get("role") not in ("student", "agent"):
+                continue
+            last = str(t.get("at") or last)
+            out.append(convolib.turn("margin", thread, t["role"], str(t.get("text") or ""), last, subjects, names,
+                                     closed=hidden, error=t.get("error", "")))
+    day_s = f"day:{stamp}"
+    for o in state.get("observations") or []:
+        if isinstance(o, dict) and o.get("text"):
+            out.append(convolib.turn("open", f"open:{stamp}", "agent", o["text"], str(o.get("at") or ""), [day_s],
+                                     {day_s: stamp}))
+    last, subjects, names = "", [day_s], {day_s: stamp}
+    for t in (state.get("day") or {}).get("turns") or []:
+        if not isinstance(t, dict) or t.get("role") not in ("student", "agent"):
+            continue
+        last = str(t.get("at") or last)
+        if t["role"] == "student":            # an answer is about what was asked
+            subjects, names = [day_s], {day_s: stamp}
+            if t.get("block"):
+                s2, n2 = block_subjects(stamp, visible, boxes, t["block"], blocks.get(t["block"]))
+                subjects, names = subjects + s2, dict(names, **n2)
+        out.append(convolib.turn("day", f"day:{stamp}", t["role"], str(t.get("text") or ""), last, subjects, names,
+                                 error=t.get("error", "")))
+    return out
+
+
+def note_shared(cfg: dict, paths: Paths, rel: str) -> bool:
+    """Whether a note is one the agent may see anyway (search's rules): a
+    note asked about that is not, is shown for its own conversation only."""
+    p = paths.vault / rel
+    on = searchlib.switched(paths.vault, cfg)
+    if not p.is_file() or searchlib._never(rel) or horizon_hide(cfg)(rel) \
+            or not any(y and (rel == f or rel.startswith(f + "/")) for f, y in on.items()):
+        return False
+    try:
+        return p.suffix.lower() != ".md" or not note_is_private(blocklib.split(p.read_text(errors="replace")))
+    except OSError:
+        return False
+
+
+def note_turns(cfg: dict, paths: Paths, talk: dict) -> list[dict]:
+    """A note's or a paper's conversation as turns."""
+    rel = str(talk.get("path") or "")
+    if not rel:
+        return []
+    where = "paper" if rel.lower().endswith(".pdf") else "note"
+    s = f"{where}:{rel}"
+    closed = not note_shared(cfg, paths, rel)
+    out, last = [], ""
+    for t in talk.get("turns") or []:
+        if not isinstance(t, dict) or t.get("role") not in ("student", "agent"):
+            continue
+        last = str(t.get("at") or last)
+        out.append(convolib.turn(where, s, t["role"], str(t.get("text") or ""), last, [s], {s: Path(rel).stem},
+                                 closed=closed, error=t.get("error", "")))
+    return out
+
+
+def planner_turns(ledger: dict) -> list[dict]:
+    """The conversations with the planner as turns."""
+    out = []
+    for key, th in (ledger.get("threads") or {}).items():
+        s, last = planner_subject(key), ""
+        for t in (th or {}).get("turns") or []:
+            if not isinstance(t, dict) or t.get("role") not in ("student", "agent"):
+                continue
+            last = str(t.get("at") or last)
+            out.append(convolib.turn("planner", f"planner:{key}", t["role"], str(t.get("text") or ""), last, [s],
+                                     {s: th.get("title") or ""}, about=t.get("about")))
+    return out
+
+
+def convo_merge(cfg: dict, everything: bool = False) -> int:
+    """The places' own stores into the one conversation: those written
+    since this machine last merged (all of them the first time, or when
+    `everything`). Returns how many turns were new. Never fails a run."""
+    try:
+        agent_dir = Path(cfg["vault"]) / cfg.get("agentDir", "agents/longhand")
+        try:
+            since = 0.0 if everything else CONVO_MERGED.stat().st_mtime
+        except OSError:
+            since = 0.0
+        began = time.time()
+
+        def changed(f: Path) -> bool:
+            try:
+                st = f.stat()
+            except OSError:
+                return False
+            return max(st.st_mtime, st.st_ctime) >= since - 2
+        turns: list[dict] = []
+        for f in sorted((agent_dir / "daily").glob("*.json")):
+            day = stamp_date(cfg, f.stem)
+            if day is None or not changed(f):
+                continue
+            try:
+                state = json.loads(f.read_text())
+            except (OSError, ValueError):
+                continue
+            if isinstance(state, dict):
+                turns += state_turns(cfg, Paths(cfg, day), state)
+        paths = Paths(cfg, dt.date.today())
+        for f in sorted((agent_dir / NOTES_DIR).glob("*.json")):
+            if not changed(f):
+                continue
+            try:
+                talk = json.loads(f.read_text())
+            except (OSError, ValueError):
+                continue
+            if isinstance(talk, dict):
+                turns += note_turns(cfg, paths, talk)
+        if changed(PROPOSALS):
+            turns += planner_turns(planlib.load_ledger(PROPOSALS))
+        new = convo_log(cfg).append(turns) if turns else []
+        CONVO_MERGED.parent.mkdir(parents=True, exist_ok=True)
+        CONVO_MERGED.touch()
+        os.utime(CONVO_MERGED, (began, began))
+        return len(new)
+    except Exception as e:  # noqa: BLE001 — the conversation's log is never a reason a message fails
+        print(f"warning: the conversation log was not brought up to date: {e}", file=sys.stderr)
+        return 0
+
+
+def convo_memory(cfg: dict, subjects: list[str], thread: str, carried: list[str] | None = None,
+                 again: bool = False) -> tuple[list[str], list[str]]:
+    """What a message carries from the rest of the conversation (the
+    payload's lines), and the turns' ids, to remember as carried once the
+    model has answered."""
+    try:
+        convo_merge(cfg)
+        turns = convo_log(cfg).read()
+        today = dt.date.today().isoformat()
+        groups, rest = convolib.memory(turns, subjects, thread, today, carried)
+        return convolib.lines(turns, groups, rest, today, again), convolib.ids(groups, rest)
+    except Exception as e:  # noqa: BLE001
+        print(f"warning: the conversation's memory was not read: {e}", file=sys.stderr)
+        return [], []
+
+
+def cmd_conversation(cfg: dict, args) -> int:
+    """The one conversation: how it stands (`--merge` first brings in every
+    place's store again, whole); `--about` a subject's turns, `--today`
+    today's."""
+    added = convo_merge(cfg, everything=args.merge)
+    turns = convo_log(cfg).read()
+    if args.about:
+        turns = [t for t in turns if args.about in (t.get("subjects") or [])]
+    if args.today:
+        turns = [t for t in turns if str(t.get("at") or "")[:10] == dt.date.today().isoformat()]
+    out = dict(convolib.stats(turns), added=added)
+    if args.about or args.today or args.turns:
+        out["list"] = turns
+    print(json.dumps(out, indent=1, ensure_ascii=False))
+    return 0
+
+
 # ------------------------------------------------------------ the day
-
-DAY_TAIL = 6          # the day conversation's turns the other conversations see
-
 
 def day_of(state: dict) -> dict:
     return state.setdefault("day", {"session": "", "turns": []})
 
 
-def day_tail(paths: Paths) -> list[str]:
-    """The day conversation's last turns, for the other conversations
-    (cross-visibility, docs/agent.md "The day conversation")."""
-    turns = (load_state(paths).get("day") or {}).get("turns") or []
-    if not turns:
-        return []
-    out = ["", f"# The day conversation, its last turns (the student talks with Longhand about the day there; read-only)", ""]
-    for t in turns[-DAY_TAIL:]:
-        out.append(f"{'Longhand' if t['role'] == 'agent' else 'student'}: {t['text']}")
-    return out
-
-
-def today_conversations(cfg: dict, paths: Paths, since: str = "") -> list[str]:
-    """Today's other conversations — about blocks in the note's margin, and
-    with the planner about tasks — for the day conversation to see in full;
-    only what came after `since` when it is given."""
-    out = []
-    state = load_state(paths)
-    for rec in state.get("blocks", {}).values():
-        lines = []
-        if rec.get("reply") and str(rec.get("at", "")) > since:
-            lines.append(f"Longhand: {rec['reply']}")
-        for t in rec.get("chat") or []:
-            if str(t.get("at", "")) > since:
-                lines.append(f"{'Longhand' if t['role'] == 'agent' else 'student'}: {t['text']}")
-        if lines:
-            out += [f"## About the block “{(rec.get('head') or '').strip()[:120]}”", ""] + lines + [""]
-    today = paths.stamp
-    ledger = planlib.load_ledger(PROPOSALS)
-    day_iso = dt.date.today().isoformat()
-    for th in (ledger.get("threads") or {}).values():
-        turns = [t for t in th.get("turns") or [] if str(t.get("at", ""))[:10] == day_iso and str(t.get("at", "")) > since]
-        if turns:
-            out += [f"## With the planner, about the task “{th.get('title', '')[:120]}”", ""]
-            out += [f"{'planner' if t['role'] == 'agent' else 'student'}: {t['text']}" for t in turns] + [""]
-    return out
-
-
 def block_reference(paths: Paths, visible: list[dict], hash_: str) -> list[str]:
-    """A block the student points the day conversation at: its words, and
-    its own conversation if it has one."""
+    """A block the student points the day conversation at: its words. What
+    was said about it, in its margin or anywhere, comes with the one
+    conversation's memory (`convo_memory`)."""
     b = next((x for x in visible if x["hash"] == hash_), None)
     if b is None:
         return []
-    out = ["", "# The block the student points at", "", "\n".join("> " + l for l in b["text"].split("\n"))]
-    rec = load_state(paths).get("blocks", {}).get(hash_) or {}
-    turns = ([f"Longhand: {rec['reply']}"] if rec.get("reply") else []) + \
-        [f"{'Longhand' if t['role'] == 'agent' else 'student'}: {t['text']}" for t in rec.get("chat") or []]
-    if turns:
-        out += ["", "Its conversation in the margin:", ""] + turns
-    return out
+    return ["", "# The block the student points at", "", "\n".join("> " + l for l in b["text"].split("\n"))]
 
 
 def day_proposable(cfg: dict, today: dt.date) -> tuple[dict, str]:
@@ -3926,18 +4149,17 @@ def margin_proposable_parts(data: dict, again: bool = False) -> list[str]:
 
 
 def day_payload(cfg: dict, paths: Paths, visible: list[dict], private: bool, message: str, block: str,
-                proposable: dict | None = None) -> str:
+                proposable: dict | None = None, memory: list[str] | None = None) -> str:
     """The day conversation's first message of the day: what the margin
     sees (the note, the notebook, the calendar, deadlines, intentions and
-    outcomes), today's other conversations in full, and what the student
+    outcomes), what was said elsewhere in the one conversation today and
+    about what the student points at (`memory`), and what the student
     says. A private day: nothing of the note, and the agent is told so."""
     base = build_payload(paths, "day", [], visible, cfg)
     if private:
         base = base.replace("(empty)", "(today's note is marked private: you see nothing of it — say so if it matters)", 1)
     parts = [base.rstrip()]
-    other = today_conversations(cfg, paths)
-    if other:
-        parts += ["", "# Today's other conversations (in the note's margin, and with the planner)", ""] + other
+    parts += memory or []
     parts += reading_parts(cfg)
     parts += block_reference(paths, visible, block) if block else []
     on = [f for f, y in searchlib.switched(paths.vault, cfg).items() if y]
@@ -3951,15 +4173,14 @@ def day_payload(cfg: dict, paths: Paths, visible: list[dict], private: bool, mes
 
 
 def day_followup(cfg: dict, paths: Paths, visible: list[dict], last: str, message: str, block: str,
-                 proposable: dict | None = None) -> str:
+                 proposable: dict | None = None, memory: list[str] | None = None) -> str:
     """A later message: the session already holds the day's context; only
-    what is new travels — the note as it reads now when it changed, the
-    other conversations since the last answer, a block pointed at."""
+    what is new travels — what was said elsewhere since (`memory`), a block
+    pointed at."""
     turns = (load_state(paths).get("day") or {}).get("turns") or []
     parts = [language_line(cfg, message, said_before(turns)), ""]
-    other = today_conversations(cfg, paths, since=last)
-    if other:
-        parts += ["# Since your last answer, in today's other conversations", ""] + other
+    if memory:
+        parts += memory[1:] + [""]
     gone = next((t.get("unoffered") or [] for t in reversed(turns) if t["role"] == "agent"), [])
     if gone:
         parts += ["# Your last proposals local code did not offer as cards", "",
@@ -4113,9 +4334,10 @@ def cmd_day(cfg: dict, args) -> int:
     today = dt.date.today()
     paths = Paths(cfg, today)
     try:
-        blks = blocklib.split(paths.note.read_text())
+        note_text = paths.note.read_text()
     except FileNotFoundError:
-        blks = []
+        note_text = ""
+    blks = blocklib.split(note_text) if note_text else []
     private = note_is_private(blks)
     visible = [] if private else visible_blocks(blks)
     state = load_state(paths)
@@ -4127,14 +4349,22 @@ def cmd_day(cfg: dict, args) -> int:
     day_cfg = dict(cfg, agent=cfg.get("dayAgent", "longhand-day"))
     proposable, digest = day_proposable(cfg, today)
     day["session"] = session_fits(day_cfg, day.get("session", ""))
+    # The one conversation's memory (2026-11-18): what was said elsewhere
+    # today — the margin, a note's or a paper's chat, the planner, the
+    # other machine — and about the block pointed at; once a session.
+    thread = f"day:{paths.stamp}"
+    subjects = [thread] + (block_subjects(paths.stamp, visible, tasklib.scan(note_text) if visible else [], args.block,
+                                          (state.get("blocks") or {}).get(args.block))[0] if args.block else [])
+    carried = list(day.get("memory") or []) if day["session"] else []
+    mem, mem_ids = convo_memory(cfg, subjects, thread, carried, again=bool(day["session"]))
     if day["session"]:
         last = next((t["at"] for t in reversed(day["turns"]) if t["role"] == "agent"), "")
         payload = day_followup(cfg, paths, visible, last, message, args.block,
-                               proposable if digest != day.get("proposable") else None)
+                               proposable if digest != day.get("proposable") else None, mem)
         payload_file.write_text(payload)                 # logged before inference
         result = run_model(day_cfg, paths, "", session=day["session"], message=payload)
     else:
-        payload = day_payload(cfg, paths, visible, private, message, args.block, proposable)
+        payload = day_payload(cfg, paths, visible, private, message, args.block, proposable, mem)
         so_far = earlier_turns(day.get("turns") or [])
         if so_far:
             payload = payload.replace("\n# The student says\n", "\n# Today's chat so far\n\nBegun in a session you no"
@@ -4159,6 +4389,7 @@ def cmd_day(cfg: dict, args) -> int:
     day["session"] = result["session"] if result["session"] and not result["error"] else day.get("session", "")
     if not result["error"]:
         day["proposable"] = digest
+        day["memory"] = convolib.carry(carried, mem_ids)
     turn = {"role": "student", "text": message, "at": at}
     if args.block:
         turn["block"] = args.block
@@ -4183,6 +4414,7 @@ def cmd_day(cfg: dict, args) -> int:
                                          "knowledge": written, "error": result["error"]})
     write_atomic(paths, paths.state, json.dumps(state, indent=2, ensure_ascii=False) + "\n")
     record_cost(paths.ledger, at, paths.stamp, "day", args.block or '', result)
+    convo_merge(cfg)
     if result["error"]:
         print(f"error: {result['error']}", file=sys.stderr)
         return 1
@@ -4431,7 +4663,14 @@ def cmd_note(cfg: dict, args) -> int:
         talk = json.loads(where.read_text())
     except (OSError, ValueError):
         talk = {}
-    talk = {"path": rel, "session": session_fits(cfg, talk.get("session", "")), "turns": talk.get("turns") or [], "seen": talk.get("seen", "")}
+    talk = {"path": rel, "session": session_fits(cfg, talk.get("session", "")), "turns": talk.get("turns") or [],
+            "seen": talk.get("seen", ""), "memory": talk.get("memory") or []}
+    # The one conversation's memory (2026-11-18): what was said elsewhere
+    # today, and about this note or paper; until then this place saw
+    # nothing of the others.
+    thread = ("paper:" if paper else "note:") + rel
+    carried = list(talk["memory"]) if talk["session"] else []
+    mem, mem_ids = convo_memory(cfg, [thread], thread, carried, again=bool(talk["session"]))
     at = dt.datetime.now().isoformat(timespec="seconds")
     paths.payloads.mkdir(parents=True, exist_ok=True)
     payload_file = paths.payloads / f"{dt.datetime.now():%Y%m%d-%H%M%S-%f}-note.md"
@@ -4442,11 +4681,15 @@ def cmd_note(cfg: dict, args) -> int:
                                 before=before) if paper else \
             note_payload(cfg, paths, rel, shown, message, args.block, False, changed=seen != talk["seen"],
                          before=before)
+        if mem:
+            payload = payload.replace("\n# The student says\n", "\n".join(mem) + "\n\n# The student says\n", 1)
         payload_file.write_text(payload)                 # logged before inference
         result = run_model(day_cfg, paths, "", session=talk["session"], message=payload)
     else:
         payload = paper_payload(cfg, paths, rel, st, message, marks, True) if paper else \
             note_payload(cfg, paths, rel, shown, message, args.block, True)
+        if mem:
+            payload = payload.replace("\n# The student says\n", "\n".join(mem) + "\n\n# The student says\n", 1)
         so_far = earlier_turns(talk["turns"])
         if so_far:
             payload = payload.replace("\n# The student says\n", "\n# This chat so far\n\nBegun in a session you no"
@@ -4469,6 +4712,7 @@ def cmd_note(cfg: dict, args) -> int:
     talk["session"] = result["session"] if result["session"] and not result["error"] else talk["session"]
     if not result["error"]:
         talk["seen"] = seen
+        talk["memory"] = convolib.carry(carried, mem_ids)
     turn = {"role": "student", "text": message, "at": at}
     if args.block:
         turn["block"] = args.block
@@ -4489,6 +4733,7 @@ def cmd_note(cfg: dict, args) -> int:
     write_knowledge(paths, reply.get("knowledge") or [], written)
     write_atomic(paths, where, json.dumps(talk, indent=2, ensure_ascii=False) + "\n")
     record_cost(paths.ledger, at, paths.stamp, "note", args.block or '', result)
+    convo_merge(cfg)
     if result["error"]:
         print(f"error: {result['error']}", file=sys.stderr)
         return 1
@@ -4599,10 +4844,10 @@ def talk_payload(cfg: dict, item: dict, ledger: dict, key: str, tasks: list[dict
     parts.append(f"{task['text']} (in the note of {task['date']})" if task
                  else "(a question about no box in particular)" if item["kind"] == "question"
                  else "(no box yet: a deadline found in the writing)")
-    margin = margin_talk(cfg, task)
-    if margin:
-        parts += ["", "# What was said about this box in the margin of its note (read-only)", ""] + margin
-    parts += day_tail(Paths(cfg, dt.date.today()))
+    # What was said about this box anywhere else — the margin of its note,
+    # the day's chat — and elsewhere today (the one conversation's memory,
+    # 2026-11-18; a talk is a session of its own each time, so all of it).
+    parts += convo_memory(cfg, [planner_subject(key)], f"planner:{key}")[0]
     turns = planlib.thread(ledger, key)["turns"][-planlib.TALK_TURNS:]
     if turns:
         parts += ["", "# Your conversation about this box so far", ""]
@@ -4696,6 +4941,7 @@ def cmd_talk(cfg: dict, args) -> int:
     if not result["error"]:
         write_knowledge(paths, reply["knowledge"], written)
     record_cost(paths.ledger, at, paths.stamp, "talk", item['id'], result)
+    convo_merge(cfg)
     print(json.dumps({"id": item["id"], "current": current["id"], "thread": key, "reply": reply["reply"],
                       "revised": bool(revised), "settle": settled, "kind": current["kind"], "resolved": resolved,
                       # The conversation as it stands, for the margin: once settled, the
@@ -5333,6 +5579,11 @@ def main(argv: list[str]) -> int:
         p.add_argument("--trigger", required=True, choices=TRIGGERS)
         p.add_argument("--hash", default="")
         p.add_argument("--date", default="")
+    p = sub.add_parser("conversation")
+    p.add_argument("--merge", action="store_true", help="bring in every place's own store again, whole")
+    p.add_argument("--about", default="", help="a subject's turns, e.g. task:<key>")
+    p.add_argument("--today", action="store_true")
+    p.add_argument("--turns", action="store_true", help="list every turn")
     p = sub.add_parser("checkin")
     p.add_argument("--answers", default="", help="eight steps 1..7, comma-separated")
     p.add_argument("--skip", action="store_true")
@@ -5469,7 +5720,8 @@ def main(argv: list[str]) -> int:
         return {"run": cmd_run, "chat": cmd_chat, "ack": cmd_ack, "accept": cmd_accept, "tasks": cmd_tasks, "sections": cmd_sections, "project-page": cmd_project_page, "week": cmd_week,
                 "next": cmd_next, "dated": cmd_dated, "box": cmd_box, "rate": cmd_rate, "eval": cmd_eval, "review": cmd_review, "plan": cmd_plan, "proposals": cmd_proposals, "proposal": cmd_proposal, "talk": cmd_talk, "thread": cmd_thread, "timetable": cmd_timetable, "notebook": cmd_notebook, "documents": cmd_documents, "day": cmd_day, "search": cmd_search, "horizon": cmd_horizon, "note": cmd_note, "autonomy": cmd_autonomy, "dismiss": cmd_dismiss, "curriculum": cmd_curriculum,
                 "context": cmd_context, "state": cmd_state, "install": cmd_install, "stats": cmd_stats,
-                "projects": cmd_projects, "project": cmd_project, "export": cmd_export, "checkin": cmd_checkin}[args.cmd](cfg, args)
+                "projects": cmd_projects, "project": cmd_project, "export": cmd_export, "checkin": cmd_checkin,
+                "conversation": cmd_conversation}[args.cmd](cfg, args)
     except Fail as e:
         print(f"longhand-agent: {e}", file=sys.stderr)
         return 2

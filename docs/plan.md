@@ -1037,6 +1037,44 @@ Small, when passing by:
       turns) while the highlights stay. The same for a block's or the
       day's chat: a proposal done after that turn stays done.
 
+23. **One conversation with the agent** (2026-11-18, grilled with the
+    student; the UX evaluation's F8, six places to talk; the design is
+    `docs/agent.md`, "One conversation"). One continuous conversation in
+    the agent's pane, in place of the day's, a block's, a task's, a
+    note's, a paper's and the planner's. What a message is about is a row
+    of chips above the box, seen before sending and removable: what the
+    student is looking at attaches itself, `@` adds a task, a note or a
+    paper. Two views: "about this" (the turns that mention the thing the
+    student is on) and "everything" (by time, grouped by subject, folded).
+    The agent is given, with each message, the earlier turns about its
+    subjects, whatever the day or the machine: the answer to "it
+    forgets". It reverses "one conversation per task" (2026-10-20) and
+    "two tasks never share one conversation" (2026-11-03), and gives the
+    agent a read-only tool. Slices, each installed on both machines:
+    1. ~~One store and one memory~~ *built 2026-11-18*: `agent/convo.py`,
+       a log a machine in the vault (`conversation/<host>.jsonl`), the
+       old conversations merged in (248 turns, 92 the student's), and
+       with every message what was said elsewhere about its subjects and
+       elsewhere today (`convo_memory`), in place of the uneven sharing
+       before. `longhand-agent conversation` says how it stands. Each
+       place still keeps and shows its own turns; the screens read the
+       log from slice 2. `tests/test_convo.py`. Watch: does a payload's
+       "Elsewhere in your one conversation" section stay short and to
+       the point (it is logged with every message), and does the agent
+       use it without answering it?
+    2. The pane, reading the one store: chips, the two views, Ctrl+Enter and C opening it, the
+       margin's chat retired, the gutter bar kept. No new key.
+    3. One voice: one prompt; the morning line and the planner's
+       proposals as turns that can be answered.
+    4. The new actions from anywhere: add a task, tick, open, file.
+    5. The read tool (search the vault, read a note, a paper, a course
+       document; never what is private; each lookup logged and shown).
+    To watch once it is in use, read at the check-in two weeks after
+    slice 2: the check-in's practical score before and after; messages a
+    week, against about 110 over the month before; how often an automatic
+    chip is removed; how often "everything" is opened. All four in the
+    usage log.
+
 - ~~**Tag suggestions while typing**~~ *done 2026-10-18*: `#` and a letter
   offer the tags that exist — the projects', then those written in the
   notes, most used first (`Tags.js`) — in the `@` list; never for a lone

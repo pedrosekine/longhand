@@ -408,8 +408,8 @@ def main() -> int:
                                                  "proposals": [{"kind": "deadline", "title": "print the images", "when": "friday"}]}))
     agent("chat", "--hash", blk["hash"], "--message", "and the images?", "--date", TODAY.isoformat())
     told_margin = (stub / "payload.md").read_text()
-    check("# This box with the planner" in told_margin and "student: I have lab on Wednesday" in told_margin,
-          "the margin agent, answering about the box, reads what was said with the planner")
+    check("## About the task" in told_margin and "with the planner] student: I have lab on Wednesday" in told_margin,
+          "the margin agent, answering about the box, reads what was said with the planner (the one conversation's memory)")
     th = json.loads(agent("thread", "--key", poster).stdout)
     check([t["text"] for t in th["turns"]][-2:] == ["and the images?", "Start with the sentence, then the images."],
           "…and its answer joins the one conversation")
@@ -434,7 +434,7 @@ def main() -> int:
     (stub / "reply.json").write_text(json.dumps({"reply": "Then Saturday for the images."}))
     agent("chat", "--hash", blk["hash"], "--message", "ok", "--date", TODAY.isoformat())
     sent = json.loads((stub / "argv.json").read_text())[-1]
-    check("--session" in json.loads((stub / "argv.json").read_text()) and "Meanwhile" in sent
+    check("--session" in json.loads((stub / "argv.json").read_text()) and "# Since then, elsewhere" in sent
           and "could it be the weekend?" in sent and "I have lab on Wednesday" not in sent and "after the lab" in sent,
           "…continuing its session, it is told only what it has not seen, and the open proposals")
 

@@ -18,7 +18,8 @@ proposed nothing on any day. The student's reading: it knows nothing and
 does nothing, so there is nothing to gain from it.
 
 What is right about it stays: it sees only what local code assembled and
-logged; it has no tools; what it proposes is done by local code, and only
+logged; it has no tools (a read-only one from 2026-11-18's design: "One
+conversation", below); what it proposes is done by local code, and only
 when the person accepts. That is "the agent does the legwork, the person
 makes the act", and it is the foundation a proactive agent needs, not a
 limit to remove. What changes is the shape on top: jobs rather than only
@@ -126,7 +127,8 @@ placement rule above fixes where; this is the rest.
   another chat starts it with "born in the chat on Themenvorschlag draft" as
   its first line, Enter opening that chat, and the agent reads the earlier
   conversation as background on the first message, so nothing is said
-  twice. Two tasks never share one conversation. With the hand: the chat's
+  twice. Two tasks never share one conversation (reversed 2026-11-18:
+  "One conversation", below). With the hand: the chat's
   name in the dim line is a link, underlined under the hand, opening the
   chat in the agent's pane beside the note; the hints then name the keys
   once, as after any click.
@@ -237,7 +239,8 @@ about, not only to take or leave, as any block is in the note.
   Widened the same day, from proposals only, when a typed answer to a
   question went one way: the student answered with a question of their own
   and got no reply.
-- **One conversation per task,** shared by every proposal about the box
+- **One conversation per task** (reversed 2026-11-18: "One conversation",
+  below)**,** shared by every proposal about the box
   or a box under it, and by the margin of its note: what was said in the
   margin (the block's record, in the day's state) and what was said with
   the planner (the ledger's `threads`) are shown as one, merged by time —
@@ -325,7 +328,9 @@ old ones. A day marked private still has its conversation — it sees nothing
 of the note and says so.
 
 **What it knows.** At its first message: today's note, the notebook, the
-calendar, deadlines and tasks (the margin's context). **Cross-visibility:**
+calendar, deadlines and tasks (the margin's context). (Since 2026-11-18
+what one place sees of the others is the one conversation's memory, by
+subject: "One conversation", slice 1.) **Cross-visibility:**
 it sees today's block and task conversations in full; they see its last
 ~6 turns. **`@`** in its box references a block (a chip); the agent gets
 the block and its conversation. It speaks first only by setting the morning
@@ -439,6 +444,185 @@ not, and for a brief, three to six lines; criteria go to the judge. With
 cases in the vault, `install` refuses a changed `longhand-day.md` that has
 not passed them. The first six are seeds from a throwaway vault, to be
 replaced by real conversations.
+
+## One conversation (grilled 2026-11-18)
+
+**Status:** designed with the student on 2026-11-18; slice 1 (one store,
+one memory) built the same day, the rest not; the slices at the end of
+this section are the order. It comes from the UX evaluation
+of the same day (vault, `projects/longhand/ux-evaluation-2026-11-18.md`,
+F8: six places to talk to the agent) and replaces, once built, the
+separate conversations described above: "Talking about a proposal", "The
+day conversation", a block's margin chat, a task's chat beside the
+dashboard, a note's and a paper's.
+
+**What was found first.** Six kinds on screen were four in storage: a
+task's chat beside the dashboard is its block's margin chat merged with
+the planner's talk about that box. In five weeks the planner's talk had 3
+threads and 4 messages from the student, and it alone started a fresh
+session with every message; a note's chat had never been used; a paper's
+had 27 messages since 2026-11-15, blocks and tasks 65 over 27 blocks, the
+day 13. What each saw of the others was uneven: the day saw every other
+conversation in full; blocks, tasks and the planner saw the day's last six
+turns; notes and papers saw nothing of the rest.
+
+**The pain,** in the student's words: the agent forgets, and "I just need
+to get things done from anywhere I am at". Not the number of panes as
+such.
+
+**One conversation, not one per thing.** The student's own turn in the
+grilling: a task lives in the daily note too, so why would the task and the
+day have different chats — "wouldn't it be better to have a mechanism like
+for papers where I am able to mention tasks and talk about them on a
+general chat". So: one conversation, continuous, with a divider between
+days. This **reverses, on purpose,** "one conversation per task" (above,
+2026-10-20) and "two tasks never share one conversation" (2026-11-03).
+Their reason — "change it to tomorrow" must know what "it" is — is met by
+references instead: every message shows what it is about before it is
+sent.
+
+**References, always seen and removable** (the student: "I can clearly see
+what it is referring to, and remove references if I want to"). A row of
+chips above the box, each saying its kind and a short name: `task · Draft
+the intro`, `paper · Smith 2021 ^3`, `note · 18 Nov`, `block · "the method
+section…"`.
+- What the student is looking at is attached on its own: the selected
+  task, the block under the cursor, the open paper. That chip is drawn
+  dimmer and follows the selection until the first character is typed;
+  from then on it is fixed for that message.
+- `@` in the box adds any task, note or paper (today it points at a block
+  of the open note only; `^` keeps pointing at a paper's marks). × under
+  the hand removes a chip; Backspace in an empty box removes the last.
+- A sent turn keeps its chips above it, dim, each opening its thing.
+- A card in an answer always names what it changes ("move · Draft the
+  intro → Fri").
+- A box under a task is never a subject of its own: it goes with its task.
+
+**Two views of the one conversation,** so that many blocks' conversations
+merged into one stay readable (the student's worry):
+- **About this:** only the turns that mention the thing the student is on.
+  A block's gutter bar, a dashboard task, a paper open it. It reads as the
+  per-thing chat did; what differs is underneath.
+- **Everything:** the whole conversation by time. Turns about one subject
+  are grouped under one chip; the group the student is on is open, the
+  others fold to their last line; an earlier day folds to one line ("Mon 16
+  Nov · 3 subjects · 9 turns"). A turn with two chips shows under both; a
+  turn with none shows here only.
+- The pane follows where the student is: something attached, "about
+  this"; nothing attached, "everything", at today.
+
+**Where it lives.** The agent's pane, always, with the keys it has:
+Ctrl+| opens or closes it, Ctrl+3 goes there and, in it, switches the two
+views (as it switches the day's chat and a block's today), Ctrl+Enter on a
+block and C on a dashboard task open it with that thing attached. The
+note's margin stops being a chat of its own: a block that has turns keeps
+its quiet gutter bar, and Enter on it opens the pane on "about this". No
+new key.
+
+**One voice.** One agent to the student: the planner's proposals and the
+morning line are turns in the conversation, answered under them — which
+ends the opening line that could not be replied to where it appeared. A
+proposal still shows on its dashboard row.
+
+**What the agent is given with each message — memory follows the
+subject.** Today's turns; for each chip, the earlier turns that mention it
+(the last 12 a subject, a number to tune in use); each chip's own content
+(the task and its steps, the block, the paper's marks); the open proposals
+about them; never anything private. The model's session is one per day
+and per machine, so it stays fast; what carries across days and machines
+is this, not the session. One rule in place of the uneven ones above.
+
+**It speaks quietly.** What the agent says unasked (the morning line, a
+proposal, the open pass) is written into the conversation; the seal says
+something is unread; the pane never opens by itself.
+
+**A tool, to read only.** Reopened by the student ("not sure that is the
+right thing anymore"). Until now the agent saw only what local code packed
+for it and could look nothing up while answering. It gets read-only
+tools: search the vault, read a note, a paper's text, a course document —
+never what is private, which our own search code enforces, not the prompt.
+Each lookup is logged and shown dim under the answer ("read: Essay
+draft"). It still writes nothing: every change is done by local code from
+its answer, as a card. This amends "Why" (it has no tools) and "Reaching
+a model" (a run offered any tool is dropped): one narrow tool of ours is
+offered, and the log holds what it looked up as well as what it was given.
+
+**What one message can do, from anywhere:** move a date and break a task
+into steps (both exist), add a task to a note or a course, tick or untick
+a task, open something ("open my essay draft"), file a document from
+Downloads (today from the dashboard only). The larger ones (dates, steps,
+a new task, filing) come as a card accepted with Enter; the small ones
+(open, tick) are done at once and can be undone. Never a word written into
+the student's own text.
+
+**The conversations that exist** (about 110 messages) are merged in, by
+time, each turn with its old subject as its chip.
+
+**Two machines.** Each appends to a log of its own in the vault, merged by
+time on read, as the proposals (`psync.py`) and the check-ins are. Today's
+one file a day (`daily/<date>.json`), written from both, is the one place
+left where Syncthing can leave a conflict copy.
+
+**What stays:** the student drives; what is private is never seen; Stop,
+a conversation surviving a change of model, the note's look.
+
+**Slices, each usable alone and installed on both machines:**
+1. ~~One store and one memory~~ *built 2026-11-18*: `agent/convo.py`,
+   the log `<agentDir>/conversation/<host>.jsonl`, `longhand-agent
+   conversation`. This alone answers "it forgets".
+   - **The store.** A turn is a line: when, who, the words, where it was
+     said (`where`, `thread`), what it is about (`subjects`: `task:<key>`,
+     `block:<day>:<hash>`, `day:<day>`, `note:<path>`, `paper:<path>`;
+     `ask:<key>` for a question about no box), a name for each. Its id is
+     made from where, when, who and the words, so a turn written twice, or
+     by both machines, is one. A box under a task has the task as its
+     subject (`task_subject`, walking up as plan.py's `root_key` does);
+     an answer has the subjects of what was asked.
+   - **Every place still keeps and shows its own turns** (the day's state,
+     a note's file, the ledger's threads). Right after a place writes,
+     what it wrote is merged into the log from its store (`convo_merge`);
+     the conversations from before were brought in by the same path: 248
+     turns, 92 of them the student's, from 2026-09-17 on.
+   - **The memory** (`convo_memory`), with every message and every pass
+     the page starts: per subject, the last 12 turns said elsewhere; and
+     up to 24 of today's turns said elsewhere; each at most 600
+     characters, saying where and when. Never the place's own turns (its
+     session, or "this chat so far", has them), never a failed answer,
+     never what the session was given before (the ids are kept with the
+     session: `memory` in a block's record, the day's, a note's file). A
+     note asked about that the agent may not see otherwise (marked
+     private, before the horizon, in a folder switched off) is `closed`:
+     kept, carried nowhere else.
+   - **What it replaced:** the day's last six turns in the margin's and
+     the planner's payloads (`day_tail`), today's other conversations in
+     the day's (`today_conversations`), the planner's turns about a box in
+     the margin's (`planner_seen`), the margin's talk in the planner's
+     (`margin_talk`), a pointed block's margin conversation in the day's.
+     A note's and a paper's chat, which saw nothing, get the same.
+   - **Moved to slice 2:** the screens reading from the log. They read
+     their own stores until the pane does, so the day's one file is still
+     written by both machines for what the screens show; the turns
+     themselves are in the logs whatever happens to it.
+   - No prompt changed (the payload's section says what it is; "One voice"
+     is slice 3). Tests: `tests/test_convo.py`; the day's and the plan's
+     tests say the new section.
+2. The pane, reading the one store (and the places' own stores of turns
+   retired with it): chips, the two views, Ctrl+Enter and C opening it,
+   the margin's chat retired, the gutter bar kept.
+3. One voice: one prompt; the morning line and the planner's proposals as
+   turns.
+4. The new actions: add a task, tick, open, file from anywhere.
+5. The read tool, last: the one with a risk to privacy and to speed.
+
+**How it is judged,** read at the check-in after two weeks of use: the
+weekly check-in's practical score before and after; messages a week in the
+one conversation, against about 110 over the month before; how often an
+automatic chip is removed (the attach rule guessing wrong); how often
+"everything" is opened. All four counted in the usage log.
+
+**Left to the building:** rewinding a conversation (plan.md, item 22) now
+means rewinding the one; how a past day's note shows its part; the first
+number for "the last 12 a subject".
 
 ## The record, and what it learns
 

@@ -535,3 +535,13 @@ Downloads stays that machine's. Each machine numbers new items in a slot of
 its own (from its host name, or `LONGHAND_SLOT`), so two never give one id to
 two items; `"shareProposals": false` in config.json keeps the ledger local. Design notes for the agent side are in
 `docs/student-os.md`.
+
+What is said with the agent — in a block's margin, the day's chat, a note's
+or a paper's, with the planner — is one conversation
+(`<vault>/agents/longhand/conversation/<host>.jsonl`, `agent/convo.py`;
+`docs/agent.md`, "One conversation"): each machine appends its turns to a
+log of its own, every machine reads them all, and a turn says what it is
+about (a task, a block, a day, a note, a paper). With each message the agent
+is given what was said elsewhere about that message's subjects, and
+elsewhere today, whatever the place, the day or the machine.
+`longhand-agent conversation` says how it stands.
