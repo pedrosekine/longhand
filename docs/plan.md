@@ -1216,7 +1216,12 @@ from 2026-09/10 and still stand.
   reply open sends the box's words, then each reply under its passage
   (`> …`); the agent takes them in turn (`with_passages`). The sent message
   carries its replies as pills over its words; a click goes back to the
-  passage. `ChatField` (the bar), `ReplyPills.qml`, `ChatTurn` (the
+  passage. The agent's answer to it is drawn in its parts (design A2, the
+  student's pick over a quote that would grow under the pointer): what it
+  says first, then each part under a small bubble of the student's reply
+  with the pill's number (`Page.answerParts`, matched by the passage's
+  words, else in order); under the pointer a hint says "you replied to
+  “…”" and the passage lights in the earlier answer, nothing moving. `ChatField` (the bar), `ReplyPills.qml`, `ChatTurn` (the
   passage's marks), `Turn.qml`. Screenshots: vault
   `ux-evidence/2026-11-18-reply-*`. Watch: is attaching by Enter clear, and
   do the pills say enough of a reply?

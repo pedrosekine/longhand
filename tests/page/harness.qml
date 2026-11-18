@@ -425,6 +425,12 @@ ShellRoot {
     }
     function replyOffer(): string { var o = page.replyOffer; return JSON.stringify(o ? { pane: o.pane, quote: o.quote, at: o.at } : null) }
     function takeOffer(): void { page.takeOffer() }
+    function lastAnswerParts(): string {
+      var t = page.dayTurns
+      for (var i = t.length - 1; i >= 0; i--) if (t[i].role === "agent") return JSON.stringify(page.answerParts("day", t[i]))
+      return "null"
+    }
+    function hoverOn(quote: string): void { page.hoverQuote = quote === "" ? null : { pane: "day", quote: quote } }
     function lastAgentAt(): string { var t = page.dayTurns; for (var i = t.length - 1; i >= 0; i--) if (t[i].role === "agent" && t[i].at) return t[i].at; return "" }
     function partsOf(text: string): string { return JSON.stringify(page.passageParts(text)) }
     function followPassage(pane: string, quote: string): void { page.showPassage(pane, quote) }

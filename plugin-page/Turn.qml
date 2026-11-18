@@ -25,6 +25,8 @@ Column {
   // quote last. A message with no quote is one part.
   readonly property var parts: mine ? page.passageParts(t.text || "") : []
   readonly property bool answers: parts.length > 1 || (parts.length === 1 && parts[0].quote !== "")
+  // An answer to several replies, in its parts (Page.answerParts).
+  readonly property var split: !mine && !away && !t.error ? page.answerParts(turn.pane, t) : null
   // A quote followed back to this answer: lit a moment, and shown.
   readonly property bool lit: !mine && !!t.at && page.litPassage === t.at + "|" + turn.pane
   onLitChanged: if (lit && flick) Qt.callLater(function () {
@@ -62,7 +64,7 @@ Column {
     font.pixelSize: page.fs(Style.font.caption)
   }
   ChatTurn {
-    visible: !turn.answers
+    visible: !turn.answers && !turn.split
     page: turn.page
     mine: turn.mine
     answerable: !turn.mine && !turn.away && !turn.t.error && (turn.t.text || "") !== ""
@@ -81,6 +83,116 @@ Column {
       radius: Style.cornerRadius
       color: Style.selectedFill
       visible: turn.lit
+    }
+  }
+  // An answer to several replies (2026-11-18, design A2): what it says
+  // first, then each part under a small bubble of the reply it answers —
+  // the student's own words and the pill's number. Under the pointer, a
+  // hint names the passage replied to, and the passage lights in the
+  // answer it came from; nothing moves.
+  ChatTurn {
+    visible: !!turn.split && turn.split.intro !== ""
+    page: turn.page
+    answerable: true
+    pane: turn.pane
+    at: String(turn.t.at || "")
+    text: turn.split ? page.linkCitations(turn.split.intro) : ""
+    onLinkActivated: function (link) { turn.linkActivated(link) }
+    onAnswer: function (passage) { page.addReply(turn.pane, passage, turn.t.at) }
+    marks: turn.split ? page.passageMarks(turn.pane, turn.t.at) : []
+  }
+  Repeater {
+    model: turn.split ? turn.split.parts : []
+    Column {
+      id: part
+      required property var modelData
+      required property int index
+      width: turn.width
+      spacing: page.sp(4)
+      topPadding: part.index > 0 || (turn.split && turn.split.intro !== "") ? page.sp(8) : 0
+      Rectangle {
+        id: echo
+        visible: part.modelData.reply !== ""
+        readonly property bool hot: echoArea.containsMouse
+        width: Math.min(part.width, echoRow.implicitWidth + page.sp(16))
+        height: echoRow.implicitHeight + page.sp(8)
+        radius: Style.cornerRadius
+        color: Util.alpha(page.accent, 0.14)
+        border.width: 1
+        border.color: echo.hot ? page.accent : "transparent"
+        Row {
+          id: echoRow
+          anchors.left: parent.left
+          anchors.leftMargin: page.sp(8)
+          anchors.verticalCenter: parent.verticalCenter
+          spacing: page.sp(6)
+          Rectangle {
+            visible: part.modelData.n > 0
+            anchors.top: parent.top
+            anchors.topMargin: page.sp(2)
+            width: Math.max(height, echoNum.implicitWidth + page.sp(8))
+            height: echoNum.implicitHeight + page.sp(2)
+            radius: height / 2
+            color: echo.hot ? page.accent : page.dim
+            Text {
+              id: echoNum
+              anchors.centerIn: parent
+              textFormat: Text.PlainText
+              text: String(part.modelData.n)
+              color: page.background
+              font.family: page.fontFamily
+              font.pixelSize: Math.round(page.textSize * 0.68)
+            }
+          }
+          Text {
+            width: Math.min(implicitWidth, part.width - page.sp(48))
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
+            maximumLineCount: 3
+            elide: Text.ElideRight
+            text: part.modelData.reply
+            color: page.foreground
+            font.family: page.fontFamily
+            font.styleName: page.fontStyle
+            font.pixelSize: Math.round(page.textSize * 0.85)
+          }
+        }
+        MouseArea {
+          id: echoArea
+          anchors.fill: parent
+          hoverEnabled: true
+          cursorShape: Qt.PointingHandCursor
+          onContainsMouseChanged: {
+            if (containsMouse) page.hoverQuote = { pane: turn.pane, quote: part.modelData.passage }
+            else if (page.hoverQuote && page.hoverQuote.quote === part.modelData.passage) page.hoverQuote = null
+          }
+          onClicked: page.showPassage(turn.pane, part.modelData.passage)
+        }
+        Tip {
+          host: turn.page
+          shown: echoArea.containsMouse
+          text: "you replied to: “" + part.modelData.passage + "”"
+        }
+      }
+      ChatTurn {
+        visible: part.modelData.text !== ""
+        page: turn.page
+        answerable: true
+        pane: turn.pane
+        at: String(turn.t.at || "")
+        text: page.linkCitations(part.modelData.text)
+        onLinkActivated: function (link) { turn.linkActivated(link) }
+        onAnswer: function (passage) { page.addReply(turn.pane, passage, turn.t.at) }
+        marks: page.passageMarks(turn.pane, turn.t.at)
+        Rectangle {
+          anchors.fill: parent
+          anchors.margins: -page.sp(4)
+          z: -1
+          radius: Style.cornerRadius
+          color: Style.selectedFill
+          visible: turn.lit && part.index === 0
+        }
+      }
     }
   }
   // Replies to passages: attached to the message, a pill each (its

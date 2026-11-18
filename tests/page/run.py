@@ -1907,6 +1907,17 @@ def checks() -> int:
         check(sorted((m["quote"], m["n"], m["state"]) for m in json.loads(p.call("marksOf", "day", at)))
               == [("day: these two", 2, "sent"), ("these", 1, "sent")],
               f"…the answer keeps both passages numbered as the message numbered them ({p.call('marksOf', 'day', at)})")
+        # The answer to it, in its parts (design A2): each under the reply it
+        # answers, by number; a part's bubble under the pointer lights its
+        # passage in the earlier answer.
+        split = lambda: json.loads(p.call("lastAnswerParts"))
+        check(p.wait(lambda: split() and [(x["n"], x["reply"]) for x in split()["parts"]] == [(1, "and why these?"), (2, "yes, both of them")], timeout=10)
+              and split()["intro"] == "day: anything else?",
+              f"the answer to several replies is in its parts, each under the reply it answers ({split()})")
+        p.call("hoverOn", "these")
+        check(("these", "hover") in [(m["quote"], m["state"]) for m in json.loads(p.call("marksOf", "day", at))],
+              f"…a part under the pointer lights its passage in the earlier answer ({p.call('marksOf', 'day', at)})")
+        p.call("hoverOn", "")
         p.call("followPassage", "day", "day: these two")
         check(p.wait(lambda: p.call("litPassage").endswith("|day")), f"a reply followed back lights the answer it came from ({p.call('litPassage')!r})")
         # One voice (slice 3): what the agent said on opening the page is a

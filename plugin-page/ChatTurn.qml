@@ -112,7 +112,7 @@ Item {
       required property var modelData
       x: said.x
       y: said.y
-      readonly property bool open: modelData.m.state === "open"
+      readonly property bool open: modelData.m.state === "open" || modelData.m.state === "hover"
       readonly property var last: modelData.rects[modelData.rects.length - 1]
       Repeater {
         model: markItem.modelData.rects

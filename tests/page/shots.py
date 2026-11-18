@@ -475,6 +475,10 @@ def scenes(m, p, out, which):
         p.wait(lambda: len(json.loads(p.call("dayTurns"))) >= 4, 12)
         time.sleep(1)
         shot("answer-3")
+        p.call("hoverOn", "start the methods section")
+        time.sleep(0.6)
+        shot("answer-4")
+        p.call("hoverOn", "")
         p.call("closePanes")
     if which == "calm":
         p.call("dash")

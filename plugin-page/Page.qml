@@ -1460,7 +1460,10 @@ Item {
     var open = root.replyingOf(pane)
     if (open && open.at === at) out.push({ quote: open.quote, n: root.replyNumber(pane), state: "open" })
     var sent = (pane === "margin" ? root.marginSent : root.daySent)[at] || []
-    sent.forEach(function (s) { if (!out.some(function (o) { return o.quote === s.quote })) out.push({ quote: s.quote, n: s.n, state: "sent" }) })
+    var hov = root.hoverQuote && root.hoverQuote.pane === pane ? root.hoverQuote.quote : null
+    sent.forEach(function (s) {
+      if (!out.some(function (o) { return o.quote === s.quote })) out.push({ quote: s.quote, n: s.n, state: s.quote === hov ? "hover" : "sent" })
+    })
     return out
   }
   // Passages answered in sent messages, by the answer they came from (the
@@ -1486,6 +1489,53 @@ Item {
     }
     return map
   }
+  // An answer to several replies, in its parts (2026-11-18, design A2):
+  // the agent begins each with the passage's first words quoted (`> …`,
+  // the runner's PASSAGES); each part is matched to the reply it answers —
+  // the student's message just before, by the passage's words, else in
+  // order — and drawn under a small bubble of the student's words. Null
+  // when the answer has no such parts.
+  function turnsOf(pane) {
+    return pane === "margin" ? (root.talkOpen ? root.talkStream : root.marginStream.map(function (r) { return r.turn || {} })) : root.dayTurns
+  }
+  function answerParts(pane, t) {
+    if (!t || t.role !== "agent" || !/(^|\n)> \S/.test(t.text || "")) return null
+    var turns = root.turnsOf(pane), at = -1
+    for (var i = turns.length - 1; i >= 0; i--)
+      if (turns[i] && turns[i].role === "agent" && turns[i].at === t.at && turns[i].text === t.text) { at = i; break }
+    var asked = null
+    for (var k = at - 1; k >= 0 && !asked; k--) if (turns[k] && turns[k].role !== "agent") asked = turns[k]
+    var replies = asked ? root.passageParts(asked.text).filter(function (x) { return x.quote !== "" }) : []
+    if (replies.length === 0) return null
+    // The answer, cut at its quote lines.
+    var intro = [], parts = [], cur = null
+    String(t.text).split("\n").forEach(function (line) {
+      var m = /^> ?(.*)$/.exec(line)
+      if (m) {
+        if (!cur || cur.text.trim() !== "") { cur = { quote: "", text: "" }; parts.push(cur) }
+        cur.quote = (cur.quote ? cur.quote + " " : "") + m[1].trim()
+      } else if (cur) cur.text = cur.text === "" ? line : cur.text + "\n" + line
+      else intro.push(line)
+    })
+    if (parts.length === 0) return null
+    var used = {}
+    parts.forEach(function (p, i) {
+      var want = root.plainWords(p.quote).replace(/[ .,;:…]+$/, "")
+      var hit = -1
+      for (var r = 0; r < replies.length && hit < 0; r++) {
+        var q = root.plainWords(replies[r].quote)
+        if (!used[r] && want !== "" && (q.indexOf(want) === 0 || q.indexOf(want) >= 0 || want.indexOf(q) >= 0)) hit = r
+      }
+      for (var r2 = 0; r2 < replies.length && hit < 0; r2++) if (!used[r2]) hit = r2
+      if (hit >= 0) { used[hit] = true; p.n = hit + 1; p.reply = replies[hit].text; p.passage = replies[hit].quote }
+      else { p.n = 0; p.reply = ""; p.passage = p.quote }
+      p.text = p.text.trim()
+    })
+    return { intro: intro.join("\n").trim(), parts: parts }
+  }
+  // A part's bubble under the pointer: the passage it answers lit in the
+  // answer it came from, nothing scrolled, nothing moved.
+  property var hoverQuote: null        // { pane, quote }
   readonly property var daySent: root.sentOf(root.dayTurns)
   readonly property var marginSent: root.sentOf(root.talkOpen ? root.talkStream : root.marginStream.map(function (r) { return r.turn || {} }))
   // A sent message read back as its parts: { quote, text } each.
