@@ -409,6 +409,9 @@ ShellRoot {
     function dayReadOnly(): bool { return page.dayFieldItem().readOnly }
     function dayMention(): string { return JSON.stringify(page.dayMention ? page.dayMention.items.map(function (m) { return m.head }) : []) }
     function dayCardFocus(): int { return page.dayCardFocus }
+    function dayCardAt(i: int): void { page.dayCardFocus = i }
+    function dayOpenCardKinds(): string { return JSON.stringify(page.dayOpenCards.map(function (c) { return c.kind })) }
+    function noteDate(): string { return page.noteService.noteDate }
     function dayCards(): string {
       var out = []
       page.dayTurns.forEach(function (t) { (t.proposals || []).forEach(function (c) { out.push({ kind: c.kind, state: page.dayCardState(c, t.at) }) }) })

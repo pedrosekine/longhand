@@ -1520,7 +1520,28 @@ Item {
     if (!p || !root.dayState) return
     var turns = root.dayState.turns || []
     for (var i = turns.length - 1; i >= 0; i--)
-      if (turns[i].role === "student" && turns[i].text === p.text) { root.dayPending = null; return }
+      if (turns[i].role === "student" && turns[i].text === p.text) {
+        root.dayPending = null
+        root.openFromTurn(turns[i + 1])
+        return
+      }
+  }
+
+  // What the agent opened for the student (slice 4 of "One conversation":
+  // done at once): a note, a paper, a day, a task — when the answer that
+  // says so arrives, never again on a later read. The pane stays; going
+  // back is the history's, as after any opening.
+  function openFromTurn(turn) {
+    var o = turn && turn.role === "agent" && turn.open && turn.open[0]
+    if (!o) return
+    root.used("open", o.kind)
+    if (o.kind === "file") { if (/\.pdf$/i.test(o.rel)) root.openPdf(o.rel); else root.openFile(o.rel, false) }
+    else if (o.kind === "day") root.openNote(o.date)
+    else if (o.kind === "task") {
+      var t = root.taskOfKey(o.key)
+      if (t && t.date) root.openNote(t.date)
+    }
+    root.showHint("opened " + (o.name || o.rel || o.date || ""))
   }
 
   // `@` in the day's box points at a block of the open note, as `@` in the
@@ -1616,18 +1637,21 @@ Item {
   }
   function dayCardKind(x) {
     return ({ "do-date": "a day for it", "deadline": "a deadline", "priority": "priority", "steps": "first steps",
-              "drop": "drop it", "done": "looks done", "project": "a new project" })[x.kind] || x.kind
+              "drop": "drop it", "done": x.auto || x.told ? "ticked" : "looks done", "project": "a new project",
+              "task": "a new task", "move": "move the deadline", "undone": "reopened" })[x.kind] || x.kind
   }
   // What a card says beside its pill: the box, and what changes in it.
   function dayCardFacts(x) {
     if (x.kind === "priority") return (x.priority === 2 ? "▲ high" : x.priority === 1 ? "medium" : "▽ low") + " · " + (x.title || "")
     if (x.kind === "steps") return (x.title || "") + (x.steps || []).map(function (s, i) { return "\n" + (i + 1) + ". " + s }).join("")
     if (x.kind === "project") return (x.title || "") + " #" + x.project
+    if (x.kind === "task") return (x.title || "") + (x.project ? " #" + x.project : "") + " · in today's note"
+    if (x.kind === "move") return "#" + x.deadline + " " + (x.title || "") + (x.was ? " · was " + Say.sayDate(x.was.slice(0, 10)) : "")
     return x.title || ""
   }
   function dayCardPill(x) {
     return x.kind === "do-date" && x.date ? "do " + Say.sayDate(x.date)
-      : x.kind === "deadline" && x.date ? "📅 " + Say.sayDate(x.date) : ""
+      : (x.kind === "deadline" || x.kind === "move") && x.date ? "📅 " + Say.sayDate(x.date) : ""
   }
   // One of the list's items, settled from a card — in the day's
   // conversation or a block's (2026-11-15) — as from its row: false when
@@ -5256,6 +5280,22 @@ Item {
       root.dropDeadline(d)
       return true
     }
+    // A deadline moved (slice 4 of "One conversation"): its date in the
+    // store, the line catching up as with any move.
+    if (p.kind === "move") {
+      var dm = dl.items.filter(function (x) { return x.id === p.deadline })[0]
+      if (!dm || dm.status !== "open") { root.showHint("deadline #" + p.deadline + " is not open any more"); return false }
+      dl.set(p.deadline, [p.date])
+      return true
+    }
+    // A task the student asked for: written into today's note, under its
+    // course, marked as the agent's line.
+    if (p.kind === "task") {
+      var tl = "- [ ] " + p.title + (/^[\w\/-]+$/.test(p.project || "") ? " #" + p.project : "")
+      root.addToToday(tl, p.project)
+      root.markAgentLine(svc.todayStamp(), tl)
+      return true
+    }
     if (p.kind !== "deadline" && !t) { root.showHint("its box is not on the list any more"); return false }
     // A day already gone is not accepted (the runner settles it as moot on
     // the next list): it would put a past date on the line.
@@ -5271,7 +5311,8 @@ Item {
       root.agentDates = d
     } else if (p.kind === "priority") root.editTask(t, "prio", p.priority)
     else if (p.kind === "drop") root.editTask(t, "drop", "")
-    else if (p.kind === "done") root.tickTask(t)
+    else if (p.kind === "done") { if (!t.done) root.tickTask(t) }
+    else if (p.kind === "undone") { if (t.done) root.editTask(t, "undone", "") }
     else if (p.kind === "steps") {
       root.editTask(t, "steps", p.steps)
       var lead = root.leadOf(t.text)
@@ -5286,7 +5327,16 @@ Item {
 
   function undoProposal(p) {
     var t = p.key ? root.taskOfKey(p.key) : null
-    if (p.kind === "do-date" && t) root.editTask(t, "when", "")
+    if (p.kind === "move") dl.set(p.deadline, [p.was || ""])
+    // Undoing a tick or a reopening: the box as the list has it may be a
+    // read behind the note, so its state is not asked; the edit is.
+    else if (p.kind === "done" && t) root.editTask(t, "undone", "")
+    else if (p.kind === "undone" && t) root.editTask(t, "done", "")
+    else if (p.kind === "task") {
+      var tl = "- [ ] " + p.title + (/^[\w\/-]+$/.test(p.project || "") ? " #" + p.project : "")
+      var nt = root.tasks.filter(function (x) { return Task.sameWords(x.text, tl) })[0]
+      if (nt) root.editTask(nt, "remove", "")
+    } else if (p.kind === "do-date" && t) root.editTask(t, "when", "")
     else if (p.kind === "priority" && t) root.editTask(t, "prio", p.was || 0)
     else if (p.kind === "drop" && !p.key && p.deadline) dl.reopen(p.deadline)
     else if (p.kind === "drop" && t) root.editTask(t, "undrop", "")
@@ -7193,7 +7243,11 @@ Item {
     var rec = agent.record(p.hash)
     var turns = (rec && rec.chat) || []
     for (var i = turns.length - 1; i >= 0; i--)
-      if (turns[i].role === "student" && turns[i].text === p.text) { root.pendingChat = null; return }
+      if (turns[i].role === "student" && turns[i].text === p.text) {
+        root.pendingChat = null
+        root.openFromTurn(turns[i + 1])
+        return
+      }
   }
 
   // ------------------------------------------------------------ services
@@ -7896,7 +7950,13 @@ Item {
     id: proposalProc
     stderr: StdioCollector { onStreamFinished: if (text.trim() !== "") console.warn("longhand.page proposal: " + text.trim()) }
     // A filed document shows in its course in the sidebar at once.
-    onExited: function (code, status) { root.nextProposal(); if (root.proposalQueue.length === 0) root.refreshProjects() }
+    // What was just done on its own (a box ticked because the student asked
+    // it in a chat) shows as told, to let stand or undo: the list read again.
+    onExited: function (code, status) {
+      var applied = (proposalProc.command || []).indexOf("applied") >= 0
+      root.nextProposal()
+      if (root.proposalQueue.length === 0) { root.refreshProjects(); if (applied) root.refreshProposals() }
+    }
   }
 
   // authors.json: who made each box and bullet, by day (docs/agent.md). The

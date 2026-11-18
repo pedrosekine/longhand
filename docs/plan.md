@@ -1087,7 +1087,14 @@ Small, when passing by:
        task's chat stay as quick and as sure with the bigger context,
        and is the move by number still right (eval
        `day-chat-move-themenvorschlag`)?
-    4. The new actions from anywhere: add a task, tick, open, file.
+    4. ~~The new actions from anywhere~~ *built 2026-11-18*: from any
+       chat, a task added (a card, into today's note under its course), a
+       deadline moved by its number (a card, undone to the day it had), a
+       box ticked or reopened when asked (done at once, one key undoes
+       it), something opened (at once), a document filed; a note's and a
+       paper's chat propose and file too. Watch: is "done at once" right
+       for a tick, or does it ever tick the wrong box (how often a told
+       `done` is undone, in the ledger)?
     5. The read tool (search the vault, read a note, a paper, a course
        document; never what is private; each lookup logged and shown).
     To watch once it is in use, read at the check-in two weeks after

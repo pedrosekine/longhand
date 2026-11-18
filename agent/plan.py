@@ -76,7 +76,13 @@ KINDS = {
     "file": "file a document from the inbox",
     "done": "ask whether a box is done",
     "project": "propose a new project",
+    # In a conversation only, where the student asks (2026-11-18, slice 4 of
+    # "One conversation": what one message can do from anywhere).
+    "task": "add a task you ask for",
+    "move": "move a deadline you ask to move",
+    "undone": "reopen a ticked box you ask to reopen",
 }
+ASKED_ONLY = {"task", "move", "undone"}     # never from a planning pass
 LEVELS = ("ask", "do", "never")
 # Ticking is the person's act, and so is making a project (2026-10-22):
 # a question only.
@@ -311,6 +317,8 @@ def ident(x: dict) -> tuple[str, str]:
         return (x["kind"], x["doc"])
     if x["kind"] == "project":
         return (x["kind"], str(x.get("project") or "").lower())
+    if x["kind"] == "move":
+        return (x["kind"], f"#{x.get('deadline')}@{x.get('date', '')}")   # each day it is moved to, its own
     if not x.get("key") and x.get("deadline"):
         return (x["kind"], f"#{x['deadline']}")      # a deadline with no line: its number
     return (x["kind"], x.get("key") or norm(x.get("title", "")))
@@ -320,7 +328,7 @@ def refused(ledger: dict) -> set[tuple[str, str]]:
     """Every proposal the person said no to, or undid: never proposed again
     (a do-date only on that day; another day may be proposed)."""
     return {ident(x) for x in ledger["items"]
-            if x["status"] in ("declined", "undone") and x["kind"] not in ("do-date", "question")}
+            if x["status"] in ("declined", "undone") and x["kind"] not in {"do-date", "question"} | ASKED_ONLY}
 
 
 # ---------------------------------------------------------------- autonomy
@@ -354,7 +362,8 @@ def record_of(ledger: dict, kind: str) -> dict:
 def validate(reply: dict, cands: list[dict], days: list[dict], ledger: dict, today: dt.date,
              boxes: list[dict] | None = None, deadlines: list[dict] | None = None,
              allowed: dict[str, str] | None = None, closed: list[dict] | None = None,
-             projects: list[str] | None = None, asked: bool = False) -> tuple[list[dict], list[dict]]:
+             projects: list[str] | None = None, asked: bool = False,
+             ticked: list[dict] | None = None) -> tuple[list[dict], list[dict]]:
     """What the model said, kept only where it holds: every kind checked
     against what it was shown, against what the person already refused, and
     against what the person allows ("never" drops it). At most
@@ -364,7 +373,14 @@ def validate(reply: dict, cands: list[dict], days: list[dict], ledger: dict, tod
     whatever its age or due date, with its reason (2026-10-27); and so is a
     drop of a deadline the store holds with no line (`deadline`, its
     number), which has no box to name (2026-11-15: the margin's own card
-    had added one, and nothing could take it away)."""
+    had added one, and nothing could take it away).
+
+    A conversation may also add a task, move a deadline (`move`: its
+    number, a new date) and reopen a ticked box (`undone`, among `ticked`,
+    the boxes ticked lately) — only when the student asks, never from a
+    plan. A box ticked, or reopened, because the student asked
+    (`"asked": true`) is done at once and told, as at "do it and tell me":
+    one key undoes it."""
     by_key = {c["key"]: c for c in cands}
     by_box = {b["key"]: b for b in boxes or []}
     window = {d["date"] for d in days}
@@ -381,7 +397,9 @@ def validate(reply: dict, cands: list[dict], days: list[dict], ledger: dict, tod
         if not isinstance(p, dict):
             continue
         kind = p.get("kind")
-        if kind not in KINDS or kind == "file" or level.get(kind) == "never":
+        if kind == "deadline" and p.get("moves") not in (None, "", 0):
+            kind, p = "move", dict(p, kind="move", deadline=p.get("moves"))      # the older way of saying a move
+        if kind not in KINDS or kind == "file" or level.get(kind) == "never" or (kind in ASKED_ONLY and not asked):
             continue
         key, why = str(p.get("key") or ""), str(p.get("why") or "").strip()[:300]
         item = None
@@ -423,6 +441,40 @@ def validate(reply: dict, cands: list[dict], days: list[dict], ledger: dict, tod
             if not re.fullmatch(r"[\w/-]{1,40}", tag) or tag.lower() in tags or not name or not why:
                 continue
             item = {"kind": kind, "key": "", "title": name, "project": tag, "why": why}
+        elif kind == "task":
+            # A box the student asks for: its words and its course, written
+            # into today's note under the course by the page. Not one that
+            # is already open.
+            title = re.sub(r"\s+", " ", str(p.get("title") or "")).strip().lstrip("-[] ")[:160]
+            project = str(p.get("project") or "").lstrip("#")
+            project = project if re.fullmatch(r"[\w/-]{1,40}", project) else ""
+            if not title or norm(title) in {norm(b["title"]) for b in boxes or []}:
+                continue
+            item = {"kind": kind, "key": "", "title": title, "project": project, "why": why}
+        elif kind == "move":
+            try:
+                num = int(str(p.get("deadline") or "").lstrip("#"))
+            except ValueError:
+                continue
+            date = str(p.get("date") or "")[:10]
+            try:
+                when = dt.date.fromisoformat(date)
+            except ValueError:
+                continue
+            d = next((d for d in deadlines or [] if d["id"] == num), None)
+            if d is None or not (today <= when <= today + dt.timedelta(days=366)) \
+                    or not isinstance(d.get("due"), dt.datetime) or d["due"].date() == when:
+                continue
+            b = next((b for b in boxes or [] if b.get("deadline") == num), None)
+            item = {"kind": kind, "key": b["key"] if b else "", "deadline": num, "title": d["title"],
+                    "project": d.get("project") or "", "date": date, "was": d["due"].strftime("%Y-%m-%d %H:%M"),
+                    "why": why}
+        elif kind == "undone":
+            b = next((b for b in ticked or [] if b["key"] == key), None)
+            if b is None:
+                continue
+            item = {"kind": kind, "key": key, "title": b["title"], "project": b.get("project") or "", "why": why,
+                    "auto": True}
         elif kind == "drop" and not key and asked:
             try:
                 num = int(str(p.get("deadline") or "").lstrip("#"))
@@ -461,10 +513,14 @@ def validate(reply: dict, cands: list[dict], days: list[dict], ledger: dict, tod
                     continue
                 item = base
             elif kind == "done":
-                if not why:
+                if asked and p.get("asked"):
+                    item = dict(base, auto=True)      # the student asked to tick it: done, and told
+                elif not why:
                     continue                          # "it looks done" must say why
-                item = base
-        if item is None or ident(item) in no or ident(item) in seen or ident(item) in busy:
+                else:
+                    item = base
+        if item is None or ident(item) in seen or ident(item) in busy \
+                or (ident(item) in no and not item.get("auto")):
             continue
         if level.get(kind) == "do" and kind not in ASK_ONLY:
             item["auto"] = True                       # done by the page, then told
