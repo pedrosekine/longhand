@@ -1097,8 +1097,12 @@ Small, when passing by:
        paper's chat propose and file too. Watch: is "done at once" right
        for a tick, or does it ever tick the wrong box (how often a told
        `done` is undone, in the ledger)?
-    5. The read tool (search the vault, read a note, a paper, a course
-       document; never what is private; each lookup logged and shown).
+    5. ~~The read tool~~ *built 2026-11-18* as the lookup loop that was
+       there (the student's choice over a tool the model calls itself):
+       four rounds a message, lookups in talks about a proposal, what was
+       looked up said under every answer. Watch: does it look things up
+       when it should (the day's chat did twice in 13 answers), and does
+       a fourth round ever help?
     To watch once it is in use, read at the check-in two weeks after
     slice 2: the check-in's practical score before and after; messages a
     week, against about 110 over the month before; how often an automatic

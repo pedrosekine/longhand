@@ -733,7 +733,24 @@ a conversation surviving a change of model, the note's look.
      `day-tick-when-asked`, `day-open-when-asked`; `check_day` reads
      `ticks` and `opens`. Tests: `tests/test_anywhere.py`; live checks for
      a new task's card, a tick done at once and undone, opening.
-5. The read tool, last: the one with a risk to privacy and to speed.
+5. ~~The read tool~~ *built 2026-11-18, as the loop that was there:*
+   checking first showed the agent could already look things up while
+   answering — it asks in its answer (`search`, `read`), local code
+   fetches under search.py's rules, and the same session is asked again,
+   each round logged as a payload of its own (`day_follow`, since
+   2026-10-21). The student chose to extend that loop rather than give
+   the model a tool it calls itself (a server of ours, a way into the
+   files to secure, "the model gets no tools" given up on both routes,
+   for little more speed: each lookup is a model round trip either way).
+   - Up to four rounds a message (`DAY_ROUNDS`, two before), each saying
+     how many are left.
+   - A talk about a proposal may look things up too (`cmd_talk`, its
+     message's contract; `parse_talk` reads `search` and `read`).
+   - What was looked up — searched, read, a course's document, filed —
+     is said under every answer in every pane (`Turn.qml`, `sayFetched`),
+     a task's turns carrying it from `thread`.
+   - "Why" and "Reaching a model" stand as written: the model has no
+     tools; what it sees is still what local code gave it, logged.
 
 **How it is judged,** read at the check-in after two weeks of use: the
 weekly check-in's practical score before and after; messages a week in the

@@ -620,18 +620,6 @@ BorderSurface {
               }
             }
           }
-
-          Text {
-            visible: text !== ""
-            width: parent.width
-            textFormat: Text.PlainText
-            wrapMode: Text.WordWrap
-            text: modelData.role === "agent" ? page.sayFetched(modelData) : ""
-            color: page.faint
-            font.family: page.fontFamily
-            font.styleName: page.fontStyle
-            font.pixelSize: page.fs(Style.font.caption)
-          }
         }
       }
 

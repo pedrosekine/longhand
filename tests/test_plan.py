@@ -286,6 +286,17 @@ def main() -> int:
     check([t["role"] for t in turns] == ["student", "agent"] and turns[0]["text"] == "why Wednesday?",
           "the conversation is kept on the box, both turns")
     check(talked.rstrip().endswith("`reply` is never empty."), "…the talk's own format said again, where it is read last")
+    # It may look things up first (slice 5): local code searches, the same
+    # session is asked again, and the turn says what it looked for.
+    (stub / "replies.json").write_text(json.dumps([
+        {"reply": "", "revise": None, "settle": None, "knowledge": [], "search": [{"words": "seminar"}]},
+        {"reply": "Your note puts the seminar on Tuesday.", "revise": None, "settle": None, "knowledge": []}]))
+    r = agent("talk", "--id", str(dd["id"]), "--message", "when is the seminar again?", ok=False)
+    out = json.loads(r.stdout)
+    sent = json.loads((stub / "argv.json").read_text())
+    check(r.returncode == 0 and out["reply"] == "Your note puts the seminar on Tuesday." and "--session" in sent
+          and "# What you asked for" in sent[-1] and "Searched for “seminar”" in sent[-1],
+          f"a talk may look things up: searched by local code, the same session asked again ({out['reply']!r})")
 
     # Answered with a plan (2026-10-20 and 10-23, both real talks): asked
     # again once in the same session; still a plan, and the student is told.

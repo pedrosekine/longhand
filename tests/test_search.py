@@ -133,8 +133,8 @@ def end_to_end(tmp: pathlib.Path) -> None:
           and "secretly" not in second and "Withheld by the student's rules" in second,
           "the search's passages come back with their file and line; what was withheld is said, not shown")
     third = calls[2]["argv"][-1]
-    check("## `human/Daily/2026-10-12.md` — whole" in third and "do not ask for more" in third,
-          "a file asked for is read whole, and the last round says to answer")
+    check("## `human/Daily/2026-10-12.md` — whole" in third and "ask again if you must (2 more at most)" in third,
+          "a file asked for is read whole, and the round says how many more it may ask (four in all, since slice 5)")
     st = json.loads(next((v / "agents/longhand/daily").glob("*.json")).read_text())
     turn = st["day"]["turns"][-1]
     check(turn["text"].startswith("You wrote it in") and turn["searched"][0]["hits"][0]["path"] == "human/Daily/2026-10-12.md"
