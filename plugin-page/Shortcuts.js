@@ -252,7 +252,7 @@ var actions = [
   // Its section found among its course's, the PDF named after it; the
   // deadline stays open — handing it in is the person's (plan.md item 13).
   { id: "dashExport", group: "dash", places: ["dash"], does: "Export its section as a PDF, named after it (it stays open)", keys: ["Ctrl+Shift+E"] },
-  { id: "dashUndo", group: "dash", places: ["dash"], does: "Take the last tick back", keys: ["Ctrl+Z"] },
+  { id: "dashUndo", group: "dash", places: ["dash"], does: "Take back the last tick, or a document just filed", keys: ["Ctrl+Z"] },
   { id: "dashBack", group: "dash", places: ["dash"], does: "Back to the note", keys: ["Esc"] },
   // The course strip above the list (2026-11-03): ↑ from the first row
   // climbs onto it. Its ⌕ takes what is typed while the strip's cursor is

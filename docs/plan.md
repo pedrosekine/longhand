@@ -1105,7 +1105,13 @@ Small, when passing by:
        waits above 3 a course is set aside, the newest staying
        (`trim_to_budget`; 14 on the real list); task names, not numbers, in
        the move cards; no chat line under a done row; what was left out
-       said in the student's words. Watch: does it look things up
+       said in the student's words. A document the student filed (its
+       row accepted, or asked for in a chat) can be put back: Ctrl+Z on
+       the dashboard right after, "put it back" under a chat's answer,
+       `longhand-agent proposal undo --id N` for any; it goes back where it
+       came from, never over another file, and is not offered again (found
+       2026-11-18: one filed by a key pressed in passing, with no way back).
+       Watch: does it look things up
        when it should (the day's chat did twice in 13 answers), and does
        a fourth round ever help?
     To watch once it is in use, read at the check-in two weeks after

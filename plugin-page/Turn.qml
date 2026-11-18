@@ -81,6 +81,30 @@ Column {
     font.styleName: page.fontStyle
     font.pixelSize: page.fs(Style.font.caption)
   }
+  // A document it filed because the student asked: one click puts it back.
+  Repeater {
+    model: turn.t.role === "agent" && !turn.away ? (turn.t.filed || []).filter(function (f) { return f.id !== undefined }) : []
+    Text {
+      required property var modelData
+      readonly property bool back: !!page.unfiled[modelData.id]
+      textFormat: Text.PlainText
+      text: back ? "put back: “" + String(modelData.name).replace(/\.pdf$/i, "") + "”"
+        : "put “" + String(modelData.name).replace(/\.pdf$/i, "") + "” back"
+      color: backArea.containsMouse && page.handOn && !back ? page.accent : page.faint
+      font.family: page.fontFamily
+      font.styleName: page.fontStyle
+      font.pixelSize: page.fs(Style.font.caption)
+      font.underline: backArea.containsMouse && !back
+      MouseArea {
+        id: backArea
+        anchors.fill: parent
+        hoverEnabled: true
+        enabled: !parent.back
+        cursorShape: Qt.PointingHandCursor
+        onClicked: page.unfile(modelData.id)
+      }
+    }
+  }
   // What it proposed that local code did not offer: said, so a reply
   // pointing at a card that is not there is not the last word.
   Text {
