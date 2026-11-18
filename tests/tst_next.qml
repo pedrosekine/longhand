@@ -1,6 +1,7 @@
 import QtQuick
 import QtTest
 import "../plugin-page/Next.js" as Next
+import "../plugin-page/Say.js" as Say
 
 // What's next: the dashboard's rows, in the order they ask something of
 // you (Next.js, moved out of Page.qml on 2026-10-30).
@@ -209,7 +210,7 @@ TestCase {
     var oct = Qt.formatDate(now, "MMMM").toUpperCase(), nov = Qt.formatDate(new Date(2026, 10, 2), "MMMM").toUpperCase()
     var jan = Qt.formatDate(new Date(2027, 0, 15), "MMMM yyyy").toUpperCase()
     compare(said(Next.rows(date_state({}))),
-            ["band:LATE 1", "d1", "band:TODAY 2", "today's", "d2", "band:THIS WEEK 1", "d3",
+            ["band:LATE 1", "d1", "band:TODAY 1", "today's", "band:DONE TODAY ▸ 1", "band:THIS WEEK 1", "d3",
              "band:NEXT WEEK 2", "d4", "Sunday's too", "band:LATER IN " + oct + " ▸ 1",
              "band:" + nov + " ▸ 1", "band:" + jan + " ▸ 1", "band:NO DAY YET ▸ 1"])
     // A folded band says what comes first in it.
@@ -227,11 +228,27 @@ TestCase {
               task("report", { anchor: 3, when: "2026-10-20" })] }))
     // d1 is due in November but worked on tomorrow: this week, before d2,
     // which has no do-date and is due on Thursday. A closed one is past
-    // working on: its do-date no longer places it.
-    compare(said(rows), ["band:TODAY 0", "band:THIS WEEK 2", "d1", "d2",
-                         "band:" + Qt.formatDate(new Date(2026, 10, 2), "MMMM").toUpperCase() + " 1", "d3"])
+    // working on: its do-date no longer places it, nor its due day — it
+    // was done today.
+    compare(said(rows), ["band:TODAY 0", "band:DONE TODAY 1", "d3", "band:THIS WEEK 2", "d1", "d2"])
     var week = rows.filter(function (r) { return r.kind === "band" && r.id === "week" })[0]
     compare([week.next.title, week.next.ms], ["d1", new Date(2026, 9, 14).getTime()])
+  }
+
+  // What was closed today waits folded after TODAY (2026-11-18, the UX
+  // evaluation's F4), saying no "next"; a band of rows with no day says
+  // no day either (it said "Thu 1 Jan", the epoch).
+  function test_date_closed_today_folds_after_today() {
+    var rows = Next.rows(date_state({}))
+    var done = rows.filter(function (r) { return r.kind === "band" && r.id === "done" })[0]
+    compare([done.open, done.count, done.next], [false, 1, null])
+    var bands = rows.filter(function (r) { return r.kind === "band" }).map(function (r) { return r.id })
+    compare(bands.indexOf("done"), bands.indexOf("today") + 1)
+    var none = rows.filter(function (r) { return r.kind === "band" && r.id === "none" })[0]
+    compare([none.next.title, none.next.ms], ["someday", 0])
+    compare(said(Next.rows(date_state({ folds: { done: true } }))).indexOf("d2") >= 0, true)
+    compare([Say.sayDue("2026-10-13", now), Say.sayDue("2026-10-16", now), Say.sayDue("2026-10-10", now)],
+            ["due today", "due " + Qt.formatDate(new Date(2026, 9, 16), "ddd d MMM"), "3 days late"])
   }
 
   function test_date_bands_fold_and_unfold() {

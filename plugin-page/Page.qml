@@ -975,6 +975,31 @@ Item {
     var t = row.kind === "task" ? row.task : row.kind === "deadline" ? root.taskOfAnchor(row.deadline.id) : null
     return t && !t.private && t.chat ? t.chat : null
   }
+  // The rows a chat's last word is said under: the first of the rows that
+  // share it (2026-11-18, the UX evaluation's F5: three ticked boxes under
+  // one box each repeated its chat's line). Every row keeps its gutter bar.
+  readonly property var chatLeads: {
+    var out = {}, seen = {}, rows = root.taskRows
+    for (var i = 0; i < rows.length; i++) {
+      var c = root.chatOf(rows[i])
+      if (!c || seen[c.thread]) continue
+      seen[c.thread] = true
+      out[root.dashRowIds[i] || ""] = true
+    }
+    return out
+  }
+  // A chat's words as a row says them: a deadline the agent named by its
+  // number (#61) by its words instead, and the row's own as "its" / "this".
+  function sayChat(text, row) {
+    var own = row && row.kind === "deadline" ? row.deadline.id
+      : row && row.kind === "task" && row.task.anchor > 0 ? row.task.anchor : -1
+    return String(text || "").replace(/#(\d+)(['’]s)?(?![\w-])/g, function (m, n, poss) {
+      var id = parseInt(n, 10)
+      if (id === own) return poss ? "its" : "this one"
+      var d = dl.items.filter(function (x) { return x.id === id })[0]
+      return d ? "“" + d.title + "”" + (poss || "") : m
+    })
+  }
   function chatState(row) {
     var c = root.chatOf(row)
     if (!c) return ""
@@ -4953,15 +4978,18 @@ Item {
       if (lt && lt.when && d.status === "open") out.push(root.doPill(lt))
       var at = new Date(d.due * 1000)
       var timed = !(at.getHours() === 23 && at.getMinutes() === 59)
-      out.push({ text: Say.sayDate(Qt.formatDateTime(at, timed ? "yyyy-MM-dd HH:mm" : "yyyy-MM-dd")),
-                 tone: d.status !== "open" ? "done" : (d.due * 1000 < Date.now() ? "late" : "due") })
+      // Closed: nothing owed, so no day to say (it said "3 days late").
+      if (d.status !== "open") return []
+      out.push({ text: Say.sayDue(Qt.formatDateTime(at, timed ? "yyyy-MM-dd HH:mm" : "yyyy-MM-dd")),
+                 tone: d.due * 1000 < Date.now() ? "late" : "due" })
       if (lt && lt.est) out.push({ text: lt.est, tone: "est" })
       return out
     }
     if (row.kind !== "task") return out
     var t = row.task
+    if (t.done) return out
     if (t.when) out.push(root.doPill(t))
-    if (t.due) out.push({ text: Say.sayDate(t.due), tone: "due" })
+    if (t.due) out.push({ text: Say.sayDue(t.due), tone: "due" })
     if (t.est) out.push({ text: t.est, tone: "est" })
     return out
   }

@@ -106,6 +106,43 @@ def fixture(m, p):
                                           f"- [x] Book the plotter #studio ⏳ {d0} ✅ {d0}\n")
 
 
+def calm_fixture(m, p):
+    """The dashboard as it was on 2026-11-18 (the UX evaluation, F4 and F5),
+    for the before and after of making it calmer: a deadline due today with
+    its do-date the same day; one closed today that was due three days ago;
+    three ticked under one box that share its chat, whose last word names a
+    deadline by its number; one next week with a do-date tomorrow."""
+    d0 = dt.date.today()
+    day = lambda n: (d0 + dt.timedelta(days=n)).isoformat()
+    admin = ("- [ ] Thesis admin #thesis\n"
+             f"  - [x] Setup Overleaf integrated with my thesis work 📅 {day(-1)} ✅ {d0} ^d64\n"
+             f"  - [x] Elisabeth Gsottbauer: ask whether REC is needed 📅 {day(-1)} ✅ {d0} ^d65\n"
+             f"  - [x] Get in touch with Peter Balazs to ask the audio questions 📅 {day(-1)} ✅ {d0} ^d66")
+    finish = f"- [ ] Finish the Themenvorschlag #thesis ⏳ {d0} 📅 {d0} ^d61"
+    lines = [finish, f"- [x] Plan kitchen 📅 {day(-3)} ✅ {d0} ^d62", admin,
+             f"- [ ] AI literacy #respro ⏳ {day(1)} 📅 {day(9)} ^d32",
+             f"- [ ] Reflective Research Diary 3 #studio 📅 {day(2)} ^d57"]
+    text = m.header(m.TODAY) + "Plans for the day.\n\n" + "\n\n".join(lines) + "\n"
+    (p.daily / f"{m.TODAY}.md").write_text(text)
+    hashes = {b["text"].split("\n")[0]: b["hash"] for b in m.blocks.split(text)}
+    h_admin = next(h for k, h in hashes.items() if k.startswith("- [ ] Thesis admin"))
+    h_finish = next(h for k, h in hashes.items() if k.startswith("- [ ] Finish the Themenvorschlag"))
+    said = ("The card adds a REC follow-up for Monday, 23 November. I can't mark #66 done with the actions "
+            "available here; it still shows open in the deadline list.")
+    (p.vault / "agents" / "longhand" / "daily").mkdir(parents=True, exist_ok=True)
+    (p.vault / "agents" / "longhand" / "daily" / f"{m.TODAY}.json").write_text(json.dumps({"blocks": {
+        h_admin: {"state": "reply", "reply": "", "read": True, "head": admin.split("\n")[0],
+                  "chat": [{"role": "student", "text": "done with these three", "at": f"{d0}T09:00:00"},
+                           {"role": "agent", "text": said, "at": f"{d0}T09:00:05"}]},
+        h_finish: {"state": "reply", "reply": "", "read": True, "head": finish,
+                   "chat": [{"role": "student", "text": "change for today", "at": f"{d0}T09:10:00"},
+                            {"role": "agent", "text": "Proposing to move #61's deadline to today.", "at": f"{d0}T09:10:05"}]}}}))
+    p.store.parent.mkdir(parents=True, exist_ok=True)
+    p.store.touch()
+    r = p.check()                            # the deadlines, from their ^dN, as the popup's check makes them
+    assert r.returncode == 0, r.stderr
+
+
 def project_fixture(m, p):
     """A thesis as Longhand sees one: its knowledge file, its folder with a
     bibliography and papers (one read over two days, with questions; the
@@ -323,6 +360,20 @@ def scenes(m, p, out, which):
         p.call("switcherType", "de")
         shot("reach-2")
         p.call("switcherKey", 0x01000000, 0)
+    if which == "calm":
+        p.call("dash")
+        p.wait(lambda: sum(r.get("kind") == "deadline" for r in json.loads(p.call("dashRows"))) >= 3, 10)
+        time.sleep(1.5)
+        rows = json.loads(p.call("dashRows"))
+        p.call("dashFocus", next(i for i, r in enumerate(rows) if r.get("kind") in ("deadline", "task")))
+        shot("calm-0")
+        done = next((i for i, r in enumerate(rows) if r.get("kind") == "band" and r.get("id") == "done"), None)
+        if done is not None:
+            p.call("dashFocus", done)
+            p.call("dashKey", 0x01000014, 0)     # →: the band opens
+            time.sleep(0.6)
+            shot("calm-1")
+        p.call("dash")
     if which in ("all", "keys"):
         p.call("keys")
         shot("keys-0")
@@ -333,7 +384,7 @@ def scenes(m, p, out, which):
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("out", type=pathlib.Path)
-    ap.add_argument("--scene", default="all", choices=["all", "dashboard", "note", "day", "keys", "chat", "project", "acronyms", "answers", "reach"])
+    ap.add_argument("--scene", default="all", choices=["all", "dashboard", "note", "day", "keys", "chat", "project", "acronyms", "answers", "reach", "calm"])
     ap.add_argument("--order", default="ask", choices=["ask", "course", "date"])
     ap.add_argument("--root", type=pathlib.Path, default=HERE.parent.parent)
     ap.add_argument("--env", action="append", default=[])
@@ -350,7 +401,7 @@ def main() -> int:
                                    f'size = {{ {SIZE[0]}, {SIZE[1]} }} }})']):
         p = page(m, a.order)
         try:
-            fixture(m, p)
+            (calm_fixture if a.scene == "calm" else fixture)(m, p)
             p.open_fresh()
             for path in scenes(m, p, a.out, a.scene):
                 print(path)

@@ -45,9 +45,9 @@ Rectangle {
       width: parent.width
       textFormat: Text.PlainText
       text: "◇ " + (card.listed ? card.page.dayCardKind(card.p)
-          : card.p.moves ? "move deadline #" + card.p.moves.id : card.p.kind === "deadline" ? "new deadline" : (card.p.kind || ""))
+          : card.p.moves ? "move deadline" : card.p.kind === "deadline" ? "new deadline" : (card.p.kind || ""))
         + (card.listed ? (card.listedState !== "" && card.listedState !== "arriving" ? " · " + card.listedState : "")
-           : card.done ? " · " + (card.p.accepted.moved ? "moved" : "added" + (card.p.accepted.id ? " #" + card.p.accepted.id : ""))
+           : card.done ? " · " + (card.p.accepted.moved ? "moved" : "added")
            : card.replaced ? " · replaced by a later one" : card.p.error ? " · failed" : "")
       color: card.live ? page.accent : page.faint
       font.family: page.fontFamily
