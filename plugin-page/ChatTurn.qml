@@ -16,7 +16,19 @@ Item {
   property bool markdown: !mine
   property color color: page.foreground
   property int pixelSize: page.fs(Style.font.title)
+  // Words picked in the agent's answer can be answered (2026-11-18): an
+  // "answer" at the end of the selection, or Ctrl+R; several at once, each
+  // its own answer above the box.
+  property bool answerable: false
   signal linkActivated(string link)
+  signal answer(string passage)
+  function answerSelection() {
+    var s = String(said.selectedText).replace(/\s+/g, " ").trim()
+    if (!turn.answerable || s === "") return false
+    turn.answer(s)
+    said.deselect()
+    return true
+  }
 
   // A selectable text has no linkColor, and its palette does not reach the
   // markdown's links: they came out pure blue on the dark ground. A link
@@ -79,5 +91,39 @@ Item {
     onLinkActivated: function (link) { turn.linkActivated(link) }
     onSelectedTextChanged: if (selectedText !== "") page.chatSelected(said)
     HoverHandler { cursorShape: said.hoveredLink !== "" ? Qt.PointingHandCursor : Qt.IBeamCursor }
+  }
+
+  // "answer", where the selection ends.
+  Rectangle {
+    id: answerChip
+    readonly property rect end: said.positionToRectangle(said.selectionEnd)
+    visible: turn.answerable && said.selectedText.trim() !== "" && page.chatSelection === said
+    x: Math.min(said.x + end.x + page.sp(4), turn.width - width)
+    y: said.y + end.y + end.height + page.sp(2)
+    z: 2
+    width: answerWord.implicitWidth + page.sp(12)
+    height: answerWord.implicitHeight + page.sp(4)
+    radius: Style.cornerRadius
+    color: page.background
+    border.width: 1
+    border.color: answerArea.containsMouse ? page.accent : page.faint
+    Text {
+      id: answerWord
+      anchors.centerIn: parent
+      textFormat: Text.PlainText
+      text: "answer"
+      color: answerArea.containsMouse ? page.accent : page.dim
+      font.family: page.fontFamily
+      font.styleName: page.fontStyle
+      font.pixelSize: Math.round(page.textSize * 0.78)
+    }
+    MouseArea {
+      id: answerArea
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onClicked: turn.answerSelection()
+    }
+    Tip { host: turn.page; shown: answerArea.containsMouse; text: turn.page.tip("Answer these words", "chatAnswer") }
   }
 }

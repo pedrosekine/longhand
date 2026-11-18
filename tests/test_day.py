@@ -163,6 +163,17 @@ def main() -> int:
     again = json.loads((tmp / "state" / "longhand" / "proposals.json").read_text())
     check(len(again["items"]) == len(ledger["items"]) and sorted(x["id"] for x in state()["day"]["turns"][-1]["proposals"]) == sorted(x["id"] for x in mine),
           "the same proposal again is the same card: no new item")
+    # Answering passages of its answer (2026-11-18): the message quotes
+    # each above what is said about it; the agent is told to take them in
+    # turn, just before the student's words.
+    agent("day", "--message", "> the email can wait\nnot really, Bernd asked twice\n\n> the shortlist\nwhich one first?")
+    msg = calls()[-1]["argv"][-1]
+    check("# The student answers parts of what you said" in msg
+          and msg.index("# The student answers parts of what you said") < msg.index("# The student says")
+          and "> the email can wait\nnot really, Bernd asked twice" in msg,
+          "a message answering passages tells the agent to take each in turn, headed by its passage")
+    agent("day", "--message", "and no quote here")
+    check("# The student answers parts" not in calls()[-1]["argv"][-1], "…and a message with none does not")
     # A deadline move is a card in the day's chat too (slice 4 of "One
     # conversation"); one that names no open deadline is said back.
     before = len(json.loads((tmp / "state" / "longhand" / "proposals.json").read_text())["items"])

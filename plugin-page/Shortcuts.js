@@ -368,6 +368,7 @@ var actions = [
   { id: "marginHelpful", group: "margin", places: ["margin"], does: "The reply was helpful (again: take it back)", keys: ["Plus", "="] },
   { id: "marginNotHelpful", group: "margin", places: ["margin"], does: "The reply was not helpful (again: take it back)", keys: ["-"] },
   { id: "chatSend", group: "margin", places: ["chat"], does: "Send what you wrote", keys: ["Enter"] },
+  { id: "chatAnswer", group: "margin", places: ["chat"], does: "Answer the words selected in the agent's reply (several at once)", keys: ["Ctrl+R"] },
   // Esc backs out one level: a block's or a task's conversation to the
   // day's, when that is open (the pane's home); else the pane closes and
   // the keys go back where they were.

@@ -199,6 +199,8 @@ BorderSurface {
             page: margin.page
             width: parent.width
             t: modelData
+            pane: "margin"
+            flick: marginFlick
             onLinkActivated: function (link) { page.openCitation(link) }
           }
           // What the margin agent proposed in the task's chat: its cards,
@@ -308,6 +310,8 @@ BorderSurface {
             page: margin.page
             width: parent.width
             t: row.turn
+            pane: "margin"
+            flick: marginFlick
             onLinkActivated: function (link) { page.openCitation(link) }
           }
 
@@ -408,6 +412,14 @@ BorderSurface {
         shown: chatField.visible && !!page.dayMention && page.dayMention.margin
         onPicked: chatField.forceActiveFocus()
       }
+      ReplyDrafts {
+        page: margin.page
+        width: parent.width
+        pane: "margin"
+        box: chatField
+        visible: chatField.visible && page.marginReplies.length > 0
+        onSend: { if (margin.talk) page.sendTalk(); else page.sendChat() }
+      }
       Chips {
         id: aboutChips
         page: margin.page
@@ -444,6 +456,7 @@ BorderSurface {
       onKeyPressed: function (event) {
         if (page.copyChatSelection(event, chatField)) { event.accepted = true; return }
         if (page.marginMentionKey(event)) { event.accepted = true; return }
+        if (page.answerSelected(event)) { event.accepted = true; return }
         if (page.anywhereKey(event)) { event.accepted = true; return }
         if (margin.talk) {
           if (Sc.hit(event, "chatSend")) page.sendTalk()

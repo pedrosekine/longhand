@@ -1289,7 +1289,7 @@ Item {
     return ""
   }
   property string elsewhereFor: ""
-  onElsewhereWantChanged: { root.marginRefs = []; root.loadElsewhere() }
+  onElsewhereWantChanged: { root.marginRefs = []; root.marginReplies = []; root.loadElsewhere() }
   function loadElsewhere() {
     var w = root.elsewhereWant
     if (w === root.elsewhereFor && root.elsewhere) return
@@ -1348,6 +1348,94 @@ Item {
       root.dayAutoOff = true
       if (text !== "") { dayPane.dayFieldRef.text = text; dayPane.dayFieldRef.cursorPosition = text.length }
     })
+  }
+
+  // Answering passages of the agent's (2026-11-18): words picked in one of
+  // its answers become a draft above the box — the passage, quoted, and a
+  // field of its own for the answer. Picking another adds another, never in
+  // the place of the first; one send sends them all, each under its
+  // passage (`> …`), what the box holds last. Per pane: the day's (with a
+  // note's and a paper's) and the margin's (a block's, a task's). The
+  // answer typed is kept on the draft itself, not by replacing the list,
+  // so a field keeps its focus while it is typed in.
+  property var dayReplies: []
+  property var marginReplies: []
+  property int replyFocus: -1
+  function repliesOf(pane) { return pane === "margin" ? root.marginReplies : root.dayReplies }
+  function addReply(pane, passage) {
+    var q = String(passage || "").replace(/\s+/g, " ").trim()
+    if (q === "") return
+    if (q.length > 400) q = q.slice(0, 400).replace(/\s+\S*$/, "") + " …"
+    var list = root.repliesOf(pane)
+    if (list.some(function (r) { return r.quote === q })) return
+    var next = list.concat([{ quote: q, text: "" }])
+    if (pane === "margin") root.marginReplies = next; else root.dayReplies = next
+    root.replyFocus = next.length - 1
+    root.used("answer", pane)
+  }
+  function dropReply(pane, i) {
+    var next = root.repliesOf(pane).filter(function (r, k) { return k !== i })
+    if (pane === "margin") root.marginReplies = next; else root.dayReplies = next
+  }
+  // The message, as sent and as kept: the box's words first (under no
+  // quote, so never read as part of an answer), then each passage
+  // answered, quoted above what was said about it. A passage with no
+  // answer typed is left out.
+  function composed(pane, text) {
+    var bits = root.repliesOf(pane).filter(function (r) { return String(r.text || "").trim() !== "" }).map(function (r) {
+      return "> " + r.quote + "\n" + String(r.text).trim()
+    })
+    var main = String(text || "").trim()
+    if (main !== "") bits.unshift(main)
+    return bits.join("\n\n")
+  }
+  function clearReplies(pane) {
+    if (pane === "margin") root.marginReplies = []; else root.dayReplies = []
+    root.replyFocus = -1
+  }
+  // A sent message read back as its parts: { quote, text } each.
+  function passageParts(text) {
+    var parts = [], cur = null
+    String(text || "").split("\n").forEach(function (line) {
+      var m = /^> ?(.*)$/.exec(line)
+      if (m) {
+        if (!cur || cur.text !== "") { cur = { quote: "", text: "" }; parts.push(cur) }
+        cur.quote = (cur.quote ? cur.quote + " " : "") + m[1].trim()
+      } else {
+        if (!cur) { cur = { quote: "", text: "" }; parts.push(cur) }
+        cur.text = cur.text === "" ? line : cur.text + "\n" + line
+      }
+    })
+    parts.forEach(function (x) { x.text = x.text.trim() })
+    return parts.filter(function (x) { return x.quote !== "" || x.text !== "" })
+  }
+  // A quote followed back: the agent's answer it came from, lit a moment
+  // and shown (Turn.qml), found by its words.
+  property string litPassage: ""
+  Timer { id: litPassageTimer; interval: 2600; onTriggered: root.litPassage = "" }
+  function plainWords(s) {
+    return String(s || "").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/[*_`#>]/g, "").replace(/\s+/g, " ").trim().toLowerCase()
+  }
+  function showPassage(pane, quote) {
+    var turns = pane === "margin" ? (root.talkOpen ? root.talkStream : root.marginStream.map(function (r) { return r.turn || {} })) : root.dayTurns
+    var want = root.plainWords(quote).replace(/ …$/, "")
+    for (var i = turns.length - 1; i >= 0; i--) {
+      var t = turns[i]
+      if (t && t.role === "agent" && t.at && root.plainWords(t.text).indexOf(want) >= 0) {
+        root.litPassage = t.at + "|" + pane
+        litPassageTimer.restart()
+        root.used("answer", "followed")
+        return
+      }
+    }
+    root.showHint("that answer is not in this chat")
+  }
+  // Ctrl+R in a box: answer the words selected in one of the agent's answers.
+  function answerSelected(event) {
+    if (!Sc.hit(event, "chatAnswer")) return false
+    var s = root.chatSelection
+    if (!s || s.selectedText === "" || !s.parent || !s.parent.answerSelection) return false
+    return s.parent.answerSelection()
   }
 
   function taskName(t) { return String((t && (t.title || t.text)) || "").replace(/\s+/g, " ").trim() }
@@ -1449,7 +1537,7 @@ Item {
     root.marginOpen = false
     root.marginFocus = -1
     root.closeTalk(false)
-    if (note !== root.noteRoom) { root.dayPending = null; root.dayRefs = []; root.dayAutoHeld = null; root.paper.marks = [] }
+    if (note !== root.noteRoom) { root.dayPending = null; root.dayRefs = []; root.dayAutoHeld = null; root.paper.marks = []; root.dayReplies = [] }
     root.noteRoom = !!note
     root.dayOpen = true
     if (block) {
@@ -1470,7 +1558,11 @@ Item {
   // the note no longer has it as it was.
   function blockHead(hash) {
     var b = root.blockBounds(hash)
-    return b ? b.text.split("\n")[0].replace(/^\s*([-*+] (\[.\] )?|#+ )/, "").slice(0, 80) : "a block"
+    // Its words, without the facts on its line (dates, priority, a
+    // deadline's mark).
+    return b ? b.text.split("\n")[0].replace(/^\s*([-*+] (\[.\] )?|#+ )/, "")
+      .replace(/\s*(📅|⏳|✅|➕|❌)\s*\d{4}-\d{2}-\d{2}( \d{1,2}:\d{2})?/g, "").replace(/\s*(⏫|🔼|🔽|⏬)/g, "")
+      .replace(/\s*\^d\d+\b/g, "").replace(/\s+/g, " ").trim().slice(0, 80) : "a block"
   }
 
   function closeDay() {
@@ -1533,8 +1625,9 @@ Item {
   function holdThinking(where) { root.thinkHeld = where; thinkHoldTimer.restart() }
 
   function sendDay(text) {
-    var msg = String(text || "").trim()
+    var msg = root.composed("day", text)
     if (msg === "" || !root.dayCanSend) return false
+    root.clearReplies("day")
     var cmd = root.noteRoom ? [svc.runner, "note", "--file", root.roomRel, "--message", msg] : [svc.runner, "day", "--message", msg]
     var chips = root.noteRoom ? root.dayRefs.slice(0, 1) : root.dayChips.slice()
     if (root.noteRoom) { if (root.dayBlock !== "") cmd = cmd.concat(["--block", root.dayBlock]) }
@@ -1795,6 +1888,7 @@ Item {
 
   function dayKey(event) {
     if (root.copyChatSelection(event, dayPane.dayFieldRef)) return true
+    if (root.answerSelected(event)) return true
     if (Sc.hit(event, "dayHelpful")) { root.rateDay(-1, "up"); return true }
     if (Sc.hit(event, "dayNotHelpful")) { root.rateDay(-1, "down"); return true }
     // On the cards: ↑↓ between them, Enter or Space does what one says, Del
@@ -5201,8 +5295,9 @@ Item {
   }
 
   function sendTalk() {
-    var msg = margin.chatFieldRef.text.trim()
+    var msg = root.composed("margin", margin.chatFieldRef.text)
     if (msg === "" || root.talking || !root.talkCanSend) return
+    root.clearReplies("margin")
     root.pendingTalk = { thread: root.talkThread, text: msg }
     margin.chatFieldRef.text = ""
     var c = root.talkData ? root.talkData.chat : null
@@ -7314,9 +7409,10 @@ Item {
   }
 
   function sendChat() {
-    var msg = margin.chatFieldRef.text.trim()
+    var msg = root.composed("margin", margin.chatFieldRef.text)
     if (msg === "" || root.currentHash === "") return
     margin.chatFieldRef.text = ""
+    root.clearReplies("margin")
     root.pendingChat = { hash: root.currentRec, text: msg }
     root.requestChat(root.currentRec, msg, root.currentHash, root.takeMarginRefs())
   }

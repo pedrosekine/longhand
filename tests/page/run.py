@@ -1854,6 +1854,26 @@ def checks() -> int:
         refs = st["day"]["turns"][-2].get("refs") or []
         check([r["kind"] for r in refs] == ["task", "block"] and "email the dean" in refs[0]["head"],
               f"…and its turn keeps what it pointed at ({refs})")
+        # Answering passages of the agent's (2026-11-18): words picked in an
+        # answer, each a draft with its own answer; a second adds, never
+        # replaces; one send sends both, each under its passage; a quote
+        # followed back lights the answer it came from.
+        reps = lambda: json.loads(p.call("replies", "day"))
+        p.call("answerPassage", "day", "day: these two")
+        p.call("answerPassage", "day", "these")
+        p.call("answerPassage", "day", "day: these two")
+        check([r["quote"] for r in reps()] == ["day: these two", "these"], f"a second passage adds a draft, the first kept, none twice ({reps()})")
+        p.call("setAnswer", "day", 0, "yes, both")
+        p.call("setAnswer", "day", 1, "and why these?")
+        p.call("daySend", "anything else?")
+        sent = "anything else?\n\n> day: these two\nyes, both\n\n> these\nand why these?"
+        check(p.wait(lambda: json.loads(p.call("dayTurns"))[-2:-1] == ["student: " + sent], timeout=12) and reps() == [],
+              f"one send sends both answers, each under its passage, the box's words first; the drafts let go ({json.loads(p.call('dayTurns'))[-2:]})")
+        parts = json.loads(p.call("partsOf", sent))
+        check([(x["quote"], x["text"]) for x in parts] == [("", "anything else?"), ("day: these two", "yes, both"), ("these", "and why these?")],
+              f"…and it reads back as its parts, each answer with its passage ({parts})")
+        p.call("followPassage", "day", "day: these two")
+        check(p.wait(lambda: p.call("litPassage").endswith("|day")), f"a quote followed back lights the answer it came from ({p.call('litPassage')!r})")
         # One voice (slice 3): what the agent said on opening the page is a
         # turn in its place among the day's, answered in the box like any.
         st = json.loads((p.vault / "agents" / "longhand" / "daily" / f"{TODAY}.json").read_text())
@@ -1861,8 +1881,10 @@ def checks() -> int:
         st.setdefault("observations", []).append({"text": "Two things are due this week.", "trigger": "open",
                                                   "at": turns[1]["at"] if len(turns) > 1 and turns[1].get("at") else f"{TODAY}T00:00:01"})
         (p.vault / "agents" / "longhand" / "daily" / f"{TODAY}.json").write_text(json.dumps(st))
-        want = [[], [], ["Two things are due this week."], []] if len(turns) > 1 and turns[1].get("at") \
-            else [["Two things are due this week."], [], [], []]
+        # Before the first turn said after it (several may share a second).
+        o_at = st["observations"][-1]["at"]
+        place = next((k for k, x in enumerate(turns) if str(x.get("at") or "9") > o_at), len(turns))
+        want = [["Two things are due this week."] if k == place else [] for k in range(4)]
         check(p.wait(lambda: json.loads(p.call("dayOpenings")) == want, timeout=8),
               f"what was said on opening the page is a turn in its place, after the turns said by then ({p.call('dayOpenings')})")
         # "Everything": today's other places, folded to a line each, among
