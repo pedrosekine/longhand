@@ -550,7 +550,7 @@ def record(ledger: dict, props: list[dict], qs: list[dict], at: str, budget: boo
     new = []
     for item in props + qs:
         item = dict(item, id=ledger["next"], status="open", at=at)
-        ledger["next"] += 1
+        ledger["next"] += ledger.get("stride", 1)   # psync: each machine in its own slot
         ledger["items"].append(item)
         new.append(item)
     return new
@@ -744,7 +744,7 @@ def revise(ledger: dict, old: dict, new: dict, at: str) -> dict:
     for k in ("prompt", "model", "payload"):
         if k in old and k not in item:
             item[k] = old[k]
-    ledger["next"] += 1
+    ledger["next"] += ledger.get("stride", 1)   # psync: each machine in its own slot
     old["revised_to"] = item["id"]
     ledger["items"].append(item)
     return item
