@@ -1121,6 +1121,19 @@ def checks() -> int:
               and p.call("heldTurn") == "null",
               f"…the held turn let go of, never drawn twice ({p.call('chat')})")
         check(p.wait(lambda: p.call("answering") == "false"), "…and the thinking stops")
+        # Stopped mid-answer (2026-11-18, plan item 22's "stop"): "thinking"
+        # says how to stop it; Esc in the box ends the run, what was sent is
+        # back in the box, nothing is written, and Esc again backs out.
+        p.call("sendChat", "and the long version?")
+        check(p.call("answering") == "true" and "stops" in p.call("thinkingSays"),
+              f"thinking, and it says how to stop it ({p.call('thinkingSays')!r})")
+        p.call("chatBoxKey", 0x01000000)          # Esc in the box while it thinks
+        check(p.wait(lambda: p.call("answering") == "false", 2), "Esc in the box while it thinks stops it at once")
+        check(p.call("chatBoxText") == "and the long version?" and "back in the box" in p.call("hint"),
+              f"…what was sent is back in the box, and the page says so ({p.call('chatBoxText')!r}, {p.call('hint')!r})")
+        time.sleep(2.5)
+        check("and the long version?" not in p.call("chat"), f"…and nothing was written ({p.call('chat')})")
+        p.call("chatBoxClear")
 
         before = len(list((p.state / "longhand" / "payloads").glob("*"))) \
             if (p.state / "longhand" / "payloads").is_dir() else 0

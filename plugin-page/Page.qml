@@ -1208,6 +1208,56 @@ Item {
     root.giveBack("right", was, "right")
   }
 
+  // Stopping the agent mid-answer (2026-11-18, plan item 22's "stop"):
+  // Esc while it thinks, or a click on "thinking". The run ends (the runner
+  // takes SIGTERM as a stop: the model's process ended, the run logged as
+  // stopped, no turn written), or a message still queued is taken out; what
+  // was sent goes back in the box, to change and send again. `where`: the
+  // pane — "day" (the day's, a note's or a paper's chat), "margin" (a
+  // block's), "talk" (a task's or a proposal's, beside the dashboard).
+  property bool runnerStopAsked: false
+  property bool talkStopAsked: false
+  function agentBusy(where) {
+    if (where === "talk") return talkProc.running
+    var ids = where === "day" ? [root.roomHash] : [root.currentHash, root.currentRec]
+    ids = ids.filter(function (x) { return x !== "" })
+    var hit = function (h) { return String(h || "").split(",").some(function (x) { return ids.indexOf(x) >= 0 }) }
+    return (root.running && hit(root.runningHash)) || root.queued.some(function (q) { return hit(q.hash) })
+  }
+  function stopAgent(where) {
+    if (!root.agentBusy(where)) return false
+    var text = ""
+    if (where === "talk") {
+      text = root.pendingTalk ? root.pendingTalk.text : ""
+      root.talkStopAsked = true
+      talkProc.signal(15)
+    } else {
+      var ids = where === "day" ? [root.roomHash] : [root.currentHash, root.currentRec]
+      var hit = function (h) { return String(h || "").split(",").some(function (x) { return x !== "" && ids.indexOf(x) >= 0 }) }
+      root.queued = root.queued.filter(function (q) { return !hit(q.hash) })
+      if (root.running && hit(root.runningHash)) { root.runnerStopAsked = true; runner.signal(15) }
+      if (where === "day") { text = root.dayPending ? root.dayPending.text : ""; root.dayPending = null }
+      else {
+        text = root.pendingChat ? root.pendingChat.text : ""
+        root.pendingChat = null
+        root.sending = root.sending.filter(function (h) { return ids.indexOf(h) < 0 })
+        root.scheduleRepaint()
+      }
+    }
+    root.thinkHeld = ""
+    var field = where === "day" ? dayPane.dayFieldRef : margin.chatFieldRef
+    var back = text !== "" && field && String(field.text).trim() === ""
+    if (back) { field.text = text; field.cursorPosition = text.length }
+    root.showHint(back ? "stopped — what you wrote is back in the box" : "stopped")
+    root.used("stop", where)
+    return true
+  }
+  // "thinking" is seen for a moment at least, however soon a run ends: a
+  // message that failed in a second once looked as if it never went.
+  property string thinkHeld: ""
+  Timer { id: thinkHoldTimer; interval: 700; onTriggered: root.thinkHeld = "" }
+  function holdThinking(where) { root.thinkHeld = where; thinkHoldTimer.restart() }
+
   function sendDay(text) {
     var msg = String(text || "").trim()
     if (msg === "" || !root.dayCanSend) return false
@@ -1221,6 +1271,7 @@ Item {
     root.dayBlockText = ""
     root.flush()
     root.enqueue(cmd, root.roomHash)
+    root.holdThinking("day")
     root.used(root.noteRoom ? "note-talk" : "day", "send")
     return true
   }
@@ -1425,6 +1476,7 @@ Item {
       if (Sc.hit(event, "mentionClose")) { root.dayMention = null; return true }
     }
     if (root.anywhereKey(event)) return true
+    if (Sc.hit(event, "marginBack") && root.stopAgent("day")) return true
     if (root.paper.room && Sc.hit(event, "marginBack")) { root.paper.showList(); return true }
     if (Sc.hit(event, "marginBack")) { root.closeDay(); return true }
     if (Sc.hit(event, "chatSend")) { if (root.sendDay(dayPane.dayFieldRef.text)) dayPane.dayFieldRef.text = ""; return true }
@@ -2665,6 +2717,7 @@ Item {
     root.markSending([mark || hash])
     root.flush()
     root.enqueue([svc.runner, "chat", "--hash", hash, "--message", message, "--date", svc.noteDate], mark || hash)
+    root.holdThinking("margin")
   }
 
   // In order, each once (Queue.added).
@@ -4697,6 +4750,7 @@ Item {
     talkProc.command = root.talkToPlanner ? [svc.runner, "talk", "--id", String(root.talkId), "--message", msg]
       : [svc.runner, "chat", "--hash", c.hash, "--message", msg, "--date", c.date]
     talkProc.running = true
+    root.holdThinking("talk")
     root.used("talk", root.talkToPlanner ? "send" : "chat")
   }
 
@@ -4740,6 +4794,7 @@ Item {
   // The keys on the pinned proposal, in one function so they can be
   // driven without a keyboard (tests/page/run.py).
   function talkKey(e) {
+    if (Sc.hit(e, "marginBack") && root.stopAgent("talk")) return true
     if (Sc.hit(e, "marginBack")) { root.leaveTalk(); return true }
     if (root.talkCardFocus >= 0) {
       var n = root.talkCards.length
@@ -6862,7 +6917,9 @@ Item {
       else if (runner.command[1] === "chat") Qt.callLater(root.refreshProposals)
       if (root.runningHash === "note") noteTalkFile.reload()
       root.runningHash = ""
-      if (code !== 0) Qt.callLater(root.runnerFailed)
+      // Stopped on purpose: not a fault, and said already.
+      if (root.runnerStopAsked) { root.runnerStopAsked = false; runner.said = "" }
+      else if (code !== 0) Qt.callLater(root.runnerFailed)
       agent.reload()
       root.launchQueued()
       if (!root.running) root.doneSending()
@@ -7377,7 +7434,8 @@ Item {
       onStreamFinished: if (text.trim() !== "") {
         console.warn("longhand.page talk: " + text.trim())
         root.pendingTalk = null
-        root.showHint("the agent could not answer — " + Queue.failure(text))
+        if (root.talkStopAsked) root.talkStopAsked = false      // stopped on purpose: said already
+        else root.showHint("the agent could not answer — " + Queue.failure(text))
         root.refreshProposals()
       }
     }

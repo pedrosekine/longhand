@@ -23,6 +23,7 @@ BorderSurface {
   required property Item page
   readonly property var sheet: page.sheetItem
   property alias chatFieldRef: chatField
+  readonly property string thinkingText: thinking.text
   property alias marginKeysRef: marginKeys
 
   // Beside the note, on the block the cursor is in; or beside the
@@ -63,7 +64,8 @@ BorderSurface {
       if (page.copyChatSelection(event, null)) { event.accepted = true; return }
       if (page.anywhereKey(event)) { event.accepted = true; return }
       if (margin.talk) { if (page.talkKey(event)) event.accepted = true; return }
-      if (Sc.hit(event, "marginBack")) page.backToNote()
+      if (Sc.hit(event, "marginBack") && page.stopAgent(margin.talk ? "talk" : "margin")) {}
+      else if (Sc.hit(event, "marginBack")) page.backToNote()
       else if (Sc.hit(event, "marginUp")) page.moveMarginFocus(-1)
       else if (Sc.hit(event, "marginDown")) page.moveMarginFocus(1)
       else if (Sc.hit(event, "marginAccept")) page.acceptProposal(page.marginFocus)
@@ -356,9 +358,11 @@ BorderSurface {
         id: thinking
         property double since: 0
         width: parent.width
-        visible: margin.talk ? page.talking : page.answering
+        visible: margin.talk ? page.talking || page.thinkHeld === "talk" : page.answering || page.thinkHeld === "margin"
         textFormat: Text.PlainText
-        text: "thinking" + (thinking.elapsed >= 4 ? " · " + thinking.elapsed + "s" : "")
+        // How long, and how to stop it (2026-11-18): a click on it stops too.
+        text: "thinking" + (thinking.elapsed >= 2 ? " · " + thinking.elapsed + "s" : "")
+          + "  ·  " + page.keyName("marginBack") + " stops"
         property int elapsed: 0
         color: page.dim
         font.family: page.fontFamily
@@ -374,6 +378,11 @@ BorderSurface {
           repeat: true
           running: thinking.visible
           onTriggered: thinking.elapsed = Math.floor((Date.now() - thinking.since) / 1000)
+        }
+        MouseArea {
+          anchors.fill: parent
+          cursorShape: Qt.PointingHandCursor
+          onClicked: page.stopAgent(margin.talk ? "talk" : "margin")
         }
         SequentialAnimation on opacity {
           running: thinking.visible
@@ -422,6 +431,7 @@ BorderSurface {
         if (page.anywhereKey(event)) { event.accepted = true; return }
         if (margin.talk) {
           if (Sc.hit(event, "chatSend")) page.sendTalk()
+          else if (Sc.hit(event, "marginBack") && page.stopAgent("talk")) {}
           else if (Sc.hit(event, "marginBack")) page.leaveTalk()
           else if (Sc.hit(event, "marginUp") && text === "" && page.talkCards.length > 0) page.focusTalkCard(page.talkCards.length - 1)
           else if (Sc.hit(event, "marginUp") && text === "" && page.talkItem) { page.marginFocus = 0; marginKeys.forceActiveFocus() }
@@ -430,6 +440,7 @@ BorderSurface {
           return
         }
         if (Sc.hit(event, "chatSend")) page.sendChat()
+        else if (Sc.hit(event, "marginBack") && page.stopAgent("margin")) {}
         else if (Sc.hit(event, "marginBack")) page.backToNote()
         else if (Sc.hit(event, "marginUp") && text === "" && page.currentProposals.length > 0) page.moveMarginFocus(-1)
         else return

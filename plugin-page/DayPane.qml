@@ -613,9 +613,24 @@ BorderSurface {
 
       Text {
         id: dayThinking
-        visible: page.dayThinking
+        visible: page.dayThinking || page.thinkHeld === "day"
         textFormat: Text.PlainText
-        text: "thinking"
+        // How long, and how to stop it (2026-11-18): a click on it stops too.
+        property double since: 0
+        property int elapsed: 0
+        onVisibleChanged: { since = visible ? Date.now() : 0; elapsed = 0 }
+        Timer {
+          interval: 1000
+          repeat: true
+          running: dayThinking.visible
+          onTriggered: dayThinking.elapsed = Math.floor((Date.now() - dayThinking.since) / 1000)
+        }
+        MouseArea {
+          anchors.fill: parent
+          cursorShape: Qt.PointingHandCursor
+          onClicked: page.stopAgent("day")
+        }
+        text: "thinking" + (elapsed >= 2 ? " · " + elapsed + "s" : "") + "  ·  " + page.keyName("marginBack") + " stops"
         color: page.faint
         font.family: page.fontFamily
         font.styleName: page.fontStyle
