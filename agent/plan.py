@@ -11,8 +11,9 @@ due date, never one the person already declined; at most two questions.
 
 The ledger (proposals.json, beside the deadline store) keeps every proposal
 and question and what came of it — accepted, declined, answered,
-superseded by a later plan, or moot (the box got a date some other way, or
-is gone). Acceptance is counted from it; the next plan is told it.
+superseded by a later plan, moot (the box got a date some other way, or
+is gone), or expired (left unanswered EXPIRE_DAYS). Acceptance is counted
+from it; the next plan is told it.
 """
 from __future__ import annotations
 
@@ -52,6 +53,14 @@ def short_step(text) -> str:
 # before; 6 answered). A question or steps left this long unanswered may be
 # asked afresh; a do-date stands until its day has gone by.
 STANDING_DAYS = 7
+# What waits on the student is kept small (2026-11-18, the UX evaluation in
+# the vault, projects/longhand: 12–18 proposals a day, 9% acted on, 5% of
+# questions answered). Unasked, a course has at most OPEN_PER_COURSE items
+# waiting; one over it is not recorded, and comes back when there is room.
+# What has waited EXPIRE_DAYS unanswered goes quiet: the agent's word, never
+# the student's, so nothing of theirs is lost.
+OPEN_PER_COURSE = 3
+EXPIRE_DAYS = 14
 STALE_DAYS = 14              # a box this old, or gone quiet, may be proposed for dropping
 
 # The kinds of action (docs/agent.md, "Actions, and how far each may go"),
@@ -509,10 +518,12 @@ def waiting(ledger: dict, today: dt.date) -> list[dict]:
     return out
 
 
-def record(ledger: dict, props: list[dict], qs: list[dict], at: str) -> list[dict]:
+def record(ledger: dict, props: list[dict], qs: list[dict], at: str, budget: bool = True) -> list[dict]:
     """A new plan: what it proposes replaces what an earlier one left open
     about the same boxes (superseded) — unless that one keeps its place
-    (`stays`): then the new word on it is dropped. The rest stand."""
+    (`stays`): then the new word on it is dropped. The rest stand, within
+    the course's budget (`within_budget`) unless the student asked for it
+    in a conversation (`budget` False)."""
     today = dt.date.fromisoformat(at[:10])
     # A proposal the same as one still open keeps the one on screen (its row
     # and id stay put); a different one about the same thing replaces it,
@@ -527,6 +538,8 @@ def record(ledger: dict, props: list[dict], qs: list[dict], at: str) -> list[dic
     still = {norm(x.get("question", "")) for x in open_items(ledger) if x["kind"] == "question"}
     pending = {x["key"] for x in open_items(ledger) if x["kind"] == "question" and x.get("key") and stays(x, today)}
     qs = [q for q in qs if norm(q.get("question", "")) not in still and not (q.get("key") and q["key"] in pending)]
+    if budget:
+        props, qs = within_budget(ledger, props, qs)
     about = {ident(p) for p in props}
     asked = {q["key"] for q in qs if q["key"]}
     for x in open_items(ledger):
@@ -541,6 +554,47 @@ def record(ledger: dict, props: list[dict], qs: list[dict], at: str) -> list[dic
         ledger["items"].append(item)
         new.append(item)
     return new
+
+
+def within_budget(ledger: dict, props: list[dict], qs: list[dict]) -> tuple[list[dict], list[dict]]:
+    """Of a plan's proposals and questions, in its order, those that fit:
+    one that takes the place of an item already open about the same box
+    adds nothing; any other needs room in its course (OPEN_PER_COURSE)."""
+    waiting = [x for x in open_items(ledger) if not x.get("auto")]
+    count: dict[str, int] = {}
+    for x in waiting:
+        count[x.get("project") or ""] = count.get(x.get("project") or "", 0) + 1
+    standing = {ident(x) for x in waiting if x["kind"] != "question"}
+    asking = {x["key"] for x in waiting if x["kind"] == "question" and x.get("key")}
+    keep_p, keep_q = [], []
+    for item, keep in [(p, keep_p) for p in props] + [(q, keep_q) for q in qs]:
+        replaces = (item["kind"] != "question" and ident(item) in standing) or \
+            (item["kind"] == "question" and item.get("key") and item["key"] in asking)
+        course = item.get("project") or ""
+        if not replaces:
+            if count.get(course, 0) >= OPEN_PER_COURSE:
+                continue
+            count[course] = count.get(course, 0) + 1
+        keep.append(item)
+    return keep_p, keep_q
+
+
+def expire(ledger: dict, at: str) -> int:
+    """What has waited EXPIRE_DAYS without an answer goes quiet: expired.
+    Not what the agent did on its own (told), which the page settles."""
+    today = dt.date.fromisoformat(at[:10])
+    n = 0
+    for x in open_items(ledger):
+        if x.get("auto"):
+            continue
+        try:
+            age = (today - dt.date.fromisoformat(str(x.get("at", ""))[:10])).days
+        except ValueError:
+            continue
+        if age >= EXPIRE_DAYS:
+            x["status"], x["resolved"] = "expired", at
+            n += 1
+    return n
 
 
 def _same(old: dict | None, new: dict) -> bool:
