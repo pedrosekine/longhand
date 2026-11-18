@@ -400,6 +400,7 @@ ShellRoot {
     function dayTurns(): string { return JSON.stringify(page.dayTurns.map(function (t) { return t.role + ": " + t.text })) }
     function dayBlockText(): string { return page.dayBlockText }
     function dayChips(): string { return JSON.stringify(page.dayChips) }
+    function dayOpenings(): string { return JSON.stringify([0, 1, 2, 3].map(function (i) { return page.openingBefore(i).map(function (o) { return o.text }) })) }
     function convoRows(): string { return JSON.stringify(page.convoRows.map(function (r) { return { key: r.key, head: r.day ? r.day.label : page.sayFold(r.group) } })) }
     function dayFoldKey(): string { return page.dayFoldKey }
     function elsewhere(): string { return JSON.stringify({ want: page.elsewhereWant, turns: page.elsewhereTurns, open: page.elsewhereOpen, chip: page.aboutChip }) }

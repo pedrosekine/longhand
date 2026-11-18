@@ -289,9 +289,14 @@ def main() -> int:
         agent("chat", "--hash", h2, "--message", words)
         return json.loads(sorted(stub.glob("call-*.json"))[-1].read_text())["argv"][-1]
 
-    first = chat("and the syllabus?")
-    check("Documents filed for #intsem since" in first and doc in first, "a follow-up carries the index the session has not seen")
-    check("Documents filed" not in chat("thanks"), "…and only once")
+    # (Since slice 3 of "One conversation", 2026-11-18, a chat is the one
+    # agent's: its first message starts its own session, carrying the index.)
+    for f in stub.glob("call-*.json"):
+        f.unlink()
+    agent("chat", "--hash", h2, "--message", "and the syllabus?")
+    first = json.loads(sorted(stub.glob("call-*.json"))[-1].read_text())["stdin"]
+    check("Documents filed for #intsem" in first and doc in first, "a chat's first message carries the course's index")
+    check("Documents filed" not in chat("thanks"), "…and a follow-up does not, while it is unchanged")
     pdf(pathlib.Path(docs[0]["path"]).with_name("2026-10-23 Syllabus.pdf"), "Syllabus")
     later = chat("now?")
     check("2026-10-23 Syllabus" in later and doc in later, "a document filed mid-conversation reaches it, with the index as it is now")

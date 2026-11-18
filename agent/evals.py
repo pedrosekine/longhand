@@ -275,6 +275,17 @@ def check_day(case: dict, reply: dict) -> tuple[list[dict], str]:
         out.append({"check": f"proposes {spec}", "pass": _matches(spec, props), "why": kept or "nothing kept"})
     for spec in r.get("no_propose") or []:
         out.append({"check": f"does not propose {spec}", "pass": not _matches(spec, props), "why": kept or "nothing kept"})
+    # A deadline moved in a chat about one block (2026-11-18, the one
+    # agent): `moves` lists the numbers it must move, `no_new_deadline` that
+    # it adds none — the card a move without its number would make.
+    raw = [p for p in reply.get("proposals") or [] if isinstance(p, dict) and p.get("kind") == "deadline"]
+    said = " | ".join(f"#{p.get('moves')} → {p.get('date') or p.get('when')}" if p.get("moves") else f"new: {p.get('title')}"
+                      for p in raw) or "no deadline card"
+    for n in r.get("moves") or []:
+        out.append({"check": f"moves deadline #{n}", "pass": any(str(p.get("moves") or "").lstrip("#") == str(n) for p in raw),
+                    "why": said})
+    if r.get("no_new_deadline"):
+        out.append({"check": "adds no new deadline", "pass": not any(not p.get("moves") for p in raw), "why": said})
     # Documents it asked to file (2026-11-17): `file` lists `tag:pattern`
     # (the pattern on the document's name), `no_file` that it files nothing.
     files = [f for f in reply.get("file") or [] if isinstance(f, dict)]

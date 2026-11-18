@@ -149,11 +149,20 @@ def main() -> int:
         row = (t.state_home / "longhand" / "cost.tsv").read_text().splitlines()[-1].split("\t")
         check(row[10] == "claude-code/claude-opus-5-5#high" and not row[11], "the ledger names the route's model")
 
-        print("-- a dive-in resumes the session")
+        # Since slice 3 of "One conversation" (2026-11-18) one agent answers
+        # every chat: the pass's session was the margin agent's, so the first
+        # message of the chat starts the one agent's own; the next resumes it.
+        print("-- a chat: the one agent's own session, then resumed")
+        r = t.agent("chat", "--hash", at_block["hash"], "--message", "what do you mean?", "--date", DAY)
+        check(r.returncode == 0, f"chat exits 0 ({r.stderr.strip()[-300:]})")
+        argv = json.loads((t.stub_dir / "claude_argv.json").read_text())["argv"]
+        day_defn = (ROOT / "agent" / "opencode" / "longhand-day.md").read_text()
+        check("--resume" not in argv and (flag(argv, "--system-prompt") or "x").strip() in day_defn,
+              "the first message of a chat is the one agent's, not the margin pass's session")
         r = t.agent("chat", "--hash", at_block["hash"], "--message", "- [ ] why do you think so?", "--date", DAY)
         check(r.returncode == 0, f"chat exits 0 ({r.stderr.strip()[-300:]})")
         argv = json.loads((t.stub_dir / "claude_argv.json").read_text())["argv"]
-        check(flag(argv, "--resume") == "cc-sess", "the same session")
+        check(flag(argv, "--resume") == "cc-sess", "the next resumes its session")
         check(argv[-2] == "--" and "- [ ] why do you think so?" in argv[-1], "the student's words, never a flag")
 
         print("-- a session another route began is not resumed")

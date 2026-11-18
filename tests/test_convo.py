@@ -28,6 +28,8 @@ The runner, against a stub model and a throwaway vault:
   `--files` lists them); `--view` (earlier days and today's places, a line each, with how to
   open them) and `--elsewhere` (what was said about a task outside its own
   chat)
+- slice 3: a block's chat is the one agent's; what planning proposed is a
+  line of "everything"
 """
 import datetime as dt
 import hashlib
@@ -288,6 +290,21 @@ def runner(tmp: pathlib.Path) -> None:
     check(("note", "open") in tg and tg[("note", "open")]["open"] == {"kind": "file", "rel": "human/Studies/open.md"}
           and tg[("note", "open")]["role"] == "agent" and not any(g["where"] == "day" for g in v["groups"]),
           f"…and today's other places, never the day's own chat ({sorted(tg)})")
+    # Slice 3, one voice: what planning proposed, still open, is a line of
+    # the conversation of its own, opening the dashboard's list.
+    led_path = pathlib.Path(here["XDG_STATE_HOME"]) / "longhand" / "proposals.json"
+    led = json.loads(led_path.read_text())
+    led["items"] = [{"id": 1, "kind": "do-date", "key": key, "title": "write the intro", "date": str(today),
+                     "why": "w", "status": "open", "at": f"{today}T07:00:00"},
+                    {"id": 2, "kind": "drop", "key": key, "title": "x", "why": "w", "status": "open",
+                     "at": f"{today}T07:00:00", "from": "day"}]
+    led_path.write_text(json.dumps(led))
+    v2 = convo_("--view")
+    asks = [g for g in v2["groups"] if g["kind"] == "proposals"]
+    check(len(asks) == 1 and asks[0]["turns"] == 1 and asks[0]["open"] == {"kind": "asks"}
+          and "write the intro" in asks[0]["text"],
+          f"one voice: what planning proposed, still open, is a line of the conversation (not what a chat proposed) ({asks})")
+
     # "About this": what was said about a task outside its own chat.
     e = json.loads(agent("conversation", "--elsewhere", "--task", key, "--date", str(yday), "--hash", yh).stdout)
     said = [(t["where"], t["text"]) for t in e["turns"]]

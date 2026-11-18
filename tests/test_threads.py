@@ -1,6 +1,7 @@
 """A conversation through word edits, the runner's side: the page keeps it on
 the block's lines (threads.json); talking to it again tells the model what
-the block reads now, and the open pass does not take the reworded block for
+the block reads now (since 2026-11-18 the one agent answers, starting
+afresh from a session the margin's own agent began), and the open pass does not take the reworded block for
 a new one.
 
 Run: python3 tests/test_threads.py
@@ -36,7 +37,7 @@ args = sys.argv[1:]
 if args[:1] != ["run"]:
     sys.exit(0)
 n = len([f for f in os.listdir(d) if f.startswith("call-")])
-json.dump({"argv": args}, open(os.path.join(d, f"call-{n}.json"), "w"))
+json.dump({"argv": args, "stdin": sys.stdin.read()}, open(os.path.join(d, f"call-{n}.json"), "w"))
 reply = {"reply": "noted", "proposals": [], "suggestions": [], "knowledge": []}
 print(json.dumps({"type": "text", "sessionID": "ses_thr", "part": {"type": "text", "text": "```json\\n" + json.dumps(reply) + "\\n```"}}))
 """
@@ -83,10 +84,21 @@ def main() -> int:
     check("nothing new" in out and not list(stub.glob("call-*.json")),
           "the open pass does not take a reworded block, still carrying its conversation, for a new one")
 
+    # Since slice 3 of "One conversation" (2026-11-18) one agent answers
+    # every chat: a session the margin's own agent began is not its own, so
+    # the first message starts afresh, carrying the chat so far and the
+    # block as it reads now; the next carries on that session.
     agent("chat", "--hash", rec, "--message", "and in winter?")
+    first = json.loads(sorted(stub.glob("call-*.json"))[-1].read_text())
+    check("--session" not in first["argv"] and "--agent" in first["argv"]
+          and first["argv"][first["argv"].index("--agent") + 1] == "longhand-day",
+          "the one agent answers a block's chat, not going on with the margin agent's session")
+    check("# This chat so far" in first["stdin"] and "you: By when?" in first["stdin"]
+          and f"> {now}" in first["stdin"], "…carrying the chat so far and the block as it reads now")
+    agent("chat", "--hash", rec, "--message", "and a bike?")
     call = json.loads(sorted(stub.glob("call-*.json"))[-1].read_text())["argv"]
-    check("--session" in call and "ses_old" in call, "talking to it again carries on the same session")
-    check(f"The block now reads:\n\n{now}" in call[-1], "…telling the model what the block reads now")
+    check("--session" in call and "ses_thr" in call, "talking to it again carries on its own session")
+    check(f"# The block now reads\n\n> {now}" in call[-1], "…telling the model what the block reads now")
 
     print("PASS" if failures == 0 else f"{failures} FAILED")
     return 1 if failures else 0

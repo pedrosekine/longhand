@@ -1221,6 +1221,7 @@ Item {
     return out
   }
   function sayFold(g) {
+    if (g.kind === "proposals") return "proposals · " + g.name + " · " + g.turns + " waiting"
     return (g.kind ? g.kind + " · " : "") + (g.name || "…") + " · " + g.turns + (g.turns === 1 ? " turn" : " turns")
   }
   function sayFoldLast(g) { return g.text ? (g.role === "agent" ? "◇ " : "you: ") + g.text : "" }
@@ -1244,6 +1245,12 @@ Item {
     if (!o || !o.kind) { root.showHint("nothing to open for this"); return }
     root.used("view", "about-" + o.kind)
     root.dayFoldKey = ""
+    // What planning proposed: settled where it is listed, the dashboard.
+    if (o.kind === "asks") {
+      if (!root.dashOpen) root.toggleDash()
+      root.clickAgentChip()
+      return
+    }
     if (o.kind === "task") {
       var t = null
       for (var i = 0; i < root.tasks.length && !t; i++) if (root.tasks[i].key === o.key) t = root.tasks[i]
@@ -1354,8 +1361,23 @@ Item {
   readonly property var dayOpening: {
     if (root.noteRoom) return []
     var obs = agent.state && agent.state.observations ? agent.state.observations : []
-    return obs.filter(function (o) { return o && o.text && o.trigger === "open" }).map(function (o) { return o.text })
+    return obs.filter(function (o) { return o && o.text && o.trigger === "open" }).map(function (o) { return { text: o.text, at: String(o.at || "") } })
   }
+  // What the agent said unasked on opening the page, in its place among
+  // the day's turns (slice 3 of "One conversation": one voice, every word of
+  // it a turn to answer): before turn `i`, after the one before it; `i`
+  // past the last, those said since.
+  function openingBefore(i) {
+    var turns = root.dayTurns
+    // Each goes before the first turn said after it (a turn not yet
+    // written, no time: after everything), so each is shown once.
+    return root.dayOpening.filter(function (o) {
+      var at = turns.length
+      for (var k = 0; k < turns.length; k++) if (String(turns[k].at || "9") > o.at) { at = k; break }
+      return at === i
+    })
+  }
+
   readonly property string roomHash: root.noteRoom ? "note" : "day"
   readonly property bool dayThinking: root.runningHash === root.roomHash
     || root.queued.some(function (q) { return q.hash === root.roomHash })

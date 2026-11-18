@@ -367,7 +367,11 @@ def main() -> int:
         rec = json.loads(st.read_text())["blocks"][q]
         check(r.returncode == 0 and [c["role"] for c in rec.get("chat", [])] == ["student", "agent"],
               f"a chat on the ticked box continues its conversation ({r.stderr.strip()})")
-        check("The block now reads:\\n\\n- [x] should I buy a scooter?" in sent, "…telling the agent it is ticked now")
+        # The one agent answers (slice 3 of "One conversation"): its first
+        # message is a fresh session, the block quoted as it reads now.
+        sent = (t.stub_dir / "last_payload.md").read_text()
+        check("> - [x] should I buy a scooter?" in sent and "# This chat so far" in sent,
+              "…telling the agent it is ticked now, with the chat so far")
         t.note.write_text(NOTE)
 
         # 9. tasks: open checkboxes across days, today recent, old collapsed
