@@ -511,6 +511,8 @@ ShellRoot {
     // A key in the margin's chat box, through its own handler (Esc: 0x01000000).
     function chatBoxKey(key: int): void { page.marginItem.chatFieldRef.keyPressed({ key: key, modifiers: 0, text: "", accepted: false }) }
     function chatBoxText(): string { return page.marginItem.chatFieldRef.text }
+    function checkin(): string { return JSON.stringify({ due: page.checkinDue, view: page.settingsOpen ? page.settingsView : "", answers: page.checkinAnswers, center: page.centerView }) }
+    function checkinKey(key: int): bool { return page.checkinKey({ key: key, modifiers: 0, text: "" }) }
     function chatBoxClear(): void { page.marginItem.chatFieldRef.text = "" }
     function clickStop(): void { page.marginItem.chatFieldRef.stop() }
     function stopShown(): string { var f = page.marginItem.chatFieldRef; return JSON.stringify({ square: f.busy, placeholder: f.placeholderText }) }

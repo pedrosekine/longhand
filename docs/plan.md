@@ -1107,6 +1107,21 @@ this list, with *Open, in order* above. Each says why it waits.
 No work unless they bite; each says what would tell. The first four came
 from 2026-09/10 and still stand.
 
+- **How Longhand feels, once a week** (built 2026-11-18, the UX
+  evaluation's F7: two ratings in five weeks, so nothing said whether the
+  student was satisfied). The short User Experience Questionnaire (UEQ-S,
+  Schrepp et al. 2017): eight pairs of words, seven steps each, scored
+  -3..+3 as practical (the first four) and pleasant (the last four).
+  `agent/checkin.py`, `longhand-agent checkin`, `CheckinSheet.qml`
+  (Settings' fourth view). Never a pop-up: the dashboard says it is due in
+  one quiet line, `F` or a click opens it, Settings has it too; skipping
+  is the week's answer. Each machine writes a log of its own in the vault
+  (`agents/longhand/checkins/<host>.jsonl`). The weeks so far are shown
+  beside the agent's share of its proposals acted on that week (F1's
+  measure). `tests/test_checkin.py`, a live check in `tests/page/run.py`,
+  `tests/page/shots.py --scene checkin`. *What would tell:* is it
+  answered most weeks, or skipped; and do the two numbers move with what
+  is built.
 - **A calmer dashboard** (built 2026-11-18, the UX evaluation's F4 and F5;
   before and after in the vault, `projects/longhand/ux-evidence/`, from
   `tests/page/shots.py --scene calm --order date`). By day, what was closed
