@@ -8,8 +8,8 @@ import qs.Commons
 // was said somewhere else than the pane is, where and when — "about this"
 // is every turn about the thing, read from the one conversation's log, not
 // only this place's own. Then the words (ChatTurn), and under an answer
-// what it proposed that local code did not offer. Cards, ratings and what it
-// read stay with the pane: each acts on its own place's record.
+// what it proposed that local code did not offer, and what it looked up to
+// answer. Cards and ratings stay with the pane: each acts on its own place.
 Column {
   id: turn
   required property Item page
@@ -63,6 +63,19 @@ Column {
     text: turn.t.role !== "agent" ? ""
       : turn.t.settled === "accept" ? "◇ settled: accepted" : turn.t.settled === "decline" ? "◇ settled: declined"
       : turn.t.revised ? "◇ revised the proposal" : ""
+    color: page.faint
+    font.family: page.fontFamily
+    font.styleName: page.fontStyle
+    font.pixelSize: page.fs(Style.font.caption)
+  }
+  // What it looked up to answer (slice 5: searched, read, a course's
+  // document), and what it filed: under every answer, in every pane.
+  Text {
+    visible: text !== ""
+    width: parent.width
+    textFormat: Text.PlainText
+    wrapMode: Text.WordWrap
+    text: turn.t.role === "agent" && !turn.away ? page.sayFetched(turn.t) : ""
     color: page.faint
     font.family: page.fontFamily
     font.styleName: page.fontStyle

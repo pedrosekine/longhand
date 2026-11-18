@@ -3043,6 +3043,7 @@ def checks() -> int:
         p.call("dashKey", KEY_2, CTRL)
         check(p.wait(lambda: panes()["center"] == "dash" and panes()["right"] == "day" and panes()["here"] == "center", 2),
               f"the dashboard, the day beside it, the keys on the rows ({panes()})")
+        p.wait(lambda: any(r.get("text") == "write the intro" for r in json.loads(p.call("dashRows"))), 8)   # the rows read, not raced
         p.call("dashFocus", next(n for n, r in enumerate(json.loads(p.call("dashRows"))) if r.get("text") == "write the intro"))
         check(p.call("dashKey", KEY_3, CTRL) == "true" and panes()["here"] == "right" and panes()["right"] == "day",
               f"Ctrl+3 from the dashboard: the keys to the day beside it ({panes()})")
