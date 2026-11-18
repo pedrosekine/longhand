@@ -257,6 +257,7 @@ var actions = [
   // The course strip above the list (2026-11-03): ↑ from the first row
   // climbs onto it. Its ⌕ takes what is typed while the strip's cursor is
   // on it, as a box would; the rest of the strip is keys.
+  { id: "dashCheckin", group: "dash", places: ["dash"], does: "How Longhand feels this week: the one-minute check-in", keys: ["F"] },
   { id: "dashSearch", group: "dash", places: ["dash", "strip"], does: "Search the list: the strip's ⌕, typing (words, or a #tag)", keys: ["/"] },
   { id: "dashStrip", group: "dash", places: ["dash"], does: "The course strip, on the course picked", keys: ["#"] },
   { id: "dashCourse", group: "dash", places: ["dash", "strip"], does: "Only that course: the strip's first, second… (0: all)",

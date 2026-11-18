@@ -360,6 +360,29 @@ def scenes(m, p, out, which):
         p.call("switcherType", "de")
         shot("reach-2")
         p.call("switcherKey", 0x01000000, 0)
+    if which == "checkin":
+        # How Longhand feels, once a week (2026-11-18): two weeks already
+        # answered, this one due — the dashboard's quiet line, then the
+        # check-in half answered.
+        logs = p.vault / "agents" / "longhand" / "checkins"
+        logs.mkdir(parents=True, exist_ok=True)
+        d0 = dt.date.today()
+        wk = lambda n: "%d-W%02d" % (d0 - dt.timedelta(weeks=n)).isocalendar()[:2]  # noqa: E731
+        (logs / "air.jsonl").write_text(
+            json.dumps({"week": wk(2), "at": "", "host": "air", "skipped": False, "answers": [5, 4, 4, 5, 4, 5, 6, 5]}) + "\n"
+            + json.dumps({"week": wk(1), "at": "", "host": "air", "skipped": False, "answers": [5, 5, 4, 4, 5, 5, 6, 6]}) + "\n")
+        p.call("dash")
+        p.wait(lambda: json.loads(p.call("checkin"))["due"], 8)
+        time.sleep(1)
+        shot("checkin-0")
+        p.call("dashKey", 0x46, 0)          # F
+        time.sleep(0.8)
+        for k in "665":
+            p.call("checkinKey", ord(k))
+        time.sleep(0.5)
+        shot("checkin-1")
+        p.call("checkinKey", 0x01000000)    # Esc
+        p.call("dash")
     if which == "stop":
         # Stopping the agent mid-answer (2026-11-18): a task's chat, beside
         # the dashboard, while it thinks; then Esc, the words back in the box.
@@ -401,7 +424,7 @@ def scenes(m, p, out, which):
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("out", type=pathlib.Path)
-    ap.add_argument("--scene", default="all", choices=["all", "dashboard", "note", "day", "keys", "chat", "project", "acronyms", "answers", "reach", "calm", "stop"])
+    ap.add_argument("--scene", default="all", choices=["all", "dashboard", "note", "day", "keys", "chat", "project", "acronyms", "answers", "reach", "calm", "stop", "checkin"])
     ap.add_argument("--order", default="ask", choices=["ask", "course", "date"])
     ap.add_argument("--root", type=pathlib.Path, default=HERE.parent.parent)
     ap.add_argument("--env", action="append", default=[])

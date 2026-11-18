@@ -142,6 +142,7 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | Export its section as a PDF, named after it (it stays open) | `Ctrl+Shift+E` | in the dashboard |
 | Take the last tick back | `Ctrl+Z` | in the dashboard |
 | Back to the note | `Esc` | in the dashboard |
+| How Longhand feels this week: the one-minute check-in | `f` | in the dashboard |
 | Search the list: the strip's ⌕, typing (words, or a #tag) | `/` | in the dashboard, on the dashboard's course strip |
 | The course strip, on the course picked | `#` | in the dashboard |
 | Only that course: the strip's first, second… (0: all) | `1` · `2` · `3` · `4` · `5` · `6` · `7` · `8` · `9` | in the dashboard, on the dashboard's course strip |

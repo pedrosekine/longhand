@@ -221,7 +221,7 @@ if [ "$1" = projects ]; then
   exit $rc
 fi
 case "$1" in
-  accept|projects|project|project-page|sections|next|dated|tasks|box|timetable|plan|proposals|proposal|talk|thread|rate|notebook|autonomy|day|search|horizon|note|export) exec "{ROOT}/agent/longhand-agent" "$@" ;;
+  accept|projects|project|project-page|sections|next|dated|tasks|box|timetable|plan|proposals|proposal|talk|thread|rate|notebook|autonomy|day|search|horizon|note|export|checkin) exec "{ROOT}/agent/longhand-agent" "$@" ;;
   run) sleep 2; exit 0 ;;
   chat) sleep 2; exec python3 "{chatstub}" "{self.vault}/agents/longhand/daily" "$@" ;;
 esac
@@ -394,6 +394,28 @@ def theme_switch() -> None:
         # the same colour, never another one.
         check(len(set(heads)) == 4 and delta_e(heads[0], want) < 25,
               f"…and the new theme's accent leads the heading ramp ({','.join(heads)}, {delta_e(heads[0], want):.0f} ΔE off {want})")
+
+        # How Longhand feels, once a week (2026-11-18): the dashboard says it
+        # is due, F opens it, the keys answer it, Enter keeps it, and the
+        # keys are back on the list; the week is answered in the vault.
+        ci = lambda: json.loads(p.call("checkin"))  # noqa: E731
+        p.call("closePanes")
+        if json.loads(p.call("panes"))["center"] != "dash":
+            p.call("dash")
+        check(p.wait(lambda: ci()["due"], 6), "the week's check-in is due, said on the dashboard")
+        p.call("dashKey", 0x46, 0)                      # F
+        check(p.wait(lambda: ci()["view"] == "checkin", 2), f"F opens it ({ci()})")
+        p.call("checkinKey", 0x01000004)                # Enter, nothing answered
+        check(ci()["view"] == "checkin" and "8 lines to go" in p.call("hint"), f"…Enter with lines left says so ({p.call('hint')!r})")
+        for k in "66564565":
+            p.call("checkinKey", ord(k))
+        check(ci()["answers"] == [6, 6, 5, 6, 4, 5, 6, 5], f"…a digit answers a line and moves on ({ci()['answers']})")
+        p.call("checkinKey", 0x01000004)                # Enter
+        check(p.wait(lambda: not ci()["due"] and ci()["view"] == "", 4) and ci()["center"] == "dash",
+              f"…Enter keeps the week, and the keys are back on the dashboard ({ci()})")
+        logs = list((p.vault / "agents" / "longhand" / "checkins").glob("*.jsonl"))
+        check(len(logs) == 1 and '"answers": [6, 6, 5, 6, 4, 5, 6, 5]' in logs[0].read_text(),
+              "…kept in this machine's log in the vault")
     finally:
         p.close()
 

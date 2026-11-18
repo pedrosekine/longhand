@@ -68,6 +68,7 @@ import blocks as blocklib  # noqa: E402
 import lifespan  # noqa: E402
 import plan as planlib  # noqa: E402
 import psync  # noqa: E402
+import checkin as checkinlib  # noqa: E402
 import evals as evallib  # noqa: E402
 import notebook as nb  # noqa: E402
 import documents as doclib  # noqa: E402
@@ -3199,6 +3200,29 @@ def cmd_documents(cfg: dict, args) -> int:
     return 0
 
 
+def cmd_checkin(cfg: dict, args) -> int:
+    """How Longhand feels this week (agent/checkin.py): with no answers,
+    whether the week is due and the trend; `--answers 1..7,…` or `--skip`
+    answers it."""
+    folder = Path(cfg["vault"]) / cfg.get("agentDir", "agents/longhand") / "checkins"
+    today = dt.date.today()
+    if args.answers or args.skip:
+        try:
+            answers = [int(x) for x in args.answers.split(",")] if args.answers else None
+        except ValueError:
+            raise Fail("--answers: numbers 1..7, comma-separated")
+        try:
+            e = checkinlib.save(folder, psync.dsync.host_name(), today, dt.datetime.now().isoformat(timespec="seconds"),
+                                answers, bool(args.skip))
+        except ValueError as err:
+            raise Fail(f"--answers: {err}")
+        print(json.dumps(e, ensure_ascii=False))
+        return 0
+    ledger = planlib.load_ledger(PROPOSALS)
+    print(json.dumps(checkinlib.status(folder, today, ledger["items"]), ensure_ascii=False))
+    return 0
+
+
 def proposal_logs(cfg: dict) -> "psync.Logs | None":
     """The proposal logs in the vault, unless `shareProposals` is false or
     there is no vault to share through."""
@@ -5309,6 +5333,9 @@ def main(argv: list[str]) -> int:
         p.add_argument("--trigger", required=True, choices=TRIGGERS)
         p.add_argument("--hash", default="")
         p.add_argument("--date", default="")
+    p = sub.add_parser("checkin")
+    p.add_argument("--answers", default="", help="eight steps 1..7, comma-separated")
+    p.add_argument("--skip", action="store_true")
     p = sub.add_parser("chat")
     p.add_argument("--hash", required=True)
     p.add_argument("--message", required=True)
@@ -5442,7 +5469,7 @@ def main(argv: list[str]) -> int:
         return {"run": cmd_run, "chat": cmd_chat, "ack": cmd_ack, "accept": cmd_accept, "tasks": cmd_tasks, "sections": cmd_sections, "project-page": cmd_project_page, "week": cmd_week,
                 "next": cmd_next, "dated": cmd_dated, "box": cmd_box, "rate": cmd_rate, "eval": cmd_eval, "review": cmd_review, "plan": cmd_plan, "proposals": cmd_proposals, "proposal": cmd_proposal, "talk": cmd_talk, "thread": cmd_thread, "timetable": cmd_timetable, "notebook": cmd_notebook, "documents": cmd_documents, "day": cmd_day, "search": cmd_search, "horizon": cmd_horizon, "note": cmd_note, "autonomy": cmd_autonomy, "dismiss": cmd_dismiss, "curriculum": cmd_curriculum,
                 "context": cmd_context, "state": cmd_state, "install": cmd_install, "stats": cmd_stats,
-                "projects": cmd_projects, "project": cmd_project, "export": cmd_export}[args.cmd](cfg, args)
+                "projects": cmd_projects, "project": cmd_project, "export": cmd_export, "checkin": cmd_checkin}[args.cmd](cfg, args)
     except Fail as e:
         print(f"longhand-agent: {e}", file=sys.stderr)
         return 2

@@ -414,6 +414,37 @@ BorderSurface {
             }
           }
         }
+        // How it feels, once a week (2026-11-18): this week's answer, and
+        // the check-in itself.
+        SettingRow {
+          page: settingsSheet.page
+          kind: "checkin"
+          onChosen: settingsField.forceActiveFocus()
+          Text {
+            textFormat: Text.PlainText
+            text: page.sayCheckin()
+            color: page.dim
+            font.family: page.fontFamily
+            font.styleName: page.fontStyle
+            font.pixelSize: page.fs(Style.font.bodySmall)
+          }
+          Text {
+            textFormat: Text.PlainText
+            text: "how it feels"
+            color: feelArea.containsMouse && page.handOn ? page.accent : page.faint
+            font.family: page.fontFamily
+            font.styleName: page.fontStyle
+            font.pixelSize: page.fs(Style.font.bodySmall)
+            MouseArea {
+              id: feelArea
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: page.openCheckin(false)
+              Tip { host: page; shown: parent.containsMouse; text: page.tip("How Longhand feels: eight answers, once a week, and the weeks so far", "settingsChange") }
+            }
+          }
+        }
         Text {
           visible: !!page.agentChecks && page.agentChecks.latest_review !== ""
           textFormat: Text.PlainText

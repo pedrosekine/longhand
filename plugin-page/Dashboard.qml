@@ -459,6 +459,30 @@ BorderSurface {
           font.pixelSize: page.fs(Style.font.caption)
         }
 
+        // Once a week, how Longhand feels (2026-11-18): said here, quietly,
+        // never asked in a pop-up; F or a click opens it.
+        Text {
+          visible: page.checkinDue
+          x: page.sp(8)
+          width: parent.width - page.sp(8)
+          elide: Text.ElideRight
+          textFormat: Text.PlainText
+          text: "How does Longhand feel this week?  A minute, eight answers  ·  " + page.keyName("dashCheckin")
+          color: checkinArea.containsMouse && page.handOn ? page.accent : page.faint
+          font.family: page.fontFamily
+          font.styleName: page.fontStyle
+          font.pixelSize: page.fs(Style.font.caption)
+          MouseArea {
+            id: checkinArea
+            anchors.left: parent.left
+            width: parent.implicitWidth
+            height: parent.height
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: page.openCheckin(true)
+          }
+        }
+
         Rectangle {
           visible: page.stripOpen
           width: parent.width

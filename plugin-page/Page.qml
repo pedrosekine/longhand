@@ -2156,6 +2156,7 @@ Item {
       if (sv === "notebook") (root.notebookCorrecting ? notebookSheet.notebookFieldRef : notebookSheet.notebookKeysRef).forceActiveFocus()
       else if (sv === "autonomy") autonomySheet.autonomyKeysRef.forceActiveFocus()
       else if (sv === "search") searchSheet.searchKeysRef.forceActiveFocus()
+      else if (sv === "checkin") checkinSheet.checkinKeysRef.forceActiveFocus()
       else settingsSheet.settingsFieldRef.forceActiveFocus()
     } else if (v === "dash") (root.dashWhenFor ? dash.dashWhenFieldRef : dash.dashKeysRef).forceActiveFocus()
     else if (root.searchOpen) searchField.forceActiveFocus()
@@ -2443,7 +2444,7 @@ Item {
     if (v === "dash") return dash
     if (v === "keys") return keysSheet
     if (v === "settings") return root.settingsView === "notebook" ? notebookSheet : root.settingsView === "autonomy" ? autonomySheet
-      : root.settingsView === "search" ? searchSheet : settingsSheet
+      : root.settingsView === "search" ? searchSheet : root.settingsView === "checkin" ? checkinSheet : settingsSheet
     return sheet
   }
 
@@ -3112,6 +3113,7 @@ Item {
       root.loadAutonomy()
       root.loadSearchFolders()
       root.loadHorizon()
+      root.loadCheckin()
       if (!agentChecksProc.running) {
         agentChecksProc.command = [svc.runner, "eval", "status", "--json"]
         agentChecksProc.running = true
@@ -3128,7 +3130,7 @@ Item {
   // three sheets each had a Ctrl letter of their own until then. The field
   // that adds a calendar is a row too: keys type into it while it is
   // picked, and typing from any row picks it.
-  readonly property var settingsKinds: ["field", "notebook", "autonomy", "search", "sound", "pointer"]
+  readonly property var settingsKinds: ["field", "notebook", "autonomy", "search", "checkin", "sound", "pointer"]
   readonly property int calendarCount: root.settingsState && root.settingsState.configured ? root.settingsState.calendars.length : 0
   property int settingsAsking: -1      // the calendar Del asked about, until Enter or Esc
   function settingsAt(kind) { return root.calendarCount + root.settingsKinds.indexOf(kind) }
@@ -3143,6 +3145,7 @@ Item {
     else if (kind === "notebook") root.openNotebook()
     else if (kind === "autonomy") root.openAutonomy()
     else if (kind === "search") root.openSearchFolders()
+    else if (kind === "checkin") root.openCheckin(false)
     else if (kind === "sound") root.toggleTickSound()
     else if (kind === "pointer") root.cyclePointer()
   }
@@ -3205,6 +3208,89 @@ Item {
     if (autonomyProc.running || !svc.configured) return
     autonomyProc.command = [svc.runner, "autonomy"]
     autonomyProc.running = true
+  }
+
+  // How Longhand feels, once a week (2026-11-18, the UX evaluation's F7;
+  // agent/checkin.py, CheckinSheet.qml): never a pop-up — the dashboard
+  // says it is due, and F or a click opens it; Settings has it too.
+  property var checkinData: null            // `longhand-agent checkin`
+  property var checkinAnswers: [0, 0, 0, 0, 0, 0, 0, 0]
+  property int checkinFocus: 0
+  property bool checkinFromDash: false
+  readonly property int checkinLeft: root.checkinAnswers.filter(function (a) { return !a }).length
+  readonly property bool checkinDue: !!root.checkinData && root.checkinData.due
+  readonly property var checkinWeeks: root.checkinData ? root.checkinData.weeks.slice().reverse() : []
+  function loadCheckin() {
+    if (checkinProc.running) return
+    checkinProc.command = [svc.runner, "checkin"]
+    checkinProc.running = true
+  }
+  function openCheckin(fromDash) {
+    if (!root.settingsOpen) root.toggleSettings()
+    root.checkinFromDash = !!fromDash
+    root.settingsView = "checkin"
+    root.checkinAnswers = [0, 0, 0, 0, 0, 0, 0, 0]
+    root.checkinFocus = 0
+    root.used("checkin", fromDash ? "dash" : "settings")
+    root.loadCheckin()
+    Qt.callLater(checkinSheet.checkinKeysRef.forceActiveFocus)
+  }
+  function closeCheckin() {
+    if (root.checkinFromDash) { root.checkinFromDash = false; root.toggleSettings() }   // back where it came from
+    else root.closeNotebook()                                                           // to Settings' list
+  }
+  function setCheckin(i, step, advance) {
+    var a = root.checkinAnswers.slice()
+    a[i] = step
+    root.checkinAnswers = a
+    if (advance && i < a.length - 1) root.checkinFocus = i + 1
+  }
+  function checkinKey(event) {
+    if (root.anywhereKey(event)) return true
+    var seq = Sc.fromEvent(event)
+    var f = root.checkinFocus, n = root.checkinAnswers.length
+    if (seq === "Esc") { root.closeCheckin(); return true }
+    if (seq === "Up") { root.checkinFocus = Math.max(0, f - 1); return true }
+    if (seq === "Down") { root.checkinFocus = Math.min(n - 1, f + 1); return true }
+    if (seq === "Left" || seq === "Right") {
+      var cur = root.checkinAnswers[f] || 4
+      root.setCheckin(f, Math.max(1, Math.min(7, cur + (seq === "Left" ? -1 : 1))), false)
+      return true
+    }
+    if (/^[1-7]$/.test(seq)) { root.setCheckin(f, parseInt(seq, 10), true); return true }
+    if (seq === "Enter") { root.keepCheckin(); return true }
+    if (seq === "Del") { root.skipCheckin(); return true }
+    return false
+  }
+  function keepCheckin() {
+    if (root.checkinLeft > 0) {
+      root.checkinFocus = root.checkinAnswers.indexOf(0)
+      root.showHint(root.checkinLeft + (root.checkinLeft === 1 ? " line" : " lines") + " to go")
+      return
+    }
+    checkinSaveProc.command = [svc.runner, "checkin", "--answers", root.checkinAnswers.join(",")]
+    checkinSaveProc.kept = true
+    checkinSaveProc.running = true
+  }
+  function skipCheckin() {
+    checkinSaveProc.command = [svc.runner, "checkin", "--skip"]
+    checkinSaveProc.kept = false
+    checkinSaveProc.running = true
+  }
+  function signed(x) { return (x > 0 ? "+" : x < 0 ? "−" : "±") + Math.abs(x).toFixed(1) }
+  function sayCheckinWeek(w) {
+    var a = w.acted || {}
+    var agent = a.made > 0 ? "the agent: " + a.acted + " of " + a.made + " acted on (" + Math.round(a.share * 100) + "%)" : "the agent proposed nothing"
+    return w.week.replace("-W", " week ") + "    "
+      + (w.skipped ? "skipped" : "practical " + root.signed(w.pragmatic) + " · pleasant " + root.signed(w.hedonic))
+      + "    ·  " + agent
+  }
+  function sayCheckin() {
+    var d = root.checkinData
+    if (!d) return ""
+    var last = d.weeks.length > 0 ? d.weeks[d.weeks.length - 1] : null
+    return d.due ? "this week: not answered yet" + (last && !last.skipped ? " · last: practical " + root.signed(last.pragmatic) + ", pleasant " + root.signed(last.hedonic) : "")
+      : last.skipped ? "this week: skipped" : "this week: practical " + root.signed(last.pragmatic) + " · pleasant " + root.signed(last.hedonic)
   }
 
   function openAutonomy() {
@@ -3968,6 +4054,7 @@ Item {
   // what's-next panel the margin used to hold, because two surfaces for one
   // list is part of what made the list easy to ignore.
   function toggleDash() {
+    if (!root.dashOpen) root.loadCheckin()
     root.remember()
     var was = root.here
     if (!root.dashOpen) root.noteFrom("dash")
@@ -5405,6 +5492,7 @@ Item {
     if (root.stripAt >= 0) return root.stripKey(e)
     if (Sc.hit(e, "dashBack")) { root.toggleDash(); return true }
     if (Sc.hit(e, "dashSearch")) { root.enterStrip(0); return true }
+    if (Sc.hit(e, "dashCheckin")) { root.openCheckin(true); return true }
     if (Sc.hit(e, "dashStrip")) { root.enterStrip(root.lensChip()); return true }
     if (Sc.hit(e, "dashCourse")) { root.lensDigit(e); return true }
     if (Sc.hit(e, "dashAll")) { root.setLens([]); root.dashQuery = ""; return true }
@@ -7419,6 +7507,25 @@ Item {
   }
 
   Process {
+    id: checkinProc
+    stdout: StdioCollector {
+      onStreamFinished: { try { root.checkinData = JSON.parse(text) } catch (e) {} }
+    }
+  }
+
+  Process {
+    id: checkinSaveProc
+    property bool kept: false
+    stderr: StdioCollector { onStreamFinished: if (text.trim() !== "") root.showHint("not kept — " + Queue.failure(text)) }
+    onExited: function (code, status) {
+      if (code !== 0) return
+      root.showHint(checkinSaveProc.kept ? "kept — thank you; next week's is due Monday" : "skipped this week")
+      root.loadCheckin()
+      root.closeCheckin()
+    }
+  }
+
+  Process {
     id: talkProc
     stdout: StdioCollector {
       // The planner's answer is JSON (`talk`); the margin's is a line
@@ -7696,6 +7803,8 @@ Item {
 
     // What the agent may do: Settings' third view. (AutonomySheet.qml)
     AutonomySheet { id: autonomySheet; page: root }
+    // How it feels, once a week: Settings' fourth view. (CheckinSheet.qml)
+    CheckinSheet { id: checkinSheet; page: root }
 
     // What the agent may search: Settings' fourth view. (SearchSheet.qml)
     SearchSheet { id: searchSheet; page: root }
