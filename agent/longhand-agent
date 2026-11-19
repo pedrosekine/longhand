@@ -839,6 +839,8 @@ def session_fits(cfg: dict, session: str, env: dict | None = None) -> str:
         return ""
     if str(cfg.get("model") or "").startswith(CLAUDE_ROUTE):
         return session if claude_attachments(session, env) is not None else ""
+    if str(cfg.get("model") or "").startswith(CODEX_ROUTE):
+        return session if codex_rollout(cfg, session) is not None else ""
     return session if session.startswith("ses_") else ""
 
 
@@ -992,11 +994,262 @@ def run_claude(cfg: dict, paths: Paths, payload: str, session: str, message: str
     return out
 
 
+CODEX_ROUTE = "codex/"
+# `ultra` is left out: it is "maximum reasoning with automatic task
+# delegation", sub-agents, which the agent's rule has no room for.
+CODEX_EFFORTS = ("low", "medium", "high", "xhigh", "max")
+# Every Codex feature that hands the model a tool or more instructions. The
+# ones Codex cannot turn off (its conversation tools: ask or message the
+# user, list or wait for sub-agents) stay offered; a run that calls any tool
+# at all is dropped (`codex_check`).
+CODEX_FEATURES_OFF = ("shell_tool", "unified_exec", "code_mode", "code_mode_host", "apps", "plugins", "hooks",
+                      "memories", "image_generation", "browser_use", "browser_use_external", "in_app_browser",
+                      "computer_use", "multi_agent", "multi_agent_v2", "sleep_tool", "tool_suggest", "skill_search",
+                      "goals")
+# What Codex may add to a run besides the agent's instructions and the
+# student's words: its own notes on how it is running (a mode, the "root
+# agent" in a team of one). Anything else — AGENTS.md, skills, the
+# environment, permissions — fails the run.
+CODEX_CONTEXT_OK = ("<collaboration_mode>", "<multi_agent_role>", "<multi_agent_mode>")
+
+
+def codex_home(cfg: dict) -> Path:
+    """Longhand's own Codex folder (`CODEX_HOME`): its own sign-in, and no
+    AGENTS.md, memories, plugins, hooks or skills of the student's own
+    Codex, which ~/.codex carries into every run whatever the flags say
+    (found 2026-11-18)."""
+    return Path(os.path.expanduser(str(cfg.get("codexHome") or STATE_HOME / "codex")))
+
+
+def codex_rollout(cfg: dict, session: str) -> Path | None:
+    """The file Codex saved `session` in (sessions/YYYY/MM/DD/rollout-…-<id>.jsonl)."""
+    if not session or not re.fullmatch(r"[\w-]+", session):
+        return None
+    found = sorted((codex_home(cfg) / "sessions").glob(f"*/*/*/rollout-*-{session}.jsonl"))
+    return found[0] if found else None
+
+
+def codex_check(lines: list[str], instructions: str, message: str) -> str:
+    """What a Codex run carried or did beyond the agent's rule, read from the
+    lines its session file gained in this run; "" when nothing. The agent's
+    instructions as the base, Codex's own running notes, the student's words
+    once: anything else attached, or any tool called, is named."""
+    extra, calls, ours = [], [], 0
+    for line in lines:
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        p = ev.get("payload") if isinstance(ev, dict) else None
+        if not isinstance(p, dict):
+            continue
+        if ev.get("type") == "session_meta":
+            base = (p.get("base_instructions") or {}).get("text")
+            if base is not None and base.strip() != instructions.strip():
+                extra.append("Codex's own instructions")
+        if ev.get("type") != "response_item":
+            continue
+        kind = str(p.get("type") or "")
+        if kind.endswith("_call"):
+            calls.append(str(p.get("name") or kind))
+        if kind != "message" or p.get("role") not in ("developer", "user", "system"):
+            continue
+        for c in p.get("content") or []:
+            text = str((c or {}).get("text") or "").strip() if isinstance(c, dict) else ""
+            if p.get("role") == "user" and text == message.strip():
+                ours += 1
+            elif p.get("role") == "developer" and (text == instructions.strip() or text.startswith(CODEX_CONTEXT_OK)):
+                pass
+            else:
+                tag = re.match(r"#\s*(AGENTS\.md)|<([\w-]+)>", text)
+                extra.append(next((g for g in tag.groups() if g), "") if tag else text[:40] or "an empty message")
+    if calls:
+        return "Codex let the agent call tools, so the run was dropped: " + ", ".join(calls)
+    if extra:
+        return "Codex attached more than the payload, so the run was dropped: " + ", ".join(sorted(set(extra)))
+    if ours != 1:
+        return "Codex's session file does not show the student's words as sent, so the run was dropped"
+    return ""
+
+
+def run_codex(cfg: dict, paths: Paths, payload: str, session: str, message: str, env: dict | None) -> dict:
+    """One pass through the Codex CLI (`codex exec`) on the student's own
+    ChatGPT sign-in, made with unmodified Codex in Longhand's own Codex
+    folder (`codex_home`): Longhand never sees the sign-in, only whether
+    there is one.
+
+    The agent's rule: the agent's own instructions in place of Codex's
+    (`model_instructions_file`), every tool feature off, no web search, no
+    skills, environment or permission notes, a read-only sandbox, no user
+    config or rules, run from the agent's own empty directory. Codex cannot
+    turn off its conversation tools, so the flags are checked against the
+    session file Codex saves (`codex_check`): a run that called a tool, or
+    carried anything beyond its instructions, Codex's running notes and the
+    student's words, is failed and its words dropped.
+
+    Codex appends stdin to a new session's prompt but not to a resumed
+    one's, so the words and the payload travel together on stdin (`-`).
+    A ChatGPT sign-in costs nothing per token: the ledger says 0."""
+    name = cfg.get("agent", "longhand")
+    model, _, effort = cfg["model"][len(CODEX_ROUTE):].partition("#")
+    effort = effort or cfg.get("variant") or ""
+    if effort and effort not in CODEX_EFFORTS:
+        raise Fail(f"Codex has no effort {effort!r} (one of {', '.join(CODEX_EFFORTS)})")
+    home = codex_home(cfg)
+    # Codex will not sign in to a folder that does not exist yet.
+    home.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if not (home / "auth.json").exists():
+        raise Fail(f"Codex is not signed in for Longhand: run `CODEX_HOME={home} codex login` once")
+    instructions = instructions_of(name, cfg.get("_prompts"))
+    idir = home / "instructions"
+    idir.mkdir(parents=True, exist_ok=True)
+    ifile = idir / f"{name}-{hashlib.sha256(instructions.encode()).hexdigest()[:10]}.md"
+    if not ifile.exists():
+        tmp = ifile.with_name(f"{ifile.name}.{os.getpid()}.tmp")
+        tmp.write_text(instructions)
+        os.replace(tmp, ifile)
+
+    cmd = [cfg.get("codex", "codex"), "exec"] + (["resume"] if session else [])
+    cmd += ["--json", "--skip-git-repo-check", "--ignore-user-config", "--ignore-rules", "-m", model]
+    for f in CODEX_FEATURES_OFF:
+        cmd += ["--disable", f]
+    for k, v in (("sandbox_mode", '"read-only"'), ("web_search", '"disabled"'), ("project_doc_max_bytes", "0"),
+                 ("skills.include_instructions", "false"), ("include_permissions_instructions", "false"),
+                 ("include_environment_context", "false"), ("model_instructions_file", json.dumps(str(ifile)))):
+        cmd += ["-c", f"{k}={v}"]
+    if effort:
+        cmd += ["-c", f'model_reasoning_effort="{effort}"']
+    if session:
+        cmd.append(session)
+    cmd.append("-")
+    said = message.strip()
+    if payload:
+        said += "\n\n<stdin>\n" + payload.rstrip("\n") + "\n</stdin>"
+    rollout = codex_rollout(cfg, session) if session else None
+    seen = len(rollout.read_text(errors="replace").splitlines()) if rollout else 0
+    try:
+        proc = run_child(cmd, said, 600, str(paths.cwd), dict(env or os.environ, CODEX_HOME=str(home)))
+    except FileNotFoundError:
+        raise Fail(f"Codex not found ({cmd[0]})")
+    except subprocess.TimeoutExpired:
+        raise Fail("Codex timed out after 600s")
+
+    out = {"text": "", "session": "", "cost": 0.0,
+           "tokens": {"input": 0, "output": 0, "reasoning": 0, "total": 0},
+           "events": proc.stdout, "error": "",
+           "prompt": prompt_version(name, cfg.get("_prompts")), "model": model_of(cfg, name, cfg.get("_prompts"))}
+    texts, failed, last_error = [], "", ""
+    for line in proc.stdout.splitlines():
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(ev, dict):
+            continue
+        kind = ev.get("type")
+        if kind == "thread.started":
+            out["session"] = str(ev.get("thread_id") or "")
+        elif kind == "item.completed" and (ev.get("item") or {}).get("type") == "agent_message":
+            texts.append(str(ev["item"].get("text") or ""))
+        elif kind == "turn.completed":
+            u = ev.get("usage") or {}
+            tk = out["tokens"]
+            tk["input"] += int(u.get("input_tokens") or 0)
+            tk["output"] += int(u.get("output_tokens") or 0)
+            tk["reasoning"] += int(u.get("reasoning_output_tokens") or 0)
+            tk["total"] = tk["input"] + tk["output"]
+        elif kind == "turn.failed":
+            failed = str((ev.get("error") or {}).get("message") or "the turn failed")
+        elif kind == "error":
+            last_error = str(ev.get("message") or "")
+    if failed or (last_error and not texts):
+        out["error"] = "Codex: " + (failed or last_error)
+    elif proc.returncode != 0:
+        out["error"] = (proc.stderr or "").strip()[-2000:] or f"Codex exited {proc.returncode}"
+    # Refused or failed (a model it does not know, a session it cannot
+    # resume, a usage limit): nothing was said in it, so the chat keeps the
+    # session it had.
+    if out["error"]:
+        out["session"] = ""
+        return out
+    rollout = codex_rollout(cfg, out["session"])
+    if rollout is None:
+        out["error"] = "Codex saved no session file to check what it sent, so the run was dropped"
+        return out
+    broke = codex_check(rollout.read_text(errors="replace").splitlines()[seen:], instructions, said)
+    if broke:
+        out["error"] = broke
+        return out
+    out["text"] = "\n".join(texts)
+    if not out["text"]:
+        out["error"] = ((proc.stderr or "") + (proc.stdout or "")).strip()[-2000:] or "Codex said nothing"
+    return out
+
+
+# The fallback (2026-11-19, the student: "add opus as the fallback
+# model"): `fallbackModel` answers a pass the configured model could not —
+# a usage limit, a sign-in gone, a run dropped for breaking the agent's
+# rule — and the model that failed is passed over for FALLBACK_MINUTES, so
+# the passes after it do not wait on it first. Evals never fall back: they
+# test the model they name.
+FALLBACK_STATE = STATE_HOME / "fallback.json"
+FALLBACK_MINUTES = 30
+
+
+def fallback_down(cfg: dict) -> dict:
+    """The model passed over now, as {model, until, error}; {} when none."""
+    try:
+        down = json.loads(FALLBACK_STATE.read_text())
+        if dt.datetime.fromisoformat(down["until"]) > dt.datetime.now():
+            return down
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    return {}
+
+
+def routed(cfg: dict) -> dict:
+    """The config as the passes run it: a model passed over (`fallback_down`)
+    replaced by the fallback, for the margin and the planner alike."""
+    fb, down = cfg.get("fallbackModel") or "", fallback_down(cfg)
+    if not fb or not down:
+        return cfg
+    out = dict(cfg)
+    for model, variant in (("model", "variant"), ("planModel", "planVariant")):
+        if out.get(model) and model_of(dict(cfg, model=cfg[model], variant=cfg.get(variant, "")), "") == down["model"]:
+            out[model], out[variant] = fb, ""
+    return out
+
+
 def run_model(cfg: dict, paths: Paths, payload: str, session: str = "", message: str = "Context follows on stdin.",
-              env: dict | None = None) -> dict:
+              env: dict | None = None, fresh=None) -> dict:
     """One pass (`_run_model`); a pass the student stopped says so, its
-    words unused."""
-    out = _run_model(cfg, paths, payload, session, message, env)
+    words unused. A pass that failed is answered by `fallbackModel` when
+    the config names one: afresh, since no route resumes another's session
+    — so a resumed pass falls back only when `fresh` can give the whole
+    context again, as (payload, message), logged before it is sent."""
+    fb = cfg.get("fallbackModel") or ""
+    try:
+        out = _run_model(cfg, paths, payload, session, message, env)
+    except Fail as e:
+        if not fb or _STOP["asked"]:
+            raise
+        out = {"text": "", "session": "", "cost": 0.0, "tokens": {"input": 0, "output": 0, "reasoning": 0, "total": 0},
+               "events": "", "error": str(e), "model": model_of(cfg, cfg.get("agent", "longhand"), cfg.get("_prompts")),
+               "prompt": prompt_version(cfg.get("agent", "longhand"), cfg.get("_prompts"))}
+    if out["error"] and fb and not _STOP["asked"] and out.get("model") != model_of(dict(cfg, model=fb, variant=""), ""):
+        if not session or fresh is not None:
+            if session:
+                payload, message = fresh()
+            failed = out
+            FALLBACK_STATE.parent.mkdir(parents=True, exist_ok=True)
+            until = dt.datetime.now() + dt.timedelta(minutes=FALLBACK_MINUTES)
+            FALLBACK_STATE.write_text(json.dumps({"model": failed["model"], "until": until.isoformat(timespec="seconds"),
+                                                  "error": " ".join(str(failed["error"]).split())[:300]}) + "\n")
+            print(f"warning: {failed['model']} failed ({' '.join(str(failed['error']).split())[:200]}); "
+                  f"answered on {fb}, and {failed['model']} is passed over until {until:%H:%M}", file=sys.stderr)
+            out = _run_model(dict(cfg, model=fb, variant=""), paths, payload, "", message, env)
+            out["fell_back"] = {"from": failed["model"], "error": failed["error"]}
+            out["events"] = failed["events"] + out["events"]
     if _STOP["asked"]:
         out.update(error=STOPPED, text="")
     return out
@@ -1005,7 +1258,8 @@ def run_model(cfg: dict, paths: Paths, payload: str, session: str = "", message:
 def _run_model(cfg: dict, paths: Paths, payload: str, session: str = "", message: str = "Context follows on stdin.",
                env: dict | None = None) -> dict:
     """Run one pass: through Claude Code when the model is named
-    `claude-code/<model>` (`run_claude`), else through opencode.
+    `claude-code/<model>` (`run_claude`), through Codex when it is named
+    `codex/<model>` (`run_codex`), else through opencode.
     Returns {text, session, cost, tokens, events, error}.
 
     With `session`, continues an existing opencode session (dive-in), so the
@@ -1019,6 +1273,8 @@ def _run_model(cfg: dict, paths: Paths, payload: str, session: str = "", message
     paths.cwd.mkdir(parents=True, exist_ok=True)
     if str(cfg.get("model") or "").startswith(CLAUDE_ROUTE):
         return run_claude(cfg, paths, payload, session, message, env)
+    if str(cfg.get("model") or "").startswith(CODEX_ROUTE):
+        return run_codex(cfg, paths, payload, session, message, env)
     cmd = [cfg.get("opencode", "opencode"), "run", "--standalone", "--format", "json",
            "--agent", cfg.get("agent", "longhand")]
     # Reasoning effort is named per model and now rides on the model itself,
@@ -1568,6 +1824,21 @@ def cmd_chat(cfg: dict, args) -> int:
         proposable = dict(proposable, like_this_block=[b["key"] for b in near["open_boxes"]],
                           deadlines_like_this_block=[d["deadline"] for d in near["deadlines_with_no_line"]])
         digest = hashlib.sha256(json.dumps(proposable, sort_keys=True, default=str).encode()).hexdigest()[:12]
+
+    def margin_fresh(log: Path, memory: list[str]) -> str:
+        """The whole context, for a session that has none of it — this
+        block's chat so far with it — logged at `log` before it is sent."""
+        payload = with_passages(day_payload(cfg, tpaths, tvisible, tprivate, message, pointed, proposable, memory),
+                                message)
+        so_far = earlier_turns(([{"role": "agent", "text": rec["reply"]}] if rec.get("reply") else [])
+                               + (rec.get("chat") or []))
+        if so_far:
+            payload = payload.replace("\n# The student says\n", "\n# This chat so far\n\nWhat was said about this block"
+                                      " before, in a session you do not have:\n\n" + "\n".join(so_far)
+                                      + "\n\n# The student says\n", 1)
+        log.write_text(payload)
+        return payload
+
     if session:
         # The session holds the day's context, this block and the chat; what
         # is new travels: how the block reads now, what was said elsewhere
@@ -1597,17 +1868,11 @@ def cmd_chat(cfg: dict, args) -> int:
         parts += ["# The student says", "", message, "", "Answer with the same JSON contract."]
         payload = with_passages("\n".join(parts) + "\n", message)
         payload_file.write_text(payload)                 # logged before inference
-        result = run_model(day_cfg, tpaths, "", session=session, message=payload)
+        result = run_model(day_cfg, tpaths, "", session=session, message=payload,
+                           fresh=lambda: (margin_fresh(payload_file.with_name(payload_file.stem + "-fallback.md"),
+                                                       convo_memory(cfg, subjects, thread)[0]), "Context follows on stdin."))
     else:
-        payload = with_passages(day_payload(cfg, tpaths, tvisible, tprivate, message, pointed, proposable, mem), message)
-        so_far = earlier_turns(([{"role": "agent", "text": rec["reply"]}] if rec.get("reply") else [])
-                               + (rec.get("chat") or []))
-        if so_far:
-            payload = payload.replace("\n# The student says\n", "\n# This chat so far\n\nWhat was said about this block"
-                                      " before, in a session you do not have:\n\n" + "\n".join(so_far)
-                                      + "\n\n# The student says\n", 1)
-        payload_file.write_text(payload)
-        result = run_model(day_cfg, tpaths, payload, message="Context follows on stdin.")
+        result = run_model(day_cfg, tpaths, margin_fresh(payload_file, mem), message="Context follows on stdin.")
     payload_file.with_suffix(".events.jsonl").write_text(result["events"])
     reply = parse_reply(result["text"]) if not result["error"] else \
         {"reply": "", "proposals": [], "suggestions": [], "knowledge": [], "read": [], "search": [], "file": []}
@@ -4807,21 +5072,29 @@ def cmd_day(cfg: dict, args) -> int:
     subjects = [thread] + [s for r in refs for s in r["subjects"]]
     carried = list(day.get("memory") or []) if day["session"] else []
     mem, mem_ids = convo_memory(cfg, subjects, thread, carried, again=bool(day["session"]))
-    if day["session"]:
-        last = next((t["at"] for t in reversed(day["turns"]) if t["role"] == "agent"), "")
-        payload = with_passages(day_followup(cfg, paths, visible, last, message, pointed,
-                                             proposable if digest != day.get("proposable") else None, mem), message)
-        payload_file.write_text(payload)                 # logged before inference
-        result = run_model(day_cfg, paths, "", session=day["session"], message=payload)
-    else:
-        payload = with_passages(day_payload(cfg, paths, visible, private, message, pointed, proposable, mem), message)
+
+    def day_fresh(log: Path, memory: list[str]) -> str:
+        """The whole context, today's chat so far with it, for a session
+        that has none of it; logged at `log` before it is sent."""
+        payload = with_passages(day_payload(cfg, paths, visible, private, message, pointed, proposable, memory), message)
         so_far = earlier_turns(day.get("turns") or [])
         if so_far:
             payload = payload.replace("\n# The student says\n", "\n# Today's chat so far\n\nBegun in a session you no"
                                       " longer have (another model, or a run that failed); what was said:\n\n"
                                       + "\n".join(so_far) + "\n\n# The student says\n", 1)
-        payload_file.write_text(payload)
-        result = run_model(day_cfg, paths, payload, message="Context follows on stdin.")
+        log.write_text(payload)
+        return payload
+
+    if day["session"]:
+        last = next((t["at"] for t in reversed(day["turns"]) if t["role"] == "agent"), "")
+        payload = with_passages(day_followup(cfg, paths, visible, last, message, pointed,
+                                             proposable if digest != day.get("proposable") else None, mem), message)
+        payload_file.write_text(payload)                 # logged before inference
+        result = run_model(day_cfg, paths, "", session=day["session"], message=payload,
+                           fresh=lambda: (day_fresh(payload_file.with_name(payload_file.stem + "-fallback.md"),
+                                                    convo_memory(cfg, subjects, thread)[0]), "Context follows on stdin."))
+    else:
+        result = run_model(day_cfg, paths, day_fresh(payload_file, mem), message="Context follows on stdin.")
     payload_file.with_suffix(".events.jsonl").write_text(result["events"])
     reply = parse_reply(result["text"]) if not result["error"] else \
         {"reply": "", "proposals": [], "suggestions": [], "knowledge": [], "read": []}
@@ -5137,6 +5410,23 @@ def cmd_note(cfg: dict, args) -> int:
     paths.payloads.mkdir(parents=True, exist_ok=True)
     payload_file = paths.payloads / f"{dt.datetime.now():%Y%m%d-%H%M%S-%f}-note.md"
     day_cfg = dict(cfg, agent=cfg.get("dayAgent", "longhand-day"))
+
+    def talk_fresh(log: Path, memory: list[str], offered: list[str]) -> str:
+        """The note or paper whole, its chat so far with it, for a session
+        that has none of it; logged at `log` before it is sent."""
+        payload = paper_payload(cfg, paths, rel, st, message, marks, True) if paper else \
+            note_payload(cfg, paths, rel, shown, message, args.block, True)
+        if memory or offered:
+            payload = payload.replace("\n# The student says\n", "\n".join(memory + offered) + "\n\n# The student says\n", 1)
+        payload = with_passages(payload, message)
+        so_far = earlier_turns(talk["turns"])
+        if so_far:
+            payload = payload.replace("\n# The student says\n", "\n# This chat so far\n\nBegun in a session you no"
+                                      " longer have (another model, or a run that failed); what was said:\n\n"
+                                      + "\n".join(so_far) + "\n\n# The student says\n", 1)
+        log.write_text(payload)
+        return payload
+
     if talk["session"]:
         before = said_before(talk["turns"])
         payload = paper_payload(cfg, paths, rel, st, message, marks, False, changed=seen != talk["seen"],
@@ -5147,20 +5437,13 @@ def cmd_note(cfg: dict, args) -> int:
             payload = payload.replace("\n# The student says\n", "\n".join(mem + offer) + "\n\n# The student says\n", 1)
         payload = with_passages(payload, message)
         payload_file.write_text(payload)                 # logged before inference
-        result = run_model(day_cfg, paths, "", session=talk["session"], message=payload)
+        result = run_model(day_cfg, paths, "", session=talk["session"], message=payload,
+                           fresh=lambda: (talk_fresh(payload_file.with_name(payload_file.stem + "-fallback.md"),
+                                                     convo_memory(cfg, [thread], thread)[0],
+                                                     proposable_parts(proposable) if proposable else []),
+                                          "Context follows on stdin."))
     else:
-        payload = paper_payload(cfg, paths, rel, st, message, marks, True) if paper else \
-            note_payload(cfg, paths, rel, shown, message, args.block, True)
-        if mem or offer:
-            payload = payload.replace("\n# The student says\n", "\n".join(mem + offer) + "\n\n# The student says\n", 1)
-        payload = with_passages(payload, message)
-        so_far = earlier_turns(talk["turns"])
-        if so_far:
-            payload = payload.replace("\n# The student says\n", "\n# This chat so far\n\nBegun in a session you no"
-                                      " longer have (another model, or a run that failed); what was said:\n\n"
-                                      + "\n".join(so_far) + "\n\n# The student says\n", 1)
-        payload_file.write_text(payload)
-        result = run_model(day_cfg, paths, payload, message="Context follows on stdin.")
+        result = run_model(day_cfg, paths, talk_fresh(payload_file, mem, offer), message="Context follows on stdin.")
     payload_file.with_suffix(".events.jsonl").write_text(result["events"])
     reply = parse_reply(result["text"]) if not result["error"] else \
         {"reply": "", "proposals": [], "suggestions": [], "knowledge": [], "read": []}
@@ -5654,7 +5937,7 @@ def cmd_eval(cfg: dict, args) -> int:
             job = case["job"]
             agent = JOB_AGENT[job]
             model, variant = job_model(cfg, job, args.model)
-            c = dict(cfg, agent=agent, model=model, variant=variant, _prompts=prompts)
+            c = dict(cfg, agent=agent, model=model, variant=variant, _prompts=prompts, fallbackModel="")
             t0 = dt.datetime.now()
             if job == "talk":
                 # As a talk runs now: its format said last (a case from before
@@ -5687,7 +5970,8 @@ def cmd_eval(cfg: dict, args) -> int:
                 rules.insert(0, {"check": "the model answered", "pass": False, "why": res["error"][:200]})
             crit = []
             if case.get("criteria") and not args.no_judge and not res["error"]:
-                jc = dict(cfg, agent="longhand-judge", model=judge_model, variant="", _prompts=prompts)
+                jc = dict(cfg, agent="longhand-judge", model=judge_model, variant="", _prompts=prompts,
+                          fallbackModel="")
                 jr = run_model(jc, paths, evallib.judge_payload(case, answer), env=env,
                                message="Grade the answer against the criteria. The material follows on stdin.")
                 verdicts = evallib.parse_judge(jr["text"], len(case["criteria"])) if not jr["error"] else \
@@ -6209,6 +6493,8 @@ def main(argv: list[str]) -> int:
         signal.signal(signal.SIGTERM, _on_stop)
     try:
         cfg = load_config()
+        if args.cmd != "eval":
+            cfg = routed(cfg)                         # a model passed over runs as the fallback
         return {"run": cmd_run, "chat": cmd_chat, "ack": cmd_ack, "accept": cmd_accept, "tasks": cmd_tasks, "sections": cmd_sections, "project-page": cmd_project_page, "week": cmd_week,
                 "next": cmd_next, "dated": cmd_dated, "box": cmd_box, "rate": cmd_rate, "eval": cmd_eval, "review": cmd_review, "plan": cmd_plan, "proposals": cmd_proposals, "proposal": cmd_proposal, "talk": cmd_talk, "thread": cmd_thread, "timetable": cmd_timetable, "notebook": cmd_notebook, "documents": cmd_documents, "day": cmd_day, "search": cmd_search, "horizon": cmd_horizon, "note": cmd_note, "autonomy": cmd_autonomy, "dismiss": cmd_dismiss, "curriculum": cmd_curriculum,
                 "context": cmd_context, "state": cmd_state, "install": cmd_install, "stats": cmd_stats,

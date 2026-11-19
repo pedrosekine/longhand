@@ -81,6 +81,16 @@ def units() -> None:
     rules, _ = evals.check_day(f, {"reply": "Two wait.", "file": [{"document": "x", "project": "hfpi"}]})
     check(not next(r for r in rules if r["check"] == "files nothing")["pass"], "filing unasked fails")
 
+    o = evals.new_case("day", PAYLOAD, "x-day.md")
+    _, answer = evals.check_day(o, {"reply": "Opened your essay draft.", "open": [{"file": "human/Studies/essay.md"}]})
+    check("file human/Studies/essay.md" in answer, "the judge reads what it opened, not only that it says so")
+    o = evals.new_case("day", PAYLOAD.replace('"you_may": ["do-date", "priority"]', '"you_may": ["do-date", "priority", "done"]'),
+                       "x-day.md")
+    _, answer = evals.check_day(o, {"reply": "Ticked it.", "proposals": [
+        {"kind": "done", "key": "k1", "asked": True, "why": "they asked"}]})
+    check("done at once, because the student asked" in answer and "email Frauenberger" in answer,
+          "…and that a tick was made at once, as asked")
+
     b = evals.new_case("day", "# Brief\n", "x-brief-2026-10-20.md")
     good, _ = evals.check_day(b, {"reply": "- one\n- two\n- three"})
     bad, _ = evals.check_day(b, {"reply": "One paragraph that says everything at once."})

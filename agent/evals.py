@@ -323,9 +323,19 @@ def check_day(case: dict, reply: dict) -> tuple[list[dict], str]:
     if files:
         answer += "\n\nWhat it asked local code to file (the `file` key; local code files it after this answer):\n" + "\n".join(
             f"- {f.get('document', '')} → #{f.get('project', '')}" for f in files)
+    # What it opens and what it does at once go to the judge too: without
+    # them, "Opened your thesis note" with the note named in `open`, and a
+    # tick made with `asked`, read as claims with nothing behind them
+    # (2026-11-18, GPT-6.2 Sol's first eval).
+    if opens:
+        answer += "\n\nWhat it asked local code to open (the `open` key; opened when the answer arrives):\n" + "\n".join(
+            "- " + (f"file {o['file']}" if o.get("file") else f"day {o['day']}" if o.get("day")
+                    else f"task {titles.get(o.get('task'), o.get('task'))}") for o in opens)
     if props:
         answer += "\n\nCards (what it proposed, as the student sees them after the checks):\n" + "\n".join(
-            f"◇ {p['kind']}: {p.get('title', '')} {p.get('date') or p.get('priority') or ' · '.join(p.get('steps') or [])} — {p.get('why', '')}"
+            (f"◆ {p['kind']} at once, because the student asked (`asked`; the card offers the undo)" if p.get("auto")
+             else f"◇ {p['kind']}")
+            + f": {p.get('title', '')} {p.get('date') or p.get('priority') or ' · '.join(p.get('steps') or [])} — {p.get('why', '')}"
             for p in props)
     return out, answer
 

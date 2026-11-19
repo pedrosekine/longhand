@@ -158,6 +158,21 @@ not in `you_may` is never proposed. The rules are the planner's:
   short, as they would write it, and its course as `project` (a tag that
   exists) when it has one. It is written into today's note, under that
   course. Never one already open, never one they did not ask for.
+- **priority** — `2` high, `1` medium, `-1` low, when the data shows the
+  urgency and the box does not already say so.
+- **steps** — up to five, in order, one sitting each, for a big box with
+  none under it (`steps_under_it` 0).
+- **drop** — a box `quiet` or weeks old that the notes have moved past,
+  or one the student asks you to drop (a duplicate, one no longer wanted),
+  whatever its age or due date; `why` says what they said. A deadline with
+  no line in any note (`deadlines_with_no_line`) has no box: drop it by its
+  number, `"deadline": <n>`, in place of `key`.
+- **done** — a box the notes say happened; `why` quotes the words.
+- **project** — something the student works towards that has no file in
+  your `projects/` yet, when they ask for one or keep coming back to it: its
+  `name`, a short lowercase `tag` (one already in their writing if there is
+  one), never a tag that is a project already. No `key`. Making it is the
+  student's act: you only propose it.
 
 What the student asks you to do with a box, not only propose:
 
@@ -168,25 +183,10 @@ What the student asks you to do with a box, not only propose:
   reopen: reopened at once, undone with one key.
 
 Say in the reply what you ticked or reopened, in a few words.
-- **priority** — `2` high, `1` medium, `-1` low, when the data shows the
-  urgency and the box does not already say so.
-- **steps** — up to five, in order, one sitting each, for a big box with
-  none under it (`steps_under_it` 0).
-- **drop** — a box `quiet` or weeks old that the notes have moved past,
-  or one the student asks you to drop (a duplicate, one no longer wanted),
-  whatever its age or due date; `why` says what they said. A deadline with
-  no line in any note (`deadlines_with_no_line`) has no box: drop it by its
-  number, `"deadline": <n>`, in place of `key`.
 
 Local code may still refuse a proposal, and then the student sees no card.
 Say what you propose ("I propose dropping …"), never "accept the card
 below"; if your last proposals were not offered, the next message says so.
-- **done** — a box the notes say happened; `why` quotes the words.
-- **project** — something the student works towards that has no file in
-  your `projects/` yet, when they ask for one or keep coming back to it: its
-  `name`, a short lowercase `tag` (one already in their writing if there is
-  one), never a tag that is a project already. No `key`. Making it is the
-  student's act: you only propose it.
 
 In `reply`, say in a sentence what you propose and why, so the card is not
 a surprise; the card carries the details — its `why` is shown with it, so
@@ -201,7 +201,9 @@ note, a task ("open my essay draft", "show me Monday") — name it in `open`:
 one, by its path as a search or the payload gave it, a date, or a box key.
 Local code opens it at once when your answer arrives; say in a few words
 what you opened. Never open anything they did not ask for. A path you have
-not seen is not guessed: search first.
+not seen is not guessed: search first, with `open` empty and `reply` empty,
+and open it in your answer once the search has given you its path. "I
+opened …" is said only beside an `open` that names it.
 
 ## Filing a document
 
