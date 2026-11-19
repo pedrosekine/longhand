@@ -27,6 +27,7 @@ import os
 import re
 import shutil
 import subprocess
+import unicodedata
 from pathlib import Path
 
 WINDOW_DAYS = 60                         # older downloads are not the semester's
@@ -213,13 +214,255 @@ def scan(inbox: Path, courses: list[dict], events: list[dict], cache: dict, now:
             continue
         out.append({"src": str(p), "tag": course["tag"], "course": course["name"], "why": why,
                     "got": got.isoformat(timespec="minutes")})
-    for key in [k for k in cache if k not in seen]:
+    for key in [k for k in cache if k not in seen and not k.startswith("paper:")]:
         del cache[key]                     # a file gone, renamed, or past the window
     return out
 
 
+# A project may name its own documents folder, a vault path on a `Docs:`
+# line of its file (2026-11-19: #thesis filed into a new projects/thesis/docs
+# while its papers live in projects/thesis_itu/literature/pdf). Set by the
+# runner from the project files (`set_folders`); tag -> folder under the vault.
+FOLDERS: dict[str, str] = {}
+DOCS_LINE = re.compile(r"^\s*-?\s*Docs:\s*`?([^`\n]+?)`?\s*$", re.M)
+
+
+def set_folders(projects: list[tuple[str, str]], vault: Path) -> None:
+    """(tag, project file text) -> FOLDERS: each `Docs:` line that names a
+    folder inside the vault."""
+    FOLDERS.clear()
+    root = vault.resolve()
+    for tag, text in projects:
+        m = DOCS_LINE.search(text or "")
+        if not tag or not m:
+            continue
+        rel = m.group(1).strip().strip("/")
+        f = (root / rel).resolve()
+        if rel and root in f.parents:
+            FOLDERS[tag] = str(f.relative_to(root))
+
+
 def docs_dir(vault: Path, projects_dir: str, tag: str) -> Path:
+    if tag in FOLDERS:
+        return vault / FOLDERS[tag]
     return vault / projects_dir / tag / "docs"
+
+
+def in_vault(src: Path, vault: Path) -> Path | None:
+    """A PDF in the vault with the same bytes as `src`, wherever it is
+    (2026-11-19: four papers filed for #thesis were already in its
+    literature folder, and the check looked only in the course's own).
+    By size first, so only a file of the same size is read."""
+    try:
+        size = src.stat().st_size
+    except OSError:
+        return None
+    doc = None
+    for root, dirs, files in os.walk(vault):
+        dirs[:] = [d for d in dirs if not d.startswith(".")]
+        for f in files:
+            if not f.lower().endswith(".pdf"):
+                continue
+            q = Path(root) / f
+            try:
+                if q.stat().st_size != size or q.resolve() == src.resolve():
+                    continue
+                doc = doc or content_hash(src)
+                if content_hash(q) == doc:
+                    return q
+            except OSError:
+                continue
+    return None
+
+
+# A paper's name: "Moser 2026 Identifying environmental stress factors….pdf"
+# (2026-11-19, the student: the author in front, the date of the download
+# not the most important thing). Read on this machine from the PDF's own
+# fields and its first page; a document whose author is not found keeps
+# the dated name a course handout has.
+PAPER = re.compile(r"\bdoi\b|doi\.org/|\b10\.\d{4,9}/|arxiv|\bissn\b|\babstract\b|\bet al\.", re.I)
+# What makes a download a paper the agent may be shown: a DOI or an arXiv id
+# on its first page (a handout's reference list, on its second, is not).
+PAPER_ID = re.compile(r"\bdoi\b|doi\.org/|\b10\.\d{4,9}/\S|arxiv", re.I)
+
+
+def page_one(text: str) -> str:
+    return text.split("\f", 1)[0]
+NOT_NAMES = re.compile(
+    r"\b(univ|universit|institut|department|faculty|school|cent(er|re)|journal|article|research|access|open|"
+    r"report|brief|special|issue|international|science|review|paper|abstract|vol|data|sensor|analysis|"
+    r"health|psychology|urban|informatics|planning|transport|homepage|proceedings|conference|chapter|"
+    r"introduction|keywords|online|press|elsevier|springer|wiley|ieee|mdpi|corresponding|author|thesis|topic|"
+    r"proposal|master|project|information|summary|method|survey|description|course|lecture|seminar|board)",
+    re.I)
+NAME_WORD = re.compile(r"(?:[A-ZÀ-Þ][\wÀ-ÿ'’-]*\.?|[A-ZÀ-Þ]\.)$")
+TITLE_MAX = 90
+
+
+def _piece_is_name(piece: str) -> bool:
+    words = piece.split()
+    return 2 <= len(words) <= 5 and all(NAME_WORD.match(w) for w in words) \
+        and not NOT_NAMES.search(piece) and any(len(w.rstrip(".")) >= 2 for w in words)
+
+
+def _pieces(line: str) -> list[str]:
+    """A line read as a list of people: superscripts, marks and affiliation
+    letters gone, parted at commas, "and", "&", "und"."""
+    # An ORCID mark or another drawn sign is no part of a name.
+    t = "".join(ch for ch in line if not (unicodedata.category(ch)[0] == "C" or unicodedata.category(ch) == "So"))
+    t = re.sub(r"\([^)]{0,3}\)", " ", t)                        # Ye(&): Springer's mark for the contact
+    t = re.sub(r"(?<=[^\W\d_])\d+(,\d+)*", "", t)             # Zeile1 → Zeile, Resch2,3 → Resch
+    t = re.sub(r"(?<!\w)(?:[a-z](?:,[a-z])*,?\*?|\d+(?:,\d+)*|[*†‡§])(?!\w)", " ", t)
+    return [p.strip(" .") for p in re.split(r",|\band\b|&|\bund\b", t) if p.strip(" .")]
+
+
+def _surname(piece: str) -> str:
+    w = piece.split()[-1].rstrip(".")
+    if w.isupper() and len(w) <= 3:
+        return ""                          # "AI", "IT": an acronym, not a name
+    return w.capitalize() if w.isupper() else w
+
+
+def page_people(text: str) -> tuple[str, int]:
+    """The first author's surname on a first page, and the line it was
+    found on (-1 when it came from a running header): "Moser et al." in the
+    first lines, else the first line that lists two people, else two lines
+    of one person each."""
+    lines = [l.strip() for l in text.splitlines() if l.strip()][:30]
+    for l in lines[:5]:
+        m = re.match(r"([A-ZÀ-Þ][\wÀ-ÿ'’-]+) et al\.", l)
+        if m and not NOT_NAMES.search(m.group(1)):
+            return m.group(1), -1
+    for i, l in enumerate(lines):
+        ps = _pieces(l)
+        if len(ps) >= 2 and _piece_is_name(ps[0]) and _piece_is_name(ps[1]) and _surname(ps[0]):
+            return _surname(ps[0]), i
+    for i, l in enumerate(lines[:-1]):
+        a, b = _pieces(l), _pieces(lines[i + 1])
+        if len(a) == 1 and len(b) >= 1 and _piece_is_name(a[0]) and _piece_is_name(b[0]) and _surname(a[0]):
+            return _surname(a[0]), i
+    return "", -1
+
+
+def meta_author(info: dict, text: str) -> str:
+    """The first author from the PDF's own Author field, kept only when the
+    first page names them too (a typesetter's name is not an author)."""
+    first = re.split(r";|,|\band\b|&", html.unescape(info.get("Author") or ""))[0].strip()
+    if not _piece_is_name(first):
+        return ""
+    sur = _surname(first)
+    return sur if re.search(r"(?<!\w)" + re.escape(sur) + r"(?![^\W\d_])", text, re.I) else ""
+
+
+def paper_year(info: dict, text: str, today: dt.date | None = None) -> str:
+    """The year in the first page's header (the journal line: "2011, Vol.",
+    "(2026) 5:6", "1 OCTOBER 2023"), else the year the PDF was made."""
+    top = (today or dt.date.today()).year + 1
+    for l in [l for l in text.splitlines() if l.strip()][:12]:
+        for m in re.finditer(r"(?<![\d/.-])(19[5-9]\d|20\d\d)(?![\d/-])", l):
+            if int(m.group(1)) <= top:
+                return m.group(1)
+    m = re.search(r"\b(19[5-9]\d|20\d\d)\b", info.get("CreationDate") or "")
+    return m.group(1) if m else ""
+
+
+def stem_year(stem: str, today: dt.date | None = None) -> str:
+    """A year the download's own name gives ("CORP2021_72")."""
+    top = (today or dt.date.today()).year + 1
+    m = re.search(r"(?<!\d)(19[5-9]\d|20\d\d)(?!\d)", stem)
+    return m.group(1) if m and int(m.group(1)) <= top else ""
+
+
+def page_title(text: str, at: int) -> str:
+    """The lines just above the author line, read as the title: up to five,
+    stopping at a header line (numbers, a link, an address) or a short one."""
+    lines = [l.strip() for l in text.splitlines() if l.strip()][:40]
+    got = []
+    for l in reversed(lines[:at] if at > 0 else []):
+        if len(got) >= 5 or re.search(r"\d|@|https?:|www\.|©", l) or (got and len(l.split()) < 3):
+            break
+        got.insert(0, l)
+    return " ".join(got)
+
+
+def _short(title: str) -> str:
+    t = re.sub(r"[\\/:*?\"“”<>|]+", " ", title)
+    t = re.sub(r"\s+", " ", t).strip()
+    if len(t) <= TITLE_MAX:
+        return t
+    return t[:TITLE_MAX].rsplit(" ", 1)[0].rstrip(" ,;–-") + "…"
+
+
+def paper_name(p: Path, info: dict, text: str) -> str:
+    """"Surname Year Title.pdf" for a paper whose first author can be read;
+    "" for anything else. From its first page only."""
+    text = page_one(text)
+    if not PAPER.search(text):
+        return ""
+    sur, at = page_people(text)
+    sur = meta_author(info, text) or sur
+    if not sur:
+        return ""
+    t = html.unescape(info.get("Title") or "").strip()
+    if not (4 <= len(t) <= 300) or re.search(r"\.(docx?|pptx?|pdf|tex)$|^untitled|^microsoft|^\d+$|^pii\b", t, re.I) \
+            or sum(c.isdigit() for c in t) > sum(c.isalpha() for c in t):
+        t = page_title(text, at) or title_of(p, {})
+    year = paper_year(info, text) or stem_year(p.stem)
+    return f"{sur} {year} {_short(t)}.pdf" if year else f"{sur} {_short(t)}.pdf"
+
+
+def file_name(p: Path, got: dt.datetime, info: dict | None = None, text: str | None = None) -> str:
+    """The name a document is filed under: a paper's by its author and
+    year, anything else by the day it was downloaded and its title."""
+    info = pdf_info(p) if info is None else info
+    text = first_pages(p) if text is None else text
+    return paper_name(p, info, text) or f"{got:%Y-%m-%d} {title_of(p, info)}.pdf"
+
+
+def papers(inbox: Path, cache: dict, now: dt.datetime, vault: Path) -> list[dict]:
+    """The PDFs in the inbox that read as papers (a DOI, an arXiv id, an
+    ISSN or an abstract on the first page), downloaded in the last
+    WINDOW_DAYS, never a personal one, and not already in the vault
+    (2026-11-19, the student's call: the agent could not see the five
+    papers they had just downloaded). Each with the name it would be filed
+    under. The cache keeps only whether a file is one, by a hash of its
+    name, as `scan`'s does."""
+    out = []
+    if not inbox.is_dir():
+        return out
+    since = now - dt.timedelta(days=WINDOW_DAYS)
+    seen = set()
+    for p in inbox_pdfs(inbox):
+        try:
+            st = p.stat()
+        except OSError:
+            continue
+        got = dt.datetime.fromtimestamp(st.st_mtime)
+        if got < since or personal(p.stem):
+            continue
+        key = "paper:" + _name_key(p, st)
+        seen.add(key)
+        if key not in cache:
+            text = first_pages(p)
+            # A paper's name is kept, to say it again cheaply; anything else
+            # only as "not one".
+            ok = bool(PAPER_ID.search(page_one(text))) and not personal("", text)
+            cache[key] = {"name": file_name(p, got, text=text), "size": st.st_size} if ok else False
+        hit = cache[key]
+        if not hit or in_vault(p, vault):
+            continue
+        # Two copies of one download ("… (1)"): the first, once.
+        try:
+            doc = content_hash(p) if any(x["size"] == st.st_size for x in out) else ""
+        except OSError:
+            continue
+        if doc and any(x["size"] == st.st_size and x["doc"] == doc for x in out):
+            continue
+        out.append({"document": p.stem, "name": hit["name"], "got": got.isoformat(timespec="minutes"),
+                    "size": st.st_size, "doc": doc or content_hash(p)})
+    for key in [k for k in cache if k.startswith("paper:") and k not in seen]:
+        del cache[key]
+    return [{k: x[k] for k in ("document", "name", "got")} for x in out]
 
 
 def proposals(found: list[dict], ledger_items: list[dict], vault: Path, projects_dir: str,
@@ -241,12 +484,10 @@ def proposals(found: list[dict], ledger_items: list[dict], vault: Path, projects
             continue
         if doc in known or doc in seen or doc in skip:
             continue
-        folder = docs_dir(vault, projects_dir, f["tag"])
-        if folder.is_dir() and any(content_hash(q) == doc for q in folder.glob("*.pdf")):
-            continue
+        if in_vault(p, vault):
+            continue                       # already kept somewhere in the vault, under any name
         seen.add(doc)
-        info = pdf_info(p)
-        name = f"{f['got'][:10]} {title_of(p, info)}.pdf"
+        name = file_name(p, dt.datetime.fromisoformat(f["got"]))
         out.append({"kind": "file", "key": "", "doc": doc, "src": f["src"], "name": name,
                     "project": f["tag"], "title": f["course"], "why": f["why"]})
     return out

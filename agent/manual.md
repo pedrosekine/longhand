@@ -179,7 +179,9 @@ start. A block already answered opens on its chat. {key:margin} goes into
 the margin, where `+` and `-` say whether a reply helped. Asked in a block's
 chat, it can move a deadline, give a box a day to work on, or drop a box or
 a duplicate deadline: each comes as a card under its answer, and nothing
-changes until you accept it ({key:marginAccept}; {key:marginDecline} declines it). It plans the next
+changes until you accept it. A box that has a day already, one gone late
+too, gets another when you ask ("move my late tasks to today"); undoing
+the card puts back the day it had ({key:marginAccept}; {key:marginDecline} declines it). It plans the next
 two weeks when the page or the dashboard opens: do-dates, and with the
 student's leave, deadlines found in the writing, priorities, steps under a
 box, dropping a stale box, "this looks done — tick it?". Every kind starts
@@ -211,7 +213,21 @@ sidebar; the agent sees their titles and can ask to read one. To file one
 yourself, ask the day's conversation ("put the two papers from today's
 class into hfpi"): it is filed at once into the project you name, the
 dashboard's row about it goes, and the answer says what was filed. A PDF
-it was not offered is found by the name you give it.
+it was not offered is found by the name you give it. When you ask about
+your downloads or papers, it also sees the PDFs downloaded in the last 60
+days that read as papers (a DOI, an arXiv id, an ISSN or an abstract on
+the first page), never a personal one. A paper is filed as its first
+author, year and title ("Moser 2026 Identifying environmental….pdf"),
+anything else by the day it was downloaded and its title. A PDF already
+in the vault — the same file, under any name — is not filed again: it
+stays in Downloads, and the answer says where the copy is. A project's
+documents go to `projects/<tag>/docs/`, or to the folder a `Docs:` line in
+its file names (`- Docs: projects/thesis/literature/pdf`).
+
+Every chat is kept in the agent's folder in the vault (`agents/longhand`
+unless the config says otherwise): the day's in `daily/<date>.md`, a
+note's or a paper's in `notes/` (one file each, named by a hash of its
+path), and all of them together, per machine, in `conversation/`.
 
 ## Reading a paper
 

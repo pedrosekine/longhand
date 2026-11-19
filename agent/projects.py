@@ -16,6 +16,7 @@ from pathlib import Path
 
 TAG = re.compile(r"[\w/-]{1,40}")
 TAG_LINE = re.compile(r"Tag:\s*`?#([\w/-]+)")
+DOCS_LINE = re.compile(r"^\s*-?\s*Docs:.*$", re.M)     # its documents' folder (documents.py), the person's
 NAME_MAX = 80
 
 
@@ -86,4 +87,10 @@ def keep_identity(old: str, new: str, stem: str) -> str:
         lines[at] = TAG_LINE.sub(lambda m: m.group(0)[:m.start(1) - m.start(0)] + tag, lines[at], count=1)
     elif had_line:
         lines[h1 + 1:h1 + 1] = ["", f"- Tag: `#{tag}`"]
+    # Where its documents are filed is the person's line too.
+    docs = DOCS_LINE.search(old)
+    if docs:
+        lines = [l for l in lines if not DOCS_LINE.fullmatch(l)]
+        at = next((i for i, l in enumerate(lines) if TAG_LINE.search(l)), h1)
+        lines[at + 1:at + 1] = [docs.group(0)]
     return "\n".join(lines)

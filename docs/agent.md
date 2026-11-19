@@ -417,6 +417,21 @@ others alike says which ("beside #63, #32"), so it is never taken for a
 move. The day conversation is shown the deadlines with no line as well.
 Tests: `tests/test_margin_cards.py`, and 10b' in `tests/page/run.py`.
 
+**The day's chat of 2026-11-19.** Read back with the student, one morning
+of their own use. "Change my late tasks for today" was refused twice — a
+do-date could go only on a box with no day, so a late one could not be
+moved. Now a conversation (`asked`) may give a box that has a day another
+one, the day it had kept as `was` (undoing the card puts it back; the
+card is moot only once the box carries a third day), and `open_boxes`
+marks `late` the boxes whose day has gone by. A planning pass still never
+moves a day already set. "Tell me its path", about a PDF, came with the
+AI literacy box under the cursor, and the agent had to ask which was
+meant: the chip that follows the cursor now arrives marked as attached by
+itself, with a line saying to answer the conversation when the message
+plainly carries on from it (in the payload, beside the chip: the same
+words in the prompt cost the `day-seed-email-date` case 5 runs in 6). The rest of that morning was filing (below,
+"Documents").
+
 **How the brief works (slice 4, built 2026-10-21).** The day's first run —
 the morning pass, the plan, or the first message to the day, whichever
 comes first; runs that start together wait for each other — writes the
@@ -811,7 +826,23 @@ the PDF is better.
   accepted, in the project asked for. The agent is shown only what waits
   (`documents_waiting`); any other PDF is found only when the student's
   own words name it. The answer says "filed … in #tag", and the next
-  message tells the agent what was and was not filed. Found on the way: a
+  message tells the agent what was and was not filed. On 2026-11-19 the
+  student asked for five papers in Downloads to go into #thesis: the
+  agent could not see them (they matched no course) and had to ask for
+  their names; four of the five were already, byte for byte, in the
+  thesis's literature folder, which the duplicate check never looked in;
+  and they were filed as "2026-11-19 <title>" into a new
+  `projects/thesis/docs`, where the student wanted the author first. Now
+  (the student's calls that day): a PDF the vault holds anywhere, by
+  size then content, is never filed or proposed again, and the answer
+  says where the copy is; a paper (a DOI, an arXiv id, an ISSN or an
+  abstract on page 1, and a first author read from the page or a
+  confirmed Author field) is filed as "Surname Year Title"; a project's
+  file may name its documents' folder (`- Docs: <vault path>`, kept
+  through the agent's rewrites), #thesis's being its literature folder;
+  and a message about downloads or papers carries `papers_in_downloads`,
+  the PDFs there with a DOI or an arXiv id on page 1, not personal and not
+  in the vault, each with the name it would be filed under. Found on the way: a
   filing proposal was known by its course's name, so a second paper for a
   course was taken for the one still waiting and never proposed; it is
   known by its contents now (`plan.ident`).

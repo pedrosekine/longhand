@@ -203,7 +203,10 @@ def open_boxes(tasks: list[dict], deadlines: list[dict], today: dt.date, limit: 
             due = by_anchor[t["anchor"]]["due"].strftime("%Y-%m-%d %H:%M")
         out.append({"key": t.get("key") or lifespan.key_of(t), "title": t.get("title") or t.get("text", ""),
                     "project": t.get("project") or "", "where": " › ".join(t.get("path") or []),
-                    "due": due, "when": t.get("when") or "", "priority": t.get("priority") or 0,
+                    "due": due, "when": t.get("when") or "",
+                    # Its day gone by, not done: what "my late tasks" means.
+                    "late": bool(t.get("when")) and str(t.get("when"))[:10] < today.isoformat(),
+                    "priority": t.get("priority") or 0,
                     "steps_under_it": t.get("details") or 0, "written": t.get("date", ""),
                     "age_days": t.get("age", 0), "quiet": bool(t.get("away")), "kind": t.get("kind") or "task",
                     "deadline": t["anchor"] if t.get("anchor") in by_anchor else 0})
@@ -405,8 +408,16 @@ def validate(reply: dict, cands: list[dict], days: list[dict], ledger: dict, tod
         item = None
         if kind == "do-date":
             date = str(p.get("date") or "")[:10]
-            c = by_key.get(key)
-            if not c or date not in window or (key, date) in no_day:
+            c, was = by_key.get(key), ""
+            # A box that has a day already — one gone late, most often — is
+            # given another only when the student asks, in a conversation
+            # (2026-11-19: "change my late tasks for today" was refused
+            # twice, since only boxes with no day were candidates). The day
+            # it had is kept, for undoing.
+            b = by_box.get(key) if not c and asked else None
+            if b and b.get("when") and b.get("kind", "task") != "note":
+                c, was = b, str(b["when"])[:10]
+            if not c or date not in window or (key, date) in no_day or date == was:
                 continue
             if c["due"] and date >= c["due"][:10]:
                 # Never on or after its own due date: a do-date on the due
@@ -414,6 +425,8 @@ def validate(reply: dict, cands: list[dict], days: list[dict], ledger: dict, tod
                 # (2026-11-14: six such, accepted, had planned nothing).
                 continue
             item = {"kind": kind, "key": key, "date": date, "why": why, "title": c["title"], "project": c["project"]}
+            if was:
+                item["was"] = was
         elif kind == "deadline":
             title = re.sub(r"\s+", " ", str(p.get("title") or "")).strip()[:120]
             date = str(p.get("date") or "")[:10]
@@ -714,7 +727,10 @@ def settle_moot(ledger: dict, tasks: list[dict], at: str, open_ids: set[int] | N
             if words:
                 x["reason"] = words
             n += 1
-        elif gone or (x["kind"] == "do-date" and t.get("when")) or (x["kind"] == "steps" and t.get("details")):
+        # A new day for a box that had one (`was`) is moot only once the
+        # box carries a day other than the one it had.
+        elif gone or (x["kind"] == "do-date" and t.get("when") and t.get("when") != x.get("was")) \
+                or (x["kind"] == "steps" and t.get("details")):
             x["status"], x["resolved"] = "moot", at
             n += 1
     return n
