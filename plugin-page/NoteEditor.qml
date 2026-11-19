@@ -85,6 +85,13 @@ Item {
   property string fontStyle: ""        // the cut of the prose face (Page.qml)
   property string codeFamily: "monospace"
   property int textSize: 16
+  // The leading of the note's prose, in ems (2026-11-19). A TextEdit has no
+  // line height of its own, and plain text none at all, so a row of prose is
+  // drawn as rich text with its paragraph's line-height: one block, one
+  // document position per character, as an emphasised row already was.
+  // 0 leaves the face's own (Adwaita Sans: 1.21). Headings keep tighter.
+  property real leading: 0
+  readonly property real headingLeading: 1.2
   property color foreground: "black"
   property color background: "white"
   property color dim: "gray"
@@ -1763,7 +1770,14 @@ Item {
         // in it the field is rich text (Emph.js), and then its `text` is
         // html — `plain` is the body, character for character, and the only
         // thing the editor ever looks at.
-        readonly property bool rich: kind !== "code" && kind !== "front" && kind !== "image" && Emph.has(body)
+        readonly property bool prose: kind !== "code" && kind !== "front" && kind !== "image"
+        readonly property bool rich: prose && Emph.has(body)          // drawn with its emphasis
+        readonly property bool richText: rich || (prose && ed.leading > 0)   // drawn as rich text, for either
+        // Qt's rich-text line-height is a share of the font's own line, so
+        // the leading in ems is asked for in this row's face and size.
+        readonly property int leadPct: ed.leading > 0 && fm.height > 0
+          ? Math.round(100 * (kind === "heading" ? ed.headingLeading : ed.leading) * field.font.pixelSize / fm.height) : 0
+        onLeadPctChanged: row.show()
         // Its links (Emph.linksIn), and the one being edited — the cursor in
         // it — which is drawn as written.
         readonly property var links: kind !== "code" && kind !== "front" && kind !== "image" && body.indexOf("[") >= 0 ? Emph.linksIn(body) : []
@@ -1816,11 +1830,13 @@ Item {
         }
 
         function show() {
-          var want = row.rich ? Emph.html(row.body, ed.codeFamily, row.links.length ? row.linkStyle() : null) : row.body
+          var want = row.rich ? Emph.html(row.body, ed.codeFamily, row.links.length ? row.linkStyle() : null)
+            : row.richText ? Emph.html(row.body, ed.codeFamily, null) : row.body
+          if (row.richText && row.leadPct > 0) want = "<p style=\"line-height:" + row.leadPct + "%;margin:0\">" + want + "</p>"
           if (field.shown === want && row.plain() === row.body) return
           var col = field.cursorPosition
           row.rendering = true
-          field.textFormat = row.rich ? TextEdit.RichText : TextEdit.PlainText
+          field.textFormat = row.richText ? TextEdit.RichText : TextEdit.PlainText
           field.shown = want
           field.text = want
           row.rendering = false
@@ -2054,7 +2070,7 @@ Item {
             // Smaller in the agent's diamond and the seal, which hold less
             // than the square.
             font.pixelSize: Math.round(box.size * (row.author === "" ? 0.85 : 0.62))
-            font.bold: true
+            font.styleName: "Bold"           // the face's own cut; font.bold beside it, Qt emboldens it again
           }
 
           MouseArea {
@@ -2212,12 +2228,18 @@ Item {
           font.pixelSize: row.kind === "heading"
             ? Math.round(ed.textSize * (row.headingLevel === 1 ? 1.7 : row.headingLevel === 2 ? 1.4 : row.headingLevel === 3 ? 1.15 : 1))
             : (row.kind === "code" || row.kind === "front" || row.img ? Math.round(ed.textSize * 0.85) : ed.textSize)
-          font.styleName: row.kind === "heading" || row.kind === "code" || row.kind === "front" ? "" : ed.fontStyle
+          // Headings name their cut, as prose does (2026-11-19): asked for by
+          // weight Bold — even beside the named cut — Qt took Adwaita Sans's
+          // Bold and emboldened it again, and the title's counters closed up.
+          // So the title's weight is left normal and its cut carries it; a
+          // face without a cut of that name draws the title at its regular.
+          font.styleName: row.kind === "heading" ? (row.headingLevel === 1 ? "Bold" : "SemiBold")
+            : row.kind === "code" || row.kind === "front" ? "" : ed.fontStyle
           // Rank, in the three channels that have an order: size, weight and
           // the colour's distance from the prose (ThemeColors `headings`).
           // Only the title is Bold — below it the page is one weight, so H2
           // reads as a section and not as a second title.
-          font.weight: row.kind === "heading" ? (row.headingLevel === 1 ? Font.Bold : Font.DemiBold) : Font.Normal
+          font.weight: row.kind === "heading" && row.headingLevel > 1 ? Font.DemiBold : Font.Normal
           cursorVisible: activeFocus && row.opened
           tabStopDistance: ed.tabStop
 

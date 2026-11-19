@@ -12,7 +12,7 @@ in your session, your windows and rules are not touched, and the private
 Hyprland is stopped when it is done.
 
 Run: python3 tests/page/shots.py OUT                         every scene
-     python3 tests/page/shots.py OUT --scene dashboard        one of: dashboard, note, day, keys, chat, project, acronyms, reach
+     python3 tests/page/shots.py OUT --scene dashboard        one of: dashboard, note, prose, day, keys, chat, project, acronyms, reach
      python3 tests/page/shots.py OUT --order date             the dashboard's order (ask, course, date)
      python3 tests/page/shots.py OUT --root DIR               draw another checkout (a variant study)
      python3 tests/page/shots.py OUT --env NAME=VALUE         an environment variable for the page
@@ -200,6 +200,28 @@ def grab(path):
     subprocess.run(["grim", "-g", f"{x},{y} {wd}x{ht}", str(path)], timeout=15, check=True)
 
 
+PROSE = """# Research methods, week 7 #respro
+
+Observational studies trade control for realism. Today's session compared field observation with lab tasks, and the point that stuck was that neither is more valid on its own: validity depends on the claim you want to make, and a lab result about reaction time says little about how people cross a real junction at rush hour.
+
+The example was the cycling stress paper: wristbands measured skin conductance along an 8.1 km route, and every moment of stress was placed on the map by its GPS time. The data are rich, but the route was fixed, so the riders never chose where to go.
+
+## What to check in any study
+
+- Who chose the setting, and could the result depend on it?
+- What was measured directly, and what was inferred from it?
+- How many people took part, and were they alike in ways that matter here?
+
+> A measure is only as good as the decision it supports.
+
+## To do
+
+- [ ] Reread section 3.2 of Moser et al. and note how the 20 m buffer was chosen #thesis
+- [ ] Draft two paragraphs on validity for the methods chapter, one about the route and one about the sensors
+- [x] Send Bernd the reading list
+"""
+
+
 def scenes(m, p, out, which):
     shots = []
 
@@ -232,6 +254,13 @@ def scenes(m, p, out, which):
         p.open_fresh()
         p.call("cursorLine", 2)
         shot("note-0")
+    if which in ("all", "prose"):
+        # A class note with prose in it, for judging the note's own type:
+        # paragraphs long enough to wrap, a list, a quote, tasks.
+        (p.daily / f"{m.TODAY}.md").write_text(m.header(m.TODAY) + PROSE)
+        p.open_fresh()
+        p.call("cursorLine", 1)
+        shot("prose-0")
     if which in ("all", "day"):
         p.open_fresh()
         p.wait(lambda: len(json.loads(p.call("dayTasks"))["titles"]) >= 4, 8)
@@ -504,7 +533,7 @@ def scenes(m, p, out, which):
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("out", type=pathlib.Path)
-    ap.add_argument("--scene", default="all", choices=["all", "dashboard", "note", "day", "keys", "chat", "project", "acronyms", "answers", "reach", "calm", "stop", "checkin", "one", "answer"])
+    ap.add_argument("--scene", default="all", choices=["all", "dashboard", "note", "prose", "day", "keys", "chat", "project", "acronyms", "answers", "reach", "calm", "stop", "checkin", "one", "answer"])
     ap.add_argument("--order", default="ask", choices=["ask", "course", "date"])
     ap.add_argument("--root", type=pathlib.Path, default=HERE.parent.parent)
     ap.add_argument("--env", action="append", default=[])

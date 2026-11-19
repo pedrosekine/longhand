@@ -49,21 +49,16 @@ Column {
     font.pixelSize: page.fs(Style.font.caption)
   }
   // What a message pointed at, as it was sent.
-  Text {
-    visible: turn.mine && !turn.away && (!!turn.t.block || (!!turn.t.refs && turn.t.refs.length > 0))
-    width: parent.width
-    textFormat: Text.PlainText
-    elide: Text.ElideRight
-    horizontalAlignment: Text.AlignRight
-    text: turn.t.refs && turn.t.refs.length > 0
-      ? turn.t.refs.map(function (r) { return "↳ " + page.sayChip(r) }).join("   ")
-      : turn.t.block ? "↳ " + page.blockHead(turn.t.block) : ""
-    color: page.faint
-    font.family: page.fontFamily
-    font.styleName: page.fontStyle
-    font.pixelSize: page.fs(Style.font.caption)
+  readonly property int bubbleWidth: words.bubbleWidth
+  TurnRef {
+    page: turn.page
+    alignTo: words.bubbleWidth
+    text: !turn.mine || turn.away ? ""
+      : turn.t.refs && turn.t.refs.length > 0 ? turn.t.refs.map(function (r) { return page.sayChip(r) }).join("  ·  ")
+      : turn.t.block ? page.blockHead(turn.t.block) : ""
   }
   ChatTurn {
+    id: words
     visible: !turn.answers && !turn.split
     page: turn.page
     mine: turn.mine

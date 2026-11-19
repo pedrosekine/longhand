@@ -206,6 +206,31 @@ Item {
       compare(item.field.textFormat, TextEdit.PlainText)
     }
 
+    // With a leading (2026-11-19, the page's 1.6), prose is drawn as rich
+    // text so it can have one; what is written is the same characters, and
+    // a wrapped line sits at the leading, a code row at its own.
+    function test_a_leading_draws_prose_rich_and_writes_plain() {
+      ed.leading = 1.6
+      try {
+        start("\nread chapter seven\n```\ncode\n```", 1 + "read chapter".length)
+        var item = ed.rowItem(1)
+        compare(item.rich, false, "no emphasis")
+        compare(item.field.textFormat, TextEdit.RichText)
+        verify(item.leadPct > 100, "a line-height is asked for: " + item.leadPct)
+        compare(item.plain(), "read chapter seven")
+        compare(ed.rowItem(3).field.textFormat, TextEdit.PlainText, "code keeps plain text")
+        type(" <b>&")
+        compare(ed.text, "\nread chapter <b>& seven\n```\ncode\n```", "typed as characters, never as markup")
+        compare(item.plain(), "read chapter <b>& seven")
+        var one = item.field.height
+        ed.load("\n" + "a long line of prose that has to wrap onto a second line here ".repeat(3))
+        var two = ed.rowItem(1).field.height
+        verify(two > 2 * 1.5 * ed.textSize, "two lines at the leading: " + two + " (one was " + one + ")")
+      } finally {
+        ed.leading = 0
+      }
+    }
+
     // What is drawn: a pair holding nothing is markers with no job, and
     // markers with no job are shown. The keys never leave one — see the
     // deletion tests below — but a note written elsewhere can.

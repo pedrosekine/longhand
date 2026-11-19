@@ -529,6 +529,37 @@ only the window and the panels around it differ.
   zoom, because `advanceWidth` is a method call and QML saw no dependency on
   the font — a binding that reads `font.pixelSize` first fixed it, and the
   live measure tests caught it.
+- 2026-11-19: the page is set in a face for reading. Asked why the chat
+  read so much worse than Claude's, the answer was mostly type: Quattro's
+  near-even widths fit 44 characters a line in the chat pane, Qt's markdown
+  drew 1.2 leading and no space at all between paragraphs, the paper's
+  quotes were orange and underlined through a third of every answer, and
+  turns sat 2 px apart. Design A (docs/explorations/chat-readability/,
+  compared against three others as rendered mockups) fixed the chat first;
+  then the student asked for the whole app in the same face, for
+  consistency — the 2026-10-15 rule that the chrome follows the note, kept.
+  Adwaita Sans won because it is already on every Omarchy machine and is
+  Inter underneath; a serif was set aside because beside a PDF it reads as
+  part of the paper. The chat draws its markdown as rich text (Chat.js) to
+  get the leading, and its quotes as prose with only the page in the
+  accent. The PDF export keeps its own faces (`export.font`). Then the
+  note itself was judged on a class note (tests/page/shots.py --scene
+  prose): its wrapped lines sat at the face's own 1.21, and 1.5 and 1.6
+  were rendered side by side. 1.6 won — Adwaita's tall x-height, light text
+  on a dark ground and a measure in the 70s all ask for the top of the
+  usual range, and one number keeps the note and its chat in one rhythm.
+  A row of prose is drawn as rich text to carry it, as an emphasised row
+  already was; code and frontmatter stay plain. Found on the way: the
+  72-character measure, counted on a lowercase alphabet, held about 80
+  characters of real prose in a proportional sans. It is counted on real
+  sentences now (English and German, spaces and capitals included), and a
+  full line of the class note holds 72. The dashboard and the sheets, sized
+  from the measure, narrowed with it. Last, the title looked too thick to
+  read: asked for by weight Bold, Qt drew Adwaita Sans's Bold and then
+  emboldened it again, closing the counters. Headings now name their cut
+  ("Bold", "SemiBold") and the title's weight is left normal, so the cut
+  alone carries it — the font's own Bold, chosen over SemiBold so that only
+  the title is Bold, as since 2026-10-15.
 - 2026-10-15: two answers to "it feels too bold". The first was that
   emphasis would not fix it — the weight of a regular paragraph is the
   face's and the contrast's, and adding bold only gives the eye something
