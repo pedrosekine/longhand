@@ -256,12 +256,12 @@ def main() -> int:
         c = calls()[-1]
         return c["stdin"] if c["argv"][-1] == "Context follows on stdin." else c["argv"][-1]
     msg = sent()
-    check(f"# The paper the student points at: `{other}`" in msg and "2 pages. Its project: #thesis." in msg
+    check(f"# The paper the student points at: Moser 2026 (`{other}`)" in msg and "2 pages. Its project: #thesis." in msg
           and "- `h1` p. 2, question, 2026-11-18: “an unbiased record”\n  their note: unbiased, really?" in msg,
           "a paper pointed at comes with its project, their marks and their notes")
     check(f'`read` with {{"file": "{other}"}}' in msg and f"(`{other}`, p. 12)" in msg and "Stress hotspots" not in msg,
           "…to be read when asked, quoted by its path and page, never its text unasked")
-    check(f"# The paper the student points at: `{paper}`" not in msg and "(1 more they pointed at cannot be shown" in msg
+    check(f"# The paper the student points at: Smith 2020 (`{paper}`)" not in msg and "(1 more they pointed at cannot be shown" in msg
           and "roses" not in msg, "…the paper talked about is not pointed at again; a private one is counted, not shown")
     check(msg.index("# The paper the student points at") < msg.index("# The student says")
           and "# The student points at `h1`" in msg, "…beside its own mark, before what the student says")
@@ -291,7 +291,7 @@ def main() -> int:
     env.pop("STUB_READ", None)
     agent("note", "--file", rel, "--message", "and that paper?", "--refs", json.dumps([{"file": other}]))
     pay = sent()
-    check(f"# The paper the student points at: `{other}`" in pay, "a note's chat may point at a paper too")
+    check(f"# The paper the student points at: Moser 2026 (`{other}`)" in pay, "a note's chat may point at a paper too")
     r = agent("note", "--file", paper, "--message", "x", "--refs", "not json", ok=False)
     check(r.returncode != 0 and "--refs" in r.stderr, "…and --refs that is not JSON is refused")
 

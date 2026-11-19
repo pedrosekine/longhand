@@ -63,6 +63,9 @@ import tempfile
 import unicodedata
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "agent"))
+import names as namelib  # noqa: E402  (a paper's and a note's shown names)
+
 CONFIG_PATH = Path(os.environ.get("LONGHAND_CONFIG")
                    or Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "longhand" / "config.json")
 STATE_HOME = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state") / "longhand"
@@ -1104,7 +1107,8 @@ def state(cfg: dict, rel: str, path: Path, note: Note | None) -> dict:
     has_text = any(pages)
     scanned = not any(own_words(path))
     copy = ocr_copy(path) if scanned else None
-    out = {"pdf": rel, "note": "", "tags": [], "marks": [], "unplaced": 0, "text": has_text, "pages": len(pages),
+    out = {"pdf": rel, "name": paper_name(cfg, rel), "note": "", "tags": [], "marks": [], "unplaced": 0,
+           "text": has_text, "pages": len(pages),
            "span": text_span(pages), "private": is_private(cfg, rel), "scanned": scanned,
            "ocr": str(copy) if copy and copy.is_file() else ""}
     if not note:
@@ -1274,10 +1278,10 @@ def cmd_days(cfg: dict) -> dict:
         for m in note.marks():
             if not m["day"]:
                 continue
-            row = days.setdefault(m["day"], {}).setdefault(pdf, {"pdf": pdf, "title": Path(pdf).stem, "h": 0, "q": 0,
+            row = days.setdefault(m["day"], {}).setdefault(pdf, {"pdf": pdf, "title": Path(pdf).stem, "name": paper_name(cfg, pdf), "h": 0, "q": 0,
                                                                   "note": str(f.relative_to(Path(cfg["vault"])))})
             row[m["kind"]] += 1
-    return {"days": {d: sorted(v.values(), key=lambda r: r["title"].lower()) for d, v in sorted(days.items())}}
+    return {"days": {d: sorted(v.values(), key=lambda r: r["name"].lower()) for d, v in sorted(days.items())}}
 
 
 def answered_marks(cfg: dict, rel: str) -> set[str]:
@@ -1326,7 +1330,7 @@ def cmd_reading(cfg: dict, days: int, today: dt.date | None = None) -> dict:
                    for m in marks if m["kind"] == "q" and m["id"] not in answered]
         if not recent and not waiting:
             continue
-        papers.append({"pdf": pdf, "title": Path(pdf).stem, "tags": note.tags(),
+        papers.append({"pdf": pdf, "title": Path(pdf).stem, "name": paper_name(cfg, pdf), "tags": note.tags(),
                        "days": [{"day": d, **c} for d, c in sorted(recent.items())],
                        "last": max((m["day"] for m in marks if m["day"]), default=""), "waiting": waiting})
     papers.sort(key=lambda r: r["last"], reverse=True)
@@ -1347,7 +1351,6 @@ def cmd_papers(cfg: dict, tag: str, folder_rel: str = "") -> dict:
             r = str(f.relative_to(vault))
             if not is_private(cfg, r) and not find_note(cfg, r):
                 settle(cfg, r, f, marks=False)
-    cites = bib_index(cfg, folder_rel)
     out = []
     for f in sorted(folder.glob("*.md")) if folder.is_dir() else []:
         try:
@@ -1359,7 +1362,7 @@ def cmd_papers(cfg: dict, tag: str, folder_rel: str = "") -> dict:
         pdf = next((m.group("target").strip() for line in note.lines[:12] for m in [PDF_FIELD_RE.match(line.strip())] if m), "")
         if not pdf:
             continue
-        out.append(paper_row(cfg, pdf, note, cites))
+        out.append(paper_row(cfg, pdf, note, folder_rel))
     # With the project's folder: its PDFs too, those never marked as well
     # (a reading list not yet begun), and those marked under no tag.
     if folder_rel:
@@ -1370,7 +1373,7 @@ def cmd_papers(cfg: dict, tag: str, folder_rel: str = "") -> dict:
             if rel in have or is_private(cfg, rel) or "/archive/" in f"/{rel}" or "/build/" in f"/{rel}" \
                     or any(part.startswith(".") for part in Path(rel).parts):
                 continue
-            out.append(paper_row(cfg, rel, load_note(cfg, rel), cites))
+            out.append(paper_row(cfg, rel, load_note(cfg, rel), folder_rel))
     # The marked first, the newest marked first; then those not begun, A to Z.
     marked = sorted((r for r in out if r["last"]), key=lambda r: (r["last"], r["title"]), reverse=True)
     return {"tag": tag, "papers": marked + sorted((r for r in out if not r["last"]), key=lambda r: r["title"].lower())}
@@ -1379,54 +1382,26 @@ def cmd_papers(cfg: dict, tag: str, folder_rel: str = "") -> dict:
 LITERATURE = {"literature", "papers", "paper", "readings", "reading", "references", "refs", "bibliography", "sources"}
 
 
-def bib_fields(body: str) -> dict:
-    """An entry's fields, `name = {value}` or `name = "value"`, braces
-    nested as BibTeX nests them."""
-    out, i = {}, 0
-    while True:
-        m = re.compile(r"(\w+)\s*=\s*([{\"])").search(body, i)
-        if not m:
-            return out
-        close, depth, j = ("}" if m.group(2) == "{" else '"'), 1, m.end()
-        while j < len(body) and depth:
-            c = body[j]
-            if m.group(2) == "{" and c == "{":
-                depth += 1
-            elif c == close and body[j - 1] != "\\":
-                depth -= 1
-            j += 1
-        out[m.group(1).lower()] = body[m.end():j - 1]
-        i = j
+_BIBS: dict = {}
 
 
-def bib_index(cfg: dict, folder_rel: str) -> dict:
-    """A project's bibliography, by key (2026-11-16): the .bib files in its
-    folder, so a paper named by its key (`moser2026identifying.pdf`, as the
-    thesis keeps them) is shown as its authors, year and title."""
-    vault = Path(cfg["vault"])
-    out = {}
-    for f in sorted((vault / folder_rel).rglob("*.bib")) if folder_rel and (vault / folder_rel).is_dir() else []:
-        rel = f"/{f.relative_to(vault)}"
-        if "/archive/" in rel or "/build/" in rel or any(p.startswith(".") for p in f.relative_to(vault).parts):
-            continue
-        try:
-            text = f.read_text(errors="replace")
-        except OSError:
-            continue
-        for m in re.finditer(r"@\w+\s*\{\s*([^,\s]+)\s*,", text):
-            end = text.find("\n@", m.end())
-            fields = bib_fields(text[m.end():end if end >= 0 else len(text)])
-            plain = lambda v: re.sub(r"\s+", " ", re.sub(r"[{}]|\\(?=[_&%$#])", "", v)).strip()
-            names = [n.strip() for n in re.split(r"\s+and\s+", plain(fields.get("author", fields.get("editor", "")))) if n.strip()]
-            first = (names[0].split(",")[0] if names and "," in names[0] else names[0].split()[-1] if names else "").strip()
-            year = (re.search(r"\d{4}", fields.get("year", "") or fields.get("date", "")) or [""])[0]
-            out.setdefault(m.group(1).lower(), {
-                "authors": first + (" et al." if len(names) > 2 else f" and {names[1].split(',')[0].strip() if ',' in names[1] else names[1].split()[-1]}" if len(names) == 2 else ""),
-                "year": year, "title": plain(fields.get("title", ""))})
-    return out
+def bibs(cfg: dict) -> "namelib.Bibs":
+    """The vault's bibliographies (agent/names.py), read once a run: a
+    paper named by its key (`moser2026identifying.pdf`, as the thesis keeps
+    them) is shown as its authors, year and title (2026-11-16; every place
+    one is shown since 2026-11-19)."""
+    v = str(cfg["vault"])
+    if v not in _BIBS:
+        _BIBS[v] = namelib.Bibs(Path(v))
+    return _BIBS[v]
 
 
-def paper_row(cfg: dict, pdf: str, note: "Note | None", cites: dict | None = None) -> dict:
+def paper_name(cfg: dict, pdf: str, near: str = "") -> str:
+    """ "Moser et al. 2023", else the file's stem."""
+    return bibs(cfg).paper(pdf, near)[0]
+
+
+def paper_row(cfg: dict, pdf: str, note: "Note | None", near: str = "") -> dict:
     marks = note.marks() if note else []
     answered = answered_marks(cfg, pdf)
     waiting = [m for m in marks if m["kind"] == "q" and m["id"] not in answered]
@@ -1445,7 +1420,7 @@ def paper_row(cfg: dict, pdf: str, note: "Note | None", cites: dict | None = Non
             "days": {d: {"h": sum(1 for m in marks if m["day"] == d and m["kind"] == "h"),
                          "q": sum(1 for m in marks if m["day"] == d and m["kind"] == "q")}
                      for d in sorted({m["day"] for m in marks if m["day"]})},
-            "cite": (cites or {}).get(Path(pdf).stem.lower(), {})}
+            "cite": bibs(cfg).cite(pdf, near), "name": paper_name(cfg, pdf, near)}
 
 
 def main() -> int:

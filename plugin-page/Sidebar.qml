@@ -512,7 +512,7 @@ BorderSurface {
             anchors.verticalCenter: parent.verticalCenter
             textFormat: Text.PlainText
             wrapMode: Text.WordWrap
-            text: modelData.title + " · " + page.readToday.summary(modelData)
+            text: (modelData.name || modelData.title) + " · " + page.readToday.summary(modelData)
             color: page.foreground
             font.family: page.fontFamily
             font.styleName: page.fontStyle

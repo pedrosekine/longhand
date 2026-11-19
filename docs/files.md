@@ -690,6 +690,24 @@ block, `table` rows.
   pointed at again, was counted as one that "cannot be shown" when its
   folder is not searched; it is left out before the rest are read.
 
+- **Names, not file names** (2026-11-19, the student, at the `@` list,
+  which said `paper · moser2023individual` and `note · 2026-10-28_moser`:
+  "can we have the meaningful names instead of the file names in there?",
+  and the same everywhere). One rule (`agent/names.py`): a paper named by
+  its BibTeX key, as the thesis keeps them, is shown as the nearest .bib
+  that has the key says — "Moser et al. 2023", its title beside it in the
+  `@` list — nearest by the folders the two share, so a project's own
+  bibliography wins over another project's; any other paper by its file's
+  name, which filing already makes "Surname Year Title". A note is its
+  first heading, a paper's reading notes "Moser et al. 2023 — reading
+  notes", a private note (`agent: false`) its file's name, so nothing it
+  says reaches the conversation's log. The same name in the `@` list and
+  its chips, the turn's refs and the other chats, a paper's header, a
+  quote of another paper ("(Moser et al. 2023, p. 4)"), a file the agent
+  read, the day's READ list and the project's papers; the agent is told it
+  beside the path. Files are never renamed. Turns said before keep the
+  name they were said with.
+
 **Not yet:** a two-column paper fitted one column at a time; a reading view
 (its text reflowed in the page's own face).
 

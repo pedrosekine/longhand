@@ -81,6 +81,7 @@ import search as searchlib  # noqa: E402
 import timetable  # noqa: E402
 import task as tasklib  # noqa: E402
 import projects as projlib  # noqa: E402
+import names as namelib  # noqa: E402
 import export as exportlib  # noqa: E402
 
 TRIGGERS = ("checkbox", "mention", "question", "tick", "open")
@@ -3514,7 +3515,7 @@ def reading_parts(cfg: dict, days: int = 7) -> list[str]:
         tags = " ".join("#" + t for t in p.get("tags") or [])
         days = ", ".join(f"{d['day']} ({d['h']} highlight{'s' if d['h'] != 1 else ''}, {d['q']} question{'s' if d['q'] != 1 else ''})"
                          for d in p.get("days") or [])
-        out.append(f"- **{p['title']}**" + (f" {tags}" if tags else "") + f" — `{p['pdf']}`"
+        out.append(f"- **{p.get('name') or p['title']}**" + (f" {tags}" if tags else "") + f" — `{p['pdf']}`"
                    + (f"; marked {days}" if days else "")
                    + (f"; {len(p['waiting'])} question{'s' if len(p['waiting']) != 1 else ''} waiting:" if p.get("waiting") else ""))
         for w in p.get("waiting") or []:
@@ -4266,6 +4267,30 @@ REFS_MAX = 6          # what one message may point at
 REF_NOTE_MAX = 12_000  # characters of a note pointed at, carried with the message
 
 
+_BIBS: dict = {}
+
+
+def bibs_of(vault: Path) -> "namelib.Bibs":
+    """The vault's bibliographies, read once a run."""
+    if str(vault) not in _BIBS:
+        _BIBS[str(vault)] = namelib.Bibs(vault)
+    return _BIBS[str(vault)]
+
+
+def shown_name(vault: Path, rel: str) -> tuple[str, str]:
+    """A note's or a paper's (name, title) as the page shows them
+    (agent/names.py): "Moser et al. 2023" and its title, a note's heading."""
+    b = bibs_of(vault)
+    if rel.lower().endswith(".pdf"):
+        return b.paper(rel)
+    try:
+        with open(vault / rel, errors="replace") as fh:
+            head = fh.read(600)
+    except OSError:
+        head = ""
+    return namelib.note(head, rel, b), ""
+
+
 def file_ref(cfg: dict, paths: Paths, rel: str) -> dict | None:
     """A note or a paper pointed at with `@` in the day's chat (One
     conversation, slice 2): only one the agent may see anyway — switched on
@@ -4285,7 +4310,8 @@ def file_ref(cfg: dict, paths: Paths, rel: str) -> dict | None:
         return None
     kind = "paper" if f.suffix.lower() == ".pdf" else "note"
     s = f"{kind}:{rel}"
-    out = {"file": rel, "kind": kind, "subjects": [s], "names": {s: f.stem}, "head": f.stem, "text": ""}
+    name, title = shown_name(root, rel)
+    out = {"file": rel, "kind": kind, "subjects": [s], "names": {s: name}, "head": name, "title": title, "text": ""}
     if kind == "note":
         shown = [b for b in visible_blocks(blocklib.split(f.read_text(errors="replace"))) if b["kind"] != "frontmatter"]
         bad = searchlib.leaks([b["text"] for b in shown])
@@ -4301,6 +4327,7 @@ def file_refs_list(cfg: dict, paths: Paths) -> list[dict]:
     Daily notes are left to their blocks and tasks."""
     on = searchlib.switched(paths.vault, cfg)
     daily = str(cfg["daily"]["dir"]).strip("/")
+    bibs = bibs_of(paths.vault)
     out = []
     for f in searchlib.files(paths.vault, on, {}, horizon_hide(cfg)):
         rel = str(f.relative_to(paths.vault))
@@ -4310,6 +4337,7 @@ def file_refs_list(cfg: dict, paths: Paths) -> list[dict]:
             continue
         try:
             st = f.stat()
+            head = ""
             if f.suffix.lower() == ".md":
                 with open(f, errors="replace") as fh:
                     head = fh.read(600)
@@ -4317,8 +4345,11 @@ def file_refs_list(cfg: dict, paths: Paths) -> list[dict]:
                     continue
         except OSError:
             continue
-        out.append({"rel": rel, "kind": "paper" if f.suffix.lower() == ".pdf" else "note", "name": f.stem,
-                    "at": st.st_mtime})
+        # Its name as it is shown everywhere (agent/names.py): a paper by
+        # its bibliography, a note by its heading.
+        name, title = bibs.paper(rel) if f.suffix.lower() == ".pdf" else (namelib.note(head, rel, bibs), "")
+        out.append({"rel": rel, "kind": "paper" if f.suffix.lower() == ".pdf" else "note", "name": name,
+                    "title": title, "at": st.st_mtime})
     out.sort(key=lambda x: -x["at"])
     return out
 
@@ -4418,10 +4449,11 @@ def refs_parts(refs: list[dict], gone: int, today: str) -> list[str]:
         out.pop()
     for r in files:
         if r["kind"] == "note":
-            out += ["", f"# The note the student points at: `{r['file']}`", "", "(its private callouts are left out)",
+            out += ["", f"# The note the student points at: {r['head']} (`{r['file']}`)", "", "(its private callouts are left out)",
                     "", r["text"] or "(empty)"]
         else:
-            out += ["", f"# The paper the student points at: `{r['file']}`", ""] + paper_reading(r["file"]) + ["",
+            out += ["", f"# The paper the student points at: {r['head']}" + (f", “{r['title']}”" if r.get("title") else "")
+                    + f" (`{r['file']}`)", ""] + paper_reading(r["file"]) + ["",
                     f"Its text is not in this message. To answer about it, ask to read it: `read` with "
                     f"{{\"file\": \"{r['file']}\"}}. When you quote it, write “its exact words” (`{r['file']}`, "
                     f"p. 12): the student can open it there."]
@@ -4519,13 +4551,16 @@ def note_turns(cfg: dict, paths: Paths, talk: dict) -> list[dict]:
     s = f"{where}:{rel}"
     closed = not note_shared(cfg, paths, rel)
     out, last = [], ""
-    subjects, names = [s], {s: Path(rel).stem}
+    # A note kept from the agent keeps its file's name in the log: nothing
+    # it says is carried (agent/names.py).
+    own = {s: Path(rel).stem if closed else shown_name(paths.vault, rel)[0]}
+    subjects, names = [s], own
     for t in talk.get("turns") or []:
         if not isinstance(t, dict) or t.get("role") not in ("student", "agent"):
             continue
         last = str(t.get("at") or last)
         if t["role"] == "student":            # what else it pointed at; its answer is about the same
-            subjects, names = [s], {s: Path(rel).stem}
+            subjects, names = [s], own
             if isinstance(t.get("refs"), list) and not closed:
                 for r in resolve_refs(cfg, paths.stamp, [x for x in t["refs"] if isinstance(x, dict) and x.get("file")], {})[0]:
                     subjects, names = subjects + [x for x in r["subjects"] if x not in subjects], dict(names, **r["names"])
@@ -4736,7 +4771,7 @@ def cmd_conversation(cfg: dict, args) -> int:
     about a task (`--task`) or a block (`--date`, `--hash`) outside its own
     chat."""
     if args.files:
-        print(json.dumps({"files": [{k: x[k] for k in ("rel", "kind", "name")}
+        print(json.dumps({"files": [{k: x[k] for k in ("rel", "kind", "name", "title")}
                                     for x in file_refs_list(cfg, Paths(cfg, dt.date.today()))]}, ensure_ascii=False))
         return 0
     added = convo_merge(cfg, everything=args.merge)
