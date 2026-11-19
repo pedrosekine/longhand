@@ -44,6 +44,7 @@ Item {
       function showMark(id) { shownMark = id }
     }
     function anywhereKey(e) { return false }
+    function chatSelectionKey(e, hasOwn) { return false }
     function sendDay(t) { sent = sent.concat([t]); return true }
     function showHint(t) { hintSaid = t }
     function used() {}

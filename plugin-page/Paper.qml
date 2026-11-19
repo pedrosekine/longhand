@@ -150,6 +150,7 @@ Item {
   }
   function keyPressed(event) {
     if (page.anywhereKey(event)) return true
+    if (page.chatSelectionKey(event, false)) return true
     var n = pp.rows.length
     if (Sc.hit(event, "paperAll")) { pp.filter = "all"; pp.at = -1; return true }
     if (Sc.hit(event, "paperHighlights")) { pp.filter = "h"; pp.at = -1; return true }
