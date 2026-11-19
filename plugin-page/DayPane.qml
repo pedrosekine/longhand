@@ -24,6 +24,12 @@ BorderSurface {
   property int pinTurn: -1
   property int pinCount: 0
   property int litTurn: -1
+  // The day's last answer: the one its rating keys (Alt+= / Alt+-) act on,
+  // and so the one whose "helpful" stays in view.
+  readonly property int lastAnswer: {
+    for (var i = page.dayTurns.length - 1; i >= 0; i--) if (page.dayTurns[i].role === "agent") return i
+    return -1
+  }
   function showTurn(i) {
     dayPane.pinTurn = i
     dayPane.pinCount = page.dayTurns.length
@@ -426,6 +432,13 @@ BorderSurface {
           required property int index
           width: dayColumn.width
           spacing: page.sp(2)
+          // Room between turns, so each exchange reads as one (2026-11-19):
+          // at 2 px apart the answer, its rating, the next quote and the
+          // next bubble ran together.
+          // A question sits closer to its answer than to the turn before,
+          // so each exchange reads as a pair.
+          bottomPadding: modelData.role === "agent" ? page.chatTurnGap : Math.round(page.chatTurnGap * 0.55)
+          HoverHandler { id: turnHover }
           // What the agent said unasked on opening the page, before this
           // turn: a turn of its own, answered in the box like any other.
           Repeater {
@@ -463,20 +476,14 @@ BorderSurface {
             }
           }
           // The marks a message about a paper pointed at, over its bubble.
-          Text {
-            visible: modelData.role === "student" && !!modelData.marks && modelData.marks.length > 0
-            width: parent.width
-            textFormat: Text.PlainText
-            elide: Text.ElideRight
-            horizontalAlignment: Text.AlignRight
-            text: (modelData.marks || []).map(function (id) { return "↳ " + page.paper.head(id) }).join("  ")
-            color: page.faint
-            font.family: page.fontFamily
-            font.styleName: page.fontStyle
-            font.pixelSize: page.fs(Style.font.caption)
+          TurnRef {
+            page: dayPane.page
+            alignTo: dayTurn.bubbleWidth
+            text: modelData.role === "student" && !!modelData.marks ? modelData.marks.map(function (id) { return page.paper.head(id) }).join("  ·  ") : ""
           }
           // The turn, drawn as every pane draws one (Turn.qml).
           Turn {
+            id: dayTurn
             page: dayPane.page
             width: turn.width
             t: modelData
@@ -600,24 +607,45 @@ BorderSurface {
           }
           // Helpful or not: the student's word on the answer, for the
           // weekly review and the eval cases. A word again takes it back.
+          // Under the last answer, with its keys; under an earlier one only
+          // while the pointer is on it, or once chosen (2026-11-19): "helpful
+          // not helpful" under every answer was noise between the turns. Its
+          // room is kept, so nothing moves when it shows.
           Row {
+            id: rateRow
+            readonly property bool last: turn.index === dayPane.lastAnswer
+            readonly property bool rated: page.dayRatingOf(turn.index) !== ""
             visible: modelData.role === "agent" && !modelData.error && !!modelData.text
-            spacing: page.sp(10)
+            opacity: last || rated || turnHover.hovered ? 1 : 0
+            topPadding: page.sp(4)
+            spacing: page.sp(12)
             Repeater {
               model: [{ value: "up", text: "helpful", act: "dayHelpful" }, { value: "down", text: "not helpful", act: "dayNotHelpful" }]
-              Text {
+              Row {
                 required property var modelData
                 readonly property bool chosen: page.dayRatingOf(turn.index) === modelData.value
-                textFormat: Text.PlainText
-                text: (chosen ? "✓ " : "") + modelData.text
-                color: chosen ? page.accent : page.faint
-                font.family: page.fontFamily
-                font.styleName: page.fontStyle
-                font.pixelSize: page.fs(Style.font.caption)
-                MouseArea {
-                  anchors.fill: parent
-                  cursorShape: Qt.PointingHandCursor
-                  onClicked: page.rateDay(turn.index, parent.modelData.value)
+                spacing: page.sp(5)
+                KeyCaps {
+                  visible: rateRow.last
+                  anchors.verticalCenter: parent.verticalCenter
+                  page: dayPane.page
+                  size: page.fs(Style.font.caption)
+                  key: page.keyName(parent.modelData.act)
+                }
+                Text {
+                  anchors.verticalCenter: parent.verticalCenter
+                  textFormat: Text.PlainText
+                  text: (parent.chosen ? "✓ " : "") + parent.modelData.text
+                  color: parent.chosen ? page.accent : rateArea.containsMouse && page.handOn ? page.foreground : page.faint
+                  font.family: page.fontFamily
+                  font.pixelSize: page.fs(Style.font.caption)
+                  MouseArea {
+                    id: rateArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: page.rateDay(turn.index, parent.parent.modelData.value)
+                  }
                 }
               }
             }

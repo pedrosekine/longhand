@@ -788,9 +788,8 @@ BorderSurface {
                 text: page.keyName("dashTalk")
                 color: page.background
                 font.family: page.fontFamily
-                font.styleName: page.fontStyle
+                font.styleName: "Bold"       // the face's own cut; font.bold beside it, Qt emboldens it again
                 font.pixelSize: page.fs(Style.font.caption)
-                font.bold: true
               }
               MouseArea {
                 id: chatKeyArea
@@ -1008,7 +1007,7 @@ BorderSurface {
                   color: page.background
                   font.family: page.fontFamily
                   font.pixelSize: Math.round(box.size * (dashRow.author === "" ? 0.85 : 0.62))
-                  font.bold: true
+                  font.styleName: "Bold"     // the face's own cut; font.bold beside it, Qt emboldens it again
                 }
 
                 MouseArea {

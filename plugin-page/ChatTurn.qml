@@ -1,5 +1,6 @@
 import QtQuick
 import qs.Commons
+import "Chat.js" as Chat
 
 // One turn of a conversation, as the agent's panes draw it (2026-10-25):
 // the student's words in a bubble at the right, the agent's across the
@@ -15,7 +16,7 @@ Item {
   property string text: ""
   property bool markdown: !mine
   property color color: page.foreground
-  property int pixelSize: page.fs(Style.font.title)
+  property int pixelSize: page.chatSize
   // Words picked in the agent's answer can be answered (2026-11-18): an
   // "answer" at the end of the selection, or Ctrl+R; several at once, each
   // its own answer above the box.
@@ -36,22 +37,18 @@ Item {
     return true
   }
 
-  // A selectable text has no linkColor, and its palette does not reach the
-  // markdown's links: they came out pure blue on the dark ground. A link
-  // written as an anchor with its own colour does take it, so links are
-  // rewritten so (outside code, where brackets are only brackets).
-  function linked(md) {
-    var c = String(page.accent)
-    function a(href, label) { return "<a href=\"" + href.replace(/"/g, "&quot;") + "\" style=\"color:" + c + "\">" + label + "</a>" }
-    return String(md).split(/(```[\s\S]*?```|`[^`\n]*`)/).map(function (part, i) {
-      if (i % 2 === 1) return part
-      return part.replace(/(^|[^!])\[([^\]\n]+)\]\(([^)\s]+)\)/g, function (m, pre, label, href) { return pre + a(href, label) })
-        .replace(/<(https?:\/\/[^>\s]+)>/g, function (m, href) { return a(href, href) })
-    }).join("")
-  }
+  // Drawn as rich text (Chat.js, 2026-11-19): Qt's markdown import has no
+  // line height and no space between paragraphs. Links carry their own
+  // colour — a selectable text has no linkColor, and its palette does not
+  // reach them (they came out pure blue on the dark ground). A table is
+  // left to Qt's markdown, which draws one.
+  readonly property var chatStyle: ({ fg: String(turn.color), dim: String(page.dim), accent: String(page.accent),
+    code: page.codeFamily, leading: page.chatLeading, gap: page.chatGap })
+  readonly property string rich: turn.markdown ? Chat.html(turn.text, chatStyle) : Chat.plain(turn.text, chatStyle)
 
-  readonly property int padX: page.sp(10)
-  readonly property int padY: page.sp(6)
+  readonly property int bubbleWidth: mine ? bubble.width : 0
+  readonly property int padX: Math.round(page.chatSize * 0.9)
+  readonly property int padY: Math.round(page.chatSize * 0.55)
 
   width: parent ? parent.width : 0
   implicitHeight: mine ? bubble.height : said.implicitHeight
@@ -73,7 +70,7 @@ Item {
     width: Math.min(Math.ceil(natural.implicitWidth) + 2, Math.round(turn.width * 0.8) - turn.padX * 2) + turn.padX * 2
     height: said.implicitHeight + turn.padY * 2
     radius: Style.cornerRadius
-    color: Util.alpha(page.accent, 0.14)
+    color: Util.alpha(page.accent, 0.12)
   }
 
   // Where a passage's words are, as rectangles a line each, in the words'
@@ -168,9 +165,9 @@ Item {
     selectByMouse: true
     activeFocusOnPress: false
     persistentSelection: true
-    textFormat: turn.markdown ? TextEdit.MarkdownText : TextEdit.PlainText
+    textFormat: turn.rich === "" ? TextEdit.MarkdownText : TextEdit.RichText
     wrapMode: TextEdit.Wrap
-    text: turn.markdown ? turn.linked(turn.text) : turn.text
+    text: turn.rich === "" ? turn.text : turn.rich
     color: turn.color
     selectionColor: page.palette.selection
     selectedTextColor: page.foreground

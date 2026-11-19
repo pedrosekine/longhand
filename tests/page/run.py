@@ -1311,7 +1311,9 @@ def checks() -> int:
             time.sleep(0.4)
             lay = json.loads(p.call("layout"))
             check(71.5 <= lay["chars"] <= 72.5 and lay["x"] > 0, f"at zoom {z} a line holds 72 characters, centred ({lay})")
-        p.call("zoom", 1.25)
+        # (1.5: at 1.25 the measure counted on real prose, 2026-11-19, still
+        # fits the 701 px window)
+        p.call("zoom", 1.5)
         time.sleep(0.4)
         lay = json.loads(p.call("layout"))
         check(40 < lay["chars"] < 72 and lay["x"] == 0, f"zoomed past the window, the column fills it and wraps ({lay})")

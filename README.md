@@ -94,16 +94,21 @@ takes it away. Arrows are drawn the same way: `->`, `<-` and `<->` show as
 →, ← and ↔ (never in code or inside a link), stay as typed in the file, and
 are one character to the cursor, so Backspace takes the whole arrow.
 
-The page is set in **iA Writer Quattro S**, a proportional face made for
-writing: prose reads as prose rather than as code, and 72 characters take
-less width than they do in a monospace. Fenced code and frontmatter keep a
-monospace, where columns mean something. `font` and `codeFont` in the config
-name other faces; without them the page takes the first it finds of iA
-Writer Quattro S, iA Writer Duo S, then the shell's own. The page asks for
-the face's `Regular` cut by name: the iA Writer families declare the same
-weight for every style, so asking by weight hands back the Bold file — the
-whole page came out heavy and `**bold**` had nowhere heavier to go. A
-family without a style of that name is unaffected. Size follows the
+The page is set in **Adwaita Sans** (Inter's design, shipped with GNOME), a
+face made for reading on a screen: the note, the panes and the chat are one
+surface in it. It replaced iA Writer Quattro S on 2026-11-19 — a face made
+for writing, whose near-even widths fit only 44 characters on a line in
+the chat pane. The page reads at 1.6 leading, the note and the chat
+alike (a TextEdit has none of its own, so prose rows are drawn as rich
+text); the conversations sit a little smaller, about 60 characters a line,
+with a paragraph's space between paragraphs, and a
+quote of the paper reads as prose with only its page in the accent. Fenced
+code and frontmatter keep a monospace, where columns mean something. `font`
+and `codeFont` in the config name other faces; without them the page takes
+the first it finds of Adwaita Sans, Inter, Noto Sans, iA Writer Quattro S,
+then the shell's own. The page asks for the face's `Regular` cut by name:
+the iA Writer families declare the same weight for every style, so asking
+by weight hands back the Bold file. Size follows the
 shell's scale (your Omarchy font size); `Ctrl+=` / `Ctrl+-` / `Ctrl+0`
 zoom the whole page like a browser, remembered across restarts. `Ctrl+F`
 finds in the note as you type: Enter next, Shift+Enter previous,

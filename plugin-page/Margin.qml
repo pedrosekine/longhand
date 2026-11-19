@@ -195,6 +195,7 @@ BorderSurface {
           required property var modelData
           width: marginColumn.width
           spacing: page.sp(2)
+          bottomPadding: modelData.role === "agent" ? page.chatTurnGap : Math.round(page.chatTurnGap * 0.55)   // as in the day's chat
           Turn {
             page: margin.page
             width: parent.width
@@ -304,6 +305,12 @@ BorderSurface {
           readonly property var p: isCard ? (page.currentProposals[ci] || ({})) : ({})
           width: marginColumn.width
           spacing: page.sp(2)
+          // Room between turns, as in the day's chat; a card stays close
+          // under the answer that made it.
+          required property int index
+          readonly property var next: page.marginStream[index + 1]
+          bottomPadding: next && next.card !== undefined ? page.sp(6)
+            : !isCard && turn.role !== "agent" ? Math.round(page.chatTurnGap * 0.55) : page.chatTurnGap
 
           Turn {
             visible: !row.isCard

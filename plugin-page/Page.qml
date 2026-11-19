@@ -349,13 +349,16 @@ Item {
   readonly property color urgent: pal.red
   readonly property color magenta: pal.magenta       // private things' lock
   readonly property var borderSpec: Border.surfaceSpec("menu", "border", border, Math.max(1, Style.space(2)))
-  // The face the note is written in. The page drew in the shell's monospace
-  // until 2026-10-15; prose reads better in a proportional face, and the
-  // measure gets physically narrower for the same 72 characters. `font` in
-  // the config names one; otherwise the first of these the machine has.
+  // The page's one face: the note, the chrome, the chat. The page drew in
+  // the shell's monospace until 2026-10-15, then in iA Writer Quattro S, a
+  // face for writing; since 2026-11-19 in a face for reading, Adwaita Sans
+  // (Inter's design, shipped with GNOME): proportional, a tall x-height, the
+  // kind of face Claude's and Obsidian's interfaces read in. Quattro's
+  // near-even widths gave the chat pane 44 characters a line. `font` in the
+  // config names another; otherwise the first of these the machine has.
   // Fenced code and frontmatter keep a monospace, where columns mean
   // something — the editor already draws those rows apart.
-  readonly property var proseChoices: [svc.pageFont, "iA Writer Quattro S", "iA Writer Duo S", Style.font.family]
+  readonly property var proseChoices: [svc.pageFont, "Adwaita Sans", "Inter", "Noto Sans", "iA Writer Quattro S", Style.font.family]
   readonly property string fontFamily: {
     var have = Qt.fontFamilies()
     for (var i = 0; i < root.proseChoices.length; i++)
@@ -386,6 +389,25 @@ Item {
   function fs(n) { return Math.max(1, Math.round(n * root.zoom)) }
   readonly property int textSize: root.fs(Style.font.title)
 
+  // The conversations' rhythm (2026-11-19, chat readability,
+  // docs/explorations/chat-readability/): a little smaller than the note,
+  // so a 620 px pane holds about 60 characters a line, at 1.6 leading with
+  // a paragraph's space between paragraphs — what Claude's chat reads at.
+  // Qt's markdown gave 1.2 and no space between paragraphs at all (Chat.js).
+  // The page's leading, in ems: the note's prose (NoteEditor.leading) and
+  // the chat's (2026-11-19). 1.5 and 1.6 were rendered on a class note:
+  // a face with Adwaita's tall x-height, light on a dark ground, at a
+  // measure in the 70s wants the top of the usual 1.5–1.6, and one number
+  // for the whole page keeps the note and its chat in one rhythm.
+  readonly property real leading: 1.6
+  readonly property int chatSize: Math.round(root.textSize * 0.9)
+  // Qt's rich-text line-height is a share of the font's own line, not of
+  // its size: the leading in ems is asked for in the face's terms.
+  FontMetrics { id: chatMetrics; font.family: root.fontFamily; font.pixelSize: root.chatSize }
+  readonly property int chatLeading: chatMetrics.height > 0 ? Math.round(100 * root.leading * root.chatSize / chatMetrics.height) : 130
+  readonly property int chatGap: Math.round(root.chatSize * 0.7)          // after a paragraph
+  readonly property int chatTurnGap: Math.round(root.chatSize * 1.8)      // between turns
+
   // The measure: a line of text holds at most `measureChars` characters,
   // the reading length typography settles on (45–75). It is counted in the
   // page's own type, so it follows the zoom and the font: zoomed in, the
@@ -393,19 +415,24 @@ Item {
   // space beside it grows, never the lines. A window narrower than the
   // measure just wraps. The same in the window and on the overlay.
   readonly property int measureChars: 72
-  FontMetrics { id: bodyMetrics; font.family: root.fontFamily; font.pixelSize: root.textSize }
-  // One character of this face, measured on a lowercase alphabet — the unit
-  // typography has always set measure in (72 characters is 2.8 alphabets,
-  // inside the 45–75 the eye likes). For a monospace this is exactly the
-  // advance, so the column is unchanged; for a proportional face it is the
-  // honest average, where Qt's own averageCharacterWidth over-counts by
-  // weighing capitals the same as letters nobody types as often.
+  FontMetrics { id: bodyMetrics; font.family: root.fontFamily; font.styleName: root.fontStyle; font.pixelSize: root.textSize }
+  // One character of this face, as prose spends them: measured on ordinary
+  // sentences, spaces and punctuation and capitals included, because that
+  // is what "72 characters a line" counts. Until 2026-11-19 it was the
+  // lowercase alphabet: right for a monospace, and near enough for Quattro,
+  // but in a proportional sans a line of real prose then held about 80 —
+  // past the 45–75 the eye likes. English and German, the languages the
+  // notes are written in most; for a monospace this is still exactly the
+  // advance. Qt's own averageCharacterWidth over-counts, weighing capitals
+  // the same as letters nobody types as often.
+  readonly property string measureSample: "The point that stuck was that neither is more valid on its own: it depends on "
+    + "the claim you want to make. Die Daten sind reich, aber die Route war fest, also wählten die Fahrer nie, wohin sie fuhren."
   readonly property real chWidth: {
     // Reading the metrics' own font first is what makes this a binding:
     // advanceWidth is a method call, so without it QML sees no dependency
     // and the measure would stop following the zoom and the face.
     var px = bodyMetrics.font.pixelSize, fam = bodyMetrics.font.family
-    return px > 0 && fam !== "" ? bodyMetrics.advanceWidth("abcdefghijklmnopqrstuvwxyz") / 26 : 1
+    return px > 0 && fam !== "" ? bodyMetrics.advanceWidth(root.measureSample) / root.measureSample.length : 1
   }
   readonly property int measure: Math.round(root.chWidth * root.measureChars)
   // The overlay's sheet has a border, inside which the padding starts:
@@ -9430,6 +9457,7 @@ Item {
             fontStyle: root.fontStyle
             codeFamily: root.codeFamily
             textSize: root.textSize
+            leading: root.leading
             foreground: root.foreground
             background: root.background
             dim: root.dim

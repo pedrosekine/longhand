@@ -19,6 +19,15 @@ ShellRoot {
     id: fakeShell
     function hide(id) { page.close(); return true }
     property var seenRows: []    // dashDrawn's: the drawn rows seen so far
+    // What keys put in a line's field. A key inserts characters; `insert`
+    // on a rich field reads html — so a row drawn rich for its leading
+    // (NoteEditor.leading, 2026-11-19) takes them as text kept as typed:
+    // escaped, its spaces and new lines held by pre-wrap.
+    function keyIn(it, s) {
+      if (it.field.textFormat !== TextEdit.RichText) { it.field.insert(it.field.cursorPosition, s); return }
+      var h = s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      it.field.insert(it.field.cursorPosition, "<span style=\"white-space:pre-wrap\">" + h + "</span>")
+    }
   }
   Page { id: page; shell: fakeShell; windowTitle: "Page scratch" }
   // Real pointer events, delivered through the page's window as a mouse's
@@ -64,7 +73,7 @@ ShellRoot {
       // is handed to `insert` as html — which keys never are. Go through the
       // note there, the way the key path ends up doing.
       if (it.rich) e.insert(e.cursorPosition, s)
-      else it.field.insert(it.field.cursorPosition, s)
+      else fakeShell.keyIn(it, s)
     }
     // Typing that stops once the note holds `stop`, checked in the same
     // breath, so no key lands after it unseen.
@@ -138,7 +147,7 @@ ShellRoot {
     function typeField(s: string): void {
       var e = page.editorItem
       var it = e.rowItem(e.focusedRow) || e.rowItem(page.lineIndexAt(e.cursorPosition))
-      it.field.insert(it.field.cursorPosition, s)
+      fakeShell.keyIn(it, s)
     }
 
     function focusedRow(): string { var e = page.editorItem; return e.focusedRow + "/" + e.rows.length + " item=" + (!!e.rowItem(e.focusedRow)) }
