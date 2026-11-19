@@ -806,7 +806,7 @@ BorderSurface {
       width: parent.width
       refs: page.noteRoom ? page.dayRefs : page.dayChips
       onDrop: function (i) {
-        if (page.noteRoom) page.dayRefs = []
+        if (page.noteRoom) page.dayRefs = page.dayRefs.filter(function (r, k) { return k !== i })
         else page.dropDayChip(i)
         dayField.forceActiveFocus()
       }
@@ -855,9 +855,9 @@ BorderSurface {
         : page.dayReplies.length > 0 ? page.dayReplies.length + (page.dayReplies.length === 1 ? " reply" : " replies")
           + " attached · " + page.keyName("chatSend") + " sends · click a pill to change it · "
           + page.keyName("chatAnswer") + " replies to more"
-        : page.paper.room ? page.keyName("chatSend") + " sends · ^ attaches a mark · quotes link to the page · "
+        : page.paper.room ? page.keyName("chatSend") + " sends · ^ attaches a mark · @ another paper · quotes link to the page · "
           + page.keyName("marginBack") + " back to the marks"
-        : page.keyName("chatSend") + " sends · Shift+Enter a new line · @ points at " + (page.noteRoom ? "a part of it" : "a block, a task, a note")
+        : page.keyName("chatSend") + " sends · Shift+Enter a new line · @ points at " + (page.noteRoom ? "a part of it, a paper" : "a block, a task, a note")
         + " · " + page.keyName("chatAnswer") + " replies to words you select"
         + (page.dayOpenCards.length > 0 ? " · " + page.keyName("marginUp") + " to its proposals"
            : page.convoRows.length > 0 ? " · " + page.keyName("marginUp") + " to the other chats" : "")

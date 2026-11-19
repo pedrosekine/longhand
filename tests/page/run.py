@@ -3651,6 +3651,56 @@ def checks() -> int:
         p.call("dayKey", KEY_ESC, 0)
         p.call("paperKey", KEY_RETURN, CTRL)
         check(p.wait(lambda: "no question is waiting" in pr()["hint"]), f"Ctrl+Enter with none waiting says so ({pr()['hint']!r})")
+        # Another paper pointed at with `@` (2026-11-19, the student: "@ a
+        # different paper so I can mention it to the agent"): offered from
+        # the paper's own chat, a chip beside its marks, sent with the
+        # message; a quote of it opens it there.
+        make_pdf(course / "Other 2026.pdf", "Stress hotspots on the commute.")
+        # The test vault's papers are in `Studies/`, which the agent does not
+        # see unless switched on (search's default is `human/Studies`):
+        # switched on for this part, as Settings → what the agent may search.
+        sj = p.tmp / "config" / "longhand" / "settings.json"
+        kept_settings = sj.read_text() if sj.exists() else None
+        sset = json.loads(kept_settings) if kept_settings else {}
+        sset.setdefault("searchFolders", {})["Studies"] = True
+        sj.parent.mkdir(parents=True, exist_ok=True)
+        sj.write_text(json.dumps(sset))
+        p.call("paperKey", KEY_TAB, 0)
+        p.wait(lambda: not pr()["list"])
+        p.call("dayType", "@Other")
+        check(p.wait(lambda: json.loads(p.call("dayMention")) == ["paper · Other 2026"], 10),
+              f"@ in a paper's chat offers the other papers, this one left out ({p.call('dayMention')})")
+        check(p.call("dayKey", KEY_ENTER, 0) == "true"
+              and p.wait(lambda: [(r["kind"], r["head"]) for r in json.loads(p.call("dayRefs"))] == [("paper", "Other 2026")]),
+              f"…Enter makes it a chip ({p.call('dayRefs')})")
+        p.call("daySend", "does Other agree?")
+        check(p.wait(lambda: json.loads(paper_talk.read_text())["turns"][-1]["role"] == "agent"
+                     and json.loads(paper_talk.read_text())["turns"][-2].get("text") == "does Other agree?", 20),
+              "…the message is answered in the paper's chat")
+        asked_other = json.loads(paper_talk.read_text())["turns"][-2]
+        check(asked_other.get("refs") == [{"file": "Studies/Course A/Other 2026.pdf", "kind": "paper", "head": "Other 2026"}]
+              and json.loads(p.call("dayRefs")) == [],
+              f"…the turn keeps the paper it pointed at, and the box lets go of it ({asked_other.get('refs')})")
+        links = p.call("paperLinks", "It says “Stress hotspots on the commute” (`Studies/Course A/Other 2026.pdf`, p. 1).")
+        check("[“Stress hotspots on the commute” (Other 2026, p. 1)](pquote:1:" in links and "cite:" not in links,
+              f"a quote of the other paper is one link, by its name and page ({links})")
+        p.call("openLink", re.search(r"\((pquote:[^)]+)\)", links).group(1))
+        check(p.wait(lambda: pd()["label"] == "Other 2026.pdf" and pr()["flash"] > 0, 10),
+              f"…opened, that paper shows, its words lit ({pd()['label']}, {pr()})")
+        p.call("openFile", "Studies/Course A/Reading.pdf", "false")
+        p.wait(lambda: pd()["label"] == "Reading.pdf" and pd()["ready"])
+        p.call("pageKey", KEY_3, CTRL)
+        check(p.wait(lambda: pr()["room"] and pr()["shown"]), f"…and back on the first paper, its room again ({pr()})")
+        if not pr()["list"]:
+            p.call("dayKey", KEY_ESC, 0)
+            p.wait(lambda: pr()["list"])
+        if kept_settings is None:
+            sj.unlink()
+        else:
+            sj.write_text(kept_settings)
+        p.call("paperKey", KEY_DOWN, 0)                     # as it was before: a mark picked, from the list
+        p.call("paperKey", KEY_DOWN, 0)
+        p.wait(lambda: pr()["picked"] != "")
         links = p.call("paperLinks", "It says “Reflexive thematic analysis” (p. 1), plainly.")
         check("](quote:1:" in links and "[“Reflexive thematic analysis” (p. 1)]" in links, f"a quote with its page is a link ({links})")
         links = p.call("paperLinks", "It says “stress (MOS) were found” (p. 1), plainly.")

@@ -668,6 +668,28 @@ block, `table` rows.
   and spilled the rest into the answer; a link's parentheses are now
   written `%28 %29`.
 
+- **Another paper, by @** (2026-11-19, the student, reading one paper and
+  wanting to bring in one read the day before: "@ a different paper so I
+  can mention it to the agent. Then, the agent knows what I am referring
+  to and can use it to give me an answer"). In a paper's chat `@` offers
+  the other papers (and notes) the agent may see, as the day's chat does
+  (`conversation --files`, read again as each `@` begins), the open paper
+  left out; `^` still attaches its own marks. The one picked is a chip
+  beside them, removable (a click, Backspace in the empty box), and goes
+  with the message (`note --refs`). It travels as the student has read it:
+  its pages, its project, their marks with their notes (`paper_reading`,
+  from `longhand-read state`), never its text unasked; the agent may ask to
+  read it, under search's rules. A paper in a private folder is counted,
+  not shown. The turn keeps what it pointed at, and the one conversation
+  files it under both papers, so the other paper's own chat remembers it —
+  unless the open paper's folder is kept from search, whose chat files
+  nothing elsewhere. The agent quotes the other paper as “its exact words”
+  (`path`, p. 12); that is one link, "(Moser 2026, p. 12)", which opens that
+  paper with the words lit (`pquote:`, `PdfPane.flashAfter`). A note's own
+  chat may point at papers too. Found on the way: the paper talked about,
+  pointed at again, was counted as one that "cannot be shown" when its
+  folder is not searched; it is left out before the rest are read.
+
 **Not yet:** a two-column paper fitted one column at a time; a reading view
 (its text reflowed in the page's own face).
 

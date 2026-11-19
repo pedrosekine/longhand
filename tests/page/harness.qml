@@ -409,6 +409,7 @@ ShellRoot {
     function dayTurns(): string { return JSON.stringify(page.dayTurns.map(function (t) { return t.role + ": " + t.text })) }
     function dayBlockText(): string { return page.dayBlockText }
     function dayChips(): string { return JSON.stringify(page.dayChips) }
+    function dayRefs(): string { return JSON.stringify(page.dayRefs) }
     function answerPassage(pane: string, passage: string, at: string): void { page.addReply(pane, passage, at) }
     function replies(pane: string): string { return JSON.stringify(page.repliesOf(pane)) }
     function replying(pane: string): string { return JSON.stringify(page.replyingOf(pane)) }
