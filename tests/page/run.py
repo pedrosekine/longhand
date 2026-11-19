@@ -1875,6 +1875,16 @@ def checks() -> int:
               f"…taking it makes the box a reply to them, the offer gone ({p.call('replying', 'day')})")
         if json.loads(p.call("replying", "day")):
             p.call("dayKey", 0x01000000, 0)   # Esc: cancelled, for the checks after
+        # Ctrl+R with the keys on the PDF or a paper's marks, as they stay
+        # when words are dragged over in an answer (2026-11-19): the same.
+        for where in ("pdfKey", "paperKey"):
+            p.call("selectInAnswer", "these two")
+            took = p.call(where, 0x52, CTRL)
+            check(took == "true" and p.wait(lambda: (json.loads(p.call("replying", "day")) or {}).get("quote") == "these two"),
+                  f"Ctrl+R from {where[:-3]} replies to the words selected in an answer ({took}, {p.call('replying', 'day')})")
+            if json.loads(p.call("replying", "day")):
+                p.call("dayKey", 0x01000000, 0)
+        check(p.call("pdfKey", 0x52, CTRL) == "false", "…and with none selected, Ctrl+R there is not taken")
         rep_open = lambda: json.loads(p.call("replying", "day"))
         at = p.call("lastAgentAt")
         p.call("dayType", "anything else?")

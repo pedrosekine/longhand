@@ -1222,6 +1222,7 @@ Item {
     // Back from a definition gone to, before the page's own back.
     if (pane.jumpBack && Sc.hit(event, "linkBack")) { pane.jumpReturn(); return true }
     if (page.anywhereKey(event)) return true
+    if (page.chatSelectionKey(event, !!(pane.view && pane.view.selectedText !== ""))) return true
     if (Sc.hit(event, "pdfGo")) {
       if (pane.hoverAcro) { pane.acroGo(pane.hoverAcro.a); return true }
       if (pane.hoverMark !== "") return pane.markGo(pane.hoverMark)

@@ -1613,6 +1613,15 @@ Item {
     if (!s || s.selectedText === "" || !s.parent || !s.parent.answerSelection) return false
     return s.parent.answerSelection()
   }
+  // The same two keys from the panes beside a chat that hold the keys
+  // themselves — the PDF, a paper's marks (2026-11-19): words dragged over
+  // in an answer leave the keys where they were, so Ctrl+R and Ctrl+C on
+  // them did nothing there. `hasOwn`: that pane has words of its own
+  // selected, which Ctrl+C leaves alone.
+  function chatSelectionKey(event, hasOwn) {
+    if (!hasOwn && root.copyChatSelection(event, null)) return true
+    return root.answerSelected(event)
+  }
 
   function taskName(t) { return String((t && (t.title || t.text)) || "").replace(/\s+/g, " ").trim() }
   // What was left out of an answer, as the student would say it: the
