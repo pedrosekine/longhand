@@ -27,6 +27,94 @@ FocusScope {
   // `event.accepted`.
   signal keyPressed(var event)
   function remove(a, b) { area.remove(a, b) }
+  function insert(at, s) { area.insert(at, s) }
+
+  // A paper or a note picked by @ (2026-11-19): its name stays in the
+  // sentence, in the accent as a link is, tied to its chip above. One goes
+  // with the other: Backspace on the name gives back the `@` as typed (the
+  // list opens again, to pick another), the chip's × takes the name out,
+  // and an edit inside the name leaves it words and lets the chip go.
+  // `chipKeys` (the chips' `refKey`s): a name whose chip went another way
+  // is words again.
+  property var chipKeys: []
+  property var mentions: []             // [{ start, len, key, query }]
+  signal mentionGone(string key)
+  readonly property var liveMentions: box.mentions.filter(function (m) { return box.chipKeys.indexOf(m.key) >= 0 })
+  onChipKeysChanged: if (box.liveMentions.length !== box.mentions.length) box.mentions = box.liveMentions
+  property string _was: ""
+  function pickMention(start, end, name, key, query) {
+    area.remove(start, end)
+    var spaced = area.text.charAt(start) === " "
+    area.insert(start, spaced ? name : name + " ")
+    box.mentions = box.mentions.concat([{ start: start, len: name.length, key: key, query: query }])
+    area.cursorPosition = start + name.length + 1
+  }
+  function dropMention(key) {
+    var gone = box.mentions.filter(function (m) { return m.key === key }).sort(function (a, b) { return b.start - a.start })
+    if (gone.length === 0) return
+    box.mentions = box.mentions.filter(function (m) { return m.key !== key })
+    gone.forEach(function (m) {
+      var end = m.start + m.len
+      area.remove(m.start, area.text.charAt(end) === " " ? end + 1 : end)
+    })
+  }
+  function _lastOf(key) { return !box.mentions.some(function (m) { return m.key === key }) }
+  // Where an edit fell: at the cursor when that explains it (typing next
+  // to a name whose letters repeat), else the common ends.
+  function _edit(was, now) {
+    var d = now.length - was.length, c = area.cursorPosition
+    if (d > 0 && c - d >= 0 && was.substring(0, c - d) === now.substring(0, c - d) && was.substring(c - d) === now.substring(c))
+      return { at: c - d, end: c - d, d: d }
+    if (d < 0 && was.substring(0, c) === now.substring(0, c) && was.substring(c - d) === now.substring(c))
+      return { at: c, end: c - d, d: d }
+    var p = 0, n = Math.min(was.length, now.length)
+    while (p < n && was.charAt(p) === now.charAt(p)) p++
+    var s = 0
+    while (s < n - p && was.charAt(was.length - 1 - s) === now.charAt(now.length - 1 - s)) s++
+    return { at: p, end: was.length - s, d: d }
+  }
+  function _moved(now) {
+    var was = box._was
+    box._was = now
+    if (box.mentions.length === 0 || was === now) return
+    if (now === "") { box.mentions = []; return }
+    var e = box._edit(was, now), keep = [], broken = []
+    box.mentions.forEach(function (m) {
+      var end = m.start + m.len
+      if (end <= e.at) keep.push(m)
+      else if (m.start >= e.end) keep.push({ start: m.start + e.d, len: m.len, key: m.key, query: m.query })
+      else broken.push(m)
+    })
+    box.mentions = keep
+    broken.forEach(function (m) { if (box._lastOf(m.key)) box.mentionGone(m.key) })
+  }
+  function _backspace(event) {
+    if (event.key !== Qt.Key_Backspace || event.modifiers !== Qt.NoModifier || area.selectedText !== "" || area.readOnly) return false
+    var c = area.cursorPosition, t = area.text
+    var m = box.liveMentions.find(function (x) { var end = x.start + x.len; return c === end || (c === end + 1 && t.charAt(end) === " ") })
+    if (!m) return false
+    box.mentions = box.mentions.filter(function (x) { return x !== m })
+    area.remove(m.start, m.start + m.len)
+    area.insert(m.start, "@" + m.query)
+    area.cursorPosition = m.start + 1 + m.query.length
+    if (box._lastOf(m.key)) box.mentionGone(m.key)
+    return true
+  }
+  // The box's words as rich text, the names in the accent: drawn over the
+  // box's own (then clear), laid out by the same engine, only while a
+  // name is there.
+  function _esc(x) { return x.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>") }
+  readonly property string _drawn: {
+    var ms = box.liveMentions.slice().sort(function (a, b) { return a.start - b.start })
+    if (ms.length === 0) return ""
+    var t = area.text, out = "", at = 0
+    ms.forEach(function (m) {
+      if (m.start < at || m.start + m.len > t.length) return
+      out += box._esc(t.substring(at, m.start)) + "<span style=\"color:" + page.accent + "\">" + box._esc(t.substr(m.start, m.len)) + "</span>"
+      at = m.start + m.len
+    })
+    return "<span style=\"white-space:pre-wrap\">" + out + box._esc(t.substring(at)) + "</span>"
+  }
   // Replying to a passage of the agent's (2026-11-18, design A): the box
   // itself says so — a bar inside it, its number and the words, × to let
   // it go — and keeps the accent while it is a reply.
@@ -49,10 +137,10 @@ FocusScope {
       id: area
       focus: true
       wrapMode: TextArea.Wrap
-      color: page.foreground
+      color: box._drawn ? "transparent" : page.foreground
       placeholderTextColor: Qt.darker(page.foreground, 1.6)
       selectionColor: page.palette.selection
-      selectedTextColor: page.foreground
+      selectedTextColor: box._drawn ? "transparent" : page.foreground
       font.family: page.fontFamily
       font.styleName: page.fontStyle
       font.pixelSize: page.fs(Style.font.body)
@@ -60,7 +148,23 @@ FocusScope {
       rightPadding: Style.spacing.controlPaddingX + Border.right(box.borderSpec) + (box.busy ? stopArea.width + page.sp(6) : 0)
       topPadding: Style.spacing.inputPaddingY + Border.top(box.borderSpec) + (box.replying ? replyBar.height + page.sp(6) : 0)
       bottomPadding: Style.spacing.inputPaddingY + Border.bottom(box.borderSpec)
-      Keys.onPressed: function (event) { box.keyPressed(event) }
+      Keys.onPressed: function (event) {
+        box.keyPressed(event)
+        if (!event.accepted && box._backspace(event)) event.accepted = true
+      }
+      onTextChanged: box._moved(text)
+      Text {
+        visible: box._drawn !== ""
+        x: area.leftPadding
+        y: area.topPadding
+        width: area.width - area.leftPadding - area.rightPadding
+        textFormat: Text.RichText
+        wrapMode: Text.Wrap
+        renderType: area.renderType
+        text: box._drawn
+        color: page.foreground
+        font: area.font
+      }
       background: BorderSurface {
         color: Style.controlFill(area.activeFocus, area.hovered, page.foreground, page.accent)
         borderSpec: box.borderSpec

@@ -1225,7 +1225,11 @@ from 2026-09/10 and still stand.
   pointed at, and whether a quote of it ever lands on the open paper's page
   instead. Not built: pointing at one mark of the other paper (`@Moser`
   then `^`), and a link kept between two marks in the reading notes — ask
-  before building either.
+  before building either. The name picked stays in the sentence, a link's
+  colour, tied to its chip (built the same day, "The name stays in the
+  sentence"); what would tell: whether the rules — Backspace gives back the
+  `@`, an edit inside makes it words — ever take a name the student meant
+  to keep, and whether the drawn colour ever sits off the box's own words.
 
 - **A page showing another page's picture, on opening** (fixed
   2026-11-18, the student's screenshot: page 2's words under page 5's two

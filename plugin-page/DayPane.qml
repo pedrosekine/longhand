@@ -805,11 +805,7 @@ BorderSurface {
       page: dayPane.page
       width: parent.width
       refs: page.noteRoom ? page.dayRefs : page.dayChips
-      onDrop: function (i) {
-        if (page.noteRoom) page.dayRefs = page.dayRefs.filter(function (r, k) { return k !== i })
-        else page.dropDayChip(i)
-        dayField.forceActiveFocus()
-      }
+      onDrop: function (i) { page.dropDayChipAt(i); dayField.forceActiveFocus() }
     }
 
     // While the box is a reply: which one it is.
@@ -843,6 +839,8 @@ BorderSurface {
       onCancelReply: { page.cancelReply("day"); dayField.forceActiveFocus() }
       onKeyPressed: function (event) { if (page.dayKey(event)) event.accepted = true }
       onTextChanged: { page.dayTyped(text); Qt.callLater(page.updateDayMention) }
+      chipKeys: (page.noteRoom ? page.dayRefs : page.dayChips).map(page.refKey)
+      onMentionGone: function (key) { page.dayRefs = page.dayRefs.filter(function (r) { return page.refKey(r) !== key }) }
       onCursorPositionChanged: Qt.callLater(page.updateDayMention)
     }
 
