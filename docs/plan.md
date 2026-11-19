@@ -1169,10 +1169,12 @@ this list, with *Open, in order* above. Each says why it waits.
   title and date reach the payload with the deadline store.
 - **The agent's third tier** — the internet, tools for the agent — cuts
   against principle 3; a decision, not a build (item 2 above).
-- **A fourth model route** (the OpenAI and Anthropic APIs, metered;
+- **A fifth model route** (the OpenAI and Anthropic APIs, metered;
   `docs/agent.md`, "Reaching a model") — when one is wanted. Claude Code on
   the student's Claude plan (`claude-code/<model>`) was built 2026-11-17,
-  Codex on the ChatGPT plan (`codex/<model>`) 2026-11-18.
+  Codex on the ChatGPT plan (`codex/<model>`) 2026-11-18, Google's
+  Antigravity CLI on the Google AI Pro plan (`antigravity/<model>`)
+  2026-11-19.
 - **Autonomy per project** — per kind of action only, for now.
 - **Mermaid diagrams through Pele** (parked 2026-10-27, the student's call):
   no note in the vault has a diagram yet. Pele is written in a newer

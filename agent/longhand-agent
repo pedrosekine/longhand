@@ -841,6 +841,8 @@ def session_fits(cfg: dict, session: str, env: dict | None = None) -> str:
         return session if claude_attachments(session, env) is not None else ""
     if str(cfg.get("model") or "").startswith(CODEX_ROUTE):
         return session if codex_rollout(cfg, session) is not None else ""
+    if str(cfg.get("model") or "").startswith(ANTIGRAVITY_ROUTE):
+        return session if antigravity_conversation(cfg, session) is not None else ""
     return session if session.startswith("ses_") else ""
 
 
@@ -1186,6 +1188,155 @@ def run_codex(cfg: dict, paths: Paths, payload: str, session: str, message: str,
     return out
 
 
+ANTIGRAVITY_ROUTE = "antigravity/"
+# Antigravity names a model's effort in its slug (`gemini-4-neon-high`);
+# not every model has every one, and Antigravity says so when it has not.
+ANTIGRAVITY_EFFORTS = ("low", "medium", "high", "xhigh")
+# The steps a run may show: the student's words and the agent's reply. A
+# tool step, a sub-agent or anything else fails the run. Antigravity always
+# offers `manage_task` and `schedule`, whatever the agent's `tools` say, and
+# a `permissions.deny` in its settings does not stop them (found 2026-11-19).
+ANTIGRAVITY_STEPS_OK = {"user_input", "agent_response", "checkpoint"}
+# What a person's own Antigravity would carry into every run, relative to the
+# home Longhand gives it: rules, skills, plugins, hooks, MCP servers. None
+# belong in Longhand's own; a run is refused before any call if one is there.
+ANTIGRAVITY_PERSONAL = (".gemini/AGENTS.md", ".gemini/GEMINI.md", ".gemini/skills", ".gemini/antigravity-cli/skills",
+                        ".gemini/config/skills", ".gemini/config/plugins", ".gemini/config/hooks.json",
+                        ".gemini/config/mcp_config.json", ".gemini/config/skills.json", ".gemini/config/rules")
+
+
+def antigravity_home(cfg: dict) -> Path:
+    """The home Longhand gives the Antigravity CLI (`HOME`): its own
+    ~/.gemini, so none of the student's own rules, skills, plugins or MCP
+    servers ride along. The sign-in is not in it: Antigravity keeps it in the
+    system keyring, so the student's one `agy` sign-in serves both."""
+    return Path(os.path.expanduser(str(cfg.get("antigravityHome") or STATE_HOME / "antigravity")))
+
+
+def antigravity_conversation(cfg: dict, session: str) -> Path | None:
+    """The file Antigravity saved conversation `session` in."""
+    if not session or not re.fullmatch(r"[0-9a-f-]{36}", session):
+        return None
+    found = antigravity_home(cfg) / ".gemini" / "antigravity-cli" / "conversations" / f"{session}.db"
+    return found if found.exists() else None
+
+
+def antigravity_personal(home: Path) -> list[str]:
+    """What in Longhand's Antigravity home would carry more than the agent's
+    own instructions into a run (`ANTIGRAVITY_PERSONAL`): empty files and
+    folders do not count."""
+    found = []
+    for rel in ANTIGRAVITY_PERSONAL:
+        p = home / rel
+        if p.is_dir() and any(p.iterdir()) or p.is_file() and p.read_text(errors="replace").strip() not in ("", "{}"):
+            found.append(rel)
+    return found
+
+
+def run_antigravity(cfg: dict, paths: Paths, payload: str, session: str, message: str, env: dict | None) -> dict:
+    """One pass through Google's Antigravity CLI (`agy -p`, headless) on the
+    student's own Google AI sign-in, made with unmodified Antigravity in a
+    home of Longhand's own (`antigravity_home`). Longhand never touches the
+    sign-in, which Antigravity keeps in the system keyring.
+
+    The agent's rule, as far as Antigravity lets it: the agent's own
+    instructions as a custom agent's system prompt, with `tools: []`, the
+    fewest Antigravity allows; no rules, skills, plugins, hooks or MCP
+    servers in its home (`antigravity_personal`, checked before every run);
+    no slash commands or skills expanded; run from the agent's own empty
+    directory. Antigravity cannot turn off `manage_task` and `schedule`, so
+    the steps it reports are checked: a run that called any tool, or showed
+    any step beyond the student's words and a reply, is failed and its words
+    dropped, as on the Codex route. What still rides along: Antigravity's own
+    notes (the folders it runs in, the time, how to write artifacts), which
+    are not the student's.
+
+    The words and the payload travel together on stdin as one message
+    (`--input-format stream-json`): a payload can be larger than an argument
+    may be. A subscription run costs nothing per token: the ledger says 0."""
+    name = cfg.get("agent", "longhand")
+    model, _, effort = cfg["model"][len(ANTIGRAVITY_ROUTE):].partition("#")
+    effort = effort or cfg.get("variant") or ""
+    if effort and effort not in ANTIGRAVITY_EFFORTS:
+        raise Fail(f"Antigravity has no effort {effort!r} (one of {', '.join(ANTIGRAVITY_EFFORTS)})")
+    home = antigravity_home(cfg)
+    agents = home / ".gemini" / "config" / "agents"
+    agents.mkdir(parents=True, exist_ok=True)
+    personal = antigravity_personal(home)
+    if personal:
+        raise Fail(f"Longhand's Antigravity home ({home}) holds more than the agent: " + ", ".join(personal))
+    instructions = instructions_of(name, cfg.get("_prompts"))
+    defn = (f"---\nname: {name}\ndescription: Longhand's {name} agent, without tools\ntools: []\n---\n"
+            + instructions)
+    afile = agents / f"{name}.md"
+    if not afile.exists() or afile.read_text() != defn:
+        tmp = afile.with_name(f"{afile.name}.{os.getpid()}.tmp")
+        tmp.write_text(defn)
+        os.replace(tmp, afile)
+
+    cmd = [cfg.get("antigravity", "agy"), "-p", "", "--input-format", "stream-json", "--output-format", "stream-json",
+           "--agent", name, "--model", f"{model}-{effort}" if effort else model, "--disable-slash-commands",
+           "--print-timeout", "10m"]
+    if session:
+        cmd += ["--conversation", session]
+    said = message.strip()
+    if payload:
+        said += "\n\n<stdin>\n" + payload.rstrip("\n") + "\n</stdin>"
+    try:
+        proc = run_child(cmd, json.dumps({"event": "user", "message": {"content": said}}) + "\n", 600,
+                         str(paths.cwd), dict(env or os.environ, HOME=str(home)))
+    except FileNotFoundError:
+        raise Fail(f"Antigravity not found ({cmd[0]})")
+    except subprocess.TimeoutExpired:
+        raise Fail("Antigravity timed out after 600s")
+
+    out = {"text": "", "session": "", "cost": 0.0,
+           "tokens": {"input": 0, "output": 0, "reasoning": 0, "total": 0},
+           "events": proc.stdout, "error": "",
+           "prompt": prompt_version(name, cfg.get("_prompts")), "model": model_of(cfg, name, cfg.get("_prompts"))}
+    init, result, steps = {}, {}, []
+    for line in proc.stdout.splitlines():
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(ev, dict):
+            continue
+        if ev.get("event") == "init":
+            init = ev.get("init") or {}
+            out["session"] = str(ev.get("conversation_id") or "")
+        elif ev.get("event") == "step_update":
+            s = ev.get("step_update") or {}
+            if s.get("step_type") not in ANTIGRAVITY_STEPS_OK:
+                steps.append(str(s.get("tool_name") or (s.get("tool_info") or {}).get("name")
+                                 or s.get("step_type") or "a step it did not name"))
+        elif ev.get("event") == "result":
+            result = ev.get("result") or {}
+    # Refused or failed (a model it does not know, a sign-in gone, a usage
+    # limit): nothing was said in it, so the chat keeps the session it had.
+    if result.get("status") != "SUCCESS":
+        said_err = str(result.get("error") or "").strip() or (proc.stderr or "").strip()[-2000:]
+        out["error"] = "Antigravity: " + (said_err or f"the run ended {result.get('status') or 'without a result'}")
+        out["session"] = ""
+        return out
+    if init.get("agent") != name:
+        out["error"] = f"Antigravity ran agent {init.get('agent')!r}, not Longhand's {name!r}, so the run was dropped"
+        return out
+    if steps:
+        out["error"] = "Antigravity let the agent call tools, so the run was dropped: " + ", ".join(dict.fromkeys(steps))
+        return out
+    u = result.get("usage") or {}
+    tk = out["tokens"]
+    tk["input"] = int(u.get("input_tokens") or 0)
+    tk["output"] = int(u.get("output_tokens") or 0)
+    tk["reasoning"] = int(u.get("thinking_tokens") or 0)
+    tk["total"] = tk["input"] + tk["output"]
+    out["text"] = str(result.get("response") or "")
+    if not out["text"].strip():
+        out["error"] = (proc.stderr or "").strip()[-2000:] or "Antigravity said nothing"
+    return out
+
+
 # The fallback (2026-11-19, the student: "add opus as the fallback
 # model"): `fallbackModel` answers a pass the configured model could not —
 # a usage limit, a sign-in gone, a run dropped for breaking the agent's
@@ -1259,7 +1410,8 @@ def _run_model(cfg: dict, paths: Paths, payload: str, session: str = "", message
                env: dict | None = None) -> dict:
     """Run one pass: through Claude Code when the model is named
     `claude-code/<model>` (`run_claude`), through Codex when it is named
-    `codex/<model>` (`run_codex`), else through opencode.
+    `codex/<model>` (`run_codex`), through Antigravity when it is named
+    `antigravity/<model>` (`run_antigravity`), else through opencode.
     Returns {text, session, cost, tokens, events, error}.
 
     With `session`, continues an existing opencode session (dive-in), so the
@@ -1275,6 +1427,8 @@ def _run_model(cfg: dict, paths: Paths, payload: str, session: str = "", message
         return run_claude(cfg, paths, payload, session, message, env)
     if str(cfg.get("model") or "").startswith(CODEX_ROUTE):
         return run_codex(cfg, paths, payload, session, message, env)
+    if str(cfg.get("model") or "").startswith(ANTIGRAVITY_ROUTE):
+        return run_antigravity(cfg, paths, payload, session, message, env)
     cmd = [cfg.get("opencode", "opencode"), "run", "--standalone", "--format", "json",
            "--agent", cfg.get("agent", "longhand")]
     # Reasoning effort is named per model and now rides on the model itself,

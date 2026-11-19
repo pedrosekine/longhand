@@ -968,6 +968,44 @@ subscription login.
   resumed one's, so the words and the payload go together on stdin. The
   effort is `low` … `max`; `ultra` delegates to sub-agents and is refused.
   A ChatGPT run is 0 in the ledger. `tests/test_codex_route.py`.
+- **The Antigravity route (built 2026-11-19,** the student: "do it through
+  google own pipeline instead of opencode … I don't want to go against any
+  rules"). A model named `antigravity/<model>` runs Google's Antigravity CLI
+  headless (`agy -p`, `run_antigravity`) on the student's Google AI Pro
+  sign-in, with unmodified Antigravity. Google replaced Gemini CLI with it
+  for Google One plans on 2026-06-18; Gemini 4 Neon needed `agy` 1.5 (1.1.27
+  listed no Gemini 4). The rules, as read on 2026-11-19: Google forbids
+  other software from using the CLI's sign-in to reach its servers directly,
+  and it documents headless `-p` for scripts and CI. It has not answered
+  whether a personal script running its CLI headless on a subscription is
+  fine. So the route runs Google's own binary and never reads the sign-in,
+  and a weekly routine on the student's machine watches for a ruling.
+  Probed against `agy` 1.5.12 the same day:
+  - **A home of its own.** `HOME` pointed at
+    `~/.local/state/longhand/antigravity` keeps the student's own `~/.gemini`
+    out: its omarchy skills and a "science" plugin would ride along
+    otherwise. The sign-in lives in the system keyring, so it carries over
+    with no second sign-in. Before every run, `antigravity_personal` refuses
+    the run if rules, skills, plugins, hooks or MCP servers are found there.
+  - **Tools: not all of them can be turned off.** The agent's definition,
+    without its frontmatter, becomes a custom agent with `tools: []`. The
+    request it makes then carries the agent's instructions as `<System
+    Prompt>`, Antigravity's own notes (the folders, the time, artifacts,
+    messaging, its guidelines) and two tools, `manage_task` and `schedule`,
+    whatever `tools`, `--mode plan` or a `permissions.deny` say. The
+    stream's `init.tools` lists all 60 tools of the registry whatever the
+    agent gets, so it proves nothing. The steps are checked instead: a run
+    with any step beyond the student's words and a reply
+    (`ANTIGRAVITY_STEPS_OK`) is dropped, as is one that ran an agent other
+    than Longhand's.
+  - **The words travel on stdin.** Plain `-p` ignores stdin, and the
+    largest payload logged so far (126 KB) is close to the 128 KB an
+    argument may hold. So the words and the payload go as one
+    `{"event":"user","message":{"content":…}}` line on
+    `--input-format stream-json`; `--conversation <id>` resumes.
+  - The effort is part of the model's slug (`gemini-4-neon-high`, `low` …
+    `xhigh`). A subscription run is 0 in the ledger.
+  `tests/test_antigravity_route.py`.
 - **The fallback (built 2026-11-19,** the student: "add opus as the
   fallback model"): `fallbackModel`, `claude-code/claude-opus-5-5#medium`
   in use — Opus passed 24/25 at medium under the Fable judge. `run_model`
@@ -1160,5 +1198,5 @@ Each is usable alone.
    and the dashboard and Settings sections of `tests/page/run.py`.
 
 The pluggable runner stands apart from the slices: it can come whenever a
-second route is wanted. Claude Code (2026-11-17) and Codex (2026-11-18) are
-built; the OpenAI and Anthropic APIs are left.
+second route is wanted. Claude Code (2026-11-17), Codex (2026-11-18) and
+Antigravity (2026-11-19) are built; the OpenAI and Anthropic APIs are left.
