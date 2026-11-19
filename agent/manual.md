@@ -241,6 +241,10 @@ acronyms. One the paper never spells out can be asked about in the
 paper's chat, the same way. The pointer resting on a question shows the
 start of its answer, and {key:pdfGo} opens the paper's chat at it (a
 question not asked yet: {key:pdfGo} asks it); on a highlight, its note.
+In the paper's chat, `^` attaches one of its marks and `@` another paper
+or note: the agent then gets what was marked in that paper, with the
+notes under the marks, and may ask to read it whole. A quote from it opens
+that paper, its words lit.
 
 ## Keys
 

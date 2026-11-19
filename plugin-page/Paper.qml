@@ -187,10 +187,27 @@ Item {
     }
     return false
   }
-  // `^` in the paper's box: its marks, narrowing as you type.
+  // `^` in the paper's box: its marks, narrowing as you type. `@`: the
+  // other papers and notes the agent may see (2026-11-19, the student:
+  // "@ a different paper so I can mention it to the agent"), as the day's
+  // chat offers them, this paper left out.
   function updateMention() {
     var f = page.dayPaneItem.dayFieldRef
-    var m = f.text.substring(0, f.cursorPosition).match(/(^|\s)\^([^\s^]*)$/)
+    var before = f.text.substring(0, f.cursorPosition)
+    var at = before.match(/(^|\s)@([^\s@]*)$/)
+    if (at) {
+      // Read again as a mention begins: a paper added since is offered too.
+      if (!page.dayMention) page.loadRefFiles()
+      var aq = at[2].toLowerCase()
+      var files = page.refFiles.filter(function (x) {
+        return x.rel !== page.pdfRel && (aq === "" || x.name.toLowerCase().indexOf(aq) >= 0 || x.rel.toLowerCase().indexOf(aq) >= 0)
+      }).sort(function (a, b) { return a.kind === b.kind ? 0 : a.kind === "paper" ? -1 : 1 })
+        .slice(0, 8).map(function (x) { return { file: x.rel, kind: x.kind, name: x.name, head: x.kind + " · " + x.name } })
+      page.dayMention = { start: f.cursorPosition - at[2].length - 1, query: at[2], items: files }
+      if (page.dayMentionFocus > files.length - 1) page.dayMentionFocus = Math.max(0, files.length - 1)
+      return
+    }
+    var m = before.match(/(^|\s)\^([^\s^]*)$/)
     if (!m) { page.dayMention = null; return }
     var q = m[2].toLowerCase()
     var ms = (page.pdfItem.read && page.pdfItem.read.marks) ? page.pdfItem.read.marks : []

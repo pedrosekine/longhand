@@ -1215,6 +1215,18 @@ this list, with *Open, in order* above. Each says why it waits.
 No work unless they bite; each says what would tell. The first four came
 from 2026-09/10 and still stand.
 
+- **Another paper pointed at from a paper's chat** (built 2026-11-19, the
+  student, reading Merk 2021 and wanting to bring in Moser 2026: "@ a
+  different paper so I can mention it to the agent"). `@` in a paper's or
+  a note's chat offers the other papers and notes the agent may see; the
+  one picked travels as they read it — its project, their marks and notes,
+  its text only when the agent asks (`docs/files.md`, "Another paper, by
+  @"). What would tell: whether the answers use the marks of the paper
+  pointed at, and whether a quote of it ever lands on the open paper's page
+  instead. Not built: pointing at one mark of the other paper (`@Moser`
+  then `^`), and a link kept between two marks in the reading notes — ask
+  before building either.
+
 - **A page showing another page's picture, on opening** (fixed
   2026-11-18, the student's screenshot: page 2's words under page 5's two
   questions, "page 5" in the foot). Not the marks: they were in place for

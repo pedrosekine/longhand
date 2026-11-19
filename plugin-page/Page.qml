@@ -1187,8 +1187,11 @@ Item {
   function addDayRef(r) {
     var k = root.refKey(r)
     if (root.dayRefs.some(function (x) { return root.refKey(x) === k })) return
-    // A note's own chat points at one block of it (`note --block`).
-    root.dayRefs = root.noteRoom ? [r] : root.dayRefs.concat([r]).slice(-6)
+    // A note's own chat points at one block of it (`note --block`), and at
+    // other notes and papers besides (`note --refs`, 2026-11-19).
+    root.dayRefs = !root.noteRoom ? root.dayRefs.concat([r]).slice(-6)
+      : r.file ? root.dayRefs.concat([r]).slice(-6)
+      : root.dayRefs.filter(function (x) { return !!x.file }).concat([r])
   }
   function dropDayChip(i) {
     var c = root.dayChips[i]
@@ -1220,6 +1223,7 @@ Item {
   // agent may see anyway (`conversation --files`), read each time the pane
   // shows. A private note is talked about in its own chat only.
   property var refFiles: []
+  onRefFilesChanged: if (root.dayMention) Qt.callLater(function () { root.updateDayMention(!!root.dayMention && !!root.dayMention.margin) })
   function loadRefFiles() {
     if (refFilesProc.running) return
     refFilesProc.command = [svc.runner, "conversation", "--files"]
@@ -1714,6 +1718,7 @@ Item {
     root.closeTalk(false)
     if (note !== root.noteRoom) { root.dayPending = null; root.dayRefs = []; root.dayAutoHeld = null; root.paper.marks = []; root.clearReplies("day") }
     root.noteRoom = !!note
+    if (note) root.loadRefFiles()                // what `@` offers there: other notes and papers
     root.dayOpen = true
     if (block) {
       var b = root.blockBounds(block)
@@ -1804,8 +1809,12 @@ Item {
     if (msg === "" || !root.dayCanSend) return false
     root.clearReplies("day")
     var cmd = root.noteRoom ? [svc.runner, "note", "--file", root.roomRel, "--message", msg] : [svc.runner, "day", "--message", msg]
-    var chips = root.noteRoom ? root.dayRefs.slice(0, 1) : root.dayChips.slice()
-    if (root.noteRoom) { if (root.dayBlock !== "") cmd = cmd.concat(["--block", root.dayBlock]) }
+    var chips = root.noteRoom ? root.dayRefs.slice() : root.dayChips.slice()
+    if (root.noteRoom) {
+      if (root.dayBlock !== "") cmd = cmd.concat(["--block", root.dayBlock])
+      var others = chips.filter(function (r) { return !!r.file })
+      if (others.length > 0) cmd = cmd.concat(["--refs", JSON.stringify(others.map(function (r) { return { file: r.file } }))])
+    }
     else if (chips.length > 0)
       cmd = cmd.concat(["--refs", JSON.stringify(chips.map(function (r) {
         var o = r.file ? { file: r.file } : r.hash ? { date: r.date, hash: r.hash } : { date: r.date, line: r.line }
@@ -1903,14 +1912,16 @@ Item {
         var name = root.taskName(t).slice(0, 80)
         return { task: t, name: name, head: "task · " + name }
       }))
-      // …and the notes and papers it may see, once a word is typed.
-      if (q !== "" && items.length < 8)
-        items = items.concat(root.refFiles.filter(function (f) {
-          return f.name.toLowerCase().indexOf(q) >= 0 || f.rel.toLowerCase().indexOf(q) >= 0
-        }).slice(0, 8 - items.length).map(function (f) {
-          return { file: f.rel, kind: f.kind, name: f.name, head: f.kind + " · " + f.name }
-        }))
     }
+    // …and the notes and papers it may see, once a word is typed: in a
+    // note's own chat too (2026-11-19), the note itself left out.
+    if (q !== "" && items.length < 8)
+      items = items.concat(root.refFiles.filter(function (f) {
+        return (inMargin || !root.noteRoom || f.rel !== root.roomRel)
+          && (f.name.toLowerCase().indexOf(q) >= 0 || f.rel.toLowerCase().indexOf(q) >= 0)
+      }).slice(0, 8 - items.length).map(function (f) {
+        return { file: f.rel, kind: f.kind, name: f.name, head: f.kind + " · " + f.name }
+      }))
     root.dayMention = { start: f.cursorPosition - m[2].length - 1, query: m[2], items: items, margin: inMargin }
     if (root.dayMentionFocus > items.length - 1) root.dayMentionFocus = Math.max(0, items.length - 1)
   }
@@ -4111,6 +4122,13 @@ Item {
   function linkPart(s) { return encodeURIComponent(s).replace(/\(/g, "%28").replace(/\)/g, "%29") }
   function linkCitations(text) {
     var t = String(text || "")
+    // Another paper's words, “its exact words” (`path.pdf`, p. 12), in any
+    // chat (2026-11-19, a paper pointed at with `@`): it opens there, the
+    // words lit a moment.
+    t = t.replace(/“([^”\n]{3,300})”\s*\(`([^`\n]+\.pdf)`,?\s*p\.\s*(\d+)\)/g, function (m, words, path, n) {
+      return "[“" + words + "” (" + path.replace(/^.*\//, "").replace(/\.pdf$/, "") + ", p. " + n + ")](pquote:"
+        + n + ":" + root.linkPart(path) + ":" + root.linkPart(words) + ")"
+    })
     // In a paper's chat, “its exact words” (p. 12) shows them on the page.
     if (root.paper.room)
       t = t.replace(/“([^”\n]{3,300})”\s*\(p\.\s*(\d+)\)/g, function (m, words, n) {
@@ -4126,6 +4144,15 @@ Item {
   function openCitation(link) {
     var q = /^quote:(\d+):(.*)$/.exec(String(link))
     if (q) { root.used("paper-talk", "quote"); pdfPane.flash(parseInt(q[1]), decodeURIComponent(q[2])); return }
+    var pq = /^pquote:(\d+):([^:]+):(.*)$/.exec(String(link))
+    if (pq) {
+      var prel = decodeURIComponent(pq[2]), ppage = parseInt(pq[1]), pwords = decodeURIComponent(pq[3])
+      root.used("paper-talk", "quote-other")
+      if (root.pdfShown && prel === root.pdfRel) { pdfPane.flash(ppage, pwords); return }
+      root.openPdf(prel)
+      pdfPane.flashAfter = { page: ppage, words: pwords }
+      return
+    }
     var m = /^cite:([^#]+)(?:#(\d+))?$/.exec(String(link))
     if (!m) return
     var path = decodeURIComponent(m[1])

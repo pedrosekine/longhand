@@ -4382,6 +4382,23 @@ AUTO_REF = ("(Attached by itself: what was under the cursor, or selected, when t
             " mean it: when the message plainly carries on from what you were just talking about, answer that.)")
 
 
+def paper_reading(rel: str) -> list[str]:
+    """A paper pointed at with `@`, as the student has read it (2026-11-19,
+    the student: "@ a different paper so I can mention it to the agent"):
+    its project and their marks with their notes, as its own chat is given
+    them. Its name alone when it cannot be read (no words, a private
+    folder, longhand-read failing): the paper is still the one meant."""
+    try:
+        st = paper_state(rel)
+    except (Fail, ValueError):
+        return ["(What they marked in it could not be read.)"]
+    if st.get("private"):
+        return ["(It is in a folder kept from you: what they marked in it is not shown.)"]
+    head = f"{st.get('pages', 0)} pages." + (" Its project: " + ", ".join("#" + t for t in st["tags"]) + "."
+                                             if st.get("tags") else "")
+    return [head, "", "What they have marked in it, in page order (the ids are this paper's own):", ""] + paper_marks(st)
+
+
 def refs_parts(refs: list[dict], gone: int, today: str) -> list[str]:
     """The payload's words for what the student points at."""
     def quoted(r):
@@ -4404,9 +4421,10 @@ def refs_parts(refs: list[dict], gone: int, today: str) -> list[str]:
             out += ["", f"# The note the student points at: `{r['file']}`", "", "(its private callouts are left out)",
                     "", r["text"] or "(empty)"]
         else:
-            out += ["", f"# The paper the student points at: `{r['file']}`", "",
+            out += ["", f"# The paper the student points at: `{r['file']}`", ""] + paper_reading(r["file"]) + ["",
                     f"Its text is not in this message. To answer about it, ask to read it: `read` with "
-                    f"{{\"file\": \"{r['file']}\"}}."]
+                    f"{{\"file\": \"{r['file']}\"}}. When you quote it, write “its exact words” (`{r['file']}`, "
+                    f"p. 12): the student can open it there."]
     if gone:
         out += ["", f"({gone} more they pointed at cannot be shown to you: private, or no longer there.)"]
     return out
@@ -4501,11 +4519,17 @@ def note_turns(cfg: dict, paths: Paths, talk: dict) -> list[dict]:
     s = f"{where}:{rel}"
     closed = not note_shared(cfg, paths, rel)
     out, last = [], ""
+    subjects, names = [s], {s: Path(rel).stem}
     for t in talk.get("turns") or []:
         if not isinstance(t, dict) or t.get("role") not in ("student", "agent"):
             continue
         last = str(t.get("at") or last)
-        out.append(convolib.turn(where, s, t["role"], str(t.get("text") or ""), last, [s], {s: Path(rel).stem},
+        if t["role"] == "student":            # what else it pointed at; its answer is about the same
+            subjects, names = [s], {s: Path(rel).stem}
+            if isinstance(t.get("refs"), list) and not closed:
+                for r in resolve_refs(cfg, paths.stamp, [x for x in t["refs"] if isinstance(x, dict) and x.get("file")], {})[0]:
+                    subjects, names = subjects + [x for x in r["subjects"] if x not in subjects], dict(names, **r["names"])
+        out.append(convolib.turn(where, s, t["role"], str(t.get("text") or ""), last, subjects, names,
                                  closed=closed, error=t.get("error", "")))
     return out
 
@@ -5599,6 +5623,15 @@ def cmd_note(cfg: dict, args) -> int:
     else:
         rel, shown, seen = note_talk(paths, args.file)
         tag = ""
+    # Other notes and papers the message points at (`@` in a note's or a
+    # paper's chat, 2026-11-19): carried as the day's chat carries them; the
+    # note or paper talked about is already here.
+    try:
+        asked = [r for r in (json.loads(args.refs) if args.refs else []) if isinstance(r, dict) and r.get("file")]
+    except (ValueError, TypeError):
+        raise Fail("--refs is not a JSON list")
+    refs, gone = resolve_refs(cfg, paths.stamp, [r for r in asked if str(r["file"]).strip().lstrip("/") != rel])
+    pointed = refs_parts(refs, gone, paths.stamp) if refs or gone else []
     where = paths.agent_dir / NOTES_DIR / f"{note_key(rel)}.json"
     try:
         talk = json.loads(where.read_text())
@@ -5611,7 +5644,8 @@ def cmd_note(cfg: dict, args) -> int:
     # nothing of the others.
     thread = ("paper:" if paper else "note:") + rel
     carried = list(talk["memory"]) if talk["session"] else []
-    mem, mem_ids = convo_memory(cfg, [thread], thread, carried, again=bool(talk["session"]))
+    subjects = [thread] + [x for r in refs for x in r["subjects"]]
+    mem, mem_ids = convo_memory(cfg, subjects, thread, carried, again=bool(talk["session"]))
     # What it may propose when the student asks (slice 4 of "One
     # conversation": from anywhere), as the day's chat; again only when it
     # changed.
@@ -5628,8 +5662,9 @@ def cmd_note(cfg: dict, args) -> int:
         that has none of it; logged at `log` before it is sent."""
         payload = paper_payload(cfg, paths, rel, st, message, marks, True) if paper else \
             note_payload(cfg, paths, rel, shown, message, args.block, True)
-        if memory or offered:
-            payload = payload.replace("\n# The student says\n", "\n".join(memory + offered) + "\n\n# The student says\n", 1)
+        if memory or offered or pointed:
+            payload = payload.replace("\n# The student says\n", "\n".join(pointed + memory + offered)
+                                      + "\n\n# The student says\n", 1)
         payload = with_passages(payload, message)
         so_far = earlier_turns(talk["turns"])
         if so_far:
@@ -5645,13 +5680,14 @@ def cmd_note(cfg: dict, args) -> int:
                                 before=before) if paper else \
             note_payload(cfg, paths, rel, shown, message, args.block, False, changed=seen != talk["seen"],
                          before=before)
-        if mem or offer:
-            payload = payload.replace("\n# The student says\n", "\n".join(mem + offer) + "\n\n# The student says\n", 1)
+        if mem or offer or pointed:
+            payload = payload.replace("\n# The student says\n", "\n".join(pointed + mem + offer)
+                                      + "\n\n# The student says\n", 1)
         payload = with_passages(payload, message)
         payload_file.write_text(payload)                 # logged before inference
         result = run_model(day_cfg, paths, "", session=talk["session"], message=payload,
                            fresh=lambda: (talk_fresh(payload_file.with_name(payload_file.stem + "-fallback.md"),
-                                                     convo_memory(cfg, [thread], thread)[0],
+                                                     convo_memory(cfg, subjects, thread)[0],
                                                      proposable_parts(proposable) if proposable else []),
                                           "Context follows on stdin."))
     else:
@@ -5680,6 +5716,8 @@ def cmd_note(cfg: dict, args) -> int:
         turn["block"] = args.block
     if marks:
         turn["marks"] = marks
+    if refs:
+        turn["refs"] = [{k: r[k] for k in ("file", "kind", "head")} for r in refs]
     if result["error"] != STOPPED:
         talk["turns"].append(turn)
     if result["error"] == STOPPED:
@@ -6644,6 +6682,7 @@ def main(argv: list[str]) -> int:
     p.add_argument("--message", required=True)
     p.add_argument("--block", default="", help="a block of the note the student points at")
     p.add_argument("--marks", default="", help="a paper's marks pointed at (hN, comma separated)")
+    p.add_argument("--refs", default="", help='other notes and papers it points at, JSON: [{"file": F}]')
     p = sub.add_parser("day")
     p.add_argument("--message", required=True)
     p.add_argument("--block", default="", help="a block of today's note the student points at")

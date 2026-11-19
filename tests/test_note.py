@@ -83,7 +83,7 @@ def main() -> int:
         return r
 
     def calls():
-        return [json.loads(f.read_text()) for f in sorted(stub.glob("call-*.json"))]
+        return [json.loads(f.read_text()) for f in sorted(stub.glob("call-*.json"), key=lambda f: int(f.stem[5:]))]
 
     rel = "human/Studies/FHOÖ/Session 1.md"
     talk = vault / "agents/longhand/notes" / (hashlib.md5(rel.encode()).hexdigest()[:16] + ".json")
@@ -234,6 +234,67 @@ def main() -> int:
     check("Do not answer those questions here" in pay, "…and that answering them is the paper's own chat's")
 
     lined_pdf(vault / "human" / "Personal" / "garden plans.pdf", [["Where the roses go this spring"] * 30])
+
+    # Another paper pointed at with `@` in a paper's chat (2026-11-19, the
+    # student: "@ a different paper so I can mention it to the agent"): it
+    # comes as they read it — its project, their marks and notes — never
+    # its text unasked; the paper talked about is not pointed at twice, a
+    # private one is counted, never shown.
+    other = "human/Studies/Moser 2026.pdf"
+    lined_pdf(vault / other, [["Stress hotspots on the way to work."] + ["filler moser"] * 8,
+                              ["Body signals give an unbiased record of the ride."] + ["more filler"] * 8])
+    r = subprocess.run([str(read_cli), "mark", "--pdf", other, "--page", "2", "--text", "an unbiased record", "--kind", "q",
+                        "--day", "2026-11-18"], capture_output=True, text=True, env=env)
+    assert r.returncode == 0, r.stderr
+    subprocess.run([str(read_cli), "note", "--pdf", other, "--id", "h1", "--text", "unbiased, really?"],
+                   capture_output=True, text=True, env=env, check=True)
+    subprocess.run([str(read_cli), "tag", "--pdf", other, "--tag", "thesis"], capture_output=True, text=True, env=env, check=True)
+    env.pop("STUB_READ", None)
+    agent("note", "--file", paper, "--message", "does Moser agree?", "--marks", "h1", "--refs", json.dumps([
+        {"file": other}, {"file": paper}, {"file": "human/Personal/garden plans.pdf"}]))
+    def sent():
+        c = calls()[-1]
+        return c["stdin"] if c["argv"][-1] == "Context follows on stdin." else c["argv"][-1]
+    msg = sent()
+    check(f"# The paper the student points at: `{other}`" in msg and "2 pages. Its project: #thesis." in msg
+          and "- `h1` p. 2, question, 2026-11-18: “an unbiased record”\n  their note: unbiased, really?" in msg,
+          "a paper pointed at comes with its project, their marks and their notes")
+    check(f'`read` with {{"file": "{other}"}}' in msg and f"(`{other}`, p. 12)" in msg and "Stress hotspots" not in msg,
+          "…to be read when asked, quoted by its path and page, never its text unasked")
+    check(f"# The paper the student points at: `{paper}`" not in msg and "(1 more they pointed at cannot be shown" in msg
+          and "roses" not in msg, "…the paper talked about is not pointed at again; a private one is counted, not shown")
+    check(msg.index("# The paper the student points at") < msg.index("# The student says")
+          and "# The student points at `h1`" in msg, "…beside its own mark, before what the student says")
+    t = json.loads(ptalk.read_text())
+    asked = next(x for x in t["turns"] if x.get("text") == "does Moser agree?")
+    check(asked.get("refs") == [{"file": other, "kind": "paper", "head": "Moser 2026"}] and asked.get("marks") == ["h1"],
+          f"the turn keeps what it pointed at, for its chips ({asked.get('refs')})")
+    logged = [json.loads(l) for f in (vault / "agents").rglob("*.jsonl") if "convers" in str(f)
+              for l in f.read_text().splitlines() if l.strip()]
+    said = [x for x in logged if x.get("text") == "does Moser agree?"]
+    check(said and said[0]["subjects"] == [f"paper:{paper}"],
+          f"…a paper's chat kept from search (its folder is off) files nothing under the paper it points at ({said[0]['subjects'] if said else 'not logged'})")
+    merk = "human/Studies/Merk 2021.pdf"
+    lined_pdf(vault / merk, [["Stress where a near miss once happened."] + ["filler merk"] * 8])
+    agent("note", "--file", other, "--message", "and Merk?", "--refs", json.dumps([{"file": merk}]))
+    logged = [json.loads(l) for f in (vault / "agents").rglob("*.jsonl") if "convers" in str(f)
+              for l in f.read_text().splitlines() if l.strip()]
+    said = [x for x in logged if x.get("text") == "and Merk?"]
+    check(said and f"paper:{other}" in said[0]["subjects"] and f"paper:{merk}" in said[0]["subjects"],
+          f"…one the agent may see is filed under both papers, so the other's chat remembers it ({said[0]['subjects'] if said else 'not logged'})")
+    n0 = len(calls())
+    env["STUB_READ"] = other
+    agent("note", "--file", paper, "--message", "read Moser READ-PAPER", "--refs", json.dumps([{"file": other}]))
+    follow = calls()[-1]["argv"][-1]
+    check(len(calls()) == n0 + 2 and "Body signals give an unbiased record" in follow and "(not read" not in follow,
+          "asked to read the paper pointed at, the agent is given it")
+    env.pop("STUB_READ", None)
+    agent("note", "--file", rel, "--message", "and that paper?", "--refs", json.dumps([{"file": other}]))
+    pay = sent()
+    check(f"# The paper the student points at: `{other}`" in pay, "a note's chat may point at a paper too")
+    r = agent("note", "--file", paper, "--message", "x", "--refs", "not json", ok=False)
+    check(r.returncode != 0 and "--refs" in r.stderr, "…and --refs that is not JSON is refused")
+
     r = agent("note", "--file", "human/Personal/garden plans.pdf", "--message", "x", ok=False)
     check(r.returncode != 0 and "private" in r.stderr,
           f"a PDF in a private folder is never talked about ({r.stderr.strip()})")

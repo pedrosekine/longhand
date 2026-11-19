@@ -100,7 +100,16 @@ Item {
   // in the same breath has opened; a paper still opening bails here and
   // shows it on arrival.
   onShowAfterChanged: if (showAfter !== "") Qt.callLater(pane.showPending)
+  // Words to light once the PDF is open (a quote of another paper in a
+  // chat, 2026-11-19): { page, words }, null when none.
+  property var flashAfter: null
+  onFlashAfterChanged: if (flashAfter) Qt.callLater(pane.showPending)
   function showPending() {
+    if (pane.flashAfter && pane.settled) {
+      var w = pane.flashAfter
+      pane.flashAfter = null
+      pane.flash(w.page, w.words)
+    }
     if (pane.showAfter === "" || !pane.settled || !pane.markById(pane.showAfter)) return
     var id = pane.showAfter
     pane.showAfter = ""
