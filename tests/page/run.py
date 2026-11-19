@@ -4006,11 +4006,19 @@ def checks() -> int:
                      and abs(pd()["scale"] - want()) < 0.01),
               f"a paper is fitted by its text, about the page's middle ({pd()})")
         fitted = pd()["scale"]
+        # Centred as it stands: the view's column measured at this size, not
+        # the one before (2026-11-19: the text's page, wider than the
+        # column, stood against its left and its right side was cut).
+        centred = lambda: (abs(pd()["cw"] - max(pd()["width"], pd()["pageW"])) < 30 and abs(pd()["x"] - pd()["centredX"]) < 2
+                           and (pd()["whole"] or pd()["x"] > 20))
+        check(p.wait(centred), f"…its page's middle in the column's middle, the text in view ({pd()})")
         p.call("pdfKey", 0x30, 0)                           # 0
         check(p.wait(lambda: pd()["whole"] and pd()["scale"] < fitted * 0.95),
               f"0: the whole page, smaller ({fitted:.2f} → {pd()['scale']:.2f})")
+        check(p.wait(centred), f"…centred too ({pd()})")
         p.call("pdfKey", 0x30, 0)
         check(p.wait(lambda: not pd()["whole"] and abs(pd()["scale"] - fitted) < 0.01), "0 again: its text")
+        check(p.wait(centred), f"…centred again ({pd()})")
         # A scan (plan.md item 15, step 5): no words of its own; r reads it
         # into a copy with words, which takes its place; then a drag
         # selects in it and m marks it, as in any paper.
