@@ -1654,7 +1654,10 @@ Item {
   onNoteTalkPathChanged: if (root.noteTalkPath === "") root.noteTalk = null
   readonly property int noteTalkTurns: root.noteTalk && root.noteTalk.turns ? root.noteTalk.turns.length : 0
 
-  readonly property var dayState: root.noteRoom ? root.noteTalk : agent.state && agent.state.day ? agent.state.day : null
+  // Read through the function, never the binding, from a handler of the
+  // state (AgentState.qml): there the binding is still the state before.
+  function dayStateNow() { return root.noteRoom ? root.noteTalk : agent.state && agent.state.day ? agent.state.day : null }
+  readonly property var dayState: root.dayStateNow()
   readonly property var dayTurns: {
     var t = root.dayState && root.dayState.turns ? root.dayState.turns.slice() : []
     if (root.dayPending && (svc.isToday || root.noteRoom)) t.push({ role: "student", text: root.dayPending.text, block: root.dayPending.block, marks: root.dayPending.marks })
@@ -1822,11 +1825,16 @@ Item {
     return true
   }
 
-  // The runner has written the turn the page was holding.
+  // The runner has written the turn the page was holding. Called from the
+  // state's own change, so it reads the state now, not `dayState`: that
+  // binding still held the state before, the turn was not found, and the
+  // held message stayed drawn under its answer (2026-11-19, the runner
+  // writing the question and the answer in one save).
   function settleDay() {
     var p = root.dayPending
-    if (!p || !root.dayState) return
-    var turns = root.dayState.turns || []
+    var st = root.dayStateNow()
+    if (!p || !st) return
+    var turns = st.turns || []
     for (var i = turns.length - 1; i >= 0; i--)
       if (turns[i].role === "student" && turns[i].text === p.text) {
         root.dayPending = null
