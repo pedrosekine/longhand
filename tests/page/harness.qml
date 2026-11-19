@@ -229,7 +229,9 @@ ShellRoot {
       return JSON.stringify({ shown: page.pdfShown, label: page.noteLabel, ready: p.ready, pages: p.pages, finding: p.finding,
         found: p.findTotal, here: page.here,
         at: p.here(), settled: p.settled, resumed: p.resumed, zoom: p.zoom,
-        scale: p.view ? p.view.renderScale : 0, x: p.table() ? p.table().contentX : 0, whole: p.wholePage, width: p.width,
+        scale: p.view ? p.view.renderScale : 0, x: p.table() ? p.table().contentX : 0,
+        centredX: p.table() ? p.table().originX + (p.table().contentWidth - p.table().width) / 2 : 0,
+        cw: p.table() ? p.table().contentWidth : 0, pageW: p.view && p.ready ? p.view.document.maxPageWidth * p.view.renderScale : 0, whole: p.wholePage, width: p.width,
         span: p.read && p.read.span ? p.read.span : null, dark: p.dark,
         darkDrawn: p.dressed.some(function (h) { if (!h || !h.selection) return false; var ds = h.selection.parent.data
           for (var i = 0; i < ds.length; i++) if (String(ds[i]).indexOf("PdfPageImage") >= 0 && ds[i].layer.enabled) return true

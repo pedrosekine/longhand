@@ -471,10 +471,15 @@ Item {
     pane.redrawSoon()
   }
   // The view's own column is a little wider than the pane (its scrollbar);
-  // centred in it, so the page's middle is the pane's.
+  // centred in it, so the page's middle is the pane's. Laid out again
+  // first: Qt's view measures its column before it has taken in a new
+  // size, so its width was the one before (2026-11-19: fitted by its text,
+  // the page stood against the column's left and its right side was cut,
+  // beside the chat; a fit to the whole page left it too far left).
   function align() {
     var t = pane.table()
     if (!t) return
+    t.forceLayout()
     t.contentX = t.originX + Math.max(0, (t.contentWidth - t.width) / 2)
   }
   Timer { id: alignTimer; interval: 60; onTriggered: pane.align() }
