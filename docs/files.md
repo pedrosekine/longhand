@@ -690,6 +690,24 @@ block, `table` rows.
   pointed at again, was counted as one that "cannot be shown" when its
   folder is not searched; it is left out before the rest are read.
 
+- **The name stays in the sentence** (2026-11-19, the student, after
+  `@Merk`: "the 'words' disappear and I have to type it again for my
+  phrase to make sense"; then "if I press backspace on the name, the pill
+  also disappears … so I can @ again and pick the correct one", among many
+  Moser papers). A paper or a note picked by `@` — in any chat box: the
+  day's, a note's, a paper's, the margin — leaves its name where the `@`
+  was, in the accent as a link, and its chip above; the two are one
+  (`ChatField`'s `mentions`, by `refKey`). Backspace right after the name
+  (or after its space) takes the name and the chip and gives back the `@`
+  as typed, the list open, so the right one is ↓ and Enter away; the
+  chip's × takes the name out of the sentence; an edit inside the name
+  leaves it words and lets the chip go, so the agent is never pointed at a
+  paper the sentence no longer names. A block or a task stays a chip only:
+  its head is a passage. The colour is the box's words drawn again as rich
+  text over its own (made clear), only while a name is there. Found on the
+  way: a letter typed in a paper's marks list was meant to go to the chat
+  box but called an `insert` the box did not have.
+
 - **Names, not file names** (2026-11-19, the student, at the `@` list,
   which said `paper · moser2023individual` and `note · 2026-10-28_moser`:
   "can we have the meaningful names instead of the file names in there?",

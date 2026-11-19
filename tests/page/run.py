@@ -3690,6 +3690,41 @@ def checks() -> int:
         check(p.call("dayKey", KEY_ENTER, 0) == "true"
               and p.wait(lambda: [(r["kind"], r["head"]) for r in json.loads(p.call("dayRefs"))] == [("paper", "Other 2026")]),
               f"…Enter makes it a chip ({p.call('dayRefs')})")
+        # …and its name stays in the sentence, in the link's colour, tied to
+        # the chip (2026-11-19, the student: "if I press backspace on the
+        # name, the pill also disappears … so I can @ again").
+        refs_heads = lambda: [r["head"] for r in json.loads(p.call("dayRefs"))]
+        check(p.call("dayFieldText") == "Other 2026 " and json.loads(p.call("dayNames")) == ["Other 2026"]
+              and ">Other 2026</span>" in p.call("dayDrawn"),
+              f"…its name stays in the sentence, drawn as a link ({p.call('dayFieldText')!r}, {p.call('dayDrawn')!r})")
+        p.call("dayInsert", "agree?")
+        p.call("dayBackspace")
+        check(p.call("dayFieldText") == "Other 2026 agree" and json.loads(p.call("dayNames")) == ["Other 2026"],
+              f"…writing on after it leaves it a name ({p.call('dayFieldText')!r})")
+        p.call("dayCursorAt", len("Other 2026 "))
+        p.call("dayBackspace")
+        check(p.call("dayFieldText") == "@Other agree" and refs_heads() == []
+              and p.wait(lambda: json.loads(p.call("dayMention")) == ["paper · Other 2026"], 10),
+              f"…Backspace after it takes the name and its chip, and gives back the @ with the list ({p.call('dayFieldText')!r}, {refs_heads()})")
+        check(p.call("dayKey", KEY_ENTER, 0) == "true" and p.call("dayFieldText") == "Other 2026 agree"
+              and refs_heads() == ["Other 2026"] and json.loads(p.call("dayNames")) == ["Other 2026"],
+              f"…picked again, name and chip are back, one space ({p.call('dayFieldText')!r})")
+        p.call("dayCursorAt", 3)
+        p.call("dayInsert", "x")
+        check(p.call("dayFieldText") == "Othxer 2026 agree" and refs_heads() == [] and json.loads(p.call("dayNames")) == []
+              and p.call("dayDrawn") == "",
+              f"…an edit inside the name leaves it words, and the chip goes ({p.call('dayFieldText')!r}, {refs_heads()})")
+        p.call("dayType", "@Other")
+        p.wait(lambda: json.loads(p.call("dayMention")) == ["paper · Other 2026"], 10)
+        p.call("dayKey", KEY_ENTER, 0)
+        p.call("dayInsert", "and the commute")
+        p.call("dayChipDrop", 0)
+        check(p.call("dayFieldText") == "and the commute" and refs_heads() == [],
+              f"…the chip's × takes its name out of the sentence too ({p.call('dayFieldText')!r})")
+        p.call("dayType", "@Other")
+        p.wait(lambda: json.loads(p.call("dayMention")) == ["paper · Other 2026"], 10)
+        p.call("dayKey", KEY_ENTER, 0)
+        p.wait(lambda: refs_heads() == ["Other 2026"])
         p.call("daySend", "does Other agree?")
         check(p.wait(lambda: json.loads(paper_talk.read_text())["turns"][-1]["role"] == "agent"
                      and json.loads(paper_talk.read_text())["turns"][-2].get("text") == "does Other agree?", 20),

@@ -509,6 +509,41 @@ def scenes(m, p, out, which):
         shot("answer-4")
         p.call("hoverOn", "")
         p.call("closePanes")
+    if which == "mention":
+        # A paper picked by @ keeps its name in the sentence, a link's
+        # colour, its chip above (2026-11-19).
+        sys.path.insert(0, str(HERE.parent))
+        from test_documents import pdf as make_pdf
+        course = p.vault / "Studies" / "Course A"
+        course.mkdir(parents=True, exist_ok=True)
+        for n in ("Merk et al. 2021", "Moser 2024", "Moser 2026", "Moser et al. 2025"):
+            make_pdf(course / f"{n}.pdf", "Stress on the commute.")
+        sj = p.tmp / "config" / "longhand" / "settings.json"
+        sset = json.loads(sj.read_text()) if sj.exists() else {}
+        sset.setdefault("searchFolders", {})["Studies"] = True
+        sj.parent.mkdir(parents=True, exist_ok=True)
+        sj.write_text(json.dumps(sset))
+        p.open_fresh()
+        p.call("keyPage", 0x7c, 0x04000000)   # Ctrl+|: the day's chat
+        p.wait(lambda: p.call("dayShown") == "true", 6)
+        p.call("dayType", "but then, just like in @mer")
+        p.wait(lambda: len(json.loads(p.call("dayMention"))) > 0, 10)
+        shot("mention-0")
+        p.call("dayKey", 0x01000004, 0)
+        shot("mention-1")
+        p.call("dayInsert", "the drift is the same as in @mos")
+        p.wait(lambda: len(json.loads(p.call("dayMention"))) > 2, 10)
+        p.call("dayKey", 0x01000004, 0)
+        p.call("dayInsert", "so why does it fade after a week, when the commute is the same each day and the stress measured is the same?")
+        shot("mention-2")
+        t, names = p.call("dayFieldText"), json.loads(p.call("dayNames"))
+        p.call("dayCursorAt", t.index(names[-1]) + len(names[-1]) + 1)
+        p.call("dayBackspace")
+        p.wait(lambda: len(json.loads(p.call("dayMention"))) > 2, 10)
+        p.call("dayKey", 0x01000000 + 0x15, 0)   # Down: the next Moser
+        shot("mention-3")
+        p.call("dayKey", 0x01000004, 0)
+        shot("mention-4")
     if which == "calm":
         p.call("dash")
         p.wait(lambda: sum(r.get("kind") == "deadline" for r in json.loads(p.call("dashRows"))) >= 3, 10)
@@ -533,7 +568,7 @@ def scenes(m, p, out, which):
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("out", type=pathlib.Path)
-    ap.add_argument("--scene", default="all", choices=["all", "dashboard", "note", "prose", "day", "keys", "chat", "project", "acronyms", "answers", "reach", "calm", "stop", "checkin", "one", "answer"])
+    ap.add_argument("--scene", default="all", choices=["all", "dashboard", "note", "prose", "day", "keys", "chat", "project", "acronyms", "answers", "reach", "calm", "stop", "checkin", "one", "answer", "mention"])
     ap.add_argument("--order", default="ask", choices=["ask", "course", "date"])
     ap.add_argument("--root", type=pathlib.Path, default=HERE.parent.parent)
     ap.add_argument("--env", action="append", default=[])

@@ -1195,6 +1195,13 @@ Item {
       : r.file ? root.dayRefs.concat([r]).slice(-6)
       : root.dayRefs.filter(function (x) { return !!x.file }).concat([r])
   }
+  // A click on a chip: it goes, and its name from the sentence (ChatField).
+  function dropDayChipAt(i) {
+    var r = (root.noteRoom ? root.dayRefs : root.dayChips)[i]
+    if (r) dayPane.dayFieldRef.dropMention(root.refKey(r))
+    if (root.noteRoom) root.dayRefs = root.dayRefs.filter(function (x, k) { return k !== i })
+    else root.dropDayChip(i)
+  }
   function dropDayChip(i) {
     var c = root.dayChips[i]
     if (!c) return false
@@ -1969,13 +1976,22 @@ Item {
       return
     }
     var f = m.margin ? margin.chatFieldRef : dayPane.dayFieldRef
-    f.remove(m.start, f.cursorPosition)
     var add = m.margin ? root.addMarginRef : root.addDayRef
-    if (it.file) add({ file: it.file, head: it.name, kind: it.kind })
-    else if (it.task) add({ date: it.task.date, line: it.task.line, head: it.name, kind: "task" })
+    // A paper or a note keeps its name in the sentence, tied to its chip
+    // (ChatField); a block or a task, whose head is a passage, the chip only.
+    if (it.file) {
+      var r = { file: it.file, head: it.name, kind: it.kind }
+      add(r)
+      f.pickMention(m.start, f.cursorPosition, it.name, root.refKey(r), m.query)
+      root.dayMention = null
+      root.used("day", "at-" + it.kind)
+      return
+    }
+    f.remove(m.start, f.cursorPosition)
+    if (it.task) add({ date: it.task.date, line: it.task.line, head: it.name, kind: "task" })
     else add({ date: root.noteRoom ? "" : svc.noteDate, hash: it.hash, head: it.head, kind: it.kind || "block" })
     root.dayMention = null
-    root.used("day", it.file ? "at-" + it.kind : it.task ? "at-task" : "at")
+    root.used("day", it.task ? "at-task" : "at")
   }
 
   // The cards under the day's answers (slice 3): what it proposed, the

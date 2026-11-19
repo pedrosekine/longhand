@@ -464,6 +464,17 @@ ShellRoot {
     function elsewhere(): string { return JSON.stringify({ want: page.elsewhereWant, turns: page.elsewhereTurns, chip: page.aboutChip }) }
     function dayType(text: string): void { var f = page.dayFieldItem(); f.text = text; f.cursorPosition = text.length }
     function dayFieldText(): string { return page.dayFieldItem().text }
+    function dayFieldCursor(): int { return page.dayFieldItem().cursorPosition }
+    function dayInsert(text: string): void { var f = page.dayFieldItem(); f.insert(f.cursorPosition, text) }
+    function dayCursorAt(i: int): void { page.dayFieldItem().cursorPosition = i }
+    // Backspace as the box takes it: a name first, else one letter.
+    function dayBackspace(): void {
+      var f = page.dayFieldItem(), c = f.cursorPosition
+      if (!f._backspace({ key: Qt.Key_Backspace, modifiers: Qt.NoModifier }) && c > 0) f.remove(c - 1, c)
+    }
+    function dayNames(): string { return JSON.stringify(page.dayFieldItem().liveMentions.map(function (m) { var t = page.dayFieldItem().text; return t.substr(m.start, m.len) })) }
+    function dayDrawn(): string { return page.dayFieldItem()._drawn }
+    function dayChipDrop(i: int): void { page.dropDayChipAt(i) }
     function dayReadOnly(): bool { return page.dayFieldItem().readOnly }
     function dayMention(): string { return JSON.stringify(page.dayMention ? page.dayMention.items.map(function (m) { return m.head }) : []) }
     function dayCardFocus(): int { return page.dayCardFocus }

@@ -455,7 +455,7 @@ BorderSurface {
         width: parent.width
         visible: chatField.visible && page.marginRefs.length > 0
         refs: page.marginRefs
-        onDrop: function (i) { page.marginRefs = page.marginRefs.filter(function (r, k) { return k !== i }); chatField.forceActiveFocus() }
+        onDrop: function (i) { if (page.marginRefs[i]) chatField.dropMention(page.refKey(page.marginRefs[i])); page.marginRefs = page.marginRefs.filter(function (r, k) { return k !== i }); chatField.forceActiveFocus() }
       }
     }
 
@@ -478,6 +478,8 @@ BorderSurface {
       busy: margin.busy
       onStop: page.stopAgent(margin.talk ? "talk" : "margin")
       onTextChanged: Qt.callLater(page.updateMarginMention)
+      chipKeys: page.marginRefs.map(page.refKey)
+      onMentionGone: function (key) { page.marginRefs = page.marginRefs.filter(function (r) { return page.refKey(r) !== key }) }
       onCursorPositionChanged: Qt.callLater(page.updateMarginMention)
       onKeyPressed: function (event) {
         if (page.copyChatSelection(event, chatField)) { event.accepted = true; return }
