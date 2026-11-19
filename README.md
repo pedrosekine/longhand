@@ -35,8 +35,9 @@ canonical assets, and historical studies.
 ## Install
 
 Needs Omarchy (for `omarchy-shell`) and a way to reach a model: either
-[opencode](https://opencode.ai) with one model key, or Claude Code signed in
-to your own Claude plan (below).
+[opencode](https://opencode.ai) with one model key, Claude Code signed in
+to your own Claude plan, or the Codex CLI signed in to your own ChatGPT plan
+(below).
 
 ```bash
 mkdir -p ~/.config/longhand
@@ -473,6 +474,34 @@ anything else (memory, files), is dropped.
 says 0 per pass, since it is not billed per token; it counts against the
 plan's usage limits. `"claude"` in the config names the binary if it is not
 on `PATH`.
+
+A model named `codex/<model>` (e.g. `"codex/gpt-6.2-sol#high"`) runs through
+the Codex CLI (`codex exec`) on your own ChatGPT sign-in, in a Codex folder
+of Longhand's own (`~/.local/state/longhand/codex`, or `"codexHome"`), so
+your own Codex's AGENTS.md, memories, plugins, hooks and skills never reach
+it. Sign in there once:
+
+```bash
+CODEX_HOME=~/.local/state/longhand/codex codex login
+```
+
+The pass gets every Codex tool feature off, no web search, a read-only
+sandbox, no user config, and the agent's own instructions in place of
+Codex's. Codex cannot turn off its conversation tools (ask or message the
+user, sub-agents), so a pass whose saved session shows any tool called, or
+anything attached beyond the agent's instructions, Codex's own running notes
+and your words, is dropped. The effort is `low` … `max` (not `ultra`, which
+hands work to sub-agents). The ledger says 0 per pass; it counts against the
+plan's usage limits. `"codex"` in the config names the binary.
+
+`fallbackModel` (e.g. `"claude-code/claude-opus-5-5#medium"`) answers a
+pass the model in use could not: a usage limit, a sign-in gone, a pass
+dropped for breaking the agent's rule. The model that failed is then passed
+over for 30 minutes (`~/.local/state/longhand/fallback.json` says which,
+until when, and why), so the passes after it go straight to the fallback. A
+chat begun on the failed model goes on afresh on the fallback, with the
+whole context and the chat so far, logged before it is sent. Evals never
+fall back: they test the model they name.
 
 ```bash
 ln -s "$PWD/agent/longhand-agent" ~/.local/bin/longhand-agent

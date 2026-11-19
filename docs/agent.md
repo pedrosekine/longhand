@@ -852,8 +852,7 @@ subscription login.
   no tools, no agent instructions loaded (`~/.claude/CLAUDE.md`,
   `~/.codex/AGENTS.md`), the payload logged before inference.
 - **Routes:** opencode (today); `codex exec` on the student's ChatGPT
-  subscription (OpenAI's own tool; opencode's ChatGPT login exists on this
-  machine but its token expired on 2026-07-17 and needs a re-login); the
+  subscription (OpenAI's own tool) — **built 2026-11-18**, below; the
   OpenAI and Anthropic APIs, metered, the cleanest (no tools unless given);
   `claude -p` (Claude Code) on the Claude subscription — **built
   2026-11-17**, below.
@@ -921,6 +920,71 @@ subscription login.
   medium 20/20 and 17/20 on two full runs (its misses each pass most
   runs), GPT-6.1 Sol 19/20 (the synthetic seed it also failed before the
   change). The runs vary: a single 20/20 is not a guarantee.
+- **GPT-6.2 Sol, high, through Codex, in use from 2026-11-18 for a month**
+  (the student: "we are going to have 6.2 sol high as the model for the
+  next month"): `model` and `planModel` `codex/gpt-6.2-sol`, both variants
+  `high`. **The judge is Fable 5.2 from 2026-11-19**
+  (`evalJudgeModel: claude-code/claude-fable-5-2#high`, the student's
+  call): GPT-6.1 Sol had graded every case, and would now be grading its
+  own successor. Its first run, still under the GPT judge, found two faults
+  in the eval rather than the model: the judge never saw what an answer
+  opens (`open`) nor that a tick was made at once (`asked`), so "Opened
+  your thesis note" and "Ticked it" read as claims with nothing behind
+  them — both are now in the answer it grades — and a talk case's "how"
+  patterns missed "edit the checkbox … in today's … note". On the 25 cases
+  with the Fable judge, the same night: GPT-6.2 Sol (high) 25/25, Opus 5.5
+  (medium) 24/25 (margin 3/4: a new deadline where the case forbids one),
+  GPT-6.1 Sol (high) 20/25 (talk 0/2, margin 2/4: a tick claimed in a talk,
+  a question where a card was wanted). The scores are not comparable with
+  the GPT judge's above. 6.2 Sol is the slowest of the three: a plan takes
+  60–70 s against Opus's 25–50 s; a day reply 7–14 s. The day prompt was
+  then tidied for it — the "Proposing" list had "done" twice and the asked
+  ticks and two paragraphs inside the list; the same sentences, reordered —
+  and "I opened …" is said only beside an `open` that names it, the one
+  real miss of its first run. Two runs on the new day prompt: 25/25 both.
+- **The Codex route (built 2026-11-18,** the student: "use codex for it …
+  with thinking on high"). A model named `codex/<model>` runs `codex exec`
+  (`run_codex`) on the student's ChatGPT sign-in, with unmodified Codex:
+  Longhand only checks that a sign-in exists. Probed against Codex 0.170
+  the same day, with `~/.codex` as its home, every run carried the
+  student's `~/.codex/AGENTS.md` whatever the flags (`project_doc_max_bytes
+  = 0` does not reach it), and with ChatGPT's defaults the skills list, the
+  code-mode `exec` tool and sub-agent tools; the model called `exec` and
+  `list_agents` unasked when asked about its tools. So the route runs in a
+  Codex folder of its own (`~/.local/state/longhand/codex`, one more
+  `codex login` by the student, the student's choice over carrying the
+  pointer along) and turns off what config can: every tool feature
+  (`CODEX_FEATURES_OFF`), web search, the skills, environment and
+  permission notes, user config and rules, a read-only sandbox, the agent's
+  definition without its frontmatter as `model_instructions_file` in place
+  of Codex's own prompt. What Codex cannot turn off, its conversation
+  tools (ask or message the user, list or wait for sub-agents), stays
+  offered — the one difference from the Claude Code route, also the
+  student's choice — and the flags are checked against the session file
+  Codex saves: a run that called any tool, or whose new lines hold
+  anything beyond the agent's instructions, Codex's running notes
+  (`CODEX_CONTEXT_OK`) and the student's words once, or that saved no file,
+  is dropped. Codex appends stdin to a new session's prompt but not to a
+  resumed one's, so the words and the payload go together on stdin. The
+  effort is `low` … `max`; `ultra` delegates to sub-agents and is refused.
+  A ChatGPT run is 0 in the ledger. `tests/test_codex_route.py`.
+- **The fallback (built 2026-11-19,** the student: "add opus as the
+  fallback model"): `fallbackModel`, `claude-code/claude-opus-5-5#medium`
+  in use — Opus passed 24/25 at medium under the Fable judge. `run_model`
+  hands a pass the model in use failed — any error but a stop: a usage
+  limit, a sign-in gone, a run dropped for the agent's rule, a `Fail` such
+  as "not signed in" — to the fallback, and marks the failed model passed
+  over for `FALLBACK_MINUTES` (30) in `fallback.json`; `routed` reads it at
+  every command but `eval`, so the passes after it run on the fallback from
+  the start and resume its sessions. No route resumes another's session,
+  so a chat that had one on the failed model falls back afresh: the three
+  places that resume one (a block's chat, the day's, a note's or paper's)
+  give `run_model` a `fresh` that builds the whole context with the chat
+  so far, logged as `…-fallback.md` before it is sent. A follow-up round in
+  the same pass (documents read, a search) does not fall back: its first
+  round already ran on the model that answered. Evals never fall back.
+  `tests/test_fallback.py`; checked live the same night with Codex pointed
+  at an empty folder and Opus answering.
 - **Settings chooses the route per job** — for example, replies to blocks
   on the cheap model, planning on a stronger one.
 - **A failing route says so** and does not fall back silently.
@@ -1096,5 +1160,5 @@ Each is usable alone.
    and the dashboard and Settings sections of `tests/page/run.py`.
 
 The pluggable runner stands apart from the slices: it can come whenever a
-second route is wanted — first `codex exec` and the OpenAI API, once the
-ChatGPT login is renewed.
+second route is wanted. Claude Code (2026-11-17) and Codex (2026-11-18) are
+built; the OpenAI and Anthropic APIs are left.

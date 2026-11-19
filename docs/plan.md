@@ -984,7 +984,16 @@ Small, when passing by:
       `Ctrl+Enter`, item 15's (d)), so the click finds the right turn; a
       question asked again keeps its answers in order, the newest shown.
       The answer is still never written into the person's reading note.
-21. **Recheck GPT-6.2 Sol, around 2026-11-20** (2026-11-17, the student:
+21. ~~**Recheck GPT-6.2 Sol, around 2026-11-20**~~ *rechecked and routed
+    2026-11-18*: the ChatGPT sign-in reaches `gpt-6.2-sol` from Codex 0.170.0
+    on, and opencode does once the model is under `provider.openai.models`
+    (both added; `~/.codex/config.toml`'s default is now 6.2 Sol, high).
+    The student chose the Codex route for Longhand, thinking high: built
+    the same day (`codex/<model>`, docs/agent.md, "The Codex route"), and
+    `model`/`planModel` are `codex/gpt-6.2-sol`, both variants `high`.
+    Signed in the same night; on the 25 cases with Fable 5.2 as the new
+    judge, 6.2 Sol 25/25, Opus 5.5 24/25, 6.1 Sol 20/25 (docs/agent.md).
+    What was parked (2026-11-17, the student:
     "I'll recheck in a few days"). OpenAI released `gpt-6.2-sol` on
     2026-11-17, but a ChatGPT login can't reach it yet. Through opencode,
     and through the Codex CLI itself (0.169.0, which has no details for the
@@ -1160,9 +1169,10 @@ this list, with *Open, in order* above. Each says why it waits.
   title and date reach the payload with the deadline store.
 - **The agent's third tier** — the internet, tools for the agent — cuts
   against principle 3; a decision, not a build (item 2 above).
-- **A third model route** (`codex exec`, the APIs; `docs/agent.md`,
-  "Reaching a model") — when one is wanted. The second, Claude Code on the
-  student's Claude plan (`claude-code/<model>`), was built 2026-11-17.
+- **A fourth model route** (the OpenAI and Anthropic APIs, metered;
+  `docs/agent.md`, "Reaching a model") — when one is wanted. Claude Code on
+  the student's Claude plan (`claude-code/<model>`) was built 2026-11-17,
+  Codex on the ChatGPT plan (`codex/<model>`) 2026-11-18.
 - **Autonomy per project** — per kind of action only, for now.
 - **Mermaid diagrams through Pele** (parked 2026-10-27, the student's call):
   no note in the vault has a diagram yet. Pele is written in a newer
