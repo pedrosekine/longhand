@@ -1128,6 +1128,19 @@ Small, when passing by:
     week, against about 110 over the month before; how often an automatic
     chip is removed; how often "everything" is opened. All four in the
     usage log.
+24. **What the day's chat of 2026-11-19 lacked** (the student: "many pain
+    points that I wish the agent had immediately"; `docs/agent.md`, "The
+    day's chat of 2026-11-19"). *Built that day:* a late box moved when
+    asked; no PDF filed twice anywhere in the vault; a paper filed as
+    "Surname Year Title"; a project's `Docs:` line naming its folder
+    (#thesis → its literature folder); papers in Downloads shown when the
+    message is about them; the automatic chip said to be one; the manual
+    saying where chats are kept. Watch: how often a filed paper's name is
+    wrong (first author or year), and whether a paper the vault holds in
+    another version (other bytes) still slips through. *Open:* renaming or
+    trashing a filed document when asked ("rename those files", "delete
+    that one" were both refused); it needs the student's word on whether
+    a chat may trash at once, as it files at once.
 
 - ~~**Tag suggestions while typing**~~ *done 2026-10-18*: `#` and a letter
   offer the tags that exist — the projects', then those written in the

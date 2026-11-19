@@ -1972,7 +1972,7 @@ def cmd_chat(cfg: dict, args) -> int:
     # What it may propose: the day's whole list (one agent, the same cards
     # anywhere), with the boxes and loose deadlines that read like this
     # block named first — what a "tidy the duplicates" asks about.
-    proposable, digest = day_proposable(cfg, today)
+    proposable, digest = day_proposable(cfg, today, message)
     if about:
         near, _ = margin_proposable(cfg, about)
         proposable = dict(proposable, like_this_block=[b["key"] for b in near["open_boxes"]],
@@ -3332,6 +3332,20 @@ def cmd_project(cfg: dict, args) -> int:
     return 0
 
 
+def doc_folders(cfg: dict) -> None:
+    """Each project's own documents folder, from a `Docs:` line in its file
+    (documents.py, 2026-11-19), for everything that files or lists them."""
+    folder = Paths(cfg, dt.date.today()).knowledge / "projects"
+    rows = []
+    for f in sorted(folder.glob("*.md")) if folder.is_dir() else []:
+        try:
+            text = f.read_text()
+        except OSError:
+            continue
+        rows.append((projlib.tag_of(text, f.stem), text))
+    doclib.set_folders(rows, Path(cfg["vault"]))
+
+
 def course_codes(cfg: dict, today: dt.date) -> list[tuple[str, str, str]]:
     """(code, name, tag) for each project whose knowledge file names a
     course code; code "" for those that do not."""
@@ -4357,8 +4371,15 @@ def resolve_refs(cfg: dict, today: str, asked: list[dict], cache: dict | None = 
         seen.add((stamp, block["hash"]))
         subjects, names = block_subjects(stamp, visible_blocks(blks), boxes, block["hash"], None, block)
         out.append({"date": stamp, "hash": block["hash"], "text": block["text"], "subjects": subjects, "names": names,
-                    "kind": convolib.kind_of(subjects[0]), "head": names[subjects[0]]})
+                    "kind": convolib.kind_of(subjects[0]), "head": names[subjects[0]], "auto": bool(r.get("auto"))})
     return out, gone
+
+
+# The chip that follows the cursor is attached without the student choosing
+# it (2026-11-19: "tell me its path so I can delete it", about a PDF, came
+# with the AI literacy box under the cursor, and the agent had to ask).
+AUTO_REF = ("(Attached by itself: what was under the cursor, or selected, when they began typing. They may not"
+            " mean it: when the message plainly carries on from what you were just talking about, answer that.)")
 
 
 def refs_parts(refs: list[dict], gone: int, today: str) -> list[str]:
@@ -4369,12 +4390,14 @@ def refs_parts(refs: list[dict], gone: int, today: str) -> list[str]:
     blocks_ = [r for r in refs if not r.get("file")]
     out = []
     if len(blocks_) == 1 and blocks_[0]["date"] == today:
-        out = ["", "# The block the student points at", "", quoted(blocks_[0])]
+        out = ["", "# The block the student points at", "", quoted(blocks_[0])] \
+            + (["", AUTO_REF] if blocks_[0].get("auto") else [])
     elif blocks_:
         out = ["", "# The blocks the student points at", ""]
         for r in blocks_:
             out += [("In today's note" if r["date"] == today else f"In the note of {r['date']}")
-                    + (" (a task):" if r["kind"] == "task" else ":"), "", quoted(r), ""]
+                    + (" (a task):" if r["kind"] == "task" else ":"), "", quoted(r), ""] \
+                + ([AUTO_REF, ""] if r.get("auto") else [])
         out.pop()
     for r in files:
         if r["kind"] == "note":
@@ -4752,12 +4775,32 @@ def ticked_boxes(cfg: dict) -> list[dict]:
             for r in outcomes(cfg, days=TICKED_DAYS, visible_only=True) if r.get("done")]
 
 
-def day_proposable(cfg: dict, today: dt.date) -> tuple[dict, str]:
+PAPERS_CACHE = STATE_HOME / "papers.json"
+ABOUT_DOWNLOADS = re.compile(r"download|herunterge|paper|artikel|article|pdf|stud(y|ie)", re.I)
+
+
+def downloads_papers(cfg: dict) -> list[dict]:
+    """The papers in the Downloads inbox not yet in the vault
+    (documents.py `papers`), or none when filing is "never" or no inbox is
+    set."""
+    if not cfg.get("inbox") or planlib.autonomy(cfg)["file"] == "never":
+        return []
+    cache = doclib.load_cache(PAPERS_CACHE)
+    try:
+        out = doclib.papers(Path(cfg["inbox"]).expanduser(), cache, dt.datetime.now(), Path(cfg["vault"]))
+    except OSError:
+        return []
+    doclib.save_cache(PAPERS_CACHE, cache)
+    return out
+
+
+def day_proposable(cfg: dict, today: dt.date, message: str = "") -> tuple[dict, str]:
     """What the day's agent may propose about (docs/agent.md, "The day
     conversation", slice 3): the planner's own inputs — the fortnight, the
     boxes without a day, every open box, the kinds the student allows — and
     a hash of them, so a later message carries them again only when they
-    changed."""
+    changed. A message about downloads or papers also carries the papers
+    waiting in Downloads (2026-11-19)."""
     tasks, deadlines, days, cands, boxes, notes, allowed = plan_inputs(cfg, today)
     loose = [{"deadline": d["id"], "title": d["title"], "due": d["due"].strftime("%Y-%m-%d %H:%M"),
               "project": d.get("project") or ""} for d in deadlines if not d.get("linked")]
@@ -4770,9 +4813,12 @@ def day_proposable(cfg: dict, today: dt.date) -> tuple[dict, str]:
     if allowed.get("file") != "never" and cfg.get("inbox"):
         data["documents_waiting"] = [{"document": Path(x["name"]).stem, "project": x["project"], "why": x.get("why", "")}
                                      for x in inbox_waiting(cfg)]
+        if ABOUT_DOWNLOADS.search(message or ""):
+            data["papers_in_downloads"] = [{"document": x["document"], "filed_as": Path(x["name"]).stem}
+                                           for x in downloads_papers(cfg)]
     return data, planlib.inputs_hash(cands, days) + hashlib.sha256(
-        json.dumps([boxes, loose, data["you_may"], data.get("documents_waiting")], sort_keys=True,
-                   default=str).encode()).hexdigest()[:8]
+        json.dumps([boxes, loose, data["you_may"], data.get("documents_waiting"), data.get("papers_in_downloads")],
+                   sort_keys=True, default=str).encode()).hexdigest()[:8]
 
 
 def proposable_parts(data: dict, again: bool = False) -> list[str]:
@@ -4908,6 +4954,7 @@ def day_file(cfg: dict, asks: list[dict], message: str, at: str) -> tuple[list[d
         pdfs = doclib.inbox_pdfs(inbox) if inbox.is_dir() else []
     except OSError:
         pdfs = []
+    shown_papers = downloads_papers(cfg)
     for a in asks:
         doc_words, tag = what(a), str(a.get("project") or "").strip().lstrip("#").lower()
         if tag not in names:
@@ -4917,6 +4964,12 @@ def day_file(cfg: dict, asks: list[dict], message: str, at: str) -> tuple[list[d
         waiting = [x for x in planlib.open_items(ledger) if x["kind"] == "file" and Path(x["src"]).is_file()]
         hits = [x for x in waiting if want in (plain(Path(x["name"]).stem), plain(Path(x["src"]).stem))]
         src = Path(hits[0]["src"]) if len(hits) == 1 else None
+        if src is None and not hits:
+            # A paper the agent was shown (`papers_in_downloads`), by its
+            # name there or the one it would be filed under.
+            shown = [x for x in shown_papers if want in (plain(x["document"]), plain(Path(x["name"]).stem))]
+            if len(shown) == 1:
+                src = next((p for p in pdfs if p.stem == shown[0]["document"]), None)
         if src is None and not hits:
             asked = words(want)
             if asked and asked <= said:                 # the student's own words name it
@@ -4938,13 +4991,18 @@ def day_file(cfg: dict, asks: list[dict], message: str, at: str) -> tuple[list[d
         if doc in exports:
             refused.append(f"{doc_words}: it is one of your own exports")
             continue
+        # Already kept, anywhere in the vault: not filed twice (2026-11-19).
+        twin = doclib.in_vault(src, paths.vault)
+        if twin is not None:
+            refused.append(f"{doc_words}: already in your vault, the same file, at {twin.relative_to(paths.vault)}"
+                           " — left in Downloads")
+            continue
         same = [x for x in planlib.open_items(ledger) if x["kind"] == "file" and x.get("doc") == doc]
         if same:
             item = same[0]
         else:                                           # never proposed: its row is made now, as done
             got = dt.datetime.fromtimestamp(src.stat().st_mtime)
-            item = {"kind": "file", "key": "", "doc": doc,
-                    "name": f"{got:%Y-%m-%d} {doclib.title_of(src, doclib.pdf_info(src))}.pdf", "at": at}
+            item = {"kind": "file", "key": "", "doc": doc, "name": doclib.file_name(src, got), "at": at}
         # Filed where the student said, whatever course it was proposed for.
         item.update({"src": str(src), "project": tag, "title": names[tag], "from": "day",
                      "why": "asked for in the day's conversation"})
@@ -5208,7 +5266,7 @@ def cmd_day(cfg: dict, args) -> int:
     stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
     payload_file = paths.payloads / f"{stamp}-day.md"
     day_cfg = dict(cfg, agent=cfg.get("dayAgent", "longhand-day"))
-    proposable, digest = day_proposable(cfg, today)
+    proposable, digest = day_proposable(cfg, today, message)
     day["session"] = session_fits(day_cfg, day.get("session", ""))
     # The one conversation's memory (2026-11-18): what was said elsewhere
     # today — the margin, a note's or a paper's chat, the planner, the
@@ -5557,7 +5615,7 @@ def cmd_note(cfg: dict, args) -> int:
     # What it may propose when the student asks (slice 4 of "One
     # conversation": from anywhere), as the day's chat; again only when it
     # changed.
-    proposable, digest = day_proposable(cfg, today)
+    proposable, digest = day_proposable(cfg, today, message)
     offer = proposable_parts(proposable, again=bool(talk["session"])) \
         if not talk["session"] or digest != talk.get("proposable") else []
     at = dt.datetime.now().isoformat(timespec="seconds")
@@ -6647,6 +6705,7 @@ def main(argv: list[str]) -> int:
         signal.signal(signal.SIGTERM, _on_stop)
     try:
         cfg = load_config()
+        doc_folders(cfg)
         if args.cmd != "eval":
             cfg = routed(cfg)                         # a model passed over runs as the fallback
         return {"run": cmd_run, "chat": cmd_chat, "ack": cmd_ack, "accept": cmd_accept, "tasks": cmd_tasks, "sections": cmd_sections, "project-page": cmd_project_page, "week": cmd_week,

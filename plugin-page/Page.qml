@@ -1808,7 +1808,9 @@ Item {
     if (root.noteRoom) { if (root.dayBlock !== "") cmd = cmd.concat(["--block", root.dayBlock]) }
     else if (chips.length > 0)
       cmd = cmd.concat(["--refs", JSON.stringify(chips.map(function (r) {
-        return r.file ? { file: r.file } : r.hash ? { date: r.date, hash: r.hash } : { date: r.date, line: r.line }
+        var o = r.file ? { file: r.file } : r.hash ? { date: r.date, hash: r.hash } : { date: r.date, line: r.line }
+        if (r.auto) o.auto = true                  // the chip that followed the cursor: the agent is told
+        return o
       }))])
     var marks = root.paper.room ? root.paper.marks.slice() : []
     if (marks.length > 0) cmd = cmd.concat(["--marks", marks.join(",")])
@@ -5692,7 +5694,7 @@ Item {
       var tl = "- [ ] " + p.title + (/^[\w\/-]+$/.test(p.project || "") ? " #" + p.project : "")
       var nt = root.tasks.filter(function (x) { return Task.sameWords(x.text, tl) })[0]
       if (nt) root.editTask(nt, "remove", "")
-    } else if (p.kind === "do-date" && t) root.editTask(t, "when", "")
+    } else if (p.kind === "do-date" && t) root.editTask(t, "when", p.was || "")
     else if (p.kind === "priority" && t) root.editTask(t, "prio", p.was || 0)
     else if (p.kind === "drop" && !p.key && p.deadline) dl.reopen(p.deadline)
     else if (p.kind === "drop" && t) root.editTask(t, "undrop", "")
