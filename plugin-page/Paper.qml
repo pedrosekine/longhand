@@ -200,10 +200,9 @@ Item {
       // Read again as a mention begins: a paper added since is offered too.
       if (!page.dayMention) page.loadRefFiles()
       var aq = at[2].toLowerCase()
-      var files = page.refFiles.filter(function (x) {
-        return x.rel !== page.pdfRel && (aq === "" || x.name.toLowerCase().indexOf(aq) >= 0 || x.rel.toLowerCase().indexOf(aq) >= 0)
-      }).sort(function (a, b) { return a.kind === b.kind ? 0 : a.kind === "paper" ? -1 : 1 })
-        .slice(0, 8).map(function (x) { return { file: x.rel, kind: x.kind, name: x.name, head: x.kind + " · " + x.name } })
+      var files = page.refFiles.filter(function (x) { return x.rel !== page.pdfRel && page.refMatches(x, aq) })
+        .sort(function (a, b) { return a.kind === b.kind ? 0 : a.kind === "paper" ? -1 : 1 })
+        .slice(0, 8).map(page.refItem)
       page.dayMention = { start: f.cursorPosition - at[2].length - 1, query: at[2], items: files }
       if (page.dayMentionFocus > files.length - 1) page.dayMentionFocus = Math.max(0, files.length - 1)
       return

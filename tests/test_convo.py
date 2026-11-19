@@ -266,14 +266,14 @@ def runner(tmp: pathlib.Path) -> None:
     agent("day", "--message", "and these?", "--refs", json.dumps([
         {"file": "human/Studies/open.md"}, {"file": "human/Studies/paper.pdf"}, {"file": "human/Studies/closed.md"}]))
     msg = calls()[-1]["argv"][-1]
-    check("# The note the student points at: `human/Studies/open.md`" in msg and "Interviews, twelve of them." in msg
-          and "# The paper the student points at: `human/Studies/paper.pdf`" in msg and '"file": "human/Studies/paper.pdf"' in msg,
+    check("# The note the student points at: Methods (`human/Studies/open.md`)" in msg and "Interviews, twelve of them." in msg
+          and "# The paper the student points at: paper (`human/Studies/paper.pdf`)" in msg and '"file": "human/Studies/paper.pdf"' in msg,
           "a note pointed at comes whole; a paper by its name, to be read when asked")
     check("Something of my own" not in msg and "(1 more they pointed at cannot be shown to you" in msg,
           "…a private note pointed at is counted, never shown")
     st = json.loads((agent_dir / "daily" / f"{today}.json").read_text())["day"]["turns"][-2]
     last = [json.loads(l) for l in (log / "here.jsonl").read_text().splitlines()][-1]
-    check([(r["kind"], r["head"]) for r in st["refs"]] == [("note", "open"), ("paper", "paper")]
+    check([(r["kind"], r["head"]) for r in st["refs"]] == [("note", "Methods"), ("paper", "paper")]
           and "note:human/Studies/open.md" in last["subjects"] and "paper:human/Studies/paper.pdf" in last["subjects"],
           f"…the turn keeps them, and the log has it about the note and the paper ({last['subjects']})")
 
@@ -282,13 +282,13 @@ def runner(tmp: pathlib.Path) -> None:
     agent("chat", "--hash", th, "--message", "and the methods note?", "--date", str(today),
           "--refs", json.dumps([{"file": "human/Studies/open.md"}]))
     pay = calls()[-1]["stdin"] or calls()[-1]["argv"][-1]
-    check("# The note the student points at: `human/Studies/open.md`" in pay and "Interviews, twelve of them." in pay,
+    check("# The note the student points at: Methods (`human/Studies/open.md`)" in pay and "Interviews, twelve of them." in pay,
           "a block's chat may point at a note too, carried with the message")
     rec = json.loads((agent_dir / "daily" / f"{today}.json").read_text())["blocks"][th]
     asked = next(x for x in rec["chat"] if x.get("text") == "and the methods note?")
     last = [json.loads(l) for l in (log / "here.jsonl").read_text().splitlines()]
     said = next(x for x in last if x["text"] == "and the methods note?")
-    check(asked.get("refs") == [{"file": "human/Studies/open.md", "kind": "note", "head": "open"}]
+    check(asked.get("refs") == [{"file": "human/Studies/open.md", "kind": "note", "head": "Methods"}]
           and "note:human/Studies/open.md" in said["subjects"] and "task:" + key in said["subjects"],
           f"…the turn keeps it, and the log files the message under the task and the note ({said['subjects']})")
 
@@ -302,8 +302,8 @@ def runner(tmp: pathlib.Path) -> None:
           and names[("task", "write the intro")]["open"]["key"] == key,
           f"everything: an earlier day, a line a place, each saying how to open what it is about ({sorted(names)})")
     tg = {(g["kind"], g["name"]): g for g in v["groups"]}
-    check(("note", "open") in tg and tg[("note", "open")]["open"] == {"kind": "file", "rel": "human/Studies/open.md"}
-          and tg[("note", "open")]["role"] == "agent" and not any(g["where"] == "day" for g in v["groups"]),
+    check(("note", "Methods") in tg and tg[("note", "Methods")]["open"] == {"kind": "file", "rel": "human/Studies/open.md"}
+          and tg[("note", "Methods")]["role"] == "agent" and not any(g["where"] == "day" for g in v["groups"]),
           f"…and today's other places, never the day's own chat ({sorted(tg)})")
     # Slice 3, one voice: what planning proposed, still open, is a line of
     # the conversation of its own, opening the dashboard's list.

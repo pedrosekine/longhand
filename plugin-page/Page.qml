@@ -527,6 +527,7 @@ Item {
     pdfPane.keep()
     root.pdfFromTag = root.pdfFromTagNext
     root.pdfFromTagNext = ""
+    if (root.refFiles.length === 0) root.loadRefFiles()   // the names its chat's quotes are said by
     root.pdfRel = rel
     root.showNote()
   }
@@ -720,9 +721,10 @@ Item {
     root.openPdf(got.pdf)
     root.showHint("written to " + got.pdf.replace(Quickshell.env("HOME") + "/", "~/"))
   }
-  // The header's name for what is in the sheet: the day, or the file's
-  // name (where it is, the Files tree shows).
-  readonly property string noteLabel: root.pdfShown ? root.pdfRel.replace(/^.*\//, "")
+  // The header's name for what is in the sheet: the day, a paper's name
+  // ("Moser et al. 2023", agent/names.py), or a note's file name (where it
+  // is, the Files tree shows).
+  readonly property string noteLabel: root.pdfShown ? (pdfPane.read.name || root.fileName(root.pdfRel))
     : root.dayNote ? root.dateLabel
     : svc.filePath === "" ? "" : svc.filePath.replace(/^.*\//, "").replace(/\.md$/i, "")
 
@@ -1223,6 +1225,25 @@ Item {
   // agent may see anyway (`conversation --files`), read each time the pane
   // shows. A private note is talked about in its own chat only.
   property var refFiles: []
+  // Each one's name as it is shown everywhere (agent/names.py, 2026-11-19):
+  // "Moser et al. 2023", a note's heading. A quote of another paper and a
+  // file the agent read are said by it; the file's name until it is read.
+  readonly property var refNames: {
+    var out = {}
+    for (var i = 0; i < root.refFiles.length; i++) out[root.refFiles[i].rel] = root.refFiles[i].name
+    return out
+  }
+  function fileName(rel) {
+    var p = String(rel || "")
+    return root.refNames[p] || p.replace(/^.*\//, "").replace(/\.(md|pdf)$/i, "")
+  }
+  // One `@` row: its kind, its name, a paper's title where there is room.
+  function refItem(f) {
+    return { file: f.rel, kind: f.kind, name: f.name, head: f.kind + " · " + f.name + (f.title ? " · " + f.title : "") }
+  }
+  function refMatches(f, q) {
+    return q === "" || [f.name, f.title || "", f.rel].some(function (x) { return String(x).toLowerCase().indexOf(q) >= 0 })
+  }
   onRefFilesChanged: if (root.dayMention) Qt.callLater(function () { root.updateDayMention(!!root.dayMention && !!root.dayMention.margin) })
   function loadRefFiles() {
     if (refFilesProc.running) return
@@ -1926,11 +1947,8 @@ Item {
     // note's own chat too (2026-11-19), the note itself left out.
     if (q !== "" && items.length < 8)
       items = items.concat(root.refFiles.filter(function (f) {
-        return (inMargin || !root.noteRoom || f.rel !== root.roomRel)
-          && (f.name.toLowerCase().indexOf(q) >= 0 || f.rel.toLowerCase().indexOf(q) >= 0)
-      }).slice(0, 8 - items.length).map(function (f) {
-        return { file: f.rel, kind: f.kind, name: f.name, head: f.kind + " · " + f.name }
-      }))
+        return (inMargin || !root.noteRoom || f.rel !== root.roomRel) && root.refMatches(f, q)
+      }).slice(0, 8 - items.length).map(root.refItem))
     root.dayMention = { start: f.cursorPosition - m[2].length - 1, query: m[2], items: items, margin: inMargin }
     if (root.dayMentionFocus > items.length - 1) root.dayMentionFocus = Math.max(0, items.length - 1)
   }
@@ -4135,7 +4153,7 @@ Item {
     // chat (2026-11-19, a paper pointed at with `@`): it opens there, the
     // words lit a moment.
     t = t.replace(/“([^”\n]{3,300})”\s*\(`([^`\n]+\.pdf)`,?\s*p\.\s*(\d+)\)/g, function (m, words, path, n) {
-      return "[“" + words + "” (" + path.replace(/^.*\//, "").replace(/\.pdf$/, "") + ", p. " + n + ")](pquote:"
+      return "[“" + words + "” (" + root.fileName(path) + ", p. " + n + ")](pquote:"
         + n + ":" + root.linkPart(path) + ":" + root.linkPart(words) + ")"
     })
     // In a paper's chat, “its exact words” (p. 12) shows them on the page.
@@ -4144,7 +4162,7 @@ Item {
         return "[“" + words + "” (p. " + n + ")](quote:" + n + ":" + root.linkPart(words) + ")"
       })
     return t.replace(/`([^`\n]+\.(?:md|txt|pdf))`(?:,?\s*(line|p\.)\s*(\d+))?/g, function (m, path, kind, n) {
-      var label = path.replace(/^.*\//, "").replace(/\.md$/, "") + (n ? (kind === "line" ? " · line " : " · p. ") + n : "")
+      var label = (/\.txt$/i.test(path) ? path.replace(/^.*\//, "") : root.fileName(path)) + (n ? (kind === "line" ? " · line " : " · p. ") + n : "")
       return "[" + label + "](cite:" + root.linkPart(path) + (n ? "#" + n : "") + ")"
     })
   }
@@ -4191,7 +4209,7 @@ Item {
     if (!t) return ""
     var bits = []
     ;(t.searched || []).forEach(function (s) { bits.push("searched “" + s.words + "”" + (s.hits && s.hits.length ? "" : " (nothing)")) })
-    ;(t.files || []).forEach(function (f) { bits.push("read " + f.path.replace(/^.*\//, "")) })
+    ;(t.files || []).forEach(function (f) { bits.push("read " + root.fileName(f.path)) })
     var docs = root.sayReads(t)
     if (docs !== "") bits.push(docs)
     // Documents it was asked to file: moved at once, so said, not a card.

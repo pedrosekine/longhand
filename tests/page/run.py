@@ -3501,7 +3501,7 @@ def checks() -> int:
         make_pdf(course / "Reading.pdf", "Reflexive thematic analysis is a method.")
         p.call("openFile", "Studies/Course A/Reading.pdf", "false")
         pd = lambda: json.loads(p.call("pdf"))
-        check(p.wait(lambda: pd()["shown"] and pd()["ready"] and pd()["pages"] == 1 and pd()["label"] == "Reading.pdf"),
+        check(p.wait(lambda: pd()["shown"] and pd()["ready"] and pd()["pages"] == 1 and pd()["label"] == "Reading"),
               f"a PDF opens in the note's place, read and named ({pd()})")
         check(p.wait(lambda: pd()["here"] == "center"), "…the keys in it")
         p.call("pdfKey", 0x46, CTRL)                        # Ctrl+F
@@ -3666,6 +3666,10 @@ def checks() -> int:
         # the paper's own chat, a chip beside its marks, sent with the
         # message; a quote of it opens it there.
         make_pdf(course / "Other 2026.pdf", "Stress hotspots on the commute.")
+        # One named by its key is shown as its bibliography has it (2026-11-19,
+        # the student: "the meaningful names instead of the file names").
+        make_pdf(course / "lee2020two.pdf", "Two riders, one road.")
+        (course / "refs.bib").write_text('@article{lee2020two, author = {Lee, Ann and Park, Bo}, title = {Two of Us}, year = {2020}}\n')
         # The test vault's papers are in `Studies/`, which the agent does not
         # see unless switched on (search's default is `human/Studies`):
         # switched on for this part, as Settings → what the agent may search.
@@ -3677,6 +3681,9 @@ def checks() -> int:
         sj.write_text(json.dumps(sset))
         p.call("paperKey", KEY_TAB, 0)
         p.wait(lambda: not pr()["list"])
+        p.call("dayType", "@lee")
+        check(p.wait(lambda: json.loads(p.call("dayMention")) == ["paper · Lee and Park 2020 · Two of Us"], 10),
+              f"@ names a paper by its bibliography, its title beside it ({p.call('dayMention')})")
         p.call("dayType", "@Other")
         check(p.wait(lambda: json.loads(p.call("dayMention")) == ["paper · Other 2026"], 10),
               f"@ in a paper's chat offers the other papers, this one left out ({p.call('dayMention')})")
@@ -3694,11 +3701,13 @@ def checks() -> int:
         links = p.call("paperLinks", "It says “Stress hotspots on the commute” (`Studies/Course A/Other 2026.pdf`, p. 1).")
         check("[“Stress hotspots on the commute” (Other 2026, p. 1)](pquote:1:" in links and "cite:" not in links,
               f"a quote of the other paper is one link, by its name and page ({links})")
+        links2 = p.call("paperLinks", "“Two riders, one road” (`Studies/Course A/lee2020two.pdf`, p. 1)")
+        check("(Lee and Park 2020, p. 1)](pquote:1:" in links2, f"…by the name @ gave it ({links2})")
         p.call("openLink", re.search(r"\((pquote:[^)]+)\)", links).group(1))
-        check(p.wait(lambda: pd()["label"] == "Other 2026.pdf" and pr()["flash"] > 0, 10),
+        check(p.wait(lambda: pd()["label"] == "Other 2026" and pr()["flash"] > 0, 10),
               f"…opened, that paper shows, its words lit ({pd()['label']}, {pr()})")
         p.call("openFile", "Studies/Course A/Reading.pdf", "false")
-        p.wait(lambda: pd()["label"] == "Reading.pdf" and pd()["ready"])
+        p.wait(lambda: pd()["label"] == "Reading" and pd()["ready"])
         p.call("pageKey", KEY_3, CTRL)
         check(p.wait(lambda: pr()["room"] and pr()["shown"]), f"…and back on the first paper, its room again ({pr()})")
         if not pr()["list"]:
@@ -3744,7 +3753,7 @@ def checks() -> int:
             p.call("sideKey", 0x01000001, 0)                  # Tab
         check(rt()["focus"] == 0, f"Tab walks into it after the day's deadlines ({rt()})")
         p.call("sideKey", KEY_RETURN, 0)
-        check(p.wait(lambda: pd()["shown"] and pd()["label"] == "Reading.pdf"), f"Enter opens it ({pd()['label']})")
+        check(p.wait(lambda: pd()["shown"] and pd()["label"] == "Reading"), f"Enter opens it ({pd()['label']})")
         p.call("pdfKey", KEY_ESC, 0)
         p.wait(lambda: not pd()["shown"])
         if p.call("sidebarOpen") == "true":
@@ -3759,7 +3768,7 @@ def checks() -> int:
         check(p.wait(lambda: row() >= 0, 10), "a task linking a paper is on the dashboard")
         p.call("dashFocus", str(row()))
         p.call("dashKey", KEY_RETURN, 0x08000000)              # Alt+Enter
-        check(p.wait(lambda: pd()["shown"] and pd()["label"] == "Reading.pdf"),
+        check(p.wait(lambda: pd()["shown"] and pd()["label"] == "Reading"),
               f"Alt+Enter on its row follows the link: the paper opens ({pd()['label']}, {p.call('hint')!r})")
         p.call("pdfKey", KEY_ESC, 0)
         p.wait(lambda: not pd()["shown"])
@@ -3769,7 +3778,7 @@ def checks() -> int:
             p.call("pageKey", KEY_2, CTRL)
         p.wait(lambda: panes()["center"] == "note")
         p.call("pdfKey", KEY_ESC, 0)
-        check(p.wait(lambda: not pd()["shown"] and pd()["label"] != "Reading.pdf" and json.loads(p.call("files"))["filePath"] == ""
+        check(p.wait(lambda: not pd()["shown"] and pd()["label"] != "Reading" and json.loads(p.call("files"))["filePath"] == ""
                      and "therapy appointment" in p.call("text")),
               f"Esc closes it, back to the note under it ({pd()})")
         # A waiting question in the project's list opens its paper on that
@@ -3789,11 +3798,11 @@ def checks() -> int:
         q1, q2 = asks()
         p.call("projectPick", q1)
         p.call("projectOpenRow")
-        check(p.wait(lambda: pd()["shown"] and pd()["label"] == "Asked.pdf" and mk()["picked"] == q1.rsplit(":", 1)[1]),
+        check(p.wait(lambda: pd()["shown"] and pd()["label"] == "Asked" and mk()["picked"] == q1.rsplit(":", 1)[1]),
               f"the first opens the paper on its mark ({pd()['label']}, {mk()['picked']!r})")
         p.call("projectPick", q2)
         p.call("projectOpenRow")
-        check(p.wait(lambda: mk()["picked"] == q2.rsplit(":", 1)[1] and pd()["label"] == "Asked.pdf"),
+        check(p.wait(lambda: mk()["picked"] == q2.rsplit(":", 1)[1] and pd()["label"] == "Asked"),
               f"…and the second, the paper open, moves to its own ({mk()['picked']!r})")
         p.call("projectPick", q1)
         p.call("projectOpenRow")
@@ -3995,7 +4004,7 @@ def checks() -> int:
             p.call("pdfKey", KEY_ESC, 0)
             p.wait(lambda: not pd()["shown"])
             p.call("openFile", "Studies/Course A/Paper.pdf", "false")
-            p.wait(lambda: pd()["ready"] and pd()["label"] == "Paper.pdf")
+            p.wait(lambda: pd()["ready"] and pd()["label"] == "Paper")
         else:
             print("skip a scan read (magick, pdftoppm, tesseract or qpdf missing)")
         # Dark pages (plan.md item 15, step 4): i, kept for this paper.
@@ -4162,7 +4171,7 @@ def checks() -> int:
         out = p.tmp / "Downloads" / "Diary 1.pdf"
         check(p.wait(lambda: json.loads(p.call("pdf"))["shown"] and out.is_file(), 60),
               f"Enter writes the PDF under its title, in Settings' folder ({ex()['error']!r})")
-        check(p.wait(lambda: json.loads(p.call("pdf"))["ready"]) and json.loads(p.call("pdf"))["label"] == "Diary 1.pdf"
+        check(p.wait(lambda: json.loads(p.call("pdf"))["ready"]) and json.loads(p.call("pdf"))["label"] == "Diary 1"
               and not ex()["open"], "…and it opens where the note was, the export closed")
         check(p.call("hint").startswith("written to "), f"…saying where it went ({p.call('hint')!r})")
         p.call("pdfKey", KEY_ESC, 0)
