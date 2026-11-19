@@ -268,6 +268,13 @@ ShellRoot {
       p.wheel({ pixelDelta: Qt.point(0, 0), angleDelta: Qt.point(0, dy), modifiers: 0, accepted: true })
       return p.table().contentY
     }
+    // Ctrl and the wheel on the PDF; a pinch, as Qt's own sets the view's
+    // scale when the fingers lift; a fit, as a resize or the chat makes.
+    function pdfCtrlWheel(dy: int): void {
+      page.pdfItem.wheel({ pixelDelta: Qt.point(0, 0), angleDelta: Qt.point(0, dy), modifiers: Qt.ControlModifier, accepted: true })
+    }
+    function pdfPinch(ratio: real): void { var v = page.pdfItem.view; v.renderScale = v.renderScale * ratio }
+    function pdfFit(): void { page.pdfItem.fit() }
     // Select on a page (from 0) from one point to another, in points: both
     // on the words, as a drag starts (pdfium finds no text elsewhere).
     function pdfSelect(pageIndex: int, x0: real, y0: real, x1: real, y1: real): bool {
