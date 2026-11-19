@@ -494,6 +494,21 @@ and your words, is dropped. The effort is `low` … `max` (not `ultra`, which
 hands work to sub-agents). The ledger says 0 per pass; it counts against the
 plan's usage limits. `"codex"` in the config names the binary.
 
+A model named `antigravity/<model>` (e.g. `"antigravity/gemini-4-neon#high"`)
+runs through Google's Antigravity CLI (`agy -p`, headless) on your own Google
+AI sign-in, with a home of Longhand's own (`~/.local/state/longhand/antigravity`,
+or `"antigravityHome"`), so your own `~/.gemini` rules, skills, plugins and MCP
+servers never reach it. Antigravity keeps its sign-in in the system keyring,
+so signing in once with plain `agy` serves both. The agent's instructions
+become a custom agent with no tools of its own. Antigravity always offers two
+(`manage_task`, `schedule`) and no setting turns them off, so a pass that
+calls any tool is dropped. The effort is `low` … `xhigh` (the model's slug,
+`gemini-4-neon-high`; `agy models` lists them). The ledger says 0 per pass; it
+counts against the plan's usage limits. `"antigravity"` in the config names
+the binary. Google's terms forbid other software from using its CLI sign-in
+directly; running its own CLI headless with `-p` is a mode Google documents,
+but Google has not said plainly whether a personal script may do so.
+
 `fallbackModel` (e.g. `"claude-code/claude-opus-5-5#medium"`) answers a
 pass the model in use could not: a usage limit, a sign-in gone, a pass
 dropped for breaking the agent's rule. The model that failed is then passed
