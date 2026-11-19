@@ -3712,6 +3712,38 @@ def checks() -> int:
         check(p.wait(lambda: not pd()["shown"] and pd()["label"] != "Reading.pdf" and json.loads(p.call("files"))["filePath"] == ""
                      and "therapy appointment" in p.call("text")),
               f"Esc closes it, back to the note under it ({pd()})")
+        # A waiting question in the project's list opens its paper on that
+        # mark, and the next one picked moves to its own mark while the
+        # paper is still open (2026-11-19: that second pick did nothing).
+        from test_read import pdf as lined_pdf
+        lined_pdf(course / "Asked.pdf", [["Stress is a reaction to a real threat."] + ["filler line"] * 40
+                                         + ["Cycling lanes lower it a great deal."]])
+        asked = "Studies/Course A/Asked.pdf"
+        for words in ("Stress is a reaction", "Cycling lanes lower it"):
+            subprocess.run([str(ROOT / "cli" / "longhand-read"), "mark", "--pdf", asked, "--page", "1", "--text", words,
+                            "--kind", "q", "--tag", first_tag], capture_output=True, text=True, env=p.env, check=True)
+        side_was = p.call("sidebarOpen")
+        p.call("openProject", next(n for n, x in enumerate(json.loads(p.call("projects"))) if x.startswith(first_tag + "|")))
+        asks = lambda: [r.split("|", 1)[1] for r in prows() if r.startswith("question|") and asked in r]
+        check(p.wait(lambda: len(asks()) == 2), f"the project lists the paper's two waiting questions ({prows()})")
+        q1, q2 = asks()
+        p.call("projectPick", q1)
+        p.call("projectOpenRow")
+        check(p.wait(lambda: pd()["shown"] and pd()["label"] == "Asked.pdf" and mk()["picked"] == q1.rsplit(":", 1)[1]),
+              f"the first opens the paper on its mark ({pd()['label']}, {mk()['picked']!r})")
+        p.call("projectPick", q2)
+        p.call("projectOpenRow")
+        check(p.wait(lambda: mk()["picked"] == q2.rsplit(":", 1)[1] and pd()["label"] == "Asked.pdf"),
+              f"…and the second, the paper open, moves to its own ({mk()['picked']!r})")
+        p.call("projectPick", q1)
+        p.call("projectOpenRow")
+        check(p.wait(lambda: mk()["picked"] == q1.rsplit(":", 1)[1]), f"…and back to the first ({mk()['picked']!r})")
+        p.call("leaveProject")
+        if p.call("sidebarOpen") != side_was:
+            p.call("sidebar")
+        p.call("pdfKey", KEY_ESC, 0)
+        p.call("pdfKey", KEY_ESC, 0)
+        p.wait(lambda: not pd()["shown"])
         # Acronyms (plan.md item 18): hovered, one says what it stands for;
         # Enter goes to where the paper spells it out, Ctrl+[ comes back; `a`
         # lists them; one never spelled out is asked in the paper's chat.

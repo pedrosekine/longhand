@@ -94,6 +94,12 @@ Item {
   // A mark to show once the PDF is open and its marks are read (a waiting
   // question picked in a project's view, 2026-11-16); "" when none.
   property string showAfter: ""
+  // Asked for while its paper is already open and read, nothing else would
+  // show it: no arrival, no fresh read (seen 2026-11-19, a second question
+  // picked in the project's list did nothing). Later, once whatever opens
+  // in the same breath has opened; a paper still opening bails here and
+  // shows it on arrival.
+  onShowAfterChanged: if (showAfter !== "") Qt.callLater(pane.showPending)
   function showPending() {
     if (pane.showAfter === "" || !pane.settled || !pane.markById(pane.showAfter)) return
     var id = pane.showAfter
