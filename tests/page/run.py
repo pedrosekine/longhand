@@ -3997,7 +3997,7 @@ def checks() -> int:
         # margins out of view, the text across the column; `0` switches to
         # the whole page and back.
         from test_read import pdf as lined_pdf
-        lined_pdf(course / "Paper.pdf", [[f"line {i} of a paper set in the middle of its page" for i in range(30)]])
+        lined_pdf(course / "Paper.pdf", [[f"line {i} of a paper set in the middle of its page" for i in range(30)]] * 2)
         p.call("openFile", "Studies/Course A/Paper.pdf", "false")
         # Its text runs from 72 pt to 294 of 612: about the page's middle
         # (306) the farther side is 234 pt, and 14 are kept beside it.
@@ -4019,6 +4019,32 @@ def checks() -> int:
         p.call("pdfKey", 0x30, 0)
         check(p.wait(lambda: not pd()["whole"] and abs(pd()["scale"] - fitted) < 0.01), "0 again: its text")
         check(p.wait(centred), f"…centred again ({pd()})")
+        # A jump glides up or down only (2026-11-19): Qt's own jump slid the
+        # page sideways to its left edge after it had been centred, its
+        # right side cut off beside the chat.
+        p.call("pdfKey", KEY_END, 0)
+        seen, until = [], time.time() + 0.9
+        while time.time() < until:
+            d = pd()
+            seen.append((round(d["x"], 1), round(d["centredX"], 1), d["at"]["page"], d["at"]["frac"]))
+        check(p.wait(lambda: pd()["at"]["page"] == 1 and pd()["at"]["frac"] < 0.02), f"End: the last page's top ({pd()['at']})")
+        check(any(pg == 0 and fr > 0.05 for _, _, pg, fr in seen), f"…glided to, not jumped ({seen[:8]})")
+        check(all(abs(x - c) < 2 for x, c, _, _ in seen), f"…the page centred all the way ({seen[:8]})")
+        p.call("pdfKey", KEY_HOME, 0)
+        p.wait(lambda: pd()["at"]["page"] == 0 and pd()["at"]["frac"] < 0.02)
+        # Ctrl and the wheel sizes it, as = and -; a pinch (Qt's own) is
+        # taken as the zoom too, so the next fit keeps it.
+        p.call("pdfCtrlWheel", "240")
+        check(p.wait(lambda: abs(pd()["zoom"] - 1.21) < 0.01 and abs(pd()["scale"] - fitted * 1.21) < 0.02),
+              f"Ctrl+wheel up: larger ({pd()['zoom']:.2f}, {pd()['scale']:.2f})")
+        p.call("pdfCtrlWheel", "-240")
+        check(p.wait(lambda: abs(pd()["zoom"] - 1) < 0.01), f"…and down: back ({pd()['zoom']:.2f})")
+        p.call("pdfPinch", "1.5")
+        check(p.wait(lambda: abs(pd()["zoom"] - 1.5) < 0.01), f"a pinch: its size taken as the zoom ({pd()['zoom']:.2f})")
+        p.call("pdfFit")
+        check(p.wait(lambda: abs(pd()["scale"] - fitted * 1.5) < 0.02), f"…kept through a fit ({pd()['scale']:.2f})")
+        p.call("pdfKey", 0x30, 0)                           # 0
+        check(p.wait(lambda: abs(pd()["zoom"] - 1) < 0.01 and abs(pd()["scale"] - fitted) < 0.01), "…and 0 fits it again")
         # A scan (plan.md item 15, step 5): no words of its own; r reads it
         # into a copy with words, which takes its place; then a drag
         # selects in it and m marks it, as in any paper.

@@ -299,8 +299,7 @@ Item {
     pane.jumpBack = null
     if (!p || !pane.view || !loader.item) return
     var h = loader.item.doc.pagePointSize(p.page).height
-    pane.view.goToLocation(p.page, Qt.point(0, p.frac * h + 10 / pane.view.renderScale), 0)
-    pane.alignSoon()
+    pane.jumpTo(p.page, p.frac * h)
     page.used("pdf", "acronym-back")
   }
   function openAcronyms() {
@@ -337,7 +336,7 @@ Item {
   visible: rel !== ""
   onRelChanged: {
     pane.zoom = 1; pane.finding = false; findField.text = ""; pane.clearFind()
-    pane.settled = false; pane.resumed = null
+    pane.settled = false; pane.resumed = null; pane.fitBase = 0
     pane.read = ({ marks: [], unplaced: 0, text: true, note: "", tags: [] })
     pane.wholePage = false
     pane.askingTag = false
@@ -384,8 +383,7 @@ Item {
     var to = Math.max(0, Math.min(pane.pages - 1, at.page + d))
     if (to === at.page) return
     var h = loader.item.doc.pagePointSize(to).height
-    pane.view.goToLocation(to, Qt.point(0, at.frac * h + 10 / pane.view.renderScale), 0)
-    pane.alignSoon()
+    pane.jumpTo(to, at.frac * h)
   }
   // Note where this PDF is, now; Page.qml asks before it opens another or
   // closes this one, and a pause in scrolling asks too.
@@ -442,8 +440,30 @@ Item {
   function scrollBy(dy) {
     var t = pane.table()
     if (!t) return
+    glide.stop()
     t.contentY = Math.max(t.originY, Math.min(t.originY + t.contentHeight - t.height, t.contentY + dy))
   }
+  // A jump to a place: page `index` (from 0), `y` points down it at the
+  // view's top. It glides there up or down only, the page kept centred
+  // (2026-11-19): Qt's own jump put the place against the view's left
+  // and slid the page sideways to it, after the page had been centred,
+  // its right side cut off beside the chat. Worked out as `here` reads
+  // it back: the pages' heights and the gaps between them.
+  function jumpTo(index, y) {
+    var t = pane.table()
+    if (!t || !pane.ready || !loader.item) return
+    var doc = loader.item.doc, s = pane.view.renderScale, top = 0
+    for (var i = 0; i < index; i++) top += doc.pagePointSize(i).height * s + (t.rowSpacing || 0)
+    var to = Math.max(t.originY, Math.min(t.originY + Math.max(0, t.contentHeight - t.height), t.originY + top + y * s))
+    glide.stop()
+    pane.align()
+    if (Math.abs(to - t.contentY) < 1) return
+    glide.target = t
+    glide.from = t.contentY
+    glide.to = to
+    glide.start()
+  }
+  NumberAnimation { id: glide; property: "contentY"; duration: 400; easing.type: Easing.OutQuart }
   // Fitted by its text (2026-11-15): a paper's margins are a fifth of its
   // width or more, so the text, not the paper, is fitted to the column.
   // Qt's view keeps a page larger than the column centred (and its left
@@ -455,8 +475,24 @@ Item {
   property bool wholePage: false
   readonly property var span: !pane.wholePage && pane.read && pane.read.span ? pane.read.span : null
   readonly property real spanPad: 14     // points kept beside the text
+  // What the fit makes before the zoom, so a pinch (Qt's own, which sets
+  // the view's scale) is taken back as the zoom: kept with the PDF's
+  // place, through the next fit, and sideways scrolling with it.
+  property real fitBase: 0
+  property bool fitting: false
+  Connections {
+    target: pane.view
+    ignoreUnknownSignals: true
+    function onRenderScaleChanged() {
+      if (pane.fitting || !pane.settled || pane.fitBase <= 0) return
+      pane.zoom = Math.max(0.3, Math.min(4, pane.view.renderScale / pane.fitBase))
+    }
+    // Qt's own jump, a link inside the PDF: the page centred after it.
+    function onCurrentPageChanged() { pane.alignSoon() }
+  }
   function fit() {
     if (!pane.view || !pane.ready) return
+    pane.fitting = true
     var w = Math.max(100, pane.width)
     if (pane.span) {
       var mid = pane.span.w / 2
@@ -466,7 +502,9 @@ Item {
     // The column's whole width: the view lays a narrower page against its
     // right edge rather than centring it.
     else pane.view.scaleToWidth(w, pane.height)
+    pane.fitBase = pane.view.renderScale
     pane.view.renderScale = pane.view.renderScale * pane.zoom
+    pane.fitting = false
     pane.alignSoon()
     pane.redrawSoon()
   }
@@ -676,8 +714,7 @@ Item {
       break
     }
     var room = (pane.finding ? findBar.y : pane.height) * 0.3
-    pane.view.goToLocation(box.page, Qt.point(0, Math.max(0, first[1] - room / s)), 0)
-    pane.alignSoon()
+    pane.jumpTo(box.page, Math.max(0, first[1] - room / s))
   }
   Process {
     id: searchProc
@@ -756,8 +793,7 @@ Item {
   // The view brought to a box's first line, a little above it.
   function goToBox(box) {
     if (!pane.view || !box || !box.rects || box.rects.length === 0) return
-    pane.view.goToLocation(box.page, Qt.point(0, Math.max(0, box.rects[0][1] - 60)), 0)
-    pane.alignSoon()
+    pane.jumpTo(box.page, Math.max(0, box.rects[0][1] - 60))
   }
   // A mark chosen in the paper's list: shown and picked.
   function showMark(id) {
@@ -793,13 +829,23 @@ Item {
   function tame(t) {
     if (pane.tamed === t) return
     t.interactive = false
+    // Qt's own jumps (a link inside the PDF) land at once, then centred
+    // (its glide went sideways); longhand's glide up and down: `jumpTo`.
+    t.animate = false
     touchScroll.createObject(t.contentItem, { flickable: t })
     pane.tamed = t
   }
   Component { id: touchScroll; TouchScroll {} }
   function wheel(ev) {
     var t = pane.table()
-    if (!t || (ev.modifiers & Qt.ControlModifier)) { ev.accepted = false; return }
+    if (!t) { ev.accepted = false; return }
+    // Ctrl and the wheel: larger or smaller, as = and - (2026-11-19: it
+    // did nothing; only a pinch zoomed, Qt's own, and the next fit lost it).
+    if (ev.modifiers & Qt.ControlModifier) {
+      var steps = ev.angleDelta.y !== 0 ? ev.angleDelta.y / 120 : ev.pixelDelta.y / 40
+      if (steps !== 0) pane.zoom = Math.max(0.3, Math.min(4, pane.zoom * Math.pow(1.1, steps)))
+      return
+    }
     var dy = ev.pixelDelta.y !== 0 ? ev.pixelDelta.y * 2 : ev.angleDelta.y / 120 * page.sp(60)
     var dx = ev.pixelDelta.x !== 0 ? ev.pixelDelta.x * 2 : ev.angleDelta.x / 120 * page.sp(60)
     if (dy !== 0) pane.scrollBy(-dy)
@@ -1254,8 +1300,8 @@ Item {
     // The ends: the top of the first page, the top of the last (as far as
     // it goes). goToPage keeps the place inside the page, so it is not
     // used for them: from the foot of a page it would land on another's foot.
-    else if (Sc.hit(event, "pdfFirst")) { if (pane.view) pane.view.goToLocation(0, Qt.point(0, 0), 0); pane.alignSoon() }
-    else if (Sc.hit(event, "pdfLast")) { if (pane.view) pane.view.goToLocation(Math.max(0, pane.pages - 1), Qt.point(0, 0), 0); pane.alignSoon() }
+    else if (Sc.hit(event, "pdfFirst")) pane.jumpTo(0, 0)
+    else if (Sc.hit(event, "pdfLast")) pane.jumpTo(Math.max(0, pane.pages - 1), 0)
     else if (Sc.hit(event, "pdfBigger")) pane.zoom = Math.min(4, pane.zoom * 1.2)
     else if (Sc.hit(event, "pdfSmaller")) pane.zoom = Math.max(0.3, pane.zoom / 1.2)
     else if (Sc.hit(event, "pdfFit")) {
