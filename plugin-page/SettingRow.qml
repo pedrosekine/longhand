@@ -11,9 +11,11 @@ Item {
   required property string kind
   default property alias content: body.data
   signal chosen()
+  signal focused(Item item)
 
   readonly property bool picked: page.settingsFocus === page.settingsAt(kind)
   readonly property bool lit: picked && page.here === "center"
+  onPickedChanged: if (picked) row.focused(row)
   onLitChanged: page.selected(row, "center", lit)
   Component.onCompleted: if (lit) page.selected(row, "center", true)
   width: parent ? parent.width : 0

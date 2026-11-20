@@ -72,10 +72,26 @@ BorderSurface {
         font.pixelSize: page.fs(Style.font.bodySmall)
       }
 
-      Column {
+      Flickable {
+        id: autonomyFlick
         anchors.top: autonomyIntro.bottom
         anchors.topMargin: page.sp(18)
-        width: parent.width
+        anchors.bottom: autonomyFoot.top
+        anchors.bottomMargin: page.sp(12)
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.leftMargin: -page.sp(10)
+        anchors.rightMargin: -page.sp(10)
+        clip: true
+        contentWidth: width
+        contentHeight: autonomyColumn.implicitHeight + page.sp(8)
+        boundsBehavior: Flickable.StopAtBounds
+        TouchScroll { flickable: autonomyFlick }
+
+      Column {
+        id: autonomyColumn
+        x: page.sp(10)
+        width: autonomyFlick.width - page.sp(20)
         spacing: page.sp(6)
 
         Repeater {
@@ -86,6 +102,10 @@ BorderSurface {
             required property int index
             readonly property bool picked: page.autonomyFocus === index
             readonly property bool lit: picked && page.here === "center"
+            onPickedChanged: if (picked) {
+              if (y < autonomyFlick.contentY) autonomyFlick.contentY = Math.max(0, y)
+              else if (y + height > autonomyFlick.contentY + autonomyFlick.height) autonomyFlick.contentY = Math.max(0, y + height - autonomyFlick.height)
+            }
             onLitChanged: page.selected(kindRow, "center", lit)
             Component.onCompleted: if (lit) page.selected(kindRow, "center", true)
             width: parent.width
@@ -159,8 +179,10 @@ BorderSurface {
           }
         }
       }
+      }
 
       Text {
+        id: autonomyFoot
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom

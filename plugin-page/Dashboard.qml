@@ -1275,13 +1275,35 @@ BorderSurface {
       anchors.left: parent.left
       anchors.right: parent.right
       anchors.bottom: parent.bottom
-      height: Math.max(dashWhenRow.implicitHeight, dashHint.implicitHeight)
+      height: Math.max(dashWhenRow.implicitHeight, dashStatus.visible ? dashStatus.implicitHeight : dashHint.implicitHeight)
+
+      // Passing status/errors while on the dashboard (statusText in sheet is
+      // hidden whenever dashOpen is true).
+      Text {
+        id: dashStatus
+        anchors.left: parent.left
+        anchors.right: parent.right
+        visible: !page.dashWhenFor && page.status !== ""
+        textFormat: Text.PlainText
+        elide: Text.ElideRight
+        text: page.status
+        color: page.accent
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.bodySmall)
+        MouseArea {
+          anchors.fill: parent
+          hoverEnabled: true
+          acceptedButtons: Qt.NoButton
+          Tip { host: page; shown: parent.containsMouse && dashStatus.truncated; text: page.status }
+        }
+      }
 
       Text {
         id: dashHint
         anchors.left: parent.left
         anchors.right: parent.right
-        visible: !page.dashWhenFor && !page.ctrlShown   // Ctrl held: its strip says it
+        visible: !page.dashWhenFor && !page.ctrlShown && page.status === ""   // Ctrl held: its strip says it
         textFormat: Text.PlainText
         wrapMode: Text.WordWrap
         text: page.stripOpen
@@ -1320,6 +1342,7 @@ BorderSurface {
         spacing: page.sp(8)
 
         Text {
+          id: dashWhenLabel
           anchors.verticalCenter: parent.verticalCenter
           textFormat: Text.PlainText
           text: !page.dashWhenFor ? ""
@@ -1334,7 +1357,8 @@ BorderSurface {
 
         TextField {
           id: dashWhenField
-          width: page.dashFieldKind === "rename" ? page.sp(460) : page.sp(220)
+          width: Math.min(page.dashFieldKind === "rename" ? page.sp(460) : page.sp(220),
+                          Math.max(page.sp(120), dashWhenRow.width - dashWhenLabel.implicitWidth - dashWhenRow.spacing))
           placeholderText: page.dashFieldKind === "rename" ? "its words"
             : page.dashFieldKind === "grade" ? "7.5, A-… · empty clears"
             : "friday, tomorrow, 20 oct…"

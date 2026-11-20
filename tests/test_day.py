@@ -54,6 +54,11 @@ if "PROPOSE" in args[-1] + stdin:
                            "source": "the note", "why": "said"}]
 if "MOVE" in args[-1] + stdin:
     reply["proposals"] = [{"kind": "deadline", "moves": 7, "title": "email the supervisor", "date": "2030-01-02", "why": "asked"}]
+if "FAIL_ROUND2" in args[-1] + stdin:
+    reply = {"reply": "", "search": [{"words": "Frauenberger"}], "knowledge": [], "read": []}
+if "# What you asked for" in args[-1] + stdin and os.environ.get("STUB_FAIL_FOLLOW"):
+    print(json.dumps({"type": "error", "error": {"name": "APIError", "data": {"message": "round 2 boom"}}}))
+    sys.exit(0)
 print(json.dumps({"type": "text", "sessionID": "ses_day", "part": {"type": "text", "text": "```json\\n" + json.dumps(reply) + "\\n```"}}))
 """
 
@@ -281,6 +286,13 @@ def briefs(tmp: pathlib.Path, env: dict, bindir: pathlib.Path) -> None:
     check(len(calls()) == n + 1, "once written, no brief is asked for again")
     nbk = json.loads(agent("notebook").stdout)
     check(nbk["files"] and nbk["files"][-1]["file"] == f"days/{one}.md", "Settings lists the brief, after the agent's own notes")
+
+    # Round-2 failure in day_follow propagates its error instead of recording a blank reply.
+    r2 = subprocess.run([sys.executable, str(AGENT), "day", "--message", "FAIL_ROUND2"],
+                        capture_output=True, text=True, env=dict(env, STUB_FAIL_FOLLOW="1"))
+    st2 = json.loads((daily / f"{today.isoformat()}.json").read_text())["day"]["turns"][-1]
+    check(st2.get("role") == "agent" and "round 2 boom" in (st2.get("error") or ""),
+          f"round-2 day_follow error is propagated to the turn ({st2}, rc={r2.returncode})")
 
 
 if __name__ == "__main__":

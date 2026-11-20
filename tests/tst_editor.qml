@@ -1652,5 +1652,66 @@ Item {
       wait(50)
       compare(head.tableShiftNow, 0)
     }
+
+    function test_emphasise_and_link_take_undo_snapshots() {
+      start("\nhello world", 3)
+      ed.emphasise("**")
+      compare(ed.text, "\n**hello** world")
+      ed.undo()
+      compare(ed.text, "\nhello world")
+      verify(!ed.spanning)
+
+      ed.setCursor(1, true)
+      keyClick(Qt.Key_Right, Qt.ShiftModifier)
+      keyClick(Qt.Key_Right, Qt.ShiftModifier)
+      ed.makeLink()
+      compare(ed.text, "\n[he]()llo world")
+      ed.undo()
+      compare(ed.text, "\nhello world")
+    }
+
+    function test_single_line_copy_cut_and_paste_over_selection() {
+      start("\na -> b and **bold**", 1)
+      // Copy across an arrow: plain markdown `->`, never drawn `→>`.
+      var f = ed.rowItem(1).field
+      f.select(0, 6)
+      keyClick(Qt.Key_C, Qt.ControlModifier)
+      compare(ed.pasteText(), "a -> b")
+
+      // Cut inner words of **bold**: collapses orphan markers and restores on one undo.
+      f.select(13, 17)
+      keyClick(Qt.Key_X, Qt.ControlModifier)
+      compare(ed.pasteText(), "bold")
+      compare(ed.text, "\na -> b and ")
+      ed.undo()
+      compare(ed.text, "\na -> b and **bold**")
+
+      // Paste over an intra-line selection: one undo restores the replaced text.
+      ed.copyText("REPLACED")
+      f = ed.rowItem(1).field
+      f.select(0, 6)
+      keyClick(Qt.Key_V, Qt.ControlModifier)
+      compare(ed.text, "\nREPLACED and **bold**")
+      ed.undo()
+      compare(ed.text, "\na -> b and **bold**")
+    }
+
+    function test_multiline_paste_and_enter_over_selection_are_one_undo_step() {
+      start("\nalpha\nbeta\ngamma", 1)
+      ed.copyText("ONE\nTWO")
+      keyClick(Qt.Key_Down, Qt.ShiftModifier)
+      keyClick(Qt.Key_End, Qt.ShiftModifier)
+      keyClick(Qt.Key_V, Qt.ControlModifier)
+      compare(ed.text, "\nONE\nTWO\ngamma")
+      ed.undo()
+      compare(ed.text, "\nalpha\nbeta\ngamma")
+
+      ed.setCursor(1, true)
+      keyClick(Qt.Key_Down, Qt.ShiftModifier)
+      keyClick(Qt.Key_Return)
+      compare(ed.text, "\n\nbeta\ngamma")
+      ed.undo()
+      compare(ed.text, "\nalpha\nbeta\ngamma")
+    }
   }
 }

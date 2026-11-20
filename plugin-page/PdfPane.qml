@@ -125,6 +125,7 @@ Item {
   // The project asked for on a paper's first mark: the projects, narrowing
   // as a name or tag is typed.
   property bool askingTag: false
+  property string pendingAskMark: ""
   property int tagFocus: 0
   property string tagSaid: ""          // "#thesis": said a moment in the foot, once given
   Timer { id: tagSaidTimer; interval: 4000; onTriggered: pane.tagSaid = "" }
@@ -143,7 +144,10 @@ Item {
   function chooseProject(tag) {
     pane.askingTag = false
     if (tag) { pane.readRun(["tag", "--tag", tag]); pane.tagSaid = "#" + tag; tagSaidTimer.restart(); page.used("pdf", "project") }
-    keys.forceActiveFocus()
+    var ask = pane.pendingAskMark
+    pane.pendingAskMark = ""
+    if (ask !== "") Qt.callLater(function () { page.paper.askAbout(ask) })
+    else keys.forceActiveFocus()
   }
   // The paper's acronyms (longhand-read acronyms): short → { short, long,
   // page, rects, defined }, and where each is written, page → [{ r, a }].
@@ -340,6 +344,7 @@ Item {
     pane.read = ({ marks: [], unplaced: 0, text: true, note: "", tags: [] })
     pane.wholePage = false
     pane.askingTag = false
+    pane.pendingAskMark = ""
     pane.dressed = []
     pane.picked = ""; pane.lastMade = ""; pane.readError = ""; pane.noting = false; noteField.text = ""
     pane.readQueue = []
@@ -492,6 +497,8 @@ Item {
   }
   function fit() {
     if (!pane.view || !pane.ready) return
+    var at = pane.settled ? pane.here() : null
+    var prevScale = pane.view.renderScale
     pane.fitting = true
     var w = Math.max(100, pane.width)
     if (pane.span) {
@@ -505,6 +512,10 @@ Item {
     pane.fitBase = pane.view.renderScale
     pane.view.renderScale = pane.view.renderScale * pane.zoom
     pane.fitting = false
+    if (at && loader.item && Math.abs(pane.view.renderScale - prevScale) > 0.001) {
+      var h = loader.item.doc.pagePointSize(at.page).height
+      pane.view.goToLocation(at.page, Qt.point(0, at.frac * h + 10 / pane.view.renderScale), 0)
+    }
     pane.alignSoon()
     pane.redrawSoon()
   }
@@ -754,14 +765,19 @@ Item {
       pane.awaitingMark = false
       // The paper's first mark: its project, guessed when plain, else
       // asked once (Esc leaves it with none; its note can name one later).
+      var askedProj = false
       if (fresh.length === 1 && (pane.read.marks || []).length === 0 && (o.tags || []).length === 0) {
         var guess = page.paperProject(pane.rel)
         if (guess !== "") { pane.readRun(["tag", "--tag", guess]); pane.tagSaid = "#" + guess; tagSaidTimer.restart() }
-        else if (page.projects.length > 0) pane.askProject()
+        else if (page.projects.length > 0) { pane.askProject(); askedProj = true }
       }
       // A question marked: its chat opens with it attached, for the
       // question in words; nothing is sent until Enter (plan.md item 15).
-      if (fresh.length === 1 && fresh[0].kind === "q" && pane.askAfter) Qt.callLater(function () { page.paper.askAbout(fresh[0].id) })
+      // Wait for the project picker when this first mark opened it.
+      if (fresh.length === 1 && fresh[0].kind === "q" && pane.askAfter) {
+        if (askedProj) pane.pendingAskMark = fresh[0].id
+        else Qt.callLater(function () { page.paper.askAbout(fresh[0].id) })
+      }
       pane.askAfter = false
     }
     if (pane.picked !== "" && !o.marks.some(function (m) { return m.id === pane.picked })) pane.picked = ""
@@ -1744,7 +1760,10 @@ Item {
   Text {
     id: foot
     anchors.bottom: parent.bottom
+    anchors.left: parent.left
     anchors.right: parent.right
+    horizontalAlignment: Text.AlignRight
+    elide: Text.ElideRight
     textFormat: Text.PlainText
     readonly property int count: (pane.read.marks || []).length
     text: pane.error !== "" ? pane.error
@@ -1769,5 +1788,11 @@ Item {
     font.family: page.fontFamily
     font.styleName: page.fontStyle
     font.pixelSize: page.fs(Style.font.caption)
+    MouseArea {
+      anchors.fill: parent
+      hoverEnabled: true
+      acceptedButtons: Qt.NoButton
+      Tip { host: page; shown: parent.containsMouse && foot.truncated; text: foot.text }
+    }
   }
 }

@@ -5249,6 +5249,8 @@ def day_follow(cfg: dict, paths: Paths, tag: str, result: dict, reply: dict, pay
         second = run_model(day_cfg, paths, "", session=result["session"], message=follow)
         read_file.with_suffix(".events.jsonl").write_text(second["events"])
         if second["error"]:
+            tokens = {k: result["tokens"].get(k, 0) + second["tokens"].get(k, 0) for k in set(result["tokens"]) | set(second["tokens"])}
+            result = dict(second, cost=result["cost"] + second["cost"], tokens=tokens)
             break
         again = (parse or parse_reply)(second["text"])
         if last:
@@ -5940,7 +5942,7 @@ def cmd_talk(cfg: dict, args) -> int:
     ledger = planlib.load_ledger(PROPOSALS)   # the page may have answered something meanwhile
     item = next(x for x in ledger["items"] if x["id"] == args.id)
     current, revised, settled, resolved = item, None, "", False
-    if item["status"] == "open" and item["kind"] != "question" and reply["revise"] is not None:
+    if not result["error"] and item["status"] == "open" and item["kind"] != "question" and reply["revise"] is not None:
         closed = planlib.store_deadlines(STATE_HOME / "deadlines.tsv", ("done", "cancelled"))
         kept, _ = planlib.validate({"proposals": [reply["revise"]]}, cands, days, ledger, today, boxes, deadlines,
                                    allowed, closed, project_tags(cfg))
@@ -5949,7 +5951,7 @@ def cmd_talk(cfg: dict, args) -> int:
             new.pop("auto", None)             # a revision waits for the person, whatever the level
             current = revised = planlib.revise(ledger, item, dict(new, prompt=result.get("prompt", ""),
                                                                   model=result.get("model", ""), payload=str(payload_file)), at)
-    if current["status"] in ("open", "told") and reply["settle"] in planlib.SETTLE:
+    if not result["error"] and current["status"] in ("open", "told") and reply["settle"] in planlib.SETTLE:
         settled = reply["settle"]
         current["agreed"] = {"how": settled, "at": at}
         current["settled_by"] = "conversation"
