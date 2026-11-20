@@ -14,7 +14,13 @@ SOUND_FILE="$SCRIPT_DIR/../sounds/done.wav"
 [ -f "$SOUND_FILE" ] || SOUND_FILE="/usr/share/sounds/freedesktop/stereo/alarm-clock-elapsed.oga"
 
 play_sound() {
-  if command -v paplay >/dev/null 2>&1; then
+  [ -n "${LONGHAND_SILENT:-}" ] && return 0
+  if command -v omarchy-shell >/dev/null 2>&1 && [ "$(omarchy-shell notifications isDnd 2>/dev/null)" = "on" ]; then
+    return 0
+  fi
+  if command -v pw-play >/dev/null 2>&1; then
+    pw-play --volume=0.6 "$SOUND_FILE" 2>/dev/null &
+  elif command -v paplay >/dev/null 2>&1; then
     paplay "$SOUND_FILE" 2>/dev/null &
   elif command -v aplay >/dev/null 2>&1; then
     aplay -q "$SOUND_FILE" 2>/dev/null &

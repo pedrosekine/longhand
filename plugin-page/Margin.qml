@@ -390,6 +390,37 @@ BorderSurface {
             onLinkActivated: function (link) { page.openCitation(link) }
           }
 
+          // Turn rating on agent replies in marginStream (mirrors DayPane).
+          Row {
+            readonly property bool showRate: !row.isCard && row.turn.role === "agent" && !row.turn.error && !!row.turn.text
+              && (!page.currentRecord || !page.currentRecord.reply || row.index === page.marginStream.length - 1)
+            visible: showRate
+            topPadding: page.sp(4)
+            spacing: page.sp(14)
+            Repeater {
+              model: [{ text: "helpful", value: "up", act: "marginHelpful" }, { text: "not helpful", value: "down", act: "marginNotHelpful" }]
+              Text {
+                required property var modelData
+                readonly property bool chosen: page.ratingOf(page.currentRec) === modelData.value
+                textFormat: Text.PlainText
+                text: (chosen ? "✓ " : "") + modelData.text
+                color: mRateArea.containsMouse && page.handOn ? page.accent : chosen ? page.foreground : page.faint
+                font.family: page.fontFamily
+                font.styleName: page.fontStyle
+                font.pixelSize: page.fs(Style.font.caption)
+                font.underline: chosen
+                MouseArea {
+                  id: mRateArea
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: page.rateReply(modelData.value)
+                  Tip { host: page; shown: parent.containsMouse; text: page.tip(chosen ? "Take it back" : "Say it was " + modelData.text, modelData.act) }
+                }
+              }
+            }
+          }
+
           MarginCard {
             visible: row.isCard
             width: parent.width

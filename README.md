@@ -40,18 +40,10 @@ to your own Claude plan, or the Codex CLI signed in to your own ChatGPT plan
 (below).
 
 ```bash
-mkdir -p ~/.config/longhand
-cp config.example.json ~/.config/longhand/config.json   # then point "vault" at your notes
-tools/install-plugins   # the page, the timer and the deadlines into ~/.config/omarchy/plugins; again after each update
-# add {"id":"longhand.page"}, {"id":"longhand.pomo"}, {"id":"longhand.deadline"} to plugins[] in ~/.config/omarchy/shell.json
-ln -s "$PWD/cli/pomo"             ~/.local/bin/pomo
-ln -s "$PWD/agent/longhand-agent" ~/.local/bin/longhand-agent
-ln -s "$PWD/cli/longhand-check"   ~/.local/bin/longhand-check    # keeps the notes, the store and the popup one thing
-ln -s "$PWD/cli/longhand-read"    ~/.local/bin/longhand-read     # a paper's highlights, kept in its reading note
-longhand-agent install
-mkdir -p ~/.local/share/icons/hicolor/scalable/apps         # "Longhand" in the app launcher (Super+Space)
-ln -s "$PWD/launcher/longhand.desktop" ~/.local/share/applications/longhand.desktop
-ln -s "$PWD/launcher/longhand.svg"     ~/.local/share/icons/hicolor/scalable/apps/longhand.svg
+tools/install --restart   # symlinks CLIs, scaffolds config.json + launcher, installs plugins, runs `longhand-agent install` & `tools/doctor`
+# then edit "vault" in ~/.config/longhand/config.json if newly created, and add
+# {"id":"longhand.page"}, {"id":"longhand.pomo"}, {"id":"longhand.deadline"} to plugins[] in ~/.config/omarchy/shell.json
+tools/doctor              # verify config, vault, CLIs, plugins, and optional tools (pandoc/xelatex/pdftotext/gitleaks)
 ```
 
 Upgrading from **omarchy-student** (Longhand's name until 2026-10-16): run

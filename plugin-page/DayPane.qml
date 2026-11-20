@@ -475,10 +475,12 @@ BorderSurface {
               onAct: page.convoAct(rowKey)
             }
           }
-          // The marks a message about a paper pointed at, over its bubble.
+          // The marks a message about a paper pointed at, over its bubble — clickable to jump to the mark.
           TurnRef {
             page: dayPane.page
             alignTo: dayTurn.bubbleWidth
+            clickable: modelData.role === "student" && !!modelData.marks && modelData.marks.length > 0
+            onClicked: if (modelData.marks && modelData.marks.length > 0) page.jumpToMark(modelData.marks[0])
             text: modelData.role === "student" && !!modelData.marks ? modelData.marks.map(function (id) { return page.paper.head(id) }).join("  ·  ") : ""
           }
           // The turn, drawn as every pane draws one (Turn.qml).
@@ -889,20 +891,14 @@ BorderSurface {
       onPicked: dayField.forceActiveFocus()
     }
 
-    // The marks the next message points at; Backspace in the empty box
-    // lets go of the last.
-    Repeater {
-      model: page.paper.room ? page.paper.marks : []
-      Text {
-        required property var modelData
-        width: dayBox.width
-        textFormat: Text.PlainText
-        elide: Text.ElideRight
-        text: "↳ " + page.paper.head(modelData)
-        color: page.dim
-        font.family: page.fontFamily
-        font.styleName: page.fontStyle
-        font.pixelSize: page.fs(Style.font.caption)
+    // The marks the next message points at: removable Chips matching dayChips.
+    Chips {
+      page: dayPane.page
+      width: dayBox.width
+      refs: page.paper.room ? page.paper.marks.map(function (id) { return { kind: "mark", head: page.paper.head(id) } }) : []
+      onDrop: function (i) {
+        page.paper.marks = page.paper.marks.filter(function (_, k) { return k !== i })
+        dayField.forceActiveFocus()
       }
     }
     // Words selected in an answer, offered for a reply.
@@ -963,22 +959,16 @@ BorderSurface {
       onCursorPositionChanged: Qt.callLater(page.updateDayMention)
     }
 
+    // Calm 1-line footer matching Longhand's editorial voice (P2 #16).
     Text {
       width: parent.width
       textFormat: Text.PlainText
-      wrapMode: Text.WordWrap
-      text: page.dayReplying ? page.keyName("chatSend") + " attaches this reply · " + page.keyName("marginBack")
-          + " cancels it · Shift+Enter a new line · the passage stays lit above"
+      elide: Text.ElideRight
+      text: page.dayReplying ? page.keyName("chatSend") + " attaches reply · " + page.keyName("marginBack") + " cancels"
         : page.dayReplies.length > 0 ? page.dayReplies.length + (page.dayReplies.length === 1 ? " reply" : " replies")
-          + " attached · " + page.keyName("chatSend") + " sends · click a pill to change it · "
-          + page.keyName("chatAnswer") + " replies to more"
-        : page.paper.room ? page.keyName("chatSend") + " sends · ^ attaches a mark · @ another paper · quotes link to the page · "
-          + page.keyName("marginBack") + " back to the marks"
-        : page.keyName("chatSend") + " sends · Shift+Enter a new line · @ points at " + (page.noteRoom ? "a part of it, a paper" : "a block, a task, a note")
-        + " · " + page.keyName("chatAnswer") + " replies to words you select"
-        + (page.dayOpenCards.length > 0 ? " · " + page.keyName("marginUp") + " to its proposals"
-           : page.convoRows.length > 0 ? " · " + page.keyName("marginUp") + " to the other chats" : "")
-        + " · " + page.keyName("marginBack") + " closes · " + page.keyName("dayChat") + " from anywhere"
+          + " · " + page.keyName("chatSend") + " sends · " + page.keyName("chatAnswer") + " more"
+        : page.paper.room ? page.keyName("chatSend") + " sends · ^ mark · @ paper · " + page.keyName("marginBack") + " marks · " + page.keyName("keys") + " keys"
+        : page.keyName("chatSend") + " sends · @ attach · " + page.keyName("chatAnswer") + " reply · " + page.keyName("keys") + " keys"
       color: page.faint
       font.family: page.fontFamily
       font.styleName: page.fontStyle

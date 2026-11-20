@@ -1,0 +1,89 @@
+#!/usr/bin/env python3
+"""One-command installer for Longhand (`tools/install`).
+
+Idempotent setup:
+  1. Symlinks CLI helpers into ~/.local/bin (pomo, longhand-agent,
+     longhand-check, longhand-read, longhand-doctor).
+  2. Copies config.example.json to ~/.config/longhand/config.json if absent.
+  3. Installs desktop entry & icon for the app launcher.
+  4. Runs tools/install-plugins (passing --restart if requested).
+  5. Runs `longhand-agent install` if config.json points at an existing vault.
+  6. Runs tools/doctor to verify the installation.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import pathlib
+import shutil
+import subprocess
+import sys
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+
+
+def link(src: pathlib.Path, dst: pathlib.Path) -> None:
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    if dst.is_symlink() or dst.exists():
+        if dst.is_symlink() and dst.resolve() == src.resolve():
+            return
+        dst.unlink()
+    dst.symlink_to(src)
+    print(f"linked {dst} → {src}")
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--restart", action="store_true", help="restart omarchy-shell after installing plugins")
+    args = ap.parse_args()
+
+    home = pathlib.Path.home()
+    xdg_cfg = pathlib.Path(os.environ.get("XDG_CONFIG_HOME") or home / ".config")
+    xdg_data = pathlib.Path(os.environ.get("XDG_DATA_HOME") or home / ".local" / "share")
+    bindir = home / ".local" / "bin"
+
+    # 1. CLI helpers
+    for dst_name, rel in (
+        ("pomo", "cli/pomo"),
+        ("longhand-agent", "agent/longhand-agent"),
+        ("longhand-check", "cli/longhand-check"),
+        ("longhand-read", "cli/longhand-read"),
+        ("longhand-doctor", "tools/doctor"),
+    ):
+        link(ROOT / rel, bindir / dst_name)
+
+    # 2. Config scaffold (never overwrites existing config.json)
+    cfg_path = xdg_cfg / "longhand" / "config.json"
+    if not cfg_path.exists():
+        cfg_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(ROOT / "config.example.json", cfg_path)
+        print(f"created {cfg_path} — edit \"vault\" to point at your Obsidian folder")
+
+    # 3. App launcher entry & icon
+    link(ROOT / "launcher" / "longhand.desktop", xdg_data / "applications" / "longhand.desktop")
+    link(ROOT / "launcher" / "longhand.svg", xdg_data / "icons" / "hicolor" / "scalable" / "apps" / "longhand.svg")
+
+    # 4. Omarchy shell plugins
+    cmd = [sys.executable, str(ROOT / "tools" / "install-plugins")]
+    if args.restart:
+        cmd.append("--restart")
+    subprocess.run(cmd, check=True)
+
+    # 5. Scaffold vault & agent prompts if vault already exists
+    try:
+        cfg = json.loads(cfg_path.read_text())
+        vault = pathlib.Path(os.path.expanduser(str(cfg.get("vault") or "")))
+        if vault.is_dir():
+            subprocess.run([sys.executable, str(ROOT / "agent" / "longhand-agent"), "install"], check=False)
+    except (OSError, ValueError):
+        pass
+
+    # 6. Health check
+    print("\n--- longhand doctor ---")
+    r = subprocess.run([sys.executable, str(ROOT / "tools" / "doctor")])
+    return r.returncode
+
+
+if __name__ == "__main__":
+    sys.exit(main())
