@@ -115,7 +115,7 @@ zoom the whole page like a browser, remembered across restarts. `Ctrl+F`
 finds in the note as you type: Enter next, Shift+Enter previous,
 `Ctrl+Enter` lands on the match selected and closes the search, Esc closes
 it with the cursor on the match (as browsers and editors do), Shift+Esc
-goes back to where you were. `Ctrl+[` shows a month calendar in a sidebar
+goes back to where you were. `Ctrl+1` (or `Ctrl+\`) shows a month calendar in a sidebar
 (only when asked): days with a note are full, days without are faded;
 arrows move by day and week, `Ctrl+←/→` by month, Enter opens the day in
 the same sheet, editable (a day without a note gets its file on the first
@@ -145,8 +145,9 @@ saved whole; Esc, the band's "the whole day" or a click on a fold gives the
 rest back, and `Ctrl+Shift+F` does the same on any tagged section. The list
 stays where it is; `←` or Esc goes back to the projects. A tagged heading claims everything under it until the next
 heading of the same or a higher level, so an `## H2` never ends a `# Course`.
-Writing a project into the note is the shifted pair: Shift+Enter starts a
-class (`# Course #tag`), Ctrl+Enter puts just the tag at the cursor.
+Writing a project into the note from the sidebar's list: `s` starts a
+class (`# Course #tag`), `t` puts just the tag at the cursor, `p` opens the
+project's page, and `w` opens its week.
 A new project is made from the note — `@` or `#` with a tag nothing goes by
 yet offers "+ make #tag a project" and asks its name — or from "+ new
 project" under the sidebar's list (`Name #tag`; without a tag, the name's
@@ -172,13 +173,12 @@ Turning it off puts the day back. For part of a note rather than a whole day,
 a `> [!private]` callout hides that block.
 
 Nothing ever interrupts your writing to offer the agent. You reach for it:
-`Ctrl+Enter`, or **ask** in the header, sends the block your cursor is in —
-a run of list items counts as one submission. The word reads dim when that
-block carries a sign for the agent (a checkbox, an `@` line, a line ending
-in `?`, a ticked box) and faint when it does not; asking anyway says why in
-one line. A block that already has an answer is never asked twice: the word
-reads **reply**, and `Ctrl+Enter` opens the conversation on it with the
-cursor in the box. (A block keeps its conversation whatever you change in
+`Ctrl+Enter`, or **chat** in the header, opens this block's chat — sending the
+block first when it carries a sign for the agent (a checkbox, an `@` line, a
+line ending in `?`, a ticked box); a run of list items counts as one submission.
+The word reads dim when that block carries a sign or already has an answer, and
+faint otherwise. A block that already has an answer is never asked twice:
+`Ctrl+Enter` opens its conversation with the cursor in the box. (A block keeps its conversation whatever you change in
 it — a tick, a date, its words: the page follows it through every edit, in
 `threads.json` beside the deadline store, never as a mark in the note, and
 the agent is told how it reads now. A new question is a new block. What
@@ -201,7 +201,7 @@ down, as in VS Code;
 accepts one and runs it through `pomo`), then the chat — and `Esc` comes back
 with the cursor where it was. Drop
 course material into `agents/longhand/curriculum/` and run
-`longhand-agent curriculum` once for PDFs. Set `inbox` (e.g. `~/Downloads`) and the PDFs there that belong to a course — its code, title or tag in the file name or on the first two pages, or downloaded during or just after one of its classes — are proposed in the dashboard for filing into `<vault>/projects/<tag>/docs/`; nothing else in the folder is ever listed. Or ask the day's conversation to file one ("put today's two papers into hfpi"): asking is the consent, so it is filed at once into the project you name and its dashboard row goes; a PDF the inbox did not match is found only by the name you give it. A course's documents are in its project in the sidebar, and the agent sees their titles on a run about the course. The **day's conversation** — `Ctrl+]` (or `Ctrl+J`) from anywhere, `Ctrl+Shift+Enter` from a block, or the seal at the header's centre — is the agent to talk to about the day rather than one line: one conversation a day in the right pane, seeing today's note and today's other conversations, and able to search your files — the folders you switch on in Settings → what the agent may search, never private notes, `_Secrets` or documents of identity, money, health or contracts — citing what it found as links; the date at the left opens the sidebar. Ask the agent how to do something in Longhand ("how do I reschedule a deadline?") and it answers from its manual
+`longhand-agent curriculum` once for PDFs. Set `inbox` (e.g. `~/Downloads`) and the PDFs there that belong to a course — its code, title or tag in the file name or on the first two pages, or downloaded during or just after one of its classes — are proposed in the dashboard for filing into `<vault>/projects/<tag>/docs/`; nothing else in the folder is ever listed. Or ask the day's conversation to file one ("put today's two papers into hfpi"): asking is the consent, so it is filed at once into the project you name and its dashboard row goes; a PDF the inbox did not match is found only by the name you give it. A course's documents are in its project in the sidebar, and the agent sees their titles on a run about the course. The **day's conversation** — `Ctrl+3` (or `Ctrl+|`) from anywhere, `Ctrl+Shift+Enter` from a block, or the seal at the header's centre — is the agent to talk to about the day rather than one line: one conversation a day in the right pane, seeing today's note and today's other conversations, and able to search your files — the folders you switch on in Settings → what the agent may search, never private notes, `_Secrets` or documents of identity, money, health or contracts — citing what it found as links; the date at the left opens the sidebar. Ask the agent how to do something in Longhand ("how do I reschedule a deadline?") and it answers from its manual
 (`agent/manual.md`), naming your own keys. List your `languages` in the config; the agent answers in the one the
 block is written in. Add your calendars in **Settings → Calendar** (`Ctrl+,`, or **settings** at the foot of the
 sidebar): paste an `.ics` or `webcal://` address and each calendar is fetched at once and says whether it works. Classes are
@@ -214,17 +214,19 @@ makes a short, soft sound — never an untick, never while notifications are sil
 
 ### Where the keys are
 
-The page is three panes at most, and the bracket keys are the three, left to
-right: `Ctrl+[` the sidebar, `Ctrl+\` the middle (the note, or the
-dashboard in its place: there it flips the two), `Ctrl+]` the agent's pane.
-A pane's key takes you to it, opening it; pressed in it, it closes it.
+The page is three panes at most, and the digit keys are the three, left to
+right: `Ctrl+1` the sidebar (Time ↔ Files), `Ctrl+2` the middle (the note ↔
+the dashboard), `Ctrl+3` the agent's pane (the day's chat ↔ this block's or
+task's chat). `Ctrl+\` and `Ctrl+|` open and close the side panes; `Ctrl+[`
+and `Ctrl+]` walk back and forward through what the middle showed.
 `Alt+←/→` move between the panes that are open and never close one; in the
 note with nothing to its right, `Alt+→` opens the block's own conversation.
 An accent frame, like Omarchy's active border, is drawn around a side pane
 while it has the keys (none around the middle: there the cursor says so); Esc backs out one level, and a pane that closes gives the keys
 back where they came from, at the very place you left (the note's cursor
-where it was). The mouse pointer follows the keys into each pane and onto
-the selected row, as Hyprland's follows windows (Settings → The pointer).
+where it was). The mouse pointer follows the keys on pane changes by default,
+as Hyprland's follows windows (Settings → The pointer: pane changes only, every
+selection, or off).
 The whole model: [docs/navigation.md](docs/navigation.md).
 
 ### Every key, and moving one
@@ -234,10 +236,10 @@ today's note from anywhere (the dashboard and the sidebar too), `Alt+[` /
 `Alt+]` the day before or after that has a note — as Obsidian steps its
 daily notes — and forward from the last one is today. `Alt+Home` and `Ctrl+PgUp/PgDn` do the same on a keyboard
 with those keys of their own. Where another app has taught a key, the page answers
-to it as well: `Ctrl+E` for inline code beside `` Ctrl+` `` (Notion), `Ctrl+T` for the
-dashboard and `Ctrl+J` for the agent's pane beside the brackets; in the dashboard `j`/`k` move, Space
+to it as well: `Ctrl+E` for inline code beside `` Ctrl+` `` (Notion), `Ctrl+Alt+2` for the
+dashboard from anywhere; in the dashboard `j`/`k` move, Space
 or `e` ticks (Todoist), and the note's own `Ctrl+L` and `Ctrl+D` tick and ask
-"when?" there too. `Ctrl+L` ticks a deadline wherever one is listed: the
+"do on?" there too. `Ctrl+L` ticks a deadline wherever one is listed: the
 sidebar's list for a day, and the bar's deadline popup beside its `d`; `t` in the calendar is today. On a keyboard with dead keys
 (US-International, most European layouts) `` Ctrl+` `` is the backtick, as it
 should be.
@@ -357,7 +359,7 @@ it, with the pill it will become; when you leave the line it is the
 deadline, nothing asked (as in Todoist). To keep the date as words: Backspace
 right as it lights up, `Ctrl+D` on the line, or `Ctrl+Z` after it is bound.
 Only lines you type in are recognised, so moving through an old note binds
-nothing; `Ctrl+D` binds such a line on purpose, asks "when?" on a line with
+nothing; `Ctrl+D` binds such a line on purpose, asks "due?" on a line with
 no date, and on a bound line reschedules (empty unbinds). A checkbox list
 goes to the agent only once its dates are bound. The line then
 reads `- [ ] chapter 2 draft #thesis 📅 2026-10-16 17:00 ^d6` on disk —
@@ -369,7 +371,7 @@ dashboard, the bar popup, `pomo`, Obsidian — reaches every other place.
 Deleting the line, or a whole block, cancels its deadlines and says so
 under the cursor; pasting the line anywhere or `Ctrl+Z` brings them back.
 Nothing is asked, and nothing is erased: cancelled is history. The
-calendar marks deadline days, `Ctrl+T` lists deadlines first, and in the
+calendar marks deadline days, `Ctrl+2` (or `Ctrl+Alt+2`) opens the dashboard, and in the
 bar popup `o` opens a deadline's line.
 
 A day's note shows what it is for, whatever day it was written on. A box
@@ -384,7 +386,7 @@ again whenever a note opens or is saved. How it all holds together, and why:
 
 ## The dashboard
 
-`Ctrl+T` turns the sheet into the dashboard: every open checkbox and every
+`Ctrl+2` (or `Ctrl+Alt+2`, or **dashboard** at the foot of the sidebar) turns the sheet into the dashboard: every open checkbox and every
 deadline across all your daily notes, full width, in one of three orders
 named above the list (a click picks one, `o` goes round them). **By day**,
 where it opens, is one timeline in bands (late, today, this week, next week,
@@ -399,8 +401,8 @@ day you mean to work on it ("do tomorrow"), its priority (▲ or ▽ beside the
 box) and its estimate.
 
 Enter opens the line in its note, on any day, as it does everywhere.
-`Ctrl+Enter` ticks it — in the day it was written, so the note and the
-dashboard never disagree. `t` asks "when?" in words ("friday"), `p` walks
+`Space`, `e`, or `Ctrl+L` ticks it — in the day it was written, so the note and the
+dashboard never disagree — and `Ctrl+Enter` opens its chat. `t` (or `Ctrl+D`) asks "do on?" in words ("friday"), `p` walks
 the three priorities, `Ctrl+E` renames it (the line's words; details stay in
 the note, as indented lines under it, and the row says how many), `Del`
 cancels it (kept in the note as `- [-] … ❌ <day>`, so the decision is on

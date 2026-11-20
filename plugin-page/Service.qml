@@ -27,6 +27,7 @@ Item {
   readonly property string pageCodeFont: (config && config.codeFont) || ""
   readonly property bool configured: !!(config && config.vault && config.daily && config.daily.dir)
   property string configError: ""
+  property string toolWarning: ""
 
   // The note currently loaded. `text` mirrors disk after load and after
   // every save; the page compares against it to know if anything is pending.
@@ -97,6 +98,7 @@ Item {
 
   // Where the runner lives and where it writes. The page only reads these.
   readonly property string runner: (config && config.runner) || (Quickshell.env("HOME") + "/.local/bin/longhand-agent")
+  readonly property string readBin: (config && config.read) || (Quickshell.env("HOME") + "/.local/bin/longhand-read")
   readonly property string agentDir: configured ? config.vault + "/" + (config.agentDir || "agents/longhand") : ""
   readonly property string statePath: agentDir !== "" && noteDate !== "" ? agentDir + "/daily/" + noteDate + ".json" : ""
 
@@ -312,6 +314,7 @@ Item {
       try {
         root.config = JSON.parse(text())
         root.configError = root.configured ? "" : "config.json needs vault and daily.dir"
+        if (root.configured) root.runPreflight()
       } catch (e) {
         root.config = ({})
         root.configError = "config.json is not valid JSON: " + e
@@ -322,6 +325,38 @@ Item {
       root.configError = "No config at " + root.configPath
     }
     onFileChanged: reload()
+  }
+
+  function runPreflight() {
+    if (!root.configured) return
+    preflightProc.command = [
+      "sh", "-c",
+      "test -d \"$1\" || { echo \"vault:$1\"; exit 0; }; "
+      + "miss=''; "
+      + "test -x \"$2\" || command -v \"$2\" >/dev/null 2>&1 || miss=\"$miss longhand-agent\"; "
+      + "command -v pomo >/dev/null 2>&1 || test -x \"$HOME/.local/bin/pomo\" || miss=\"$miss pomo\"; "
+      + "test -x \"$3\" || command -v \"$3\" >/dev/null 2>&1 || miss=\"$miss longhand-read\"; "
+      + "test -n \"$miss\" && echo \"missing:$miss\" || true",
+      "--", String(root.config.vault || ""), root.runner, root.readBin
+    ]
+    preflightProc.running = true
+  }
+
+  Process {
+    id: preflightProc
+    stdout: StdioCollector {
+      onStreamFinished: {
+        var s = text.trim()
+        if (s.indexOf("vault:") === 0) {
+          root.configError = "Vault folder not found: " + s.slice(6) + "\nEdit " + root.configPath + " to point \"vault\" at your Obsidian folder."
+          root.ready = false
+        } else if (s.indexOf("missing:") === 0) {
+          root.toolWarning = "Missing CLI helper(s):" + s.slice(8) + " — symlink them into ~/.local/bin (see README.md)."
+        } else {
+          root.toolWarning = ""
+        }
+      }
+    }
   }
 
   FileView {

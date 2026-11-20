@@ -94,14 +94,20 @@ function added(queued, cmd, hash) {
   return queued.concat([{ cmd: cmd, hash: hash }])
 }
 
-// What a failed run said, for the status line: its first non-warning line,
-// without the "error:" it starts with, short.
+// Live progress phase emitted by longhand-agent on stderr ("status: ...").
+function phase(line) {
+  var m = String(line || "").trim().match(/^status:\s*(.+)$/i)
+  return m ? m[1].trim() : ""
+}
+
+// What a failed run said, for the status line: its first non-warning,
+// non-status line, without the "error:" it starts with, short.
 function failure(said) {
   var lines = String(said || "").split("\n")
   var warn = ""
   for (var i = 0; i < lines.length; i++) {
     var t = lines[i].trim()
-    if (t === "") continue
+    if (t === "" || /^status:\s*/i.test(t)) continue
     if (/^warning:\s*/i.test(t)) { if (warn === "") warn = t; continue }
     return t.replace(/^error:\s*/, "").substring(0, 120)
   }

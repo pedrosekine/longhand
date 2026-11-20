@@ -589,7 +589,7 @@ Item {
 
   // ------------------------------------------------------------ rows
 
-  readonly property var roles: ["kind", "body", "level", "checked", "cancelled", "ordinal", "headingLevel", "callout", "priv", "blank", "lead", "space", "deadline", "dueLabel", "dueAt", "raw", "cueAt", "cueLabel", "tableRow", "tableStart", "tableLen", "quoteDepth", "outerLevel", "paperEnd", "paperAbove", "paperBelow", "extraBlank"]
+  readonly property var roles: ["kind", "body", "level", "checked", "cancelled", "ordinal", "headingLevel", "callout", "priv", "blank", "lead", "space", "deadline", "dueLabel", "dueAt", "raw", "cueAt", "cueEnd", "cueLabel", "tableRow", "tableStart", "tableLen", "quoteDepth", "outerLevel", "paperEnd", "paperAbove", "paperBelow", "extraBlank"]
 
   function roleValues(r) {
     var o = {}
@@ -1698,6 +1698,7 @@ Item {
         required property real dueAt
         required property string raw
         required property int cueAt
+        required property int cueEnd
         required property string cueLabel
         required property int tableRow
         required property int tableStart
@@ -2206,7 +2207,7 @@ Item {
         // drawn as its first line, the whole lines between, and its last.
         Repeater {
           model: ed.paintIn(row.index, ed.marks, ed.currentMark, ed.selAnchor, ed.selCursor, ed.rows)
-            .concat(row.pending ? [{ a: row.cueAt, b: row.body.length, kind: "cue" }] : [])
+            .concat(row.pending ? [{ a: row.cueAt, b: row.cueEnd >= 0 ? row.cueEnd : row.body.length, kind: "cue" }] : [])
           Item {
             id: mark
             required property var modelData

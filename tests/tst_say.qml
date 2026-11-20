@@ -104,9 +104,13 @@ TestCase {
     var d = { id: 6, status: "open", project: "intsem", due: at + 3 * day, grade: "" }
     var t = { path: ["#intsem", "Essay 2"], details: 2 }
     compare(Say.deadlineWhere(d, t, projects, null, null, now), "Interdisciplinary Seminar › Essay 2   ·   2 lines of detail")
-    // No line holds it: the course alone.
+    // No line holds it: the course alone (or "not in a note yet" when link === "").
     compare(Say.deadlineWhere(d, null, projects, null, null, now), "Interdisciplinary Seminar")
     compare(Say.deadlineWhere({ id: 7, status: "open", project: "bikes", due: at, grade: "" }, null, projects, null, null, now), "#bikes")
+    compare(Say.deadlineWhere({ id: 11, status: "open", project: "intsem", link: "", due: at + 3 * day, grade: "" }, null, projects, null, null, now),
+            "Interdisciplinary Seminar   ·   not in a note yet")
+    compare(Say.deadlineWhere({ id: 12, status: "done", project: "intsem", link: "", due: at + 3 * day, grade: "" }, null, projects, null, null, now),
+            "Interdisciplinary Seminar")
     compare(Say.deadlineWhere({ id: 8, status: "cancelled", project: "", due: at, grade: "" }, null, projects, null, null, now), "cancelled")
     compare(Say.deadlineWhere({ id: 9, status: "done", project: "", due: at, grade: "1.3" }, null, projects, null, null, now), "graded 1.3")
     // A fortnight past its date, an open one steps aside.
@@ -190,6 +194,14 @@ TestCase {
     // Its day gone from the list, or nothing picked: -1.
     compare(Say.sameSection([list[0]], was), -1)
     compare(Say.sameSection(list, undefined), -1)
+  }
+
+  function test_withheld_counts() {
+    compare(Say.sayWithheld(null), "")
+    compare(Say.sayWithheld({}), "")
+    compare(Say.sayWithheld({ private: 2 }), "2 private held back")
+    compare(Say.sayWithheld({ private: 1, secret: 1 }), "1 private, 1 secret held back")
+    compare(Say.sayWithheld({ unread_pdfs: 3, horizon: 0 }), "3 unread PDFs held back")
   }
 
 }

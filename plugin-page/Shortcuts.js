@@ -100,7 +100,8 @@ var actions = [
   // for it in docs/keys-proposal.md; and a key per project, as a browser's
   // Alt+digit goes to its tab, numbered as the sidebar lists them (Hold
   // Ctrl shows the numbers on the projects).
-  { id: "switcher", group: "page", places: ["any"], does: "The switcher: a project by its letters (#th), from anywhere; Enter opens it", keys: ["Ctrl+O"] },
+  { id: "switcher", group: "page", places: ["any"], does: "Quick switcher: projects, notes, papers and views (? searches all notes)", keys: ["Ctrl+O"] },
+  { id: "findAll", group: "page", places: ["any"], does: "Search across all notes (opens the switcher with ?)", keys: ["Ctrl+Shift+O"] },
   { id: "projectKey", group: "page", places: ["any"], does: "The sidebar's first, second… project, from anywhere", keys: ["Alt+1", "Alt+2", "Alt+3", "Alt+4", "Alt+5", "Alt+6", "Alt+7", "Alt+8", "Alt+9"] },
   { id: "pane1", group: "page", places: ["any"], does: "The sidebar: go there, opening it; in it, Time ↔ Files", keys: ["Ctrl+1"] },
   { id: "pane2", group: "page", places: ["any"], does: "The middle: go there; in it, the note ↔ the dashboard", keys: ["Ctrl+2"] },
@@ -190,7 +191,7 @@ var actions = [
 
   { id: "switchUp", group: "switcher", places: ["switcher"], does: "The match above", keys: ["Up"] },
   { id: "switchDown", group: "switcher", places: ["switcher"], does: "The match below", keys: ["Down", "Tab"] },
-  { id: "switchGo", group: "switcher", places: ["switcher"], does: "Open the project (its notes, in the sidebar)", keys: ["Enter"] },
+  { id: "switchGo", group: "switcher", places: ["switcher"], does: "Open the picked item", keys: ["Enter"] },
   { id: "switchPage", group: "switcher", places: ["switcher"], does: "Open the project's page", keys: ["Shift+Enter"] },
   { id: "switchClose", group: "switcher", places: ["switcher"], does: "Close it, back where you were", keys: ["Esc"] },
   { id: "mentionUp", group: "mention", places: ["mention"], does: "Previous project", keys: ["Up"] },
@@ -221,7 +222,7 @@ var actions = [
   { id: "dashUnfoldAll", group: "dash", places: ["dash"], does: "By date: expand every band (the words above the list too)", keys: ["Shift+Right", "Shift+L"] },
   { id: "dashOpen", group: "dash", places: ["dash"], does: "Go to the line; on what the agent proposes, asks or did, its chat (the margin opens beside)", keys: ["Enter"] },
   { id: "dashDone", group: "dash", places: ["dash"], does: "Done (again: not done); on the agent's proposal, accept", keys: ["Space", "E", "Ctrl+L"] },
-  { id: "dashWhen", group: "dash", places: ["dash"], does: "When: reschedule it", keys: ["T", "Ctrl+D"] },
+  { id: "dashWhen", group: "dash", places: ["dash"], does: "Do on: set the day you mean to work on it (⏳)", keys: ["T", "Ctrl+D"] },
   { id: "dashNoDate", group: "dash", places: ["dash"], does: "Take its date off (the day to work on it)", keys: ["Shift+T"] },
   { id: "dashPriority", group: "dash", places: ["dash"], does: "Cycle its priority", keys: ["P"] },
   { id: "dashRename", group: "dash", places: ["dash"], does: "Rename it (its line's words)", keys: ["Ctrl+E", "F2"] },

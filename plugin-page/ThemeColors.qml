@@ -40,28 +40,35 @@ Item {
   }
   function mix(a, b, t) { return Qt.rgba(a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t, 1) }
 
-  // The first of the theme's greys that is readable at `target` against the
-  // background; else the foreground faded only as far as `target` allows.
+  // Contrast against both the page's ground and its sunk paper (private notes,
+  // tips, code): a colour readable on the main ground alone can drop below AA
+  // on a light theme's darker sunk surface.
+  function minContrast(c) {
+    return Math.min(root.contrast(c, root.background), root.contrast(c, root.sunk))
+  }
+
+  // The first of the theme's greys that is readable at `target` against both
+  // grounds; else the foreground faded only as far as `target` allows.
   // Most themes' `muted` is a comment/border grey (1.5–3:1) — fine for a
   // line, too faint for words.
   function readable(names, target) {
     for (var i = 0; i < names.length; i++) {
       var v = root.keys[names[i]]
-      if (v && root.contrast(Qt.color(v), root.background) >= target) return Qt.color(v)
+      if (v && root.minContrast(Qt.color(v)) >= target) return Qt.color(v)
     }
     var lo = 0, hi = 1
     for (var k = 0; k < 16; k++) {
       var mid = (lo + hi) / 2
-      if (root.contrast(root.mix(root.foreground, root.background, mid), root.background) >= target) lo = mid
+      if (root.minContrast(root.mix(root.foreground, root.background, mid)) >= target) lo = mid
       else hi = mid
     }
     return root.mix(root.foreground, root.background, lo)
   }
 
-  // Secondary text (dates, done items, code) at 4.5:1; faint things (faded
-  // day numbers, borders, hints) at 3:1.
+  // Secondary and muted text (dates, done items, code, headers, tips, footers)
+  // at WCAG AA 4.5:1 on both the main ground and the sunk paper.
   readonly property color dim: { root.keys; return root.readable(["muted", "dark_foreground"], 4.5) }
-  readonly property color faint: { root.keys; return root.readable(["dark_foreground", "muted"], 3.0) }
+  readonly property color faint: { root.keys; return root.readable(["dark_foreground", "muted"], 4.5) }
   readonly property color selection: pick("selection", Util.alpha(accent, 0.25))
   readonly property color red: pick("red", Commons.Color.urgent)
   readonly property color yellow: pick("yellow", accent)
@@ -69,6 +76,12 @@ Item {
   readonly property color green: pick("green", accent)
   readonly property color magenta: pick("magenta", accent)
   readonly property color blue: pick("blue", accent)        // links (docs/files.md)
+  // Chromatic roles hardened to 4.5:1 when used to draw text, links, or locks.
+  readonly property color accentText: { root.keys; return root.toward(root.accent, 4.5) }
+  readonly property color redText: { root.keys; return root.toward(root.red, 4.5) }
+  readonly property color greenText: { root.keys; return root.toward(root.green, 4.5) }
+  readonly property color magentaText: { root.keys; return root.toward(root.magenta, 4.5) }
+  readonly property color blueText: { root.keys; return root.toward(root.blue, 4.5) }
   // The paper private things are sunk into (docs/files.md, B · Paper): the
   // theme's own darker ground, which light themes give as a shade darker too.
   // Taken only when it is what it says, a shade darker than the ground the
@@ -93,12 +106,12 @@ Item {
   // itself often tinted (ethereal's peach), and mixing into it turns a blue
   // to mauve on the way.
   function toward(c, target) {
-    if (root.contrast(c, root.background) >= target) return c
+    if (root.minContrast(c) >= target) return c
     var end = root.luminance(root.background) > 0.5 ? Qt.rgba(0, 0, 0, 1) : Qt.rgba(1, 1, 1, 1)
     var lo = 0, hi = 1
     for (var k = 0; k < 16; k++) {
       var mid = (lo + hi) / 2
-      if (root.contrast(root.mix(c, end, mid), root.background) >= target) hi = mid
+      if (root.minContrast(root.mix(c, end, mid)) >= target) hi = mid
       else lo = mid
     }
     return root.mix(c, end, hi)

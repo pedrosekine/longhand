@@ -1251,8 +1251,11 @@ Item {
       var only = Rows.derive("- [ ] read ch. 4 ⏳ 2099-01-05")[0]
       compare(only.body, "read ch. 4"); compare(only.deadline, 0); compare(only.dueAt, 0)
       compare(only.dueLabel.indexOf("do ") === 0, true, only.dueLabel)
-      // Gone by, or ticked: the do-date has nothing left to say.
-      compare(Rows.derive("- [ ] old ⏳ 2001-01-05")[0].dueLabel, "")
+      // Past do-dates still show while the task is open; ticked tasks drop them.
+      compare(Rows.derive("- [ ] old ⏳ 2001-01-05")[0].dueLabel, "do Fri 5 Jan 2001")
+      var yest = new Date(); yest.setDate(yest.getDate() - 1)
+      var yestIso = Qt.formatDate(yest, "yyyy-MM-dd")
+      compare(Rows.derive("- [ ] slipped ⏳ " + yestIso)[0].dueLabel, "do yesterday")
       compare(Rows.derive("- [x] done ⏳ 2099-01-05 ✅ 2026-11-01")[0].dueLabel, "")
       // Out of the Tasks order (a priority after the do-date): only what
       // ends the line is lifted, the rest stays words.

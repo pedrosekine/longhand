@@ -19,7 +19,8 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | Show these keys | `Ctrl+/` | everywhere |
 | Show these keys (where nothing is typed) | `?` | in the dashboard, in the sidebar's lists, in the files, in the calendar, in a PDF |
 | Settings (calendars, sound) | `Ctrl+,` | everywhere |
-| The switcher: a project by its letters (#th), from anywhere; Enter opens it | `Ctrl+O` | everywhere |
+| Quick switcher: projects, notes, papers and views (? searches all notes) | `Ctrl+O` | everywhere |
+| Search across all notes (opens the switcher with ?) | `Ctrl+Shift+O` | everywhere |
 | The sidebar's first, second… project, from anywhere | `Alt+1` · `Alt+2` · `Alt+3` · `Alt+4` · `Alt+5` · `Alt+6` · `Alt+7` · `Alt+8` · `Alt+9` | everywhere |
 | The sidebar: go there, opening it; in it, Time ↔ Files | `Ctrl+1` | everywhere |
 | The middle: go there; in it, the note ↔ the dashboard | `Ctrl+2` | everywhere |
@@ -108,7 +109,7 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 |---|---|---|
 | The match above | `↑` | in the switcher (Ctrl+O) |
 | The match below | `↓` · `Tab` | in the switcher (Ctrl+O) |
-| Open the project (its notes, in the sidebar) | `Enter` | in the switcher (Ctrl+O) |
+| Open the picked item | `Enter` | in the switcher (Ctrl+O) |
 | Open the project's page | `Shift+Enter` | in the switcher (Ctrl+O) |
 | Close it, back where you were | `Esc` | in the switcher (Ctrl+O) |
 
@@ -126,7 +127,7 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | By date: expand every band (the words above the list too) | `Shift+→` · `Shift+L` | in the dashboard |
 | Go to the line; on what the agent proposes, asks or did, its chat (the margin opens beside) | `Enter` | in the dashboard |
 | Done (again: not done); on the agent's proposal, accept | `Space` · `e` · `Ctrl+L` | in the dashboard |
-| When: reschedule it | `t` · `Ctrl+D` | in the dashboard |
+| Do on: set the day you mean to work on it (⏳) | `t` · `Ctrl+D` | in the dashboard |
 | Take its date off (the day to work on it) | `Shift+T` | in the dashboard |
 | Cycle its priority | `p` | in the dashboard |
 | Rename it (its line's words) | `Ctrl+E` · `F2` | in the dashboard |

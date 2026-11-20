@@ -1372,6 +1372,11 @@ def routed(cfg: dict) -> dict:
     return out
 
 
+def emit_status(phase: str) -> None:
+    """Live progress phase for the UI (read line-by-line from stderr)."""
+    print(f"status: {phase}", file=sys.stderr, flush=True)
+
+
 def run_model(cfg: dict, paths: Paths, payload: str, session: str = "", message: str = "Context follows on stdin.",
               env: dict | None = None, fresh=None) -> dict:
     """One pass (`_run_model`); a pass the student stopped says so, its
@@ -1380,6 +1385,7 @@ def run_model(cfg: dict, paths: Paths, payload: str, session: str = "", message:
     — so a resumed pass falls back only when `fresh` can give the whole
     context again, as (payload, message), logged before it is sent."""
     fb = cfg.get("fallbackModel") or ""
+    emit_status("thinking")
     try:
         out = _run_model(cfg, paths, payload, session, message, env)
     except Fail as e:
@@ -1398,7 +1404,8 @@ def run_model(cfg: dict, paths: Paths, payload: str, session: str = "", message:
             FALLBACK_STATE.write_text(json.dumps({"model": failed["model"], "until": until.isoformat(timespec="seconds"),
                                                   "error": " ".join(str(failed["error"]).split())[:300]}) + "\n")
             print(f"warning: {failed['model']} failed ({' '.join(str(failed['error']).split())[:200]}); "
-                  f"answered on {fb}, and {failed['model']} is passed over until {until:%H:%M}", file=sys.stderr)
+                  f"answered on {fb}, and {failed['model']} is passed over until {until:%H:%M}", file=sys.stderr, flush=True)
+            emit_status(f"retrying on {fb}")
             out = _run_model(dict(cfg, model=fb, variant=""), paths, payload, "", message, env)
             out["fell_back"] = {"from": failed["model"], "error": failed["error"]}
             out["events"] = failed["events"] + out["events"]
@@ -5187,6 +5194,7 @@ def day_fetch(cfg: dict, paths: Paths, tag: str, reply: dict, paper: dict | None
         words, folder = str(q.get("words") or "").strip()[:200], str(q.get("folder") or "").strip()
         if not words:
             continue
+        emit_status(f"searching “{words[:36]}”")
         r = searchlib.search(paths.vault, on, words, SEARCH_TEXT, folder, horizon_hide(cfg))
         rec["searched"].append({"words": words, "folder": folder, "hits": [{"path": h["path"], "where": h["where"]} for h in r["hits"]]})
         for k, n in r["withheld"].items():
@@ -5198,6 +5206,7 @@ def day_fetch(cfg: dict, paths: Paths, tag: str, reply: dict, paper: dict | None
     for q in (reply.get("read") or [])[:3]:
         if q.get("file"):
             asked = str(q["file"]).strip().lstrip("/")
+            emit_status(f"reading {Path(asked).name[:40]}")
             # The paper talked about may be read whole whatever its folder:
             # asking about it is the consent (its folder was checked then).
             if paper and asked == paper["rel"]:
@@ -5212,6 +5221,7 @@ def day_fetch(cfg: dict, paths: Paths, tag: str, reply: dict, paper: dict | None
         else:
             docs_asked.append(q)
     if docs_asked:
+        emit_status("reading course documents")
         docs = doclib.index(paths.vault, cfg.get("projectsDir", "projects"), tag, doclib.load_cache(DOCS_CACHE)) if tag else []
         docs.append({"name": manual.NAME, "text": manual.pages()})
         more, done = doclib.fulfil(docs_asked, docs, DOCS_TEXT)
@@ -5277,6 +5287,21 @@ def cmd_search(cfg: dict, args) -> int:
             n = sum(1 for p in (paths.vault / f).rglob("*") if p.is_file() and p.suffix.lower() in searchlib.TYPES)
             rows.append({"folder": f, "on": y, "default": searchlib.switched(paths.vault, dict(cfg, searchFolders={}))[f], "files": n})
         print(json.dumps({"folders": rows}, ensure_ascii=False))
+    return 0
+
+
+def cmd_find(cfg: dict, args) -> int:
+    """User-only full-text vault search (for Ctrl+O ? <words>): searches all
+    user notes including private ones, never sent to a model."""
+    paths = Paths(cfg, dt.date.today())
+    hits = searchlib.find_mine(
+        paths.vault,
+        args.words,
+        daily_dir=(cfg.get("daily") or {}).get("dir", ""),
+        agent_dir=cfg.get("agentDir", "agents/longhand"),
+        limit=max(1, min(50, args.limit)),
+    )
+    print(json.dumps({"words": args.words, "hits": hits}, ensure_ascii=False))
     return 0
 
 
@@ -5983,7 +6008,7 @@ def cmd_talk(cfg: dict, args) -> int:
          "at": at, "about": current["id"], "revised": str(revised["id"]) if revised else "", "settled": settled,
          "cost": result["cost"], "prompt": result.get("prompt", ""), "model": result.get("model", ""),
          "payload": str(payload_file), "searched": fetched["searched"], "files": fetched["files"],
-         "documents": fetched["documents"]}])
+         "withheld": fetched["withheld"], "documents": fetched["documents"]}])
     planlib.save_ledger(PROPOSALS, ledger)
     lock.close()
     written = []
@@ -6619,10 +6644,19 @@ def cmd_install(cfg: dict, args) -> int:
               "on the model it runs on. Run `longhand-agent eval run`, or install anyway with --force.", file=sys.stderr)
     dst = agents / "longhand.md"
     paths = Paths(cfg, dt.date.today())
-    for d in (paths.agent_dir / "daily", paths.knowledge, paths.payloads, paths.cwd, paths.curriculum):
+    for d in (paths.daily_dir, paths.agent_dir / "daily", paths.knowledge, paths.payloads, paths.cwd, paths.curriculum):
         if d is not None:
             d.mkdir(parents=True, exist_ok=True)
-    print(f"agent definition → {dst}\nagent folder → {paths.agent_dir}\npayload log → {paths.payloads}")
+    tpl = ((cfg.get("daily") or {}).get("template") or "").strip("/")
+    tpl_note = ""
+    if tpl:
+        tpl_path = paths.vault / (tpl if tpl.endswith(".md") else tpl + ".md")
+        if not tpl_path.exists():
+            tpl_path.parent.mkdir(parents=True, exist_ok=True)
+            agent_rel = cfg.get("agentDir", "agents/longhand").strip("/")
+            tpl_path.write_text(f"[[{agent_rel}/daily/{{{{date}}}}|agent]]\n\n")
+            tpl_note = f"\ndaily template → {tpl_path}"
+    print(f"agent definition → {dst}\nagent folder → {paths.agent_dir}\ndaily folder → {paths.daily_dir}{tpl_note}\npayload log → {paths.payloads}")
     return 2 if held else 0
 
 
@@ -6713,6 +6747,9 @@ def main(argv: list[str]) -> int:
     p.add_argument("--folder", default="")
     p.add_argument("--file", default="")
     p.add_argument("--folders", action="store_true")
+    p = sub.add_parser("find")
+    p.add_argument("--words", required=True)
+    p.add_argument("--limit", type=int, default=12)
     sub.add_parser("horizon")
     p = sub.add_parser("note")
     p.add_argument("--file", required=True, help="the note's path in the vault")
@@ -6785,7 +6822,7 @@ def main(argv: list[str]) -> int:
         if args.cmd != "eval":
             cfg = routed(cfg)                         # a model passed over runs as the fallback
         return {"run": cmd_run, "chat": cmd_chat, "ack": cmd_ack, "accept": cmd_accept, "tasks": cmd_tasks, "sections": cmd_sections, "project-page": cmd_project_page, "week": cmd_week,
-                "next": cmd_next, "dated": cmd_dated, "box": cmd_box, "rate": cmd_rate, "eval": cmd_eval, "review": cmd_review, "plan": cmd_plan, "proposals": cmd_proposals, "proposal": cmd_proposal, "talk": cmd_talk, "thread": cmd_thread, "timetable": cmd_timetable, "notebook": cmd_notebook, "documents": cmd_documents, "day": cmd_day, "search": cmd_search, "horizon": cmd_horizon, "note": cmd_note, "autonomy": cmd_autonomy, "dismiss": cmd_dismiss, "curriculum": cmd_curriculum,
+                "next": cmd_next, "dated": cmd_dated, "box": cmd_box, "rate": cmd_rate, "eval": cmd_eval, "review": cmd_review, "plan": cmd_plan, "proposals": cmd_proposals, "proposal": cmd_proposal, "talk": cmd_talk, "thread": cmd_thread, "timetable": cmd_timetable, "notebook": cmd_notebook, "documents": cmd_documents, "day": cmd_day, "search": cmd_search, "find": cmd_find, "horizon": cmd_horizon, "note": cmd_note, "autonomy": cmd_autonomy, "dismiss": cmd_dismiss, "curriculum": cmd_curriculum,
                 "context": cmd_context, "state": cmd_state, "install": cmd_install, "stats": cmd_stats,
                 "projects": cmd_projects, "project": cmd_project, "export": cmd_export, "checkin": cmd_checkin,
                 "conversation": cmd_conversation}[args.cmd](cfg, args)

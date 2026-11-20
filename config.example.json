@@ -6,6 +6,8 @@
     "template": "agents/longhand/templates/daily"
   },
   "agentDir": "agents/longhand",
+  "model": "claude-code/sonnet",
+  "fallbackModel": "",
   "languages": [
     "English",
     "German",

@@ -75,6 +75,10 @@ TestCase {
     compare(Queue.failure(undefined), "")
     compare(Queue.failure("\n  error: opencode: unknown flag --model\nusage: …"), "opencode: unknown flag --model")
     compare(Queue.failure("warning: m1 failed (quota); answered on m2\nerror: m2 timed out"), "m2 timed out")
+    compare(Queue.failure("status: thinking\nstatus: searching “rubric”\nerror: timed out"), "timed out")
+    compare(Queue.failure("status: thinking\n"), "")
+    compare(Queue.phase("status: searching “rubric”"), "searching “rubric”")
+    compare(Queue.phase("warning: something"), "")
     compare(Queue.failure("x".repeat(200)).length, 120)
   }
 
