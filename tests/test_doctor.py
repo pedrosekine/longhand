@@ -73,6 +73,20 @@ def main() -> int:
     check(r3.returncode == 0 and "ok   vault" in r3.stdout and "ok   daily template" in r3.stdout,
           f"healthy setup exits 0 ({r3.stdout.strip()})")
 
+    # 4. shell.json: a plugin counts as on in plugins[] or as a widget in the
+    # bar's layout (2026-11-20: the timer and the deadlines, bar widgets only,
+    # were reported as not enabled).
+    shell = cfg_dir / "omarchy" / "shell.json"
+    shell.parent.mkdir(parents=True)
+    shell.write_text(json.dumps({"plugins": [{"id": "longhand.page"}],
+                                 "bar": {"layout": {"right": [{"id": "longhand.deadline"}, {"id": "longhand.pomo"}]}}}))
+    r4 = subprocess.run([sys.executable, str(DOCTOR)], env=base_env, capture_output=True, text=True)
+    check("ok   shell.json" in r4.stdout, f"bar widgets count as enabled ({[l for l in r4.stdout.splitlines() if 'shell.json' in l]})")
+    shell.write_text(json.dumps({"plugins": [{"id": "longhand.page"}], "bar": {"layout": {"right": [{"id": "longhand.pomo"}]}}}))
+    r5 = subprocess.run([sys.executable, str(DOCTOR)], env=base_env, capture_output=True, text=True)
+    check("WARN shell.json" in r5.stdout and "longhand.deadline" in r5.stdout and "longhand.pomo" not in
+          next(l for l in r5.stdout.splitlines() if "shell.json" in l), "…and one in neither is still named")
+
     print("PASS" if failures == 0 else f"{failures} FAILED")
     return 1 if failures else 0
 

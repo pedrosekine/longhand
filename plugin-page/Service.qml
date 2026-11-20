@@ -348,10 +348,10 @@ Item {
       onStreamFinished: {
         var s = text.trim()
         if (s.indexOf("vault:") === 0) {
-          root.configError = "Vault folder not found: " + s.slice(6) + "\nEdit " + root.configPath + " to point \"vault\" at your Obsidian folder."
+          root.configError = "the vault folder was not found: " + s.slice(6) + "\nset \"vault\" in " + root.configPath + " to your notes folder"
           root.ready = false
         } else if (s.indexOf("missing:") === 0) {
-          root.toolWarning = "Missing CLI helper(s):" + s.slice(8) + " — symlink them into ~/.local/bin (see README.md)."
+          root.toolWarning = "not installed:" + s.slice(8) + " — tools/install links them into ~/.local/bin"
         } else {
           root.toolWarning = ""
         }

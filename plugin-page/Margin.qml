@@ -184,8 +184,8 @@ BorderSurface {
                 Text {
                   anchors.verticalCenter: parent.verticalCenter
                   textFormat: Text.PlainText
-                  text: page.talkItem && page.talkItem.told ? "Keep"
-                    : page.talkItem && page.talkItem.kind === "question" ? "Accept recommended" : "Accept"
+                  text: page.talkItem && page.talkItem.told ? "keep"
+                    : page.talkItem && page.talkItem.kind === "question" ? "accept recommended" : "accept"
                   color: pinAccArea.containsMouse && page.handOn ? page.accent : page.foreground
                   font.family: page.fontFamily
                   font.styleName: page.fontStyle
@@ -207,8 +207,8 @@ BorderSurface {
                 Text {
                   anchors.verticalCenter: parent.verticalCenter
                   textFormat: Text.PlainText
-                  text: page.talkItem && page.talkItem.told ? "Undo"
-                    : page.talkItem && page.talkItem.kind === "question" ? "Set aside" : "Decline"
+                  text: page.talkItem && page.talkItem.told ? "undo"
+                    : page.talkItem && page.talkItem.kind === "question" ? "set aside" : "decline"
                   color: pinDecArea.containsMouse && page.handOn ? (page.talkItem && page.talkItem.told ? page.accent : page.urgent) : (page.talkItem && page.talkItem.told ? page.accent : page.dim)
                   font.family: page.fontFamily
                   font.styleName: page.fontStyle
@@ -283,7 +283,7 @@ BorderSurface {
                 marginKeys.forceActiveFocus()
               }
               onAccepted: page.acceptTalkCard(modelData)
-              onDeclinedClick: page.settleListedCard(modelData, "decline")
+              onDeclinedClick: page.declineTalkCard(modelData)
               onUndone: if (modelData.ledger) page.undoSettledCard(modelData.ledger)
             }
           }

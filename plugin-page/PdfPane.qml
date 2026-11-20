@@ -2141,7 +2141,7 @@ Item {
           hoverEnabled: true
           cursorShape: Qt.PointingHandCursor
           onClicked: page.openFile(pane.read.note, false)
-          Tip { host: page; shown: parent.containsMouse; text: "Open this paper's reading note (Ctrl+[ returns here)" }
+          Tip { host: page; shown: parent.containsMouse; text: "Open this paper's reading note (" + page.keyName("linkBack") + " returns here)" }
         }
       }
     }

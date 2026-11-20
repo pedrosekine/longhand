@@ -51,10 +51,14 @@ Item {
   // grounds; else the foreground faded only as far as `target` allows.
   // Most themes' `muted` is a comment/border grey (1.5–3:1) — fine for a
   // line, too faint for words.
-  function readable(names, target) {
+  // With `most`, a grey brighter than that against the ground is passed
+  // over: a theme's `light_foreground` is anything from a soft grey (6:1) to
+  // its foreground again (21:1).
+  function readable(names, target, most) {
     for (var i = 0; i < names.length; i++) {
       var v = root.keys[names[i]]
-      if (v && root.minContrast(Qt.color(v)) >= target) return Qt.color(v)
+      if (v && root.minContrast(Qt.color(v)) >= target
+          && (most === undefined || root.contrast(Qt.color(v), root.background) <= most)) return Qt.color(v)
     }
     var lo = 0, hi = 1
     for (var k = 0; k < 16; k++) {
@@ -65,10 +69,16 @@ Item {
     return root.mix(root.foreground, root.background, lo)
   }
 
-  // Secondary and muted text (dates, done items, code, headers, tips, footers)
-  // at WCAG AA 4.5:1 on both the main ground and the sunk paper.
-  readonly property color dim: { root.keys; return root.readable(["muted", "dark_foreground"], 4.5) }
+  // Faint text (hints, footers, what is at rest) at WCAG AA 4.5:1 on both the
+  // main ground and the sunk paper; secondary text (dates, done items, code,
+  // what is live) a step above it, so the two never come out one colour
+  // (Theme.dimTarget): the theme's own lighter grey where it sits there.
   readonly property color faint: { root.keys; return root.readable(["dark_foreground", "muted"], 4.5) }
+  readonly property color dim: {
+    root.keys
+    var t = Theme.dimTarget(4.5, root.contrast(root.foreground, root.background))
+    return root.readable(["light_foreground"], t, t * 1.2)
+  }
   readonly property color selection: pick("selection", Util.alpha(accent, 0.25))
   readonly property color red: pick("red", Commons.Color.urgent)
   readonly property color yellow: pick("yellow", accent)

@@ -20,3 +20,16 @@ function activeBorder(text) {
   var angle = def.match(/angle\s*=\s*(-?\d+(?:\.\d+)?)/)
   return colours.length === 0 ? "" : colours.join(" ") + (angle ? " " + angle[1] + "deg" : "")
 }
+
+// How strongly the page's secondary text must read, as a contrast with the
+// ground, given what its faint text is held to (`faint`, 4.5:1) and what the
+// theme's own foreground reaches (`top`). The two greys are two steps of one
+// ladder — a block the agent may answer reads dim, one it may not reads
+// faint — so secondary text sits between the faint grey and the foreground:
+// their middle as the eye counts it (a ratio's middle is its geometric
+// mean), and no brighter than 6:1, where it would stop reading as secondary.
+// On 2026-11-20 both were held to 4.5:1 and came out one colour.
+function dimTarget(faint, top) {
+  if (!(top > faint)) return faint
+  return Math.min(6.0, Math.sqrt(faint * top))
+}

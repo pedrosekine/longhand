@@ -26,6 +26,17 @@ TestCase {
     compare(Theme.activeBorder(""), "")
   }
 
+  // Secondary text reads a step above faint text and under the foreground,
+  // whatever the theme's contrast (2026-11-20: both came out one grey).
+  function test_dim_sits_between_faint_and_the_foreground() {
+    compare(Theme.dimTarget(4.5, 12.3), 6.0)                     // a dark theme: capped
+    compare(Theme.dimTarget(4.5, 21), 6.0)
+    var soft = Theme.dimTarget(4.5, 6.7)                         // rose-pine: the middle
+    verify(soft > 4.5 * 1.15 && soft < 6.7 / 1.15, "between the two, a clear step from each: " + soft)
+    compare(Theme.dimTarget(4.5, 4.5), 4.5)                      // no room: the faint grey itself
+    compare(Theme.dimTarget(4.5, 3.0), 4.5)
+  }
+
   function test_written_over_lines() {
     compare(Theme.activeBorder('local active_border_color = {\n  colors = { "#111111",\n "#222222" },\n  angle = 90,\n}\nhl.config({})\n'),
             "#111111 #222222 90deg")

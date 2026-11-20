@@ -169,7 +169,8 @@ Hyprland moves the pointer to the window you move to, so a click never lands
 somewhere you did not expect. The page does the same inside itself: when the
 keys change pane, the pointer moves into that pane, onto what is selected
 there (beside the cursor in the note, the row on the dashboard, the day in
-the calendar, the box you type in). With **every selection** (the default),
+the calendar, the box you type in). That is **pane changes only**, the
+default since 2026-11-20; with **every selection** (the default until then)
 it also follows each row the keys move to in a list.
 
 It never moves while your hand is on the mouse (moved in the last moment),
