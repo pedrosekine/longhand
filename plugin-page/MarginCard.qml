@@ -29,7 +29,7 @@ Rectangle {
   readonly property bool told: !!(item && item.told)
   readonly property bool done: listed ? !item && listedState !== "arriving" : !!p.accepted
   readonly property bool replaced: !listed && !done && !!p.superseded
-  readonly property bool isDeclined: !listed && !done && !replaced && card.declined
+  readonly property bool isDeclined: !listed && !done && !replaced && (card.declined || !!p.declined)
   readonly property bool live: listed ? !!item : !done && !replaced && !isDeclined
   readonly property bool canUndo: listed && !live && page.cardCanUndo(p.ledger)
   readonly property bool undoLast: canUndo && page.cardUndoIsLast(p.ledger)
@@ -177,7 +177,7 @@ Rectangle {
           Text {
             anchors.verticalCenter: parent.verticalCenter
             textFormat: Text.PlainText
-            text: card.told ? "Keep" : "Accept"
+            text: card.told ? "keep" : "accept"
             color: acceptArea.containsMouse && page.handOn ? page.accent : page.foreground
             font.family: page.fontFamily
             font.styleName: page.fontStyle
@@ -209,7 +209,7 @@ Rectangle {
           Text {
             anchors.verticalCenter: parent.verticalCenter
             textFormat: Text.PlainText
-            text: card.told ? "Undo" : "Decline"
+            text: card.told ? "undo" : "decline"
             color: declineArea.containsMouse && page.handOn ? (card.told ? page.accent : page.urgent) : (card.told ? page.accent : page.dim)
             font.family: page.fontFamily
             font.styleName: page.fontStyle
@@ -240,7 +240,7 @@ Rectangle {
           Text {
             anchors.verticalCenter: parent.verticalCenter
             textFormat: Text.PlainText
-            text: "Undo"
+            text: "undo"
             color: undoArea.containsMouse && page.handOn ? page.foreground : page.accent
             font.family: page.fontFamily
             font.styleName: page.fontStyle

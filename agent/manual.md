@@ -42,7 +42,7 @@ alone: `essay monday`, `hand in 12.11` — dotted dates are day first). The date
 lights up as it is typed and becomes the deadline when the cursor leaves
 the line — nothing is asked. To keep the date as words: Backspace as it
 lights up, or {key:deadline} on the line. {key:deadline} also binds a line
-on purpose, asks "when?" on a line with no date, and on a bound line
+on purpose, asks "due?" on a line with no date, and on a bound line
 reschedules it (empty unbinds). The line is the task: its words are the
 title, its `#tag` (or the tagged heading above it) the project; a tick or a
 date changed anywhere reaches everywhere. Deleting the line cancels the
@@ -53,7 +53,7 @@ deadline, and Ctrl+Z brings it back. The bar's deadline popup
 
 A do-date (`⏳`) is the day to work on a box, not the day it is due; a
 priority is `⏫` high, `🔼` medium, `🔽` low. Both are set from the
-dashboard ({key:dashWhen} asks "when?" in words, {key:dashPriority} cycles
+dashboard ({key:dashWhen} asks "do on?" in words, {key:dashPriority} cycles
 the priority) or written on the line.
 
 ## Projects and courses

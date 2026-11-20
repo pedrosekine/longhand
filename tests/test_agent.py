@@ -325,6 +325,25 @@ def main() -> int:
         r = t.agent("accept", "--hash", at_block["hash"], "--index", str(first), "--date", DAY)
         check(r.returncode != 0 and "replaced" in r.stderr, f"…and the replaced one is not accepted ({r.stderr.strip()})")
 
+        # 8a‴. declined (2026-11-20: a decline lived in the page's memory
+        # only, and the card was open again after a restart): kept on the
+        # card, nothing run, not accepted afterwards, and asked for again it
+        # is a new card.
+        (t.stub_dir / "pomo_args.json").unlink(missing_ok=True)
+        r = t.agent("accept", "--hash", at_block["hash"], "--index", str(first + 1), "--date", DAY, "--decline")
+        rec = json.loads(st.read_text())["blocks"][at_block["hash"]]
+        check(r.returncode == 0 and rec["proposals"][first + 1].get("declined", {}).get("at")
+              and not rec["proposals"][first + 1].get("accepted") and not (t.stub_dir / "pomo_args.json").exists(),
+              f"a declined card says so in the record, and nothing runs ({rec['proposals'][first + 1]})")
+        check("declined" in tr.read_text() and t.note.read_bytes() == before[0], "…the transcript says so, the note untouched")
+        r = t.agent("accept", "--hash", at_block["hash"], "--index", str(first + 1), "--date", DAY)
+        check(r.returncode != 0 and "declined" in r.stderr and not (t.stub_dir / "pomo_args.json").exists(),
+              f"…and it is not accepted afterwards ({r.stderr.strip()})")
+        t.agent("chat", "--hash", at_block["hash"], "--message", "propose it once more", "--date", DAY)
+        rec = json.loads(st.read_text())["blocks"][at_block["hash"]]
+        check(len(rec["proposals"]) == first + 3 and not rec["proposals"][first + 2].get("declined")
+              and rec["chat"][-1]["proposals"] == [first + 2], "…asked for again, it is a new card, open")
+
         # 8a''. a series in one answer (2026-11-03: nine weekly diaries,
         # each taking the one before's place, left one live): one answer's
         # cards are all meant; asked again a day later, each takes the

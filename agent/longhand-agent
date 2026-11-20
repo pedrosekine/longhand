@@ -1596,7 +1596,7 @@ def card_places(props: list[dict], new: list[dict], at: str) -> tuple[list[int],
     before = len(props)
     for p in new:
         old = next((i for i, x in enumerate(props[:before]) if not x.get("accepted") and not x.get("superseded")
-                    and same_card(x, p)), -1)
+                    and not x.get("declined") and same_card(x, p)), -1)
         if old >= 0 and all(props[old].get(k) == p.get(k) for k in ("title", "when", "project")):
             made.append(old)
             continue
@@ -2183,6 +2183,24 @@ def cmd_accept(cfg: dict, args) -> int:
     if prop.get("superseded"):
         raise Fail(f"block {args.hash}'s proposal #{args.index} was replaced by a later one")
     at = dt.datetime.now().isoformat(timespec="seconds")
+    if args.decline:
+        # Said no to (2026-11-20): kept on the card, as an accept is, so it
+        # is not offered again when the page starts over. Nothing runs.
+        if prop.get("declined"):
+            return 0
+        for h in group_of(state, args.hash):
+            other = (state["blocks"][h].get("proposals") or [])
+            if args.index < len(other) and all(other[args.index].get(k) == prop.get(k) for k in ("kind", "title", "when")):
+                other[args.index]["declined"] = {"at": at}
+                other[args.index].pop("error", None)
+        prop["declined"] = {"at": at}
+        prop.pop("error", None)
+        write_atomic(paths, paths.state, json.dumps(state, indent=2, ensure_ascii=False) + "\n")
+        append_text(paths, paths.transcript,
+                    f"\n- [-] declined {dt.datetime.now().strftime('%H:%M')}: {prop.get('title') or prop.get('kind') or ''}\n")
+        return 0
+    if prop.get("declined"):
+        raise Fail(f"block {args.hash}'s proposal #{args.index} was declined")
     if prop.get("kind") == "deadline":
         when = str(prop.get("when") or "").split() or ["today"]
         moves = prop.get("moves") or {}
@@ -4037,7 +4055,7 @@ def block_record(paths: Paths, visible: list[dict], block: dict, blocks: dict) -
     return block["hash"], None
 
 
-CARD_KEYS = ("kind", "title", "when", "project", "moves", "alike", "accepted", "error", "superseded",
+CARD_KEYS = ("kind", "title", "when", "project", "moves", "alike", "accepted", "error", "superseded", "declined",
              "ledger", "key", "deadline", "date", "why", "at")
 
 
@@ -4080,7 +4098,7 @@ def open_cards(rec: dict | None, now: dt.datetime | None = None) -> int:
     since = ((now or dt.datetime.now()) - dt.timedelta(days=CARD_QUIET_DAYS)).isoformat(timespec="seconds")
     # A day or a drop is a row of its own in the dashboard (the one list).
     return sum(1 for i, p in enumerate(rec.get("proposals") or [])
-               if not p.get("ledger") and not p.get("accepted") and not p.get("superseded")
+               if not p.get("ledger") and not p.get("accepted") and not p.get("superseded") and not p.get("declined")
                and (made.get(i) or rec.get("at", "")) >= since)
 
 
@@ -6694,6 +6712,7 @@ def main(argv: list[str]) -> int:
     p.add_argument("--hash", required=True)
     p.add_argument("--index", type=int, required=True)
     p.add_argument("--date", default="")
+    p.add_argument("--decline", action="store_true", help="say no to it instead: kept on the card, nothing runs")
     p = sub.add_parser("tasks")
     p.add_argument("--days", default="7")
     p = sub.add_parser("project-page")

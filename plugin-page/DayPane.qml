@@ -625,7 +625,7 @@ BorderSurface {
                       Text {
                         anchors.verticalCenter: parent.verticalCenter
                         textFormat: Text.PlainText
-                        text: card.told ? "Keep" : "Accept"
+                        text: card.told ? "keep" : "accept"
                         color: dayAccArea.containsMouse && page.handOn ? page.accent : page.foreground
                         font.family: page.fontFamily
                         font.styleName: page.fontStyle
@@ -656,7 +656,7 @@ BorderSurface {
                       Text {
                         anchors.verticalCenter: parent.verticalCenter
                         textFormat: Text.PlainText
-                        text: card.told ? "Undo" : "Decline"
+                        text: card.told ? "undo" : "decline"
                         color: dayDecArea.containsMouse && page.handOn ? (card.told ? page.accent : page.urgent) : (card.told ? page.accent : page.dim)
                         font.family: page.fontFamily
                         font.styleName: page.fontStyle
@@ -686,7 +686,7 @@ BorderSurface {
                       Text {
                         anchors.verticalCenter: parent.verticalCenter
                         textFormat: Text.PlainText
-                        text: "Undo"
+                        text: "undo"
                         color: dayUndoArea.containsMouse && page.handOn ? page.foreground : page.accent
                         font.family: page.fontFamily
                         font.styleName: page.fontStyle

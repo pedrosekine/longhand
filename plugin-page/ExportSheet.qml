@@ -368,7 +368,7 @@ Item {
         spacing: page.sp(14)
         Text {
           textFormat: Text.PlainText
-          text: page.exportBusy ? "Writing…" : "Write PDF"
+          text: page.exportBusy ? "writing…" : "write the PDF"
           color: page.exportBusy ? page.faint : writeBtnArea.containsMouse && page.handOn ? page.accent : page.foreground
           font.family: page.fontFamily
           font.styleName: page.fontStyle
@@ -387,7 +387,7 @@ Item {
         }
         Text {
           textFormat: Text.PlainText
-          text: "Cancel"
+          text: "cancel"
           color: cancelBtnArea.containsMouse && page.handOn ? page.accent : page.dim
           font.family: page.fontFamily
           font.styleName: page.fontStyle

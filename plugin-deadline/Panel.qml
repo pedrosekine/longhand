@@ -297,7 +297,7 @@ Panel {
           width: parent.width
           textFormat: Text.PlainText
           wrapMode: Text.WordWrap
-          text: "Nothing due. Add a checkbox with a date in Longhand (SUPER+ALT+=) or press Ctrl+D on a task."
+          text: "Nothing due. A checkbox with a date in a Longhand note becomes one."
           color: root.dim
           font.family: root.fontFamily
           font.pixelSize: Style.font.bodySmall
@@ -523,7 +523,7 @@ Panel {
           visible: root.hiddenCount > 0
           width: parent.width
           textFormat: Text.PlainText
-          text: "+" + root.hiddenCount + " more · open the dashboard in Longhand (Ctrl+Alt+2)"
+          text: "+" + root.hiddenCount + " more · Longhand's dashboard lists them all"
           color: root.dim
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption

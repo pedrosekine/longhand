@@ -2354,7 +2354,7 @@ Item {
     for (var t = 0; t < turns.length; t++)
       for (var c = 0; c < (turns[t].cards || []).length; c++) {
         var card = turns[t].cards[c]
-        if (card.ledger ? !!root.dayCardLive({ id: card.ledger }) : (!card.accepted && !card.superseded)) out.push(card)
+        if (card.ledger ? !!root.dayCardLive({ id: card.ledger }) : (!card.accepted && !card.superseded && !card.declined)) out.push(card)
       }
     return out
   }
@@ -3900,18 +3900,33 @@ Item {
     var p = root.currentProposals[i]
     if (!p) return
     if (p.ledger) { root.settleListedCard(p, "decline"); return }
-    if (p.accepted || p.superseded || root.currentRec === "") return
+    if (p.accepted || p.superseded || p.declined || root.currentRec === "") return
     var m = {}
     for (var k in root.declinedBlockCards) m[k] = root.declinedBlockCards[k]
     m[root.currentRec + ":" + String(i)] = true
     root.declinedBlockCards = m
+    root.saveDecline(root.currentRec, i, svc.noteDate)
     root.used("margin", "card-decline")
+  }
+  // A decline is kept on the card by the runner, as an accept is (`accept
+  // --decline`): the page's own list above only draws it at once, and was
+  // all there was until 2026-11-20, so a restart offered the card again.
+  property var declinesWaiting: []
+  function saveDecline(hash, index, date) {
+    root.declinesWaiting = root.declinesWaiting.concat([[svc.runner, "accept", "--hash", String(hash), "--index", String(index), "--date", String(date), "--decline"]])
+    root.nextDecline()
+  }
+  function nextDecline() {
+    if (declineProc.running || root.declinesWaiting.length === 0) return
+    declineProc.command = root.declinesWaiting[0]
+    root.declinesWaiting = root.declinesWaiting.slice(1)
+    declineProc.running = true
   }
 
   function acceptProposal(i) {
     var p = root.currentProposals[i]
     if (p && p.ledger) { root.settleListedCard(p, "accept"); return }
-    if (!p || p.accepted || p.superseded || root.blockCardDeclined(root.currentRec, i) || root.currentRec === "" || acceptProc.running) return
+    if (!p || p.accepted || p.superseded || p.declined || root.blockCardDeclined(root.currentRec, i) || root.currentRec === "" || acceptProc.running) return
     root.pendingAccept = { hash: root.currentRec, index: i }
     acceptProc.command = [svc.runner, "accept", "--hash", root.currentRec, "--index", String(i), "--date", svc.noteDate]
     acceptProc.running = true
@@ -5427,14 +5442,14 @@ Item {
 
   function switcherViews() {
     return [
-      { kind: "view", id: "dash", tag: "", title: "Dashboard", sub: "Tasks, deadlines and proposals", keywords: "dashboard tasks deadlines proposals plan", hint: root.keyName("dashGo") || root.keyName("pane2") },
-      { kind: "view", id: "today", tag: "", title: "Today's note", sub: "Jump back to today", keywords: "today home daily note", hint: root.keyName("today") },
-      { kind: "view", id: "settings", tag: "", title: "Settings", sub: "Calendars, autonomy, search, sound, pointer", keywords: "settings preferences calendar autonomy sound pointer", hint: root.keyName("settings") },
-      { kind: "view", id: "keys", tag: "", title: "Keys", sub: "Every shortcut, searchable and rebindable", keywords: "keys shortcuts bindings help", hint: root.keyName("keys") },
-      { kind: "view", id: "export", tag: "", title: "Export as PDF", sub: "Export this section or selection", keywords: "export pdf print hand in", hint: root.keyName("exportPdf") },
-      { kind: "view", id: "files", tag: "", title: "Files", sub: "Browse notes and papers in the sidebar", keywords: "files folders vault sidebar", hint: root.keyName("pane1") },
-      { kind: "view", id: "time", tag: "", title: "Calendar & projects", sub: "Time space in the sidebar", keywords: "calendar time sidebar projects", hint: root.keyName("pane1") },
-      { kind: "view", id: "agent", tag: "", title: "Agent chat", sub: "The day's conversation", keywords: "agent chat day conversation", hint: root.keyName("pane3") }
+      { kind: "view", id: "dash", tag: "", title: "the dashboard", sub: "tasks, deadlines and what the agent proposes", keywords: "dashboard tasks deadlines proposals plan", hint: root.keyName("dashGo") || root.keyName("pane2") },
+      { kind: "view", id: "today", tag: "", title: "today's note", sub: "back to today", keywords: "today home daily note", hint: root.keyName("today") },
+      { kind: "view", id: "settings", tag: "", title: "settings", sub: "calendars, autonomy, search, sound, the pointer", keywords: "settings preferences calendar autonomy sound pointer", hint: root.keyName("settings") },
+      { kind: "view", id: "keys", tag: "", title: "keys", sub: "every key the page answers to, and moving one", keywords: "keys shortcuts bindings help", hint: root.keyName("keys") },
+      { kind: "view", id: "export", tag: "", title: "export as a PDF", sub: "this section, or what is selected", keywords: "export pdf print hand in", hint: root.keyName("exportPdf") },
+      { kind: "view", id: "files", tag: "", title: "files", sub: "your notes and papers, as folders in the sidebar", keywords: "files folders vault sidebar", hint: root.keyName("pane1") },
+      { kind: "view", id: "time", tag: "", title: "calendar and projects", sub: "the sidebar's time space", keywords: "calendar time sidebar projects", hint: root.keyName("pane1") },
+      { kind: "view", id: "agent", tag: "", title: "the agent", sub: "the day's conversation", keywords: "agent chat day conversation", hint: root.keyName("pane3") }
     ]
   }
 
@@ -5469,7 +5484,7 @@ Item {
         item: {
           kind: "file", tag: "", path: rel, date: isDaily ? stem : "",
           title: stem,
-          sub: isDaily ? "Daily note" : (folder || rel),
+          sub: isDaily ? "daily note" : (folder || rel),
           hint: isPdf ? "pdf" : isDaily ? "day" : "note"
         }
       })
@@ -6041,7 +6056,7 @@ Item {
         else { root.talkCardFocus = -1; root.marginFocus = 1; margin.chatFieldRef.forceActiveFocus() }
         return true
       }
-      if (Sc.hit(e, "marginDecline")) { root.settleListedCard(root.talkCards[root.talkCardFocus], "decline"); return true }
+      if (Sc.hit(e, "marginDecline")) { root.declineTalkCard(root.talkCards[root.talkCardFocus]); return true }
       return false
     }
     if (Sc.hit(e, "marginAccept")) { root.acceptTalked(); return true }
@@ -6067,11 +6082,20 @@ Item {
   function acceptTalkCard(c) {
     if (c && c.ledger) { root.settleListedCard(c, "accept"); return }
     var chat = root.talkData ? root.talkData.chat : null
-    if (!c || !chat || c.accepted || c.superseded || acceptProc.running) return
+    if (!c || !chat || c.accepted || c.superseded || c.declined || acceptProc.running) return
     root.pendingAccept = null
     acceptProc.command = [svc.runner, "accept", "--hash", chat.hash, "--index", String(c.index), "--date", chat.date]
     acceptProc.running = true
     root.used("talk", "card")
+  }
+  // …and its decline: one the dashboard lists is settled there; the
+  // runner's own is kept on the card, and the chat read again.
+  function declineTalkCard(c) {
+    if (c && c.ledger) { root.settleListedCard(c, "decline"); return }
+    var chat = root.talkData ? root.talkData.chat : null
+    if (!c || !chat || c.accepted || c.superseded || c.declined) return
+    root.saveDecline(chat.hash, c.index, chat.date)
+    root.used("talk", "card-decline")
   }
 
   function declineTalked() {
@@ -8233,7 +8257,11 @@ Item {
   Process {
     id: runner
     property string said: ""
-    onRunningChanged: if (running) { runner.said = ""; root.runnerPhase = "" }
+    // `said` is not emptied here: a run that ends with another waiting
+    // starts that one before what it said is read (below, a moment later),
+    // and the reason it failed went with it (2026-11-20). Each way out of
+    // `onExited` empties it instead.
+    onRunningChanged: if (running) root.runnerPhase = ""
     stderr: SplitParser {
       onRead: function (line) {
         var ph = Queue.phase(line)
@@ -8261,7 +8289,7 @@ Item {
       if (root.runningHash.indexOf("note:") === 0) noteTalkFile.reload()
       root.runningHash = ""
       // Stopped on purpose: not a fault, and said already.
-      if (root.runnerStopAsked) { root.runnerStopAsked = false; runner.said = "" }
+      if (root.runnerStopAsked) { root.runnerStopAsked = false; Qt.callLater(function () { runner.said = "" }) }
       else if (code !== 0) Qt.callLater(root.runnerFailed)
       else Qt.callLater(function () {
         var fb = Queue.fallback(runner.said)
@@ -8286,6 +8314,16 @@ Item {
         root.fetchTalk()
         root.refreshTasks()
       }
+    }
+  }
+
+  Process {
+    id: declineProc
+    stderr: StdioCollector { onStreamFinished: if (text.trim() !== "") console.warn("longhand.page decline: " + text.trim()) }
+    onExited: function (code, status) {
+      agent.reload()
+      if (root.talkThread !== "") root.fetchTalk()
+      root.nextDecline()
     }
   }
 

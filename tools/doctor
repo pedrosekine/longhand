@@ -117,12 +117,18 @@ def diagnose() -> tuple[list[tuple[str, str, str]], bool]:
     if shell_json.is_file():
         try:
             sh = json.loads(shell_json.read_text())
+            # A plugin is switched on in plugins[], or by its widget standing
+            # in the bar (bar.layout's left, center and right): the timer and
+            # the deadlines are bar widgets, and are listed only there.
             ids = {p.get("id") for p in (sh.get("plugins") or []) if isinstance(p, dict)}
+            layout = (sh.get("bar") or {}).get("layout") or {}
+            for side in (layout.values() if isinstance(layout, dict) else []):
+                ids |= {w.get("id") for w in (side if isinstance(side, list) else []) if isinstance(w, dict)}
             unlisted = [pid for pid in ("longhand.page", "longhand.pomo", "longhand.deadline") if pid not in ids]
             if not unlisted:
                 rows.append(("ok", "shell.json", "all 3 plugins enabled"))
             else:
-                rows.append(("warn", "shell.json", f"not listed in plugins[]: {', '.join(unlisted)}"))
+                rows.append(("warn", "shell.json", f"not in plugins[] nor in the bar's layout: {', '.join(unlisted)}"))
         except (OSError, ValueError):
             rows.append(("warn", "shell.json", f"could not parse {shell_json}"))
 

@@ -1141,6 +1141,37 @@ Small, when passing by:
     trashing a filed document when asked ("rename those files", "delete
     that one" were both refused); it needs the student's word on whether
     a chat may trash at once, as it files at once.
+25. **A second UX assessment, and its roadmap built in a day** (2026-11-20:
+    the student had Gemini 4 Neon assess the page and build what it found;
+    its assessment, the two explorations it drew and their pictures are in
+    the vault, `projects/longhand/ux-assessment-gemini-2026-11-20.md`,
+    `ux-p1-explorations-gemini-2026-11-20.md` and `ux-evidence/2026-11-20-*`).
+    *Built that day, in four commits:* its P0 (status on the dashboard,
+    sheets that scroll, undo and the clipboard in the note, side panes that
+    take turns under ~970 px, a stopped message given back whole, a second
+    round's error said); its P1 (one date reader with a preview and "due?" /
+    "do on?", the agent's phases while it works and a "saw" link, the
+    switcher finding notes, papers and views and `?` searching every note,
+    cards with accept / decline / undo — option A of three — and the PDF's
+    selection pill, foot and `g` — option A of three —, AA contrast, a setup
+    card); its P2 (clickable references, a one-line foot under the day's
+    chat, Export's buttons, `tools/install` and `tools/doctor`). **Three
+    things it changed that were stances before:** a click on a card focuses
+    it and no longer accepts; the pointer follows pane changes only unless
+    told otherwise (it was every selection); a narrow window closes the
+    other side pane rather than narrowing the note.
+    *Reviewed and mended the same day* (branch `fix/after-gemini-ux`): dim
+    and faint had come out one grey — faint stays at 4.5:1 and dim sits a
+    step above it (`Theme.dimTarget`); a failed run's reason was lost when
+    another run waited; a block card's decline is kept by the runner
+    (`accept --decline`) and a task chat's decline link does something; the
+    doctor counts a bar widget as switched on; the new labels in the page's
+    lowercase; no key named in a hint that the keys sheet can move.
+    Watch: whether secondary text now reads too bright (it is the theme's
+    `light_foreground` on Birnbaum); whether cards are still accepted as
+    readily without the click; whether `?` in the switcher replaces Obsidian's
+    search. *Not covered:* the cards', the PDF foot's and Export's new parts
+    have no checks of their own in the live suite yet.
 
 - ~~**Tag suggestions while typing**~~ *done 2026-10-18*: `#` and a letter
   offer the tags that exist — the projects', then those written in the
