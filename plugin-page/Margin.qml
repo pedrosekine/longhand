@@ -70,7 +70,8 @@ BorderSurface {
       else if (Sc.hit(event, "marginUp")) page.moveMarginFocus(-1)
       else if (Sc.hit(event, "marginDown")) page.moveMarginFocus(1)
       else if (Sc.hit(event, "marginAccept")) page.acceptProposal(page.marginFocus)
-      else if (Sc.hit(event, "marginDecline")) page.settleListedCard(page.currentProposals[page.marginFocus], "decline")
+      else if (Sc.hit(event, "marginDecline")) page.declineProposal(page.marginFocus)
+      else if (Sc.hit(event, "undo")) { if (!page.undoLastCard()) return }
       else if (Sc.hit(event, "marginHelpful")) page.rateReply("up")
       else if (Sc.hit(event, "marginNotHelpful")) page.rateReply("down")
       else return
@@ -161,17 +162,76 @@ BorderSurface {
             font.styleName: page.fontStyle
             font.pixelSize: page.fs(Style.font.bodySmall)
           }
+          // Option A quiet footer links on the pinned proposal card when live.
+          Item {
+            visible: !!page.talkItem
+            width: parent.width
+            height: visible ? pinnedActRow.implicitHeight + page.sp(7) : 0
+            Rectangle {
+              anchors.top: parent.top
+              anchors.topMargin: page.sp(2)
+              width: parent.width
+              height: 1
+              color: Qt.rgba(page.foreground.r, page.foreground.g, page.foreground.b, 0.09)
+            }
+            Row {
+              id: pinnedActRow
+              anchors.left: parent.left
+              anchors.bottom: parent.bottom
+              spacing: page.sp(14)
+              Row {
+                spacing: page.sp(5)
+                Text {
+                  anchors.verticalCenter: parent.verticalCenter
+                  textFormat: Text.PlainText
+                  text: page.talkItem && page.talkItem.told ? "Keep"
+                    : page.talkItem && page.talkItem.kind === "question" ? "Accept recommended" : "Accept"
+                  color: pinAccArea.containsMouse && page.handOn ? page.accent : page.foreground
+                  font.family: page.fontFamily
+                  font.styleName: page.fontStyle
+                  font.weight: Font.Medium
+                  font.pixelSize: page.fs(Style.font.caption)
+                  font.underline: pinAccArea.containsMouse && page.handOn
+                  MouseArea {
+                    id: pinAccArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: page.acceptTalked()
+                  }
+                }
+                KeyCaps { visible: pinned.hot; anchors.verticalCenter: parent.verticalCenter; page: margin.page; key: page.keyName("marginAccept"); size: page.fs(Style.font.caption) }
+              }
+              Row {
+                spacing: page.sp(5)
+                Text {
+                  anchors.verticalCenter: parent.verticalCenter
+                  textFormat: Text.PlainText
+                  text: page.talkItem && page.talkItem.told ? "Undo"
+                    : page.talkItem && page.talkItem.kind === "question" ? "Set aside" : "Decline"
+                  color: pinDecArea.containsMouse && page.handOn ? (page.talkItem && page.talkItem.told ? page.accent : page.urgent) : (page.talkItem && page.talkItem.told ? page.accent : page.dim)
+                  font.family: page.fontFamily
+                  font.styleName: page.fontStyle
+                  font.pixelSize: page.fs(Style.font.caption)
+                  font.underline: pinDecArea.containsMouse && page.handOn
+                  MouseArea {
+                    id: pinDecArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: page.declineTalked()
+                  }
+                }
+                KeyCaps { visible: pinned.hot; anchors.verticalCenter: parent.verticalCenter; page: margin.page; key: page.keyName("marginDecline"); size: page.fs(Style.font.caption) }
+              }
+            }
+          }
           Text {
             width: parent.width
-            visible: !!page.talkItem || page.talkSettled === ""
+            visible: !page.talkItem && page.talkSettled === ""
             textFormat: Text.PlainText
             wrapMode: Text.WordWrap
-            text: !page.talkItem ? page.tip("Back to the list", "marginBack")
-              : page.talkItem.kind === "question"
-              ? page.tips([["Accept the recommended answer", "marginAccept"], ["Set it aside", "marginDecline"], ["Back to the list", "marginBack"]])
-              : page.talkItem && page.talkItem.told
-              ? page.tips([["Let it stand", "marginAccept"], ["Undo it", "marginDecline"], ["Back to the list", "marginBack"]])
-              : page.tips([["Accept", "marginAccept"], ["Decline", "marginDecline"], ["Back to the list", "marginBack"]])
+            text: page.tip("Back to the list", "marginBack")
             color: page.faint
             font.family: page.fontFamily
             font.styleName: page.fontStyle
@@ -180,6 +240,7 @@ BorderSurface {
         }
         MouseArea {
           anchors.fill: parent
+          z: -1
           enabled: !!page.talkItem
           cursorShape: Qt.PointingHandCursor
           onClicked: { page.marginFocus = 0; marginKeys.forceActiveFocus() }
@@ -216,7 +277,14 @@ BorderSurface {
               p: modelData
               hot: !!(page.talkCardFocus >= 0 && marginKeys.activeFocus && page.talkCards[page.talkCardFocus]
                 && page.talkCards[page.talkCardFocus].index === modelData.index)
-              onActivated: page.acceptTalkCard(modelData)
+              onFocused: {
+                for (var k = 0; k < page.talkCards.length; k++)
+                  if (page.talkCards[k].index === modelData.index) { page.focusTalkCard(k); return }
+                marginKeys.forceActiveFocus()
+              }
+              onAccepted: page.acceptTalkCard(modelData)
+              onDeclinedClick: page.settleListedCard(modelData, "decline")
+              onUndone: if (modelData.ledger) page.undoSettledCard(modelData.ledger)
             }
           }
         }
@@ -327,8 +395,12 @@ BorderSurface {
             width: parent.width
             page: margin.page
             p: row.p
+            declined: row.isCard && page.blockCardDeclined(page.currentRec, row.ci)
             hot: row.isCard && page.marginFocus === row.ci && marginKeys.activeFocus
-            onActivated: { page.marginFocus = row.ci; page.acceptProposal(row.ci) }
+            onFocused: { page.marginFocus = row.ci; marginKeys.forceActiveFocus() }
+            onAccepted: { page.marginFocus = row.ci; page.acceptProposal(row.ci) }
+            onDeclinedClick: { page.marginFocus = row.ci; page.declineProposal(row.ci) }
+            onUndone: if (row.p && row.p.ledger) page.undoSettledCard(row.p.ledger)
           }
         }
       }
@@ -501,6 +573,7 @@ BorderSurface {
         if (Sc.hit(event, "chatSend")) page.sendChat()
         else if (Sc.hit(event, "marginBack") && page.stopAgent("margin")) {}
         else if (Sc.hit(event, "marginBack")) page.backToNote()
+        else if (Sc.hit(event, "undo") && text === "" && page.undoLastCard()) {}
         else if (Sc.hit(event, "marginUp") && text === "" && page.currentProposals.length > 0) page.moveMarginFocus(-1)
         else return
         event.accepted = true

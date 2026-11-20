@@ -504,17 +504,23 @@ BorderSurface {
               readonly property var item: page.dayCardLive(modelData) || modelData
               readonly property string state_: page.dayCardState(modelData, cards.turnAt)
               readonly property bool live: state_ === "open" || state_ === "done by itself"
+              readonly property bool told: state_ === "done by itself"
+              readonly property bool canUndo: !live && page.cardCanUndo(modelData.id)
+              readonly property bool undoLast: canUndo && page.cardUndoIsLast(modelData.id)
               readonly property bool focused: live && page.dayCardFocus >= 0 && !!page.dayOpenCards[page.dayCardFocus]
                 && page.dayOpenCards[page.dayCardFocus].id === modelData.id
+              readonly property color ruleColor: Qt.rgba(page.foreground.r, page.foreground.g, page.foreground.b, 0.09)
               onFocusedChanged: page.selected(card, "right", focused)
               width: parent.width
               height: cardColumn.implicitHeight + page.sp(14)
               radius: Style.cornerRadius
-              color: focused ? Style.selectedFill : "transparent"
+              color: focused ? Style.selectedFill : dayCardHover.hovered && page.handOn && live ? Style.hoverFill : "transparent"
               border.width: 1
               border.color: focused ? page.accent : page.faint
-              opacity: live || state_ === "arriving" ? 1 : 0.55
+              opacity: live || state_ === "arriving" ? 1 : canUndo ? 0.78 : 0.55
+              HoverHandler { id: dayCardHover }
 
+              // Clicking the card body focuses it — never auto-accepts.
               MouseArea {
                 anchors.fill: parent
                 enabled: card.live
@@ -531,7 +537,7 @@ BorderSurface {
                 x: page.sp(10)
                 y: page.sp(7)
                 width: parent.width - page.sp(20)
-                spacing: page.sp(3)
+                spacing: page.sp(4)
                 Text {
                   width: parent.width
                   textFormat: Text.PlainText
@@ -592,15 +598,128 @@ BorderSurface {
                   font.styleName: page.fontStyle
                   font.pixelSize: page.fs(Style.font.bodySmall)
                 }
-                Text {
-                  visible: card.focused
-                  textFormat: Text.PlainText
-                  text: page.keyName("marginAccept") + (card.state_ === "open" ? " does it · " : " lets it stand · ")
-                    + page.keyName("marginDecline") + (card.state_ === "open" ? " declines" : " undoes")
-                  color: page.faint
-                  font.family: page.fontFamily
-                  font.styleName: page.fontStyle
-                  font.pixelSize: page.fs(Style.font.caption)
+
+                // Option A: Quiet footer links matching MarginCard.
+                Item {
+                  visible: card.live || card.canUndo
+                  width: parent.width
+                  height: visible ? dayActRow.implicitHeight + page.sp(7) : 0
+                  Rectangle {
+                    anchors.top: parent.top
+                    anchors.topMargin: page.sp(2)
+                    width: parent.width
+                    height: 1
+                    color: card.ruleColor
+                  }
+                  Row {
+                    id: dayActRow
+                    anchors.left: parent.left
+                    anchors.bottom: parent.bottom
+                    spacing: page.sp(14)
+
+                    Row {
+                      visible: card.live
+                      spacing: page.sp(5)
+                      Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        textFormat: Text.PlainText
+                        text: card.told ? "Keep" : "Accept"
+                        color: dayAccArea.containsMouse && page.handOn ? page.accent : page.foreground
+                        font.family: page.fontFamily
+                        font.styleName: page.fontStyle
+                        font.weight: Font.Medium
+                        font.pixelSize: page.fs(Style.font.caption)
+                        font.underline: dayAccArea.containsMouse && page.handOn
+                        MouseArea {
+                          id: dayAccArea
+                          anchors.fill: parent
+                          hoverEnabled: true
+                          cursorShape: Qt.PointingHandCursor
+                          onClicked: page.settleDayCardById(card.modelData.id, "accept")
+                          Tip { host: dayPane.page; act: "marginAccept"; shown: parent.containsMouse; text: page.tip(card.told ? "Let it stand" : "Accept this proposal", "marginAccept") }
+                        }
+                      }
+                      KeyCaps {
+                        visible: card.focused
+                        anchors.verticalCenter: parent.verticalCenter
+                        page: dayPane.page
+                        key: page.keyName("marginAccept")
+                        size: page.fs(Style.font.caption)
+                      }
+                    }
+
+                    Row {
+                      visible: card.live
+                      spacing: page.sp(5)
+                      Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        textFormat: Text.PlainText
+                        text: card.told ? "Undo" : "Decline"
+                        color: dayDecArea.containsMouse && page.handOn ? (card.told ? page.accent : page.urgent) : (card.told ? page.accent : page.dim)
+                        font.family: page.fontFamily
+                        font.styleName: page.fontStyle
+                        font.pixelSize: page.fs(Style.font.caption)
+                        font.underline: dayDecArea.containsMouse && page.handOn
+                        MouseArea {
+                          id: dayDecArea
+                          anchors.fill: parent
+                          hoverEnabled: true
+                          cursorShape: Qt.PointingHandCursor
+                          onClicked: page.settleDayCardById(card.modelData.id, "decline")
+                          Tip { host: dayPane.page; act: "marginDecline"; shown: parent.containsMouse; text: page.tip(card.told ? "Undo what it did" : "Decline this proposal", "marginDecline") }
+                        }
+                      }
+                      KeyCaps {
+                        visible: card.focused
+                        anchors.verticalCenter: parent.verticalCenter
+                        page: dayPane.page
+                        key: page.keyName("marginDecline")
+                        size: page.fs(Style.font.caption)
+                      }
+                    }
+
+                    Row {
+                      visible: card.canUndo
+                      spacing: page.sp(5)
+                      Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        textFormat: Text.PlainText
+                        text: "Undo"
+                        color: dayUndoArea.containsMouse && page.handOn ? page.foreground : page.accent
+                        font.family: page.fontFamily
+                        font.styleName: page.fontStyle
+                        font.pixelSize: page.fs(Style.font.caption)
+                        font.underline: dayUndoArea.containsMouse && page.handOn
+                        MouseArea {
+                          id: dayUndoArea
+                          anchors.fill: parent
+                          hoverEnabled: true
+                          cursorShape: Qt.PointingHandCursor
+                          onClicked: page.undoSettledCard(card.modelData.id)
+                          Tip { host: dayPane.page; shown: parent.containsMouse; text: "Undo this change (" + page.keyName("undo") + ")" }
+                        }
+                      }
+                      KeyCaps {
+                        visible: card.undoLast
+                        anchors.verticalCenter: parent.verticalCenter
+                        page: dayPane.page
+                        key: page.keyName("undo")
+                        size: page.fs(Style.font.caption)
+                      }
+                    }
+                  }
+
+                  Text {
+                    visible: card.told || card.canUndo
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    textFormat: Text.PlainText
+                    text: card.told ? "auto-applied" : "written to note"
+                    color: page.faint
+                    font.family: page.fontFamily
+                    font.styleName: page.fontStyle
+                    font.pixelSize: page.fs(Style.font.caption)
+                  }
                 }
               }
             }
