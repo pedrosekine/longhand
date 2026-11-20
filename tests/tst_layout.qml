@@ -39,4 +39,18 @@ TestCase {
     compare(over.x, 328)
     compare(Layout.note(500, 740, 0, 300, 340).width, 0)
   }
+
+  function test_narrow_windows_and_mutual_exclusion() {
+    // 1900 and 1200 fit both side panes beside a >= 420 px note.
+    verify(Layout.bothFit(1900, 0, 254, 318, 420))
+    verify(Layout.bothFit(1200, 0, 254, 318, 420))
+    // Half-screen 1080p split (960 px) and default floating window (680 px) do not.
+    verify(!Layout.bothFit(960, 0, 254, 318, 420))
+    verify(!Layout.bothFit(680, 0, 254, 318, 420))
+    // Right pane fits cleanly alone at 960 and 680, and returns 0 when too narrow.
+    compare(Layout.rightPane(1900, 0, 740, 254, 18, 300, 440, 340), 440)
+    compare(Layout.rightPane(960, 0, 740, 0, 18, 300, 440, 340), 300)
+    compare(Layout.rightPane(680, 0, 740, 0, 18, 300, 440, 340), 300)
+    compare(Layout.rightPane(500, 0, 740, 0, 18, 300, 440, 340), 0)
+  }
 }

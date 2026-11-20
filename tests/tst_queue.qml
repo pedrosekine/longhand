@@ -74,6 +74,14 @@ TestCase {
     compare(Queue.failure(""), "")
     compare(Queue.failure(undefined), "")
     compare(Queue.failure("\n  error: opencode: unknown flag --model\nusage: …"), "opencode: unknown flag --model")
+    compare(Queue.failure("warning: m1 failed (quota); answered on m2\nerror: m2 timed out"), "m2 timed out")
     compare(Queue.failure("x".repeat(200)).length, 120)
+  }
+
+  function test_fallback_warning_is_parsed() {
+    compare(Queue.fallback(""), "")
+    compare(Queue.fallback("error: boom"), "")
+    compare(Queue.fallback("warning: antigravity/gemini-4 failed (429 rate limit); answered on claude-code/opus, and antigravity/gemini-4 is passed over until 14:30"),
+            "answered on claude-code/opus (antigravity/gemini-4 failed, skipped until 14:30)")
   }
 }

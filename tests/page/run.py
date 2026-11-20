@@ -324,6 +324,13 @@ esac
         self.wait(lambda: json.loads(self.call("state"))["ready"])
         time.sleep(0.5)
 
+    def resize(self, w, h):
+        subprocess.run(["hyprctl", "eval",
+                        f'hl.window_rule({{ match = {{ title = "^Page scratch$" }}, float = true, size = {{ {w}, {h} }} }})'],
+                       capture_output=True)
+        self.open_fresh()
+        self.wait(lambda: abs(json.loads(self.call("sides"))["width"] - w) < 20, 4)
+
     def close(self):
         self.proc.terminate()
         self.proc.wait()
@@ -2840,8 +2847,20 @@ def checks() -> int:
             return json.loads(p.call("panes"))
         p.call("closePanes")
         check(panes()["panes"] == ["center"] and panes()["center"] == "note", f"the note alone ({panes()})")
+        # At 701 px (narrow window), side panes are mutually exclusive so the
+        # note stays readable: opening one closes the opposite.
         check(p.call("pageKey", KEY_1, CTRL) == "true" and panes()["panes"] == ["left", "center"] and panes()["here"] == "left",
               f"Ctrl+1 opens the sidebar, the keys in it ({panes()})")
+        check(p.call("pageKey", KEY_3, CTRL) == "true" and panes()["panes"] == ["center", "right"] and panes()["here"] == "right",
+              f"on a narrow window, Ctrl+3 closes the sidebar so the note stays readable ({panes()})")
+        check(p.call("pageKey", KEY_1, CTRL) == "true" and panes()["panes"] == ["left", "center"] and panes()["here"] == "left",
+              f"…and Ctrl+1 closes the agent's pane ({panes()})")
+        p.call("closePanes")
+        # Wide enough for both side panes beside a >= 420 px note:
+        p.resize(1150, 850)
+        p.call("closePanes")
+        check(p.call("pageKey", KEY_1, CTRL) == "true" and panes()["panes"] == ["left", "center"] and panes()["here"] == "left",
+              f"Ctrl+1 opens the sidebar on a wide window ({panes()})")
         space = json.loads(p.call("files"))["space"]
         check(p.call("sideKey", KEY_1, CTRL) == "true" and json.loads(p.call("files"))["space"] != space and panes()["panes"] == ["left", "center"],
               f"…Ctrl+1 in it: the other space, nothing closed ({p.call('files')[:60]})")
@@ -3143,6 +3162,7 @@ def checks() -> int:
         check(p.wait(lambda: panes()["panes"] == ["center"] and panes()["here"] == "center"
                      and note_focus() == {"row": morning, "at": at, "active": True}, 2),
               f"…Esc: the pane they came from has gone, so the keys go to the middle, the cursor where it was ({panes()}, {note_focus()})")
+        p.resize(701, 850)
 
         p.call("dash")
         p.call("dashKey", KEY_3, CTRL)

@@ -474,13 +474,25 @@ Item {
   readonly property int sheetPadding: alongside ? root.sp(28) : root.sp(44)
   readonly property int marginGap: root.sp(18)
   readonly property int gutter: root.sp(18)
-  // The right pane beside the note: the sidebar's kind of width, the same
-  // in both shapes; a narrow window narrows the note, not the pane.
-  // It takes the room the note leaves, up to a width a conversation reads
-  // well at (2026-10-25: at 300 it held five words a line); never less
-  // than before, so a narrow window still narrows the note first.
-  readonly property int marginWidth: Math.max(0, Math.min(Math.round(content.width * 0.45),
-    Math.max(root.sp(300), Math.min(root.sp(440), content.width - 2 * root.edge - root.sheetFor - root.marginGap - root.sideSpace))))
+  // The right pane beside the note: takes the room the note leaves, up to
+  // 440 px, never dropping the note below 340 px (returns 0 on ultra-narrow
+  // windows so the "too narrow" guard works instead of crushing the editor).
+  // Below ~970 px (when both side panes would squeeze the note under 420 px),
+  // side panes are mutually exclusive via `ensureRoomFor`.
+  readonly property bool canBothPanes: Layout.bothFit(content.width, root.edge, root.sidebarWidth + root.marginGap, root.sp(300) + root.marginGap, root.sp(420))
+  readonly property int marginWidth: Layout.rightPane(content.width, root.edge, root.sheetFor,
+    root.canBothPanes ? root.sideSpace : 0, root.marginGap, root.sp(300), root.sp(440), root.sp(340))
+  function ensureRoomFor(side) {
+    if (root.canBothPanes) return
+    if (side === "right" && root.sidebarOpen) root.sidebarOpen = false
+    else if (side === "left" && root.rightView !== "") {
+      root.marginOpen = false
+      root.marginFocus = -1
+      root.dayOpen = false
+      root.noteRoom = false
+      root.closeTalk(false)
+    }
+  }
 
   // The margin beside the dashboard, while a proposal is talked about: the
   // dashboard gives up the room, since a list has more width than it needs.
@@ -661,6 +673,8 @@ Item {
     root.exportOpen = false
     root.exportAfterSave = false
     root.exportBusy = false
+    if (exportProc.running) exportProc.signal(15)
+    if (exportListProc.running) exportListProc.signal(15)
     if (root.exportFromDash) { root.exportFromDash = false; root.showDash() }
     else root.focusCenter()
   }
@@ -713,6 +727,7 @@ Item {
   }
   function exportWritten(code, out, err) {
     root.exportBusy = false
+    if (!root.exportOpen) return
     var got = null
     try { got = JSON.parse(out) } catch (e) {}
     if (code !== 0 || !got || !got.pdf) { root.exportError = err.trim().replace(/^longhand-agent: /, "") || "the PDF could not be made"; return }
@@ -1725,7 +1740,7 @@ Item {
     })
   }
 
-  readonly property string roomHash: root.noteRoom ? "note" : "day"
+  readonly property string roomHash: root.noteRoom ? "note:" + root.roomRel : "day"
   readonly property bool dayThinking: root.runningHash === root.roomHash
     || root.queued.some(function (q) { return q.hash === root.roomHash })
   readonly property bool dayCanSend: root.noteRoom ? root.noteAskable : svc.isToday && root.agentDay && !root.beforeHorizon
@@ -1747,6 +1762,8 @@ Item {
   function openRoom(block, note) {
     note = !!note
     if (note && !root.noteAskable) return
+    if (!root.dashOpen && root.marginWidth <= 0) { root.showHint("the window is too narrow for the agent's pane"); return }
+    root.ensureRoomFor("right")
     if (root.here !== "right") root.noteFrom("right", root.keysOpen || root.settingsOpen ? "center" : root.here)
     if (root.keysOpen) root.toggleKeys()
     if (root.settingsOpen) root.toggleSettings()
@@ -1809,9 +1826,10 @@ Item {
   }
   function stopAgent(where) {
     if (!root.agentBusy(where)) return false
-    var text = ""
+    var pending = null
     if (where === "talk") {
-      text = root.pendingTalk ? root.pendingTalk.text : ""
+      pending = root.pendingTalk
+      root.pendingTalk = null
       root.talkStopAsked = true
       talkProc.signal(15)
     } else {
@@ -1819,9 +1837,9 @@ Item {
       var hit = function (h) { return String(h || "").split(",").some(function (x) { return x !== "" && ids.indexOf(x) >= 0 }) }
       root.queued = root.queued.filter(function (q) { return !hit(q.hash) })
       if (root.running && hit(root.runningHash)) { root.runnerStopAsked = true; runner.signal(15) }
-      if (where === "day") { text = root.dayPending ? root.dayPending.text : ""; root.dayPending = null }
+      if (where === "day") { pending = root.dayPending; root.dayPending = null }
       else {
-        text = root.pendingChat ? root.pendingChat.text : ""
+        pending = root.pendingChat
         root.pendingChat = null
         root.sending = root.sending.filter(function (h) { return ids.indexOf(h) < 0 })
         root.scheduleRepaint()
@@ -1829,8 +1847,24 @@ Item {
     }
     root.thinkHeld = ""
     var field = where === "day" ? dayPane.dayFieldRef : margin.chatFieldRef
-    var back = text !== "" && field && String(field.text).trim() === ""
-    if (back) { field.text = text; field.cursorPosition = text.length }
+    var pane = where === "day" ? "day" : "margin"
+    var text = pending ? (pending.raw !== undefined ? pending.raw : pending.text) : ""
+    var back = false
+    if (text !== "" && field && String(field.text).trim() === "") {
+      field.text = text
+      field.cursorPosition = text.length
+      back = true
+    }
+    if (pending && pending.replies && pending.replies.length > 0 && root.repliesOf(pane).length === 0) {
+      root.setReplies(pane, pending.replies.slice())
+      back = true
+    }
+    if (where === "day" && pending) {
+      if (pending.savedRefs && pending.savedRefs.length > 0 && root.dayRefs.length === 0) root.dayRefs = pending.savedRefs.slice()
+      if (root.paper.room && pending.marks && pending.marks.length > 0 && root.paper.marks.length === 0) root.paper.marks = pending.marks.slice()
+    } else if (pending && pending.savedRefs && pending.savedRefs.length > 0 && root.marginRefs.length === 0) {
+      root.marginRefs = pending.savedRefs.slice()
+    }
     root.showHint(back ? "stopped — what you wrote is back in the box" : "stopped")
     root.used("stop", where)
     return true
@@ -1844,9 +1878,11 @@ Item {
   function sendDay(text) {
     var msg = root.composed("day", text)
     if (msg === "" || !root.dayCanSend) return false
+    var savedReplies = root.dayReplies.slice()
+    var savedRefs = root.dayRefs.slice()
     root.clearReplies("day")
     var cmd = root.noteRoom ? [svc.runner, "note", "--file", root.roomRel, "--message", msg] : [svc.runner, "day", "--message", msg]
-    var chips = root.noteRoom ? root.dayRefs.slice() : root.dayChips.slice()
+    var chips = root.noteRoom ? savedRefs : root.dayChips.slice()
     if (root.noteRoom) {
       if (root.dayBlock !== "") cmd = cmd.concat(["--block", root.dayBlock])
       var others = chips.filter(function (r) { return !!r.file })
@@ -1861,7 +1897,8 @@ Item {
     var marks = root.paper.room ? root.paper.marks.slice() : []
     if (marks.length > 0) cmd = cmd.concat(["--marks", marks.join(",")])
     root.paper.marks = []
-    root.dayPending = { text: msg, block: root.dayBlock, marks: marks,
+    root.dayPending = { text: msg, raw: String(text || ""), replies: savedReplies, savedRefs: savedRefs,
+                        block: root.dayBlock, marks: marks,
                         refs: chips.map(function (r) { return { date: r.date || "", hash: r.hash || "", file: r.file || "", kind: r.kind, head: r.head } }) }
     if (chips.length > 0) root.used("chip", "sent-" + chips.length + (chips[0].auto ? "-auto" : ""))
     root.dayRefs = []
@@ -2868,7 +2905,7 @@ Item {
       else if (sv === "autonomy") autonomySheet.autonomyKeysRef.forceActiveFocus()
       else if (sv === "search") searchSheet.searchKeysRef.forceActiveFocus()
       else if (sv === "checkin") checkinSheet.checkinKeysRef.forceActiveFocus()
-      else settingsSheet.settingsFieldRef.forceActiveFocus()
+      else settingsSheet.focusActive()
     } else if (v === "dash") (root.dashWhenFor ? dash.dashWhenFieldRef : dash.dashKeysRef).forceActiveFocus()
     else if (root.searchOpen) searchField.forceActiveFocus()
     else if (root.whenFor) whenField.forceActiveFocus()
@@ -3039,8 +3076,8 @@ Item {
   // What Ctrl does here that no badge shows, most used first.
   readonly property var ctrlStripItems: {
     var v = root.centerView
-    var rest = v === "note" ? [["bold", "bold"], ["italic", "italic"], ["link", "link"], ["deadline", "a date"], ["privateBlock", "private"], ["find", "find"], ["undo", "undo"]]
-      : v === "dash" ? [["dashPlan", "plan now"], ["dashUndo", "undo"]]
+    var rest = v === "note" ? [["pane2", "dashboard"], ["bold", "bold"], ["italic", "italic"], ["link", "link"], ["deadline", "a date"], ["privateBlock", "private"], ["find", "find"], ["undo", "undo"]]
+      : v === "dash" ? [["pane2", "note"], ["dashPlan", "plan now"], ["dashUndo", "undo"]]
       : []
     return rest.concat([["switcher", "a project"], ["linkBack", "back"], ["keys", "every key"]])
       .map(function (a) { return { key: root.ctrlKey(a[0]), words: a[1] } })
@@ -3113,6 +3150,19 @@ Item {
   onCenterViewChanged: if (root.pointerMode !== "off") warpTimer.restart()
   onRightViewChanged: if (root.pointerMode !== "off" && root.here === "right") warpTimer.restart()
 
+  // Keep warp targets inside the page's own window so Hyprland follow_mouse
+  // never steals focus to an adjacent window when an item sits off-screen.
+  function clampTarget(t) {
+    if (!t || content.width <= 0 || content.height <= 0) return t
+    var pad = Math.min(8, Math.floor(Math.min(content.width, content.height) / 4))
+    return {
+      x: Math.max(pad, Math.min(content.width - pad, t.x)),
+      y: Math.max(pad, Math.min(content.height - pad, t.y)),
+      w: t.w,
+      h: t.h
+    }
+  }
+
   // What the pointer goes to in the pane with the keys: the row selected,
   // the note's cursor, the box typed in; at worst the pane itself.
   function pointerTarget() {
@@ -3120,7 +3170,7 @@ Item {
     if (pane === "center" && root.centerView === "note" && !root.searchOpen && !root.whenFor && !root.newProject) {
       var r = editor.cursorRect
       var at = editor.mapToItem(content, r.x + root.sp(14), r.y + r.height / 2)
-      return { x: at.x, y: at.y, w: root.sp(28), h: r.height }
+      return root.clampTarget({ x: at.x, y: at.y, w: root.sp(28), h: r.height })
     }
     var it = root.marks[pane]
     var ok = false
@@ -3130,7 +3180,7 @@ Item {
     if (!ok) it = root.boxes().filter(function (b) { return b.activeFocus })[0] || root.paneItem(pane)
     if (!it) return null
     var c = it.mapToItem(content, Math.min(it.width / 2, root.sp(160)), it.height / 2)
-    return { x: c.x, y: c.y, w: Math.min(it.width, root.sp(320)), h: it.height }
+    return root.clampTarget({ x: c.x, y: c.y, w: Math.min(it.width, root.sp(320)), h: it.height })
   }
 
   function boxes() {
@@ -3412,6 +3462,7 @@ Item {
     var first = Queue.failure(runner.said)
     runner.said = ""
     root.pendingChat = null      // it never reached the agent; do not pretend it did
+    root.dayPending = null
     root.showHint("the agent could not run" + (first === "" ? "" : " — " + first))
   }
 
@@ -3709,6 +3760,7 @@ Item {
   function diveIn(toChat) {
     root.used("margin")
     if (root.marginWidth <= 0 || root.currentHash === "") return
+    root.ensureRoomFor("right")
     if (root.here !== "right") root.noteFrom("right")
     root.marginOpen = true
     if (root.currentProposals.length > 0 && toChat !== true) {
@@ -3830,7 +3882,7 @@ Item {
         agentChecksProc.command = [svc.runner, "eval", "status", "--json"]
         agentChecksProc.running = true
       }
-      Qt.callLater(settingsSheet.settingsFieldRef.forceActiveFocus)
+      Qt.callLater(settingsSheet.focusActive)
     } else {
       root.giveBack("settings", was, "center")
     }
@@ -3890,9 +3942,9 @@ Item {
       return false
     }
     var last = root.calendarCount + root.settingsKinds.length - 1
-    if (seq === "Up") { root.settingsFocus = Math.max(0, root.settingsFocus - 1); return true }
-    if (seq === "Down") { root.settingsFocus = Math.min(last, root.settingsFocus + 1); return true }
     var kind = root.settingsPicked()
+    if (seq === "Up" || (kind !== "field" && seq === "k")) { root.settingsFocus = Math.max(0, root.settingsFocus - 1); return true }
+    if (seq === "Down" || (kind !== "field" && seq === "j")) { root.settingsFocus = Math.min(last, root.settingsFocus + 1); return true }
     if (kind === "field") {
       if (seq === "Enter") { root.addCalendar(settingsSheet.settingsFieldRef.text); return true }
       return false
@@ -4150,7 +4202,7 @@ Item {
     if (root.searchFocus < 0) {
       if (seq === "Left" || seq === "Right") { root.moveHorizon(seq === "Left" ? -1 : 1); return true }
       if (seq === "Shift+Left" || seq === "Shift+Right") { root.moveHorizon(seq === "Shift+Left" ? -12 : 12); return true }
-      if (seq === "Backspace" || seq === "Delete") { root.setHorizon(""); return true }
+      if (seq === "Backspace" || seq === "Del") { root.setHorizon(""); return true }
       return seq === "Space" || seq === "Enter"
     }
     if (seq === "Space" || seq === "Enter") { root.toggleSearchFolder(root.searchFocus); return true }
@@ -4284,7 +4336,7 @@ Item {
     root.settingsView = "main"
     root.notebookCorrecting = false
     root.notebookAsking = false
-    Qt.callLater(settingsSheet.settingsFieldRef.forceActiveFocus)
+    Qt.callLater(settingsSheet.focusActive)
   }
 
   function pickNotebook(i) {
@@ -4457,6 +4509,7 @@ Item {
     if (i < 0 || i >= list.length) return
     root.settingsFieldKind = "rename"
     settingsSheet.settingsFieldRef.text = list[i].name
+    settingsSheet.settingsFieldRef.forceActiveFocus()
     settingsSheet.settingsFieldRef.selectAll()
   }
 
@@ -5436,14 +5489,17 @@ Item {
     if (force) root.used("plan", "asked")
   }
 
-  // Why a plan failed, in words that say what to do.
+  // Why a plan or chat run failed, in words that say what to do.
   function sayPlanError(err) {
     var e = String(err)
-    if (/api_key_expired|has expired/.test(e)) return "its model key has expired — make a new one and log opencode in again"
-    if (/401|authentication|unauthori/i.test(e)) return "its model login was refused — log opencode in again"
-    if (/timed out|ENOTFOUND|network|connect/i.test(e)) return "the model could not be reached"
-    if (/^Claude Code refused the run: /.test(e)) return "Claude Code refused it: " + e.replace(/^Claude Code refused the run: (Error: )?/, "").slice(0, 120)
-    return "the model said: " + e.slice(0, 80)
+    if (/api_key_expired|has expired/.test(e)) return "its model key has expired — renew it or sign in again"
+    if (/401|authentication|unauthori|not logged in|sign in/i.test(e)) return "its model login was refused — sign in again"
+    if (/rate.?limit|quota|usage limit|429|overloaded/i.test(e)) return "the model hit its limit — try again in a moment"
+    if (/timed out/i.test(e)) return "the model timed out before answering"
+    if (/ENOTFOUND|network|connect|ECONNREFUSED|offline/i.test(e)) return "the model could not be reached"
+    if (/dropped|offered tools|called a tool|auto-memory|AGENTS\.md|attached/i.test(e)) return "answer held back by privacy check: " + e.slice(0, 140)
+    if (/^Claude Code refused the run: /.test(e)) return "Claude Code refused it: " + e.replace(/^Claude Code refused the run: (Error: )?/, "").slice(0, 140)
+    return "the model said: " + e.slice(0, 140)
   }
 
   // Asked for while one is under way: once more right after it, so what
@@ -5557,10 +5613,13 @@ Item {
   }
 
   function sendTalk() {
-    var msg = root.composed("margin", margin.chatFieldRef.text)
+    var raw = String(margin.chatFieldRef.text || "")
+    var msg = root.composed("margin", raw)
     if (msg === "" || root.talking || !root.talkCanSend) return
+    var savedReplies = root.marginReplies.slice()
+    var savedRefs = root.talkToPlanner ? [] : root.marginRefs.slice()
     root.clearReplies("margin")
-    root.pendingTalk = { thread: root.talkThread, text: msg }
+    root.pendingTalk = { thread: root.talkThread, text: msg, raw: raw, replies: savedReplies, savedRefs: savedRefs }
     margin.chatFieldRef.text = ""
     var c = root.talkData ? root.talkData.chat : null
     var refs = root.talkToPlanner ? [] : root.takeMarginRefs()
@@ -6194,7 +6253,7 @@ Item {
     root.dashWhenText = ""
     if (!t || phrase === "") return
     var read = Dates.read(phrase, new Date())
-    if (!read) { root.hint = "no date in \"" + phrase + "\""; return }
+    if (!read) { root.showHint("no date in \"" + phrase + "\""); return }
     // A do-date is a day, not a moment: the time a deadline carries is the
     // hour something is owed, and a day you mean to work on it has none.
     root.editTask(t, "when", read.iso.split(" ")[0])
@@ -6233,12 +6292,12 @@ Item {
   // The facts the page may change on a line, and nothing else on it
   // (principle 2: never the words).
   function applyEdit(line, how, arg) {
-    if (how === "drop") return Task.setField(Task.setState(line, "-"), "❌", Qt.formatDate(new Date(), "yyyy-MM-dd"))
+    if (how === "drop") return Task.setField(Task.setField(Task.setState(line, "-"), "✅", ""), "❌", Qt.formatDate(new Date(), "yyyy-MM-dd"))
     if (how === "undrop") return Task.setField(Task.setState(line, " "), "❌", "")
     if (how === "prio") return Task.setPriority(line, arg)
     if (how === "when") return Task.setField(line, "⏳", arg)
     if (how === "state") return Task.setState(line, arg)
-    if (how === "done") return Task.setField(Task.setState(line, "x"), "✅", Qt.formatDate(new Date(), "yyyy-MM-dd"))
+    if (how === "done") return Task.setField(Task.setField(Task.setState(line, "x"), "❌", ""), "✅", Qt.formatDate(new Date(), "yyyy-MM-dd"))
     if (how === "undone") return Task.setField(Task.setState(line, " "), "✅", "")
     if (how === "rename") return Task.setWords(line, arg)
     // Steps under a box: new boxes, one level in.
@@ -7400,6 +7459,7 @@ Item {
   function toggleSidebar() {
     var was = root.here
     if (!root.sidebarOpen && was !== "left") root.noteFrom("left")
+    if (!root.sidebarOpen) root.ensureRoomFor("left")
     root.sidebarOpen = !root.sidebarOpen
     if (root.sidebarOpen) root.used("calendar")
     if (root.sidebarOpen) root.focusSidebar()
@@ -7671,11 +7731,14 @@ Item {
   }
 
   function sendChat() {
-    var msg = root.composed("margin", margin.chatFieldRef.text)
+    var raw = String(margin.chatFieldRef.text || "")
+    var msg = root.composed("margin", raw)
     if (msg === "" || root.currentHash === "") return
+    var savedReplies = root.marginReplies.slice()
+    var savedRefs = root.marginRefs.slice()
     margin.chatFieldRef.text = ""
     root.clearReplies("margin")
-    root.pendingChat = { hash: root.currentRec, text: msg }
+    root.pendingChat = { hash: root.currentRec, text: msg, raw: raw, replies: savedReplies, savedRefs: savedRefs }
     root.requestChat(root.currentRec, msg, root.currentHash, root.takeMarginRefs())
   }
   // The chips a task's or a block's message carries besides its own
@@ -7816,11 +7879,16 @@ Item {
       if (root.runningHash === "day") { Qt.callLater(root.refreshProposals); Qt.callLater(root.refreshTasks) }
       // …and so may a block's chat: a day or a drop is in the one list.
       else if (runner.command[1] === "chat") Qt.callLater(root.refreshProposals)
-      if (root.runningHash === "note") noteTalkFile.reload()
+      if (root.runningHash.indexOf("note:") === 0) noteTalkFile.reload()
       root.runningHash = ""
       // Stopped on purpose: not a fault, and said already.
       if (root.runnerStopAsked) { root.runnerStopAsked = false; runner.said = "" }
       else if (code !== 0) Qt.callLater(root.runnerFailed)
+      else Qt.callLater(function () {
+        var fb = Queue.fallback(runner.said)
+        runner.said = ""
+        if (fb !== "") root.showHint(fb)
+      })
       agent.reload()
       root.launchQueued()
       if (!root.running) root.doneSending()
@@ -8374,6 +8442,7 @@ Item {
 
   Process {
     id: talkProc
+    property string said: ""
     stdout: StdioCollector {
       // The planner's answer is JSON (`talk`); the margin's is a line
       // (`chat`). Either way the conversation is read again.
@@ -8383,15 +8452,33 @@ Item {
       }
     }
     stderr: StdioCollector {
-      // A failed run says so (2026-11-17: a message to a task's chat
-      // failed in a second, and the pane looked as if it never went).
-      onStreamFinished: if (text.trim() !== "") {
-        console.warn("longhand.page talk: " + text.trim())
-        root.pendingTalk = null
-        if (root.talkStopAsked) root.talkStopAsked = false      // stopped on purpose: said already
-        else root.showHint("the agent could not answer — " + Queue.failure(text))
-        root.refreshProposals()
+      onStreamFinished: {
+        talkProc.said = text.trim()
+        if (talkProc.said !== "") console.warn("longhand.page talk: " + talkProc.said)
       }
+    }
+    onExited: function (code, status) {
+      if (root.talkStopAsked) {
+        root.talkStopAsked = false
+        root.pendingTalk = null
+        talkProc.said = ""
+        return
+      }
+      if (code !== 0) {
+        root.pendingTalk = null
+        Qt.callLater(function () {
+          var first = Queue.failure(talkProc.said)
+          talkProc.said = ""
+          root.showHint("the agent could not answer" + (first === "" ? "" : " — " + first))
+          root.refreshProposals()
+        })
+        return
+      }
+      Qt.callLater(function () {
+        var fb = Queue.fallback(talkProc.said)
+        talkProc.said = ""
+        if (fb !== "") root.showHint(fb)
+      })
     }
   }
 
@@ -8608,6 +8695,7 @@ Item {
     parent: root.overlayOpen ? panel.contentItem : win.contentItem
     anchors.fill: parent
     focus: true
+    onWidthChanged: if (!root.canBothPanes && root.sidebarOpen && root.rightView !== "") root.ensureRoomFor(root.here === "left" ? "left" : "right")
     // Ctrl let go, wherever the keys are: a release no pane takes comes
     // up to here.
     Keys.onReleased: function (event) { if (event.key === Qt.Key_Control) root.ctrlLetGo() }
@@ -8627,6 +8715,7 @@ Item {
       if (!content.keysNowhere()) return
       root.focusCenter()
       if (root.anywhereKey(event)) event.accepted = true
+      else if (Sc.hit(event, "close")) { root.dismiss(); event.accepted = true }
     }
 
     Rectangle {
@@ -8859,8 +8948,11 @@ Item {
 
           Row {
             id: headerRight
+            readonly property real room: Math.max(0, parent.width - (seal.x + seal.width) - root.sp(16))
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
+            width: Math.min(implicitWidth, room)
+            clip: true
             spacing: root.sp(10)
 
             Text {
@@ -8876,6 +8968,7 @@ Item {
 
             // The pin: which shape you are in. Ctrl+P or a click flips it.
             Text {
+              visible: headerRight.room >= root.sp(140)
               anchors.verticalCenter: parent.verticalCenter
               textFormat: Text.PlainText
               text: "pin"
@@ -9012,7 +9105,7 @@ Item {
             // own words. Dim when this block carries a sign for the agent,
             // faint when it does not; a click then says why in one line.
             Text {
-              visible: svc.header !== "" && root.agentOn && !root.pdfShown
+              visible: svc.header !== "" && root.agentOn && !root.pdfShown && headerRight.room >= root.sp(95)
               anchors.verticalCenter: parent.verticalCenter
               textFormat: Text.PlainText
               // One word, whatever the chat holds (2026-10-27: it was "ask",
@@ -9053,7 +9146,7 @@ Item {
             // something is asked until it comes back, accent while a reply
             // in this note is still unread.
             Text {
-              visible: svc.header !== "" && root.agentOn && !root.pdfShown
+              visible: svc.header !== "" && root.agentOn && !root.pdfShown && (headerRight.room >= root.sp(175) || root.working || root.replyWaiting)
               anchors.verticalCenter: parent.verticalCenter
               textFormat: Text.PlainText
               text: "agent"

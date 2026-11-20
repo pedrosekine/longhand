@@ -163,5 +163,15 @@ Item {
       compare(Emph.validCol(stops, 3, 7, -1), 2)
       compare(Emph.validCol(stops, 2, 7, 0), 2)
     }
+
+    // Markers inside links are never treated as emphasis by hidden/stops/collapse.
+    function test_markers_inside_links_are_not_hidden_or_collapsed() {
+      var line = "see [label](https://example.com/_a_/*b*)"
+      compare(Emph.hidden(line).length, 0)
+      compare(Emph.stops(line).length, 0)
+      var c = Emph.collapse(line, 33, 34)
+      compare(c.a, 33)
+      compare(c.b, 34)
+    }
   }
 }

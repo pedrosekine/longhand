@@ -74,10 +74,30 @@ BorderSurface {
         font.pixelSize: page.fs(Style.font.bodySmall)
       }
 
+      Flickable {
+        id: checkinFlick
+        anchors.top: intro.bottom
+        anchors.topMargin: page.sp(18)
+        anchors.bottom: checkinFoot.top
+        anchors.bottomMargin: page.sp(12)
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.leftMargin: -page.sp(10)
+        anchors.rightMargin: -page.sp(10)
+        clip: true
+        contentWidth: width
+        contentHeight: checkinBody.implicitHeight + page.sp(8)
+        boundsBehavior: Flickable.StopAtBounds
+        TouchScroll { flickable: checkinFlick }
+
+      Column {
+        id: checkinBody
+        x: page.sp(10)
+        width: checkinFlick.width - page.sp(20)
+        spacing: page.sp(18)
+
       Column {
         id: pairs
-        anchors.top: intro.bottom
-        anchors.topMargin: page.sp(22)
         width: parent.width
         spacing: page.sp(4)
 
@@ -90,6 +110,12 @@ BorderSurface {
             readonly property bool picked: page.checkinFocus === index
             readonly property int value: page.checkinAnswers[index] || 0
             readonly property bool lit: picked && page.here === "center"
+            onPickedChanged: if (picked) {
+              var top = pairs.y + y
+              var bot = top + height
+              if (top < checkinFlick.contentY) checkinFlick.contentY = Math.max(0, top)
+              else if (bot > checkinFlick.contentY + checkinFlick.height) checkinFlick.contentY = Math.max(0, bot - checkinFlick.height)
+            }
             onLitChanged: page.selected(pairRow, "center", lit)
             Component.onCompleted: if (lit) page.selected(pairRow, "center", true)
             width: parent.width
@@ -172,8 +198,6 @@ BorderSurface {
       // clickable.
       Row {
         id: actions
-        anchors.top: pairs.bottom
-        anchors.topMargin: page.sp(18)
         anchors.horizontalCenter: parent.horizontalCenter
         spacing: page.sp(28)
         Repeater {
@@ -203,8 +227,6 @@ BorderSurface {
       // agent's share of its proposals acted on, so a change can be told
       // from how it felt.
       Column {
-        anchors.top: actions.bottom
-        anchors.topMargin: page.sp(30)
         width: parent.width
         spacing: page.sp(5)
         visible: page.checkinWeeks.length > 0
@@ -231,8 +253,11 @@ BorderSurface {
           }
         }
       }
+      }
+      }
 
       Text {
+        id: checkinFoot
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom

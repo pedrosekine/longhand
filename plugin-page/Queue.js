@@ -94,11 +94,27 @@ function added(queued, cmd, hash) {
   return queued.concat([{ cmd: cmd, hash: hash }])
 }
 
-// What a failed run said, for the status line: its first line, without
-// the "error:" it starts with, short.
+// What a failed run said, for the status line: its first non-warning line,
+// without the "error:" it starts with, short.
 function failure(said) {
   var lines = String(said || "").split("\n")
-  for (var i = 0; i < lines.length; i++)
-    if (lines[i].trim() !== "") return lines[i].trim().replace(/^error:\s*/, "").substring(0, 120)
+  var warn = ""
+  for (var i = 0; i < lines.length; i++) {
+    var t = lines[i].trim()
+    if (t === "") continue
+    if (/^warning:\s*/i.test(t)) { if (warn === "") warn = t; continue }
+    return t.replace(/^error:\s*/, "").substring(0, 120)
+  }
+  return warn.replace(/^warning:\s*/, "").substring(0, 120)
+}
+
+// A fallback warning printed to stderr when a pass succeeded on fallbackModel.
+function fallback(said) {
+  var lines = String(said || "").split("\n")
+  for (var i = 0; i < lines.length; i++) {
+    var t = lines[i].trim()
+    var m = t.match(/^warning:\s*(.+?)\s+failed\s+\(.*\);\s*answered on\s+([^\s,]+)(?:,\s*and\s+.+?\s+is passed over until\s+(\d{2}:\d{2}))?/i)
+    if (m) return "answered on " + m[2] + " (" + m[1] + " failed" + (m[3] ? ", skipped until " + m[3] : "") + ")"
+  }
   return ""
 }

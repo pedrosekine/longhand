@@ -22,6 +22,39 @@ BorderSurface {
   readonly property var content: page.contentItem
   readonly property var pal: page.palette
   property alias settingsFieldRef: settingsField
+  property alias settingsKeysRef: settingsKeys
+
+  function focusActive() {
+    var wantField = page.settingsPicked() === "field" || page.settingsFieldKind === "rename"
+    if (wantField) settingsField.forceActiveFocus()
+    else settingsKeys.forceActiveFocus()
+  }
+  function syncFocus() {
+    if (!settingsSheet.visible) return
+    var wantField = page.settingsPicked() === "field" || page.settingsFieldKind === "rename"
+    if (wantField && settingsKeys.activeFocus) settingsField.forceActiveFocus()
+    else if (!wantField && settingsField.activeFocus) settingsKeys.forceActiveFocus()
+  }
+  function ensureVisible(item) {
+    if (!item || !settingsFlick) return
+    var p = item.mapToItem(settingsBody, 0, 0)
+    var top = p.y
+    var bot = p.y + item.height
+    if (top < settingsFlick.contentY) settingsFlick.contentY = Math.max(0, top)
+    else if (bot > settingsFlick.contentY + settingsFlick.height) settingsFlick.contentY = Math.max(0, bot - settingsFlick.height)
+  }
+  Connections {
+    target: page
+    function onSettingsFocusChanged() { settingsSheet.syncFocus() }
+    function onSettingsFieldKindChanged() { settingsSheet.syncFocus() }
+  }
+
+  Item {
+    id: settingsKeys
+    focus: true
+    Keys.priority: Keys.BeforeItem
+    Keys.onPressed: function (event) { if (page.settingsKey(event)) event.accepted = true }
+  }
 
   visible: page.settingsOpen && page.settingsView === "main"
   x: page.wideX
@@ -35,7 +68,7 @@ BorderSurface {
   borderSpec: page.alongside ? Border.none() : page.borderSpec
   padding: page.sheetPadding
 
-  MouseArea { anchors.fill: parent; onClicked: settingsField.forceActiveFocus() }
+  MouseArea { anchors.fill: parent; onClicked: settingsSheet.focusActive() }
 
   Item {
     anchors.fill: parent
@@ -62,11 +95,26 @@ BorderSurface {
         font.pixelSize: page.fs(Style.font.caption)
       }
 
-      Column {
+      Flickable {
+        id: settingsFlick
         anchors.top: settingsTitle.bottom
-        anchors.topMargin: page.sp(30)
+        anchors.topMargin: page.sp(24)
+        anchors.bottom: settingsFoot.top
+        anchors.bottomMargin: page.sp(12)
         anchors.left: parent.left
         anchors.right: parent.right
+        anchors.leftMargin: -page.sp(10)
+        anchors.rightMargin: -page.sp(10)
+        clip: true
+        contentWidth: width
+        contentHeight: settingsBody.implicitHeight + page.sp(8)
+        boundsBehavior: Flickable.StopAtBounds
+        TouchScroll { flickable: settingsFlick }
+
+      Column {
+        id: settingsBody
+        x: page.sp(10)
+        width: settingsFlick.width - page.sp(20)
         spacing: page.sp(8)
 
         // A section: drawn like a band in the dashboard.
@@ -116,6 +164,7 @@ BorderSurface {
             required property int index
             readonly property bool picked: page.settingsFocus === index
             readonly property bool lit: picked && page.here === "center"
+            onPickedChanged: if (picked) settingsSheet.ensureVisible(calRow)
             onLitChanged: page.selected(calRow, "center", lit)
             Component.onCompleted: if (lit) page.selected(calRow, "center", true)
             width: parent.width
@@ -133,7 +182,7 @@ BorderSurface {
             MouseArea {
               anchors.fill: parent
               cursorShape: calRow.picked ? Qt.ArrowCursor : Qt.PointingHandCursor
-              onClicked: { page.settingsFocus = calRow.index; settingsField.forceActiveFocus() }
+              onClicked: { page.settingsFocus = calRow.index; settingsSheet.focusActive() }
             }
 
             Column {
@@ -231,7 +280,7 @@ BorderSurface {
                         else if (modelData.act === "yes") { page.settingsAsking = -1; page.removeCalendar(calRow.index) }
                         else if (modelData.act === "no") page.settingsAsking = -1
                         else page.askRemoveCalendar(calRow.index)
-                        settingsField.forceActiveFocus()
+                        settingsSheet.focusActive()
                       }
                       Tip {
                         host: page
@@ -252,12 +301,13 @@ BorderSurface {
           id: fieldRow
           page: settingsSheet.page
           kind: "field"
-          onChosen: settingsField.forceActiveFocus()
+          onChosen: settingsSheet.focusActive()
+          onFocused: function (it) { settingsSheet.ensureVisible(it) }
         TextField {
           id: settingsField
           width: fieldRow.width
-          // Typing from any row is typing an address: the field's row is
-          // picked, so Enter adds it.
+          // Clicking or typing into the field picks its row so Enter adds it.
+          onActiveFocusChanged: if (activeFocus && page.settingsFieldKind === "add" && page.settingsPicked() !== "field") page.settingsFocus = page.settingsAt("field")
           onTextChanged: if (text !== "" && page.settingsFieldKind === "add") page.settingsFocus = page.settingsAt("field")
           placeholderText: page.settingsFieldKind === "rename" ? "its name"
             : page.settingsState && page.settingsState.configured
@@ -330,7 +380,8 @@ BorderSurface {
         SettingRow {
           page: settingsSheet.page
           kind: "notebook"
-          onChosen: settingsField.forceActiveFocus()
+          onChosen: settingsSheet.focusActive()
+          onFocused: function (it) { settingsSheet.ensureVisible(it) }
           Text {
             textFormat: Text.PlainText
             text: page.sayNotebook()
@@ -359,7 +410,8 @@ BorderSurface {
         SettingRow {
           page: settingsSheet.page
           kind: "autonomy"
-          onChosen: settingsField.forceActiveFocus()
+          onChosen: settingsSheet.focusActive()
+          onFocused: function (it) { settingsSheet.ensureVisible(it) }
           Text {
             textFormat: Text.PlainText
             text: page.sayAutonomy()
@@ -388,7 +440,8 @@ BorderSurface {
         SettingRow {
           page: settingsSheet.page
           kind: "search"
-          onChosen: settingsField.forceActiveFocus()
+          onChosen: settingsSheet.focusActive()
+          onFocused: function (it) { settingsSheet.ensureVisible(it) }
           Text {
             textFormat: Text.PlainText
             text: page.saySearchFolders()
@@ -419,7 +472,8 @@ BorderSurface {
         SettingRow {
           page: settingsSheet.page
           kind: "checkin"
-          onChosen: settingsField.forceActiveFocus()
+          onChosen: settingsSheet.focusActive()
+          onFocused: function (it) { settingsSheet.ensureVisible(it) }
           Text {
             textFormat: Text.PlainText
             text: page.sayCheckin()
@@ -488,7 +542,8 @@ BorderSurface {
         SettingRow {
           page: settingsSheet.page
           kind: "sound"
-          onChosen: settingsField.forceActiveFocus()
+          onChosen: settingsSheet.focusActive()
+          onFocused: function (it) { settingsSheet.ensureVisible(it) }
           Text {
             textFormat: Text.PlainText
             text: page.settingsData.tickSound === false ? "Off" : "On"
@@ -513,7 +568,7 @@ BorderSurface {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onClicked: { if (modelData.act === "settingsSound") page.toggleTickSound(); else page.playTick(true); settingsField.forceActiveFocus() }
+                onClicked: { if (modelData.act === "settingsSound") page.toggleTickSound(); else page.playTick(true); settingsSheet.focusActive() }
                 Tip { host: page; shown: parent.containsMouse && modelData.act !== ""; text: page.tip("The tick's sound: on or off", "settingsChange") }
               }
             }
@@ -548,7 +603,8 @@ BorderSurface {
         SettingRow {
           page: settingsSheet.page
           kind: "pointer"
-          onChosen: settingsField.forceActiveFocus()
+          onChosen: settingsSheet.focusActive()
+          onFocused: function (it) { settingsSheet.ensureVisible(it) }
           Repeater {
             model: [{ mode: "every", text: "every selection" }, { mode: "panes", text: "pane changes only" }, { mode: "off", text: "off" }]
             Text {
@@ -566,7 +622,7 @@ BorderSurface {
                 cursorShape: Qt.PointingHandCursor
                 onClicked: {
                   page.setPointer(modelData.mode)
-                  settingsField.forceActiveFocus()
+                  settingsSheet.focusActive()
                 }
                 Tip { host: page; shown: parent.containsMouse; text: page.tip("The pointer: " + modelData.text + " (picked: the next one)", "settingsChange") }
               }
@@ -586,8 +642,10 @@ BorderSurface {
           font.pixelSize: page.fs(Style.font.bodySmall)
         }
       }
+      }
 
       Text {
+        id: settingsFoot
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom

@@ -424,6 +424,7 @@ Item {
     // `*` either side of `**bold**` belongs to the bold, so asking for
     // italic there adds a pair rather than eating one.
     var lone = function (i) { return n > 1 || (t.charAt(i - 1) !== marker && t.charAt(i + n) !== marker) }
+    ed.snapshot(true)
     if (t.substring(a - n, a) === marker && t.substring(b, b + n) === marker && lone(a - n) && lone(b)) {
       ed.remove(b, b + n)              // the far end first: the near offsets hold
       ed.remove(a - n, a)
@@ -446,6 +447,7 @@ Item {
   // with none, `[]()` and the cursor between the brackets for the words.
   function makeLink() {
     if (ed.readOnly) return
+    ed.snapshot(true)
     var sel = ed.selected()
     if (sel) {
       var a = sel.a, b = sel.b
@@ -544,6 +546,7 @@ Item {
     ed.undoStack = ed.undoStack.slice(0, -1)
     ed.redoStack = ed.redoStack.concat([{ text: ed.text, cursor: ed.cursorPosition }])
     ed.lastSnapshot = 0
+    ed.clearSelection()
     ed.commit(s.text, s.cursor)
     ed.placeCursor(true)
   }
@@ -579,6 +582,7 @@ Item {
     ed.redoStack = ed.redoStack.slice(0, -1)
     ed.undoStack = ed.undoStack.concat([{ text: ed.text, cursor: ed.cursorPosition }])
     ed.lastSnapshot = 0
+    ed.clearSelection()
     ed.commit(s.text, s.cursor)
     ed.placeCursor(true)
   }
@@ -1080,16 +1084,21 @@ Item {
     }
     if (ctrl && k === Qt.Key_A) { ed.selectAllStep(ed.rowItem(ed.focusedRow)); return true }
     if (ctrl && k === Qt.Key_V) {
-      var at = ed.selStart
-      ed.removeSpan()
-      ed.pasteAt(at)
+      var pasted = ed.pasteText().replace(/\r/g, "")
+      if (pasted !== "" && !ed.readOnly) {
+        var pa = ed.selStart, pb = ed.selEnd
+        ed.snapshot(true)
+        ed.clearSelection()
+        ed.replace(pa, pb, pasted)
+        ed.placeCursor(true)
+      }
       return true
     }
     if (k === Qt.Key_Backspace || k === Qt.Key_Delete) { ed.removeSpan(); return true }
     if ((k === Qt.Key_Return || k === Qt.Key_Enter) && !ctrl && !alt) {
       ed.removeSpan()
       var r = ed.rowItem(ed.focusedRow)
-      if (r) ed.returnKey(r, shift)
+      if (r) ed.returnKey(r, shift, true)
       return true
     }
     if (k === Qt.Key_Tab && !ctrl && !alt) { ed.indentSpan(false); return true }
@@ -1205,9 +1214,9 @@ Item {
     return item && item.field.selectedText !== "" ? ed.selectionRange(item) : null
   }
 
-  function returnKey(item, soft) {
+  function returnKey(item, soft, noSnap) {
     var i = item.index
-    ed.snapshot(true)
+    if (!noSnap) ed.snapshot(true)
     if (item.field.selectedText !== "") {
       var sel = ed.selectionRange(item)
       ed.remove(sel.a, sel.b)
@@ -1502,7 +1511,7 @@ Item {
       }
       var span = Emph.collapse(r.body, a, b)
       var base = r.start + r.prefixLen
-      ed.snapshot(true)
+      ed.snapshot(sel || ctrl)
       ed.replace(base + span.a, base + span.b, "")
       ed.placeCursor(true)
       return true
@@ -1559,11 +1568,37 @@ Item {
       }
     }
     if (ctrl && k === Qt.Key_A) { ed.selectAllStep(item); event.accepted = true; return }
-    // Paste is the note's, not the field's: see `pasteText`.
+    // Copy, cut and paste are the note's, not the field's: rich rows hold
+    // 1px hidden spans and drawn arrows (`→>`) that must stay plain markdown
+    // on the clipboard, and cutting inside emphasis collapses orphan markers.
+    if (ctrl && !shift && !alt && (k === Qt.Key_C || k === Qt.Key_X)) {
+      if (!noSel) {
+        var rRow = ed.rows[i]
+        var ca = Math.min(f.selectionStart, f.selectionEnd)
+        var cb = Math.max(f.selectionStart, f.selectionEnd)
+        ed.copyText(rRow.body.slice(ca, cb))
+        if (k === Qt.Key_X && !ed.readOnly) {
+          var cSpan = Emph.collapse(rRow.body, ca, cb)
+          var cBase = rRow.start + rRow.prefixLen
+          ed.snapshot(true)
+          ed.cutting = true
+          ed.replace(cBase + cSpan.a, cBase + cSpan.b, "")
+          ed.cutting = false
+          ed.placeCursor(true)
+        }
+      }
+      event.accepted = true
+      return
+    }
     if (ctrl && !shift && !alt && k === Qt.Key_V) {
-      var from = noSel ? ed.cursorPosition : ed.absOf(i, Math.min(f.selectionStart, f.selectionEnd))
-      if (!noSel) ed.replace(from, ed.absOf(i, Math.max(f.selectionStart, f.selectionEnd)), "")
-      ed.pasteAt(from)
+      var pasted = ed.pasteText().replace(/\r/g, "")
+      if (pasted !== "" && !ed.readOnly) {
+        var from = noSel ? ed.cursorPosition : ed.absOf(i, Math.min(f.selectionStart, f.selectionEnd))
+        var to = noSel ? from : ed.absOf(i, Math.max(f.selectionStart, f.selectionEnd))
+        ed.snapshot(true)
+        ed.replace(from, to, pasted)
+        ed.placeCursor(true)
+      }
       event.accepted = true
       return
     }

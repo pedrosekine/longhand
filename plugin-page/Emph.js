@@ -281,15 +281,23 @@ function runsIn(nodes, out) {
   return out
 }
 
+function parseWithLinks(s) {
+  var ls = /\[/.test(s) ? linksIn(s) : []
+  LINKS = ls
+  var nodes = parse(s, 0)
+  LINKS = []
+  return nodes
+}
+
 function hidden(s) {
-  return merged(/[*_`~]/.test(s) ? runsIn(parse(s, 0), []) : [])
+  return merged(/[*_`~]/.test(s) ? runsIn(parseWithLinks(s), []) : [])
 }
 
 // Where the cursor may not stand: inside a marker run, and inside an
 // arrow — an arrow is one thing to it, and a click on its right half lands
 // after it.
 function stops(s) {
-  var raw = /[*_`~]/.test(s) ? runsIn(parse(s, 0), []) : []
+  var raw = /[*_`~]/.test(s) ? runsIn(parseWithLinks(s), []) : []
   var arrows = arrowsIn(s)
   for (var i = 0; i < arrows.length; i++) raw.push({ a: arrows[i].at + 1, b: arrows[i].end, open: true })
   return merged(raw)
@@ -370,7 +378,7 @@ function nodeHolding(nodes, a, b) {
 // markers with no job, and markers with no job are drawn. The second rule
 // cascades: emptying the italic inside `***word***` empties the bold too.
 function collapse(s, a, b) {
-  var nodes = parse(s, 0)
+  var nodes = parseWithLinks(s)
   var owner = nodeHolding(nodes, a, b)
   if (owner) {
     while (b === owner.inner[1] && a > owner.inner[0] && /\s/.test(s.charAt(a - 1))) a--

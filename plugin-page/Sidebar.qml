@@ -773,65 +773,103 @@ BorderSurface {
   }
 
   // The foot, the same in every space (Zen's essentials): which space is
-  // open, then today, keys and settings.
-  Row {
+  // open and the dashboard on the first row, today, keys and settings below.
+  Column {
     id: sidebarFoot
     anchors.left: parent.left
+    anchors.right: parent.right
     anchors.bottom: parent.bottom
     anchors.leftMargin: sidebar.contentLeftInset
+    anchors.rightMargin: sidebar.contentRightInset
     anchors.bottomMargin: sidebar.contentBottomInset
-    spacing: page.sp(16)
+    spacing: page.sp(6)
 
-    Row {
-      spacing: page.sp(8)
-      Repeater {
-        model: [{ space: "time", tip: "Time: the calendar, the day's deadlines, the projects" },
-                { space: "files", tip: "Files: your notes and the agent's, as folders" }]
-        Text {
-          required property var modelData
-          readonly property bool here: page.sidebarSpace === modelData.space
-          textFormat: Text.PlainText
-          text: modelData.space
-          color: spaceArea.containsMouse && page.handOn ? page.accent : here ? page.foreground : page.faint
-          font.family: page.fontFamily
-          font.styleName: page.fontStyle
-          font.pixelSize: page.fs(Style.font.bodySmall)
-          font.underline: here
-          Behavior on color { ColorAnimation { duration: 240 } }
-          MouseArea {
-            id: spaceArea
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: page.setSpace(modelData.space, 0)
-            Tip { host: page; act: "pane1"; shown: parent.containsMouse; text: page.tip(modelData.tip, "pane1") }
+    Item {
+      width: parent.width
+      height: spaceRow.implicitHeight
+
+      Row {
+        id: spaceRow
+        anchors.left: parent.left
+        anchors.verticalCenter: parent.verticalCenter
+        spacing: page.sp(10)
+        Repeater {
+          model: [{ space: "time", tip: "Time: the calendar, the day's deadlines, the projects" },
+                  { space: "files", tip: "Files: your notes and the agent's, as folders" }]
+          Text {
+            required property var modelData
+            readonly property bool here: page.sidebarSpace === modelData.space
+            textFormat: Text.PlainText
+            text: modelData.space
+            color: spaceArea.containsMouse && page.handOn ? page.accent : here ? page.foreground : page.faint
+            font.family: page.fontFamily
+            font.styleName: page.fontStyle
+            font.pixelSize: page.fs(Style.font.bodySmall)
+            font.underline: here
+            Behavior on color { ColorAnimation { duration: 240 } }
+            MouseArea {
+              id: spaceArea
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: page.setSpace(modelData.space, 0)
+              Tip { host: page; act: "pane1"; shown: parent.containsMouse; text: page.tip(modelData.tip, "pane1") }
+            }
           }
         }
       }
-    }
 
-    Repeater {
-      model: [{ text: "today", act: "today", tip: "Today's note" },
-              { text: "keys", act: "keys", tip: "Every key the page answers to, and moving one" },
-              { text: "settings", act: "settings", tip: "Settings: your calendars" }]
       Text {
-        required property var modelData
-        readonly property bool open: modelData.act === "keys" ? page.keysOpen : modelData.act === "settings" ? page.settingsOpen
-          : page.noteService.isToday
+        anchors.right: parent.right
+        anchors.verticalCenter: parent.verticalCenter
         textFormat: Text.PlainText
-        text: modelData.text
-        color: footArea.containsMouse && page.handOn ? page.accent : open ? page.foreground : page.faint
+        text: "dashboard"
+        color: dashFootArea.containsMouse && page.handOn ? page.accent : page.dashOpen ? page.foreground : page.faint
         font.family: page.fontFamily
         font.styleName: page.fontStyle
         font.pixelSize: page.fs(Style.font.bodySmall)
         Behavior on color { ColorAnimation { duration: 240 } }
         MouseArea {
-          id: footArea
+          id: dashFootArea
           anchors.fill: parent
           hoverEnabled: true
           cursorShape: Qt.PointingHandCursor
-          onClicked: modelData.act === "keys" ? page.toggleKeys() : modelData.act === "settings" ? page.toggleSettings() : page.goToday()
-          Tip { host: page; act: modelData.act; shown: parent.containsMouse; text: page.tip(modelData.tip, modelData.act) }
+          onClicked: page.showDash()
+          Tip {
+            host: page
+            act: "dashGo"
+            shown: parent.containsMouse
+            text: page.tips([["The dashboard: every open task and deadline", "dashGo"], ["Flip between note and dashboard", "pane2"]])
+          }
+        }
+      }
+    }
+
+    Row {
+      spacing: page.sp(16)
+      Repeater {
+        model: [{ text: "today", act: "today", tip: "Today's note" },
+                { text: "keys", act: "keys", tip: "Every key the page answers to, and moving one" },
+                { text: "settings", act: "settings", tip: "Settings: your calendars" }]
+        Text {
+          required property var modelData
+          readonly property bool open: modelData.act === "keys" ? page.keysOpen : modelData.act === "settings" ? page.settingsOpen
+            : page.noteService.isToday && !page.dashOpen && !page.keysOpen && !page.settingsOpen
+          textFormat: Text.PlainText
+          text: modelData.text
+          color: footArea.containsMouse && page.handOn ? page.accent : open ? page.foreground : page.faint
+          font.family: page.fontFamily
+          font.styleName: page.fontStyle
+          font.pixelSize: page.fs(Style.font.bodySmall)
+          Behavior on color { ColorAnimation { duration: 240 } }
+          MouseArea {
+            id: footArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: modelData.act === "keys" ? page.toggleKeys() : modelData.act === "settings" ? page.toggleSettings() : page.goToday()
+            Tip { host: page; act: modelData.act; shown: parent.containsMouse; text: page.tip(modelData.tip, modelData.act) }
+          }
         }
       }
     }
