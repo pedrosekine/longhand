@@ -606,7 +606,7 @@ BorderSurface {
           onChosen: settingsSheet.focusActive()
           onFocused: function (it) { settingsSheet.ensureVisible(it) }
           Repeater {
-            model: [{ mode: "every", text: "every selection" }, { mode: "panes", text: "pane changes only" }, { mode: "off", text: "off" }]
+            model: [{ mode: "panes", text: "pane changes only" }, { mode: "every", text: "every selection" }, { mode: "off", text: "off" }]
             Text {
               required property var modelData
               textFormat: Text.PlainText

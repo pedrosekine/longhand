@@ -295,17 +295,43 @@ Column {
     font.pixelSize: page.fs(Style.font.caption)
   }
   // What it looked up to answer (slice 5: searched, read, a course's
-  // document), and what it filed: under every answer, in every pane.
-  Text {
-    visible: text !== ""
+  // document, privacy withhold counts), what it filed, and a quiet "saw" link
+  // to open the exact payload file read-only inside Longhand.
+  Flow {
+    readonly property string fetchedText: turn.t.role === "agent" && !turn.away ? page.sayFetched(turn.t) : ""
+    readonly property string payloadPath: turn.t.role === "agent" && !turn.away && typeof turn.t.payload === "string" ? turn.t.payload : ""
+    visible: fetchedText !== "" || payloadPath !== ""
     width: parent.width
-    textFormat: Text.PlainText
-    wrapMode: Text.WordWrap
-    text: turn.t.role === "agent" && !turn.away ? page.sayFetched(turn.t) : ""
-    color: page.faint
-    font.family: page.fontFamily
-    font.styleName: page.fontStyle
-    font.pixelSize: page.fs(Style.font.caption)
+    spacing: 0
+    Text {
+      visible: parent.fetchedText !== ""
+      width: Math.min(implicitWidth, parent.width)
+      textFormat: Text.PlainText
+      wrapMode: Text.WordWrap
+      text: parent.fetchedText + (parent.payloadPath !== "" ? " · " : "")
+      color: page.faint
+      font.family: page.fontFamily
+      font.styleName: page.fontStyle
+      font.pixelSize: page.fs(Style.font.caption)
+    }
+    Text {
+      visible: parent.payloadPath !== ""
+      textFormat: Text.PlainText
+      text: "saw"
+      color: sawArea.containsMouse && page.handOn ? page.accent : page.faint
+      font.family: page.fontFamily
+      font.styleName: page.fontStyle
+      font.pixelSize: page.fs(Style.font.caption)
+      font.underline: sawArea.containsMouse && page.handOn
+      MouseArea {
+        id: sawArea
+        anchors.fill: parent
+        hoverEnabled: true
+        cursorShape: Qt.PointingHandCursor
+        onClicked: page.openFile(parent.parent.payloadPath, true)
+        Tip { host: turn.page; shown: parent.containsMouse; text: "What the agent saw: open this turn's logged context (read-only)" }
+      }
+    }
   }
   // A document it filed because the student asked: one click puts it back.
   Repeater {

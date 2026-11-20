@@ -343,11 +343,11 @@ Item {
   readonly property color scrim: Commons.Color.menu.scrim
   // The Omarchy theme's palette, by role (ThemeColors.qml): secondary and faint
   // text in the theme's own tuned greys, headings and marks in its colours.
-  readonly property color accent: pal.accent
+  readonly property color accent: pal.accentText
   readonly property color dim: pal.dim
   readonly property color faint: pal.faint
-  readonly property color urgent: pal.red
-  readonly property color magenta: pal.magenta       // private things' lock
+  readonly property color urgent: pal.redText
+  readonly property color magenta: pal.magentaText   // private things' lock
   readonly property var borderSpec: Border.surfaceSpec("menu", "border", border, Math.max(1, Style.space(2)))
   // The page's one face: the note, the chrome, the chat. The page drew in
   // the shell's monospace until 2026-10-15, then in iA Writer Quattro S, a
@@ -971,6 +971,9 @@ Item {
   property var queued: []      // runner commands waiting, oldest first
   property bool running: false
   property string runningHash: ""
+  property string runnerPhase: ""
+  property string talkPhase: ""
+  property string planPhase: ""
   // The blocks the student has asked about that have not come back yet.
   // Marked from the moment of the ask, not from when the process starts:
   // a send waits for dates to bind (`whenWritten`) and for the note to be
@@ -2777,6 +2780,7 @@ Item {
     if (Sc.hit(event, "pin")) { root.togglePin(); return true }
     if (Sc.hit(event, "copyPath")) { root.copyPath(); return true }
     if (Sc.hit(event, "switcher")) { root.toggleSwitcher(); return true }
+    if (Sc.hit(event, "findAll")) { root.openSwitcher("? "); return true }
     if (Sc.hit(event, "projectKey")) { root.projectByKey(event); return true }
     return false
   }
@@ -3021,9 +3025,9 @@ Item {
   // are, and a click never lands somewhere unexpected. Never while the
   // student's own hand is on the mouse (moved in the last moment), never
   // while typing in the note, and only while the page's window is the
-  // active one. `pointer` in settings.json: "every" (the default), "panes",
+  // active one. `pointer` in settings.json: "panes" (the default), "every",
   // "off".
-  readonly property string pointerMode: ["every", "panes", "off"].indexOf(root.settingsData.pointer) >= 0 ? root.settingsData.pointer : "every"
+  readonly property string pointerMode: ["panes", "every", "off"].indexOf(root.settingsData.pointer) >= 0 ? root.settingsData.pointer : "panes"
   property var marks: ({})          // pane -> the item selected in it, as rows say (`selected`)
   property real handMovedAt: 0      // the student's own pointer, last moved
   property real warpedAt: 0
@@ -3232,7 +3236,7 @@ Item {
   }
 
   function cyclePointer() {
-    var order = ["every", "panes", "off"]
+    var order = ["panes", "every", "off"]
     root.setPointer(order[(order.indexOf(root.pointerMode) + 1) % order.length])
   }
 
@@ -4283,6 +4287,8 @@ Item {
     // Documents it was asked to file: moved at once, so said, not a card.
     ;(t.filed || []).forEach(function (f) { bits.push("filed “" + f.name.replace(/\.pdf$/i, "") + "” in #" + f.project) })
     ;(t.unfiled || []).forEach(function (x) { bits.push("not filed: " + x) })
+    var held = Say.sayWithheld(t.withheld)
+    if (held !== "") bits.push(held)
     return bits.join(" · ")
   }
 
@@ -5217,39 +5223,260 @@ Item {
     return false
   }
 
-  // The switcher (Ctrl+O, docs/keys-proposal.md's "find anything", built
-  // for projects first: plan.md item 19): "#th" Enter from anywhere. It
-  // floats over the middle; Esc gives the keys back where they were.
+  // The switcher (Ctrl+O, docs/keys-proposal.md's "find anything"):
+  // projects first (preserving `#th` and Alt+1..9), plus vault notes/PDFs,
+  // core views/actions, and `? <words>` full-text search across all notes
+  // (including private notes, local-only). Esc gives the keys back.
   property bool switcherOpen: false
   readonly property var switcherField: switcherBox.fieldRef
   property string switcherText: ""
   property int switcherPick: 0
   property string switcherFrom: "center"
-  readonly property var switcherMatches: root.switcherOpen ? Tags.reach(root.projects, root.switcherText) : []
-  onSwitcherTextChanged: root.switcherPick = 0
-  function toggleSwitcher() {
-    if (root.switcherOpen) { root.closeSwitcher(); return }
+  property var switcherFindHits: []
+  property bool switcherFinding: false
+  property string switcherFindQuery: ""
+
+  Timer {
+    id: switcherFindTimer
+    interval: 160
+    onTriggered: root.runSwitcherFind()
+  }
+
+  Process {
+    id: switcherFindProc
+    property string query: ""
+    stdout: StdioCollector {
+      onStreamFinished: {
+        root.switcherFinding = false
+        var raw = root.switcherText.trim()
+        var want = raw.charAt(0) === "?" ? raw.slice(1).trim() : ""
+        if (switcherFindProc.query !== want) {
+          if (want !== "") root.runSwitcherFind()
+          return
+        }
+        try {
+          var parsed = JSON.parse(text)
+          root.switcherFindHits = (parsed.hits || []).map(function (h) {
+            return {
+              kind: "hit", tag: "", path: h.path, line: h.line, bodyLine: h.body_line || h.line, date: h.date || "",
+              heading: h.heading || "", text: h.text || "",
+              title: h.text || h.path,
+              sub: (h.date || root.fileName(h.path)) + (h.heading ? " · " + h.heading : "") + " · line " + h.line,
+              hint: h.date ? "day" : "note"
+            }
+          })
+        } catch (e) {
+          root.switcherFindHits = []
+        }
+      }
+    }
+    onExited: function (code) { if (code !== 0) root.switcherFinding = false }
+  }
+
+  function runSwitcherFind() {
+    var raw = root.switcherText.trim()
+    if (!root.switcherOpen || raw.charAt(0) !== "?") {
+      root.switcherFindHits = []
+      root.switcherFinding = false
+      return
+    }
+    var q = raw.slice(1).trim()
+    if (q === "") {
+      root.switcherFindHits = []
+      root.switcherFinding = false
+      return
+    }
+    if (switcherFindProc.running) {
+      if (switcherFindProc.query === q) return
+      switcherFindProc.signal(15)
+    }
+    switcherFindProc.query = q
+    root.switcherFindQuery = q
+    root.switcherFinding = true
+    switcherFindProc.command = [svc.runner, "find", "--words", q, "--limit", "12"]
+    switcherFindProc.running = true
+  }
+
+  function switcherViews() {
+    return [
+      { kind: "view", id: "dash", tag: "", title: "Dashboard", sub: "Tasks, deadlines and proposals", keywords: "dashboard tasks deadlines proposals plan", hint: root.keyName("dashGo") || root.keyName("pane2") },
+      { kind: "view", id: "today", tag: "", title: "Today's note", sub: "Jump back to today", keywords: "today home daily note", hint: root.keyName("today") },
+      { kind: "view", id: "settings", tag: "", title: "Settings", sub: "Calendars, autonomy, search, sound, pointer", keywords: "settings preferences calendar autonomy sound pointer", hint: root.keyName("settings") },
+      { kind: "view", id: "keys", tag: "", title: "Keys", sub: "Every shortcut, searchable and rebindable", keywords: "keys shortcuts bindings help", hint: root.keyName("keys") },
+      { kind: "view", id: "export", tag: "", title: "Export as PDF", sub: "Export this section or selection", keywords: "export pdf print hand in", hint: root.keyName("exportPdf") },
+      { kind: "view", id: "files", tag: "", title: "Files", sub: "Browse notes and papers in the sidebar", keywords: "files folders vault sidebar", hint: root.keyName("pane1") },
+      { kind: "view", id: "time", tag: "", title: "Calendar & projects", sub: "Time space in the sidebar", keywords: "calendar time sidebar projects", hint: root.keyName("pane1") },
+      { kind: "view", id: "agent", tag: "", title: "Agent chat", sub: "The day's conversation", keywords: "agent chat day conversation", hint: root.keyName("pane3") }
+    ]
+  }
+
+  function switcherFileMatches(q) {
+    var _v = root.vaultIndexVersion
+    if (!root.vaultIndex || !root.vaultIndex.paths) return []
+    var low = q.toLowerCase()
+    var daily = svc.config && svc.config.daily ? String(svc.config.daily.dir || "").replace(/^\/+|\/+$/g, "") : ""
+    var agentRoot = svc.agentRoot
+    var scored = []
+    var paths = root.vaultIndex.paths
+    for (var i = 0; i < paths.length; i++) {
+      var rel = paths[i]
+      if (!/\.(md|pdf)$/i.test(rel)) continue
+      if (agentRoot !== "" && (rel === agentRoot || rel.indexOf(agentRoot + "/") === 0)) continue
+      var slash = rel.lastIndexOf("/")
+      var base = (slash >= 0 ? rel.slice(slash + 1) : rel)
+      var stem = base.replace(/\.(md|pdf)$/i, "")
+      var stemLow = stem.toLowerCase()
+      var relLow = rel.toLowerCase()
+      var score = 0
+      if (stemLow.indexOf(low) === 0) score = 3
+      else if (stemLow.indexOf(low) >= 0) score = 2
+      else if (relLow.indexOf(low) >= 0) score = 1
+      if (score === 0) continue
+      var isPdf = /\.pdf$/i.test(rel)
+      var isDaily = !isPdf && daily !== "" && rel.indexOf(daily + "/") === 0 && rel.slice(daily.length + 1).indexOf("/") < 0
+      var folder = slash > 0 ? rel.slice(0, slash) : ""
+      scored.push({
+        score: score,
+        rel: rel,
+        item: {
+          kind: "file", tag: "", path: rel, date: isDaily ? stem : "",
+          title: stem,
+          sub: isDaily ? "Daily note" : (folder || rel),
+          hint: isPdf ? "pdf" : isDaily ? "day" : "note"
+        }
+      })
+    }
+    scored.sort(function (a, b) {
+      if (b.score !== a.score) return b.score - a.score
+      return b.rel.localeCompare(a.rel)
+    })
+    return scored.slice(0, 6).map(function (x) { return x.item })
+  }
+
+  readonly property var switcherMatches: {
+    if (!root.switcherOpen) return []
+    var raw = root.switcherText.trim()
+    // Empty query: projects only (clean open, exact Alt+1..9 order).
+    if (raw === "") {
+      return Tags.reach(root.projects, "").map(function (p) {
+        return Object.assign({ kind: "project" }, p)
+      })
+    }
+    // Full-text search across all user notes (`? <words>`).
+    if (raw.charAt(0) === "?") return root.switcherFindHits
+    // `#` prefix: projects only.
+    if (raw.charAt(0) === "#") {
+      return Tags.reach(root.projects, raw).map(function (p) {
+        return Object.assign({ kind: "project" }, p)
+      })
+    }
+    var out = []
+    var projs = Tags.reach(root.projects, raw)
+    for (var i = 0; i < projs.length && i < 6; i++) out.push(Object.assign({ kind: "project" }, projs[i]))
+    var low = raw.toLowerCase()
+    var views = root.switcherViews()
+    var vcount = 0
+    for (var j = 0; j < views.length && vcount < 4; j++) {
+      if (views[j].title.toLowerCase().indexOf(low) >= 0 || views[j].keywords.indexOf(low) >= 0) {
+        out.push(views[j]); vcount++
+      }
+    }
+    var files = root.switcherFileMatches(raw)
+    for (var k = 0; k < files.length; k++) out.push(files[k])
+    out.push({
+      kind: "search", tag: "", query: raw,
+      title: "search all notes for “" + raw + "”",
+      sub: "full-text across every note, including private",
+      hint: "? " + raw
+    })
+    return out
+  }
+
+  onSwitcherTextChanged: {
+    root.switcherPick = 0
+    var raw = root.switcherText.trim()
+    if (root.switcherOpen && raw.charAt(0) === "?") {
+      if (raw.slice(1).trim() === "") { root.switcherFindHits = []; root.switcherFinding = false; switcherFindTimer.stop() }
+      else switcherFindTimer.restart()
+    } else {
+      switcherFindTimer.stop()
+      root.switcherFinding = false
+    }
+  }
+
+  function openSwitcher(prefill) {
     root.switcherFrom = root.here
     root.used("switcher")
-    root.switcherText = ""
+    root.switcherFindHits = []
+    root.switcherFinding = false
+    root.switcherText = prefill || ""
     root.switcherPick = 0
     root.switcherOpen = true
     if (root.projectsListed.length === 0) root.refreshProjects()
-    switcherBox.fieldRef.text = ""
+    root.needIndex()
+    switcherBox.fieldRef.text = prefill || ""
+    switcherBox.fieldRef.cursorPosition = switcherBox.fieldRef.text.length
     switcherBox.fieldRef.forceActiveFocus()
   }
+
+  function toggleSwitcher() {
+    if (root.switcherOpen) { root.closeSwitcher(); return }
+    root.openSwitcher("")
+  }
   function closeSwitcher() {
+    switcherFindTimer.stop()
+    root.switcherFinding = false
     root.switcherOpen = false
     if (!root.focusPane(root.switcherFrom)) root.focusCenter()
   }
   function switcherGo(asPage) {
-    var pr = root.switcherMatches[root.switcherPick]
-    if (!pr) return
-    if (asPage) {
+    var item = root.switcherMatches[root.switcherPick]
+    if (!item) return
+    if (item.kind === "project") {
+      if (asPage) {
+        root.closeSwitcher()
+        root.used("reach", "switcher-page")
+        root.openProjectPage(item.tag)
+      } else root.reachProject(item, "switcher")
+      return
+    }
+    if (item.kind === "search") {
+      switcherBox.fieldRef.text = "? " + item.query
+      switcherBox.fieldRef.cursorPosition = switcherBox.fieldRef.text.length
+      switcherBox.fieldRef.forceActiveFocus()
+      root.runSwitcherFind()
+      return
+    }
+    if (item.kind === "view") {
       root.closeSwitcher()
-      root.used("reach", "switcher-page")
-      root.openProjectPage(pr.tag)
-    } else root.reachProject(pr, "switcher")
+      if (item.id === "dash") root.showDash()
+      else if (item.id === "today") root.goToday()
+      else if (item.id === "settings") root.toggleSettings()
+      else if (item.id === "keys") root.toggleKeys()
+      else if (item.id === "export") root.openExport()
+      else if (item.id === "files") { root.sidebarSpace = "files"; if (!root.sidebarOpen) root.paneKey("left"); else root.focusPane("left") }
+      else if (item.id === "time") { root.sidebarSpace = "time"; if (!root.sidebarOpen) root.paneKey("left"); else root.focusPane("left") }
+      else if (item.id === "agent") root.paneKey("right")
+      return
+    }
+    if (item.kind === "file") {
+      root.closeSwitcher()
+      if (item.date) root.openNote(item.date)
+      else root.openFile(item.path, false)
+      return
+    }
+    if (item.kind === "hit") {
+      root.closeSwitcher()
+      root.pendingLine = item.bodyLine || item.line || 1
+      if (item.date) {
+        if (item.date === svc.noteDate && svc.ready) { root.showNote(); root.landOnLine() }
+        else root.openNote(item.date)
+      } else {
+        if (item.path === svc.filePath && svc.ready) { root.showNote(); root.landOnLine() }
+        else root.openFile(item.path, false)
+      }
+      return
+    }
   }
   function switcherKey(event) {
     var n = root.switcherMatches.length
@@ -6032,7 +6259,7 @@ Item {
   // which read like a second row of chips and disagreed with them: it
   // counted only the rows of unfolded bands, so "5 open" stood over "All
   // 40". The chips are the counts now, and the agent has a chip of its own.
-  readonly property string dashStatus: root.planning ? "planning…"
+  readonly property string dashStatus: root.planning ? (root.planPhase !== "" && root.planPhase !== "thinking" ? "planning · " + root.planPhase + "…" : "planning…")
     : root.planError !== "" ? "the agent could not plan: " + root.planError : ""
   // The agent's chip: what it asks or has done, of what the strip keeps,
   // and how much of that arrived since the dashboard was last left.
@@ -6122,7 +6349,12 @@ Item {
   // three levels are offered where five are read.
   function cyclePriorityFocused() {
     var t = root.focusedLine()
-    if (!t) return
+    if (!t) {
+      var row = root.taskRows[root.taskFocus]
+      if (row && row.kind === "deadline" && row.deadline.status === "open")
+        root.showHint("not in a note yet — Enter writes it into today's note")
+      return
+    }
     root.editTask(t, "prio", Task.nextPriority(t.priority || 0))
     root.touchBox(t, "keep")
     root.used("priority")
@@ -6183,10 +6415,16 @@ Item {
   // because a date is quicker said than picked — and it is read by the
   // note's own parser, so "friday" means here what it means there.
   function startDashWhen() {
-    if (!root.focusedLine()) return
+    var t = root.focusedLine()
+    if (!t) {
+      var row = root.taskRows[root.taskFocus]
+      if (row && row.kind === "deadline" && row.deadline.status === "open")
+        root.showHint("not in a note yet — Enter writes it into today's note")
+      return
+    }
     root.dashFieldKind = "when"
     root.dashFieldStart = ""
-    root.dashWhenFor = root.focusedLine()
+    root.dashWhenFor = t
     root.dashWhenText = ""
   }
 
@@ -6249,11 +6487,15 @@ Item {
     }
     var t = root.dashWhenFor
     var phrase = root.dashWhenText.trim()
-    root.dashWhenFor = null
-    root.dashWhenText = ""
-    if (!t || phrase === "") return
+    if (!t || phrase === "") {
+      root.dashWhenFor = null
+      root.dashWhenText = ""
+      return
+    }
     var read = Dates.read(phrase, new Date())
     if (!read) { root.showHint("no date in \"" + phrase + "\""); return }
+    root.dashWhenFor = null
+    root.dashWhenText = ""
     // A do-date is a day, not a moment: the time a deadline carries is the
     // hour something is owed, and a day you mean to work on it has none.
     root.editTask(t, "when", read.iso.split(" ")[0])
@@ -6998,7 +7240,9 @@ Item {
     }
     if (r.deadline > 0) {
       var d = dl.byId[r.deadline]
-      root.openWhen(r.raw, r.deadline, d ? Qt.formatDateTime(new Date(d.due * 1000), "ddd d MMM HH:mm") : "")
+      var at = d ? new Date(d.due * 1000) : null
+      var timed = at && !(at.getHours() === 23 && at.getMinutes() === 59)
+      root.openWhen(r.raw, r.deadline, at ? Qt.formatDateTime(at, timed ? "yyyy-MM-dd HH:mm" : "yyyy-MM-dd") : "")
       return
     }
     var c = Bound.cue(r.body)
@@ -7091,40 +7335,40 @@ Item {
   function submitWhen() {
     var a = root.whenFor
     var text = whenField.text.trim()
-    root.closeWhen()
-    if (!a) return
+    if (!a) { root.closeWhen(); return }
     if (a.id > 0) {
       var r = root.rowByDeadline(a.id)
-      if (!r) return
+      if (!r) { root.closeWhen(); return }
       if (text === "") {
+        root.closeWhen()
         // Unbound by hand: the date goes, and the deadline is asked about
         // like a deleted line's.
         editor.snapshot(true)
         editor.replace(r.bodyEnd + (r.marks || "").length, r.start + r.raw.length, "")
         return
       }
-      dl.when(text, function (w) {
-        if (!w) { root.showHint("that date did not read: " + text); return }
-        dl.set(a.id, dl.words(text))
-        var now = root.rowByDeadline(a.id)
-        if (now) root.writeLine(now, now.raw.slice(0, now.raw.length - (now.dateTail || "").length) + Bound.tail(w.ms, a.id))
-      })
+      var w = Dates.read(text, new Date())
+      if (!w) { root.showHint("that date did not read: " + text); return }
+      root.closeWhen()
+      dl.set(a.id, dl.words(w.iso))
+      var now = root.rowByDeadline(a.id)
+      if (now) root.writeLine(now, now.raw.slice(0, now.raw.length - (now.dateTail || "").length) + Bound.tail(w.ms, a.id))
       return
     }
-    if (text === "") return
+    if (text === "") { root.closeWhen(); return }
     var row = root.rowByRaw(a.raw)
-    if (!row) return
+    if (!row) { root.closeWhen(); return }
     var title = Bound.titleOf(row.body)
-    if (title === "") { root.showHint("write what it is first, then " + root.keyName("deadline")); return }
+    if (title === "") { root.closeWhen(); root.showHint("write what it is first, then " + root.keyName("deadline")); return }
+    var w2 = Dates.read(text, new Date())
+    if (!w2) { root.showHint("that date did not read: " + text); return }
+    root.closeWhen()
     var head = row.body
     var project = Bound.projectOf(row.body)
-    dl.when(text, function (w) {
-      if (!w) { root.showHint("that date did not read: " + text); return }
-      if (root.bindTwin(a.raw, head, project, text, w.ms)) return
-      var stem = svc.noteDate
-      dl.add(title, project, text, function (id) {
-        if (id > 0 && svc.noteDate === stem) root.writeBinding(a.raw, head, w.ms, id)
-      })
+    if (root.bindTwin(a.raw, head, project, w2.iso, w2.ms)) return
+    var stem = svc.noteDate
+    dl.add(title, project, w2.iso, function (id) {
+      if (id > 0 && svc.noteDate === stem) root.writeBinding(a.raw, head, w2.ms, id)
     })
   }
 
@@ -7794,6 +8038,7 @@ Item {
     onLoaded: { root.applyText(svc.body); root.reconcilePending = true; root.startCheck(); root.reconcile(); root.openPass(); root.refreshDated() }
     // A write that never said it landed, written again (Service.unstick).
     onStall: root.showHint("a save did not land: writing it again")
+    onToolWarningChanged: if (toolWarning !== "") root.showHint(toolWarning)
     onExternalChange: { root.applyText(svc.body, true); root.reconcilePending = true; root.startCheck(); root.reconcile(); root.notesChanged(); root.refreshDated() }
     onSavedNow: {
       root.notesChanged()
@@ -7860,10 +8105,15 @@ Item {
   Process {
     id: runner
     property string said: ""
-    stderr: StdioCollector {
-      onStreamFinished: {
-        runner.said = text.trim()
-        if (runner.said !== "") console.warn("longhand.page runner: " + runner.said)
+    onRunningChanged: if (running) { runner.said = ""; root.runnerPhase = "" }
+    stderr: SplitParser {
+      onRead: function (line) {
+        var ph = Queue.phase(line)
+        if (ph !== "") { root.runnerPhase = ph; return }
+        if (line.trim() !== "") {
+          runner.said = (runner.said ? runner.said + "\n" : "") + line
+          console.warn("longhand.page runner: " + line)
+        }
       }
     }
     stdout: StdioCollector {
@@ -7875,6 +8125,7 @@ Item {
     // nothing to say. Silence is now only ever an answer, never a fault.
     onExited: function (code, status) {
       root.running = false
+      root.runnerPhase = ""
       // The day's answer may have proposed: its cards are the dashboard's items.
       if (root.runningHash === "day") { Qt.callLater(root.refreshProposals); Qt.callLater(root.refreshTasks) }
       // …and so may a block's chat: a day or a drop is in the one list.
@@ -8338,6 +8589,7 @@ Item {
 
   Process {
     id: planProc
+    onRunningChanged: if (running) root.planPhase = ""
     stdout: StdioCollector {
       onStreamFinished: {
         var r = null
@@ -8346,9 +8598,16 @@ Item {
         if (root.planError !== "" && r && r.error) root.showHint("the agent could not plan: " + root.planError)
       }
     }
-    stderr: StdioCollector { onStreamFinished: if (text.trim() !== "") console.warn("longhand.page plan: " + text.trim()) }
+    stderr: SplitParser {
+      onRead: function (line) {
+        var ph = Queue.phase(line)
+        if (ph !== "") { root.planPhase = ph; return }
+        if (line.trim() !== "") console.warn("longhand.page plan: " + line)
+      }
+    }
     onExited: function (code, status) {
       root.planning = false
+      root.planPhase = ""
       root.refreshProposals()
       if (root.planAgain) { root.planAgain = false; root.runPlan(true) }
     }
@@ -8443,6 +8702,7 @@ Item {
   Process {
     id: talkProc
     property string said: ""
+    onRunningChanged: if (running) { talkProc.said = ""; root.talkPhase = "" }
     stdout: StdioCollector {
       // The planner's answer is JSON (`talk`); the margin's is a line
       // (`chat`). Either way the conversation is read again.
@@ -8451,13 +8711,18 @@ Item {
         root.fetchTalk()
       }
     }
-    stderr: StdioCollector {
-      onStreamFinished: {
-        talkProc.said = text.trim()
-        if (talkProc.said !== "") console.warn("longhand.page talk: " + talkProc.said)
+    stderr: SplitParser {
+      onRead: function (line) {
+        var ph = Queue.phase(line)
+        if (ph !== "") { root.talkPhase = ph; return }
+        if (line.trim() !== "") {
+          talkProc.said = (talkProc.said ? talkProc.said + "\n" : "") + line
+          console.warn("longhand.page talk: " + line)
+        }
       }
     }
     onExited: function (code, status) {
+      root.talkPhase = ""
       if (root.talkStopAsked) {
         root.talkStopAsked = false
         root.pendingTalk = null
@@ -9019,7 +9284,7 @@ Item {
               visible: svc.notePrivate && root.agentDay && !root.beforeHorizon && !root.pdfShown
               anchors.verticalCenter: parent.verticalCenter
               width: root.sp(10)
-              color: pal.magenta
+              color: root.magenta
             }
             Text {
               visible: root.agentDay && !root.beforeHorizon && !root.pdfShown
@@ -9142,18 +9407,41 @@ Item {
               }
             }
 
-            // The agent mark: faint at rest, brighter from the moment
-            // something is asked until it comes back, accent while a reply
-            // in this note is still unread.
-            Text {
+            // Quiet hairline separating clickable header actions from passive
+            // status indicators (agent + saved dot).
+            Rectangle {
+              visible: agentStatus.visible
+              anchors.verticalCenter: parent.verticalCenter
+              width: 1
+              height: root.sp(10)
+              color: Util.alpha(root.foreground, 0.18)
+            }
+
+            // The agent mark: status-only (non-clickable), paired with a small
+            // indicator dot so it reads clearly as status rather than a button.
+            Row {
+              id: agentStatus
               visible: svc.header !== "" && root.agentOn && !root.pdfShown && (headerRight.room >= root.sp(175) || root.working || root.replyWaiting)
               anchors.verticalCenter: parent.verticalCenter
-              textFormat: Text.PlainText
-              text: "agent"
-              color: root.replyWaiting ? root.accent : (root.working ? root.foreground : root.faint)
-              font.family: root.fontFamily
-              font.styleName: root.fontStyle
-              font.pixelSize: root.fs(Style.font.bodySmall)
+              spacing: root.sp(5)
+              Rectangle {
+                anchors.verticalCenter: parent.verticalCenter
+                width: root.sp(5)
+                height: width
+                radius: width / 2
+                color: root.replyWaiting ? root.accent : (root.working ? root.foreground : Util.alpha(root.faint, 0.6))
+                Behavior on color { ColorAnimation { duration: 240 } }
+              }
+              Text {
+                anchors.verticalCenter: parent.verticalCenter
+                textFormat: Text.PlainText
+                text: "agent"
+                color: root.replyWaiting ? root.accent : (root.working ? root.foreground : root.faint)
+                font.family: root.fontFamily
+                font.styleName: root.fontStyle
+                font.pixelSize: root.fs(Style.font.bodySmall)
+                Behavior on color { ColorAnimation { duration: 240 } }
+              }
               MouseArea {
                 anchors.fill: parent
                 hoverEnabled: true
@@ -9165,7 +9453,6 @@ Item {
                                    ["This block's chat", "ask"], ["The agent's pane", "pane3"]])
                 }
               }
-              Behavior on color { ColorAnimation { duration: 240 } }
             }
 
             // Saved / unsaved: a dot that brightens while a write is
@@ -9230,19 +9517,54 @@ Item {
           }
         }
 
-        Text {
+        // Setup / error state: actionable guidance and Esc-dismissible so a
+        // missing config.json or bad vault path never traps the overlay.
+        FocusScope {
+          id: problemCard
           visible: root.problem !== ""
+          focus: visible
           anchors.top: searchBar.bottom
           anchors.topMargin: root.sp(24)
           anchors.left: parent.left
           anchors.right: parent.right
-          textFormat: Text.PlainText
-          wrapMode: Text.WordWrap
-          text: root.problem
-          color: root.urgent
-          font.family: root.fontFamily
-          font.styleName: root.fontStyle
-          font.pixelSize: root.fs(Style.font.body)
+          height: problemCol.implicitHeight
+          onVisibleChanged: if (visible && root.showing) Qt.callLater(problemCard.forceActiveFocus)
+          Keys.onEscapePressed: if (root.overlayOpen) root.dismiss()
+          Column {
+            id: problemCol
+            width: parent.width
+            spacing: root.sp(10)
+            Text {
+              width: parent.width
+              textFormat: Text.PlainText
+              wrapMode: Text.WordWrap
+              text: root.problem
+              color: root.urgent
+              font.family: root.fontFamily
+              font.styleName: root.fontStyle
+              font.pixelSize: root.fs(Style.font.body)
+            }
+            Text {
+              visible: svc.configError !== ""
+              width: parent.width
+              textFormat: Text.PlainText
+              wrapMode: Text.WordWrap
+              text: "Copy config.example.json to " + svc.configPath + ", set \"vault\" to your Obsidian folder, and run `longhand-agent install`."
+              color: root.dim
+              font.family: root.fontFamily
+              font.styleName: root.fontStyle
+              font.pixelSize: root.fs(Style.font.bodySmall)
+            }
+            Text {
+              visible: root.overlayOpen
+              textFormat: Text.PlainText
+              text: "Esc closes"
+              color: root.faint
+              font.family: root.fontFamily
+              font.styleName: root.fontStyle
+              font.pixelSize: root.fs(Style.font.caption)
+            }
+          }
         }
 
         // Export as a PDF, in the note's place too (ExportSheet.qml).
@@ -9568,7 +9890,7 @@ Item {
                 x: Math.max(0, root.gutter - root.sp(5) - width - root.sp(3))
                 y: Math.round(modelData.lockY - modelData.y - height / 2)
                 width: root.sp(10)
-                color: pal.magenta
+                color: root.magenta
               }
             }
           }
@@ -9603,7 +9925,7 @@ Item {
             imageSize: root.imageSize
             sizeUnknown: root.sizeUnknown
             sizesVersion: root.imageSizesVersion
-            linkColor: pal.blue
+            linkColor: pal.blueText
             linkKnown: root.linkKnown
             onLinkActivated: function (i, l) { root.followLink(l) }
             onFoldClicked: root.scheduleRepaint()
@@ -9643,10 +9965,10 @@ Item {
             markColor: Util.alpha(pal.yellow, 0.3)
             currentMarkColor: Util.alpha(pal.orange, 0.55)
             boxColor: pal.dim
-            checkColor: pal.green
-            bulletColor: pal.accent
+            checkColor: pal.greenText
+            bulletColor: root.accent
             quoteColor: pal.faint
-            privateColor: pal.magenta
+            privateColor: root.magenta
             codeColor: pal.dim
             marks: root.matches
             currentMark: root.matchIndex
@@ -9786,7 +10108,7 @@ Item {
             Text {
               anchors.verticalCenter: parent.verticalCenter
               textFormat: Text.PlainText
-              text: "when?"
+              text: "due?"
               color: root.dim
               font.family: root.fontFamily
               font.styleName: root.fontStyle
@@ -9805,6 +10127,22 @@ Item {
                 if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { root.submitWhen(); event.accepted = true }
                 else if (event.key === Qt.Key_Escape) { root.closeWhen(); event.accepted = true }
               }
+            }
+            Text {
+              readonly property var parsed: whenField.text.trim() !== "" ? Dates.read(whenField.text.trim(), new Date()) : null
+              visible: whenField.text.trim() !== ""
+              anchors.verticalCenter: parent.verticalCenter
+              textFormat: Text.PlainText
+              text: {
+                if (!parsed) return "not a date"
+                var d = new Date(parsed.ms)
+                var timed = !(d.getHours() === 23 && d.getMinutes() === 59)
+                return "→ " + Qt.formatDateTime(d, timed ? "ddd d MMM HH:mm" : "ddd d MMM")
+              }
+              color: parsed ? root.dim : root.urgent
+              font.family: root.fontFamily
+              font.styleName: root.fontStyle
+              font.pixelSize: root.fs(Style.font.bodySmall)
             }
           }
 

@@ -2916,7 +2916,7 @@ def checks() -> int:
         check(p.call("keysKey", KEY_2, ALT2) == "true" and panes()["center"] == "dash" and p.call("keysOpen") == "false",
               f"Ctrl+Alt+2 from the keys over the note: the dashboard ({panes()})")
         p.call("dashKey", KEY_ESC, 0)
-        check(panes()["pointer"] == "every", "the pointer follows every selection unless told otherwise")
+        check(panes()["pointer"] == "panes", "the pointer follows pane changes unless told otherwise")
         p.call("closePanes")
 
         # 12c. Hyprland's six: listed as Hyprland's until the page is let

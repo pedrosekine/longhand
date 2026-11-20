@@ -1348,7 +1348,7 @@ BorderSurface {
           text: !page.dashWhenFor ? ""
             : page.dashFieldKind === "rename" ? "rename"
             : page.dashFieldKind === "grade" ? "grade · " + page.dashWhenFor.deadline.title
-            : "when · " + Say.taskTitle(page.dashWhenFor)
+            : "do on · " + Say.taskTitle(page.dashWhenFor)
           color: page.dim
           font.family: page.fontFamily
           font.styleName: page.fontStyle
@@ -1358,7 +1358,8 @@ BorderSurface {
         TextField {
           id: dashWhenField
           width: Math.min(page.dashFieldKind === "rename" ? page.sp(460) : page.sp(220),
-                          Math.max(page.sp(120), dashWhenRow.width - dashWhenLabel.implicitWidth - dashWhenRow.spacing))
+                          Math.max(page.sp(120), dashWhenRow.width - dashWhenLabel.implicitWidth - dashWhenRow.spacing
+                                   - (dashWhenPreview.visible ? dashWhenPreview.implicitWidth + dashWhenRow.spacing : 0)))
           placeholderText: page.dashFieldKind === "rename" ? "its words"
             : page.dashFieldKind === "grade" ? "7.5, A-… · empty clears"
             : "friday, tomorrow, 20 oct…"
@@ -1373,6 +1374,20 @@ BorderSurface {
           Keys.onReturnPressed: function (event) { event.accepted = true; page.commitDashWhen() }
           Keys.onEnterPressed: function (event) { event.accepted = true; page.commitDashWhen() }
           Keys.onEscapePressed: function (event) { event.accepted = true; page.dashWhenFor = null; page.dashWhenText = "" }
+        }
+
+        Text {
+          id: dashWhenPreview
+          readonly property var parsed: page.dashFieldKind === "when" && dashWhenField.text.trim() !== ""
+            ? Dates.read(dashWhenField.text.trim(), new Date()) : null
+          visible: page.dashFieldKind === "when" && dashWhenField.text.trim() !== ""
+          anchors.verticalCenter: parent.verticalCenter
+          textFormat: Text.PlainText
+          text: parsed ? "→ " + Qt.formatDate(new Date(parsed.ms), "ddd d MMM") : "not a date"
+          color: parsed ? page.dim : page.urgent
+          font.family: page.fontFamily
+          font.styleName: page.fontStyle
+          font.pixelSize: page.fs(Style.font.bodySmall)
         }
       }
 

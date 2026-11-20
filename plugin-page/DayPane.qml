@@ -717,7 +717,7 @@ BorderSurface {
           cursorShape: Qt.PointingHandCursor
           onClicked: page.stopAgent("day")
         }
-        text: "thinking" + (elapsed >= 2 ? " · " + elapsed + "s" : "")
+        text: (page.runnerPhase !== "" ? page.runnerPhase : "thinking") + (elapsed >= 2 ? " · " + elapsed + "s" : "")
         color: page.faint
         font.family: page.fontFamily
         font.styleName: page.fontStyle

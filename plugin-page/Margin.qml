@@ -346,8 +346,9 @@ BorderSurface {
       Text {
         id: thinking
         property double since: 0
+        readonly property string phaseText: margin.talk ? page.talkPhase : page.runnerPhase
         textFormat: Text.PlainText
-        text: "thinking" + (thinking.elapsed >= 2 ? " · " + thinking.elapsed + "s" : "")
+        text: (thinking.phaseText !== "" ? thinking.phaseText : "thinking") + (thinking.elapsed >= 2 ? " · " + thinking.elapsed + "s" : "")
         property int elapsed: 0
         color: page.dim
         font.family: page.fontFamily

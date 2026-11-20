@@ -86,6 +86,21 @@ def units(tmp: pathlib.Path) -> None:
     check(search.read(v, on, "human/_Secrets/shortlist.md", cache).get("error") == "never shared", "…never _Secrets")
     check(search.read(v, on, "../../etc/passwd", cache).get("error") == "not a file in the vault", "…never outside the vault")
 
+    # User-only full-text search (Ctrl+O ? <words>): includes private notes,
+    # private callouts and personal folders, skips agents/longhand.
+    (v / "agents" / "longhand" / "daily").mkdir(parents=True)
+    (v / "agents" / "longhand" / "daily" / "2026-10-12.md").write_text("shortlist in agent log\n")
+    mine = search.find_mine(v, "shortlist", daily_dir="human/Daily", agent_dir="agents/longhand")
+    mine_paths = {h["path"] for h in mine}
+    mine_texts = " ".join(h["text"] for h in mine)
+    check("human/Daily/2026-10-13.md" in mine_paths and "privately" in mine_texts and "secretly" in mine_texts,
+          f"find_mine includes private notes and callouts ({sorted(mine_paths)})")
+    check("human/Personal/diary.md" in mine_paths, "find_mine searches folders switched off for the agent too")
+    check(not any(p.startswith("agents/longhand") for p in mine_paths), "find_mine skips the agent folder")
+    d12 = next(h for h in mine if h["path"] == "human/Daily/2026-10-12.md")
+    check(d12["date"] == "2026-10-12" and d12["line"] == 3 and "Research Proficiency" in d12["heading"],
+          f"find_mine returns daily stamp, 1-based line, and section heading ({d12})")
+
 
 STUB = """#!/usr/bin/env python3
 import json, os, sys

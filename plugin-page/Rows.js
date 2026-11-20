@@ -60,7 +60,7 @@ function make(kind, indent, marker, body) {
     kind: kind, indent: indent, marker: marker, body: body,
     prefixLen: indent.length + marker.length, level: levelOf(indent),
     checked: false, cancelled: false, ordinal: "", headingLevel: 0, callout: "",
-    suffix: "", marks: "", dateTail: "", deadline: 0, dueLabel: "", dueAt: 0, cueAt: -1, cueLabel: "",
+    suffix: "", marks: "", dateTail: "", deadline: 0, dueLabel: "", dueAt: 0, cueAt: -1, cueEnd: -1, cueLabel: "",
     tableRow: -1, tableStart: -1, tableLen: 0,
     quoteLead: "", quoteDepth: 0, outerLevel: 0
   }
@@ -168,14 +168,14 @@ function liftTail(t) {
     t.dueAt = at.getTime()
     t.dueLabel = dayLabel(at, !!m[6])
   }
-  // The day to work on it, before the day it is owed — said only while it
-  // is still to come and differs from the due day.
+  // The day to work on it (⏳), shown whenever it differs from the due day
+  // (including past days, matching the dashboard's "do yesterday").
   if (m[4] && !t.checked) {
     var w = m[4].split("-")
     var on = new Date(+w[0], +w[1] - 1, +w[2], 23, 59)
     var due = t.dueAt ? new Date(t.dueAt) : null
     var sameDay = due && due.getFullYear() === on.getFullYear() && due.getMonth() === on.getMonth() && due.getDate() === on.getDate()
-    if (!sameDay && on.getTime() >= startOfToday())
+    if (!sameDay)
       t.dueLabel = "do " + doLabel(on) + (t.dueLabel ? " · " + t.dueLabel : "")
   }
   if (m[3]) t.dueLabel = (/⏫|🔼|🔺/.test(m[3]) ? "▲" : "▽") + (t.dueLabel ? " " + t.dueLabel : "")
@@ -186,12 +186,13 @@ function startOfToday() {
   return new Date(n.getFullYear(), n.getMonth(), n.getDate()).getTime()
 }
 
-// "today", "tomorrow", a weekday within the week, else the day.
+// "yesterday", "today", "tomorrow", a weekday within the week, else the day.
 function doLabel(at) {
   var days = Math.round((new Date(at.getFullYear(), at.getMonth(), at.getDate()).getTime() - startOfToday()) / 86400000)
+  if (days === -1) return "yesterday"
   if (days === 0) return "today"
   if (days === 1) return "tomorrow"
-  return days < 7 ? DAYS[at.getDay()] : dayLabel(at, false)
+  return days > 1 && days < 7 ? DAYS[at.getDay()] : dayLabel(at, false)
 }
 
 // "Fri 30 Oct", "Mon 8 Feb 2027", "Fri 16 Oct · 17:00".
@@ -206,8 +207,11 @@ function readCue(t) {
   var c = Bound.cue(t.body)
   var w = c ? Dates.read(c.phrase) : null
   if (!w) return
-  var rest = t.body.substring(c.head.length)
-  t.cueAt = c.head.length + (rest.length - rest.replace(/^\s+/, "").length)
+  var from = c.cueFrom !== undefined ? c.cueFrom : c.head.length
+  var end = c.cueEnd !== undefined ? c.cueEnd : t.body.length
+  var rest = t.body.substring(from, end)
+  t.cueAt = from + (rest.length - rest.replace(/^\s+/, "").length)
+  t.cueEnd = end
   var at = new Date(w.ms)
   t.cueLabel = dayLabel(at, !(at.getHours() === 23 && at.getMinutes() === 59))
 }

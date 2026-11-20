@@ -169,6 +169,7 @@ function deadlineWhere(d, t, projects, origin, moves, now) {
     else if (d.project) bits.push(courseLabel(d.project, projects))
   }
   if (d.status === "cancelled") bits.push("cancelled")
+  else if (!t && d.link === "" && d.status === "open") bits.push("not in a note yet")
   var aside = asideIn(d, now)
   if (aside > 0) bits.push(aside === 1 ? "steps aside tomorrow" : "steps aside in " + aside + " days")
   if (d.status === "done" && d.grade !== "") bits.push("graded " + d.grade)
@@ -296,4 +297,28 @@ function sameSection(sections, prev) {
     if (best < 0 || (head && !bestHead) || (head === bestHead && d < gap)) { best = i; bestHead = head; gap = d }
   }
   return best
+}
+
+// Privacy counts withheld by local code during a search or read: quiet
+// reassurance under the turn that local rules held back private material.
+function sayWithheld(w) {
+  if (!w) return ""
+  var names = {
+    private: ["private", "private"],
+    horizon: ["before the horizon", "before the horizon"],
+    secret: ["secret", "secrets"],
+    name: ["filtered by name", "filtered by name"],
+    type: ["filtered by type", "filtered by type"],
+    place: ["outside allowed folders", "outside allowed folders"],
+    unread_pdfs: ["unread PDF", "unread PDFs"]
+  }
+  var keys = Object.keys(w).sort()
+  var parts = []
+  for (var i = 0; i < keys.length; i++) {
+    var k = keys[i], n = Number(w[k] || 0)
+    if (!n) continue
+    var pair = names[k]
+    parts.push(n + " " + (pair ? (n === 1 ? pair[0] : pair[1]) : k))
+  }
+  return parts.length > 0 ? parts.join(", ") + " held back" : ""
 }

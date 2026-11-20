@@ -14,6 +14,15 @@ TestCase {
     compare(Bound.cue("essay by monday").phrase, "monday")
     compare(Bound.cue("send it 📅 tomorrow").phrase, "tomorrow")
     compare(Bound.cue("read paper by Smith due friday").phrase, "friday")   // the last cue counts
+    // Trailing #tags after a date cue are kept in head and excluded from the cue span.
+    var ct = Bound.cue("submit essay by friday #respro")
+    compare(ct.phrase, "friday"); compare(ct.head, "submit essay #respro")
+    compare(ct.title, "submit essay"); compare(ct.project, "respro")
+    compare(ct.cueFrom, 12); compare(ct.cueEnd, 22)
+    var cb = Bound.cue("submit essay friday #respro #draft")
+    compare(cb.phrase, "friday"); compare(cb.head, "submit essay #respro #draft")
+    compare(cb.title, "submit essay"); compare(cb.project, "respro")
+    compare(cb.cueFrom, 12); compare(cb.cueEnd, 19)
   }
 
   function test_on_cues_a_date_only_when_one_follows() {

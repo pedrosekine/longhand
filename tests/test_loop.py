@@ -53,7 +53,8 @@ def main() -> int:
     cfgdir = tmp / "config"
     (cfgdir / "longhand").mkdir(parents=True)
     cfg = cfgdir / "longhand" / "config.json"
-    cfg.write_text(json.dumps({"vault": str(vault), "daily": {"dir": "Daily", "format": "YYYY-MM-DD"},
+    cfg.write_text(json.dumps({"vault": str(vault), "daily": {"dir": "Daily", "format": "YYYY-MM-DD",
+                                                              "template": "agents/longhand/templates/daily"},
                                "agentDir": "agents/longhand", "model": "stub/margin", "planModel": "stub/plan"}))
     state = tmp / "state"
     bindir = tmp / "bin"
@@ -76,6 +77,12 @@ def main() -> int:
     installed = cfgdir / "opencode" / "agent"
     check(all((installed / n).exists() for n in ("longhand.md", "longhand-plan.md", "longhand-judge.md")),
           "install writes the margin's, the planner's and the judge's definitions")
+    tpl = agent_dir / "templates" / "daily.md"
+    check(tpl.exists() and "agents/longhand/daily/{{date}}|agent" in tpl.read_text(),
+          "install creates daily.template with the agent link when missing")
+    tpl.write_text("custom template\n")
+    agent("install")
+    check(tpl.read_text() == "custom template\n", "…and never overwrites an existing daily template")
 
     # A margin run, as recorded: its prompt version and model on the block.
     (vault / "Daily" / f"{today}.md").write_text("Should I buy an e-scooter?\n")

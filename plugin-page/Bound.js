@@ -78,21 +78,25 @@ function projectOf(words) {
   return m ? m[2] : ""
 }
 
-// A cue at the end of a checkbox's words, or null.
-// { head: the words before the cue, phrase: the date words, title, project }
+// A cue at the end of a checkbox's words (allowing trailing #tags), or null.
+// { head: the words before the cue (+ trailing tags), phrase: the date words,
+//   cueFrom, cueEnd: where the cue sits in `body`, title, project }
 function cue(body) {
-  var m = body.match(CAL_RE)
+  var trail = body.match(/((?:\s+#[\w\/-]+)+)\s*$/)
+  var core = trail ? body.slice(0, trail.index) : body
+  var m = core.match(CAL_RE)
   if (!m) {
     // The last cue counts: of a cue word and "on", the one further along.
-    var w = body.match(CUE_RE), o = body.match(ON_RE)
+    var w = core.match(CUE_RE), o = core.match(ON_RE)
     m = w && o ? (o[1].length > w[1].length ? o : w) : (w || o)
   }
   if (!m) {
-    m = body.match(BARE_RE)
+    m = core.match(BARE_RE)
     if (m && NOT_OWED_RE.test(m[1])) m = null
   }
   if (!m || !DATEISH_RE.test(m[2])) return null
-  return { head: m[1], phrase: m[2], title: titleOf(m[1]), project: projectOf(body) }
+  var head = m[1] + (trail ? trail[1] : "")
+  return { head: head, phrase: m[2], cueFrom: m[1].length, cueEnd: core.length, title: titleOf(head), project: projectOf(body) }
 }
 
 // The words a title is compared by: no #tags, case, punctuation or spacing.

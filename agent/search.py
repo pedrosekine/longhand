@@ -273,3 +273,74 @@ def say_withheld(w: dict) -> str:
              "secret": "passages that looked like secrets", "unread_pdfs": "PDFs not read yet",
              "horizon": "days before the horizon"}
     return ", ".join(f"{n} {names.get(k, k)}" for k, n in sorted(w.items()) if n)
+
+
+def find_mine(vault: Path, words: str, daily_dir: str = "", agent_dir: str = "agents/longhand", limit: int = 12) -> list[dict]:
+    """Full-text search across the student's own vault notes — local only,
+    never sent to a model, so private notes, private callouts and days before
+    the horizon are all included. Skips dot-folders and the agent's own dir."""
+    want = [t for t in re.findall(r"\S+", words.casefold()) if t]
+    if not want:
+        return []
+    phrase = " ".join(want)
+    daily_norm = daily_dir.strip("/")
+    agent_norm = agent_dir.strip("/")
+    found = []
+    for root_dir, dirnames, filenames in os.walk(vault):
+        rel_dir = Path(root_dir).relative_to(vault)
+        rel_dir_s = "" if rel_dir == Path(".") else rel_dir.as_posix()
+        dirnames[:] = sorted(
+            d for d in dirnames
+            if not d.startswith(".")
+            and d not in {".obsidian", ".git", ".stversions", ".stfolder", ".trash"}
+            and (not agent_norm or (f"{rel_dir_s}/{d}".strip("/") != agent_norm))
+        )
+        for name in sorted(filenames):
+            if not name.lower().endswith((".md", ".txt")):
+                continue
+            p = Path(root_dir) / name
+            rel = p.relative_to(vault).as_posix()
+            if agent_norm and (rel == agent_norm or rel.startswith(agent_norm + "/")):
+                continue
+            try:
+                text = p.read_text(errors="replace")
+            except OSError:
+                continue
+            lines = text.splitlines()
+            heading = ""
+            in_fm = bool(lines and lines[0].strip() == "---")
+            body_start = 0
+            if in_fm:
+                for k in range(1, len(lines)):
+                    if lines[k].strip() == "---":
+                        body_start = k + 1
+                        break
+            if body_start < len(lines) and re.match(r"^\[\[[^\]\n]*\|agent\]\]\s*$", lines[body_start]):
+                body_start += 1
+            best_file_hits = 0
+            for idx, raw in enumerate(lines, 1):
+                if in_fm:
+                    if idx > 1 and raw.strip() == "---":
+                        in_fm = False
+                    continue
+                if raw.startswith("#"):
+                    heading = re.sub(r"^#+\s*", "", raw).strip()
+                low = raw.casefold()
+                matched = sum(1 for t in set(want) if t in low)
+                if matched < len(set(want)):
+                    continue
+                exact = 1 if phrase in low else 0
+                is_daily = bool(daily_norm and rel.startswith(daily_norm + "/") and "/" not in rel[len(daily_norm) + 1:] and rel.endswith(".md"))
+                stamp = rel[len(daily_norm) + 1:-3] if is_daily else ""
+                snippet = re.sub(r"\s+", " ", raw).strip()
+                if len(snippet) > 160:
+                    pos = low.find(want[0])
+                    start = max(0, pos - 40)
+                    snippet = ("…" if start > 0 else "") + snippet[start:start + 150].strip() + "…"
+                found.append((exact, matched, 1 if is_daily else 0, [-ord(c) for c in rel], -idx,
+                              {"path": rel, "line": idx, "body_line": max(1, idx - body_start), "date": stamp, "heading": heading, "text": snippet}))
+                best_file_hits += 1
+                if best_file_hits >= 3:
+                    break
+    found.sort(key=lambda x: (-x[0], -x[1], -x[2], x[3], -x[4]))
+    return [x[5] for x in found[:max(1, limit)]]
