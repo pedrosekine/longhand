@@ -48,11 +48,16 @@ Column {
     font.styleName: page.fontStyle
     font.pixelSize: page.fs(Style.font.caption)
   }
-  // What a message pointed at, as it was sent.
+  // What a message pointed at, as it was sent — clickable to jump straight to it.
   readonly property int bubbleWidth: words.bubbleWidth
+  readonly property var refTarget: !turn.mine || turn.away ? null
+    : turn.t.refs && turn.t.refs.length > 0 ? turn.t.refs[0]
+    : turn.t.block ? ({ hash: turn.t.block }) : null
   TurnRef {
     page: turn.page
     alignTo: words.bubbleWidth
+    clickable: !!turn.refTarget
+    onClicked: if (turn.refTarget) page.jumpToRef(turn.refTarget)
     text: !turn.mine || turn.away ? ""
       : turn.t.refs && turn.t.refs.length > 0 ? turn.t.refs.map(function (r) { return page.sayChip(r) }).join("  ·  ")
       : turn.t.block ? page.blockHead(turn.t.block) : ""

@@ -45,8 +45,12 @@ Panel {
   ipcTarget: "longhand.deadline"
 
   readonly property color foreground: bar ? bar.foreground : Commons.Color.foreground
-  readonly property color dim: Qt.darker(foreground, 1.55)
-  readonly property color faint: Qt.darker(foreground, 2.2)
+  readonly property color background: Commons.Color.menu.background
+  function mix(a, b, t) { return Qt.rgba(a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t, 1) }
+  // Blend toward background rather than Qt.darker so muted text stays
+  // legible and quiet on both dark and light Omarchy themes.
+  readonly property color dim: root.mix(foreground, background, 0.30)
+  readonly property color faint: root.mix(foreground, background, 0.45)
   readonly property color urgent: bar ? bar.urgent : Commons.Color.urgent
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
 
@@ -293,7 +297,7 @@ Panel {
           width: parent.width
           textFormat: Text.PlainText
           wrapMode: Text.WordWrap
-          text: "Nothing due. Add one from a terminal:\npomo deadline add \"Essay draft\" next friday 17:00"
+          text: "Nothing due. Add a checkbox with a date in Longhand (SUPER+ALT+=) or press Ctrl+D on a task."
           color: root.dim
           font.family: root.fontFamily
           font.pixelSize: Style.font.bodySmall
@@ -519,7 +523,7 @@ Panel {
           visible: root.hiddenCount > 0
           width: parent.width
           textFormat: Text.PlainText
-          text: "+" + root.hiddenCount + " more · pomo deadline list"
+          text: "+" + root.hiddenCount + " more · open the dashboard in Longhand (Ctrl+Alt+2)"
           color: root.dim
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption

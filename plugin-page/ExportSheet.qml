@@ -31,16 +31,46 @@ Item {
   }
   MouseArea { anchors.fill: parent; onClicked: keys.forceActiveFocus() }
 
-  Text {
+  Row {
     id: head
     anchors.top: parent.top
     anchors.left: parent.left
-    textFormat: Text.PlainText
-    text: "EXPORT AS A PDF   ·   " + (page.exportLook === "omarchy" ? "your Omarchy theme" : "minimal")
-    color: page.dim
-    font.family: page.fontFamily
-    font.styleName: page.fontStyle
-    font.pixelSize: page.fs(Style.font.caption)
+    spacing: page.sp(10)
+    Text {
+      anchors.verticalCenter: parent.verticalCenter
+      textFormat: Text.PlainText
+      text: "EXPORT AS A PDF"
+      color: page.dim
+      font.family: page.fontFamily
+      font.styleName: page.fontStyle
+      font.pixelSize: page.fs(Style.font.caption)
+    }
+    Text {
+      anchors.verticalCenter: parent.verticalCenter
+      textFormat: Text.PlainText
+      text: "·"
+      color: page.faint
+      font.family: page.fontFamily
+      font.pixelSize: page.fs(Style.font.caption)
+    }
+    Text {
+      anchors.verticalCenter: parent.verticalCenter
+      textFormat: Text.PlainText
+      text: page.exportLook === "omarchy" ? "look: your Omarchy theme" : "look: minimal"
+      color: lookArea.containsMouse && page.handOn ? page.accent : page.foreground
+      font.family: page.fontFamily
+      font.styleName: page.fontStyle
+      font.pixelSize: page.fs(Style.font.caption)
+      font.underline: lookArea.containsMouse && page.handOn
+      MouseArea {
+        id: lookArea
+        anchors.fill: parent
+        hoverEnabled: true
+        cursorShape: Qt.PointingHandCursor
+        onClicked: { page.exportLook = page.exportLook === "omarchy" ? "minimal" : "omarchy"; keys.forceActiveFocus() }
+        Tip { host: page; act: "exportLook"; shown: parent.containsMouse; text: page.tip("Switch between minimal (white) and your Omarchy theme", "exportLook") }
+      }
+    }
   }
 
   // The title: the section's upmost heading's words, to write over.
@@ -85,9 +115,9 @@ Item {
     font.pixelSize: page.fs(Style.font.bodySmall)
   }
 
-  // From a deadline: which day's section it took, of how many (← →), and
-  // whether that day was made into a PDF before — last week's diary, say.
-  Text {
+  // From a deadline: which day's section it took, of how many (clickable ← →),
+  // and whether that day was made into a PDF before — last week's diary, say.
+  Column {
     id: fromLine
     anchors.top: byline.bottom
     anchors.topMargin: visible ? page.sp(6) : 0
@@ -95,20 +125,76 @@ Item {
     anchors.right: parent.right
     visible: !!(sheet.info && sheet.info.from)
     height: visible ? implicitHeight : 0
-    textFormat: Text.PlainText
-    wrapMode: Text.WordWrap
-    text: {
-      var f = sheet.info && sheet.info.from
-      if (!f) return ""
-      var day = Days.longLabel(f.date, page.noteService.dailyFormat())
-      return "from " + day + ", " + f.heading
-        + (f.of > 1 ? "   ·   " + (f.pick + 1) + " of " + f.of + ", " + page.keyName("exportPrevSection") + " " + page.keyName("exportNextSection") + " for another" : "")
-        + (f.before.length > 0 ? "\nalready made into a PDF from that day, as “" + f.before.join("”, “") + "”" : "")
+    spacing: page.sp(2)
+    Flow {
+      width: parent.width
+      spacing: page.sp(8)
+      Text {
+        textFormat: Text.PlainText
+        text: {
+          var f = sheet.info && sheet.info.from
+          if (!f) return ""
+          return "from " + Days.longLabel(f.date, page.noteService.dailyFormat()) + ", " + f.heading
+        }
+        color: sheet.info && sheet.info.from && sheet.info.from.before.length > 0 ? page.accent : page.dim
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.bodySmall)
+      }
+      Row {
+        visible: !!(sheet.info && sheet.info.from && sheet.info.from.of > 1)
+        spacing: page.sp(6)
+        Text {
+          textFormat: Text.PlainText
+          text: "·  ←"
+          color: prevSecArea.containsMouse && page.handOn ? page.accent : page.dim
+          font.family: page.fontFamily
+          font.pixelSize: page.fs(Style.font.bodySmall)
+          MouseArea {
+            id: prevSecArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: { page.exportSection(-1); keys.forceActiveFocus() }
+            Tip { host: page; act: "exportPrevSection"; shown: parent.containsMouse; text: page.tip("Previous matching section", "exportPrevSection") }
+          }
+        }
+        Text {
+          textFormat: Text.PlainText
+          text: sheet.info && sheet.info.from ? (sheet.info.from.pick + 1) + " of " + sheet.info.from.of : ""
+          color: page.dim
+          font.family: page.fontFamily
+          font.pixelSize: page.fs(Style.font.bodySmall)
+        }
+        Text {
+          textFormat: Text.PlainText
+          text: "→"
+          color: nextSecArea.containsMouse && page.handOn ? page.accent : page.dim
+          font.family: page.fontFamily
+          font.pixelSize: page.fs(Style.font.bodySmall)
+          MouseArea {
+            id: nextSecArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: { page.exportSection(1); keys.forceActiveFocus() }
+            Tip { host: page; act: "exportNextSection"; shown: parent.containsMouse; text: page.tip("Next matching section", "exportNextSection") }
+          }
+        }
+      }
     }
-    color: sheet.info && sheet.info.from && sheet.info.from.before.length > 0 ? page.accent : page.dim
-    font.family: page.fontFamily
-    font.styleName: page.fontStyle
-    font.pixelSize: page.fs(Style.font.bodySmall)
+    Text {
+      visible: !!(sheet.info && sheet.info.from && sheet.info.from.before.length > 0)
+      width: parent.width
+      textFormat: Text.PlainText
+      wrapMode: Text.WordWrap
+      text: sheet.info && sheet.info.from && sheet.info.from.before.length > 0
+        ? "already made into a PDF from that day, as “" + sheet.info.from.before.join("”, “") + "”" : ""
+      color: page.accent
+      font.family: page.fontFamily
+      font.styleName: page.fontStyle
+      font.pixelSize: page.fs(Style.font.bodySmall)
+    }
   }
 
   Flickable {
@@ -239,29 +325,94 @@ Item {
     anchors.left: parent.left
     anchors.right: parent.right
     anchors.bottom: parent.bottom
-    spacing: page.sp(4)
+    spacing: page.sp(6)
 
+    // Full wrapped error line (up to 3 lines) instead of truncating on one line.
     Text {
+      visible: page.exportError !== ""
       width: parent.width
       textFormat: Text.PlainText
-      elide: Text.ElideMiddle
-      text: page.exportError !== "" ? page.exportError
-        : page.exportBusy && sheet.rows.length > 0 ? "writing the PDF…"
-        : page.exportWords + (page.exportWords === 1 ? " word" : " words")
-          + (sheet.info && sheet.info.pdf ? "   ·   to " + page.exportWhere : "")
-      color: page.exportError !== "" ? page.urgent : page.dim
+      wrapMode: Text.WordWrap
+      maximumLineCount: 3
+      elide: Text.ElideRight
+      text: page.exportError
+      color: page.urgent
       font.family: page.fontFamily
       font.styleName: page.fontStyle
       font.pixelSize: page.fs(Style.font.bodySmall)
     }
+
+    Item {
+      width: parent.width
+      height: Math.max(wordSummary.implicitHeight, exportActions.implicitHeight)
+      Text {
+        id: wordSummary
+        anchors.left: parent.left
+        anchors.right: exportActions.left
+        anchors.rightMargin: page.sp(12)
+        anchors.verticalCenter: parent.verticalCenter
+        textFormat: Text.PlainText
+        elide: Text.ElideMiddle
+        text: page.exportBusy && sheet.rows.length > 0 ? "writing the PDF…"
+          : page.exportWords + (page.exportWords === 1 ? " word" : " words")
+            + (sheet.info && sheet.info.pdf ? "   ·   to " + page.exportWhere : "")
+        color: page.dim
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.bodySmall)
+      }
+      Row {
+        id: exportActions
+        anchors.right: parent.right
+        anchors.verticalCenter: parent.verticalCenter
+        spacing: page.sp(14)
+        Text {
+          textFormat: Text.PlainText
+          text: page.exportBusy ? "Writing…" : "Write PDF"
+          color: page.exportBusy ? page.faint : writeBtnArea.containsMouse && page.handOn ? page.accent : page.foreground
+          font.family: page.fontFamily
+          font.styleName: page.fontStyle
+          font.weight: Font.Medium
+          font.pixelSize: page.fs(Style.font.bodySmall)
+          font.underline: !page.exportBusy && writeBtnArea.containsMouse && page.handOn
+          MouseArea {
+            id: writeBtnArea
+            anchors.fill: parent
+            enabled: !page.exportBusy
+            hoverEnabled: true
+            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+            onClicked: page.writeExport()
+            Tip { host: page; act: "exportWrite"; shown: parent.containsMouse; text: page.tip("Write the PDF and open it", "exportWrite") }
+          }
+        }
+        Text {
+          textFormat: Text.PlainText
+          text: "Cancel"
+          color: cancelBtnArea.containsMouse && page.handOn ? page.accent : page.dim
+          font.family: page.fontFamily
+          font.styleName: page.fontStyle
+          font.pixelSize: page.fs(Style.font.bodySmall)
+          font.underline: cancelBtnArea.containsMouse && page.handOn
+          MouseArea {
+            id: cancelBtnArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: page.closeExport()
+            Tip { host: page; act: "exportClose"; shown: parent.containsMouse; text: page.tip("Cancel and go back", "exportClose") }
+          }
+        }
+      }
+    }
+
     Text {
       width: parent.width
       textFormat: Text.PlainText
       wrapMode: Text.WordWrap
       text: titleField.activeFocus ? "Enter or Esc: back to the blocks"
-        : "↑↓ move · " + page.keyName("exportPick") + " in or out · " + page.keyName("exportLook") + " the look · "
-          + page.keyName("exportTitle") + " the title · " + page.keyName("exportWrite") + " writes the PDF · "
-          + page.keyName("exportClose") + " back"
+        : "↑↓ move · " + page.keyName("exportPick") + " in or out · " + page.keyName("exportLook") + " look · "
+          + page.keyName("exportTitle") + " title · " + page.keyName("exportWrite") + " write · "
+          + page.keyName("exportClose") + " cancel"
       color: page.faint
       font.family: page.fontFamily
       font.styleName: page.fontStyle

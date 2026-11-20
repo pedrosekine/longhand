@@ -653,6 +653,7 @@ Item {
   function listExport() {
     exportListProc.command = [svc.runner, "export"].concat(root.exportArgs, ["--list"])
     exportListProc.running = true
+    if (!exportDepsProc.running) exportDepsProc.running = true
   }
   function exportListed(code, out, err) {
     root.exportBusy = false
@@ -690,6 +691,17 @@ Item {
     root.exportBusy = true
     root.exportFocus = 0
     root.listExport()
+  }
+  Process {
+    id: exportDepsProc
+    command: ["sh", "-c", "miss=''; command -v pandoc >/dev/null 2>&1 || miss='pandoc'; command -v xelatex >/dev/null 2>&1 || miss=\"${miss:+$miss and }xelatex\"; printf '%s' \"$miss\""]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        var m = text.trim()
+        if (m !== "" && root.exportOpen && root.exportError === "")
+          root.exportError = "PDF export needs " + m + " installed on PATH"
+      }
+    }
   }
   function exportToggle(i) {
     var r = root.exportRows[i]
@@ -1970,31 +1982,33 @@ Item {
     // Beside the dashboard the note in the sheet is not what is talked
     // about: its blocks are offered only from the note.
     var noteBlocks = !inMargin || (root.marginOpen && root.centerView === "note" && root.dayNote)
+    var blockCap = q === "" ? (root.noteRoom ? 5 : 4) : (root.noteRoom ? 8 : 5)
     var items = (noteBlocks ? Blocks.split(editor.text) : []).filter(function (b) {
       return !b.private && b.kind !== "frontmatter" && b.text.trim() !== "" && (q === "" || b.text.toLowerCase().indexOf(q) >= 0)
-    }).reverse().slice(0, root.noteRoom ? 8 : 5).map(function (b) {
+    }).reverse().slice(0, blockCap).map(function (b) {
       return { hash: b.hash, head: root.blockHead(b.hash), kind: /^\s*[-*+] \[.\] /.test(b.text.split("\n")[0]) ? "task" : "block" }
     })
     // …and, in the day's chat, the open tasks of other days (slice 2 of
     // "One conversation"): a task is talked about from anywhere.
     if (inMargin || !root.noteRoom) {
       var seen = {}
+      var taskCap = q === "" ? Math.max(0, 6 - items.length) : Math.max(0, 8 - items.length)
       items = items.concat(root.tasks.filter(function (t) {
         var name = root.taskName(t)
         if (!t.key || t.private || !t.date || t.date === svc.noteDate || seen[t.key] || name === "") return false
         if (q !== "" && name.toLowerCase().indexOf(q) < 0) return false
         seen[t.key] = true
         return true
-      }).slice(0, 8 - items.length).map(function (t) {
+      }).slice(0, taskCap).map(function (t) {
         var name = root.taskName(t).slice(0, 80)
         return { task: t, name: name, head: "task · " + name }
       }))
     }
-    // …and the notes and papers it may see, once a word is typed: in a
-    // note's own chat too (2026-11-19), the note itself left out.
-    if (q !== "" && items.length < 8)
+    // …and the notes and papers it may see (shown on bare `@` too so papers
+    // and notes are discoverable without already knowing their filenames).
+    if (items.length < 8)
       items = items.concat(root.refFiles.filter(function (f) {
-        return (inMargin || !root.noteRoom || f.rel !== root.roomRel) && root.refMatches(f, q)
+        return (inMargin || !root.noteRoom || f.rel !== root.roomRel) && (q === "" || root.refMatches(f, q))
       }).slice(0, 8 - items.length).map(root.refItem))
     root.dayMention = { start: f.cursorPosition - m[2].length - 1, query: m[2], items: items, margin: inMargin }
     if (root.dayMentionFocus > items.length - 1) root.dayMentionFocus = Math.max(0, items.length - 1)
@@ -4336,7 +4350,50 @@ Item {
       else root.openNote(stem)
       return
     }
+    if (/\.md$/i.test(path)) {
+      root.pendingLine = line
+      var ro = svc.agentRoot !== "" && (path === svc.agentRoot || path.indexOf(svc.agentRoot + "/") === 0)
+      if (path === svc.filePath && svc.ready) { root.showNote(); root.landOnLine() }
+      else root.openFile(path, ro)
+      return
+    }
+    if (/\.pdf$/i.test(path)) {
+      root.openPdf(path)
+      if (line > 0) Qt.callLater(function () { pdfPane.jumpTo(line - 1, 0) })
+      return
+    }
     Qt.openUrlExternally("file://" + svc.config.vault + "/" + path)
+  }
+
+  function jumpToMark(id) {
+    if (id && root.pdfShown) pdfPane.showMark(id)
+  }
+
+  function jumpToRef(r) {
+    if (!r) return
+    if (r.file) {
+      if (/\.pdf$/i.test(r.file)) root.openPdf(r.file)
+      else root.openFile(r.file, svc.agentRoot !== "" && (r.file === svc.agentRoot || r.file.indexOf(svc.agentRoot + "/") === 0))
+      return
+    }
+    if (r.date && r.line !== undefined && r.line >= 0) {
+      root.pendingLine = r.line + 1
+      if (r.date === svc.noteDate && svc.ready) { root.showNote(); root.landOnLine() }
+      else root.openNote(r.date)
+      return
+    }
+    if (r.hash) {
+      if (r.date && r.date !== svc.noteDate) { root.openNote(r.date); return }
+      var blks = Blocks.split(editor.text)
+      for (var i = 0; i < blks.length; i++) {
+        if (blks[i].hash === r.hash) {
+          root.showNote()
+          var row = editor.rows[blks[i].start]
+          if (row) editor.setCursor(row.start, true)
+          return
+        }
+      }
+    }
   }
 
   function landOnLine() {

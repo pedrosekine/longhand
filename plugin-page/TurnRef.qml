@@ -13,6 +13,8 @@ Item {
   required property Item page
   property string text: ""
   property int alignTo: 0              // the bubble's width under it, to start where it starts
+  property bool clickable: false
+  signal clicked()
   readonly property int rule: page.sp(2)
   readonly property int inset: Math.round(page.chatSize * 0.6)
   readonly property int maxW: Math.round(width * 0.8)
@@ -39,8 +41,21 @@ Item {
     elide: Text.ElideRight
     lineHeight: 1.15
     text: ref.text
-    color: page.dim
+    color: ref.clickable && refArea.containsMouse && page.handOn ? page.accent : page.dim
     font.family: page.fontFamily
     font.pixelSize: Math.round(page.chatSize * 0.8)
+    font.underline: ref.clickable && refArea.containsMouse && page.handOn
+  }
+  MouseArea {
+    id: refArea
+    x: ref.width - ref.blockW
+    y: 0
+    width: ref.blockW
+    height: words.height + page.sp(2)
+    enabled: ref.clickable
+    hoverEnabled: ref.clickable
+    cursorShape: ref.clickable ? Qt.PointingHandCursor : Qt.ArrowCursor
+    onClicked: ref.clicked()
+    Tip { host: ref.page; shown: parent.containsMouse && ref.clickable; text: "Jump to this reference" }
   }
 }
