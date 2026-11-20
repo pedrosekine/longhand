@@ -2039,7 +2039,40 @@ Item {
   // A card is open while the dashboard still has its item; once settled —
   // here, on its row, or by a plan since — it stays, faint, saying how.
   property var dayCardSettled: ({})     // id -> "accepted" | "declined" | "undone" | "kept"
+  property var cardUndoMap: ({})        // id -> proposal snapshot (with prior `was`) for inline + Ctrl+Z undo
+  property var cardUndoStack: []        // newest-last list of undoable accepted proposal ids
+  property var declinedBlockCards: ({}) // "hash:index" -> true for non-ledger block cards declined in Margin
   property int dayCardFocus: -1         // which open card the keys act on; -1: the box
+
+  function cardCanUndo(id) { return !!id && !!root.cardUndoMap[id] }
+  function cardUndoIsLast(id) {
+    return !!id && root.cardUndoStack.length > 0 && root.cardUndoStack[root.cardUndoStack.length - 1] === id
+  }
+  function blockCardDeclined(hash, idx) { return !!root.declinedBlockCards[String(hash || "") + ":" + String(idx)] }
+  function dropCardUndo(id) {
+    if (!root.cardUndoMap[id]) return
+    var m = {}
+    for (var k in root.cardUndoMap) if (String(k) !== String(id)) m[k] = root.cardUndoMap[k]
+    root.cardUndoMap = m
+    root.cardUndoStack = root.cardUndoStack.filter(function (x) { return x !== id })
+  }
+  function undoSettledCard(id) {
+    var snap = root.cardUndoMap[id]
+    if (!snap) return false
+    root.undoProposal(snap)
+    var s = {}
+    for (var k in root.dayCardSettled) s[k] = root.dayCardSettled[k]
+    s[id] = "undone"
+    root.dayCardSettled = s
+    root.dropCardUndo(id)
+    root.used("card", "undo")
+    root.showHint("undone: " + root.dayCardKind(snap))
+    return true
+  }
+  function undoLastCard() {
+    if (root.cardUndoStack.length === 0) return false
+    return root.undoSettledCard(root.cardUndoStack[root.cardUndoStack.length - 1])
+  }
   function dayCardLive(c) {
     for (var i = 0; i < root.proposals.length; i++) if (root.proposals[i].id === c.id) return root.proposals[i]
     return null
@@ -2090,21 +2123,44 @@ Item {
     if (how === "accept" && p.told) {
       root.resolveProposal(p, "accept", "")              // what it did on its own: let it stand
       s[p.id] = "kept"
+      root.dropCardUndo(p.id)
     } else if (how === "accept") {
       // Written by the page, the one writer of notes, as from its row; a
       // box no longer on the list leaves the card open, and says so.
-      if (!root.applyProposal(p, p.key ? root.taskOfKey(p.key) : null)) return false
+      var t = p.key ? root.taskOfKey(p.key) : null
+      var snap = Object.assign({}, p)
+      if (p.kind === "do-date" && t && snap.was === undefined) snap.was = t.when || ""
+      else if (p.kind === "priority" && t && snap.was === undefined) snap.was = t.priority || 0
+      if (!root.applyProposal(p, t)) return false
       root.resolveProposal(p, "accept", "")
       s[p.id] = "accepted"
+      if (p.kind !== "project") {
+        var um = {}
+        for (var u in root.cardUndoMap) um[u] = root.cardUndoMap[u]
+        um[p.id] = snap
+        root.cardUndoMap = um
+        root.cardUndoStack = root.cardUndoStack.filter(function (x) { return x !== p.id }).concat([p.id])
+      }
     } else if (p.told) {
       root.undoProposal(p)
       s[p.id] = "undone"
+      root.dropCardUndo(p.id)
     } else {
       root.resolveProposal(p, "decline", "")
       s[p.id] = "declined"
+      root.dropCardUndo(p.id)
     }
     root.dayCardSettled = s
     return true
+  }
+  function settleDayCardById(id, how) {
+    var p = root.dayCardLive({ id: id })
+    if (!p || !root.settleCard(p, how)) return
+    root.used("day", "card-" + how)
+    Qt.callLater(function () {
+      var n = root.dayOpenCards.length
+      root.dayCardFocus = n === 0 ? -1 : Math.min(root.dayCardFocus, n - 1)
+    })
   }
   function settleDayCard(i, how) {
     var p = root.dayOpenCards[i]
@@ -2209,9 +2265,12 @@ Item {
         if (Sc.hit(event, "marginDown")) { root.dayCardFocus = root.dayCardFocus >= n - 1 ? -1 : root.dayCardFocus + 1; return true }
         if (Sc.hit(event, "marginAccept")) { root.settleDayCard(root.dayCardFocus, "accept"); return true }
         if (Sc.hit(event, "marginDecline")) { root.settleDayCard(root.dayCardFocus, "decline"); return true }
+        if (Sc.hit(event, "undo") && root.undoLastCard()) return true
         if (Sc.hit(event, "marginBack")) { root.dayCardFocus = -1; return true }
         root.dayCardFocus = -1
       }
+    } else if (Sc.hit(event, "undo") && dayPane.dayFieldRef.text === "" && root.undoLastCard()) {
+      return true
     } else if (Sc.hit(event, "marginUp") && dayPane.dayFieldRef.text === "" && !root.dayMention && root.dayOpenCards.length > 0) {
       root.dayCardFocus = root.dayOpenCards.length - 1
       return true
@@ -3823,10 +3882,22 @@ Item {
     return true
   }
 
+  function declineProposal(i) {
+    var p = root.currentProposals[i]
+    if (!p) return
+    if (p.ledger) { root.settleListedCard(p, "decline"); return }
+    if (p.accepted || p.superseded || root.currentRec === "") return
+    var m = {}
+    for (var k in root.declinedBlockCards) m[k] = root.declinedBlockCards[k]
+    m[root.currentRec + ":" + String(i)] = true
+    root.declinedBlockCards = m
+    root.used("margin", "card-decline")
+  }
+
   function acceptProposal(i) {
     var p = root.currentProposals[i]
     if (p && p.ledger) { root.settleListedCard(p, "accept"); return }
-    if (!p || p.accepted || p.superseded || root.currentRec === "" || acceptProc.running) return
+    if (!p || p.accepted || p.superseded || root.blockCardDeclined(root.currentRec, i) || root.currentRec === "" || acceptProc.running) return
     root.pendingAccept = { hash: root.currentRec, index: i }
     acceptProc.command = [svc.runner, "accept", "--hash", root.currentRec, "--index", String(i), "--date", svc.noteDate]
     acceptProc.running = true
@@ -9419,28 +9490,33 @@ Item {
 
             // The agent mark: status-only (non-clickable), paired with a small
             // indicator dot so it reads clearly as status rather than a button.
-            Row {
+            Item {
               id: agentStatus
               visible: svc.header !== "" && root.agentOn && !root.pdfShown && (headerRight.room >= root.sp(175) || root.working || root.replyWaiting)
               anchors.verticalCenter: parent.verticalCenter
-              spacing: root.sp(5)
-              Rectangle {
-                anchors.verticalCenter: parent.verticalCenter
-                width: root.sp(5)
-                height: width
-                radius: width / 2
-                color: root.replyWaiting ? root.accent : (root.working ? root.foreground : Util.alpha(root.faint, 0.6))
-                Behavior on color { ColorAnimation { duration: 240 } }
-              }
-              Text {
-                anchors.verticalCenter: parent.verticalCenter
-                textFormat: Text.PlainText
-                text: "agent"
-                color: root.replyWaiting ? root.accent : (root.working ? root.foreground : root.faint)
-                font.family: root.fontFamily
-                font.styleName: root.fontStyle
-                font.pixelSize: root.fs(Style.font.bodySmall)
-                Behavior on color { ColorAnimation { duration: 240 } }
+              width: agentStatusRow.implicitWidth
+              height: agentStatusRow.implicitHeight
+              Row {
+                id: agentStatusRow
+                spacing: root.sp(5)
+                Rectangle {
+                  anchors.verticalCenter: parent.verticalCenter
+                  width: root.sp(5)
+                  height: width
+                  radius: width / 2
+                  color: root.replyWaiting ? root.accent : (root.working ? root.foreground : Util.alpha(root.faint, 0.6))
+                  Behavior on color { ColorAnimation { duration: 240 } }
+                }
+                Text {
+                  anchors.verticalCenter: parent.verticalCenter
+                  textFormat: Text.PlainText
+                  text: "agent"
+                  color: root.replyWaiting ? root.accent : (root.working ? root.foreground : root.faint)
+                  font.family: root.fontFamily
+                  font.styleName: root.fontStyle
+                  font.pixelSize: root.fs(Style.font.bodySmall)
+                  Behavior on color { ColorAnimation { duration: 240 } }
+                }
               }
               MouseArea {
                 anchors.fill: parent

@@ -326,6 +326,7 @@ var actions = [
   { id: "pdfPrevPage", group: "pdf", places: ["pdf"], does: "The page before", keys: ["PgUp", "Shift+Space"] },
   { id: "pdfFirst", group: "pdf", places: ["pdf"], does: "The first page", keys: ["Home"] },
   { id: "pdfLast", group: "pdf", places: ["pdf"], does: "The last page", keys: ["End"] },
+  { id: "pdfGoto", group: "pdf", places: ["pdf"], does: "Jump to a page number", keys: ["G"] },
   { id: "pdfBigger", group: "pdf", places: ["pdf"], does: "Larger (or Ctrl+wheel up, or a pinch)", keys: ["Plus", "="] },
   { id: "pdfSmaller", group: "pdf", places: ["pdf"], does: "Smaller (or Ctrl+wheel down, or a pinch)", keys: ["-"] },
   { id: "pdfFit", group: "pdf", places: ["pdf"], does: "Fit again; fitted, switch between its text and the whole page", keys: ["0"] },

@@ -215,6 +215,7 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | The page before | `PgUp` · `Shift+Space` | in a PDF |
 | The first page | `Home` | in a PDF |
 | The last page | `End` | in a PDF |
+| Jump to a page number | `g` | in a PDF |
 | Larger (or Ctrl+wheel up, or a pinch) | `+` · `=` | in a PDF |
 | Smaller (or Ctrl+wheel down, or a pinch) | `-` | in a PDF |
 | Fit again; fitted, switch between its text and the whole page | `0` | in a PDF |

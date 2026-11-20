@@ -143,6 +143,7 @@ Item {
   }
   function chooseProject(tag) {
     pane.askingTag = false
+    pane.jumpingPage = false
     if (tag) { pane.readRun(["tag", "--tag", tag]); pane.tagSaid = "#" + tag; tagSaidTimer.restart(); page.used("pdf", "project") }
     var ask = pane.pendingAskMark
     pane.pendingAskMark = ""
@@ -344,6 +345,7 @@ Item {
     pane.read = ({ marks: [], unplaced: 0, text: true, note: "", tags: [] })
     pane.wholePage = false
     pane.askingTag = false
+    pane.jumpingPage = false
     pane.pendingAskMark = ""
     pane.dressed = []
     pane.picked = ""; pane.lastMade = ""; pane.readError = ""; pane.noting = false; noteField.text = ""
@@ -1012,6 +1014,11 @@ Item {
     ignoreUnknownSignals: true
     function onChildrenChanged() { Qt.callLater(pane.dress) }
   }
+  Connections {
+    target: pane.table()
+    ignoreUnknownSignals: true
+    function onContentYChanged() { if (pane.view && pane.view.selectedText !== "") pane.selectionRev++ }
+  }
 
   // The words selected now: { page (from 0), text, y (points), holder }, or null.
   function selected() {
@@ -1024,6 +1031,44 @@ Item {
       return { page: h.index, text: h.selection.text, y: Math.min(h.selection.from.y, h.selection.to.y) / s, holder: h }
     }
     return null
+  }
+  readonly property var currentSel: pane.selected()
+  readonly property var selBox: {
+    pane.selectionRev
+    pane.current
+    var sel = pane.currentSel
+    if (!sel || !sel.holder || !sel.holder.selection || !sel.holder.selection.parent) return null
+    var s = sel.holder.selection
+    var topY = Math.min(s.from.y, s.to.y)
+    var botY = Math.max(s.from.y, s.to.y)
+    var midX = (s.from.x + s.to.x) / 2
+    var pTop = s.parent.mapToItem(pane, midX, topY)
+    var pBot = s.parent.mapToItem(pane, midX, botY)
+    return { x: pTop.x, top: pTop.y, bottom: pBot.y }
+  }
+
+  // Inline go-to-page jump (`g` or clicking `page X / Y` in the footer).
+  property bool jumpingPage: false
+  function openGoto() {
+    if (!pane.ready || pane.pages <= 1) return
+    pane.jumpingPage = true
+    gotoField.text = String(pane.current + 1)
+    gotoField.selectAll()
+    gotoField.forceActiveFocus()
+  }
+  function closeGoto() {
+    pane.jumpingPage = false
+    keys.forceActiveFocus()
+  }
+  function commitGoto() {
+    var n = parseInt(gotoField.text.trim(), 10)
+    pane.jumpingPage = false
+    if (!isNaN(n) && n >= 1 && n <= pane.pages) pane.jumpTo(n - 1, 0)
+    keys.forceActiveFocus()
+  }
+  function fitToggle() {
+    if (Math.abs(pane.zoom - 1) > 0.01) pane.zoom = 1
+    else { pane.wholePage = !pane.wholePage; Qt.callLater(pane.fit) }
   }
   function clearSelection() {
     for (var i = 0; i < pane.dressed.length; i++) if (pane.dressed[i] && pane.dressed[i].selection) pane.dressed[i].selection.clear()
@@ -1318,13 +1363,10 @@ Item {
     // used for them: from the foot of a page it would land on another's foot.
     else if (Sc.hit(event, "pdfFirst")) pane.jumpTo(0, 0)
     else if (Sc.hit(event, "pdfLast")) pane.jumpTo(Math.max(0, pane.pages - 1), 0)
+    else if (Sc.hit(event, "pdfGoto")) pane.openGoto()
     else if (Sc.hit(event, "pdfBigger")) pane.zoom = Math.min(4, pane.zoom * 1.2)
     else if (Sc.hit(event, "pdfSmaller")) pane.zoom = Math.max(0.3, pane.zoom / 1.2)
-    else if (Sc.hit(event, "pdfFit")) {
-      // Sized: back to the fit. Fitted: the whole page ↔ its text.
-      if (Math.abs(pane.zoom - 1) > 0.01) pane.zoom = 1
-      else { pane.wholePage = !pane.wholePage; Qt.callLater(pane.fit) }
-    }
+    else if (Sc.hit(event, "pdfFit")) pane.fitToggle()
     else if (Sc.hit(event, "pdfFind")) pane.openFind()
     else if (Sc.hit(event, "pdfOpen")) { page.used("pdf", "open-elsewhere"); Qt.openUrlExternally(pane.url()) }
     else if (Sc.hit(event, "pdfClose")) page.closePdf()
@@ -1757,42 +1799,351 @@ Item {
     }
   }
 
-  Text {
+  // Option A: Floating `highlight [m] · question [q]` pill anchored directly
+  // above (or below when near top) the selected PDF text passage.
+  Rectangle {
+    id: selectionPill
+    z: 60
+    visible: pane.ready && pane.markable && !!pane.selBox && !pane.noting && !pane.finding && !pane.askingTag && !pane.jumpingPage
+      && pane.selBox.bottom > 0 && pane.selBox.top < pane.height - foot.height
+    width: selPillRow.implicitWidth + page.sp(20)
+    height: selPillRow.implicitHeight + page.sp(10)
+    radius: page.sp(7)
+    color: page.sunk
+    border.width: 1
+    border.color: Qt.rgba(page.foreground.r, page.foreground.g, page.foreground.b, 0.22)
+    x: pane.selBox ? Math.round(Math.max(page.sp(8), Math.min(pane.width - width - page.sp(8), pane.selBox.x - width / 2))) : 0
+    y: {
+      if (!pane.selBox) return 0
+      var above = pane.selBox.top - height - page.sp(10)
+      if (above >= page.sp(6)) return Math.round(above)
+      return Math.round(Math.min(pane.height - foot.height - height - page.sp(6), pane.selBox.bottom + page.sp(10)))
+    }
+    Row {
+      id: selPillRow
+      anchors.centerIn: parent
+      spacing: page.sp(10)
+      Item {
+        width: pillMarkRow.implicitWidth
+        height: pillMarkRow.implicitHeight
+        anchors.verticalCenter: parent.verticalCenter
+        Row {
+          id: pillMarkRow
+          spacing: page.sp(5)
+          Rectangle {
+            anchors.verticalCenter: parent.verticalCenter
+            width: page.sp(7); height: width; radius: width / 2
+            color: page.palette.yellow
+          }
+          Text {
+            anchors.verticalCenter: parent.verticalCenter
+            textFormat: Text.PlainText
+            text: "highlight"
+            color: pillMarkArea.containsMouse && page.handOn ? page.accent : page.foreground
+            font.family: page.fontFamily
+            font.styleName: page.fontStyle
+            font.pixelSize: page.fs(Style.font.caption)
+          }
+          KeyCaps {
+            anchors.verticalCenter: parent.verticalCenter
+            page: pane.page
+            key: page.keyName("pdfMark")
+            size: page.fs(Style.font.caption)
+          }
+        }
+        MouseArea {
+          id: pillMarkArea
+          anchors.fill: parent
+          hoverEnabled: true
+          cursorShape: Qt.PointingHandCursor
+          onClicked: pane.mark("h")
+          Tip { host: pane.page; act: "pdfMark"; shown: parent.containsMouse; text: page.tip("Highlight the selected passage", "pdfMark") }
+        }
+      }
+      Rectangle {
+        anchors.verticalCenter: parent.verticalCenter
+        width: 1
+        height: page.sp(12)
+        color: Qt.rgba(page.foreground.r, page.foreground.g, page.foreground.b, 0.16)
+      }
+      Item {
+        width: pillAskRow.implicitWidth
+        height: pillAskRow.implicitHeight
+        anchors.verticalCenter: parent.verticalCenter
+        Row {
+          id: pillAskRow
+          spacing: page.sp(5)
+          Rectangle {
+            anchors.verticalCenter: parent.verticalCenter
+            width: page.sp(7); height: width; radius: width / 2
+            color: page.palette.blue
+          }
+          Text {
+            anchors.verticalCenter: parent.verticalCenter
+            textFormat: Text.PlainText
+            text: "question"
+            color: pillAskArea.containsMouse && page.handOn ? page.accent : page.foreground
+            font.family: page.fontFamily
+            font.styleName: page.fontStyle
+            font.pixelSize: page.fs(Style.font.caption)
+          }
+          KeyCaps {
+            anchors.verticalCenter: parent.verticalCenter
+            page: pane.page
+            key: page.keyName("pdfQuestion")
+            size: page.fs(Style.font.caption)
+          }
+        }
+        MouseArea {
+          id: pillAskArea
+          anchors.fill: parent
+          hoverEnabled: true
+          cursorShape: Qt.PointingHandCursor
+          onClicked: pane.mark("q")
+          Tip { host: pane.page; act: "pdfQuestion"; shown: parent.containsMouse; text: page.tip("Mark as a question and ask in chat", "pdfQuestion") }
+        }
+      }
+    }
+  }
+
+  TextField {
+    id: gotoField
+    z: 55
+    visible: pane.jumpingPage
+    anchors.bottom: foot.top
+    anchors.bottomMargin: page.sp(6)
+    anchors.left: parent.left
+    width: Math.min(page.sp(260), parent.width)
+    placeholderText: "page 1–" + pane.pages + " · Enter jumps · Esc cancels"
+    font.family: page.fontFamily
+    font.styleName: page.fontStyle
+    font.pixelSize: page.fs(Style.font.bodySmall)
+    foreground: page.foreground
+    Keys.onPressed: function (event) {
+      if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { pane.commitGoto(); event.accepted = true }
+      else if (event.key === Qt.Key_Escape) { pane.closeGoto(); event.accepted = true }
+    }
+  }
+
+  // Option A: Quiet split clickable footer — status & clickable page jump on
+  // the left; subtle clickable toggles (`dark`, `fit`, `find`, `acronyms`,
+  // `reading note`) on the right. Full-width status line takes over when
+  // reporting an error, OCR progress, or picked-mark actions.
+  Item {
     id: foot
     anchors.bottom: parent.bottom
     anchors.left: parent.left
     anchors.right: parent.right
-    horizontalAlignment: Text.AlignRight
-    elide: Text.ElideRight
-    textFormat: Text.PlainText
+    height: Math.max(footStatus.implicitHeight, footRight.implicitHeight) + page.sp(2)
     readonly property int count: (pane.read.marks || []).length
-    text: pane.error !== "" ? pane.error
-      : !pane.ready ? "reading…"
-      : pane.readError !== "" ? pane.readError
-      : pane.flashMissed !== "" ? "those words are " + pane.flashMissed
-      : "page " + (pane.current + 1) + " of " + pane.pages
-        + (pane.ocrProgress ? " · reading the scan, page " + Math.max(1, pane.ocrProgress.page) + " of " + (pane.ocrProgress.pages || pane.pages) + "…"
-           : pane.ocrable ? " · a scan, no words in it: " + page.keyName("pdfOcr") + " reads it (a few seconds a page)"
-           : pane.read.ocr ? " · read from a scan" : "")
-        + (foot.count > 0 ? " · " + foot.count + (foot.count === 1 ? " mark" : " marks") : "")
-        + ((pane.read.tags || []).length > 0 ? " · " + pane.read.tags.map(function (x) { return "#" + x }).join(" ") : "")
-        + (pane.tagSaid !== "" ? " (kept in its reading note)" : "")
-        + (pane.read.unplaced > 0 ? ", " + pane.read.unplaced + " not found on its page" : "")
-        + "   " + (pane.jumpBack ? page.keyName("linkBack") + " back to where you were · " : "")
-        + (pane.selected() ? page.keyName("pdfMark") + " highlight · " + page.keyName("pdfQuestion") + " question"
-                   : pane.picked !== "" ? (page.paper.askable ? page.keyName("pdfGo") + " to the paper's chat · " : "") + page.keyName("pdfMark") + "/" + page.keyName("pdfQuestion") + " its kind · " + page.keyName("pdfNote") + " a note · " + page.keyName("pdfRemove") + " remove · " + page.keyName("pdfClose") + " or a click away lets go"
-                   : (pane.markable ? "select words to mark them · " : "")
-                     + (pane.acro.list.length > 0 ? page.keyName("pdfAcronyms") + " acronyms · " : "")
-                     + page.keyName("pdfOpen") + " opens it elsewhere")
-    color: pane.error !== "" || pane.readError !== "" ? page.urgent : page.faint
-    font.family: page.fontFamily
-    font.styleName: page.fontStyle
-    font.pixelSize: page.fs(Style.font.caption)
-    MouseArea {
+    readonly property bool fullStatus: pane.error !== "" || !pane.ready || pane.readError !== ""
+      || pane.flashMissed !== "" || !!pane.ocrProgress || pane.picked !== ""
+
+    Text {
+      id: footStatus
+      visible: foot.fullStatus
       anchors.fill: parent
-      hoverEnabled: true
-      acceptedButtons: Qt.NoButton
-      Tip { host: page; shown: parent.containsMouse && foot.truncated; text: foot.text }
+      verticalAlignment: Text.AlignVCenter
+      horizontalAlignment: Text.AlignRight
+      elide: Text.ElideRight
+      textFormat: Text.PlainText
+      text: pane.error !== "" ? pane.error
+        : !pane.ready ? "reading…"
+        : pane.readError !== "" ? pane.readError
+        : pane.flashMissed !== "" ? "those words are " + pane.flashMissed
+        : pane.ocrProgress ? "page " + (pane.current + 1) + " of " + pane.pages + " · reading the scan, page " + Math.max(1, pane.ocrProgress.page) + " of " + (pane.ocrProgress.pages || pane.pages) + "…"
+        : "page " + (pane.current + 1) + " / " + pane.pages + "   "
+          + (page.paper.askable ? page.keyName("pdfGo") + " chat · " : "")
+          + page.keyName("pdfMark") + "/" + page.keyName("pdfQuestion") + " kind · "
+          + page.keyName("pdfNote") + " note · " + page.keyName("pdfRemove") + " remove · " + page.keyName("pdfClose") + " done"
+      color: pane.error !== "" || pane.readError !== "" ? page.urgent : page.faint
+      font.family: page.fontFamily
+      font.styleName: page.fontStyle
+      font.pixelSize: page.fs(Style.font.caption)
+      MouseArea {
+        anchors.fill: parent
+        hoverEnabled: true
+        acceptedButtons: Qt.NoButton
+        Tip { host: page; shown: parent.containsMouse && footStatus.truncated; text: footStatus.text }
+      }
+    }
+
+    Row {
+      id: footLeft
+      visible: !foot.fullStatus
+      anchors.left: parent.left
+      anchors.right: footRight.left
+      anchors.rightMargin: page.sp(12)
+      anchors.verticalCenter: parent.verticalCenter
+      spacing: page.sp(8)
+      clip: true
+
+      Text {
+        textFormat: Text.PlainText
+        text: "page " + (pane.current + 1) + " / " + pane.pages
+        color: pageNumArea.containsMouse && page.handOn ? page.accent : page.dim
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.caption)
+        font.underline: pageNumArea.containsMouse && page.handOn
+        MouseArea {
+          id: pageNumArea
+          anchors.fill: parent
+          hoverEnabled: true
+          cursorShape: Qt.PointingHandCursor
+          onClicked: pane.openGoto()
+          Tip { host: page; act: "pdfGoto"; shown: parent.containsMouse; text: page.tip("Jump to a page number", "pdfGoto") }
+        }
+      }
+
+      Text {
+        visible: foot.count > 0 || (pane.read.tags || []).length > 0 || pane.ocrable || !!pane.read.ocr || pane.tagSaid !== "" || pane.read.unplaced > 0
+        textFormat: Text.PlainText
+        text: (foot.count > 0 ? "·  " + foot.count + (foot.count === 1 ? " mark" : " marks") : "")
+          + ((pane.read.tags || []).length > 0 ? (foot.count > 0 ? "  ·  " : "·  ") + pane.read.tags.map(function (x) { return "#" + x }).join(" ") : "")
+          + (pane.tagSaid !== "" ? " (kept in reading note)" : "")
+          + (pane.read.ocr ? "  ·  OCR" : "")
+          + (pane.read.unplaced > 0 ? "  ·  " + pane.read.unplaced + " unplaced" : "")
+        color: page.faint
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.caption)
+      }
+
+      Text {
+        visible: pane.ocrable
+        textFormat: Text.PlainText
+        text: "·  read scan"
+        color: ocrArea.containsMouse && page.handOn ? page.accent : page.dim
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.caption)
+        font.underline: ocrArea.containsMouse && page.handOn
+        MouseArea {
+          id: ocrArea
+          anchors.fill: parent
+          hoverEnabled: true
+          cursorShape: Qt.PointingHandCursor
+          onClicked: pane.readScan()
+          Tip { host: page; act: "pdfOcr"; shown: parent.containsMouse; text: page.tip("Run OCR on this scanned PDF", "pdfOcr") }
+        }
+      }
+
+      Text {
+        visible: !!pane.jumpBack
+        textFormat: Text.PlainText
+        text: "·  back"
+        color: backJumpArea.containsMouse && page.handOn ? page.accent : page.dim
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.caption)
+        font.underline: backJumpArea.containsMouse && page.handOn
+        MouseArea {
+          id: backJumpArea
+          anchors.fill: parent
+          hoverEnabled: true
+          cursorShape: Qt.PointingHandCursor
+          onClicked: pane.jumpReturn()
+          Tip { host: page; act: "linkBack"; shown: parent.containsMouse; text: page.tip("Back to where you were", "linkBack") }
+        }
+      }
+    }
+
+    Row {
+      id: footRight
+      visible: !foot.fullStatus
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      spacing: page.sp(10)
+
+      Text {
+        textFormat: Text.PlainText
+        text: "dark"
+        color: darkArea.containsMouse && page.handOn ? page.accent : pane.dark ? page.foreground : page.faint
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.weight: pane.dark ? Font.Medium : Font.Normal
+        font.pixelSize: page.fs(Style.font.caption)
+        MouseArea {
+          id: darkArea
+          anchors.fill: parent
+          hoverEnabled: true
+          cursorShape: Qt.PointingHandCursor
+          onClicked: pane.toggleDark()
+          Tip { host: page; act: "pdfDark"; shown: parent.containsMouse; text: page.tip(pane.dark ? "Show original paper colours" : "Dark pages in theme colours", "pdfDark") }
+        }
+      }
+
+      Text {
+        textFormat: Text.PlainText
+        text: "fit"
+        color: fitArea.containsMouse && page.handOn ? page.accent : page.faint
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.caption)
+        MouseArea {
+          id: fitArea
+          anchors.fill: parent
+          hoverEnabled: true
+          cursorShape: Qt.PointingHandCursor
+          onClicked: pane.fitToggle()
+          Tip { host: page; act: "pdfFit"; shown: parent.containsMouse; text: page.tip("Fit to text or whole page", "pdfFit") }
+        }
+      }
+
+      Text {
+        textFormat: Text.PlainText
+        text: "find"
+        color: findArea.containsMouse && page.handOn ? page.accent : pane.finding ? page.foreground : page.faint
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.caption)
+        MouseArea {
+          id: findArea
+          anchors.fill: parent
+          hoverEnabled: true
+          cursorShape: Qt.PointingHandCursor
+          onClicked: pane.openFind()
+          Tip { host: page; act: "pdfFind"; shown: parent.containsMouse; text: page.tip("Find words in this PDF", "pdfFind") }
+        }
+      }
+
+      Text {
+        visible: pane.acro.list.length > 0
+        textFormat: Text.PlainText
+        text: "acronyms"
+        color: acroBtnArea.containsMouse && page.handOn ? page.accent : page.faint
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.caption)
+        MouseArea {
+          id: acroBtnArea
+          anchors.fill: parent
+          hoverEnabled: true
+          cursorShape: Qt.PointingHandCursor
+          onClicked: pane.openAcronyms()
+          Tip { host: page; act: "pdfAcronyms"; shown: parent.containsMouse; text: page.tip("List acronyms in this paper", "pdfAcronyms") }
+        }
+      }
+
+      Text {
+        visible: !!(pane.read && pane.read.note)
+        textFormat: Text.PlainText
+        text: "reading note"
+        color: noteBtnArea.containsMouse && page.handOn ? page.accent : page.dim
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.caption)
+        font.underline: noteBtnArea.containsMouse && page.handOn
+        MouseArea {
+          id: noteBtnArea
+          anchors.fill: parent
+          hoverEnabled: true
+          cursorShape: Qt.PointingHandCursor
+          onClicked: page.openFile(pane.read.note, false)
+          Tip { host: page; shown: parent.containsMouse; text: "Open this paper's reading note (Ctrl+[ returns here)" }
+        }
+      }
     }
   }
 }
