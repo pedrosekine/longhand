@@ -987,7 +987,8 @@ BorderSurface {
             : kind === "page" ? pageCol.implicitHeight + page.sp(14)
             : rowCol.implicitHeight + page.sp(kind === "fold" || kind === "doc" || kind === "paper" ? 4 : 8)
           radius: Style.cornerRadius
-          color: hot ? Style.selectedFill : rowArea.containsMouse && modelData.pick && page.handOn ? Style.hoverFill : "transparent"
+          color: hot ? Style.selectedFill : rowArea.containsMouse && modelData.pick && page.handOn ? Style.hoverFill
+            : kind === "page" ? Qt.rgba(page.foreground.r, page.foreground.g, page.foreground.b, 0.03) : "transparent"
           // The project's and the week's pages are boxes of their own
           // (2026-11-21): where they lead, said before they are opened.
           border.width: kind === "page" ? 1 : 0
@@ -999,15 +1000,18 @@ BorderSurface {
           readonly property string whenLine: kind === "section" ? page.sectionWhen(sec) + (Say.sectionCounts(sec) !== "" ? "  ·  " + Say.sectionCounts(sec) : "")
             : kind === "read" ? page.isoWhen(modelData.day) + (modelData.said ? "  ·  " + modelData.said : "")
             : ""
-          readonly property string whatLine: kind === "section" ? (sectionTitle !== "" ? "✎  " + sectionTitle : "")
+          // Its own column, dim, so the words after it line up and a second
+          // line hangs under the words, not under the sign.
+          readonly property string glyph: kind === "read" || kind === "paper" ? "❝" : kind === "section" ? "✎" : ""
+          readonly property string whatLine: kind === "section" ? sectionTitle
             : kind === "box" ? "○  " + modelData.text
             : kind === "question" ? "?  " + modelData.text
-            : kind === "read" ? "❝  " + modelData.label
+            : kind === "read" ? modelData.label
             : kind === "fold" ? (modelData.open ? "▾  " : "▸  ") + modelData.text
-            : kind === "paper" ? "❝  " + modelData.label
+            : kind === "paper" ? modelData.label
             : kind === "doc" ? modelData.name
             : ""
-          readonly property string underLine: kind === "section" ? (sectionTitle !== "" ? Say.sectionUnder(sec) : "✎  " + Say.sectionUnder(sec))
+          readonly property string underLine: kind === "section" ? Say.sectionUnder(sec)
             : kind === "box" ? page.sectionWhen(sec)
             : kind === "question" ? modelData.label + " · p. " + modelData.page + (modelData.note ? " · " + modelData.note : "")
             : kind === "paper" ? modelData.title
@@ -1031,8 +1035,8 @@ BorderSurface {
             visible: rowCell.kind === "page"
             anchors.left: parent.left
             anchors.right: parent.right
-            anchors.leftMargin: page.sp(10)
-            anchors.rightMargin: page.sp(10)
+            anchors.leftMargin: page.sp(4)
+            anchors.rightMargin: page.sp(4)
             anchors.verticalCenter: parent.verticalCenter
             spacing: page.sp(2)
             Item {
@@ -1051,11 +1055,17 @@ BorderSurface {
                 font.styleName: page.fontStyle
                 font.pixelSize: page.fs(Style.font.bodySmall)
               }
+              TextMetrics {
+                id: widestKey
+                text: "W"
+                font: pageLetter.font
+              }
               Rectangle {
                 id: pageKey
                 anchors.right: parent.right
                 anchors.verticalCenter: pageName.verticalCenter
-                width: pageLetter.implicitWidth + page.sp(8)
+                // P and W in boxes of one width, so they line up.
+                width: Math.ceil(widestKey.width) + page.sp(8)
                 height: pageLetter.implicitHeight + page.sp(1)
                 radius: Style.cornerRadius
                 color: "transparent"
@@ -1117,8 +1127,10 @@ BorderSurface {
               font.pixelSize: page.fs(Style.font.caption)
             }
             Text {
+              id: whatText
               width: parent.width
               visible: rowCell.whatLine !== ""
+              leftPadding: rowCell.glyph !== "" ? page.sp(12) : 0
               textFormat: Text.StyledText
               wrapMode: Text.WordWrap
               maximumLineCount: 2
@@ -1132,8 +1144,10 @@ BorderSurface {
               font.pixelSize: page.fs(rowCell.kind === "fold" || rowCell.kind === "paper" || rowCell.kind === "doc" ? Style.font.caption : Style.font.bodySmall)
             }
             Text {
+              id: underText
               width: parent.width
               visible: rowCell.underLine !== ""
+              leftPadding: rowCell.glyph !== "" ? page.sp(12) : 0
               textFormat: Text.StyledText
               wrapMode: Text.WordWrap
               maximumLineCount: rowCell.kind === "paper" ? 1 : 2
@@ -1144,6 +1158,21 @@ BorderSurface {
               font.styleName: page.fontStyle
               font.pixelSize: page.fs(Style.font.caption)
             }
+          }
+          // The sign of a paper (❝) or a note (✎), beside the first line of
+          // its words: the title's, or the boxes' when a section has none.
+          Text {
+            readonly property Item line: whatText.visible ? whatText : underText
+            visible: rowCell.glyph !== "" && rowCol.visible
+            x: rowCol.x
+            // On the words' baseline, as a letter of them would be.
+            y: rowCol.y + line.y + line.baselineOffset - baselineOffset
+            textFormat: Text.PlainText
+            text: rowCell.glyph
+            color: page.faint
+            font.family: page.fontFamily
+            font.styleName: page.fontStyle
+            font.pixelSize: page.fs(Style.font.caption)
           }
           MouseArea {
             id: rowArea
