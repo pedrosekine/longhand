@@ -1100,14 +1100,18 @@ Item {
   // its documents and its sections; -1 when the keys are not on them.
   property var projectPapers: []
   property int projectPaperFocus: -1
-  // The project's view as one list (ProjectView.js, 2026-11-16): what is
-  // open, then writing and reading by day, then the shelf and the files
-  // folded. The selection is a row's key, so it holds when the list is
-  // read again.
+  // The project's view as one list (ProjectView.js, 2026-11-16): its page,
+  // what is open, then this week's page and its writing and reading, the
+  // days before folded (2026-11-21), then the shelf and the files folded.
+  // The selection is a row's key, so it holds when the list is read again.
+  // The day is read when the list is: the sections are read again often
+  // enough that a week turning over at midnight shows by morning.
   property string projectRowKey: ""
-  property var projectFolds: ({ shelf: false, files: false, open: false })
+  property var projectFolds: ({ shelf: false, files: false, open: false, earlier: false })
   readonly property var projectRows: PV.rows(root.sections, root.projectPapers, root.projectOpen ? root.projectDocs() : [],
-    { shelf: root.projectFolds.shelf, files: root.projectFolds.files, open: root.projectFolds.open, iso: root.sectionIso })
+    { shelf: root.projectFolds.shelf, files: root.projectFolds.files, open: root.projectFolds.open,
+      earlier: root.projectFolds.earlier, iso: root.sectionIso, name: root.projectName,
+      today: Qt.formatDate(new Date(), "yyyy-MM-dd") })
   readonly property var projectRow: PV.find(root.projectRows, root.projectRowKey)
   readonly property string projectFocusKey: root.projectRow ? root.projectRow.key : ""
   function sectionIso(s) {
@@ -5141,7 +5145,7 @@ Item {
     root.docFocus = -1
     root.projectPaperFocus = -1
     root.projectRowKey = ""
-    root.projectFolds = ({ shelf: false, files: false, open: false })
+    root.projectFolds = ({ shelf: false, files: false, open: false, earlier: false })
     root.projectPapers = []
     root.sidebarOpen = true
     root.projectOpen = true
@@ -5750,12 +5754,18 @@ Item {
     Qt.openUrlExternally("file://" + d.path)
   }
 
-  // Enter in a project, by what the row is: a fold opens or closes; a
-  // section or an open box goes to the note; a paper opens where it was
-  // left, a waiting question opens it on that mark; a file opens.
+  // Enter in a project, by what the row is: the project's or the week's
+  // page opens; a fold opens or closes; a section or an open box goes to
+  // the note; a paper opens where it was left, a waiting question opens it
+  // on that mark; a file opens.
   function openInProject() {
     var r = root.projectRow
     if (!r) return
+    if (r.kind === "page") {
+      if (r.page === "week") root.openProjectWeek(root.projectTag)
+      else root.openProjectPage(root.projectTag)
+      return
+    }
     if (r.kind === "fold") {
       var f = Object.assign({}, root.projectFolds)
       f[r.fold] = !f[r.fold]

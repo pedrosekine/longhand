@@ -478,7 +478,8 @@ section, word for word, and to the diary's decisions log.
    that are PDFs in the vault open in the page's reader now, not in another
    application. *Replaced the same day by the one-list view (below).* *A second part, 2026-11-16, for the master thesis*: the
    **project's page**, read-only — P on a project (or inside one), or
-   "→ the project's page" in its view. The runner (`longhand-agent
+   its "Project page" row (since 2026-11-21; before, "→ the project's
+   page" under its name). The runner (`longhand-agent
    project-page --tag T`) gathers into one note: the next session, the
    project's open deadlines (overdue said), the "## Now" of its folder's
    README, its papers (questions waiting, with their words; being read; not
@@ -561,6 +562,25 @@ section, word for word, and to the diary's decisions log.
    Four directions were weighed (two lenses, one stream, a hub, open loops
    first); this is the stream with open loops on top. Screenshots:
    `tests/page/shots.py OUT --scene project`.
+   *This week and its pages, 2026-11-21* (from a look at the real #thesis
+   view: thirteen day rows took two thirds of the sidebar, while the two
+   pages that gather them were two grey caption lines). By day is now
+   **this week**, Monday to Sunday as the week's page counts it, headed by
+   the **Week page** as a box of its own: what it is for (a supervisor
+   update, the diary) and what is in it now ("1 paper read · 2 questions to
+   bring"). The days before fold into one line that names their meetings
+   ("Earlier · 5 days · Bernd Meeting, Kick-off"). The **Project
+   page** is the same kind of box under the name. Both are rows the arrow
+   keys reach (a project still opens on its first open row, its page one
+   key up), Enter opens them, P and W still do. A paper read is marked ❝
+   (someone else's words) and a section ✎ (the person's own writing); a
+   reading row no longer repeats "read" or its paper's title. Mockups
+   weighed (three placements of the pages, four ways to tell a paper from
+   a note; chosen: the pages where their subject is, with glyphs) were
+   drawn from the student's own notes and are kept out of the repo;
+   `docs/explorations/project-pane/` says what they showed.
+   What would tell: is W opened more now that it says what it is for, and
+   is Earlier opened at all.
 
    Waiting inside it:
    - the mixed folders (`projects/`, `reference/`, `inbox/`): whose are they,
