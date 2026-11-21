@@ -63,7 +63,7 @@ A project is a course or anything worked towards, with a `#tag`. A heading
 same or a higher level. Typing `@` lists the projects: Enter writes its
 `#tag`, {key:mentionClass} starts a new section with its `# Name #tag`
 heading; in the sidebar's projects, {key:listTag} and {key:listClass} do the
-same. The
+same. Typing letters in the sidebar finds a project, with no key first. The
 sidebar ({key:sidebar} opens or closes it; {key:pane1} goes there, and in it
 switches between Time and Files) shows a month calendar, the day's deadlines
 and the projects with their next session; a project opens its notes from

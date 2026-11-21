@@ -5374,6 +5374,22 @@ Item {
     var m = root.sideMatches[i]
     if (m) root.sidePut("proj", root.projectIndex(m.tag))
   }
+  // Find by typing (2026-11-22, the student: "easier to make searches
+  // while typing, instead of first having to press tab and then #"): in
+  // the calendar or its lists, a letter or digit starts finding a
+  // project, with no key before it. The lists' own letter keys moved off
+  // letters for it (Shortcuts.js: s and t to Shift+Enter and Ctrl+Enter,
+  // as Shift- and Ctrl-click; p and w to Alt+P and Alt+W; j k to the
+  // arrows; the calendar's t to Home).
+  function sideFindStart(event) {
+    if (event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier)) return false
+    var ch = event.text || ""
+    if (ch.length !== 1 || !/[A-Za-z0-9\u00C0-\u024F_\-\/]/.test(ch)) return false
+    root.sideTyping = true
+    root.sideTyped = ch
+    root.sideToMatch(0)
+    return true
+  }
   function sideTypeKey(event) {
     var mods = event.modifiers & (Qt.ControlModifier | Qt.AltModifier)
     var ch = event.text || ""
@@ -5382,8 +5398,15 @@ Item {
     if (event.key === Qt.Key_Escape) { root.sideTyping = false; return true }
     if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
       var pr = at >= 0 ? root.sideMatches[at] : root.sideMatches[0]
+      var typed = root.sideTyped
       root.sideTyping = false
-      if (pr) root.reachProject(pr, "type")
+      // Shift+Enter a new section for it, Ctrl+Enter its tag at the
+      // cursor, as on a row of the list; letters nothing has: a new
+      // project, its name already in.
+      if (!pr) { root.sidePut("proj", root.projects.length); root.openSidebarProject(typed); return true }
+      if (event.modifiers & Qt.ShiftModifier) root.startClass(pr)
+      else if (event.modifiers & Qt.ControlModifier) root.insertTag(pr)
+      else root.reachProject(pr, "type")
       return true
     }
     if (event.key === Qt.Key_Backspace) {
@@ -5396,7 +5419,7 @@ Item {
       if (n > 0) root.sideToMatch(((at < 0 ? 0 : at) + (event.key === Qt.Key_Down ? 1 : n - 1)) % n)
       return true
     }
-    if (!mods && ch.length === 1 && /[\w\/-]/.test(ch)) {
+    if (!mods && ch.length === 1 && (/[\w\/\-\u00C0-\u024F]/.test(ch) || (ch === " " && root.sideTyped !== ""))) {
       root.sideTyped += ch
       root.sideToMatch(0)
       return true
@@ -7505,9 +7528,12 @@ Item {
     root.used("project", "note")
   }
 
-  function openSidebarProject() {
+  function openSidebarProject(name) {
     root.addingProject = true
-    Qt.callLater(function () { sidebar.projectFieldRef.forceActiveFocus() })
+    Qt.callLater(function () {
+      if (name) sidebar.projectFieldRef.text = name
+      sidebar.projectFieldRef.forceActiveFocus()
+    })
   }
 
   function closeSidebarProject() {

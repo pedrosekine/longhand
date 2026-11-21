@@ -106,11 +106,19 @@ TestCase {
     verify(Sc.hit(ev(Qt.Key_K, Qt.ControlModifier), "link"))
     verify(Sc.hit(ev(Qt.Key_Question, Qt.ShiftModifier), "keysHere"))
     // `#` reaches a project by its letters since 2026-11-17 (plan.md item
-    // 19); the tag is put with T.
+    // 19); since 2026-11-22 any letter does, so the lists' letters moved
+    // off letters: the tag Ctrl+Enter and a section Shift+Enter (as Ctrl-
+    // and Shift-click), the page and week Alt+P and Alt+W, j k the arrows.
     verify(Sc.hit(ev(Qt.Key_NumberSign, Qt.ShiftModifier), "sideReach"))
-    verify(Sc.hit(ev(Qt.Key_T, 0), "listTag"))
-    verify(Sc.hit(ev(Qt.Key_S, 0), "listClass"))
-    verify(!Sc.hit(ev(Qt.Key_Return, Qt.ShiftModifier), "listClass"))
+    verify(Sc.hit(ev(Qt.Key_Return, Qt.ControlModifier), "listTag"))
+    verify(Sc.hit(ev(Qt.Key_Return, Qt.ShiftModifier), "listClass"))
+    verify(Sc.hit(ev(Qt.Key_P, Qt.AltModifier), "listPage"))
+    verify(Sc.hit(ev(Qt.Key_W, Qt.AltModifier), "listWeek"))
+    verify(!Sc.hit(ev(Qt.Key_T, 0), "listTag"))
+    verify(!Sc.hit(ev(Qt.Key_S, 0), "listClass"))
+    verify(!Sc.hit(ev(Qt.Key_J, 0), "listDown"))
+    verify(!Sc.hit(ev(Qt.Key_K, 0), "listUp"))
+    verify(!Sc.hit(ev(Qt.Key_T, 0), "calToday"))
     verify(Sc.hit(ev(Qt.Key_T, Qt.ShiftModifier), "dashNoDate"))
     verify(!Sc.hit(ev(Qt.Key_T, Qt.ShiftModifier), "dashWhen"))
     verify(Sc.hit(ev(Qt.Key_F2, 0), "dashRename"))

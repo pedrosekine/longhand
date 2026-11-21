@@ -840,7 +840,7 @@ def checks() -> int:
         check(p.call("header").startswith(dt.date.today().strftime("%A")) and int(p.call("cursorLine")) == len(p.lines()) - 1,
               "…opens today with the cursor under it")
         p.call("insert", "first point")
-        check(p.call("projectKey", 1, 0x54, 0) == "true", "T on a project in the sidebar is taken")
+        check(p.call("projectKey", 1, 0x01000004, 0x04000000) == "true", "Ctrl+Enter on a project in the sidebar is taken")
         check(p.wait(lambda: "first point #dtm " in p.call("text")), "…and puts just its tag at the cursor")
 
         # 11b. a project's notes: every section of its tag, newest first,
@@ -899,9 +899,9 @@ def checks() -> int:
         p.call("leaveProject")
         check(p.wait(lambda: json.loads(p.call("sections")) == []), "← goes back to the projects")
         before = p.note()
-        check(p.call("projectKey", 0, 0x01000004, 0x02000000) == "false" and p.note() == before,
-              "Shift+Enter on a project writes nothing now")
-        check(p.call("projectKey", 0, 0x53, 0) == "true", "s on a project is taken")
+        check(p.call("projectKey", 0, 0x53, 0) == "false" and p.note() == before,
+              "s on a project writes nothing now (letters find a project)")
+        check(p.call("projectKey", 0, 0x01000004, 0x02000000) == "true", "Shift+Enter on a project is taken")
         check(p.wait(lambda: p.note().rstrip().endswith("# Interdisciplinary Seminar #intsem")),
               "…and starts a new section for it")
         check(json.loads(p.call("panel"))["project"] is False, "…and does not open the project")
@@ -3374,6 +3374,20 @@ def checks() -> int:
         check(walk()["typing"] and walk()["order"][walk()["at"]] == last, f"letters nothing has keep the row ({walk()})")
         p.call("sideKey", KEY_ESC, 0)
         check(not walk()["typing"] and walk()["list"] == "proj", f"…Esc stops typing, where it was ({walk()})")
+        # Letters alone, with no `#` (2026-11-22): from the calendar too.
+        p.call("sideKey", KEY_ESC, 0)
+        first = walk()["order"][0]
+        p.call("sideType", first[:2])
+        check(walk()["typing"] and walk()["list"] == "proj" and walk()["order"][walk()["at"]] == first,
+              f"letters alone find the project, from the calendar ({walk()})")
+        p.call("sideKey", KEY_ESC, 0)
+        p.call("sideKey", KEY_ESC, 0)
+        p.call("sideType", "qqz")
+        p.call("sideKey", KEY_RETURN, 0)
+        check(p.wait(lambda: p.call("addingProject") == "true" and p.call("sidebarProjectText") == "qqz") and not walk()["typing"],
+              f"…Enter on letters nothing has asks for a new project, its name in ({walk()})")
+        p.call("closeSidebarProject")
+        p.call("keysToSidebar")
         p.call("sideKey", KEY_ESC, 0)
         # A key per project, from anywhere: Alt and its place.
         p.call("pageKey", KEY_1, CTRL)

@@ -132,6 +132,8 @@ ShellRoot {
     function closeProjectName(): void { page.closeProjectName() }
     function sidebarProject(s: string): void { page.openSidebarProject(); page.submitSidebarProject(s) }
     function addingProject(): bool { return page.addingProject }
+    function closeSidebarProject(): void { page.closeSidebarProject() }
+    function sidebarProjectText(): string { return page.sidebarItem.projectFieldRef.text }
     // How a line is drawn: whether its emphasis is drawn rather than shown,
     // and the plain text the field holds under it — which must be the line.
     function drawn(line: int): string {

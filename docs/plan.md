@@ -975,6 +975,25 @@ Small, when passing by:
       you are and `?` for every key, broken only between keys, shown
       while the sidebar has the keys (Files and a project's view too);
       a hairline keeps what scrolls apart from the foot that stays.
+    - **Find by typing, and the foot in one row** (2026-11-22, the
+      student: "easier to make searches while typing, instead of first
+      having to press tab and then #"; the foot's two rows of words "not
+      a great experience"). Any letter in the calendar or its lists finds
+      a project; a find box stands where the PROJECTS heading was, with
+      the letters, a caret and "2 of 7"; only the matches are listed, the
+      best first; Enter its notes, Shift+Enter a section, Ctrl+Enter its
+      tag (as Shift- and Ctrl-click), and letters nothing has offer
+      "+ new project" with the name in. The lists' letters moved for it:
+      s and t to Shift+Enter and Ctrl+Enter, p and w to Alt+P and Alt+W
+      (bare inside a project), j k to the arrows, the calendar's t to
+      Home. The hint is drawn as key caps; the foot is one row, a
+      time | files switch and today, dashboard, keys and settings as
+      icons (as words they did not fit). Chosen from two looks shot in
+      the page (the other: the box at the top, the calendar stepping
+      aside while typing). Shift+Tab, reported as not acting like Tab:
+      real Shift+Tab presses in a private Hyprland walked the lists
+      backwards exactly; the usage log never counted a Shift+Tab, though,
+      so the keys may lose their Shift on the way through fcitx5. Open.
 20. ~~**A question's answer, one click away**~~ *built 2026-11-16* with
     item 18's "a question's answer, hovered" (`0af67ba`, `5e2062a`;
     `docs/files.md`, "A question's answer, hovered"). The answer shows

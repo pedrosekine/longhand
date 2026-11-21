@@ -279,7 +279,7 @@ var actions = [
   { id: "calNextWeek", group: "calendar", places: ["calendar"], does: "A week on", keys: ["Down"] },
   { id: "calPrevMonth", group: "calendar", places: ["calendar"], does: "A month back", keys: ["Ctrl+Left", "PgUp"] },
   { id: "calNextMonth", group: "calendar", places: ["calendar"], does: "A month on", keys: ["Ctrl+Right", "PgDn"] },
-  { id: "calToday", group: "calendar", places: ["calendar"], does: "Today", keys: ["Home", "T"] },
+  { id: "calToday", group: "calendar", places: ["calendar"], does: "Today", keys: ["Home"] },
   { id: "calOpen", group: "calendar", places: ["calendar"], does: "Open the day in the sheet", keys: ["Enter"] },
   { id: "calLists", group: "calendar", places: ["calendar"], does: "Down into the lists under it: the day's deadlines, the papers read that day, the projects", keys: ["Tab"] },
   // The walk the other way round lands on the projects, the list used most
@@ -289,26 +289,28 @@ var actions = [
 
   // One walk under the calendar (plan.md item 19, 2026-11-17): the arrows
   // go on from one list into the next; Tab only skips a list.
-  { id: "listUp", group: "lists", places: ["lists"], does: "Move up (at a list's top, on into the list above)", keys: ["Up", "K"] },
-  { id: "listDown", group: "lists", places: ["lists"], does: "Move down (at a list's end, on into the list below)", keys: ["Down", "J"] },
+  { id: "listUp", group: "lists", places: ["lists"], does: "Move up (at a list's top, on into the list above)", keys: ["Up"] },
+  { id: "listDown", group: "lists", places: ["lists"], does: "Move down (at a list's end, on into the list below)", keys: ["Down"] },
   { id: "listFirst", group: "lists", places: ["lists"], does: "The first row under the calendar", keys: ["Home"] },
   { id: "listLast", group: "lists", places: ["lists"], does: "The last project", keys: ["End"] },
   { id: "listOpen", group: "lists", places: ["lists"], does: "Open it (a deadline: go to its line)", keys: ["Enter"] },
   // The note's tick, on a deadline of the day (2026-10-17).
   { id: "listDone", group: "lists", places: ["lists"], does: "A deadline: done (again: not done)", keys: ["Ctrl+L"] },
   { id: "listInto", group: "lists", places: ["lists"], does: "Into a project's notes", keys: ["Right"] },
-  { id: "listClass", group: "lists", places: ["lists"], does: "A project: a new section for it in today's note (# Name #tag)", keys: ["S"] },
-  { id: "listPage", group: "lists", places: ["lists"], does: "The project's page: its papers, files, notes and deadlines in one scroll (on a project, or inside one)", keys: ["P"] },
+  { id: "listClass", group: "lists", places: ["lists"], does: "A project: a new section for it in today's note (# Name #tag)", keys: ["Shift+Enter"] },
+  { id: "listPage", group: "lists", places: ["lists"], does: "The project's page: its papers, files, notes and deadlines in one scroll (on a project, or inside one)", keys: ["Alt+P", "P"] },
   // The week (2026-11-17): the supervisor's update and the research diary.
-  { id: "listWeek", group: "lists", places: ["lists"], does: "The project's week: what was done, written and read, what is coming, what to ask (on a project, or inside one)", keys: ["W"] },
+  { id: "listWeek", group: "lists", places: ["lists"], does: "The project's week: what was done, written and read, what is coming, what to ask (on a project, or inside one)", keys: ["Alt+W", "W"] },
   // `#` went to reaching a project by its letters (2026-11-17), as the
   // switcher's "#th"; the tag is the T of "puts the tag".
-  { id: "listTag", group: "lists", places: ["lists"], does: "A project: put its #tag at the cursor", keys: ["T"] },
+  { id: "listTag", group: "lists", places: ["lists"], does: "A project: put its #tag at the cursor", keys: ["Ctrl+Enter"] },
   { id: "listNext", group: "lists", places: ["lists"], does: "Skip to the next list (after the projects: the calendar)", keys: ["Tab"] },
   { id: "listPrev", group: "lists", places: ["lists"], does: "Skip to the list before (before the first: the calendar)", keys: ["Shift+Tab"] },
   { id: "listBack", group: "lists", places: ["lists"], does: "Back out of the lists, to the calendar", keys: ["Esc", "Left"] },
   // Type to go (plan.md item 19): no field to open, the letters pick.
-  { id: "sideReach", group: "lists", places: ["calendar", "lists"], does: "A project by its letters: # then th picks #thesis, Enter opens it (↑↓ the other matches, Esc stops)", keys: ["#"] },
+  // Since 2026-11-22 any letter starts it; `#` still does, as in the
+  // switcher. Letters are no longer the lists' keys for it (above).
+  { id: "sideReach", group: "lists", places: ["calendar", "lists"], does: "Find a project: type its letters (th picks #thesis), Enter its notes, Shift+Enter a section, Ctrl+Enter its tag (↑↓ the other matches, Esc stops)", keys: ["#"] },
 
   { id: "filesUp", group: "files", places: ["files"], does: "Move up", keys: ["Up", "K"] },
   { id: "filesDown", group: "files", places: ["files"], does: "Move down", keys: ["Down", "J"] },

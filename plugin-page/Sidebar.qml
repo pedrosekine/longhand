@@ -130,6 +130,7 @@ BorderSurface {
     // a project, wherever the keys are under the calendar or in it.
     if (page.sideTyping && page.sideTypeKey(event)) return true
     if (Sc.hit(event, "sideReach")) { page.sideReachStart(); return true }
+    if (page.sideFindStart(event)) return true
     // Under the calendar the lists are one walk (plan.md item 19): the
     // arrows go on from one list into the next, Tab skips a list, and the
     // keys of the row (Enter, done, a section…) are the list's own.
@@ -218,6 +219,80 @@ BorderSurface {
     gradient: Gradient {
       GradientStop { position: 0; color: Qt.rgba(sidebar.color.r, sidebar.color.g, sidebar.color.b, atTop ? 1 : 0) }
       GradientStop { position: 1; color: Qt.rgba(sidebar.color.r, sidebar.color.g, sidebar.color.b, atTop ? 0 : 1) }
+    }
+  }
+  // The find box: where typed letters show (they need no key before them),
+  // how many projects they leave, and a click to start. Not a field: the
+  // sidebar's keys feed it, so arrows and Enter keep working on the list.
+  component FindBox: Rectangle {
+    id: box
+    readonly property bool typing: page.sideTyping
+    readonly property bool keysHere: sidebarKeys.activeFocus
+    height: findRow.implicitHeight + page.sp(10)
+    radius: Style.cornerRadius
+    color: typing ? Qt.rgba(page.foreground.r, page.foreground.g, page.foreground.b, 0.05) : "transparent"
+    border.width: 1
+    border.color: typing ? page.dim : Qt.rgba(page.faint.r, page.faint.g, page.faint.b, findArea.containsMouse && page.handOn ? 0.9 : 0.5)
+    Row {
+      id: findRow
+      anchors.left: parent.left
+      anchors.leftMargin: page.sp(8)
+      anchors.verticalCenter: parent.verticalCenter
+      spacing: page.sp(8)
+      Text {
+        anchors.verticalCenter: parent.verticalCenter
+        textFormat: Text.PlainText
+        text: "\uf002"
+        color: box.typing ? page.foreground : page.faint
+        font.family: Style.font.family
+        font.pixelSize: Math.round(page.fs(Style.font.caption) * 0.95)
+      }
+      Text {
+        id: findText
+        anchors.verticalCenter: parent.verticalCenter
+        textFormat: Text.PlainText
+        text: box.typing && page.sideTyped !== "" ? page.sideTyped
+          : box.keysHere ? "type to find a project" : "find a project"
+        color: box.typing && page.sideTyped !== "" ? page.foreground : page.faint
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.bodySmall)
+      }
+    }
+    // The caret, after the letters, while they are being typed.
+    Rectangle {
+      visible: box.typing
+      x: findRow.x + findText.x + (page.sideTyped !== "" ? findText.implicitWidth + page.sp(1) : 0)
+      anchors.verticalCenter: parent.verticalCenter
+      width: Math.max(1, page.sp(1.5))
+      height: findText.implicitHeight * 0.9
+      color: page.accent
+      SequentialAnimation on opacity {
+        running: box.typing
+        loops: Animation.Infinite
+        NumberAnimation { to: 0; duration: 530; easing.type: Easing.InOutQuad }
+        NumberAnimation { to: 1; duration: 530; easing.type: Easing.InOutQuad }
+      }
+    }
+    Text {
+      anchors.right: parent.right
+      anchors.rightMargin: page.sp(8)
+      anchors.verticalCenter: parent.verticalCenter
+      textFormat: Text.PlainText
+      text: box.typing && page.sideTyped !== "" ? page.sideMatches.length + " of " + page.projects.length
+        : page.projects.length + (page.projects.length === 1 ? " project" : " projects")
+      color: page.faint
+      font.family: page.fontFamily
+      font.styleName: page.fontStyle
+      font.pixelSize: page.fs(Style.font.caption)
+    }
+    MouseArea {
+      id: findArea
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.IBeamCursor
+      onClicked: { page.focusPane("left"); if (!page.sideTyping) page.sideReachStart() }
+      Tip { host: page; shown: parent.containsMouse && !page.sideTyping; text: page.tip("Find a project: type its letters wherever the sidebar has the keys", "sideReach") }
     }
   }
   EdgeFade { flick: timeFlick; atTop: true }
@@ -444,7 +519,7 @@ BorderSurface {
           required property var modelData
           required property int index
           readonly property bool late: modelData.status === "open" && modelData.due * 1000 < Date.now()
-          readonly property bool lit: page.dueFocus === index && sidebarKeys.activeFocus
+            readonly property bool lit: page.dueFocus === index && sidebarKeys.activeFocus
           onLitChanged: { page.selected(dueCell, "left", lit); if (lit) sidebar.reveal(dueCell, timeFlick, calendar) }
           Component.onCompleted: if (lit) page.selected(dueCell, "left", true)
           width: calendar.width
@@ -499,7 +574,7 @@ BorderSurface {
           required property var modelData
           required property int index
           readonly property bool lit: page.readToday.at === index && sidebarKeys.activeFocus
-          onLitChanged: { page.selected(readCell, "left", lit); if (lit) sidebar.reveal(readCell, timeFlick, calendar) }
+            onLitChanged: { page.selected(readCell, "left", lit); if (lit) sidebar.reveal(readCell, timeFlick, calendar) }
           width: calendar.width
           height: readRow.implicitHeight + page.sp(6)
           radius: Style.cornerRadius
@@ -530,21 +605,18 @@ BorderSurface {
       }
 
       // The projects that exist: the tags to write, soonest session first.
-      Text {
-        topPadding: page.sp(8)
-        textFormat: Text.PlainText
-        text: "PROJECTS"
-        color: page.dim
-        font.family: page.fontFamily
-        font.styleName: page.fontStyle
-        font.pixelSize: page.fs(Style.font.caption)
-      }
+      // In place of the "PROJECTS" heading (2026-11-22): the find box,
+      // which names the list and shows what is typed to find in it.
+      Item { width: 1; height: page.sp(4) }
+      FindBox { width: calendar.width }
+      // While letters are typed, only what they match, the best first.
       Repeater {
-        model: page.projects
+        model: page.sideTyping && page.sideTyped !== "" ? page.sideMatches : page.projects
         Rectangle {
           id: projCell
           required property var modelData
-          required property int index
+          // Its place in the list of projects, which the keys and Alt+digit go by.
+          readonly property int index: page.projectIndex(modelData.tag)
           readonly property bool lit: page.projFocus === index && sidebarKeys.activeFocus
           onLitChanged: { page.selected(projCell, "left", lit); if (lit) sidebar.reveal(projCell, timeFlick, calendar) }
           Component.onCompleted: if (lit) page.selected(projCell, "left", true)
@@ -552,8 +624,6 @@ BorderSurface {
           height: projCol.implicitHeight + page.sp(6)
           radius: Style.cornerRadius
           color: page.projFocus === index && sidebarKeys.activeFocus ? Style.selectedFill : projArea.containsMouse && page.handOn ? Style.hoverFill : "transparent"
-          // While `#` and letters are typed, what does not match steps back.
-          opacity: page.sideTyping && page.sideMatchTags.indexOf(modelData.tag) < 0 ? 0.35 : 1
           // Its key from anywhere, Alt and its place, shown by Hold Ctrl.
           KeyBadge {
             host: page
@@ -627,7 +697,7 @@ BorderSurface {
           anchors.leftMargin: page.sp(4)
           anchors.verticalCenter: parent.verticalCenter
           textFormat: Text.PlainText
-          text: "+ new project"
+          text: page.sideTyping && page.sideTyped !== "" ? "+ new project “" + page.sideTyped + "”" : "+ new project"
           color: newArea.containsMouse && page.handOn ? page.accent : page.dim
           font.family: page.fontFamily
           font.styleName: page.fontStyle
@@ -638,7 +708,7 @@ BorderSurface {
           anchors.fill: parent
           hoverEnabled: true
           cursorShape: Qt.PointingHandCursor
-          onClicked: { page.projFocus = page.projects.length; page.openSidebarProject() }
+          onClicked: { var typed = page.sideTyping ? page.sideTyped : ""; page.sideTyping = false; page.projFocus = page.projects.length; page.openSidebarProject(typed) }
           Tip { host: page; shown: parent.containsMouse; text: page.tip("Make a project: in the sidebar, @ and #", "listOpen") }
         }
       }
@@ -705,27 +775,30 @@ BorderSurface {
   // key. It was a line at the end of each list, four lines long, moving
   // with the list and running under the foot. Only while the sidebar has
   // the keys: it is the keyboard's hint, as hover is the mouse's.
-  readonly property string hintText: {
+  // Each is [key, what it does]; a key of "" is words alone. The key is
+  // drawn as a cap (KeyCaps), so it reads as a key, not as a word.
+  readonly property var hintItems: {
     page.keysVersion
     var k = function (id) { return page.keyName(id) }
-    var all = k("keysHere") + " every key"
-    var items
-    if (page.sidebarSpace === "files") items = [k("filesOpen") + " open", k("filesFilter") + " filter by name", all]
-    else if (page.projectOpen) items = [k("listOpen") + " open", k("listPage") + " the project's page", k("listWeek") + " its week", all]
-    else if (page.sideTyping) {
+    // Inside a project the bare letter works (nothing is typed there).
+    var bare = function (id) {
+      var ks = Sc.keysOf(id).filter(function (x) { return x.indexOf("+") < 0 || x === "Shift+Tab" })
+      return ks.length > 0 ? Sc.show(ks[0]) : k(id)
+    }
+    var all = [k("keysHere"), "every key"]
+    if (page.sidebarSpace === "files") return [[k("filesOpen"), "open"], [k("filesFilter"), "filter by name"], all]
+    if (page.projectOpen) return [[k("listOpen"), "open"], [bare("listPage"), "its page"], [bare("listWeek"), "its week"], all]
+    if (page.sideTyping) {
       var on = page.projects[page.projFocus]
       var hit = on && page.sideMatchTags.indexOf(on.tag) >= 0
-      items = hit ? ["#" + page.sideTyped + " → #" + on.tag, k("listOpen") + " opens", "Esc stops"]
-        : page.sideTyped === "" ? ["# and its letters", "Esc stops"]
-        : ["#" + page.sideTyped + ": no project", "Esc stops"]
+      if (!hit && page.sideTyped !== "") return [[k("listOpen"), "new project"], ["Esc", "clear"]]
+      return [[k("listOpen"), "notes"], [k("listClass"), "new section"], [k("listTag"), "put the tag"], ["Esc", "clear"]]
     }
-    else if (page.projFocus >= 0 && page.projFocus === page.projects.length) items = [k("listOpen") + " names a new project"]
-    else if (page.projFocus >= 0) items = [k("listOpen") + " its notes", k("listClass") + " new section", k("listTag") + " put the tag", all]
-    else if (page.dueFocus >= 0) items = [k("listOpen") + " to its line", k("listDone") + " done", all]
-    else if (page.readToday.at >= 0) items = [k("listOpen") + " open where it was left", all]
-    else items = [k("calOpen") + " open the day", k("calLists") + " the lists", k("sideReach") + " a project", all]
-    // A line breaks between two keys, never inside one.
-    return items.map(function (t) { return t.replace(/ /g, "\u00a0") }).join(" · ")
+    if (page.projFocus >= 0 && page.projFocus === page.projects.length) return [[k("listOpen"), "names a new project"], all]
+    if (page.projFocus >= 0) return [[k("listOpen"), "notes"], [k("listClass"), "new section"], [k("listTag"), "put the tag"], all]
+    if (page.dueFocus >= 0) return [[k("listOpen"), "to its line"], [k("listDone"), "done"], all]
+    if (page.readToday.at >= 0) return [[k("listOpen"), "open where it was left"], all]
+    return [[k("calOpen"), "open the day"], [k("calLists"), "the lists"], ["a–z", "find a project"], all]
   }
   readonly property bool hintShown: page.here === "left" && !page.addingProject
 
@@ -739,7 +812,7 @@ BorderSurface {
     anchors.bottomMargin: page.sp(8)
     height: 0
   }
-  Text {
+  Flow {
     id: keysHint
     visible: sidebar.hintShown
     anchors.left: parent.left
@@ -747,16 +820,30 @@ BorderSurface {
     anchors.bottom: footRule.top
     anchors.leftMargin: sidebar.contentLeftInset
     anchors.rightMargin: sidebar.contentRightInset
-    anchors.bottomMargin: page.sp(8)
-    textFormat: Text.PlainText
-    wrapMode: Text.WordWrap
-    maximumLineCount: 2
-    elide: Text.ElideRight
-    text: sidebar.hintText
-    color: page.dim
-    font.family: page.fontFamily
-    font.styleName: page.fontStyle
-    font.pixelSize: page.fs(Style.font.caption)
+    anchors.bottomMargin: page.sp(10)
+    spacing: page.sp(10)
+    Repeater {
+      model: sidebar.hintItems
+      Row {
+        required property var modelData
+        spacing: page.sp(5)
+        KeyCaps {
+          anchors.verticalCenter: parent.verticalCenter
+          page: sidebar.page
+          key: modelData[0].replace(/^Shift\+/, "⇧+")
+          size: page.fs(Style.font.caption)
+        }
+        Text {
+          anchors.verticalCenter: parent.verticalCenter
+          textFormat: Text.PlainText
+          text: modelData[1]
+          color: page.dim
+          font.family: page.fontFamily
+          font.styleName: page.fontStyle
+          font.pixelSize: page.fs(Style.font.caption)
+        }
+      }
+    }
   }
   // What scrolls, and the foot that stays: a hairline between.
   Rectangle {
@@ -772,9 +859,13 @@ BorderSurface {
     opacity: 0.6
   }
 
-  // The foot, the same in every space (Zen's essentials): which space is
-  // open and the dashboard on the first row, today, keys and settings below.
-  Column {
+  // The foot, the same in every space (Zen's essentials), one row since
+  // 2026-11-22 (the student: two rows of words, one split left and right,
+  // "not a great experience"): which space, as a switch of two, then the
+  // places that are not the sidebar's own — today, the dashboard, the
+  // keys, the settings — as icons with their tips (as words they did not
+  // fit in one row).
+  Item {
     id: sidebarFoot
     anchors.left: parent.left
     anchors.right: parent.right
@@ -782,31 +873,43 @@ BorderSurface {
     anchors.leftMargin: sidebar.contentLeftInset
     anchors.rightMargin: sidebar.contentRightInset
     anchors.bottomMargin: sidebar.contentBottomInset
-    spacing: page.sp(6)
+    height: Math.max(spaceSwitch.height, footButtons.implicitHeight)
 
-    Item {
-      width: parent.width
-      height: spaceRow.implicitHeight
-
+    Rectangle {
+      id: spaceSwitch
+      anchors.left: parent.left
+      anchors.verticalCenter: parent.verticalCenter
+      width: spaceRow.implicitWidth + page.sp(4)
+      height: spaceRow.implicitHeight + page.sp(4)
+      radius: Style.cornerRadius + page.sp(2)
+      color: "transparent"
+      border.width: 1
+      border.color: Qt.rgba(page.faint.r, page.faint.g, page.faint.b, 0.5)
       Row {
         id: spaceRow
-        anchors.left: parent.left
-        anchors.verticalCenter: parent.verticalCenter
-        spacing: page.sp(10)
+        anchors.centerIn: parent
+        spacing: 0
         Repeater {
           model: [{ space: "time", tip: "Time: the calendar, the day's deadlines, the projects" },
                   { space: "files", tip: "Files: your notes and the agent's, as folders" }]
-          Text {
+          Rectangle {
             required property var modelData
             readonly property bool here: page.sidebarSpace === modelData.space
-            textFormat: Text.PlainText
-            text: modelData.space
-            color: spaceArea.containsMouse && page.handOn ? page.accent : here ? page.foreground : page.faint
-            font.family: page.fontFamily
-            font.styleName: page.fontStyle
-            font.pixelSize: page.fs(Style.font.bodySmall)
-            font.underline: here
-            Behavior on color { ColorAnimation { duration: 240 } }
+            width: spaceWord.implicitWidth + page.sp(18)
+            height: spaceWord.implicitHeight + page.sp(6)
+            radius: Style.cornerRadius
+            color: here ? Style.selectedFill : spaceArea.containsMouse && page.handOn ? Style.hoverFill : "transparent"
+            Behavior on color { ColorAnimation { duration: 180 } }
+            Text {
+              id: spaceWord
+              anchors.centerIn: parent
+              textFormat: Text.PlainText
+              text: modelData.space
+              color: parent.here ? page.foreground : spaceArea.containsMouse && page.handOn ? page.accent : page.dim
+              font.family: page.fontFamily
+              font.styleName: page.fontStyle
+              font.pixelSize: page.fs(Style.font.caption)
+            }
             MouseArea {
               id: spaceArea
               anchors.fill: parent
@@ -818,56 +921,46 @@ BorderSurface {
           }
         }
       }
-
-      Text {
-        anchors.right: parent.right
-        anchors.verticalCenter: parent.verticalCenter
-        textFormat: Text.PlainText
-        text: "dashboard"
-        color: dashFootArea.containsMouse && page.handOn ? page.accent : page.dashOpen ? page.foreground : page.faint
-        font.family: page.fontFamily
-        font.styleName: page.fontStyle
-        font.pixelSize: page.fs(Style.font.bodySmall)
-        Behavior on color { ColorAnimation { duration: 240 } }
-        MouseArea {
-          id: dashFootArea
-          anchors.fill: parent
-          hoverEnabled: true
-          cursorShape: Qt.PointingHandCursor
-          onClicked: page.showDash()
-          Tip {
-            host: page
-            act: "dashGo"
-            shown: parent.containsMouse
-            text: page.tips([["The dashboard: every open task and deadline", "dashGo"], ["Flip between note and dashboard", "pane2"]])
-          }
-        }
-      }
     }
 
     Row {
-      spacing: page.sp(16)
+      id: footButtons
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      spacing: page.sp(4)
       Repeater {
-        model: [{ text: "today", act: "today", tip: "Today's note" },
-                { text: "keys", act: "keys", tip: "Every key the page answers to, and moving one" },
-                { text: "settings", act: "settings", tip: "Settings: your calendars" }]
-        Text {
+        model: [{ icon: "\udb80\udcf6", act: "today", tip: "Today's note" },
+                { icon: "\udb81\udd6e", act: "dashGo", tip: "The dashboard: every open task and deadline" },
+                { icon: "\udb80\udf0c", act: "keys", tip: "Every key the page answers to, and moving one" },
+                { icon: "\udb81\udc93", act: "settings", tip: "Settings: your calendars" }]
+        Rectangle {
+          id: footButton
           required property var modelData
           readonly property bool open: modelData.act === "keys" ? page.keysOpen : modelData.act === "settings" ? page.settingsOpen
+            : modelData.act === "dashGo" ? page.dashOpen
             : page.noteService.isToday && !page.dashOpen && !page.keysOpen && !page.settingsOpen
-          textFormat: Text.PlainText
-          text: modelData.text
-          color: footArea.containsMouse && page.handOn ? page.accent : open ? page.foreground : page.faint
-          font.family: page.fontFamily
-          font.styleName: page.fontStyle
-          font.pixelSize: page.fs(Style.font.bodySmall)
-          Behavior on color { ColorAnimation { duration: 240 } }
+          width: height
+          height: footWord.implicitHeight + page.sp(8)
+          radius: Style.cornerRadius
+          color: open ? Style.selectedFill : footArea.containsMouse && page.handOn ? Style.hoverFill : "transparent"
+          Behavior on color { ColorAnimation { duration: 180 } }
+          Text {
+            id: footWord
+            anchors.centerIn: parent
+            textFormat: Text.PlainText
+            text: modelData.icon
+            color: footArea.containsMouse && page.handOn ? page.accent : footButton.open ? page.foreground : page.dim
+            font.family: Style.font.family
+            font.pixelSize: Math.round(page.fs(Style.font.bodySmall) * 1.15)
+            Behavior on color { ColorAnimation { duration: 180 } }
+          }
           MouseArea {
             id: footArea
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onClicked: modelData.act === "keys" ? page.toggleKeys() : modelData.act === "settings" ? page.toggleSettings() : page.goToday()
+            onClicked: modelData.act === "keys" ? page.toggleKeys() : modelData.act === "settings" ? page.toggleSettings()
+              : modelData.act === "dashGo" ? page.showDash() : page.goToday()
             Tip { host: page; act: modelData.act; shown: parent.containsMouse; text: page.tip(modelData.tip, modelData.act) }
           }
         }
