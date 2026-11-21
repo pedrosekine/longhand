@@ -167,7 +167,7 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | A week on | `↓` | in the calendar |
 | A month back | `Ctrl+←` · `PgUp` | in the calendar |
 | A month on | `Ctrl+→` · `PgDn` | in the calendar |
-| Today | `Home` · `t` | in the calendar |
+| Today | `Home` | in the calendar |
 | Open the day in the sheet | `Enter` | in the calendar |
 | Down into the lists under it: the day's deadlines, the papers read that day, the projects | `Tab` | in the calendar |
 | Straight to the projects | `Shift+Tab` | in the calendar |
@@ -177,21 +177,21 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 
 | | Keys | Works |
 |---|---|---|
-| Move up (at a list's top, on into the list above) | `↑` · `k` | in the sidebar's lists |
-| Move down (at a list's end, on into the list below) | `↓` · `j` | in the sidebar's lists |
+| Move up (at a list's top, on into the list above) | `↑` | in the sidebar's lists |
+| Move down (at a list's end, on into the list below) | `↓` | in the sidebar's lists |
 | The first row under the calendar | `Home` | in the sidebar's lists |
 | The last project | `End` | in the sidebar's lists |
 | Open it (a deadline: go to its line) | `Enter` | in the sidebar's lists |
 | A deadline: done (again: not done) | `Ctrl+L` | in the sidebar's lists |
 | Into a project's notes | `→` | in the sidebar's lists |
-| A project: a new section for it in today's note (# Name #tag) | `s` | in the sidebar's lists |
-| The project's page: its papers, files, notes and deadlines in one scroll (on a project, or inside one) | `p` | in the sidebar's lists |
-| The project's week: what was done, written and read, what is coming, what to ask (on a project, or inside one) | `w` | in the sidebar's lists |
-| A project: put its #tag at the cursor | `t` | in the sidebar's lists |
+| A project: a new section for it in today's note (# Name #tag) | `Shift+Enter` | in the sidebar's lists |
+| The project's page: its papers, files, notes and deadlines in one scroll (on a project, or inside one) | `Alt+P` · `p` | in the sidebar's lists |
+| The project's week: what was done, written and read, what is coming, what to ask (on a project, or inside one) | `Alt+W` · `w` | in the sidebar's lists |
+| A project: put its #tag at the cursor | `Ctrl+Enter` | in the sidebar's lists |
 | Skip to the next list (after the projects: the calendar) | `Tab` | in the sidebar's lists |
 | Skip to the list before (before the first: the calendar) | `Shift+Tab` | in the sidebar's lists |
 | Back out of the lists, to the calendar | `Esc` · `←` | in the sidebar's lists |
-| A project by its letters: # then th picks #thesis, Enter opens it (↑↓ the other matches, Esc stops) | `#` | in the calendar, in the sidebar's lists |
+| Find a project: type its letters (th picks #thesis), Enter its notes, Shift+Enter a section, Ctrl+Enter its tag (↑↓ the other matches, Esc stops) | `#` | in the calendar, in the sidebar's lists |
 
 ## Files in the sidebar
 
