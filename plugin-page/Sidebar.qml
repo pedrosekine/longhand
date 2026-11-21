@@ -1028,60 +1028,64 @@ BorderSurface {
             font.styleName: page.fontStyle
             font.pixelSize: page.fs(Style.font.caption)
           }
-          // A page: its name and key, what it is for, and (the week's) what
-          // is in it now.
+          // The page's key (P, W): at the right, in the middle of the whole
+          // box, the words kept clear of it. Its box is one size for both
+          // letters (a W's), and the letter is centred by its outline, not
+          // by its line, which leaves room for descenders under it.
+          TextMetrics {
+            id: widestKey
+            text: "W"
+            font: pageLetter.font
+          }
+          TextMetrics {
+            id: thisKey
+            text: pageLetter.text
+            font: pageLetter.font
+          }
+          Rectangle {
+            id: pageKey
+            visible: rowCell.kind === "page"
+            anchors.right: parent.right
+            anchors.rightMargin: page.sp(6)
+            anchors.verticalCenter: parent.verticalCenter
+            width: Math.ceil(widestKey.tightBoundingRect.width) + page.sp(10)
+            height: Math.ceil(widestKey.tightBoundingRect.height) + page.sp(8)
+            radius: Style.cornerRadius
+            color: "transparent"
+            border.width: 1
+            border.color: Qt.rgba(page.faint.r, page.faint.g, page.faint.b, 0.7)
+            Text {
+              id: pageLetter
+              x: (parent.width - thisKey.tightBoundingRect.width) / 2 - thisKey.tightBoundingRect.x
+              y: parent.height / 2 - baselineOffset - thisKey.tightBoundingRect.y - thisKey.tightBoundingRect.height / 2
+              textFormat: Text.PlainText
+              text: rowCell.kind === "page" ? modelData.letter : ""
+              color: page.dim
+              font.family: page.fontFamily
+              font.styleName: page.fontStyle
+              font.pixelSize: Math.round(page.fs(Style.font.caption) * 0.85)
+            }
+          }
+          // A page: its name, what it is for, and (the week's) what is in
+          // it now.
           Column {
             id: pageCol
             visible: rowCell.kind === "page"
             anchors.left: parent.left
-            anchors.right: parent.right
+            anchors.right: pageKey.left
             anchors.leftMargin: page.sp(4)
-            anchors.rightMargin: page.sp(4)
+            anchors.rightMargin: page.sp(8)
             anchors.verticalCenter: parent.verticalCenter
             spacing: page.sp(2)
-            Item {
+            Text {
               width: parent.width
-              height: pageName.implicitHeight
-              Text {
-                id: pageName
-                anchors.left: parent.left
-                anchors.right: pageKey.left
-                anchors.rightMargin: page.sp(6)
-                textFormat: Text.PlainText
-                elide: Text.ElideRight
-                text: rowCell.kind === "page" ? modelData.text : ""
-                color: page.foreground
-                font.family: page.fontFamily
-                font.styleName: page.fontStyle
-                font.pixelSize: page.fs(Style.font.bodySmall)
-              }
-              TextMetrics {
-                id: widestKey
-                text: "W"
-                font: pageLetter.font
-              }
-              Rectangle {
-                id: pageKey
-                anchors.right: parent.right
-                anchors.verticalCenter: pageName.verticalCenter
-                // P and W in boxes of one width, so they line up.
-                width: Math.ceil(widestKey.width) + page.sp(8)
-                height: pageLetter.implicitHeight + page.sp(1)
-                radius: Style.cornerRadius
-                color: "transparent"
-                border.width: 1
-                border.color: Qt.rgba(page.faint.r, page.faint.g, page.faint.b, 0.7)
-                Text {
-                  id: pageLetter
-                  anchors.centerIn: parent
-                  textFormat: Text.PlainText
-                  text: rowCell.kind === "page" ? modelData.letter : ""
-                  color: page.dim
-                  font.family: page.fontFamily
-                  font.styleName: page.fontStyle
-                  font.pixelSize: Math.round(page.fs(Style.font.caption) * 0.85)
-                }
-              }
+              textFormat: Text.PlainText
+              elide: Text.ElideRight
+              text: rowCell.kind === "page" ? modelData.text : ""
+              color: page.foreground
+              font.family: page.fontFamily
+              font.styleName: page.fontStyle
+              font.pixelSize: page.fs(Style.font.bodySmall)
             }
             Text {
               width: parent.width
