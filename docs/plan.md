@@ -1172,6 +1172,28 @@ Small, when passing by:
     readily without the click; whether `?` in the switcher replaces Obsidian's
     search. *Not covered:* the cards', the PDF foot's and Export's new parts
     have no checks of their own in the live suite yet.
+26. **The days before, one chat; the agent looks back itself** (2026-11-21,
+    the student: "I don't get what is the use of this"). The fourteen
+    folded day lines above today's chat ("Tue 17 Nov · 5 subjects · 48
+    turns", opened four times in three days) had drifted from item 23's
+    "one conversation, continuous, with a divider between days". Four
+    looks drawn (`docs/explorations/chat-history/`); A chosen. *Built:*
+    the last three days drawn whole above today's, a rule a day, their
+    other places a line each, three more on scrolling up (display only:
+    today's session starts fresh); an earlier answer can be replied to;
+    `recall`, a third lookup beside search and read, so the agent fetches
+    what the student points back at ("like we said yesterday") instead of
+    guessing from the briefs; every payload says today's date; three eval
+    cases (`day-recall-*`). Then, the same day: a new day opens blank at
+    today's rule, the days before above, out of sight (it opened "too busy
+    for a new day"); today's whole chat lost its "EVERYTHING · TODAY"
+    header. *Next, by the student's word:* understand the threads — each
+    place (a paper's room, a block's margin, a task's chat) is still its
+    own thread and session under the one log; grill whether they should
+    be. Details in `docs/agent.md`, "The days before, one chat". *Watch:* whether the rule needs words after all ("a fresh
+    start…" was declined for now); whether the agent recalls when it
+    should and only then (the evals, then the usage log's
+    `history-more` and the answers' "looked back" lines).
 
 - ~~**Tag suggestions while typing**~~ *done 2026-10-18*: `#` and a letter
   offer the tags that exist — the projects', then those written in the

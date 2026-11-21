@@ -25,11 +25,16 @@ The runner, against a stub model and a throwaway vault:
 - slice 2: a message points at several things (a task of another day, a
   block of today's; a private one counted, never shown), the turn keeps
   them; a note or a paper the agent may see anyway (never a private one,
-  `--files` lists them); `--view` (earlier days and today's places, a line each, with how to
+  `--files` lists them); `--view` (earlier days, their own chat said
+  whole and their other places a line each; today's places; with how to
   open them) and `--elsewhere` (what was said about a task outside its own
   chat)
 - slice 3: a block's chat is the one agent's; what planning proposed is a
   line of "everything"
+- recall (2026-11-21): a day's turns or the turns with some words, each
+  with its neighbour, never closed, never past the horizon; asked for by
+  the agent, given in the same session, kept on its answer; the payload
+  says today's date
 """
 import datetime as dt
 import hashlib
@@ -66,6 +71,10 @@ n = len([f for f in os.listdir(d) if f.startswith("call-")])
 stdin = sys.stdin.read()
 json.dump({"argv": args, "stdin": stdin}, open(os.path.join(d, f"call-{n}.json"), "w"))
 reply = {"reply": f"answer {n}", "knowledge": [], "read": [], "proposals": []}
+rf = os.path.join(d, "recall.json")
+if os.path.exists(rf):                 # asked once to look back, then answers
+    reply = {"reply": "", "knowledge": [], "read": [], "proposals": [], "recall": json.load(open(rf))}
+    os.remove(rf)
 print(json.dumps({"type": "text", "sessionID": "ses_x", "part": {"type": "text", "text": "```json\\n" + json.dumps(reply) + "\\n```"}}))
 """
 
@@ -112,6 +121,28 @@ def store(tmp: pathlib.Path) -> None:
           and any("in the margin, about “write the intro”] Longhand: Cut the second paragraph." in l for l in said),
           "the payload's section names the subject and where each turn was said")
     check(convo.lines(turns, [], [], "2026-11-18") == [], "…and is nothing when there is nothing to carry")
+
+    # Recall (2026-11-21): what was said before, fetched when the agent asks.
+    day = convo.recall(turns, day="2026-11-16")
+    check([x["text"] for x in day] == ["is the intro too long?", "Cut the second paragraph."],
+          "recall: a day's turns, wherever said")
+    found = convo.recall(turns, words="second paragraph")
+    check([x["text"] for x in found] == ["is the intro too long?", "Cut the second paragraph."],
+          f"…or the turns with these words, each with the one before it, so the answer comes with its question ({[x['text'] for x in found]})")
+    check(convo.recall(turns, words="private thing") == [] and convo.recall(turns, day="2026-11-18")[0]["text"] == "what first?",
+          "…never a closed turn")
+    check(convo.recall(turns, day="2026-11-16", hidden=lambda d: d < "2026-11-17") == []
+          and convo.recall(turns, words="sample", day="2026-11-16") == [],
+          "…never what the horizon hides, and a day narrows the words")
+    lots = [t("margin", "margin:2026-11-09:cc", "student", f"line {i}", f"2026-11-09T10:{i:02d}:00", [task]) for i in range(60)]
+    check(len(convo.recall(lots, words="line")) == convo.RECALL_TURNS and convo.recall(lots, words="line")[-1]["text"] == "line 59"
+          and convo.recall(turns) == [],
+          "…the latest few at most, and nothing for nothing asked")
+    said = convo.recall_lines(turns, found, "2026-11-18", words="second paragraph")
+    check(said[0] == "## From your one conversation, about “second paragraph”"
+          and any("in the margin, about “write the intro”] Longhand: Cut the second paragraph." in l for l in said)
+          and convo.recall_lines(turns, [], "2026-11-18", day="2026-11-01")[2] == "(nothing found)",
+          "…its section says what was asked, where and when each turn was said, or that nothing was")
 
 
 def runner(tmp: pathlib.Path) -> None:
@@ -298,9 +329,14 @@ def runner(tmp: pathlib.Path) -> None:
     yd = v["days"][-1]
     names = {(g["kind"], g["name"]): g for g in yd["groups"]}
     check(v["today"] == str(today) and yd["date"] == str(yday) and yd["turns"] == 10
-          and ("day", "the day's chat") in names and names[("task", "write the intro")]["open"]["kind"] == "task"
+          and ("day", "the day's chat") not in names and names[("task", "write the intro")]["open"]["kind"] == "task"
           and names[("task", "write the intro")]["open"]["key"] == key,
-          f"everything: an earlier day, a line a place, each saying how to open what it is about ({sorted(names)})")
+          f"everything: an earlier day's other places a line each, saying how to open what it is about ({sorted(names)})")
+    check([(t["where"], t["role"], t["text"]) for t in yd["said"]]
+          == [("open", "agent", "The essay is due Friday."), ("day", "student", "what did I miss?"), ("day", "agent", "Nothing due.")]
+          and "refs" in yd["said"][1] and "refs" not in yd["said"][2],
+          f"…and its own chat said whole, what was said on opening too, a message with what it pointed at, "
+          f"for the page to draw above today's ({yd['said']})")
     tg = {(g["kind"], g["name"]): g for g in v["groups"]}
     check(("note", "Methods") in tg and tg[("note", "Methods")]["open"] == {"kind": "file", "rel": "human/Studies/open.md"}
           and tg[("note", "Methods")]["role"] == "agent" and not any(g["where"] == "day" for g in v["groups"]),
@@ -319,6 +355,25 @@ def runner(tmp: pathlib.Path) -> None:
     check(len(asks) == 1 and asks[0]["turns"] == 1 and asks[0]["open"] == {"kind": "asks"}
           and "write the intro" in asks[0]["text"],
           f"one voice: what planning proposed, still open, is a line of the conversation (not what a chat proposed) ({asks})")
+
+    # Recall: the student points back at yesterday; the agent asks for it
+    # and gets it in the same session, the turn keeps what it looked at.
+    (stub / "recall.json").write_text(json.dumps([{"day": str(yday)}, {"words": "nothing like this anywhere"}]))
+    agent("day", "--message", "like we said yesterday, which one first?")
+    follow = calls()[-1]
+    text = follow["stdin"] or follow["argv"][-1]
+    check("# What you asked for" in text and f"## From your one conversation, on {yday}" in text
+          and "in the day's chat] student: what did I miss?" in text and "Yes: cut the second paragraph." in text
+          and "(nothing found)" in text and "SECRET-OF-THE-DIARY" not in text,
+          "recall: yesterday's turns, wherever said, given in the same session; nothing found is said")
+    first = next(c for c in calls() if "where was I with this?" in (c["stdin"] or c["argv"][-1]))
+    check(f"today: {today.isoformat()} ({today:%A})" in (first["stdin"] or first["argv"][-1]),
+          "…the payload says today's date, so the agent knows which day yesterday was")
+    day_state = json.loads((agent_dir / "daily" / f"{today}.json").read_text())["day"]
+    rec = day_state["turns"][-1]
+    check(rec.get("recalled") == [{"day": str(yday), "words": "", "turns": 9},
+                                  {"day": "", "words": "nothing like this anywhere", "turns": 0}],
+          f"…and the answer keeps what it looked back at, an answer that failed not counted ({rec.get('recalled')})")
 
     # "About this": what was said about a task outside its own chat.
     e = json.loads(agent("conversation", "--elsewhere", "--task", key, "--date", str(yday), "--hash", yh).stdout)

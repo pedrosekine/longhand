@@ -147,6 +147,59 @@ def memory(turns: list[dict], subjects: list[str], thread: str, today: str,
     return groups, rest
 
 
+RECALL_TURNS = 40     # the turns a recall gives back at most
+RECALL_SAID = 2000    # characters of a turn a recall gives
+
+
+def _words(s: str) -> set[str]:
+    return {w for w in "".join(c.lower() if c.isalnum() else " " for c in s).split() if len(w) > 2}
+
+
+def recall(turns: list[dict], day: str = "", words: str = "", hidden=None) -> list[dict]:
+    """What was said, fetched when the agent asks for it (2026-11-21): the
+    student pointed back at something ("like we said yesterday", "the
+    second option you gave") that the session does not hold. A day's turns
+    (`day`, an ISO date), the turns with most of these words (`words`), or
+    both; each found turn with the one before and after it in its place, so
+    a question comes with its answer. Never a closed turn, never one
+    `hidden(date)` says is out of reach (the agent's horizon); the latest
+    RECALL_TURNS."""
+    usable = [t for t in turns if not t.get("closed") and str(t.get("text") or "").strip()
+              and not (hidden and hidden(str(t.get("at") or "")[:10]))]
+    if day:
+        usable = [t for t in usable if str(t.get("at") or "")[:10] == day]
+    want = _words(words)
+    if not want:
+        return usable[-RECALL_TURNS:] if day else []
+    need = max(1, (len(want) + 1) // 2)
+    hit = {t["id"] for t in usable
+           if len(want & _words(str(t.get("text") or "") + " " + " ".join((t.get("names") or {}).values()))) >= need}
+    keep: set = set()
+    by_thread: dict[str, list[dict]] = {}
+    for t in usable:
+        by_thread.setdefault(t["thread"], []).append(t)
+    for ts in by_thread.values():
+        for i, t in enumerate(ts):
+            if t["id"] in hit:
+                keep |= {x["id"] for x in ts[max(0, i - 1):i + 2]}
+    return [t for t in usable if t["id"] in keep][-RECALL_TURNS:]
+
+
+def recall_lines(turns: list[dict], found: list[dict], today: str, day: str = "", words: str = "") -> list[str]:
+    """The payload's section for one recall."""
+    what = " and ".join(x for x in ((f"on {day}" if day else ""), (f"about “{words}”" if words else "")) if x)
+    out = [f"## From your one conversation, {what}", ""]
+    if not found:
+        return out + ["(nothing found)", ""]
+    for t in found:
+        text = " ".join(str(t.get("text") or "").split())
+        if len(text) > RECALL_SAID:
+            text = text[:RECALL_SAID].rstrip() + " …"
+        out.append(f"- [{_when(str(t.get('at') or ''), today)}, {place(t, turns)}] "
+                   f"{'Longhand' if t['role'] == 'agent' else 'student'}: {text}")
+    return out + [""]
+
+
 def ids(groups: list[tuple[str, list[dict]]], rest: list[dict]) -> list[str]:
     return [t["id"] for _, ts in groups for t in ts] + [t["id"] for t in rest]
 

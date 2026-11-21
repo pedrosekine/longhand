@@ -470,6 +470,19 @@ ShellRoot {
     function dayOpenings(): string { return JSON.stringify([0, 1, 2, 3].map(function (i) { return page.openingBefore(i).map(function (o) { return o.text }) })) }
     function convoRows(): string { return JSON.stringify(page.convoRows.map(function (r) { return { key: r.key, head: r.day ? r.day.label : page.sayFold(r.group) } })) }
     function dayFoldKey(): string { return page.dayFoldKey }
+    function historyRows(): string {
+      return JSON.stringify(page.historyRows.map(function (r) {
+        return r.kind === "day" ? { kind: "day", label: r.label, date: r.date }
+          : r.kind === "fold" ? { kind: "fold", key: r.key, head: page.sayFold(r.g) }
+          : { kind: "turn", role: r.t.role, text: r.t.text, at: r.t.at, chips: (r.t.refs || []).map(function (x) { return page.sayChip(x) }) }
+      }))
+    }
+    function historyShown(): int { return page.historyShown }
+    function moreHistory(): bool { return page.moreHistory() }
+    function todayLabel(): string { return page.todayLabel }
+    function loadConvo(): void { page.loadConvoView() }
+    function dayView(): string { return JSON.stringify(page.dayFieldItem() ? dayPaneOf().viewState() : {}) }
+    function dayPaneOf() { var it = page.dayFieldItem(); while (it && !it.viewState) it = it.parent; return it }
     function elsewhere(): string { return JSON.stringify({ want: page.elsewhereWant, turns: page.elsewhereTurns, chip: page.aboutChip }) }
     function dayType(text: string): void { var f = page.dayFieldItem(); f.text = text; f.cursorPosition = text.length }
     function dayFieldText(): string { return page.dayFieldItem().text }

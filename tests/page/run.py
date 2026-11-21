@@ -1952,6 +1952,56 @@ def checks() -> int:
         want = [["Two things are due this week."] if k == place else [] for k in range(4)]
         check(p.wait(lambda: json.loads(p.call("dayOpenings")) == want, timeout=8),
               f"what was said on opening the page is a turn in its place, after the turns said by then ({p.call('dayOpenings')})")
+        # One chat that scrolls up into the days before (2026-11-21): the
+        # last few days drawn whole above today, a rule between days; their
+        # other places a line each; more on scrolling up; an earlier answer
+        # can be replied to and found again.
+        sys.path.insert(0, str(ROOT / "agent"))
+        import convo as convolib
+        back = [(dt.date.today() - dt.timedelta(days=k)).isoformat() for k in (5, 4, 3, 2, 1)]
+        task_s, paper_s = "task:thesis\t- ask the dean", "paper:papers/dean.pdf"
+        nm = {task_s: "ask the dean", paper_s: "dean2024"}
+        seeded = []
+        for k, d in enumerate(back):
+            seeded += [convolib.turn("day", f"day:{d}", "student", f"question of day {k}", f"{d}T09:00:00",
+                                     [f"day:{d}"] + ([task_s] if k == 4 else []), nm),
+                       convolib.turn("day", f"day:{d}", "agent", f"answer of day {k}: the second option is the short one.",
+                                     f"{d}T09:00:05", [f"day:{d}"], nm)]
+        seeded += [convolib.turn("paper", paper_s, "student", "what is the sample?", f"{back[-1]}T10:00:00", [paper_s], nm),
+                   convolib.turn("paper", paper_s, "agent", "Twelve interviews.", f"{back[-1]}T10:00:09", [paper_s], nm)]
+        convolib.Log(p.vault / "agents" / "longhand" / "conversation", "elsewhere").append(seeded)
+        p.call("loadConvo")
+        hist = lambda: json.loads(p.call("historyRows"))  # noqa: E731
+        check(p.wait(lambda: any(r["kind"] == "turn" and r["text"] == "question of day 4" for r in hist()), timeout=10),
+              f"the days before are drawn above today's chat, said whole ({[r.get('text') or r.get('label') for r in hist()][:6]})")
+        h = hist()
+        days = [r for r in h if r["kind"] == "day"]
+        yrow = next(r for r in h if r["kind"] == "turn" and r["text"] == "question of day 4")
+        check(len(days) == 3 and days[-1]["date"] == back[-1] and h[0]["kind"] == "day"
+              and [r["text"] for r in h if r["kind"] == "turn"][:2] == ["question of day 2", "answer of day 2: the second option is the short one."],
+              f"…the last three days, each under its rule, the oldest first ({[d['label'] for d in days]})")
+        check(yrow["chips"] == ["task · ask the dean"] and any(r["kind"] == "fold" and r["head"].startswith("paper · dean2024") for r in h)
+              and p.call("todayLabel").startswith("Today · "),
+              f"…a message keeps what it pointed at; another place is a line; today has its rule ({yrow['chips']}, {p.call('todayLabel')!r})")
+        view = lambda: json.loads(p.call("dayView"))  # noqa: E731
+        check(view()["title"] == "", f"today's whole chat has no header: its first line is today's rule ({view()['title']!r})")
+        check(p.wait(lambda: view()["top"] > 0 and view()["y"] >= view()["top"] - 2
+                     and (view()["room"] == 0 or abs(view()["y"] - view()["top"]) <= 2)),
+              f"at rest the days before are out of sight: a short day opens at today's rule, a long one at its foot ({view()})")
+        check(any(r["key"] == f"g:{back[-1]}:{paper_s}" for r in json.loads(p.call("convoRows"))),
+              "…and ↑ from the box goes through yesterday's other places too")
+        check(p.call("moreHistory") == "true" and len([r for r in hist() if r["kind"] == "day"]) == 5
+              and p.call("moreHistory") == "false",
+              "scrolling to the top brings the days before, until there are no more")
+        yans = next(r for r in hist() if r["kind"] == "turn" and r["text"].startswith("answer of day 4"))
+        p.call("answerPassage", "day", "the second option is the short one", yans["at"])
+        check(p.wait(lambda: (json.loads(p.call("replying", "day")) or {}).get("at") == yans["at"]),
+              f"an answer of yesterday's can be replied to: the reply goes with today's message ({p.call('replying', 'day')})")
+        p.call("dayKey", 0x01000000, 0)
+        p.call("followPassage", "day", "the second option is the short one")
+        check(p.wait(lambda: p.call("litPassage") == yans["at"] + "|day"),
+              f"…and a quote of it is followed back to yesterday's answer ({p.call('litPassage')!r})")
+
         # "Everything": today's other places, folded to a line each, among
         # the day's turns; ↑ from the empty box goes to them, Enter opens.
         check(p.wait(lambda: len(json.loads(p.call("convoRows"))) > 0, timeout=10),

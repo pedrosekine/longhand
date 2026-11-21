@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<!--
+  The day's chat on an empty day, and where the earlier days go
+  (2026-11-21). One page, four looks, picked by the query string:
+  ?v=now | a | b | c. Rendered with headless chromium (compare.html).
+  Colours: the Birnbaum theme, as in ../chat-readability/mock.html.
+  The tasks, papers and words are made up; the counts in "now" are the
+  real pane's of 2026-11-21.
+-->
+<style>
+  :root {
+    --bg: #2A2A25; --sunk: #20201C; --fg: #EFEDE4; --dim: #A6A99E; --faint: #787A6F;
+    --accent: #F5845B; --sel: #5B3A33; --rule: #3A3A33;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); font-family: "Adwaita Sans"; }
+  body { width: 620px; height: 1200px; overflow: hidden; position: relative; border-left: 2px solid #C9A227; }
+  .head { position: absolute; top: 0; left: 0; right: 0; height: 64px; padding: 28px 30px 0;
+          font-size: 13.5px; letter-spacing: 1px; color: var(--dim); text-transform: uppercase;
+          background: var(--bg); z-index: 2; }
+  .scroll { position: absolute; top: 64px; left: 30px; right: 30px; bottom: 118px; overflow: hidden;
+            display: flex; flex-direction: column; }
+  .bottom { justify-content: flex-end; }
+  .foot { position: absolute; left: 30px; right: 30px; bottom: 22px; }
+  .box { border: 1px solid #5a5a50; height: 44px; padding: 11px 14px; color: var(--faint); font-size: 16px; }
+  .hint { margin-top: 11px; color: var(--faint); font-size: 13px; white-space: nowrap; }
+
+  .fold { font-size: 14px; color: var(--dim); padding: 5px 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .fold .tri { font-size: 9px; color: var(--faint); margin-right: 8px; vertical-align: 2px; }
+  .fold .what { color: var(--faint); }
+  .fold.lit { background: var(--sel); color: var(--fg); border-radius: 4px; }
+  .gap { height: 18px; flex: none; }
+  .empty { color: var(--dim); font-size: 15.5px; line-height: 1.5; margin-top: 14px; }
+  .waiting { display: flex; gap: 14px; align-items: baseline; }
+  .waiting .card { font-size: 13.5px; color: var(--faint); white-space: nowrap; }
+
+  /* A: the conversation itself, with a rule between days */
+  .divider { display: flex; align-items: center; gap: 12px; margin: 26px 0 18px; flex: none;
+             font-size: 12px; letter-spacing: 1px; text-transform: uppercase; color: var(--faint); }
+  .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--rule); }
+  .divider.today { color: var(--dim); }
+  .turn { margin-bottom: 26px; flex: none; }
+  .ask { margin-left: auto; width: fit-content; max-width: 450px; margin-bottom: 14px; flex: none; }
+  .chips { display: flex; gap: 6px; justify-content: flex-end; margin-bottom: 6px; }
+  .chip { border: 1px solid #4a4a41; color: var(--faint); font-size: 12px; padding: 1px 7px; border-radius: 4px; }
+  .me { background: rgba(245,132,91,.12); padding: 9px 14px; border-radius: 10px; font-size: 16px; line-height: 1.5; }
+  .agent p { margin: 0; font-size: 16px; line-height: 1.6; color: #E6E4DA; }
+  .pcard { margin-top: 10px; border: 1px solid #44443c; border-radius: 6px; padding: 8px 12px; font-size: 14px; color: var(--dim); }
+  .pcard .k { color: var(--faint); font-size: 12px; letter-spacing: .6px; text-transform: uppercase; margin-right: 8px; }
+  .pcard .done { float: right; color: var(--faint); font-size: 12.5px; }
+  .seen { font-size: 12.5px; color: var(--faint); margin-top: 6px; }
+  .fadetop { position: absolute; top: 64px; left: 0; right: 0; height: 70px; z-index: 1;
+             background: linear-gradient(var(--bg), rgba(42,42,37,0)); }
+  .bar { position: absolute; right: 8px; width: 4px; border-radius: 2px; background: #4a4a41; }
+  .note { position: absolute; left: 30px; right: 30px; top: 74px; font-size: 13px; color: var(--faint); z-index: 3; text-align: center; }
+</style>
+</head>
+<body>
+<div class="head" id="head">Everything · today</div>
+<div class="scroll" id="scroll"></div>
+<div class="foot">
+  <div class="box">chat with the day…</div>
+  <div class="hint">Enter sends · @ attach · Ctrl+R reply · Ctrl+/ keys</div>
+</div>
+<script>
+const v = (location.search.match(/v=(\w+)/) || [, "now"])[1];
+const root = document.getElementById("scroll");
+const fold = (head, what, lit) =>
+  `<div class="fold${lit ? " lit" : ""}"><span class="tri">▶</span>${head}${what ? ` <span class="what">· ${what}</span>` : ""}</div>`;
+const waiting = `<div class="gap"></div><div class="waiting">${fold("proposals · from planning · 12 waiting")}<span class="card">◇ drop “wow this is a todo list”</span></div>`;
+const empty = `<div class="empty">The day's chat: your tasks, your courses, what you wrote. Point at a block, a task, a note or a paper with @.</div>`;
+
+// The real pane's lines of 2026-11-21.
+const days = [
+  ["Mon 2 Nov", 1, 4], ["Tue 3 Nov", 5, 20], ["Wed 4 Nov", 1, 2], ["Mon 9 Nov", 1, 1],
+  ["Tue 10 Nov", 1, 2], ["Wed 11 Nov", 2, 4], ["Fri 13 Nov", 3, 8], ["Sat 14 Nov", 1, 1],
+  ["Sun 15 Nov", 3, 22], ["Mon 16 Nov", 2, 24], ["Tue 17 Nov", 5, 48], ["Wed 18 Nov", 2, 26],
+  ["Thu 19 Nov", 5, 72], ["Fri 20 Nov", 3, 4],
+];
+const s = n => n === 1 ? "" : "s";
+
+if (v === "now") {
+  root.innerHTML = days.map(d => fold(`${d[0]} · ${d[1]} subject${s(d[1])} · ${d[2]} turns`)).join("")
+    + waiting + empty;
+}
+
+if (v === "c") {
+  // Named, and only the last three days; the rest behind one line.
+  root.innerHTML =
+    fold("11 earlier days")
+    + fold("Wed 18 Nov", "Lab report, Draft the intro")
+    + fold("Thu 19 Nov", "lindqvist2025walking, Draft the intro, Lab report +2")
+    + fold("Fri 20 Nov", "Draft the intro, lindqvist2025walking, the day")
+    + waiting + empty;
+}
+
+if (v === "b") {
+  root.innerHTML = waiting.replace('<div class="gap"></div>', "") + empty;
+}
+
+if (v === "a") {
+  // One chat, continuous: the end of yesterday, a rule, today. Scrolling
+  // up goes on into Thursday, Wednesday, … the same way.
+  root.classList.add("bottom");
+  document.body.insertAdjacentHTML("beforeend",
+    `<div class="fadetop"></div><div class="bar" style="top:640px;height:300px"></div>`);
+  const ask = (chips, text) =>
+    `<div class="ask"><div class="chips">${chips.map(c => `<span class="chip">${c}</span>`).join("")}</div><div class="me">${text}</div></div>`;
+  const ans = (ps, extra = "") => `<div class="turn agent">${ps.map(p => `<p>${p}</p>`).join("")}${extra}</div>`;
+  root.innerHTML =
+    `<div class="divider">Thu 19 Nov</div>`
+    + ask(["paper · lindqvist2025walking"], "is this the same model they mention at the start?")
+    + ans(["Yes. It's the gradient-boosted model from the introduction (p. 2), trained in §3.4 on the street images and the sensor readings together (p. 7)."])
+    + ask(["task · Lab report"], "what's left before I can hand this in?")
+    + ans(["The discussion section and the two figures. The data tables are done."])
+    + ask([], "my supervisor said “keep it short”. short as in the chapter, or the whole thesis?")
+    + ans(["Her mail says “the introduction chapter should stay under eight pages”.",
+           "So it is the chapter, not the whole thesis."])
+    + `<div class="divider">Fri 20 Nov</div>`
+    + ask(["task · Draft the intro"], "can we push the intro to Monday? the lab report eats Friday")
+    + ans(["Yes. Monday 23 still leaves two days before Wednesday's meeting with your supervisor."],
+          `<div class="pcard"><span class="k">◇ move</span>Draft the intro → Mon 23 Nov<span class="done">accepted</span></div>`)
+    + ask(["paper · lindqvist2025walking"], "what was the sample size again?")
+    + ans(["24 walkers, each on the 3.4 km route twice (p. 4)."])
+    + `<div class="divider today">Today · Sat 21 Nov</div>`
+    + waiting.replace('<div class="gap"></div>', "") + empty;
+}
+</script>
+</body>
+</html>

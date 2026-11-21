@@ -25,7 +25,7 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | The sidebar: go there, opening it; in it, Time ↔ Files | `Ctrl+1` | everywhere |
 | The middle: go there; in it, the note ↔ the dashboard | `Ctrl+2` | everywhere |
 | The dashboard, from anywhere (pressed on it, it stays) | `Ctrl+Alt+2` | everywhere |
-| The agent's pane: go there, opening it; in it, everything (the day's chat) ↔ this block's or task's chat | `Ctrl+3` | everywhere |
+| The agent's pane: go there, opening it; in it, the whole chat ↔ this block's or task's chat | `Ctrl+3` | everywhere |
 | The sidebar: open or close | `Ctrl+\` | everywhere |
 | The agent's pane: open (on the day's chat) or close | `Ctrl+|` | everywhere |
 | The open pane to the left | `Alt+←` | everywhere |

@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<!--
+  A new day that starts blank, the days before above it (2026-11-21, after
+  A was built and opened "too busy for a new day"). One page, five looks,
+  picked by the query string: ?v=now | a | a-up | b | c. Rendered with
+  headless chromium (compare-blank.html). The words are made up.
+-->
+<style>
+  :root {
+    --bg: #2A2A25; --fg: #EFEDE4; --dim: #A6A99E; --faint: #787A6F;
+    --accent: #F5845B; --rule: #3A3A33;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); font-family: "Adwaita Sans"; }
+  body { width: 620px; height: 1200px; overflow: hidden; position: relative; border-left: 2px solid #C9A227; }
+  .head { position: absolute; top: 0; left: 0; right: 0; height: 64px; padding: 28px 30px 0;
+          font-size: 13.5px; letter-spacing: 1px; color: var(--dim); text-transform: uppercase;
+          background: var(--bg); z-index: 2; }
+  .view { position: absolute; top: 64px; left: 30px; right: 30px; bottom: 118px; overflow: hidden; }
+  .content { position: absolute; left: 0; right: 0; display: flex; flex-direction: column; }
+  .foot { position: absolute; left: 30px; right: 30px; bottom: 22px; }
+  .box { border: 1px solid #5a5a50; height: 44px; padding: 11px 14px; color: var(--faint); font-size: 16px; }
+  .hint { margin-top: 11px; color: var(--faint); font-size: 13px; white-space: nowrap; }
+
+  .fold { font-size: 14px; color: var(--dim); padding: 5px 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: none; }
+  .fold .tri { font-size: 9px; color: var(--faint); margin-right: 8px; vertical-align: 2px; }
+  .fold .what { color: var(--faint); }
+  .empty { color: var(--faint); font-size: 14.5px; line-height: 1.5; margin-top: 10px; flex: none; }
+  .waiting { display: flex; gap: 14px; align-items: baseline; flex: none; }
+  .waiting .card { font-size: 13.5px; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .divider { display: flex; align-items: center; gap: 12px; margin: 22px 0 16px; flex: none;
+             font-size: 12px; letter-spacing: 1px; text-transform: uppercase; color: var(--faint); }
+  .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--rule); }
+  .divider.today { color: var(--dim); }
+  .divider.first { margin-top: 4px; }
+  .turn { margin-bottom: 24px; flex: none; }
+  .ask { margin-left: auto; width: fit-content; max-width: 450px; margin-bottom: 14px; flex: none; }
+  .chips { display: flex; gap: 6px; justify-content: flex-end; margin-bottom: 6px; }
+  .chip { border-left: 2px solid var(--accent); color: var(--faint); font-size: 12px; padding: 0 8px; }
+  .me { background: rgba(245,132,91,.14); padding: 9px 14px; font-size: 16px; line-height: 1.5; }
+  .agent p { margin: 0; font-size: 16px; line-height: 1.6; color: #E6E4DA; }
+  .bar { position: absolute; right: 8px; width: 4px; border-radius: 2px; background: #4a4a41; z-index: 3; }
+
+  /* B: one quiet line up top */
+  .earlier { flex: none; font-size: 13px; color: var(--faint); text-align: center; padding: 2px 0 6px; }
+  .earlier b { font-weight: normal; color: var(--dim); }
+  /* C: yesterday's last words, faded under the head */
+  .peek { position: relative; flex: none; max-height: 112px; overflow: hidden; }
+  .peek::after { content: ""; position: absolute; inset: 0; background: linear-gradient(var(--bg) 10%, rgba(42,42,37,.55) 70%, rgba(42,42,37,.2)); }
+  .note { position: absolute; left: 30px; right: 30px; font-size: 12.5px; color: var(--accent); z-index: 4; opacity: .85; }
+</style>
+</head>
+<body>
+<div class="head">Everything · today</div>
+<div class="view"><div class="content" id="content"></div></div>
+<div class="foot">
+  <div class="box">chat with the day…</div>
+  <div class="hint">Enter sends · @ attach · Ctrl+R reply · Ctrl+/ keys</div>
+</div>
+<script>
+const v = (location.search.match(/v=([\w-]+)/) || [, "now"])[1];
+const root = document.getElementById("content");
+const view = document.querySelector(".view");
+const fold = (head, what) =>
+  `<div class="fold"><span class="tri">▶</span>${head}${what ? ` <span class="what">◇ ${what}</span>` : ""}</div>`;
+const ask = (chips, text) =>
+  `<div class="ask"><div class="chips">${chips.map(c => `<span class="chip">${c}</span>`).join("")}</div><div class="me">${text}</div></div>`;
+const ans = ps => `<div class="turn agent">${ps.map(p => `<p>${p}</p>`).join("")}</div>`;
+const waiting = `<div class="waiting">${fold("proposals · from planning · 12 waiting")}<span class="card">◇ drop “wow this is a todo list”</span></div>`;
+const empty = `<div class="empty">The day's chat: your tasks, your courses, what you wrote. Point at a block, a task, a note or a paper with @.</div>`;
+
+const wednesday =
+  `<div class="divider">Wed 18 Nov</div>`
+  + ask([], "I accepted a suggestion by mistake, can you undo it?")
+  + ans(["Which one do you mean? The work date for AI literacy on Wednesday is the only one accepted today."]);
+const thursday =
+  `<div class="divider">Thu 19 Nov</div>`
+  + ask(["paper · lindqvist2025walking"], "is this the same model they mention at the start?")
+  + ans(["Yes. It's the gradient-boosted model from the introduction (p. 2), trained in §3.4 on both sources (p. 7)."])
+  + ask(["task · Lab report"], "what's left before I can hand this in?")
+  + ans(["The discussion section and the two figures. The data tables are done."])
+  + fold("paper · Merk et al. 2021 · 20 turns", "The paper doesn't say whether riders b…")
+  + fold("paper · Zeile et al. 2016 · 22 turns", "One detail worth revisiting in Zeile…");
+const friday =
+  `<div class="divider">Fri 20 Nov</div>`
+  + ask(["task · Draft the intro"], "bring this task to today")
+  + ans(["I propose moving the deadline for <b>Draft the intro</b> (#61) from 19 November to today, Friday 20 November."])
+  + ask(["task · Lab report", "task · Reading notes"], "those two tasks, which are late, as well")
+  + ans(["I propose moving both missed work dates to today: <b>Lab report</b> (#32) and <b>Reading notes</b> (#31). Their deadlines stay unchanged."]);
+const today = (first) => `<div class="divider today${first ? " first" : ""}">Today · Sat 21 Nov</div>` + waiting + empty;
+
+// How far the view is scrolled: the content's top against the view's.
+function place(topAt) { root.style.top = topAt + "px"; }
+function bar(top, h) { document.body.insertAdjacentHTML("beforeend", `<div class="bar" style="top:${top}px;height:${h}px"></div>`); }
+
+if (v === "now") {
+  // As built: pinned to the foot, so the days before fill the pane.
+  root.innerHTML = wednesday + thursday + friday + today(false);
+  requestAnimationFrame(() => place(view.clientHeight - root.scrollHeight));
+  bar(700, 260);
+}
+if (v === "a") {
+  // A: opened, the pane starts at today's rule; the days before are above,
+  // out of sight, and only the scroll bar says so.
+  root.innerHTML = thursday + friday + today(true);
+  requestAnimationFrame(() => {
+    const r = root.querySelector(".divider.today");
+    place(-r.offsetTop + 4);
+  });
+  bar(76, 70);
+}
+if (v === "a-up") {
+  // A, scrolled up a little: Friday comes down from above.
+  root.innerHTML = thursday + friday + today(false);
+  requestAnimationFrame(() => {
+    const r = root.querySelector(".divider.today");
+    place(-r.offsetTop + 520);
+  });
+  bar(300, 160);
+}
+if (v === "b") {
+  // B: blank, with one quiet line that says the days before are there.
+  root.innerHTML = `<div class="earlier">↑ &nbsp;<b>Fri 20 Nov</b> and earlier · scroll up</div>` + today(true);
+  place(0);
+}
+if (v === "c") {
+  // C: yesterday's last words just showing, faded, under the head.
+  root.innerHTML = `<div class="peek">` + ans(["I propose moving both missed work dates to today: <b>Lab report</b> (#32) and <b>Reading notes</b> (#31). Their deadlines stay unchanged."]) + `</div>` + today(true);
+  place(0);
+}
+</script>
+</body>
+</html>

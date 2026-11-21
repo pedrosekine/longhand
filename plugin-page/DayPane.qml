@@ -17,6 +17,12 @@ BorderSurface {
   required property Item page
   readonly property var sheet: page.sheetItem
   property alias dayFieldRef: dayField
+  // Where the pane stands (the live suite reads it): how far it is
+  // scrolled, where today's rule is, the room under today, the header.
+  function viewState() {
+    return { y: dayFlick.contentY, top: historyColumn.visible ? historyColumn.y + todayRule.y : -1, h: dayFlick.height,
+             ch: dayFlick.contentHeight, room: todayRoom.height, title: dayTitle.text }
+  }
   property alias paperKeysRef: paperKeys
   // A turn shown on purpose (a question's answer, from the PDF): the
   // conversation held at it, not at its foot, until a new turn comes; it
@@ -84,9 +90,13 @@ BorderSurface {
     anchors.left: parent.left
     anchors.leftMargin: dayPane.contentLeftInset
     textFormat: Text.PlainText
+    // Today's whole chat has no header (2026-11-21): its first line is
+    // today's rule, which says where and when. A past day, a note's and a
+    // paper's chat still say whose they are.
+    height: text === "" ? 0 : implicitHeight
     text: page.paper.room ? (dayPane.listing ? "MARKS · " : "CHAT · ") + (page.noteLabel || "").toUpperCase()
       : page.noteRoom ? "ABOUT " + (page.noteLabel || "").toUpperCase()
-      : page.noteService.isToday ? "EVERYTHING · TODAY" : (page.dateLabel || "").toUpperCase()
+      : page.noteService.isToday ? "" : (page.dateLabel || "").toUpperCase()
     color: page.dim
     font.family: page.fontFamily
     font.styleName: page.fontStyle
@@ -357,8 +367,25 @@ BorderSurface {
     // A new turn is seen: the conversation keeps to its foot — but for a
     // turn shown on purpose, which it keeps to.
     onContentHeightChanged: {
+      // Earlier days brought in at the top: what was in view stays put.
+      if (dayFlick.keepFromBottom >= 0) {
+        contentY = Math.max(0, contentHeight - dayFlick.keepFromBottom)
+        dayFlick.keepFromBottom = -1
+        return
+      }
       if (dayPane.pinTurn >= 0) dayPane.toPin()
       else if (contentHeight > height) contentY = contentHeight - height
+      // Too little to scroll: the days before fill the pane first.
+      else if (page.historyMore && page.historyRows.length > 0) Qt.callLater(page.moreHistory)
+    }
+    // At the top, the days before come in, a few at a time (2026-11-21).
+    property real keepFromBottom: -1
+    onContentYChanged: {
+      if (keepFromBottom < 0 && contentHeight > height && contentY < page.sp(40)
+          && contentHeight - contentY - height > page.sp(40) && page.historyMore) {
+        keepFromBottom = contentHeight - contentY
+        if (!page.moreHistory()) keepFromBottom = -1
+      }
     }
 
     TouchScroll { flickable: dayFlick }
@@ -383,42 +410,78 @@ BorderSurface {
       width: parent.width
       spacing: page.sp(12)
 
-      // "Everything": the earlier days, a line each; unfolded, the places
-      // talked in that day, a line each, opening what they are about.
+      // The days before, one chat with today's (2026-11-21): each day's
+      // rule, then what was said in its own chat, whole, and its other
+      // places a line each, in the order said. An answer there can be
+      // replied to (Ctrl+R), which brings it into today's message. Cards
+      // and ratings stay with their own day.
       Column {
+        id: historyColumn
         width: dayColumn.width
         spacing: 0
-        visible: page.convoDays.length > 0
+        visible: page.historyRows.length > 0
         Repeater {
-          model: page.convoDays
-          Column {
-            id: dayFold
+          model: page.historyRows
+          Loader {
+            id: hrow
             required property var modelData
+            width: historyColumn.width
+            sourceComponent: modelData.kind === "day" ? dayRuleRow : modelData.kind === "fold" ? foldRow : turnRow
+          }
+        }
+        DayRule {
+          id: todayRule
+          page: dayPane.page
+          width: historyColumn.width
+          label: page.todayLabel
+          today: true
+        }
+      }
+      Component {
+        id: dayRuleRow
+        DayRule {
+          page: dayPane.page
+          label: parent ? parent.modelData.label : ""
+        }
+      }
+      Component {
+        id: foldRow
+        Item {
+          readonly property var row: parent ? parent.modelData : ({})
+          implicitHeight: hfold.height + page.sp(8)
+          FoldLine {
+            id: hfold
+            page: dayPane.page
             width: parent.width
-            spacing: 0
-            FoldLine {
-              page: dayPane.page
-              width: parent.width
-              day: true
-              rowKey: "d:" + dayFold.modelData.date
-              unfolded: !!page.convoOpenDays[dayFold.modelData.date]
-              head: dayFold.modelData.label + " · " + dayFold.modelData.subjects
-                + (dayFold.modelData.subjects === 1 ? " subject · " : " subjects · ") + dayFold.modelData.turns + " turns"
-              onAct: page.convoAct(rowKey)
-            }
-            Repeater {
-              model: page.convoOpenDays[dayFold.modelData.date] ? dayFold.modelData.groups : []
-              FoldLine {
-                required property var modelData
-                page: dayPane.page
-                width: dayFold.width
-                indent: page.sp(14)
-                rowKey: "g:" + dayFold.modelData.date + ":" + modelData.thread
-                head: page.sayFold(modelData)
-                tail: page.sayFoldLast(modelData)
-                onAct: page.convoAct(rowKey)
-              }
-            }
+            rowKey: parent.row.key || ""
+            head: parent.row.g ? page.sayFold(parent.row.g) : ""
+            tail: parent.row.g ? page.sayFoldLast(parent.row.g) : ""
+            onAct: page.convoAct(rowKey)
+          }
+        }
+      }
+      Component {
+        id: turnRow
+        Column {
+          readonly property var t: parent ? parent.modelData.t : ({})
+          spacing: page.sp(2)
+          bottomPadding: t.role === "agent" ? page.chatTurnGap : Math.round(page.chatTurnGap * 0.55)
+          Text {
+            visible: parent.t.where === "open"
+            textFormat: Text.PlainText
+            text: "when you opened the page" + (parent.t.at ? " · " + String(parent.t.at).slice(11, 16) : "")
+            color: page.faint
+            font.family: page.fontFamily
+            font.styleName: page.fontStyle
+            font.pixelSize: page.fs(Style.font.caption)
+          }
+          Turn {
+            page: dayPane.page
+            width: parent.width
+            t: parent.t
+            pane: "day"
+            flick: dayFlick
+            onLinkActivated: function (link) { page.openCitation(link) }
           }
         }
       }
@@ -868,6 +931,17 @@ BorderSurface {
         font.family: page.fontFamily
         font.styleName: page.fontStyle
         font.pixelSize: page.fs(Style.font.bodySmall)
+      }
+      // A new day starts blank (2026-11-21, design A of
+      // docs/explorations/chat-history/compare-blank.png): room under
+      // today's turns so that, kept to its foot, the pane opens at today's
+      // rule, the days before above it, out of sight until scrolled to.
+      // Once today fills the pane it is no room at all.
+      Item {
+        id: todayRoom
+        width: 1
+        readonly property real below: historyColumn.visible ? todayRoom.y - (historyColumn.y + todayRule.y) : 0
+        height: historyColumn.visible ? Math.max(0, dayFlick.height - below) : 0
       }
     }
   }

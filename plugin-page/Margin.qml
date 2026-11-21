@@ -111,7 +111,7 @@ BorderSurface {
         width: marginColumn.width
         textFormat: Text.PlainText
         elide: Text.ElideRight
-        text: page.aboutChip ? "ABOUT THIS " + String(page.aboutChip.kind).toUpperCase() + "  ·  " + page.keyName("pane3") + " everything" : ""
+        text: page.aboutChip ? "ABOUT THIS " + String(page.aboutChip.kind).toUpperCase() + "  ·  " + page.keyName("pane3") + " the whole chat" : ""
         color: page.dim
         font.family: page.fontFamily
         font.styleName: page.fontStyle
