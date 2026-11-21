@@ -3999,6 +3999,15 @@ def checks() -> int:
         # window, so the top of the view rests in the page before it.
         p.call("pdfKey", KEY_END, 0)
         check(p.wait(lambda: (pd()["at"] or {}).get("page", 0) >= 2), f"End: the foot of it ({pd()})")
+        # Where it rests once the glide is over: read while still gliding,
+        # it was a place it only passed (the check below failed now and
+        # then, 2026-11-22).
+        seen_at = [None]
+        def at_rest():
+            now = pd()["at"]
+            rest, seen_at[0] = now == seen_at[0], now
+            return rest
+        p.wait(lambda: at_rest() and at_rest())
         left = pd()["at"]
         p.call("pdfKey", KEY_ESC, 0)
         check(p.wait(lambda: not pd()["shown"] and places.is_file()
@@ -4014,6 +4023,27 @@ def checks() -> int:
         p.call("pdfKey", KEY_ESC, 0)
         check(p.wait(lambda: not pd()["shown"] and places.is_file() and long_rel not in json.loads(places.read_text())),
               "left at its top, nothing is kept for it")
+        # A jump lands on its page after the PDF is made larger far down
+        # (2026-11-22: a quote on page 14, clicked, went to page 16, the
+        # foot saying 14; the fit to the text after opening where it was
+        # left did it). Both a page the view holds and one it does not.
+        make_pdf(course / "Twenty pages.pdf", "Chapter one.", pages=20)
+        p.call("openFile", "Studies/Course A/Twenty pages.pdf", "false")
+        check(p.wait(lambda: pd()["ready"] and pd()["settled"] and pd()["pages"] == 20), f"a PDF of twenty pages ({pd()})")
+        laid_at = lambda i: float(p.call("pdfLaidAt", i))
+        p.call("pdfJump", 16, 100)
+        check(p.wait(lambda: abs(laid_at(16) - 100) < 3), f"a jump to page 17 ({laid_at(16)}, {pd()['at']})")
+        p.call("pdfPinch", "1.15")
+        check(p.wait(lambda: abs(pd()["zoom"] - 1.15) < 0.01 and (pd()["at"] or {}).get("page") == 16),
+              f"made larger there, still on page 17 ({pd()})")
+        for page_index, y, said in ((15, 300, "the page before"), (13, 200, "two pages back"), (2, 150, "far back"),
+                                    (13, 200, "far on again")):
+            p.call("pdfJump", page_index, y)
+            check(p.wait(lambda: abs(laid_at(page_index) - y) < 3 and (pd()["at"] or {}).get("page") == page_index),
+                  f"…a jump to page {page_index + 1} ({said}) lands there, as the foot says "
+                  f"({laid_at(page_index)} pt down it, wanted {y}; {pd()['at']})")
+        p.call("pdfKey", KEY_ESC, 0)
+        p.wait(lambda: not pd()["shown"])
         # Ctrl+F (2026-11-17): every place the words are, loosely, listed;
         # Enter goes on from where it is read, Esc leaves the view there
         # and Ctrl+[ goes back. The page said in the foot follows the view.

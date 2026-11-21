@@ -30,6 +30,23 @@ function at(heights, spacing, y) {
   return null
 }
 
+// The same, read from the pages as the view has laid them: `rows` are
+// { page, top, h }, in any order, `y` in the same pixels. Null when `y` is
+// on none of them (the view has laid only the pages near it). The view does
+// not keep every page where the heights before it add up to: made larger or
+// smaller while far down, it keeps the pages it has laid where they were,
+// and those added up said page 14 over page 16 (2026-11-22).
+function onRows(rows, spacing, y) {
+  if (!rows || rows.length === 0) return null
+  var sorted = rows.slice().sort(function (a, b) { return a.top - b.top })
+  for (var i = 0; i < sorted.length; i++) {
+    var r = sorted[i], h = Math.max(1, r.h)
+    if (y >= r.top && y < r.top + h + spacing)
+      return { page: r.page, frac: round(Math.max(0, Math.min(1, (y - r.top) / h))) }
+  }
+  return null
+}
+
 function round(x) { return Math.round(x * 1000) / 1000 }
 
 // The record with `path` left at `place` ({ page, frac, zoom }) at `now`,
