@@ -70,6 +70,20 @@ def units() -> None:
     rules, _ = evals.check_day(s, {"reply": "I think it was Neffke."})
     check(not next(r for r in rules if r["check"] == "asks to search")["pass"], "…answering from memory when it should search fails")
 
+    rc = evals.new_case("day", PAYLOAD, "x-day.md")
+    rc["rules"].update(recall=True, recall_day="2026-11-19", must_match_any=["never checked while it asks"])
+    rules, answer = evals.check_day(rc, {"reply": "", "recall": [{"day": "2026-11-19", "words": "Moser"}]})
+    check(all(r["pass"] for r in rules) and answer.startswith("(asks first: recall 2026-11-19 Moser"),
+          "asking to recall yesterday: the day is checked, the reply's patterns wait for the answer")
+    rules, _ = evals.check_day(rc, {"reply": "It was a search glitch."})
+    check(not next(r for r in rules if r["check"] == "asks to recall")["pass"]
+          and not next(r for r in rules if r["check"] == "recalls 2026-11-19")["pass"],
+          "…guessing when it should look back fails")
+    rn = evals.new_case("day", PAYLOAD, "x-day.md")
+    rn["rules"].update(recall=False)
+    rules, _ = evals.check_day(rn, {"reply": "", "recall": [{"words": "deadlines"}]})
+    check(not next(r for r in rules if r["check"] == "recalls nothing")["pass"], "…and looking back when nothing old is needed fails")
+
     f = evals.new_case("day", PAYLOAD, "x-day.md")
     f["rules"].update(file=["hfpi:Temporal"])
     rules, answer = evals.check_day(f, {"reply": "Filing it.", "file": [{"document": "2026-11-17 Temporal Aspects", "project": "hfpi"}]})

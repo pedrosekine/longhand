@@ -1100,14 +1100,18 @@ Item {
   // its documents and its sections; -1 when the keys are not on them.
   property var projectPapers: []
   property int projectPaperFocus: -1
-  // The project's view as one list (ProjectView.js, 2026-11-16): what is
-  // open, then writing and reading by day, then the shelf and the files
-  // folded. The selection is a row's key, so it holds when the list is
-  // read again.
+  // The project's view as one list (ProjectView.js, 2026-11-16): its page,
+  // what is open, then this week's page and its writing and reading, the
+  // days before folded (2026-11-21), then the shelf and the files folded.
+  // The selection is a row's key, so it holds when the list is read again.
+  // The day is read when the list is: the sections are read again often
+  // enough that a week turning over at midnight shows by morning.
   property string projectRowKey: ""
-  property var projectFolds: ({ shelf: false, files: false, open: false })
+  property var projectFolds: ({ shelf: false, files: false, open: false, earlier: false })
   readonly property var projectRows: PV.rows(root.sections, root.projectPapers, root.projectOpen ? root.projectDocs() : [],
-    { shelf: root.projectFolds.shelf, files: root.projectFolds.files, open: root.projectFolds.open, iso: root.sectionIso })
+    { shelf: root.projectFolds.shelf, files: root.projectFolds.files, open: root.projectFolds.open,
+      earlier: root.projectFolds.earlier, iso: root.sectionIso, name: root.projectName,
+      today: Qt.formatDate(new Date(), "yyyy-MM-dd") })
   readonly property var projectRow: PV.find(root.projectRows, root.projectRowKey)
   readonly property string projectFocusKey: root.projectRow ? root.projectRow.key : ""
   function sectionIso(s) {
@@ -1254,10 +1258,13 @@ Item {
   // `longhand-agent conversation --view`, read when the pane shows and
   // after each answer.
   property var convoView: null
-  property var convoOpenDays: ({})
   property string dayFoldKey: ""        // the folded line the keys are on; "": the box
   readonly property bool convoShown: root.dayShown && !root.noteRoom && !root.paper.room && svc.isToday && svc.configured
-  onConvoShownChanged: { root.dayFoldKey = ""; if (root.convoShown) { root.loadConvoView(); root.loadRefFiles() } }
+  onConvoShownChanged: {
+    root.dayFoldKey = ""
+    root.historyShown = root.historyStep
+    if (root.convoShown) { root.loadConvoView(); root.loadRefFiles() }
+  }
   // The notes and papers `@` may point at in the day's chat: those the
   // agent may see anyway (`conversation --files`), read each time the pane
   // shows. A private note is talked about in its own chat only.
@@ -1294,6 +1301,41 @@ Item {
     convoViewProc.running = true
   }
   readonly property var convoDays: root.convoShown && root.convoView ? (root.convoView.days || []) : []
+  // One chat that scrolls up into the days before (2026-11-21, the
+  // grilling's "one conversation, continuous, with a divider between
+  // days"; it had become fourteen folded lines of counts above today). The
+  // last few days are drawn whole above today's turns, a rule between
+  // days; scrolling to the top brings HISTORY_STEP more, up to the days
+  // the runner gives. Display only: today's session starts fresh, and the
+  // agent looks back itself (`recall`) when a message points at them.
+  readonly property int historyStep: 3
+  property int historyShown: historyStep
+  readonly property var historyDays: root.convoDays.slice(Math.max(0, root.convoDays.length - root.historyShown))
+  readonly property bool historyMore: root.historyShown < root.convoDays.length
+  function moreHistory() {
+    if (!root.historyMore) return false
+    root.historyShown = Math.min(root.convoDays.length, root.historyShown + root.historyStep)
+    root.used("view", "history-more")
+    return true
+  }
+  // What the history draws, in order: a rule for each day, then its own
+  // chat's turns and its other places (a line each), as they were said.
+  readonly property var historyRows: {
+    var out = []
+    root.historyDays.forEach(function (d) {
+      out.push({ kind: "day", label: d.label, date: d.date })
+      var rows = []
+      ;(d.said || []).forEach(function (t, i) { rows.push({ at: String(t.at || ""), n: i, row: { kind: "turn", t: t } }) })
+      ;(d.groups || []).forEach(function (g, i) {
+        rows.push({ at: String(g.at || ""), n: 1000 + i, row: { kind: "fold", g: g, key: "g:" + d.date + ":" + g.thread } })
+      })
+      rows.sort(function (a, b) { return a.at < b.at ? -1 : a.at > b.at ? 1 : a.n - b.n })
+      rows.forEach(function (x) { out.push(x.row) })
+    })
+    return out
+  }
+  readonly property var historyTurns: root.historyRows.filter(function (r) { return r.kind === "turn" }).map(function (r) { return r.t })
+  readonly property string todayLabel: "Today · " + Qt.formatDate(new Date(), "ddd d MMM")
   readonly property var convoToday: root.convoShown && root.convoView ? (root.convoView.groups || []) : []
   // Today's other places said before the day's turn `i` (after the one
   // before it); `i` past the last: those said since.
@@ -1308,12 +1350,11 @@ Item {
     if (i >= turns.length) for (var j = turns.length - 1; j >= 0 && lower === ""; j--) lower = String(turns[j].at || "")
     return gs.filter(function (g) { return String(g.at) > lower && String(g.at) <= upper })
   }
+  // The folded lines the keys go up through from the box: the shown days'
+  // other places, then today's.
   readonly property var convoRows: {
-    var out = [], open = root.convoOpenDays
-    root.convoDays.forEach(function (d) {
-      out.push({ key: "d:" + d.date, day: d })
-      if (open[d.date]) d.groups.forEach(function (g) { out.push({ key: "g:" + d.date + ":" + g.thread, group: g }) })
-    })
+    var out = []
+    root.historyRows.forEach(function (r) { if (r.kind === "fold") out.push({ key: r.key, group: r.g }) })
     root.convoToday.forEach(function (g) { out.push({ key: "g::" + g.thread, group: g }) })
     return out
   }
@@ -1326,13 +1367,6 @@ Item {
     var row = null
     for (var i = 0; i < root.convoRows.length; i++) if (root.convoRows[i].key === key) row = root.convoRows[i]
     if (!row) return
-    if (row.day) {
-      var o = Object.assign({}, root.convoOpenDays)
-      o[row.day.date] = !o[row.day.date]
-      root.convoOpenDays = o
-      root.used("view", o[row.day.date] ? "unfold-day" : "fold-day")
-      return
-    }
     root.openConvo(row.group.open)
   }
   // "About this": what a folded line is about, opened where it is talked
@@ -1585,7 +1619,8 @@ Item {
   // order — and drawn under a small bubble of the student's words. Null
   // when the answer has no such parts.
   function turnsOf(pane) {
-    return pane === "margin" ? (root.talkOpen ? root.talkStream : root.marginStream.map(function (r) { return r.turn || {} })) : root.dayTurns
+    return pane === "margin" ? (root.talkOpen ? root.talkStream : root.marginStream.map(function (r) { return r.turn || {} }))
+      : root.historyTurns.length > 0 ? root.historyTurns.concat(root.dayTurns) : root.dayTurns
   }
   function answerParts(pane, t) {
     if (!t || t.role !== "agent" || !/(^|\n)> \S/.test(t.text || "")) return null
@@ -1651,7 +1686,7 @@ Item {
     return String(s || "").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/[*_`#>]/g, "").replace(/\s+/g, " ").trim().toLowerCase()
   }
   function showPassage(pane, quote) {
-    var turns = pane === "margin" ? (root.talkOpen ? root.talkStream : root.marginStream.map(function (r) { return r.turn || {} })) : root.dayTurns
+    var turns = root.turnsOf(pane)
     var want = root.plainWords(quote).replace(/ …$/, "")
     for (var i = turns.length - 1; i >= 0; i--) {
       var t = turns[i]
@@ -4425,6 +4460,12 @@ Item {
     var bits = []
     ;(t.searched || []).forEach(function (s) { bits.push("searched “" + s.words + "”" + (s.hits && s.hits.length ? "" : " (nothing)")) })
     ;(t.files || []).forEach(function (f) { bits.push("read " + root.fileName(f.path)) })
+    // What it looked back at in the conversation (2026-11-21).
+    ;(t.recalled || []).forEach(function (r) {
+      var when = r.day ? new Date(r.day + "T12:00:00") : null
+      bits.push("looked back" + (when ? " at " + Qt.formatDate(when, "ddd d MMM") : "") + (r.words ? " for “" + r.words + "”" : "")
+        + (r.turns ? "" : " (nothing)"))
+    })
     var docs = root.sayReads(t)
     if (docs !== "") bits.push(docs)
     // Documents it was asked to file: moved at once, so said, not a card.
@@ -5104,7 +5145,7 @@ Item {
     root.docFocus = -1
     root.projectPaperFocus = -1
     root.projectRowKey = ""
-    root.projectFolds = ({ shelf: false, files: false, open: false })
+    root.projectFolds = ({ shelf: false, files: false, open: false, earlier: false })
     root.projectPapers = []
     root.sidebarOpen = true
     root.projectOpen = true
@@ -5713,12 +5754,18 @@ Item {
     Qt.openUrlExternally("file://" + d.path)
   }
 
-  // Enter in a project, by what the row is: a fold opens or closes; a
-  // section or an open box goes to the note; a paper opens where it was
-  // left, a waiting question opens it on that mark; a file opens.
+  // Enter in a project, by what the row is: the project's or the week's
+  // page opens; a fold opens or closes; a section or an open box goes to
+  // the note; a paper opens where it was left, a waiting question opens it
+  // on that mark; a file opens.
   function openInProject() {
     var r = root.projectRow
     if (!r) return
+    if (r.kind === "page") {
+      if (r.page === "week") root.openProjectWeek(root.projectTag)
+      else root.openProjectPage(root.projectTag)
+      return
+    }
     if (r.kind === "fold") {
       var f = Object.assign({}, root.projectFolds)
       f[r.fold] = !f[r.fold]

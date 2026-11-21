@@ -522,7 +522,9 @@ merged into one stay readable (the student's worry):
   are grouped under one chip; the group the student is on is open, the
   others fold to their last line; an earlier day folds to one line ("Mon 16
   Nov · 3 subjects · 9 turns"). A turn with two chips shows under both; a
-  turn with none shows here only.
+  turn with none shows here only. *Changed 2026-11-21:* the earlier days
+  are no longer folded lines but the conversation itself, scrolling up
+  above today's (below, "The days before, one chat").
 - The pane follows where the student is: something attached, "about
   this"; nothing attached, "everything", at today.
 
@@ -650,8 +652,9 @@ a conversation surviving a change of model, the note's look.
      (`refs`), and the log has the message, and its answer, about all
      of them.
    - **"Everything"** is the day's chat grown (`EVERYTHING · TODAY`):
-     above its turns the earlier days, a line each (fourteen at most),
-     unfolding to the places talked in that day; among its turns, in the
+     above its turns the earlier days — *until 2026-11-21* a line each
+     (fourteen at most), unfolding to the places talked in that day; now
+     the days themselves (below, "The days before, one chat"); among its turns, in the
      order said, today's other places (a task's chat, a paper's), folded
      to how many turns and their last words (`FoldLine.qml`,
      `conversation --view`). ↑ from the empty box goes to the lines (after
@@ -776,6 +779,54 @@ automatic chip is removed (the attach rule guessing wrong); how often
 **Left to the building:** rewinding a conversation (plan.md, item 22) now
 means rewinding the one; how a past day's note shows its part; the first
 number for "the last 12 a subject".
+
+
+### The days before, one chat (2026-11-21)
+
+The fourteen folded lines above today's chat ("Tue 17 Nov · 5 subjects ·
+48 turns") were opened four times in three days; the student could not say
+what they were for. They had drifted from what was agreed: "one
+conversation, continuous, with a divider between days". Mockups:
+`docs/explorations/chat-history/`. Chosen: A, one chat that scrolls up.
+
+- **Drawn, not sent.** The last three days of the day's own chat are drawn
+  whole above today's, each under a rule with its name (`DayRule.qml`), the
+  day's other places (a task's chat, a paper's) a line each in the order
+  said; scrolling to the top brings three more, up to the fourteen the
+  runner gives (`conversation --view`, `said`). Today's session still
+  starts fresh: nothing of this is added to the context.
+- **The agent looks back itself.** What the student sees above, they may
+  point at as if the agent had it ("like we said yesterday", "the second
+  option you gave"). The model recognises the intent; it lacked the reach.
+  `recall` joins `search` and `read` in the lookup loop: a day
+  (`{"day": "YYYY-MM-DD"}`), a few words, or both; local code reads the
+  conversation's log (`convo.recall`: each found turn with its neighbour,
+  never a closed turn, never past the horizon, the latest 40, 2,000
+  characters each) and gives it in the same session. The prompt says to
+  recall rather than guess from the briefs, and not to recall when
+  nothing old is needed. The answer says it: "looked back at Fri 20 Nov".
+  Every payload now says today's date (`today: 2026-11-21 (Saturday)`),
+  so "yesterday" has a date. Evals: `day-recall-yesterday`,
+  `day-recall-vague`, `day-recall-not-needed`.
+- **Replying brings it in.** An answer of an earlier day can be replied to
+  (Ctrl+R on words in it) like today's; the quote goes with the message.
+- **No words on the rule** for now (the student: see the experience
+  without it before committing to a longer phrase).
+- **A new day starts blank** (the same day, once built: opening on the
+  days before was "too busy for a new day"; mockups
+  `docs/explorations/chat-history/compare-blank.png`, A chosen). Room
+  under today's turns (`todayRoom`) lets the pane, kept to its foot, open
+  with today's rule at the top and the days before above it, out of
+  sight; the scroll bar is the only sign. Once today fills the pane the
+  room is gone and it is any chat kept to its foot. A faint "↑ Fri 20 Nov
+  and earlier" line (B) waits in case the days before are missed.
+- **No header on today's whole chat:** "EVERYTHING · TODAY" named one end
+  of Ctrl+3's switch, and today's rule says it now. A past day, a note's
+  and a paper's chat keep theirs; "about this" says "Ctrl+3 the whole
+  chat". Whether the places (a paper's room, a block's margin, a task's
+  chat) should stay their own threads at all is for a grilling of its own.
+- Cards and ratings stay with their own day: an earlier day's turns are
+  drawn without them.
 
 ## The record, and what it learns
 

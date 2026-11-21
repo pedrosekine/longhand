@@ -954,39 +954,6 @@ BorderSurface {
         font.styleName: page.fontStyle
         font.pixelSize: page.fs(Style.font.caption)
       }
-      // The whole project in one scroll (P).
-      Text {
-        textFormat: Text.PlainText
-        text: "→ the project's page  P"
-        color: pageLink.containsMouse ? page.foreground : page.dim
-        font.family: page.fontFamily
-        font.styleName: page.fontStyle
-        font.pixelSize: page.fs(Style.font.caption)
-        MouseArea {
-          id: pageLink
-          anchors.fill: parent
-          hoverEnabled: true
-          cursorShape: Qt.PointingHandCursor
-          onClicked: page.openProjectPage(page.projectTag)
-        }
-      }
-      // Its week: the supervisor's update, the research diary (W).
-      Text {
-        textFormat: Text.PlainText
-        text: "→ this week  W"
-        color: weekLink.containsMouse ? page.foreground : page.dim
-        font.family: page.fontFamily
-        font.styleName: page.fontStyle
-        font.pixelSize: page.fs(Style.font.caption)
-        MouseArea {
-          id: weekLink
-          anchors.fill: parent
-          hoverEnabled: true
-          cursorShape: Qt.PointingHandCursor
-          onClicked: page.openProjectWeek(page.projectTag)
-        }
-      }
-
       Text {
         width: parent.width
         visible: page.projectRows.length === 0
@@ -1016,25 +983,33 @@ BorderSurface {
           onHotChanged: { page.selected(rowCell, "left", hot); if (hot) sidebar.reveal(rowCell, projectFlick, projectColumn) }
           Component.onCompleted: if (hot) page.selected(rowCell, "left", true)
           width: projectColumn.width
-          height: kind === "cap" ? capText.implicitHeight : rowCol.implicitHeight + page.sp(kind === "fold" || kind === "doc" || kind === "paper" ? 4 : 8)
+          height: kind === "cap" ? capText.implicitHeight
+            : kind === "page" ? pageCol.implicitHeight + page.sp(14)
+            : rowCol.implicitHeight + page.sp(kind === "fold" || kind === "doc" || kind === "paper" ? 4 : 8)
           radius: Style.cornerRadius
           color: hot ? Style.selectedFill : rowArea.containsMouse && modelData.pick && page.handOn ? Style.hoverFill : "transparent"
+          // The project's and the week's pages are boxes of their own
+          // (2026-11-21): where they lead, said before they are opened.
+          border.width: kind === "page" ? 1 : 0
+          border.color: Qt.rgba(page.faint.r, page.faint.g, page.faint.b, 0.55)
           readonly property var sec: modelData.section || null
+          // A paper read is someone else's words (❝), a section is the
+          // person's own writing (✎): told apart at a glance (2026-11-21).
+          readonly property string sectionTitle: kind === "section" ? Say.sectionTitle(sec, page.projectName) : ""
           readonly property string whenLine: kind === "section" ? page.sectionWhen(sec) + (Say.sectionCounts(sec) !== "" ? "  ·  " + Say.sectionCounts(sec) : "")
-            : kind === "read" ? page.isoWhen(modelData.day) + "  ·  read" + (modelData.said ? "  ·  " + modelData.said : "")
+            : kind === "read" ? page.isoWhen(modelData.day) + (modelData.said ? "  ·  " + modelData.said : "")
             : ""
-          readonly property string whatLine: kind === "section" ? Say.sectionTitle(sec, page.projectName)
+          readonly property string whatLine: kind === "section" ? (sectionTitle !== "" ? "✎  " + sectionTitle : "")
             : kind === "box" ? "○  " + modelData.text
             : kind === "question" ? "?  " + modelData.text
-            : kind === "read" ? modelData.label
+            : kind === "read" ? "❝  " + modelData.label
             : kind === "fold" ? (modelData.open ? "▾  " : "▸  ") + modelData.text
-            : kind === "paper" ? modelData.label
+            : kind === "paper" ? "❝  " + modelData.label
             : kind === "doc" ? modelData.name
             : ""
-          readonly property string underLine: kind === "section" ? Say.sectionUnder(sec)
+          readonly property string underLine: kind === "section" ? (sectionTitle !== "" ? Say.sectionUnder(sec) : "✎  " + Say.sectionUnder(sec))
             : kind === "box" ? page.sectionWhen(sec)
             : kind === "question" ? modelData.label + " · p. " + modelData.page + (modelData.note ? " · " + modelData.note : "")
-            : kind === "read" ? modelData.title
             : kind === "paper" ? modelData.title
             : ""
           Text {
@@ -1049,9 +1024,81 @@ BorderSurface {
             font.styleName: page.fontStyle
             font.pixelSize: page.fs(Style.font.caption)
           }
+          // A page: its name and key, what it is for, and (the week's) what
+          // is in it now.
+          Column {
+            id: pageCol
+            visible: rowCell.kind === "page"
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.leftMargin: page.sp(10)
+            anchors.rightMargin: page.sp(10)
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: page.sp(2)
+            Item {
+              width: parent.width
+              height: pageName.implicitHeight
+              Text {
+                id: pageName
+                anchors.left: parent.left
+                anchors.right: pageKey.left
+                anchors.rightMargin: page.sp(6)
+                textFormat: Text.PlainText
+                elide: Text.ElideRight
+                text: rowCell.kind === "page" ? modelData.text : ""
+                color: page.foreground
+                font.family: page.fontFamily
+                font.styleName: page.fontStyle
+                font.pixelSize: page.fs(Style.font.bodySmall)
+              }
+              Rectangle {
+                id: pageKey
+                anchors.right: parent.right
+                anchors.verticalCenter: pageName.verticalCenter
+                width: pageLetter.implicitWidth + page.sp(8)
+                height: pageLetter.implicitHeight + page.sp(1)
+                radius: Style.cornerRadius
+                color: "transparent"
+                border.width: 1
+                border.color: Qt.rgba(page.faint.r, page.faint.g, page.faint.b, 0.7)
+                Text {
+                  id: pageLetter
+                  anchors.centerIn: parent
+                  textFormat: Text.PlainText
+                  text: rowCell.kind === "page" ? modelData.letter : ""
+                  color: page.dim
+                  font.family: page.fontFamily
+                  font.styleName: page.fontStyle
+                  font.pixelSize: Math.round(page.fs(Style.font.caption) * 0.85)
+                }
+              }
+            }
+            Text {
+              width: parent.width
+              textFormat: Text.PlainText
+              wrapMode: Text.WordWrap
+              text: rowCell.kind === "page" ? modelData.role : ""
+              color: page.dim
+              font.family: page.fontFamily
+              font.styleName: page.fontStyle
+              font.pixelSize: page.fs(Style.font.caption)
+            }
+            Text {
+              width: parent.width
+              visible: text !== ""
+              topPadding: page.sp(2)
+              textFormat: Text.PlainText
+              elide: Text.ElideRight
+              text: rowCell.kind === "page" ? (modelData.said || "") : ""
+              color: page.faint
+              font.family: page.fontFamily
+              font.styleName: page.fontStyle
+              font.pixelSize: page.fs(Style.font.caption)
+            }
+          }
           Column {
             id: rowCol
-            visible: rowCell.kind !== "cap"
+            visible: rowCell.kind !== "cap" && rowCell.kind !== "page"
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.leftMargin: page.sp(4) + (rowCell.kind === "paper" || rowCell.kind === "doc" ? page.sp(14) : 0)

@@ -106,7 +106,7 @@ var actions = [
   { id: "pane1", group: "page", places: ["any"], does: "The sidebar: go there, opening it; in it, Time ↔ Files", keys: ["Ctrl+1"] },
   { id: "pane2", group: "page", places: ["any"], does: "The middle: go there; in it, the note ↔ the dashboard", keys: ["Ctrl+2"] },
   { id: "dashGo", group: "page", places: ["any"], does: "The dashboard, from anywhere (pressed on it, it stays)", keys: ["Ctrl+Alt+2"] },
-  { id: "pane3", group: "page", places: ["any"], does: "The agent's pane: go there, opening it; in it, everything (the day's chat) ↔ this block's or task's chat", keys: ["Ctrl+3"] },
+  { id: "pane3", group: "page", places: ["any"], does: "The agent's pane: go there, opening it; in it, the whole chat ↔ this block's or task's chat", keys: ["Ctrl+3"] },
   { id: "sidebar", group: "page", places: ["any"], does: "The sidebar: open or close", keys: ["Ctrl+\\"] },
   { id: "day", group: "page", places: ["any"], does: "The agent's pane: open (on the day's chat) or close", keys: ["Ctrl+|"] },
   { id: "paneLeft", group: "page", places: ["any"], does: "The open pane to the left", keys: ["Alt+Left"] },

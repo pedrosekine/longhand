@@ -148,7 +148,13 @@ between the day's chat and the chat of what is selected in the middle. The seal 
 closes it; the date at the left opens the sidebar. One chat a day: the morning's
 observation waits at the top, it sees today's other conversations, and a
 past day's note shows that day's conversation, read-only — talking happens
-in today's. A private day still has it, seeing nothing of the note. It can
+in today's. Above today's chat are the days before, one chat that scrolls
+up into them, a rule with each day's name between; their other chats (a
+task's, a paper's) a line each. The agent starts each day fresh: when a
+message points back at something said before ("like we said yesterday"),
+it looks it back up itself, and says so under its answer ("looked back at
+Fri 20 Nov"); replying to an earlier answer ({key:chatAnswer} on words
+selected in it) brings those words into the message. A private day still has it, seeing nothing of the note. It can
 search your files — the folders switched on in Settings → what the agent
 may search — and cites where it found
 things as links that open the note at that line. Never private notes or

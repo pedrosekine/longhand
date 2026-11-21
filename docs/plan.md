@@ -478,7 +478,8 @@ section, word for word, and to the diary's decisions log.
    that are PDFs in the vault open in the page's reader now, not in another
    application. *Replaced the same day by the one-list view (below).* *A second part, 2026-11-16, for the master thesis*: the
    **project's page**, read-only — P on a project (or inside one), or
-   "→ the project's page" in its view. The runner (`longhand-agent
+   its "Project page" row (since 2026-11-21; before, "→ the project's
+   page" under its name). The runner (`longhand-agent
    project-page --tag T`) gathers into one note: the next session, the
    project's open deadlines (overdue said), the "## Now" of its folder's
    README, its papers (questions waiting, with their words; being read; not
@@ -561,6 +562,25 @@ section, word for word, and to the diary's decisions log.
    Four directions were weighed (two lenses, one stream, a hub, open loops
    first); this is the stream with open loops on top. Screenshots:
    `tests/page/shots.py OUT --scene project`.
+   *This week and its pages, 2026-11-21* (from a look at the real #thesis
+   view: thirteen day rows took two thirds of the sidebar, while the two
+   pages that gather them were two grey caption lines). By day is now
+   **this week**, Monday to Sunday as the week's page counts it, headed by
+   the **Week page** as a box of its own: what it is for (a supervisor
+   update, the diary) and what is in it now ("1 paper read · 2 questions to
+   bring"). The days before fold into one line that names their meetings
+   ("Earlier · 5 days · Bernd Meeting, Kick-off"). The **Project
+   page** is the same kind of box under the name. Both are rows the arrow
+   keys reach (a project still opens on its first open row, its page one
+   key up), Enter opens them, P and W still do. A paper read is marked ❝
+   (someone else's words) and a section ✎ (the person's own writing); a
+   reading row no longer repeats "read" or its paper's title. Mockups
+   weighed (three placements of the pages, four ways to tell a paper from
+   a note; chosen: the pages where their subject is, with glyphs) were
+   drawn from the student's own notes and are kept out of the repo;
+   `docs/explorations/project-pane/` says what they showed.
+   What would tell: is W opened more now that it says what it is for, and
+   is Earlier opened at all.
 
    Waiting inside it:
    - the mixed folders (`projects/`, `reference/`, `inbox/`): whose are they,
@@ -1172,6 +1192,28 @@ Small, when passing by:
     readily without the click; whether `?` in the switcher replaces Obsidian's
     search. *Not covered:* the cards', the PDF foot's and Export's new parts
     have no checks of their own in the live suite yet.
+26. **The days before, one chat; the agent looks back itself** (2026-11-21,
+    the student: "I don't get what is the use of this"). The fourteen
+    folded day lines above today's chat ("Tue 17 Nov · 5 subjects · 48
+    turns", opened four times in three days) had drifted from item 23's
+    "one conversation, continuous, with a divider between days". Four
+    looks drawn (`docs/explorations/chat-history/`); A chosen. *Built:*
+    the last three days drawn whole above today's, a rule a day, their
+    other places a line each, three more on scrolling up (display only:
+    today's session starts fresh); an earlier answer can be replied to;
+    `recall`, a third lookup beside search and read, so the agent fetches
+    what the student points back at ("like we said yesterday") instead of
+    guessing from the briefs; every payload says today's date; three eval
+    cases (`day-recall-*`). Then, the same day: a new day opens blank at
+    today's rule, the days before above, out of sight (it opened "too busy
+    for a new day"); today's whole chat lost its "EVERYTHING · TODAY"
+    header. *Next, by the student's word:* understand the threads — each
+    place (a paper's room, a block's margin, a task's chat) is still its
+    own thread and session under the one log; grill whether they should
+    be. Details in `docs/agent.md`, "The days before, one chat". *Watch:* whether the rule needs words after all ("a fresh
+    start…" was declined for now); whether the agent recalls when it
+    should and only then (the evals, then the usage log's
+    `history-more` and the answers' "looked back" lines).
 
 - ~~**Tag suggestions while typing**~~ *done 2026-10-18*: `#` and a letter
   offer the tags that exist — the projects', then those written in the

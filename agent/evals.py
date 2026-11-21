@@ -9,8 +9,8 @@ their notes — and what a good answer must do there:
 - `rules`, checked by code: for the margin, patterns the reply must or must
   not contain, whether silence is acceptable, and in a block's chat which
   cards it must propose and which never (`cards`, `no_cards`); for the day's conversation,
-  the same, and whether it asks to search or read rather than answer, with
-  which words, which proposals must survive plan.py's checks and which must
+  the same, and whether it asks to search, read or recall rather than answer, with
+  which words or which day, which proposals must survive plan.py's checks and which must
   not, and for a brief how many lines; for a plan, how many do-dates
   must survive plan.py's checks, which questions must be asked, which boxes
   must or must not get a date — and for the other kinds, which deadline
@@ -65,7 +65,7 @@ def new_case(job: str, payload: str, source: str, note: str = "", answer: str = 
     if job == "day":
         brief = payload.startswith("# Brief")
         rules = {"must_not_match": [], "must_match_any": [], "silence_ok": False,
-                 "search": None, "search_words": [], "read": None,
+                 "search": None, "search_words": [], "read": None, "recall": None,
                  "propose": [], "no_propose": [], "max_proposals": planlib.MAX_PROPOSALS,
                  "brief_lines": [3, 6] if brief else None}
         return {"job": job, "created": dt.date.today().isoformat(), "source": source, "note": note,
@@ -238,6 +238,8 @@ def check_day(case: dict, reply: dict) -> tuple[list[dict], str]:
     text = reply.get("reply") or ""
     asked = [str(q.get("words") or "") for q in reply.get("search") or []]
     reads = [str(q.get("file") or q.get("document") or "") for q in reply.get("read") or []]
+    recalls = [" ".join(x for x in (str(q.get("day") or ""), str(q.get("words") or "")) if x)
+               for q in reply.get("recall") or [] if isinstance(q, dict)]
     data = _day_data(case["payload"])
     props = []
     if data and reply.get("proposals"):
@@ -249,7 +251,7 @@ def check_day(case: dict, reply: dict) -> tuple[list[dict], str]:
                                     days, {"next": 1, "items": []}, today, data.get("open_boxes") or [], [], allowed,
                                     asked=True)
     out = []
-    fetching = bool(asked or reads)
+    fetching = bool(asked or reads or recalls)
     if r.get("search") is not None:
         out.append({"check": "asks to search" if r["search"] else "answers without searching",
                     "pass": bool(asked) == bool(r["search"]), "why": " | ".join(asked) or "no search"})
@@ -259,6 +261,16 @@ def check_day(case: dict, reply: dict) -> tuple[list[dict], str]:
     if r.get("read") is not None:
         out.append({"check": "asks to read" if r["read"] else "reads nothing", "pass": bool(reads) == bool(r["read"]),
                     "why": " | ".join(reads) or "nothing"})
+    # Looking back at what was said before (2026-11-21): `recall` whether
+    # it must ask (true) or must not (false); `recall_day` the day it must
+    # ask for.
+    if r.get("recall") is not None:
+        out.append({"check": "asks to recall" if r["recall"] else "recalls nothing",
+                    "pass": bool(recalls) == bool(r["recall"]), "why": " | ".join(recalls) or "nothing"})
+    if r.get("recall_day"):
+        out.append({"check": f"recalls {r['recall_day']}",
+                    "pass": any(str(q.get("day") or "") == r["recall_day"] for q in reply.get("recall") or [] if isinstance(q, dict)),
+                    "why": " | ".join(recalls) or "nothing"})
     if not fetching:
         if not text:
             out.append({"check": "says something", "pass": bool(r.get("silence_ok")), "why": "silent"})
@@ -319,7 +331,8 @@ def check_day(case: dict, reply: dict) -> tuple[list[dict], str]:
                     "why": f"{len(lines)} lines" + ("" if all(l.lstrip().startswith("- ") for l in lines) else ", not all `- `")})
     answer = text or "(silence)"
     if fetching:
-        answer = "(asks first: " + " | ".join([f"search “{w}”" for w in asked] + [f"read {x}" for x in reads]) + ")"
+        answer = "(asks first: " + " | ".join([f"search “{w}”" for w in asked] + [f"read {x}" for x in reads]
+                                              + [f"recall {x}" for x in recalls]) + ")"
     if files:
         answer += "\n\nWhat it asked local code to file (the `file` key; local code files it after this answer):\n" + "\n".join(
             f"- {f.get('document', '')} → #{f.get('project', '')}" for f in files)

@@ -278,14 +278,21 @@ def scenes(m, p, out, which):
         p.wait(lambda: any(r.startswith("read|") for r in json.loads(p.call("projectRows"))["rows"]), 10)
         time.sleep(0.8)
         shot("project-0")
+        p.call("projectPick", "page:week")
+        shot("project-0b")
         rows = json.loads(p.call("projectRows"))["rows"]
         p.call("projectPick", next(r.split("|", 1)[1] for r in rows if r.startswith("question|")))
         shot("project-1")
+        p.call("projectPick", "fold:earlier")
+        p.call("projectOpenRow")
+        shot("project-2")
+        p.call("projectPick", "fold:earlier")
+        p.call("projectOpenRow")
         p.call("projectPick", "fold:shelf")
         p.call("projectOpenRow")
         p.call("projectPick", "fold:files")
         p.call("projectOpenRow")
-        shot("project-2")
+        shot("project-2b")
         rows = json.loads(p.call("projectRows"))["rows"]
         p.call("projectPick", next(r.split("|", 1)[1] for r in rows if r.startswith("question|")))
         p.call("projectOpenRow")
@@ -431,8 +438,9 @@ def scenes(m, p, out, which):
         p.call("dash")
     if which == "one":
         # One conversation, slice 2 (2026-11-18): the chips above the box,
-        # the pane's "everything" with the other chats folded to a line
-        # each, and a task's chat with what was said about it elsewhere.
+        # the pane's "everything" — the days before above today's, the
+        # other chats folded to a line each — and a task's chat with what
+        # was said about it elsewhere.
         sys.path.insert(0, str(m.ROOT / "agent"))
         import convo
         y = (dt.date.today() - dt.timedelta(days=1)).isoformat()
@@ -452,6 +460,11 @@ def scenes(m, p, out, which):
         p.call("dashFocus", next(i for i, r in enumerate(rows) if r.get("kind") == "task"))
         p.call("keyPage", 0x7c, CTRL)       # Ctrl+|: the pane, the selected task attached by itself
         p.wait(lambda: len(json.loads(p.call("dayChips"))) == 1, 6)
+        # A new day starts blank (2026-11-21): today's rule at the top,
+        # yesterday above it, out of sight.
+        p.wait(lambda: json.loads(p.call("dayView")).get("top", -1) > 0, 8)
+        time.sleep(0.8)
+        shot("one-blank")
         p.call("dayType", "can this wait until Friday?")
         shot("one-0")
         p.call("daySend", "can this wait until Friday?")
@@ -467,9 +480,9 @@ def scenes(m, p, out, which):
         p.wait(lambda: p.call("dayShown") == "true" and len(json.loads(p.call("convoRows"))) >= 2, 10)
         time.sleep(0.8)
         shot("one-2")
+        # The days before, one chat (2026-11-21): yesterday's own chat drawn
+        # above today's under its rule, its paper chat a line.
         p.call("dayKey", 0x01000013, 0)     # ↑: the last folded line (today's task chat)
-        p.call("dayKey", 0x01000013, 0)     # ↑: yesterday
-        p.call("dayKey", 0x01000004, 0)     # Enter: unfolded
         time.sleep(0.5)
         shot("one-3")
         p.call("closePanes")
