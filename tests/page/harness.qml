@@ -275,6 +275,14 @@ ShellRoot {
     }
     function pdfPinch(ratio: real): void { var v = page.pdfItem.view; v.renderScale = v.renderScale * ratio }
     function pdfFit(): void { page.pdfItem.fit() }
+    // A jump to a place, as a quote or a mark makes: page (from 0), points
+    // down it. And how far down page `i` the view's top is, in points, by
+    // where the view has laid that page (-9999 when it has not).
+    function pdfJump(pageIndex: int, y: real): void { page.pdfItem.jumpTo(pageIndex, y) }
+    function pdfLaidAt(pageIndex: int): real {
+      var p = page.pdfItem, t = p.table(), it = t ? t.itemAtCell(Qt.point(0, pageIndex)) : null
+      return it ? (t.contentY - it.y) / p.view.renderScale : -9999
+    }
     // Select on a page (from 0) from one point to another, in points: both
     // on the words, as a drag starts (pdfium finds no text elsewhere).
     function pdfSelect(pageIndex: int, x0: real, y0: real, x1: real, y1: real): bool {

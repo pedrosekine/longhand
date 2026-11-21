@@ -20,6 +20,18 @@ TestCase {
     compare(Places.at([], 10, 0), null)
   }
 
+  // Read from the pages as the view laid them, not from their heights
+  // added up: after a change of size far down, page 15 can sit where the
+  // heights put page 13.
+  function test_where_the_view_is_by_its_pages() {
+    var rows = [{ page: 15, top: 13000, h: 1000 }, { page: 14, top: 11990, h: 1000 }]
+    compare(Places.onRows(rows, 10, 12490), { page: 14, frac: 0.5 })
+    compare(Places.onRows(rows, 10, 12995), { page: 14, frac: 1 })   // in the gap: the page above
+    compare(Places.onRows(rows, 10, 13000), { page: 15, frac: 0 })
+    compare(Places.onRows(rows, 10, 500), null)                      // on no page laid
+    compare(Places.onRows([], 10, 0), null)
+  }
+
   function test_kept_and_found_again() {
     var r = Places.put({}, "a.pdf", { page: 3, frac: 0.4, zoom: 1.2 }, 100)
     compare(r["a.pdf"], { page: 3, frac: 0.4, zoom: 1.2, at: 100 })

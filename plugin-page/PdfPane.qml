@@ -360,15 +360,35 @@ Item {
   // Where the view is now, or null while there is nothing to read: the
   // page and how far down it at the view's top, or `down` (0 to 1) of the
   // way down the view.
+  // Read from the pages where the view has laid them (`laid`), as `jumpTo`
+  // goes by them too; the heights added up only before any is laid.
   function here(down) {
     var t = pane.table()
     if (!t || !pane.ready || !loader.item) return null
-    var doc = loader.item.doc, s = pane.view.renderScale, heights = []
-    for (var i = 0; i < pane.pages; i++) heights.push(doc.pagePointSize(i).height * s)
-    var at = Places.at(heights, t.rowSpacing || 0, t.contentY - t.originY + (down || 0) * t.height)
+    var y = t.contentY + (down || 0) * t.height
+    var at = Places.onRows(pane.laid(), t.rowSpacing || 0, y)
+    if (!at) {
+      var doc = loader.item.doc, s = pane.view.renderScale, heights = []
+      for (var i = 0; i < pane.pages; i++) heights.push(doc.pagePointSize(i).height * s)
+      at = Places.at(heights, t.rowSpacing || 0, y - t.originY)
+    }
     if (!at) return null
     at.zoom = pane.zoom
     return at
+  }
+  // The pages the view has laid now: { page, top, h }, `top` in the
+  // scroller's own pixels. Only those it holds at their page (it keeps
+  // spare ones, hidden, to use again).
+  function laid() {
+    var t = pane.table(), out = []
+    if (!t) return out
+    var kids = t.contentItem.children
+    for (var i = 0; i < kids.length; i++) {
+      var k = kids[i]
+      if (k.index === undefined || k.index < 0 || t.itemAtCell(Qt.point(0, k.index)) !== k) continue
+      out.push({ page: k.index, top: k.y, h: k.height })
+    }
+    return out
   }
   function track() {
     var at = pane.here(0.5)
@@ -415,8 +435,10 @@ Item {
       pane.fit()
       if (p && pane.view) {
         var h = loader.item.doc.pagePointSize(p.page).height
-        // The view sets a jump 10 px below the top; give it back.
-        pane.view.goToLocation(p.page, Qt.point(0, p.frac * h + 10 / pane.view.renderScale), 0)
+        // Put as `here` reads it back, by the page laid; Qt's own jump went
+        // by its guess at the pages' places, and the place read back was
+        // another (2026-11-22).
+        pane.place(p.page, p.frac * h)
         pane.resumed = p
       }
       pane.settled = true
@@ -454,21 +476,56 @@ Item {
   // view's top. It glides there up or down only, the page kept centred
   // (2026-11-19): Qt's own jump put the place against the view's left
   // and slid the page sideways to it, after the page had been centred,
-  // its right side cut off beside the chat. Worked out as `here` reads
-  // it back: the pages' heights and the gaps between them.
+  // its right side cut off beside the chat. Worked out from where the view
+  // has laid the page, as `here` reads it back: not from the pages'
+  // heights added up, which the view does not keep to once it is made
+  // larger or smaller far down (2026-11-22: a quote on page 14, clicked,
+  // went to page 16, the foot saying 14; the fit to the text after the
+  // paper opened where it was left did it). A page not laid yet is laid
+  // by the view at the place, and the glide is the last stretch to it.
   function jumpTo(index, y) {
     var t = pane.table()
     if (!t || !pane.ready || !loader.item) return
-    var doc = loader.item.doc, s = pane.view.renderScale, top = 0
-    for (var i = 0; i < index; i++) top += doc.pagePointSize(i).height * s + (t.rowSpacing || 0)
-    var to = Math.max(t.originY, Math.min(t.originY + Math.max(0, t.contentHeight - t.height), t.originY + top + y * s))
     glide.stop()
     pane.align()
-    if (Math.abs(to - t.contentY) < 1) return
+    var from = t.contentY, wasLaid = t.itemAtCell(Qt.point(0, index)) !== null
+    var to = pane.placeOf(index, y)
+    if (to === null) return
+    if (Math.abs(to - from) < 1) { t.contentY = to; return }
+    // A page the view had to lay: from most of a view away, on the side
+    // it came from, so the pages in between are laid one from the next.
+    if (!wasLaid) {
+      var lead = Math.min(Math.abs(to - from), t.height * 0.75)
+      t.contentY = to + (from < to ? -lead : lead)
+    }
     glide.target = t
     glide.from = t.contentY
     glide.to = to
     glide.start()
+  }
+  // Where the view's top goes for page `index` (from 0), `y` points down
+  // it, by where the view has laid that page; one not laid yet the view
+  // lays first, at the place (and moves there). Null when it cannot. Not
+  // the view's own place: it puts it a pixel short, in the gap above the
+  // page (End read as the page before's foot).
+  function placeOf(index, y) {
+    var t = pane.table()
+    if (!t || !pane.view) return null
+    var s = pane.view.renderScale
+    var item = t.itemAtCell(Qt.point(0, index))
+    if (!item) {
+      t.positionViewAtRow(index, TableView.AlignTop, y * s)
+      t.forceLayout()
+      item = t.itemAtCell(Qt.point(0, index))
+    }
+    if (!item) return null
+    return Math.max(t.originY, Math.min(t.originY + Math.max(0, t.contentHeight - t.height), item.y + y * s))
+  }
+  // The view put there at once: opening where it was left, after a fit.
+  function place(index, y) {
+    glide.stop()
+    var to = pane.placeOf(index, y)
+    if (to !== null) pane.table().contentY = to
   }
   NumberAnimation { id: glide; property: "contentY"; duration: 400; easing.type: Easing.OutQuart }
   // Fitted by its text (2026-11-15): a paper's margins are a fifth of its
@@ -516,7 +573,7 @@ Item {
     pane.fitting = false
     if (at && loader.item && Math.abs(pane.view.renderScale - prevScale) > 0.001) {
       var h = loader.item.doc.pagePointSize(at.page).height
-      pane.view.goToLocation(at.page, Qt.point(0, at.frac * h + 10 / pane.view.renderScale), 0)
+      pane.place(at.page, at.frac * h)
     }
     pane.alignSoon()
     pane.redrawSoon()
