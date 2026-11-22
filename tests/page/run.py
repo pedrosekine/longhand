@@ -1870,16 +1870,16 @@ def checks() -> int:
         # the box to change; Esc cancels; Enter with none open sends them
         # all, each under its passage; a quote followed back lights its answer.
         reps = lambda: [(r["quote"], r["text"]) for r in json.loads(p.call("replies", "day"))]
-        # Words selected in an answer are offered over the box, the key with
-        # them; taking the offer makes the box a reply to them.
+        # Words selected in an answer, Ctrl+R in the box: the box is a reply
+        # to them, tied to that answer (the offer over the box is gone,
+        # 2026-11-22: it redrew and moved the chat on every drag).
         at0 = p.call("lastAgentAt")
         got = p.call("selectInAnswer", "these two")
-        check(got == "selected" and p.wait(lambda: (json.loads(p.call("replyOffer")) or {}).get("quote") == "these two"),
-              f"words selected in an answer are offered over the box ({got}, {p.call('replyOffer')})")
-        p.call("takeOffer")
-        check(p.wait(lambda: (json.loads(p.call("replying", "day")) or {}).get("quote") == "these two")
-              and json.loads(p.call("replyOffer")) is None and json.loads(p.call("replying", "day"))["at"] == at0,
-              f"…taking it makes the box a reply to them, the offer gone ({p.call('replying', 'day')})")
+        took = p.call("dayKey", 0x52, CTRL)
+        check(got == "selected" and took == "true"
+              and p.wait(lambda: (json.loads(p.call("replying", "day")) or {}).get("quote") == "these two")
+              and json.loads(p.call("replying", "day"))["at"] == at0,
+              f"words selected in an answer, Ctrl+R makes the box a reply to them ({got}, {took}, {p.call('replying', 'day')})")
         if json.loads(p.call("replying", "day")):
             p.call("dayKey", 0x01000000, 0)   # Esc: cancelled, for the checks after
         # Ctrl+R with the keys on the PDF or a paper's marks, as they stay

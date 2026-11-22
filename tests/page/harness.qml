@@ -496,8 +496,6 @@ ShellRoot {
       }
       return walk(page.dayPaneItem, 0) ? "selected" : "none of " + seen
     }
-    function replyOffer(): string { var o = page.replyOffer; return JSON.stringify(o ? { pane: o.pane, quote: o.quote, at: o.at } : null) }
-    function takeOffer(): void { page.takeOffer() }
     function lastAnswerParts(): string {
       var t = page.dayTurns
       for (var i = t.length - 1; i >= 0; i--) if (t[i].role === "agent") return JSON.stringify(page.answerParts("day", t[i]))
