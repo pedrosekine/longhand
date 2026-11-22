@@ -127,7 +127,9 @@ first folder of `agentDir`.
   - the private mark;
   - the agent's state and records (`AgentState.off`, which otherwise read
     *today's* records onto the file's lines);
-  - sending, and the agent's pane, which closes with a hint.
+  - sending in the day's chat. The agent's pane, open, follows to the
+    file's own chat (closed until 2026-11-22; [navigation.md](navigation.md),
+    "When the middle moves").
 - The header names the file, cut short before the seal; the tree shows where
   it is. The header's "back to today" goes home.
 - The agent's files open with `NoteEditor.readOnly`: nothing typed, pasted,

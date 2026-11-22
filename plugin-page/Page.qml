@@ -186,6 +186,8 @@ Item {
   function goTo(place) {
     root.travelling = true
     if (place.pdf) { root.openPdf(place.pdf); root.travelling = false; return }
+    // Off a paper onto the note under it opens nothing, yet the middle moved.
+    if (root.pdfRel !== "" || place.stem !== svc.noteDate || place.file !== svc.filePath) root.middleMoves()
     pdfPane.keep()
     root.pdfRel = ""
     root.pendingLink = { at: place.at }
@@ -524,7 +526,9 @@ Item {
   property var privatePaint: []         // [{ y, h }]: the private blocks, in editor coordinates
   function openPdf(rel) {
     if (rel === "") return
-    if (rel !== root.pdfRel) root.remember()
+    // The paper already in the middle (back to it from the dashboard, a
+    // link to it): no step, and the agent's pane is left as it is.
+    if (rel !== root.pdfRel) { root.remember(); root.middleMoves() }
     if (root.searchOpen) root.closeSearch("back")
     root.leftLine(root.lastLine)
     root.flush()
@@ -532,8 +536,6 @@ Item {
     root.exportOpen = false
     root.marginOpen = false
     root.closeTalk(false)
-    root.dayOpen = false
-    root.noteRoom = false
     root.dashOpen = false
     root.marginFocus = -1
     pdfPane.keep()
@@ -562,10 +564,72 @@ Item {
   }
   function closePdf() {
     if (!root.pdfShown) return
-    if (root.paper.room) { root.dayOpen = false; root.noteRoom = false }
+    root.middleMoves()
     pdfPane.keep()
     root.pdfRel = ""
     root.showNote()
+  }
+
+  // The agent's pane when the middle moves (the student's rule,
+  // 2026-11-22). It never opens by itself: closed, it stays closed. Open,
+  // it follows what is in the middle: beside a paper, the paper's chat
+  // (its "about this", docs/agent.md "One conversation"); beside a note
+  // from Files, the note's; beside a day, the day's. A paper or note the
+  // agent may not be given (private, a PDF with no words) has the day's
+  // chat beside it, never its own. Words typed in the box and not sent
+  // keep the pane where it is: nothing is switched under the hand. The
+  // follow never takes the keys: they go where the move puts them, and
+  // stay in the pane only when they were in it as it turns.
+  // What the middle is decides it only once it is known (the paper read,
+  // the note loaded): until then the pane is left as it was.
+  readonly property string paneFits: root.pdfShown
+    ? (!root.paper.shown ? "day" : pdfPane.read.pdf !== root.pdfRel ? "" : root.paper.askable ? "room" : "day")
+    : root.dayNote ? "day" : !svc.ready || root.noteRel === "" ? "" : root.noteAskable && !svc.notePrivate ? "room" : "day"
+  property bool paneFollows: false      // the middle moved with the pane open: it follows once paneFits is known
+  // A paper's or note's chat with words in its box, the middle moved
+  // away: the chat it was, held (its path), until the middle comes back
+  // to it, the pane is closed or the middle moves again with the box empty.
+  property string paneHeld: ""
+  onNoteRoomChanged: if (!root.noteRoom) root.paneHeld = ""
+  readonly property string middleRel: root.paper.shown ? root.pdfRel : root.noteRel
+  onMiddleRelChanged: if (root.paneHeld !== "" && root.middleRel === root.paneHeld) root.paneHeld = ""
+  function paneWords() { var f = dayPane.dayFieldRef; return !!f && String(f.text).trim() !== "" }
+  function middleMoves() {
+    var words = root.paneWords()
+    if (root.dayOpen && words && root.noteRoom && root.paneHeld === "") root.paneHeld = root.roomRel
+    root.paneFollows = root.dayOpen && !words
+    if (root.paneFollows) Qt.callLater(root.followMiddle)
+  }
+  onPaneFitsChanged: if (root.paneFollows) Qt.callLater(root.followMiddle)
+  // Run after the move, never in the middle of it (a move is made of
+  // several steps, each changing what fits).
+  function followMiddle() {
+    if (root.paneFollows && (!root.dayOpen || root.paneWords())) root.paneFollows = false
+    if (!root.paneFollows || root.paneFits === "") return
+    root.paneFollows = false
+    var keys = root.here === "right"
+    var held = root.paneHeld
+    root.paneHeld = ""
+    if (held !== "") root.paneSubject = held
+    root.paneTo(root.paneFits === "room")
+    // The keys in the pane as it turns: in it still (its box, or a paper's list).
+    if (keys) root.dayKeysItem().forceActiveFocus()
+  }
+  // The pane to the day's chat or the middle's own, as openRoom does it,
+  // without taking the keys. What the box held for the other subject goes.
+  property string paneSubject: ""       // what the pane's own chat was about, when it was one
+  function paneTo(room) {
+    var subject = room ? root.roomRel : ""
+    if (room !== root.noteRoom || subject !== root.paneSubject) {
+      root.dayPending = null
+      root.dayRefs = []
+      root.dayAutoHeld = null
+      root.paper.marks = []
+      root.clearReplies("day")
+    }
+    root.noteRoom = room
+    root.paneSubject = subject
+    if (room) root.loadRefFiles()
   }
 
   // Export as a PDF (ExportSheet.qml; docs/plan.md item 13, slice 2): in
@@ -1753,7 +1817,9 @@ Item {
   readonly property bool pageOutside: svc.filePath.charAt(0) === "/"
   // What the room talks about: the PDF open in the vault (plan.md item 15,
   // step 2), else the note.
-  readonly property string roomRel: root.paper.shown ? root.pdfRel : root.noteRel
+  readonly property string roomRel: root.paneHeld !== "" ? root.paneHeld : root.paper.shown ? root.pdfRel : root.noteRel
+  // The room's name in the pane: the middle's, or the one held there.
+  readonly property string roomLabel: root.paneHeld === "" ? root.noteLabel : root.paneHeld.replace(/^.*\//, "").replace(/\.(md|pdf)$/i, "")
   readonly property string noteTalkPath: svc.agentDir !== "" && root.roomRel !== ""
     ? svc.agentDir + "/notes/" + Qt.md5(root.roomRel).slice(0, 16) + ".json" : ""
   property var noteTalk: null
@@ -1793,7 +1859,7 @@ Item {
   readonly property string roomHash: root.noteRoom ? "note:" + root.roomRel : "day"
   readonly property bool dayThinking: root.runningHash === root.roomHash
     || root.queued.some(function (q) { return q.hash === root.roomHash })
-  readonly property bool dayCanSend: root.noteRoom ? root.noteAskable : svc.isToday && root.agentDay && !root.beforeHorizon
+  readonly property bool dayCanSend: root.noteRoom ? root.paneHeld !== "" || root.noteAskable : svc.isToday && root.agentDay && !root.beforeHorizon
   readonly property bool dayShown: root.dayOpen && !root.marginOpen && !root.talkOpen && !root.keysOpen && !root.settingsOpen
   readonly property bool dayBesideNote: root.dayShown && !root.dashOpen
   readonly property bool dayBesideDash: root.dayShown && root.dashOpen
@@ -1822,6 +1888,9 @@ Item {
     root.closeTalk(false)
     if (note !== root.noteRoom) { root.dayPending = null; root.dayRefs = []; root.dayAutoHeld = null; root.paper.marks = []; root.clearReplies("day") }
     root.noteRoom = !!note
+    root.paneHeld = ""
+    root.paneSubject = note ? root.roomRel : ""
+    root.paneFollows = false                     // chosen: nothing left to follow
     if (note) root.loadRefFiles()                // what `@` offers there: other notes and papers
     root.dayOpen = true
     if (block) {
@@ -2953,7 +3022,7 @@ Item {
   function blipContext() {
     if (root.centerView !== "note" || !svc.ready || root.pdfShown) return
     var what = ""
-    if (root.dayShown) what = root.dayBlock !== "" ? root.dayBlock : (root.noteRoom || (svc.isToday && root.agentOn)) ? "sheet" : ""
+    if (root.dayShown) what = root.dayBlock !== "" ? root.dayBlock : ((root.noteRoom && root.paneHeld === "") || (svc.isToday && root.agentOn)) ? "sheet" : ""
     else if (root.rightView === "margin" || root.rightView === "talk") what = root.currentRec || root.currentHash
     if (what === "") return
     var r = null
@@ -8091,7 +8160,7 @@ Item {
   // the note it was typed in; a save still in flight is waited for. What
   // belonged to the old day (staging, the prompt, the margin) goes with it.
   function openNote(stamp) {
-    if (stamp !== "" && (stamp !== svc.noteDate || root.pdfRel !== "")) root.remember()
+    if (stamp !== "" && (stamp !== svc.noteDate || root.pdfRel !== "")) { root.remember(); root.middleMoves() }
     if (stamp !== "") { pdfPane.keep(); root.pdfRel = "" }
     if (stamp === "" || stamp === svc.noteDate) return
     if (root.searchOpen) root.closeSearch("back")
@@ -8105,18 +8174,17 @@ Item {
     root.closeTalk(false)
     root.dashOpen = false
     root.marginFocus = -1
-    if (root.noteRoom) { root.noteRoom = false; root.dayOpen = false }
     if (svc.saving) { root.pendingStamp = stamp; root.pendingFile = null; return }
     svc.openDate(stamp)
   }
 
   // Put a file of the notes in the sheet (the Files space, docs/files.md):
   // yours to edit as a past day is, the agent's only to read. Whatever is
-  // typed is written first, as for a day; the agent's pane, which belongs
-  // to a day, closes.
+  // typed is written first, as for a day; the agent's pane, open, follows
+  // it (middleMoves).
   function openFile(rel, readOnly) {
     if (/\.pdf$/i.test(rel)) { root.openPdf(rel); return }
-    if (rel !== "" && (rel !== svc.filePath || root.pdfRel !== "")) root.remember()
+    if (rel !== "" && (rel !== svc.filePath || root.pdfRel !== "")) { root.remember(); root.middleMoves() }
     pdfPane.keep()
     root.pdfRel = ""
     if (rel === "" || (rel === svc.filePath && svc.ready)) { root.showNote(); return }
@@ -8126,8 +8194,6 @@ Item {
     root.used("file", readOnly ? "agent" : "mine")
     root.marginOpen = false
     root.closeTalk(false)
-    root.dayOpen = false
-    root.noteRoom = false
     root.dashOpen = false
     root.marginFocus = -1
     if (svc.saving) { root.pendingFile = { rel: rel, readOnly: !!readOnly }; root.pendingStamp = ""; root.showNote(); return }

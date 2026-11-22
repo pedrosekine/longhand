@@ -94,8 +94,8 @@ BorderSurface {
     // today's rule, which says where and when. A past day, a note's and a
     // paper's chat still say whose they are.
     height: text === "" ? 0 : implicitHeight
-    text: page.paper.room ? (dayPane.listing ? "MARKS · " : "CHAT · ") + (page.noteLabel || "").toUpperCase()
-      : page.noteRoom ? "ABOUT " + (page.noteLabel || "").toUpperCase()
+    text: page.paper.room ? (dayPane.listing ? "MARKS · " : "CHAT · ") + (page.roomLabel || "").toUpperCase()
+      : page.noteRoom ? "ABOUT " + (page.roomLabel || "").toUpperCase()
       : page.noteService.isToday ? "" : (page.dateLabel || "").toUpperCase()
     color: page.dim
     font.family: page.fontFamily
