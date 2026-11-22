@@ -360,8 +360,8 @@ building:
   - It runs once per diagram through `node` and is cached. Whether
     `render()` needs a DOM, so whether it could run in QML's own engine, is a
     prototype's question.
-- **PDFs** use `QtQuick.Pdf` (`PdfMultiPageView`), already installed with
-  Qt 6.12, so no new dependency.
+- **PDFs** use `QtQuick.Pdf` (PDFium: the document, the page pictures, word
+  selection, links), already installed with Qt 6.12, so no new dependency.
 
 ### How it is built (2026-10-27): images, links, tables
 
@@ -441,9 +441,9 @@ block, `table` rows.
 - **Opening.** Your side of the Files tree lists PDFs beside the notes (the
   agent's side lists notes only), and the filter finds them. A link to a
   PDF opens it too, remembered in the way back.
-- **Where it shows.** In the note's place, in `PdfPane.qml`: Qt's own
-  `PdfMultiPageView`, fitted to the column, pages drawn as they come into
-  view. It is in a `Loader`, active only while a PDF is open, so the
+- **Where it shows.** In the note's place, in `PdfPane.qml`: Longhand's own
+  page view (`PdfPages.qml`, since 2026-11-22; Qt's `PdfMultiPageView`
+  before), fitted to the column, pages drawn as they come into view. It is in a `Loader`, active only while a PDF is open, so the
   document and its pages are let go of when it closes.
 - **The note underneath.** The note stays loaded under it. While a PDF
   shows, the header names it, and its words for the note (private, ask,
@@ -465,13 +465,21 @@ block, `table` rows.
   - `+` / `-` / `0` size it;
   - `o` opens it in its own application;
   - Esc closes it, back to the note.
-- **A known shortcut.** Qt's view keeps its scroller to itself, so the pane
-  finds it among the view's children to scroll by keys.
+- **Its own view** (2026-11-22). Most PDF bugs of 14 to 22 November were in
+  Qt's `PdfMultiPageView`, not in PDFium: its table guessed where the pages
+  it had not laid were and kept stale places after a resize far down (a
+  quote on page 14 went to page 16), its jump slid pages sideways, it
+  measured its column before taking in a new size, its pictures raced, and
+  the pane reached into its undocumented insides to work round each. The
+  view is now a plain Flickable with a sheet of paper per page at the top
+  the heights before it add up to, at any size; only the pages in view and
+  half a view either side draw. A pinch sizes the whole view about the
+  fingers as they move, and nothing moves when they lift. The feel it kept,
+  number by number, and memory before and after: `docs/explorations/pdf-view`.
 - **The page said is the page read** (2026-11-17). Qt's `currentPage` moves
   only on a jump or a scrollbar drag, so after the touchpad the foot said
-  the page last jumped to ("page 5" over page 2). The pane works out the
-  page across the view's middle as it scrolls, and PgUp/PgDn turn from
-  there.
+  the page last jumped to ("page 5" over page 2). The page said is the one
+  across the view's middle, and PgUp/PgDn turn from there.
 - **Marks painted flat** (2026-11-17). The marks of a page were drawn into a
   layer (an offscreen texture per page) so two marks crossing kept one
   colour. Qt hands a page's holder the next page as the view scrolls, and
@@ -479,15 +487,15 @@ block, `table` rows.
   over page 2's words. `PdfMarks.paint` cuts the marks into pieces that
   never overlap, each painted once with no layer (a texture a page less,
   too); unseen rectangles of each mark still take the hover and the click.
-- **A drag selects, never pans** (2026-11-15). Qt's view is a Flickable a
+- **A drag selects, never pans** (2026-11-15). Qt's view was a Flickable a
   little wider than the column, so a mouse drag slid the pages instead of
-  selecting words. Its dragging is off; the touchpad scrolls it through
+  selecting words. The view never pans on a drag; the touchpad scrolls it through
   `TouchScroll` (as the note), a mouse wheel through the pane's own
   handler, sideways only when it is sized wider than the column.
 - **The touchpad selects too** (2026-11-15). Qt's page takes a drag or a
   click from a mouse or a stylus only, and on a laptop the touchpad is a
-  device of its own: a drag there selected nothing. The pane widens the
-  page's own drag and click to the touchpad, and a mark takes a click from
+  device of its own: a drag there selected nothing. A page's drag and click
+  take the touchpad too, and a mark takes a click from
   any device. The page test drags and clicks through the window (QtTest),
   from the session's pointer, so it fails as a hand would.
 - **Readable size** (2026-11-15). A PDF is given 1.8 times the note's
@@ -495,8 +503,8 @@ block, `table` rows.
   its own. It is fitted by its **text**, not its paper: `longhand-read`
   gives where the words stand across the page (their edges, leaving out the
   outermost few), and the page is sized so the text's farther side from
-  the page's middle reaches the column's edge (Qt's view keeps a page
-  wider than the column centred, its left side out of reach). Even margins
+  the page's middle reaches the column's edge (a page wider than the
+  column stays centred, its margins out of reach until it is sized up). Even margins
   fill the column; `0` switches to the whole page and back.
 - **Marks drawn once** (2026-11-15). The lines of one mark meet halfway
   rather than cross, and a page's marks are drawn solid and made

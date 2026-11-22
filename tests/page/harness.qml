@@ -227,17 +227,15 @@ ShellRoot {
     function privateLook(): string { return JSON.stringify({ sunk: page.sheetSunk, blocks: page.privatePaint.length }) }
     // A PDF in the middle (step 5).
     function pdf(): string {
-      var p = page.pdfItem
+      var p = page.pdfItem, v = p.view, f = v ? v.flick : null
       return JSON.stringify({ shown: page.pdfShown, label: page.noteLabel, ready: p.ready, pages: p.pages, finding: p.finding,
         found: p.findTotal, here: page.here,
         at: p.here(), settled: p.settled, resumed: p.resumed, zoom: p.zoom,
-        scale: p.view ? p.view.renderScale : 0, x: p.table() ? p.table().contentX : 0,
-        centredX: p.table() ? p.table().originX + (p.table().contentWidth - p.table().width) / 2 : 0,
-        cw: p.table() ? p.table().contentWidth : 0, pageW: p.view && p.ready ? p.view.document.maxPageWidth * p.view.renderScale : 0, whole: p.wholePage, width: p.width,
+        scale: v ? v.renderScale : 0, x: f ? f.contentX : 0,
+        centredX: f ? (f.contentWidth - f.width) / 2 : 0,
+        cw: f ? f.contentWidth : 0, pageW: v && p.ready ? v.document.maxPageWidth * v.renderScale : 0, whole: p.wholePage, width: p.width,
         span: p.read && p.read.span ? p.read.span : null, dark: p.dark,
-        darkDrawn: p.dressed.some(function (h) { if (!h || !h.selection) return false; var ds = h.selection.parent.data
-          for (var i = 0; i < ds.length; i++) if (String(ds[i]).indexOf("PdfPageImage") >= 0 && ds[i].layer.enabled) return true
-          return false }) })
+        darkDrawn: v ? v.drawn().some(function (sh) { return sh.image.layer.enabled }) : false })
     }
     function pdfKey(key: int, mods: int): bool { return page.pdfItem.key({ key: key, text: "", modifiers: mods }) }
     function tasksTrace(): string { return JSON.stringify(page.tasksTrace) }
@@ -245,61 +243,75 @@ ShellRoot {
     // the first page (those with a size: a mark once came out with none),
     // what is selected.
     function pdfMarks(): string {
-      var p = page.pdfItem, drawn = 0
-      for (var i = 0; i < p.dressed.length; i++) {
-        var h = p.dressed[i]
-        if (!h || h.index !== 0) continue
-        var kids = h.selection.parent.children
-        for (var k = 0; k < kids.length; k++) {
-          if (kids[k].holder === undefined || kids[k].count === undefined) continue
-          // The pieces painted (PdfMarks.paint), each with a size and a colour.
-          var boxes = kids[k].children
-          for (var b = 0; b < boxes.length; b++)
-            if (boxes[b].modelData !== undefined && boxes[b].modelData.kind !== undefined && boxes[b].color !== undefined
-                && boxes[b].color.a > 0.2 && boxes[b].width > 4 && boxes[b].height > 4) drawn++
-        }
-      }
+      var p = page.pdfItem, drawn = 0, sh = p.view ? p.view.sheet(0) : null
+      // The pieces painted on the first page (PdfMarks.paint), each with a
+      // size and a colour.
+      var boxes = sh && sh.marks ? sh.marks.children : []
+      for (var b = 0; b < boxes.length; b++)
+        if (boxes[b].modelData !== undefined && boxes[b].modelData.kind !== undefined && boxes[b].color !== undefined
+            && boxes[b].color.a > 0.2 && boxes[b].width > 4 && boxes[b].height > 4) drawn++
       var sel = p.selected()
       return JSON.stringify({ read: p.read, picked: p.picked, lastMade: p.lastMade, error: p.readError, noting: p.noting,
-        dressed: p.dressed.length, drawn: drawn, selected: sel ? sel.text : "", markable: p.markable,
-        dragPans: p.table() ? p.table().interactive : null })
+        dressed: p.view ? p.view.drawn().length : 0, drawn: drawn, selected: sel ? sel.text : "", markable: p.markable,
+        dragPans: p.view ? p.view.flick.interactive : null })
     }
     // A mouse wheel turned on the PDF: how far down it is after.
     function pdfWheel(dy: int): real {
       var p = page.pdfItem
       p.wheel({ pixelDelta: Qt.point(0, 0), angleDelta: Qt.point(0, dy), modifiers: 0, accepted: true })
-      return p.table().contentY
+      return p.view.flick.contentY
     }
-    // Ctrl and the wheel on the PDF; a pinch, as Qt's own sets the view's
-    // scale when the fingers lift; a fit, as a resize or the chat makes.
+    // Ctrl and the wheel on the PDF; a pinch, step by step as the fingers
+    // move, about the view's middle; a fit, as a resize or the chat makes.
     function pdfCtrlWheel(dy: int): void {
       page.pdfItem.wheel({ pixelDelta: Qt.point(0, 0), angleDelta: Qt.point(0, dy), modifiers: Qt.ControlModifier, accepted: true })
     }
-    function pdfPinch(ratio: real): void { var v = page.pdfItem.view; v.renderScale = v.renderScale * ratio }
+    function pdfPinch(ratio: real): void { pdfPinchAt(ratio, page.pdfItem.view.width / 2, page.pdfItem.view.height / 2) }
+    // What is under (x, y) of the view: the page and the point on it, in
+    // its points.
+    function pdfUnder(x: real, y: real): string {
+      var v = page.pdfItem.view, f = v.flick, s = v.renderScale
+      var at = v.placeAt(f.contentY + y)
+      return JSON.stringify({ page: at.page, x: (f.contentX + x - v.pageX(at.page)) / s, y: (f.contentY + y - v.tops[at.page]) / s })
+    }
+    // A pinch with the fingers at (x, y): what was under them before, while
+    // they moved (each step) and once lifted.
+    function pdfPinchAt(ratio: real, x: real, y: real): string {
+      var v = page.pdfItem.view, steps = 8, seen = [JSON.parse(pdfUnder(x, y))]
+      for (var i = 0; i < steps; i++) { v.pinchBy(Math.pow(ratio, 1 / steps), x, y); seen.push(JSON.parse(pdfUnder(x, y))) }
+      v.pinchEnd()
+      return JSON.stringify(seen)
+    }
+    // Where pages are laid, against their heights added up at the scale
+    // shown (pixels): the largest difference over every page.
+    function pdfTops(): string {
+      var p = page.pdfItem, v = p.view, s = v.renderScale, y = 0, worst = 0
+      for (var i = 0; i < p.pages; i++) {
+        worst = Math.max(worst, Math.abs(v.laidTop(i) - y))
+        y += v.document.pagePointSize(i).height * s + v.gap
+      }
+      return JSON.stringify({ worst: worst, pages: p.pages, scale: s, height: v.flick.contentHeight, want: y - v.gap })
+    }
     function pdfFit(): void { page.pdfItem.fit() }
     // A jump to a place, as a quote or a mark makes: page (from 0), points
     // down it. And how far down page `i` the view's top is, in points, by
     // where the view has laid that page (-9999 when it has not).
     function pdfJump(pageIndex: int, y: real): void { page.pdfItem.jumpTo(pageIndex, y) }
     function pdfLaidAt(pageIndex: int): real {
-      var p = page.pdfItem, t = p.table(), it = t ? t.itemAtCell(Qt.point(0, pageIndex)) : null
-      return it ? (t.contentY - it.y) / p.view.renderScale : -9999
+      var v = page.pdfItem.view, top = v ? v.laidTop(pageIndex) : null
+      return top !== null ? (v.flick.contentY - top) / v.renderScale : -9999
     }
     // Select on a page (from 0) from one point to another, in points: both
     // on the words, as a drag starts (pdfium finds no text elsewhere).
     function pdfSelect(pageIndex: int, x0: real, y0: real, x1: real, y1: real): bool {
-      var p = page.pdfItem, s = p.view.renderScale
-      for (var i = 0; i < p.dressed.length; i++) {
-        var h = p.dressed[i]
-        if (!h || h.index !== pageIndex) continue
-        // Qt's selection takes new points only while not held (a drag).
-        h.selection.hold = false
-        h.selection.from = Qt.point(x0 * s, y0 * s)
-        h.selection.to = Qt.point(x1 * s, y1 * s)
-        h.selection.hold = true
-        return true
-      }
-      return false
+      var p = page.pdfItem, s = p.view.renderScale, h = p.view.sheet(pageIndex)
+      if (!h) return false
+      // Qt's selection takes new points only while not held (a drag).
+      h.selection.hold = false
+      h.selection.from = Qt.point(x0 * s, y0 * s)
+      h.selection.to = Qt.point(x1 * s, y1 * s)
+      h.selection.hold = true
+      return true
     }
     function pdfPick(id: string): void { page.pdfItem.pick(id) }
     // The open project's papers (plan.md item 5's first part).
@@ -331,32 +343,23 @@ ShellRoot {
     function pdfMarkText(pageIndex: int, text: string, kind: string): bool { return page.pdfItem.markText(pageIndex, text, null, kind) }
     // A click on a PDF's page (from 0), at a point in points, through the window.
     function pdfClick(pageIndex: int, x: real, y: real): bool {
-      var p = page.pdfItem, s = p.view.renderScale
-      for (var i = 0; i < p.dressed.length; i++) {
-        var h = p.dressed[i]
-        if (!h || h.index !== pageIndex) continue
-        pointer.mouseClick(h.selection.parent, x * s, y * s, Qt.LeftButton)
-        return true
-      }
-      return false
+      var p = page.pdfItem, s = p.view.renderScale, h = p.view.sheet(pageIndex)
+      if (!h) return false
+      pointer.mouseClick(h, x * s, y * s, Qt.LeftButton)
+      return true
     }
     // A drag across a PDF's page (from 0), from one point to another in
     // points, through the window: what a hand does. QtTest sends it from
     // the session's main pointer, on a laptop its touchpad — the device a
     // drag on a PDF once selected nothing from.
     function pdfDrag(pageIndex: int, x0: real, y0: real, x1: real, y1: real): bool {
-      var p = page.pdfItem, s = p.view.renderScale
-      for (var i = 0; i < p.dressed.length; i++) {
-        var h = p.dressed[i]
-        if (!h || h.index !== pageIndex) continue
-        var paper = h.selection.parent
-        pointer.mousePress(paper, x0 * s, y0 * s, Qt.LeftButton)
-        for (var k = 1; k <= 12; k++)
-          pointer.mouseMove(paper, (x0 + (x1 - x0) * k / 12) * s, (y0 + (y1 - y0) * k / 12) * s, 5, Qt.LeftButton)
-        pointer.mouseRelease(paper, x1 * s, y1 * s, Qt.LeftButton)
-        return true
-      }
-      return false
+      var p = page.pdfItem, s = p.view.renderScale, paper = p.view.sheet(pageIndex)
+      if (!paper) return false
+      pointer.mousePress(paper, x0 * s, y0 * s, Qt.LeftButton)
+      for (var k = 1; k <= 12; k++)
+        pointer.mouseMove(paper, (x0 + (x1 - x0) * k / 12) * s, (y0 + (y1 - y0) * k / 12) * s, 5, Qt.LeftButton)
+      pointer.mouseRelease(paper, x1 * s, y1 * s, Qt.LeftButton)
+      return true
     }
     function keysToSidebar(): void { if (!page.sidebarOpen) page.toggleSidebar(); page.sidebarSpace = "time"; page.focusSidebar() }
     // Acronyms (plan.md item 18): what the paper's are, the one hovered and
@@ -371,14 +374,10 @@ ShellRoot {
     }
     // The pointer resting on a page at (x, y) in its points, no button down.
     function pdfHover(pageIndex: int, x: real, y: real): bool {
-      var p = page.pdfItem, s = p.view.renderScale
-      for (var i = 0; i < p.dressed.length; i++) {
-        var h = p.dressed[i]
-        if (!h || h.index !== pageIndex) continue
-        pointer.mouseMove(h.selection.parent, x * s, y * s)
-        return true
-      }
-      return false
+      var p = page.pdfItem, s = p.view.renderScale, h = p.view.sheet(pageIndex)
+      if (!h) return false
+      pointer.mouseMove(h, x * s, y * s)
+      return true
     }
     // The pointer following the selection, or not: it moves the pointer off
     // a word hovered on purpose.

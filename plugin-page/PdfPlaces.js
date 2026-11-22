@@ -15,36 +15,32 @@
 // The newest this many are kept; an older one is forgotten.
 var KEEP = 100
 
-// The page and fraction at `y` (pixels below the first page's top), given
-// each page's height and the gap between pages; null with no pages.
-function at(heights, spacing, y) {
-  if (!heights || heights.length === 0) return null
-  y = Math.max(0, y || 0)
-  var top = 0
-  for (var i = 0; i < heights.length; i++) {
-    var h = Math.max(1, heights[i])
-    if (y < top + h + spacing || i === heights.length - 1)
-      return { page: i, frac: round(Math.max(0, Math.min(1, (y - top) / h))) }
-    top += h + spacing
+// Where each page's top is, in pixels below the first page's top: the
+// pages' heights (already at the view's scale) and the gap between them,
+// added up. The view lays every page exactly here, at any scale, so a
+// place worked out from these is the place shown (Qt's view guessed at
+// the pages it had not laid and kept stale places after a rescale; a
+// quote on page 14 went to page 16, 2026-11-22).
+function tops(heights, spacing) {
+  var out = new Array(heights ? heights.length : 0), y = 0
+  for (var i = 0; i < out.length; i++) {
+    out[i] = y
+    y += Math.max(1, heights[i]) + spacing
   }
-  return null
+  return out
 }
 
-// The same, read from the pages as the view has laid them: `rows` are
-// { page, top, h }, in any order, `y` in the same pixels. Null when `y` is
-// on none of them (the view has laid only the pages near it). The view does
-// not keep every page where the heights before it add up to: made larger or
-// smaller while far down, it keeps the pages it has laid where they were,
-// and those added up said page 14 over page 16 (2026-11-22).
-function onRows(rows, spacing, y) {
-  if (!rows || rows.length === 0) return null
-  var sorted = rows.slice().sort(function (a, b) { return a.top - b.top })
-  for (var i = 0; i < sorted.length; i++) {
-    var r = sorted[i], h = Math.max(1, r.h)
-    if (y >= r.top && y < r.top + h + spacing)
-      return { page: r.page, frac: round(Math.max(0, Math.min(1, (y - r.top) / h))) }
+// The page at `y` (same pixels as `tops`): the last whose top is at or
+// above it, so the gap under a page is that page's. 0 above the first.
+function pageAt(tops, y) {
+  if (!tops || tops.length === 0) return -1
+  var lo = 0, hi = tops.length - 1
+  while (lo < hi) {
+    var mid = (lo + hi + 1) >> 1
+    if (tops[mid] <= y) lo = mid
+    else hi = mid - 1
   }
-  return null
+  return lo
 }
 
 function round(x) { return Math.round(x * 1000) / 1000 }
