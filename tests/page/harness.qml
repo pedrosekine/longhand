@@ -314,6 +314,30 @@ ShellRoot {
       return true
     }
     function pdfPick(id: string): void { page.pdfItem.pick(id) }
+    // The links inside the PDF on a page drawn (from 0): each one's place
+    // in points and where it goes; and one clicked through the window.
+    function pdfLinksOn(pageIndex: int): string {
+      var v = page.pdfItem.view, sh = v.sheet(pageIndex), out = []
+      function walk(it) {
+        for (var i = 0; i < it.children.length; i++) {
+          var c = it.children[i]
+          if (c.link !== undefined && c.rectangle !== undefined)
+            out.push({ x: c.rectangle.x, y: c.rectangle.y, w: c.rectangle.width, h: c.rectangle.height, page: c.page })
+          else walk(c)
+        }
+      }
+      if (sh) walk(sh)
+      return JSON.stringify(out)
+    }
+    // Whether the keys are with the PDF (its own key handler), as a hand's
+    // next key would find them.
+    function pdfHasKeys(): bool { return page.pdfItem.keysRef.activeFocus }
+    function pdfClickLink(pageIndex: int, i: int): bool {
+      var v = page.pdfItem.view, sh = v.sheet(pageIndex), l = JSON.parse(pdfLinksOn(pageIndex))[i], s = v.renderScale
+      if (!sh || !l) return false
+      pointer.mouseClick(sh, (l.x + l.w / 2) * s, (l.y + l.h / 2) * s, Qt.LeftButton)
+      return true
+    }
     // The open project's papers (plan.md item 5's first part).
     function projectPapers(): string { return JSON.stringify({ open: page.projectOpen, papers: page.projectPapers.map(function (x) { return x.title }), focus: page.projectPaperFocus, doc: page.docFocus }) }
     // The project asked for on a paper's first mark.

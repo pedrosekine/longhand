@@ -1180,29 +1180,58 @@ Item {
     Keys.onPressed: function (event) { if (pane.key(event)) event.accepted = true }
   }
 
-  TextField {
-    id: noteField
+  // `n`: a note under a mark, in a panel as the find bar's (2026-11-22: a
+  // bare field, see-through, lay over the page's words).
+  Rectangle {
+    id: noteBar
     visible: pane.noting
+    z: 3
     anchors.bottom: foot.top
-    anchors.bottomMargin: page.sp(4)
+    anchors.bottomMargin: page.sp(6)
     width: Math.min(parent.width, page.sp(520))
-    placeholderText: {
-      var m = pane.markById(pane.notingId)
-      if (!m) return "a note"
-      var t = m.text.length > 40 ? m.text.substring(0, 40) + "…" : m.text
-      return "a note on “" + t + "” (p. " + m.page + ")"
-    }
-    font.family: page.fontFamily
-    font.styleName: page.fontStyle
-    font.pixelSize: page.fs(Style.font.bodySmall)
-    foreground: page.foreground
-    z: 2
-    Keys.priority: Keys.BeforeItem
-    Keys.onPressed: function (event) {
-      if (page.anywhereKey(event)) { event.accepted = true; return }
-      var seq = Sc.fromEvent(event)
-      if (seq === "Enter") { pane.saveNote(); event.accepted = true }
-      else if (seq === "Esc") { pane.noting = false; keys.forceActiveFocus(); event.accepted = true }
+    height: noteColumn.implicitHeight + page.sp(16)
+    radius: Style.cornerRadius
+    color: page.palette.background
+    border.width: 1
+    border.color: page.accent
+    Column {
+      id: noteColumn
+      x: page.sp(10)
+      y: page.sp(8)
+      width: parent.width - page.sp(20)
+      spacing: page.sp(4)
+      Text {
+        width: parent.width
+        textFormat: Text.PlainText
+        wrapMode: Text.WordWrap
+        maximumLineCount: 2
+        elide: Text.ElideRight
+        text: {
+          var m = pane.markById(pane.notingId)
+          var t = !m ? "" : m.text.length > 60 ? m.text.substring(0, 60) + "…" : m.text
+          return (m ? "A note under “" + t + "” (p. " + m.page + ")" : "A note") + " · Enter keeps it · Esc"
+        }
+        color: page.dim
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.caption)
+      }
+      TextField {
+        id: noteField
+        width: parent.width
+        placeholderText: "your note"
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.bodySmall)
+        foreground: page.foreground
+        Keys.priority: Keys.BeforeItem
+        Keys.onPressed: function (event) {
+          if (page.anywhereKey(event)) { event.accepted = true; return }
+          var seq = Sc.fromEvent(event)
+          if (seq === "Enter") { pane.saveNote(); event.accepted = true }
+          else if (seq === "Esc") { pane.noting = false; keys.forceActiveFocus(); event.accepted = true }
+        }
+      }
     }
   }
 
