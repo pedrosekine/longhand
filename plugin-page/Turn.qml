@@ -16,6 +16,7 @@ Column {
   property var t: ({})                 // { role, text, error, refs, block, who, settled, revised, unoffered, elsewhere, place, when }
   property string pane: "day"          // whose box an answer to its words goes above: "day" or "margin"
   property Flickable flick: null       // scrolled to this turn when a quote of it is followed
+  property int railRoom: 0             // beside a paper's answer: the rail of its quotes (ChatTurn)
   signal linkActivated(string link)
 
   readonly property bool mine: t.role !== "agent"
@@ -76,6 +77,7 @@ Column {
     onLinkActivated: function (link) { turn.linkActivated(link) }
     onAnswer: function (passage) { page.addReply(turn.pane, passage, turn.t.at) }
     marks: !turn.mine && !turn.away ? page.passageMarks(turn.pane, turn.t.at) : []
+    railRoom: turn.railRoom
     Rectangle {
       anchors.fill: parent
       anchors.margins: -page.sp(4)

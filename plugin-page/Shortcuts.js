@@ -111,6 +111,12 @@ var actions = [
   { id: "day", group: "page", places: ["any"], does: "The agent's pane: open (on the day's chat) or close", keys: ["Ctrl+|"] },
   { id: "paneLeft", group: "page", places: ["any"], does: "The open pane to the left", keys: ["Alt+Left"] },
   { id: "paneRight", group: "page", places: ["any"], does: "The open pane to the right (in the note, with none: this block's chat)", keys: ["Alt+Right"] },
+  // The agent's pane sized by hand (2026-11-22, docs/explorations/
+  // chat-width): Z as tmux's zoom, the nudge as Omarchy's Super+−/= for a
+  // window, on the arrows Alt+←/→ already move between panes with.
+  { id: "paneFlip", group: "page", places: ["any"], does: "The agent's pane: reading (the middle wide) ↔ discussing (the chat wide); each remembers where you left it", keys: ["Alt+Z"] },
+  { id: "paneWider", group: "page", places: ["any"], does: "The agent's pane wider, about 100 px (a drag on its edge too)", keys: ["Alt+Shift+Left"] },
+  { id: "paneNarrower", group: "page", places: ["any"], does: "The agent's pane narrower, about 100 px", keys: ["Alt+Shift+Right"] },
   // F11 is every app's full-screen key, and the overlay is the full-screen
   // shape; Ctrl+Alt+P for keyboards whose F-row wants Fn. Ctrl+P was left
   // free on 2026-10-16; since 2026-10-27 it makes a block private (the
@@ -188,6 +194,10 @@ var actions = [
   { id: "dayChat", group: "agent", places: ["any"], does: "The day's chat (in a note from Files: the note's)", keys: ["Ctrl+Shift+Enter"] },
   { id: "dayHelpful", group: "agent", places: ["chat"], does: "In the day's chat or a note's: its last answer was helpful (again: take it back)", keys: ["Alt+="] },
   { id: "dayNotHelpful", group: "agent", places: ["chat"], does: "In the day's chat or a note's: its last answer was not helpful (again: take it back)", keys: ["Alt+-"] },
+  // A long chat (2026-11-22): your own questions one after another, as
+  // Zed steps through prompts; ↑ alone is taken by the cards.
+  { id: "chatPrevQuestion", group: "agent", places: ["chat"], does: "In the agent's pane: the question you asked before (the first time, your last); before the first, the earlier sessions unfold", keys: ["Alt+Up"] },
+  { id: "chatNextQuestion", group: "agent", places: ["chat"], does: "In the agent's pane: the next question you asked; past the last, back to the foot", keys: ["Alt+Down"] },
 
   { id: "switchUp", group: "switcher", places: ["switcher"], does: "The match above", keys: ["Up"] },
   { id: "switchDown", group: "switcher", places: ["switcher"], does: "The match below", keys: ["Down", "Tab"] },

@@ -3712,6 +3712,10 @@ def checks() -> int:
         p.call("pdfKey", KEY_RETURN, 0)
         check(p.wait(lambda: not pr()["list"] and pr()["pin"] == asked_at and pr()["lit"] == asked_at),
               f"…Enter opens the chat at that exchange, lit ({pr()}, asked at turn {asked_at})")
+        # At 701 px a paper and its chat show one at a time (2026-11-22,
+        # docs/navigation.md): the chat, keys in it, covers the paper, so the
+        # keys go back to the paper before the mouse rests on it.
+        p.call("pageKey", KEY_2, CTRL)
         p.call("pdfHover", "0", "300", "600")
         p.wait(lambda: ac()["mark"] == "", 2)
         rest_on_mark(hid, tip=False)
@@ -4408,6 +4412,58 @@ def checks() -> int:
         p.call("dashKey", KEY_ESC, 0)
         p.open_fresh()
         check(fs()["space"] == "time" and not fs()["open"], "a fresh open lands on Time, the sidebar closed")
+
+        # 12w. the agent's pane sized by hand (2026-11-22,
+        # docs/explorations/chat-width): Alt+Z flips reading ↔ discussing,
+        # Alt+Shift+←/→ nudge the edge, a drag sets it; each split is kept
+        # per screen width and per middle (a paper apart from a note); a
+        # paper keeps a readable column for the keys, a drag goes under it.
+        # Too narrow for both: one at a time, following the keys.
+        ALT = 0x08000000
+        ps = lambda: json.loads(p.call("paneSize"))
+        widths = p.state / "longhand" / "pane-widths.json"
+        p.resize(1150, 850)
+        p.call("openFile", reading_rel, "false")
+        p.wait(lambda: json.loads(p.call("pdf"))["settled"], 10)
+        p.call("pageKey", KEY_3, CTRL)
+        check(p.wait(lambda: ps()["right"] == "day" and ps()["kind"] == "paper" and not ps()["alone"]),
+              f"beside a paper, the agent's pane opens on reading ({ps()})")
+        w0, st = ps()["width"], ps()
+        check(st["split"] == "reading" and st["sizable"], f"…in the reading split ({st})")
+        check(p.call("pageKey", KEY_Z, ALT) == "true" and p.wait(lambda: ps()["split"] == "discussing"), "Alt+Z: discussing")
+        st = ps()
+        check(st["width"] >= w0 and st["room"] - st["width"] >= min(st["floor"], st["room"] - w0),
+              f"…the chat wider, the paper never under its readable floor by a key ({st})")
+        wide = st["width"]
+        p.call("pageKey", KEY_LEFT, ALT | SHIFT)
+        check(ps()["width"] == wide, f"Alt+Shift+← at the paper's floor: no wider ({ps()})")
+        p.call("pageKey", KEY_RIGHT, ALT | SHIFT)
+        check(p.wait(lambda: ps()["width"] < wide), f"Alt+Shift+→: narrower ({ps()})")
+        narrower = ps()["width"]
+        check(p.wait(lambda: widths.is_file() and json.loads(widths.read_text())[st["screen"]]["paper"]["discussing"] == narrower),
+              f"…kept for this screen and a paper ({widths.read_text() if widths.is_file() else 'no file'})")
+        p.call("paneDrag", "300")
+        st = ps()
+        check(st["room"] - st["width"] < st["floor"] and st["width"] <= st["ceiling"],
+              f"a drag goes under the paper's floor, never past what the chat can use ({st})")
+        check(p.call("pageKey", KEY_Z, ALT) == "true" and p.wait(lambda: ps()["split"] == "reading" and ps()["width"] == w0),
+              f"Alt+Z: back to reading, where it was ({ps()})")
+        check(p.call("pageKey", KEY_Z, ALT) == "true" and p.wait(lambda: ps()["width"] == st["width"]),
+              f"…and discussing again keeps where the drag left it ({ps()})")
+        p.call("pageKey", KEY_Z, ALT)
+        # One at a time: too narrow for the paper's floor and the pane's least.
+        p.resize(701, 850)
+        p.call("openFile", reading_rel, "false")
+        p.wait(lambda: json.loads(p.call("pdf"))["settled"], 10)
+        p.call("pageKey", KEY_3, CTRL)
+        check(p.wait(lambda: ps()["alone"] and ps()["right"] == "day" and not ps()["tucked"]),
+              f"a narrow window beside a paper: the chat alone, over it ({ps()})")
+        check(p.call("pageKey", KEY_Z, ALT) == "true" and p.wait(lambda: ps()["tucked"] and panes()["here"] == "center"),
+              f"Alt+Z: the paper, the chat waiting in its strip ({ps()})")
+        check(p.call("pageKey", KEY_Z, ALT) == "true" and p.wait(lambda: not ps()["tucked"] and panes()["here"] == "right"),
+              f"…and again: the chat ({ps()})")
+        p.call("closePanes")
+        p.open_fresh()
 
         # 12z. hover hints (docs/hints.md): a key puts them away, a modifier
         # alone does not; a click names its key once a day, never a list's

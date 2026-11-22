@@ -123,6 +123,40 @@ shrank the right pane instead. For a few hours after that the panes hugged the
 note's edges, which left dead space between each pane and the window's edge
 on a wide screen.
 
+### The agent's pane, sized by hand (2026-11-22)
+
+Designed with the student in a grilling (`docs/explorations/chat-width/`,
+its README holds every decision and the benchmark). The pane's width is no
+longer only what the note leaves:
+
+- **Three ways, all kept.** Drag its edge (it lights, the pointer turns, a
+  label gives the width while dragging; a double click puts the split back
+  where it starts). **Alt+Shift+← / →** nudge it about 100 px, as Omarchy's
+  Super+−/= do a window. **Alt+Z** flips between two remembered splits:
+  *reading* (the middle wide; at first today's width) and *discussing* (the
+  chat wide; at first the middle at its least). A drag or a nudge moves the
+  split you are in. Nothing changes place: only the edge moves.
+- **The middle's least.** A paper is never narrowed by a key past the
+  column where its body text is still about 11 px (`Layout.paperFloor`,
+  from the words' usual height that `longhand-read` gives with the span);
+  a drag may go under it, down to 360 px, and the hint says the text is
+  small. A note's least is today's 340 px: prose rewraps.
+- **The chat's most** is what it can use: its measure (580 px) and, beside
+  a paper, the rail of quoted words. Past it the room stays with the
+  middle; answers never run wider than the measure.
+- **One at a time.** When the middle's least and the pane's 300 px do not
+  fit side by side (a paper on half the laptop's screen), the side shown
+  follows the keys: in the pane, the chat over the middle, the middle's name
+  and Alt+Z in a strip at its left; elsewhere, the middle, the chat in a
+  strip at the window's edge, a dot on it once an answer came.
+- **Kept per screen width** (`pane-widths.json` in the state folder), and
+  beside a paper apart from beside a note, so the laptop and the big screen
+  each keep their own.
+- **Seen in the header:** a small glyph of the split (the chat's share
+  filled, moving with the edge) and the word *reading* or *discussing*; a
+  click flips, hovering names the three ways, the hint under the box names
+  Alt+Z. Beside the dashboard the pane keeps its own width.
+
 ## Esc: back out one level
 
 Esc always undoes the last step in. In order:

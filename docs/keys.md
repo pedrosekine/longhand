@@ -30,6 +30,9 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | The agent's pane: open (on the day's chat) or close | `Ctrl+|` | everywhere |
 | The open pane to the left | `Alt+←` | everywhere |
 | The open pane to the right (in the note, with none: this block's chat) | `Alt+→` | everywhere |
+| The agent's pane: reading (the middle wide) ↔ discussing (the chat wide); each remembers where you left it | `Alt+Z` | everywhere |
+| The agent's pane wider, about 100 px (a drag on its edge too) | `Alt+Shift+←` | everywhere |
+| The agent's pane narrower, about 100 px | `Alt+Shift+→` | everywhere |
 | Flip between overlay and window | `F11` · `Ctrl+Alt+P` | everywhere |
 | Copy the path of what you are on (in a note, with the line), to give to an agent | `Ctrl+Shift+C` | everywhere |
 | Close the overlay | `Esc` | in the note |
@@ -82,6 +85,8 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | The day's chat (in a note from Files: the note's) | `Ctrl+Shift+Enter` | everywhere |
 | In the day's chat or a note's: its last answer was helpful (again: take it back) | `Alt+=` | in the chat's box |
 | In the day's chat or a note's: its last answer was not helpful (again: take it back) | `Alt+-` | in the chat's box |
+| In the agent's pane: the question you asked before (the first time, your last); before the first, the earlier sessions unfold | `Alt+↑` | in the chat's box |
+| In the agent's pane: the next question you asked; past the last, back to the foot | `Alt+↓` | in the chat's box |
 
 ## @ a project
 

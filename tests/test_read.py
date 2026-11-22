@@ -253,6 +253,7 @@ def main() -> int:
     sp = s["span"]
     check(sp and abs(sp["x0"] - 72) < 1 and sp["w"] == 612 and sp["x1"] > sp["x0"] + 100,
           f"where the text stands across the page, to fit it by its text ({sp})")
+    check(sp and 8 < sp["h"] < 20, f"and how tall its usual word is, to keep it readable ({sp})")
 
     # A private folder: read, never marked (the agent is never given it).
     pdf(vault / "human" / "Personal" / "statement.pdf", [["Account balance and other private lines"] * 30])

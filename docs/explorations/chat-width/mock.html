@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<!--
+  The agent's pane beside a paper, for long chats (2026-11-22). One page,
+  four looks, picked by the query string: ?v=now | steps | swap | lift.
+  Rendered to PNG with headless chromium (render.sh), 1600x1000 at scale 1;
+  ?v=flipread | flipdisc are the laptop (1440x900, the 14" at scale 2).
+  Colours: the Birnbaum theme's colors.toml, as chat-readability/mock.html.
+  The chat's type is design A built on 2026-11-19 (Adwaita Sans 17/1.62).
+-->
+<style>
+  @font-face { font-family: "MonoR"; src: url("file:///usr/share/fonts/ttf-ia-writer/iAWriterMonoS-Regular.ttf"); }
+  :root {
+    --bg: #2A2A25; --sunk: #20201C; --fg: #EFEDE4; --dim: #A6A99E; --faint: #787A6F;
+    --accent: #F5845B; --sel: #5B3A33; --rule: #3A3A33; --frame: #E9B949;
+    --pane: 440px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); font-family: "Adwaita Sans"; }
+  body { width: var(--W, 1600px); height: var(--H, 1000px); overflow: hidden; position: relative; }
+
+  /* ---------- the middle: the paper ---------- */
+  .mid { position: absolute; top: 0; bottom: 0; left: 0; }
+  .mid .top { position: absolute; top: 26px; left: 34px; right: 34px; font: 13px "MonoR"; color: var(--faint);
+              letter-spacing: .6px; display: flex; gap: 18px; }
+  .mid .top b { color: var(--dim); font-weight: normal; }
+  .mid .top .r { margin-left: auto; }
+  .page { position: absolute; top: 66px; bottom: 40px; background: #FBFAF6; color: #1d1d1b; overflow: hidden;
+          font: 15px/1.5 "Liberation Serif", "Times New Roman", serif; padding: 44px 46px; }
+  .page h4 { font: bold 13px "Liberation Sans", sans-serif; letter-spacing: .4px; margin: 18px 0 6px; text-transform: uppercase; }
+  .page p { margin: 0 0 9px; text-align: justify; hyphens: auto; }
+  .hl { background: #dfe6f0; }
+  .cited { background: rgba(245,132,91,.28); }
+  .mid .foot { position: absolute; bottom: 12px; left: 34px; right: 34px; font: 12.5px "MonoR"; color: var(--faint);
+               text-align: right; letter-spacing: .4px; }
+
+  /* ---------- the agent's pane ---------- */
+  .pane { position: absolute; top: 0; bottom: 0; right: 0; width: var(--pane); border-left: 1px solid #38382F; background: var(--bg); }
+  .pane.keys { box-shadow: inset 0 0 0 2px var(--frame); }
+  .pane .head { position: absolute; top: 24px; left: 30px; right: 26px; height: 24px; font: 13px "MonoR";
+                letter-spacing: 1.3px; color: var(--faint); text-transform: uppercase; display: flex; align-items: center; gap: 12px; }
+  .pane .head .w { margin-left: auto; display: flex; gap: 3px; align-items: center; text-transform: none; letter-spacing: .3px; }
+  .w i { display: inline-block; width: 8px; height: 12px; border: 1px solid var(--faint); }
+  .w i.on { background: var(--dim); border-color: var(--dim); }
+  .w span { margin-left: 8px; }
+  .scroll { position: absolute; top: 62px; left: 30px; right: 30px; bottom: 112px; overflow: hidden;
+            display: flex; flex-direction: column; justify-content: flex-end; }
+  .pane .foot { position: absolute; left: 30px; right: 30px; bottom: 22px; }
+  .box { border: 1px solid #4f4f46; border-radius: 8px; height: 44px; padding: 11px 14px; color: var(--faint); font-size: 16px; }
+  .hint { margin-top: 10px; color: var(--faint); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .k { border: 1px solid #4A4A41; border-radius: 3px; padding: 0 4px; font: 11px "MonoR"; color: var(--dim); }
+
+  .turn { margin-bottom: 30px; }
+  .ask { margin-left: auto; width: fit-content; max-width: 86%; }
+  .ref { font-size: 13px; line-height: 1.45; color: var(--dim); border-left: 2px solid var(--accent); padding: 1px 0 1px 10px; margin: 0 0 8px; }
+  .ref b { font-weight: 500; color: var(--faint); margin-right: 6px; font-size: 12px; }
+  .me { background: rgba(245,132,91,.12); padding: 9px 14px; border-radius: 10px; font-size: 16.5px; line-height: 1.55; }
+  .agent p { margin: 0 0 11px; font-size: 16.5px; line-height: 1.62; color: #E6E4DA; }
+  .agent p:last-child { margin-bottom: 0; }
+  .agent q { quotes: "“" "”"; text-decoration: underline dotted rgba(245,132,91,.55); text-underline-offset: 4px; text-decoration-thickness: 1.5px; }
+  .cite { color: var(--accent); font-size: 13.5px; }
+  .rate { font-size: 12.5px; color: var(--faint); margin-top: 7px; }
+  .fold { font-size: 13px; color: var(--faint); border-top: 1px solid var(--rule); padding-top: 8px; margin-bottom: 22px; }
+
+  /* a table in an answer: in a narrow pane it is clipped and scrolls sideways */
+  table { border-collapse: collapse; font-size: 14px; line-height: 1.4; margin: 4px 0 12px; color: #E6E4DA; }
+  th { text-align: left; font-weight: 500; color: var(--dim); border-bottom: 1px solid #4a4a41; padding: 4px 14px 5px 0; white-space: nowrap; }
+  td { border-bottom: 1px solid var(--rule); padding: 5px 14px 5px 0; vertical-align: top; white-space: nowrap; }
+  .clip { overflow: hidden; position: relative; margin-right: -30px; }
+  .clip::after { content: ""; position: absolute; right: 0; top: 0; bottom: 12px; width: 60px;
+                 background: linear-gradient(90deg, rgba(42,42,37,0), var(--bg)); }
+  .more { font-size: 12.5px; color: var(--faint); margin: -4px 0 10px; }
+
+  /* ---------- steps: the answer at its measure, the paper's words beside it ---------- */
+  .steps .agent .row { display: grid; grid-template-columns: minmax(0, var(--measure, 580px)) 1fr; column-gap: 34px; }
+  .steps .rail { font-size: 13px; line-height: 1.5; color: var(--dim); border-left: 2px solid #55554b; padding: 1px 0 1px 12px; align-self: start; }
+  .steps .rail b { display: block; font-weight: 500; color: var(--accent); font-size: 12px; margin-bottom: 2px; }
+  .steps .scroll > .ask { align-self: flex-start; width: var(--measure, 580px); max-width: var(--measure, 580px); margin-left: 0; }
+  .steps .scroll > .ask .me { margin-left: auto; width: fit-content; max-width: 86%; }
+  .swap td { white-space: normal; }
+  .steps .scroll { right: 34px; }
+  .steps td { white-space: normal; }
+
+  /* ---------- swap: the chat in the middle, the paper in the pane ---------- */
+  .swap .center { position: absolute; top: 0; bottom: 0; left: 0; right: calc(var(--pane)); }
+  .swap .center .col { position: absolute; top: 62px; bottom: 112px; width: 640px; left: 50%; transform: translateX(-50%);
+                       display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; }
+  .swap .center .foot { position: absolute; bottom: 22px; width: 640px; left: 50%; transform: translateX(-50%); }
+  .swap .center .head { position: absolute; top: 24px; width: 640px; left: 50%; transform: translateX(-50%); font: 13px "MonoR";
+                        letter-spacing: 1.3px; color: var(--faint); text-transform: uppercase; display: flex; }
+  .swap .center .head span:last-child { margin-left: auto; text-transform: none; letter-spacing: .3px; }
+  .swap .glance { position: absolute; top: 62px; left: 26px; right: 26px; bottom: 40px; background: #FBFAF6; color: #1d1d1b;
+                  font: 13px/1.5 "Liberation Serif", serif; padding: 26px 28px; overflow: hidden; }
+  .swap .glance p { margin: 0 0 8px; text-align: justify; }
+  .swap .glance h4 { font: bold 11.5px "Liberation Sans", sans-serif; margin: 12px 0 5px; text-transform: uppercase; }
+
+  /* ---------- lift: one answer over the paper, at full width ---------- */
+  .lifted { position: absolute; top: 56px; left: 34px; right: calc(var(--pane) + 18px); background: #22221E;
+            border: 1px solid #45453c; border-radius: 10px; padding: 26px 40px; box-shadow: 0 18px 50px rgba(0,0,0,.45); }
+  .lifted .lh { font: 13px "MonoR"; color: var(--faint); letter-spacing: 1.2px; text-transform: uppercase; display: flex; margin-bottom: 22px; }
+  .lifted .lh span:last-child { margin-left: auto; text-transform: none; letter-spacing: .3px; }
+  .lifted td { white-space: normal; }
+  .lifted .agent .row { display: block; }
+  .lifted table { width: 100%; font-size: 15px; }
+  .lifted .agent p { max-width: 640px; }
+  .marked { border-left: 2px solid var(--accent); padding-left: 12px; margin-left: -14px; }
+
+  .tag { position: absolute; z-index: 9; background: var(--accent); color: #1d1d1b; font: 600 12px "Adwaita Sans";
+         padding: 4px 9px; border-radius: 4px; letter-spacing: .2px; }
+</style>
+</head>
+<body>
+<script>
+const v = new URLSearchParams(location.search).get("v") || "now";
+document.body.className = v;
+
+// ---- the paper's text (the shots fixture, extended) ----
+const paper = `
+<h4>2 Method</h4>
+<p>Cyclists wore a wristband that read their heart rate variability (HRV) and electrodermal activity (EDA) while riding through the city, and a GPS logger kept the route. <span class="hl">Moments of stress (MOS) were found where the EDA rose</span> and the HRV fell together. Each MOS was placed on the route by its GPS time, and the HRV around it was compared with the HRV of the same rider on a quiet street.</p>
+<p>A rise counted when the phasic EDA exceeded the rider's own baseline by 0.05 µS within a window of 3–6 s, and the RMSSD over the same window fell below the rider's tenth percentile.</p>
+<p>Thirty-two riders took the same 9.4 km route twice, once in the morning peak and once at midday. <span class="cited">The route was fixed so that every rider met the same junctions</span>; riders did not choose where to ride.</p>
+<h4>3 Results</h4>
+<p>Of 1,412 detected MOS, 61% fell within 30 m of a junction and 22% beside parked cars. Morning rides held 1.7 times as many MOS per kilometre as midday rides.</p>
+<p>Annotated video confirmed 74% of a random sample of 200 MOS; most of the rest were bumps in the road surface, which move the EDA without a change in HRV.</p>
+<h4>4 Limits</h4>
+<p>The sample was small and young. The wristband's EDA is noisier than a finger electrode, and cold mornings damp it.</p>`;
+
+// ---- the chat ----
+const T = {
+  q1: `<div class="turn ask"><div class="ref"><b>p. 1</b>“Moments of stress (MOS) were found where the EDA rose…”</div><div class="me">how do they decide a moment of stress?</div></div>`,
+  a1: (rail) => `<div class="turn agent"><div class="row"><div><p>A moment of stress is a stretch where skin conductance rises while heart rate variability falls, both within a few seconds. The paper says <q>Moments of stress (MOS) were found where the EDA rose</q> <span class="cite">p. 1</span>: the rule needs both signals, so a rise in EDA alone, from heat or effort, does not count.</p></div>${rail ? `<div class="rail"><b>p. 1</b>“Moments of stress (MOS) were found where the EDA rose and the HRV fell together.”</div>` : ""}</div></div>`,
+  q2: `<div class="turn ask"><div class="me">compare their detection rule with the two papers I read last week, in a table</div></div>`,
+  a2: (wrap) => `<div class="turn agent"><div class="row"><div><p>Side by side, from this paper and the two in your notes:</p>
+    <div class="${wrap ? "" : "clip"}"><table>
+      <tr><th>Paper</th><th>Signals</th><th>Window</th><th>Threshold</th><th>Checked against</th></tr>
+      <tr><td>Stress on bikes</td><td>EDA ↑ and HRV ↓</td><td>3–6 s</td><td>+0.05 µS over own baseline; RMSSD &lt; p10</td><td>video, 74% agree</td></tr>
+      <tr><td>Kyriakou 2019</td><td>EDA ↑, skin temp ↓</td><td>3 s</td><td>rule set, fixed across riders</td><td>self-report</td></tr>
+      <tr><td>Zeile 2016</td><td>EDA ↑ only</td><td>1–5 s</td><td>slope over a fixed value</td><td>none</td></tr>
+    </table></div>${wrap ? "" : `<div class="more">the table goes on →</div>`}
+    <p>Only this paper asks for HRV to fall too, which is why bumps in the road are mostly not counted here.</p></div>${wrap === "rail" ? `<div class="rail"><b>p. 2</b>“the RMSSD over the same window fell below the rider's tenth percentile.”</div>` : ""}</div></div>`,
+  q3: `<div class="turn ask"><div class="me">so can they say junctions cause the stress?</div></div>`,
+  a3: (rail) => `<div class="turn agent"><div class="row"><div><p>Not on their own. <q>The route was fixed so that every rider met the same junctions</q> <span class="cite">p. 2</span>: no rider chose where to ride, so junctions are confounded with the time into the ride and with traffic at that hour.</p><p>What they can say is that MOS cluster near junctions on this route. A claim about cause would need riders on different routes, or the same junctions at different points of the ride.</p></div>${rail ? `<div class="rail"><b>p. 2</b>“The route was fixed so that every rider met the same junctions; riders did not choose where to ride.”</div>` : ""}</div><div class="rate"><span class="k">Alt</span> <span class="k">=</span> helpful &nbsp; <span class="k">Alt</span> <span class="k">-</span> not helpful</div></div>`,
+};
+const older = (n) => `<div class="fold">${n} earlier turns about this paper · <span class="k">Alt</span> <span class="k">↑</span><span class="k">↓</span> your questions</div>`;
+
+function widthMark(n) { return `<span class="w">${[1,2,3].map(i => `<i class="${i <= n ? "on" : ""}"></i>`).join("")}<span>${["", "reading", "even", "discussing"][n]}</span></span>`; }
+
+function paneHTML(stream, opts) {
+  return `<div class="pane keys"><div class="head"><span>Chat · Stress on bikes.pdf</span>${opts.mark || ""}</div>
+    <div class="scroll">${stream}</div>
+    <div class="foot"><div class="box">ask about this paper…</div><div class="hint">${opts.hint}</div></div></div>`;
+}
+function midHTML(left, width, pageW) {
+  const pl = Math.round((width - pageW) / 2);
+  return `<div class="mid" style="width:${width}px"><div class="top"><b>Stress on bikes.pdf</b><span>back to today</span><span class="r">pin ●</span></div>
+    <div class="page" style="left:${pl}px; width:${pageW}px">${paper}</div>
+    <div class="foot">page 2 of 9 · 1 mark</div></div>`;
+}
+
+let html = "";
+if (v === "now") {
+  // As built: the pane at its cap (440), the paper given the rest.
+  document.documentElement.style.setProperty("--pane", "440px");
+  html = midHTML(0, 1600 - 440 - 18, 860)
+    + paneHTML(older(6) + T.q1 + T.a1(false) + T.q2 + T.a2(false) + T.q3 + T.a3(false),
+      { hint: `Enter sends · ^ attaches a mark · Esc back to the marks` });
+} else if (v === "steps") {
+  // Three widths, one key: reading (440) · even (half) · discussing (62%).
+  // Shown at "discussing": the answer keeps its measure, the paper's words
+  // stand beside the line that quotes them, the paper keeps a readable column.
+  const pane = 990;
+  document.documentElement.style.setProperty("--pane", pane + "px");
+  html = midHTML(0, 1600 - pane - 18, 540)
+    + paneHTML(older(6) + T.q1 + T.a1(true) + T.q2 + T.a2("rail") + T.q3 + T.a3(true),
+      { mark: widthMark(3), hint: `Enter sends · <span class="k">Alt</span><span class="k">Shift</span><span class="k">←</span><span class="k">→</span> narrower / wider · or drag the edge · Esc back to the marks` })
+    + `<div class="tag" style="left:330px; top:900px">the edge drags too; it snaps to the three widths →</div>`;
+} else if (v === "flipread" || v === "flipdisc") {
+  // The flip, on the laptop: the same two panes in the same places; only
+  // the border moves. Reading: the chat at 440. Discussing: the paper at its
+  // legibility floor (~600, its text near 11 px), the chat the rest.
+  const W = 1440, H = 900, disc = v === "flipdisc";
+  const pane = disc ? W - 600 - 18 : 440;
+  const st = document.documentElement.style;
+  st.setProperty("--W", W + "px"); st.setProperty("--H", H + "px");
+  st.setProperty("--pane", pane + "px"); st.setProperty("--measure", "500px");
+  if (disc) document.body.classList.add("steps");
+  const stream = disc ? older(6) + T.q1 + T.a1(true) + T.q2 + T.a2("rail") + T.q3 + T.a3(true)
+                      : older(6) + T.q1 + T.a1(false) + T.q2 + T.a2(false) + T.q3 + T.a3(false);
+  html = midHTML(0, W - pane - 18, disc ? 560 : 860)
+    + paneHTML(stream, { mark: `<span class="w"><span>${disc ? "discussing" : "reading"}</span></span>`,
+      hint: `Enter sends · flip key: ${disc ? "back to reading" : "to discussing"} · Alt+Shift+←→ nudge · drag the edge` });
+} else if (v === "swap") {
+  // The chat takes the middle at the note's measure; the paper becomes the
+  // pane, showing the page the last answer quotes. One key turns it back.
+  document.documentElement.style.setProperty("--pane", "440px");
+  html = `<div class="center">
+      <div class="head"><span>Chat · Stress on bikes.pdf</span><span><span class="k">Ctrl</span><span class="k">3</span> the paper back in the middle</span></div>
+      <div class="col">${older(6) + T.q1 + T.a1(false) + T.q2 + T.a2(true) + T.q3 + T.a3(false)}</div>
+      <div class="foot"><div class="box">ask about this paper…</div><div class="hint">Enter sends · a quote's page opens on the right · Esc back to the marks</div></div></div>
+    <div class="pane"><div class="head"><span>p. 2 · quoted last</span></div><div class="glance">${paper}</div></div>`;
+} else if (v === "lift") {
+  // The pane as now; one answer lifted over the paper at full width
+  // (Enter on an answer, Esc puts it back). Wide content only, on demand.
+  document.documentElement.style.setProperty("--pane", "440px");
+  html = midHTML(0, 1600 - 440 - 18, 860)
+    + `<div class="lifted"><div class="lh"><span>An answer, at full width</span><span>Esc puts it back · <span class="k">c</span> copy to the note</span></div>
+         ${T.a2(true)}</div>`
+    + paneHTML(older(6) + T.q1 + T.a1(false) + T.q2 + `<div class="marked">${T.a2(false)}</div>` + T.q3 + T.a3(false),
+      { hint: `Enter on an answer lifts it · Esc puts it back` });
+}
+document.body.innerHTML = html;
+</script>
+</body>
+</html>
