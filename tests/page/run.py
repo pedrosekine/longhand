@@ -3845,6 +3845,12 @@ def checks() -> int:
         p.wait(lambda: pr()["picked"] != "")
         links = p.call("paperLinks", "It says “Reflexive thematic analysis” (p. 1), plainly.")
         check("](quote:1:" in links and "[“Reflexive thematic analysis” (p. 1)]" in links, f"a quote with its page is a link ({links})")
+        links = p.call("paperLinks", "It studied “Reflexive thematic analysis” (p. 1, `Studies/Course A/Reading.pdf`); still open.")
+        check(links == "It studied [“Reflexive thematic analysis” (p. 1)](quote:1:Reflexive%20thematic%20analysis); still open.",
+              f"…the page first and this paper's path after it: this paper's own quote, not a bare link to the file ({links})")
+        links = p.call("paperLinks", "“Stress hotspots on the commute” (p. 1, `Studies/Course A/Other 2026.pdf`)")
+        check("[“Stress hotspots on the commute” (Other 2026, p. 1)](pquote:1:" in links and "cite:" not in links,
+              f"…another paper's, page first: a quote of that paper ({links})")
         links = p.call("paperLinks", "It says “stress (MOS) were found” (p. 1), plainly.")
         check(links.endswith("(quote:1:stress%20%28MOS%29%20were%20found), plainly."),
               f"…its own parentheses never close the link early ({links})")

@@ -4539,16 +4539,25 @@ Item {
   function linkPart(s) { return encodeURIComponent(s).replace(/\(/g, "%28").replace(/\)/g, "%29") }
   function linkCitations(text) {
     var t = String(text || "")
+    // The agent writes the page first as often as the path first:
+    // “its words” (p. 8, `path.pdf`) was left a bare link to the file, no
+    // page, no words (2026-11-22, every quote with a path in the log was
+    // written so). Put in the one order before reading it.
+    t = t.replace(/(“[^”\n]{3,300}”\s*)\(p\.\s*(\d+),?\s*(`[^`\n]+\.pdf`)\)/g, "$1($3, p. $2)")
     // Another paper's words, “its exact words” (`path.pdf`, p. 12), in any
     // chat (2026-11-19, a paper pointed at with `@`): it opens there, the
-    // words lit a moment.
+    // words lit a moment. The paper whose room this is: its own quote,
+    // shown on its page and beside the answer.
     t = t.replace(/“([^”\n]{3,300})”\s*\(`([^`\n]+\.pdf)`,?\s*p\.\s*(\d+)\)/g, function (m, words, path, n) {
+      if (root.paper.room && path === root.pdfRel)
+        return "[“" + words + "” (p. " + n + ")](quote:" + n + ":" + root.linkPart(words) + ")"
       return "[“" + words + "” (" + root.fileName(path) + ", p. " + n + ")](pquote:"
         + n + ":" + root.linkPart(path) + ":" + root.linkPart(words) + ")"
     })
-    // In a paper's chat, “its exact words” (p. 12) shows them on the page.
+    // In a paper's chat, “its exact words” (p. 12) shows them on the page
+    // (not one made a link above: its label ends "(p. 12)]").
     if (root.paper.room)
-      t = t.replace(/“([^”\n]{3,300})”\s*\(p\.\s*(\d+)\)/g, function (m, words, n) {
+      t = t.replace(/“([^”\n]{3,300})”\s*\(p\.\s*(\d+)\)(?!\])/g, function (m, words, n) {
         return "[“" + words + "” (p. " + n + ")](quote:" + n + ":" + root.linkPart(words) + ")"
       })
     return t.replace(/`([^`\n]+\.(?:md|txt|pdf))`(?:,?\s*(line|p\.)\s*(\d+))?/g, function (m, path, kind, n) {
