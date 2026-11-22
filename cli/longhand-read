@@ -1378,8 +1378,9 @@ def cmd_papers(cfg: dict, tag: str, folder_rel: str = "") -> dict:
                     or any(part.startswith(".") for part in Path(rel).parts):
                 continue
             out.append(paper_row(cfg, rel, load_note(cfg, rel), folder_rel))
-    # The marked first, the newest marked first; then those not begun, A to Z.
-    marked = sorted((r for r in out if r["last"]), key=lambda r: (r["last"], r["title"]), reverse=True)
+    # The marked first, the newest marked first (on the same day, the note
+    # saved last first); then those not begun, A to Z.
+    marked = sorted((r for r in out if r["last"]), key=lambda r: (r["last"], r["saved"], r["title"]), reverse=True)
     return {"tag": tag, "papers": marked + sorted((r for r in out if not r["last"]), key=lambda r: r["title"].lower())}
 
 
@@ -1419,6 +1420,9 @@ def paper_row(cfg: dict, pdf: str, note: "Note | None", near: str = "") -> dict:
             "waiting": len(waiting), "questions": [{"id": m["id"], "page": m["page"], "text": m["text"][:240], "note": m["note"][:240]}
                                                    for m in waiting],
             "last": max((m["day"] for m in marks if m["day"]), default=""),
+            # When its note was last saved: a mark keeps only its day, so this
+            # orders the papers read on their last day (2026-11-22).
+            "saved": int(note.path.stat().st_mtime) if note and note.path.is_file() else 0,
             # Each day it was marked, and what: the project's stream shows
             # reading by the day it was done.
             "days": {d: {"h": sum(1 for m in marks if m["day"] == d and m["kind"] == "h"),

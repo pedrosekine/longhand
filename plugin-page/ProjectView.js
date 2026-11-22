@@ -162,7 +162,10 @@ function rows(sections, papers, docs, opts) {
   }
 
   // The days: a section, or a paper read that day. Sections before reading
-  // on the same day; newest day first.
+  // on the same day; newest day first. Papers read the same day: the one
+  // read last first, by when its note was saved (a mark keeps only its day,
+  // 2026-11-22). That time is a paper's last day only; an earlier day of it
+  // goes after those known, in the papers' order.
   // A day that holds only open boxes is all in OPEN already: not twice.
   var days = []
   for (var a = 0; a < sections.length; a++) {
@@ -175,10 +178,12 @@ function rows(sections, papers, docs, opts) {
     var pd = reading[b].days
     for (var day in pd)
       days.push({ kind: "read", pick: true, key: "r:" + reading[b].pdf + ":" + day, paper: reading[b], day: day,
-                  label: citeLabel(reading[b]), said: marksSaid(pd[day].h, pd[day].q), order: 1, seq: b })
+                  label: citeLabel(reading[b]), said: marksSaid(pd[day].h, pd[day].q), order: 1, seq: b,
+                  saved: day === reading[b].last ? (reading[b].saved || 0) : 0 })
   }
   days.sort(function (x, y) {
-    return x.day !== y.day ? (x.day < y.day ? 1 : -1) : x.order !== y.order ? x.order - y.order : x.seq - y.seq
+    return x.day !== y.day ? (x.day < y.day ? 1 : -1) : x.order !== y.order ? x.order - y.order
+      : (x.saved || 0) !== (y.saved || 0) ? (y.saved || 0) - (x.saved || 0) : x.seq - y.seq
   })
 
   // This week, under its page (W); the days before it, folded.
