@@ -24,7 +24,7 @@ Item {
   // `^` in the box attaches a mark, as `@` points at a block.
   readonly property bool shown: page.pdfShown && page.pdfRel !== "" && page.pdfRel.charAt(0) !== "/"
   readonly property bool askable: pp.shown && page.pdfItem.read.text !== false && !page.pdfItem.read.private
-  readonly property bool room: page.noteRoom && pp.shown
+  readonly property bool room: page.noteRoom && pp.shown && page.paneHeld === ""
   property var marks: []          // attached to the next message
   property bool listing: true        // the list, or the chat
   property string filter: "all"   // "all", "h", "q"

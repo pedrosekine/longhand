@@ -3857,6 +3857,108 @@ def checks() -> int:
         check(p.wait(lambda: not pr()["shown"] and pd()["shown"]), "Esc on the marks closes the pane, the PDF stays")
         p.call("pdfKey", KEY_ESC, 0)
         check(p.wait(lambda: pr()["picked"] == "" and pd()["shown"]), "…and Esc in the PDF lets go of the mark picked first")
+        # The agent's pane as the middle moves (2026-11-22, the student's
+        # rule): closed, it stays closed; open, it follows the middle — a
+        # paper's chat beside a paper, a note's beside a note, the day's
+        # beside a day; one the agent may not be given has the day's; words
+        # typed and not sent keep it where it is; going where the middle
+        # already is changes nothing in it. Following never takes the keys.
+        pn = lambda: json.loads(p.call("pane"))
+        make_pdf(course / "Second.pdf", "Commuting and stress, read again.")
+        make_pdf(course / "Blank.pdf", "")
+        (p.vault / "Personal").mkdir(exist_ok=True)
+        make_pdf(p.vault / "Personal" / "Statement.pdf", "Balance carried forward.")
+        reading_rel, second_rel = "Studies/Course A/Reading.pdf", "Studies/Course A/Second.pdf"
+        p.call("dayType", "")                               # the name left in the box above, which would hold the pane
+        p.call("openFile", second_rel, "false")
+        check(p.wait(lambda: pd()["label"] == "Second" and pn()["fits"] == "room") and not pn()["open"] and pn()["here"] == "center",
+              f"the pane closed, a paper opened: it stays closed ({pn()})")
+        p.call("pageKey", KEY_3, CTRL)
+        p.wait(lambda: pn()["room"] and pn()["here"] == "right")
+        p.call("pageKey", KEY_3, CTRL)                      # in it: the day's chat
+        p.wait(lambda: pn()["shown"] and not pn()["room"])
+        p.call("pageKey", KEY_2, CTRL)                      # the keys back to the paper
+        p.wait(lambda: pn()["here"] == "center")
+        p.call("openFile", reading_rel, "false")
+        check(p.wait(lambda: pd()["label"] == "Reading" and pn()["paperRoom"] and pn()["about"] == reading_rel and pn()["shown"])
+              and pn()["here"] == "center",
+              f"open on the day's chat, a paper opened: that paper's chat, the keys left on the paper ({pn()})")
+        p.call("openFile", "Studies/Course A/Blank.pdf", "false")
+        check(p.wait(lambda: pd()["label"] == "Blank" and pn()["fits"] == "day" and pn()["shown"] and not pn()["room"]),
+              f"a PDF with no words: the day's chat beside it, never its own ({pn()})")
+        p.call("openFile", second_rel, "false")
+        p.wait(lambda: pn()["paperRoom"] and pn()["about"] == second_rel)
+        p.call("openFile", "Personal/Statement.pdf", "false")
+        check(p.wait(lambda: pd()["label"] == "Statement" and pn()["fits"] == "day" and pn()["shown"] and not pn()["room"]),
+              f"…from a paper's chat, a private PDF: the day's ({pn()})")
+        p.call("openFile", second_rel, "false")
+        check(p.wait(lambda: pn()["paperRoom"] and pn()["about"] == second_rel and pn()["shown"]),
+              f"…and a paper again: its chat ({pn()})")
+        # Back to the paper already in the middle, Ctrl+[ in the chat's box
+        # (seen 2026-11-22: it went to the page's back, opened the same
+        # paper again and closed the pane): the pane as it was.
+        p.call("pageKey", KEY_3, CTRL)
+        p.wait(lambda: pn()["here"] == "right")
+        if pr()["list"]:
+            p.call("paperKey", KEY_TAB, 0)
+        p.wait(lambda: not pr()["list"] and pn()["here"] == "right")
+        p.call("pageKey", KEY_2, ALT2)                      # Ctrl+Alt+2: the dashboard, a step
+        p.wait(lambda: panes()["center"] == "dash")
+        p.call("pageKey", KEY_3, CTRL)
+        p.wait(lambda: pn()["here"] == "right")
+        steps = pn()["back"]
+        check(p.call("dayKey", 0x5b, CTRL) == "true"         # Ctrl+[
+              and p.wait(lambda: panes()["center"] == "note" and pn()["back"] == steps - 1)
+              and p.wait(lambda: pn()["paperRoom"] and pn()["about"] == second_rel and pn()["shown"] and not pr()["list"], 3),
+              f"Ctrl+[ in a paper's chat, back to the same paper: the chat stays open, as it was ({pn()}, {panes()})")
+        p.call("pageKey", KEY_3, CTRL)
+        p.wait(lambda: pn()["here"] == "right")
+        # Words in the box, not sent: nothing switched under the hand.
+        p.call("dayType", "half a thought")
+        p.call("openFile", reading_rel, "false")
+        check(p.wait(lambda: pd()["label"] == "Reading" and pn()["fits"] == "room")
+              and p.wait(lambda: pn()["room"] and pn()["about"] == second_rel and not pn()["paperRoom"]
+                         and pn()["words"] == "half a thought", 3),
+              f"words typed in the paper's chat, another paper opened: the chat stays the first paper's ({pn()})")
+        p.call("openFile", second_rel, "false")
+        check(p.wait(lambda: pn()["paperRoom"] and pn()["about"] == second_rel and pn()["words"] == "half a thought"),
+              f"…back on that paper, it is its room again, the words kept ({pn()})")
+        p.call("dayType", "")
+        p.call("pageKey", KEY_3, CTRL)                      # the keys to the pane…
+        p.wait(lambda: pn()["here"] == "right")
+        p.call("pageKey", KEY_3, CTRL)                      # …and in it, the day's chat
+        p.wait(lambda: pn()["shown"] and not pn()["room"])
+        p.call("dayType", "about the day")
+        p.call("openFile", reading_rel, "false")
+        check(p.wait(lambda: pd()["label"] == "Reading" and pn()["fits"] == "room")
+              and p.wait(lambda: pn()["shown"] and not pn()["room"] and pn()["words"] == "about the day", 3),
+              f"…in the day's chat, a paper opened: still the day's ({pn()})")
+        p.call("dayType", "")
+        # Notes: a note from Files, its own chat; a note marked private and a
+        # day, the day's chat. Closing the paper is a move too.
+        p.call("openFile", "Studies/Course A/Session 1.md", "false")
+        check(p.wait(lambda: pn()["room"] and pn()["about"] == "Studies/Course A/Session 1.md" and pn()["shown"]),
+              f"open, a note from Files opened: the note's chat ({pn()})")
+        p.call("openFile", "Studies/Course A/Locked.md", "false")
+        check(p.wait(lambda: pn()["note"] == "Studies/Course A/Locked.md" and pn()["fits"] == "day" and pn()["shown"] and not pn()["room"]),
+              f"…a note marked private: the day's ({pn()})")
+        p.call("openFile", reading_rel, "false")
+        p.wait(lambda: pn()["paperRoom"] and pn()["about"] == reading_rel)
+        p.call("pageKey", KEY_2, CTRL)
+        p.wait(lambda: pn()["here"] == "center")
+        p.call("pdfKey", KEY_ESC, 0)                        # the paper closed: the note under it
+        check(p.wait(lambda: not pd()["shown"] and pn()["fits"] in ("room", "day") and pn()["shown"] and pn()["follows"] is False)
+              and (pn()["room"] == (pn()["fits"] == "room")),
+              f"the paper closed, the pane open: it follows to the note under it ({pn()})")
+        p.call("openDay", TODAY)
+        check(p.wait(lambda: p.call("header").startswith(dt.date.today().strftime("%A")) and pn()["shown"] and not pn()["room"]),
+              f"…a day: the day's chat ({pn()})")
+        p.call("openFile", reading_rel, "false")
+        p.wait(lambda: pn()["paperRoom"] and pn()["about"] == reading_rel)
+        p.call("pageKey", KEY_BAR, CTRL)                    # closed, as before
+        p.wait(lambda: not pn()["open"])
+        p.call("pageKey", KEY_2, CTRL)
+        p.wait(lambda: pd()["shown"] and pd()["here"] == "center")
         # Read today (plan.md item 15, step 3): the papers marked on the
         # calendar's day, under its deadlines; Enter opens one where it was
         # left. And a task linking a paper: Alt+Enter on its row opens it.
