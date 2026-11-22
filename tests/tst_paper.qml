@@ -17,6 +17,7 @@ Item {
     property bool pdfShown: true
     property string pdfRel: "lit/Smith 2020.pdf"
     property bool noteRoom: true
+    property string paneHeld: ""
     property var noteTalk: null
     property var dayMention: null
     property int dayMentionFocus: 0

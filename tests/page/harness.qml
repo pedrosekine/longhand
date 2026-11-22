@@ -429,6 +429,13 @@ ShellRoot {
     function dayBlockText(): string { return page.dayBlockText }
     function dayChips(): string { return JSON.stringify(page.dayChips) }
     function dayRefs(): string { return JSON.stringify(page.dayRefs) }
+    // The agent's pane as the middle moves (2026-11-22): open or not, the
+    // middle's own chat or the day's, what it is about, where the keys are.
+    function pane(): string {
+      return JSON.stringify({ open: page.dayOpen, shown: page.dayShown, room: page.noteRoom, paperRoom: page.paper.room,
+        about: page.noteRoom ? page.roomRel : "", fits: page.paneFits, follows: page.paneFollows, here: page.here,
+        pdf: page.pdfRel, note: page.noteRel, back: page.backStack.length, words: page.dayFieldItem().text })
+    }
     function answerPassage(pane: string, passage: string, at: string): void { page.addReply(pane, passage, at) }
     function replies(pane: string): string { return JSON.stringify(page.repliesOf(pane)) }
     function replying(pane: string): string { return JSON.stringify(page.replyingOf(pane)) }

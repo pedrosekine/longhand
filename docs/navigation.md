@@ -83,6 +83,27 @@ to the note, and a task's belongs to the dashboard, so each comes back when
 its view does. The day's conversation goes with either. The sidebar is
 independent of both.
 
+**When the middle moves to something else** (a paper, a note, a day, back
+or on; the student's rule, 2026-11-22), the agent's pane:
+
+- **never opens by itself:** closed, it stays closed;
+- **open, follows the middle:** a paper gets the paper's chat, a note from
+  Files the note's, a day the day's chat;
+- **has the day's chat beside what the agent may not be given:** a private
+  PDF or note, a PDF with no words; never a chat of its own;
+- **stays where it is while its box holds words not sent:** nothing is
+  switched under the hand. A paper's or note's chat stays that paper's or
+  note's until the middle comes back to it or moves again with the box
+  empty;
+- **changes nothing when the middle goes where it already is** (`Ctrl+[`
+  back to the paper on screen, a link to it).
+
+Following never takes the keys: they go where the move puts them (the
+middle, for a link, a day or back), and stay in the pane only when it turns
+with them in it. Before,
+opening a paper or a file closed the pane, even the day's chat, so `Ctrl+[`
+typed in a paper's chat could close it.
+
 ## Where the panes sit
 
 One rule for both sides and both shapes (`plugin-page/Layout.js`, 2026-10-24):
