@@ -85,6 +85,8 @@ if not os.environ.get("STUB_NO_ROLLOUT"):
         f.write(lines)
 print(json.dumps({"type": "item.completed", "item": {"id": "item_0", "type": "error",
                                                      "message": "Code Mode is unavailable"}}))
+print(json.dumps({"type": "item.completed", "item": {"id": "item_r", "type": "reasoning",
+                                                     "text": "**Reading the brief**\\n**Checking the DORO deadline**"}}))
 print(json.dumps({"type": "item.completed", "item": {"id": "item_1", "type": "agent_message", "text": text}}))
 print(json.dumps({"type": "turn.completed", "usage": {"input_tokens": 1000, "cached_input_tokens": 800,
                                                       "output_tokens": 40, "reasoning_output_tokens": 12}}))
@@ -145,6 +147,10 @@ def main() -> int:
         check(argv[0] == "exec" and argv[1] != "resume" and "--json" in argv, "one headless pass, its events as JSON")
         check(opt(argv, "-m") == "gpt-6.2-sol", "the model, without the route's prefix")
         check(c.get("model_reasoning_effort") == '"high"', "the variant is the reasoning effort")
+        shown = [x[len("status: "):] for x in r.stderr.splitlines() if x.startswith("status: ")]
+        check(c.get("model_reasoning_summary") == '"detailed"' and shown[:1] == ["thinking"]
+              and "checking the DORO deadline" in shown,
+              f"while it thinks, the last heading of its thinking is the status, an acronym kept ({shown})")
         check(pathlib.Path(called["home"]).resolve() == home.resolve(), "Longhand's own Codex folder, never ~/.codex")
         check({"shell_tool", "unified_exec", "code_mode", "code_mode_host", "apps", "plugins", "hooks", "memories",
                "browser_use", "computer_use", "multi_agent", "multi_agent_v2"} <= disabled(argv),

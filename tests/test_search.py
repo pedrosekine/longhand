@@ -150,6 +150,12 @@ def end_to_end(tmp: pathlib.Path) -> None:
     third = calls[2]["argv"][-1]
     check("## `human/Daily/2026-10-12.md` — whole" in third and "ask again if you must (2 more at most)" in third,
           "a file asked for is read whole, and the round says how many more it may ask (four in all, since slice 5)")
+    shown = [x[len("status: "):] for x in r.stderr.splitlines() if x.startswith("status: ")]
+    check(shown[0] == "thinking" and "thinking · step 2" in shown and "thinking · step 3" in shown
+          and not shown[-1].endswith("step 4"),
+          f"each pass after a lookup says which step it is; three passes, three steps ({shown})")
+    check("for everything still missing in one reply" in third,
+          "the round asks for what is still missing at once, not one thing a round (2026-11-22)")
     st = json.loads(next((v / "agents/longhand/daily").glob("*.json")).read_text())
     turn = st["day"]["turns"][-1]
     check(turn["text"].startswith("You wrote it in") and turn["searched"][0]["hits"][0]["path"] == "human/Daily/2026-10-12.md"
