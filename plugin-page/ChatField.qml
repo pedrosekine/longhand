@@ -11,7 +11,9 @@ import qs.Ui
 FocusScope {
   id: box
   required property Item page
-  property alias text: area.text
+  // What is written, as plain text: the box itself is rich text only so its
+  // lines can stand at the chat's leading (2026-11-22, below).
+  property string text: ""
   property alias cursorPosition: area.cursorPosition
   property alias readOnly: area.readOnly
   property alias placeholderText: area.placeholderText
@@ -27,7 +29,38 @@ FocusScope {
   // `event.accepted`.
   signal keyPressed(var event)
   function remove(a, b) { area.remove(a, b) }
-  function insert(at, s) { area.insert(at, s) }
+  function insert(at, s) { area.insert(at, box._esc(s)) }
+
+  // At the chat's own leading (2026-11-22): a TextArea has no line height,
+  // and plain text none at all, so the box is rich text, one paragraph with
+  // the chat's line-height, as the note's rows are (NoteEditor.leading);
+  // one document position per character, so the cursor, a selection and a
+  // name's place are the plain text's. `text` is read back as plain.
+  readonly property int leadPct: page.chatLeading
+  readonly property string _open: "<p style=\"line-height:" + box.leadPct + "%;margin:0;white-space:pre-wrap\">"
+  function _plain() { return area.getText(0, area.length).replace(/[\u2028\u2029]/g, "\n") }
+  property bool _syncing: false
+  function _render(t) {
+    var c = area.cursorPosition
+    box._syncing = true
+    area.text = box._open + box._esc(t) + "</p>"
+    box._syncing = false
+    area.cursorPosition = Math.max(0, Math.min(c, area.length))
+    box._moved(t)
+  }
+  onTextChanged: if (!box._syncing && box.text !== box._plain()) box._render(box.text)
+  onLeadPctChanged: box._render(box.text)
+  Component.onCompleted: box._render(box.text)
+  // A paste is its words only: rich text from elsewhere would bring its own
+  // paragraphs and their spacing.
+  TextEdit { id: clip; visible: false; textFormat: TextEdit.PlainText }
+  function _paste() {
+    clip.text = ""
+    clip.paste()
+    if (clip.text === "") return
+    if (area.selectedText !== "") area.remove(area.selectionStart, area.selectionEnd)
+    area.insert(area.cursorPosition, box._esc(clip.text))
+  }
 
   // A paper or a note picked by @ (2026-11-19): its name stays in the
   // sentence, in the accent as a link is, tied to its chip above. One goes
@@ -44,8 +77,8 @@ FocusScope {
   property string _was: ""
   function pickMention(start, end, name, key, query) {
     area.remove(start, end)
-    var spaced = area.text.charAt(start) === " "
-    area.insert(start, spaced ? name : name + " ")
+    var spaced = box.text.charAt(start) === " "
+    area.insert(start, box._esc(spaced ? name : name + " "))
     box.mentions = box.mentions.concat([{ start: start, len: name.length, key: key, query: query }])
     area.cursorPosition = start + name.length + 1
   }
@@ -55,7 +88,7 @@ FocusScope {
     box.mentions = box.mentions.filter(function (m) { return m.key !== key })
     gone.forEach(function (m) {
       var end = m.start + m.len
-      area.remove(m.start, area.text.charAt(end) === " " ? end + 1 : end)
+      area.remove(m.start, box.text.charAt(end) === " " ? end + 1 : end)
     })
   }
   function _lastOf(key) { return !box.mentions.some(function (m) { return m.key === key }) }
@@ -90,12 +123,12 @@ FocusScope {
   }
   function _backspace(event) {
     if (event.key !== Qt.Key_Backspace || event.modifiers !== Qt.NoModifier || area.selectedText !== "" || area.readOnly) return false
-    var c = area.cursorPosition, t = area.text
+    var c = area.cursorPosition, t = box.text
     var m = box.liveMentions.find(function (x) { var end = x.start + x.len; return c === end || (c === end + 1 && t.charAt(end) === " ") })
     if (!m) return false
     box.mentions = box.mentions.filter(function (x) { return x !== m })
     area.remove(m.start, m.start + m.len)
-    area.insert(m.start, "@" + m.query)
+    area.insert(m.start, box._esc("@" + m.query))
     area.cursorPosition = m.start + 1 + m.query.length
     if (box._lastOf(m.key)) box.mentionGone(m.key)
     return true
@@ -103,17 +136,17 @@ FocusScope {
   // The box's words as rich text, the names in the accent: drawn over the
   // box's own (then clear), laid out by the same engine, only while a
   // name is there.
-  function _esc(x) { return x.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>") }
+  function _esc(x) { return String(x).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>") }
   readonly property string _drawn: {
     var ms = box.liveMentions.slice().sort(function (a, b) { return a.start - b.start })
     if (ms.length === 0) return ""
-    var t = area.text, out = "", at = 0
+    var t = box.text, out = "", at = 0
     ms.forEach(function (m) {
       if (m.start < at || m.start + m.len > t.length) return
       out += box._esc(t.substring(at, m.start)) + "<span style=\"color:" + page.accent + "\">" + box._esc(t.substr(m.start, m.len)) + "</span>"
       at = m.start + m.len
     })
-    return "<span style=\"white-space:pre-wrap\">" + out + box._esc(t.substring(at)) + "</span>"
+    return box._open + out + box._esc(t.substring(at)) + "</p>"
   }
   // Replying to a passage of the agent's (2026-11-18, design A): the box
   // itself says so — a bar inside it, its number and the words, × to let
@@ -125,7 +158,8 @@ FocusScope {
 
   readonly property var borderSpec: Border.controlSpec(area.activeFocus || box.replying ? "focus" : area.hovered && page.handOn ? "hover-cursor" : "normal", page.foreground, page.accent)
   FontMetrics { id: lineMetrics; font: area.font }
-  implicitHeight: Math.min(area.implicitHeight, Math.ceil(lineMetrics.lineSpacing * box.maxLines) + area.topPadding + area.bottomPadding)
+  readonly property real lineStep: box.leadPct > 0 ? lineMetrics.height * box.leadPct / 100 : lineMetrics.lineSpacing
+  implicitHeight: Math.min(area.implicitHeight, Math.ceil(box.lineStep * box.maxLines) + area.topPadding + area.bottomPadding)
 
   Flickable {
     id: flick
@@ -137,13 +171,16 @@ FocusScope {
       id: area
       focus: true
       wrapMode: TextArea.Wrap
+      textFormat: TextEdit.RichText
       color: box._drawn ? "transparent" : page.foreground
       placeholderTextColor: Qt.darker(page.foreground, 1.6)
       selectionColor: page.palette.selection
       selectedTextColor: box._drawn ? "transparent" : page.foreground
       font.family: page.fontFamily
       font.styleName: page.fontStyle
-      font.pixelSize: page.fs(Style.font.body)
+      // The chat's size (2026-11-22): what is written reads as it will
+      // once sent, in its bubble.
+      font.pixelSize: page.chatSize
       leftPadding: Style.spacing.controlPaddingX + Border.left(box.borderSpec)
       rightPadding: Style.spacing.controlPaddingX + Border.right(box.borderSpec) + (box.busy ? stopArea.width + page.sp(6) : 0)
       topPadding: Style.spacing.inputPaddingY + Border.top(box.borderSpec) + (box.replying ? replyBar.height + page.sp(6) : 0)
@@ -151,8 +188,16 @@ FocusScope {
       Keys.onPressed: function (event) {
         box.keyPressed(event)
         if (!event.accepted && box._backspace(event)) event.accepted = true
+        if (!event.accepted && event.matches(StandardKey.Paste) && !area.readOnly) { box._paste(); event.accepted = true }
       }
-      onTextChanged: box._moved(text)
+      onTextChanged: {
+        if (box._syncing) return
+        var t = box._plain()
+        box._syncing = true
+        if (box.text !== t) box.text = t
+        box._syncing = false
+        box._moved(t)
+      }
       Text {
         visible: box._drawn !== ""
         x: area.leftPadding
@@ -247,7 +292,7 @@ FocusScope {
     anchors.right: parent.right
     anchors.rightMargin: Style.spacing.controlPaddingX - Math.round((width - stopSquare.width) / 2) + Border.right(box.borderSpec)
     anchors.bottom: parent.bottom
-    anchors.bottomMargin: area.bottomPadding + Math.round((lineMetrics.lineSpacing - height) / 2)
+    anchors.bottomMargin: area.bottomPadding + Math.round((box.lineStep - height) / 2)
     hoverEnabled: true
     cursorShape: Qt.PointingHandCursor
     onClicked: box.stop()

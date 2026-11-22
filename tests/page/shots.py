@@ -381,6 +381,9 @@ def scenes(m, p, out, which):
         time.sleep(1)
         shot("width-1")
         p.call("paneDrag", "200")
+        p.call("dayType", "is not necessarily what I want. It is about making valid claims. There is potentially a big "
+               "difference on urban stress for both groups. But we were just reading a paper that suggested the opposite, "
+               "isn't that right? Experienced cyclists rode faster and got more stressed than casual ones")
         time.sleep(1.2)
         print(p.call("paneSize"))
         shot("width-2")

@@ -515,8 +515,8 @@ BorderSurface {
     id: chatBox
     anchors.left: parent.left
     anchors.leftMargin: margin.contentLeftInset
-    anchors.right: parent.right
-    anchors.rightMargin: margin.contentRightInset
+    // At the chat's measure, as the answers above (2026-11-22).
+    width: Math.min(margin.width - margin.contentLeftInset - margin.contentRightInset, page.chatMeasure)
     anchors.bottom: parent.bottom
     anchors.bottomMargin: margin.contentBottomInset
     height: chatField.visible ? chatField.implicitHeight + above.height + (above.height > 0 ? page.sp(6) : 0) : 0
