@@ -238,6 +238,20 @@ ShellRoot {
         darkDrawn: v ? v.drawn().some(function (sh) { return sh.image.layer.enabled }) : false })
     }
     function pdfKey(key: int, mods: int): bool { return page.pdfItem.key({ key: key, text: "", modifiers: mods }) }
+    // The agent's pane sized by hand (2026-11-22): its split, width, the
+    // middle's least, one at a time; and the three ways, as the keys and the
+    // edge do them.
+    function paneSize(): string {
+      return JSON.stringify({ split: page.paneSplit, width: page.marginWidth, kind: page.paneKind, alone: page.paneAlone,
+        tucked: page.paneTucked, floor: page.paneOpts.floor, room: page.paneOpts.room, ceiling: page.paneOpts.ceiling,
+        sizable: page.paneSizable, right: page.rightView, pdfWidth: page.pdfItem.width, screen: page.paneScreen })
+    }
+    function paneFlip(): void { page.flipPane() }
+    function paneNudge(by: int): void { page.nudgePane(by) }
+    function paneDrag(x: int): void { page.dragPane(x); page.endPaneDrag() }
+    function paneUnfold(): void { page.dayPaneItem.earlierOpen = true }
+    function paneFolded(): string { return JSON.stringify({ folded: page.dayPaneItem.folded, earlier: page.dayPaneItem.earlier, ask: page.dayPaneItem.askAt }) }
+    function paneAsk(d: int): void { page.dayPaneItem.jumpQuestion(d) }
     function tasksTrace(): string { return JSON.stringify(page.tasksTrace) }
     // Marks (plan.md, item 15): what longhand-read said, the marks drawn on
     // the first page (those with a size: a mark once came out with none),

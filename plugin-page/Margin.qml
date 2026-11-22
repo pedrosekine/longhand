@@ -32,8 +32,9 @@ BorderSurface {
   // (`talk`, 2026-10-20) — the same margin, the same keys.
   readonly property bool talk: page.talkOpen
   visible: talk || (page.marginWidth > 0 && page.problem === "" && page.marginOpen && !page.wideOpen)
-  // Against the window's right edge, beside the note or the dashboard.
-  x: page.contentItem.width - page.edge - width
+  // Against the window's right edge, beside the note or the dashboard;
+  // past it while one at a time the middle is shown (Page.paneTucked).
+  x: page.paneAlone && page.paneTucked && !talk ? page.contentItem.width + page.sp(40) : page.contentItem.width - page.edge - width
   y: talk ? (page.alongside ? 0 : page.sheetMargin) : sheet.y
   height: talk ? (page.alongside ? page.contentItem.height : page.contentItem.height - page.sheetMargin * 2) : sheet.height
   width: talk ? page.talkWidth : page.marginWidth
@@ -44,6 +45,18 @@ BorderSurface {
 
   // A click in the pane is the keys into it, as everywhere (docs/navigation.md).
   MouseArea { anchors.fill: parent; onClicked: page.focusPane("right") }
+
+  // Its edge, dragged, and which split it is in (PaneEdge, PaneSplit).
+  PaneEdge { page: margin.page }
+  PaneSplit {
+    id: paneSplit
+    page: margin.page
+    visible: shown && !margin.talk
+    anchors.top: parent.top
+    anchors.topMargin: margin.contentTopInset
+    anchors.right: parent.right
+    anchors.rightMargin: margin.contentRightInset
+  }
 
   // In the window the pane sits on the same ground as the note; a
   // hairline keeps them apart, as the sidebar's does on its side.
@@ -82,7 +95,7 @@ BorderSurface {
   Flickable {
     id: marginFlick
     anchors.top: parent.top
-    anchors.topMargin: margin.contentTopInset + page.sp(4)
+    anchors.topMargin: margin.contentTopInset + page.sp(4) + (paneSplit.visible ? paneSplit.implicitHeight + page.sp(6) : 0)
     anchors.left: parent.left
     anchors.leftMargin: margin.contentLeftInset
     anchors.right: parent.right
@@ -98,7 +111,8 @@ BorderSurface {
 
     Column {
       id: marginColumn
-      width: parent.width
+      // At the chat's measure, however wide the pane (2026-11-22).
+      width: Math.min(parent.width, page.chatMeasure)
       spacing: page.sp(12)
 
       // "About this" (docs/agent.md, "One conversation", slice 2): the one

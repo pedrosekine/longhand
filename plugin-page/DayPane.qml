@@ -49,6 +49,61 @@ BorderSurface {
     dayFlick.contentY = Math.max(0, Math.min(dayFlick.contentHeight - dayFlick.height, it.y - page.sp(12)))
   }
   Timer { id: litTimer; interval: 2600; onTriggered: dayPane.litTurn = -1 }
+
+  // Your own questions, one after another (Alt+↑ / Alt+↓, 2026-11-22): the
+  // first Alt+↑ goes to the last thing you asked, each next one to the one
+  // before; Alt+↓ past the last goes back to the foot. Before the first
+  // shown, the earlier sessions unfold.
+  property int askAt: -1
+  function questions() {
+    var out = []
+    for (var i = 0; i < page.dayTurns.length; i++)
+      if (page.dayTurns[i].role !== "agent" && !(dayPane.folded && i < dayPane.earlier)) out.push(i)
+    return out
+  }
+  function jumpQuestion(d) {
+    var q = dayPane.questions()
+    if (q.length === 0) { page.showHint("nothing asked here yet"); return }
+    var k = dayPane.askAt < 0 ? (d < 0 ? q.length - 1 : -1) : q.indexOf(dayPane.askAt) + d
+    if (dayPane.askAt >= 0 && q.indexOf(dayPane.askAt) < 0) k = d < 0 ? q.length - 1 : -1
+    if (k < 0 && d < 0 && dayPane.folded) {
+      dayPane.earlierOpen = true
+      Qt.callLater(function () { dayPane.jumpQuestion(-1) })
+      return
+    }
+    if (k < 0 || k >= q.length) {
+      dayPane.askAt = -1
+      if (d > 0) dayFlick.contentY = Math.max(0, dayFlick.contentHeight - dayFlick.height)
+      else page.showHint("the first thing you asked here")
+      return
+    }
+    dayPane.askAt = q[k]
+    dayPane.showTurn(q[k])
+    page.showHint("your questions: " + (k + 1) + " of " + q.length)
+  }
+  Connections {
+    target: dayPane.page
+    function onDayTurnsChanged() { dayPane.askAt = -1 }
+    function onRoomRelChanged() { dayPane.askAt = -1; dayPane.earlierOpen = false }
+  }
+
+  // A paper's or a note's chat: its earlier sessions folded to one line
+  // (2026-11-22), all but their last exchange, today's turns under it; a
+  // click on the line, or Alt+↑ before the first question, unfolds them.
+  property bool earlierOpen: false
+  readonly property int earlier: {
+    if (!(page.paper.room || page.noteRoom)) return 0
+    var today = Qt.formatDate(new Date(), "yyyy-MM-dd"), n = 0
+    for (var i = 0; i < page.dayTurns.length; i++) {
+      if (String(page.dayTurns[i].at || "").slice(0, 10) >= today) break
+      n++
+    }
+    // The last exchange before today stays in view, so the chat opens on
+    // where it was left.
+    for (var j = n - 1; j >= 0; j--) if (page.dayTurns[j].role !== "agent") return j
+    return 0
+  }
+  readonly property bool folded: !dayPane.earlierOpen && dayPane.earlier >= 2
   Connections {
     target: dayPane.page
     function onDayTurnsChanged() { if (dayPane.pinTurn >= 0 && dayPane.page.dayTurns.length !== dayPane.pinCount) dayPane.pinTurn = -1 }
@@ -59,9 +114,21 @@ BorderSurface {
   readonly property bool listing: page.paper.room && page.paper.listing
 
   readonly property bool besideDash: page.dayBesideDash
+  // The flip, named under the box (2026-11-22): where Alt+Z goes from here.
+  readonly property string flipHint: !page.paneSizable || besideDash ? ""
+    : page.keyName("paneFlip") + " " + (page.paneAlone ? (page.paneKind === "paper" ? "the paper" : "the note")
+      : page.paneSplit === "reading" ? "discussing" : "reading") + " · "
+  // The rail of quoted words, beside a paper's answers when the pane is wide
+  // enough for the measure (at least about 53 characters) and a rail of
+  // 180 px; the measure gives way to it down to 440 px.
+  readonly property int railFor: page.paper.room && dayFlick.width >= page.sp(440) + page.railGap + page.sp(180)
+    ? Math.max(page.sp(180), Math.min(page.railWidth, dayFlick.width - page.railGap - page.chatMeasure)) : 0
+  readonly property int columnWidth: dayPane.railFor > 0 ? Math.min(page.chatMeasure, dayFlick.width - page.railGap - dayPane.railFor)
+    : Math.min(dayFlick.width, page.chatMeasure)
   visible: page.dayShown && (besideDash || (page.marginWidth > 0 && page.problem === ""))
-  // Against the window's right edge, beside the note or the dashboard.
-  x: page.contentItem.width - page.edge - width
+  // Against the window's right edge, beside the note or the dashboard;
+  // past it while one at a time the middle is shown (Page.paneTucked).
+  x: page.paneAlone && page.paneTucked && !besideDash ? page.contentItem.width + page.sp(40) : page.contentItem.width - page.edge - width
   y: besideDash ? (page.alongside ? 0 : page.sheetMargin) : sheet.y
   height: besideDash ? (page.alongside ? page.contentItem.height : page.contentItem.height - page.sheetMargin * 2) : sheet.height
   width: besideDash ? page.talkWidth : page.marginWidth
@@ -71,6 +138,9 @@ BorderSurface {
   padding: page.sp(22)
 
   MouseArea { anchors.fill: parent; onClicked: page.dayKeysItem().forceActiveFocus() }
+
+  // Its edge, dragged (PaneEdge.qml).
+  PaneEdge { page: dayPane.page }
 
   // In the window the pane sits on the same ground as the note; a
   // hairline keeps them apart, as the sidebar's does on its side.
@@ -83,17 +153,29 @@ BorderSurface {
     color: page.faint
   }
 
-  Text {
-    id: dayTitle
+  // The header's line: the title, and the split's word (PaneSplit) at its
+  // right, so the line is there for the word even over today's chat.
+  Item {
+    id: titleRow
     anchors.top: parent.top
     anchors.topMargin: dayPane.contentTopInset
     anchors.left: parent.left
+    anchors.right: parent.right
+    height: Math.max(dayTitle.text === "" ? 0 : dayTitle.implicitHeight, paneSplit.visible ? paneSplit.implicitHeight : 0)
+  }
+  Text {
+    id: dayTitle
+    anchors.verticalCenter: titleRow.verticalCenter
+    anchors.left: parent.left
     anchors.leftMargin: dayPane.contentLeftInset
+    anchors.right: paneSplit.left
+    anchors.rightMargin: page.sp(10)
+    elide: Text.ElideRight
     textFormat: Text.PlainText
     // Today's whole chat has no header (2026-11-21): its first line is
     // today's rule, which says where and when. A past day, a note's and a
     // paper's chat still say whose they are.
-    height: text === "" ? 0 : implicitHeight
+    visible: text !== ""
     text: page.paper.room ? (dayPane.listing ? "MARKS · " : "CHAT · ") + (page.roomLabel || "").toUpperCase()
       : page.noteRoom ? "ABOUT " + (page.roomLabel || "").toUpperCase()
       : page.noteService.isToday ? "" : (page.dateLabel || "").toUpperCase()
@@ -101,6 +183,16 @@ BorderSurface {
     font.family: page.fontFamily
     font.styleName: page.fontStyle
     font.pixelSize: page.fs(Style.font.caption)
+  }
+
+  // Which split the pane is in, and the way to flip it (PaneSplit.qml).
+  PaneSplit {
+    id: paneSplit
+    page: dayPane.page
+    visible: shown && !dayPane.besideDash
+    anchors.verticalCenter: titleRow.verticalCenter
+    anchors.right: parent.right
+    anchors.rightMargin: dayPane.contentRightInset
   }
 
   // ------------------------------------------------- the paper's marks
@@ -112,7 +204,7 @@ BorderSurface {
   Column {
     id: paperView
     visible: dayPane.listing
-    anchors.top: dayTitle.bottom
+    anchors.top: titleRow.bottom
     anchors.topMargin: page.sp(12)
     anchors.left: parent.left
     anchors.leftMargin: dayPane.contentLeftInset
@@ -352,7 +444,7 @@ BorderSurface {
   Flickable {
     id: dayFlick
     visible: !dayPane.listing
-    anchors.top: dayTitle.bottom
+    anchors.top: titleRow.bottom
     anchors.topMargin: page.sp(14)
     anchors.left: parent.left
     anchors.leftMargin: dayPane.contentLeftInset
@@ -407,7 +499,10 @@ BorderSurface {
 
     Column {
       id: dayColumn
-      width: parent.width
+      // At the chat's measure, against the left (2026-11-22): a wide pane
+      // keeps its lines readable, and beside a paper the room past them
+      // holds the rail of the words an answer quotes (ChatTurn).
+      width: dayPane.columnWidth
       spacing: page.sp(12)
 
       // The days before, one chat with today's (2026-11-21): each day's
@@ -486,12 +581,21 @@ BorderSurface {
         }
       }
 
+      FoldLine {
+        visible: dayPane.folded
+        page: dayPane.page
+        width: dayColumn.width
+        head: dayPane.earlier + " earlier turns about this " + (page.paper.room ? "paper" : "note")
+        tail: page.keyName("chatPrevQuestion") + " or a click unfolds them"
+        onAct: dayPane.earlierOpen = true
+      }
       Repeater {
         id: turnsRep
         model: page.dayTurns
         Column {
           id: turn
           required property var modelData
+          visible: !(dayPane.folded && index < dayPane.earlier)
           required property int index
           width: dayColumn.width
           spacing: page.sp(2)
@@ -553,6 +657,7 @@ BorderSurface {
             width: turn.width
             t: modelData
             pane: "day"
+            railRoom: dayPane.railFor
             flick: dayFlick
             onLinkActivated: function (link) { page.openCitation(link) }
           }
@@ -1041,8 +1146,8 @@ BorderSurface {
       text: page.dayReplying ? page.keyName("chatSend") + " attaches reply · " + page.keyName("marginBack") + " cancels"
         : page.dayReplies.length > 0 ? page.dayReplies.length + (page.dayReplies.length === 1 ? " reply" : " replies")
           + " · " + page.keyName("chatSend") + " sends · " + page.keyName("chatAnswer") + " more"
-        : page.paper.room ? page.keyName("chatSend") + " sends · ^ mark · @ paper · " + page.keyName("marginBack") + " marks · " + page.keyName("keys") + " keys"
-        : page.keyName("chatSend") + " sends · @ attach · " + page.keyName("chatAnswer") + " reply · " + page.keyName("keys") + " keys"
+        : page.paper.room ? page.keyName("chatSend") + " sends · ^ mark · @ paper · " + dayPane.flipHint + page.keyName("marginBack") + " marks · " + page.keyName("keys") + " keys"
+        : page.keyName("chatSend") + " sends · @ attach · " + page.keyName("chatAnswer") + " reply · " + dayPane.flipHint + page.keyName("keys") + " keys"
       color: page.faint
       font.family: page.fontFamily
       font.styleName: page.fontStyle

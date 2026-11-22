@@ -275,7 +275,11 @@ def text_span(pages: list[list[dict]]) -> dict | None:
     width = max(set(WIDTHS), key=WIDTHS.count)
     if right - left < width * 0.3:
         return None
-    return {"x0": round(left, 1), "x1": round(right, 1), "w": round(width, 1)}
+    # The usual word's height, about 1.2 times the body's type size: the
+    # page keeps the paper's column wide enough to read it (Layout.js,
+    # paperFloor).
+    hs = sorted(w["y1"] - w["y0"] for p in pages for w in p)
+    return {"x0": round(left, 1), "x1": round(right, 1), "w": round(width, 1), "h": round(hs[len(hs) // 2], 1)}
 
 
 def page_keys(words: list[dict], keyed=key) -> tuple[str, list[int]]:

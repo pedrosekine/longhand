@@ -460,7 +460,10 @@ Item {
   // What is kept clear at the window's edges: nothing in the window, the
   // overlay's margin on the overlay. The side panes stand against it.
   readonly property int edge: root.alongside ? 0 : root.sheetMargin
-  readonly property int rightSpace: (root.marginOpen && !root.wideOpen) || root.dayBesideNote ? root.marginWidth + root.marginGap : 0
+  // One at a time (Layout.paneRange), the middle keeps its own width: the
+  // chat is drawn over it, or waits in a strip at the window's edge.
+  readonly property int rightSpace: !((root.marginOpen && !root.wideOpen) || root.dayBesideNote) ? 0
+    : root.paneAlone ? (root.paneTucked ? root.paneStrip : 0) : root.marginWidth + root.marginGap
   // A PDF is not prose: its lines are its own, so it is given more than the
   // note's measure (2026-11-15: in the note's column a paper's text was
   // too small to read), up to the room the window has.
@@ -482,8 +485,122 @@ Item {
   // Below ~970 px (when both side panes would squeeze the note under 420 px),
   // side panes are mutually exclusive via `ensureRoomFor`.
   readonly property bool canBothPanes: Layout.bothFit(content.width, root.edge, root.sidebarWidth + root.marginGap, root.sp(300) + root.marginGap, root.sp(420))
-  readonly property int marginWidth: Layout.rightPane(content.width, root.edge, root.sheetFor,
+  // Today's width, before any is remembered: what the note leaves, 300 to
+  // 440 px (Layout.rightPane).
+  readonly property int paneReading: Layout.rightPane(content.width, root.edge, root.sheetFor,
     root.canBothPanes ? root.sideSpace : 0, root.marginGap, root.sp(300), root.sp(440), root.sp(340))
+
+  // ------------------------------------------------ the agent's pane, sized by hand
+  // (docs/explorations/chat-width, 2026-11-22.) Three ways, all kept: drag
+  // its edge, nudge it (Alt+Shift+←/→), flip between two remembered splits
+  // (Alt+Z): *reading*, the middle wide, and *discussing*, the chat wide.
+  // A drag or a nudge moves the split you are in. Each screen width keeps
+  // its own two splits, beside a paper apart from beside a note
+  // (pane-widths.json). Nothing changes place: only the edge moves.
+  readonly property string paneKind: root.pdfShown ? "paper" : "note"
+  readonly property string paneScreen: String(Math.round(panel.screen ? panel.screen.width : content.width))
+  property var paneWidths: ({})         // screen width → kind → { at, reading, discussing }
+  readonly property var paneSaved: {
+    var s = root.paneWidths[root.paneScreen]
+    return s && s[root.paneKind] ? s[root.paneKind] : ({})
+  }
+  readonly property string paneSplit: root.paneSaved.at === "discussing" ? "discussing" : "reading"
+  // The chat's measure: an answer's line, about 70 characters of its type.
+  readonly property int chatMeasure: root.sp(580)
+  readonly property int railGap: root.sp(28)
+  readonly property int railWidth: root.sp(240)
+  readonly property int paneStrip: root.sp(30)
+  // A paper's floor: the column where its body text is still about 11 px
+  // (Layout.paperFloor, from the words' usual height), the sheet's padding
+  // with it. A note's: the least it narrows to beside both panes.
+  readonly property int paperFloor: Layout.paperFloor(pdfPane.read ? pdfPane.read.span : null, 612, root.fs(11), 2 * root.sheetPadding)
+  readonly property var paneOpts: ({
+    room: content.width - 2 * root.edge - (root.canBothPanes ? root.sideSpace : 0) - root.marginGap,
+    min: root.sp(300),
+    // The most the chat can use: its measure and its padding, and beside a
+    // paper the rail of the words it quotes.
+    ceiling: root.chatMeasure + 2 * root.sp(24) + (root.paneKind === "paper" ? root.railGap + root.railWidth : 0),
+    // A note's least is today's (Layout.rightPane's 340): prose rewraps.
+    floor: root.paneKind === "paper" ? root.paperFloor : root.sp(340),
+    hardFloor: root.paneKind === "paper" ? root.sp(360) : root.sp(340),
+    reading: root.paneReading
+  })
+  // The middle's floor and the pane's least do not fit side by side: the
+  // two show one at a time, Alt+Z between them.
+  readonly property bool paneAlone: Layout.paneRange(root.paneOpts).alone
+  property bool paneTucked: false       // one at a time, the middle shown
+  property int paneSeen: 0              // the day's turns when the chat was tucked away
+  onPaneTuckedChanged: if (root.paneTucked) root.paneSeen = root.dayTurns.length
+  property int paneLive: 0              // while the edge is dragged
+  readonly property int marginWidth: root.paneAlone ? Math.max(0, root.paneOpts.room - root.paneStrip)
+    : root.paneLive > 0 ? root.paneLive
+    : Layout.paneWidth(root.paneOpts, root.paneSplit, root.paneSaved[root.paneSplit] || 0)
+  // A pane over the dashboard keeps its own width (talkWidth).
+  readonly property bool paneSizable: root.rightView === "day" ? !root.dayBesideDash : root.rightView === "margin"
+
+  function paneKeep(at, width) {
+    var all = JSON.parse(JSON.stringify(root.paneWidths))
+    var scr = all[root.paneScreen] = all[root.paneScreen] || {}
+    var k = scr[root.paneKind] = scr[root.paneKind] || {}
+    k.at = at
+    if (width > 0) k[at] = Math.round(width)
+    root.paneWidths = all
+    paneWidthsFile.setText(JSON.stringify(all, null, 1) + "\n")
+  }
+  // Alt+Z, or a click on the split's word: reading ↔ discussing. One at a
+  // time, the middle ↔ the chat.
+  function flipPane() {
+    if (root.rightView === "" || !root.paneSizable) { root.showHint("the agent's pane is not open"); return }
+    root.used("pane", "flip")
+    // One at a time, the side shown follows the keys (onHereChanged).
+    if (root.paneAlone) {
+      if (root.here === "right") root.focusCenter(); else root.focusPane("right")
+      return
+    }
+    root.paneKeep(root.paneSplit === "reading" ? "discussing" : "reading", 0)
+  }
+  // Alt+Shift+←/→: the edge by about 100 px (Omarchy's Super+−/= for a
+  // window). Wider stops at the middle's floor; a drag goes further.
+  function nudgePane(by) {
+    if (root.rightView === "" || !root.paneSizable || root.paneAlone) return
+    root.used("pane", "nudge")
+    // sp() never goes under 1: the step is scaled, then given its way.
+    root.paneKeep(root.paneSplit, Layout.nudge(root.paneOpts, root.marginWidth, (by < 0 ? -1 : 1) * root.sp(Math.abs(by))))
+  }
+  // The edge dragged to `x` in the window: the pane from there to the
+  // window's edge, as far as it may go; kept when let go.
+  function dragPane(x) {
+    if (root.paneAlone) return
+    root.paneLive = Layout.drag(root.paneOpts, content.width - root.edge - x)
+  }
+  function endPaneDrag() {
+    if (root.paneLive <= 0) return
+    root.used("pane", "drag")
+    var w = root.paneLive
+    root.paneKeep(root.paneSplit, w)
+    root.paneLive = 0
+    // Under its floor a paper's text is small: allowed by hand, and said.
+    if (root.paneKind === "paper" && root.paneOpts.room - w < root.paneOpts.floor)
+      root.showHint("small text · " + root.keyName("paneFlip"))
+  }
+  // A double click on the edge: the split back to where it starts.
+  function resetPane() {
+    var all = JSON.parse(JSON.stringify(root.paneWidths))
+    var k = all[root.paneScreen] && all[root.paneScreen][root.paneKind]
+    if (!k) return
+    delete k[root.paneSplit]
+    root.paneWidths = all
+    paneWidthsFile.setText(JSON.stringify(all, null, 1) + "\n")
+  }
+  // What the split's word says on hover: its three ways.
+  readonly property string paneTip: root.paneAlone
+    ? root.tips([[root.paneTucked ? "Show the chat: the paper waits in a strip" : "Show the middle: the chat waits in a strip", "paneFlip"]])
+    : root.tips([[root.paneSplit === "reading" ? "To discussing: the chat wide, the middle at its least" : "Back to reading: the middle wide", "paneFlip"],
+                 ["Nudge the edge", "paneWider"],
+                 ["Drag the edge: any width, " + root.paneSplit + " remembers it", ""]])
+  // One at a time, what shows is where the keys are: the chat while they
+  // are in it, the middle (the chat in its strip) otherwise.
+  onPaneAloneChanged: root.paneTucked = root.paneAlone && root.here !== "right"
   function ensureRoomFor(side) {
     if (root.canBothPanes) return
     if (side === "right" && root.sidebarOpen) root.sidebarOpen = false
@@ -2350,6 +2467,8 @@ Item {
     if (root.answerSelected(event)) return true
     if (Sc.hit(event, "dayHelpful")) { root.rateDay(-1, "up"); return true }
     if (Sc.hit(event, "dayNotHelpful")) { root.rateDay(-1, "down"); return true }
+    if (Sc.hit(event, "chatPrevQuestion")) { dayPane.jumpQuestion(-1); return true }
+    if (Sc.hit(event, "chatNextQuestion")) { dayPane.jumpQuestion(1); return true }
     // On the cards: ↑↓ between them, Enter or Space does what one says, Del
     // declines it (a thing done by itself: undoes it), Esc or ↓ past the
     // last goes back to the box; typing goes back too.
@@ -2953,6 +3072,9 @@ Item {
     if (Sc.hit(event, "day")) { root.toggleRight(); return true }
     if (Sc.hit(event, "paneLeft")) { root.movePane(-1); return true }
     if (Sc.hit(event, "paneRight")) { root.movePane(1); return true }
+    if (Sc.hit(event, "paneFlip")) { root.flipPane(); return true }
+    if (Sc.hit(event, "paneWider")) { root.nudgePane(100); return true }
+    if (Sc.hit(event, "paneNarrower")) { root.nudgePane(-100); return true }
     if (Sc.hit(event, "today")) { root.goToday(); return true }
     if (Sc.hit(event, "pin")) { root.togglePin(); return true }
     if (Sc.hit(event, "copyPath")) { root.copyPath(); return true }
@@ -3324,6 +3446,7 @@ Item {
   }
 
   onHereChanged: {
+    if (root.paneAlone) root.paneTucked = root.here !== "right"
     if (root.pointerMode !== "off") warpTimer.restart()
     if (root.hereWas === "center" && root.here === "right") Qt.callLater(root.blipContext)
     root.hereWas = root.here
@@ -8726,6 +8849,18 @@ Item {
     }
   }
 
+  // pane-widths.json: the agent's pane's two splits per screen width and
+  // middle (the pane sized by hand, 2026-11-22). The machine's state.
+  FileView {
+    id: paneWidthsFile
+    path: (Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state") + "/longhand/pane-widths.json"
+    atomicWrites: true
+    printErrors: false
+    onLoaded: {
+      try { var o = JSON.parse(text()); if (o && typeof o === "object") root.paneWidths = o } catch (e) { console.warn("longhand.page pane-widths.json: " + e) }
+    }
+  }
+
   // projects-used.json: when each project was last reached, four weeks of
   // it (Tags.byUse orders the sidebar's projects by it; plan.md item 19).
   // The machine's state, beside taught.json.
@@ -10516,6 +10651,47 @@ Item {
 
     // The day conversation: the right pane's home. (DayPane.qml)
     DayPane { id: dayPane; page: root }
+
+    // One at a time (the window too narrow for the middle's least and the
+    // pane's side by side): the side not shown waits in a strip at its own
+    // edge, named with its key; a click or Alt+Z brings it. The chat's strip
+    // carries a dot once an answer came while it waited.
+    Repeater {
+      model: ["middle", "chat"]
+      Rectangle {
+        required property string modelData
+        readonly property bool chat: modelData === "chat"
+        visible: root.paneAlone && root.paneSizable && root.rightView !== "" && root.paneTucked === chat
+        x: chat ? content.width - root.edge - root.paneStrip : root.edge + (root.canBothPanes ? root.sideSpace : 0)
+        y: root.alongside ? 0 : root.sheetMargin
+        width: chat ? root.paneStrip : root.paneStrip + root.marginGap
+        height: root.alongside ? content.height : content.height - root.sheetMargin * 2
+        z: 45
+        color: root.sunk
+        Rectangle { width: 1; height: parent.height; color: root.faint; opacity: 0.5; anchors.left: parent.chat ? parent.left : undefined; anchors.right: parent.chat ? undefined : parent.right }
+        Rectangle {
+          visible: parent.chat && root.dayTurns.length > root.paneSeen
+          anchors.horizontalCenter: parent.horizontalCenter
+          y: root.sp(24)
+          width: root.sp(7); height: width; radius: width / 2
+          color: root.accent
+        }
+        Text {
+          anchors.horizontalCenter: parent.horizontalCenter
+          y: root.sp(42)
+          rotation: 90
+          transformOrigin: Item.TopLeft
+          x: parent.width / 2 + implicitHeight / 2
+          textFormat: Text.PlainText
+          text: (parent.chat ? "THE CHAT" : root.paneKind === "paper" ? "THE PAPER" : "THE NOTE") + "  ·  " + root.keyName("paneFlip")
+          color: root.faint
+          font.family: root.fontFamily
+          font.styleName: root.fontStyle
+          font.pixelSize: root.fs(Style.font.caption)
+        }
+        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.flipPane() }
+      }
+    }
 
     // Where the keys are (docs/navigation.md): Omarchy's active border, on
     // the side panes, in the theme's own colours for it (its gradient and

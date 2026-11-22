@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<!--
+  The agreed design (2026-11-22 grilling), drawn before building: one page,
+  many scenes, picked by ?s=<scene> (render-controls.sh lists them).
+  Colours: the Birnbaum theme, as mock.html. The chat's type is design A.
+  Sizes are the page's logical pixels: the big screen is 1920x1280, the
+  14" laptop 1440x900 (both at scale 2).
+-->
+<style>
+  @font-face { font-family: "MonoR"; src: url("file:///usr/share/fonts/ttf-ia-writer/iAWriterMonoS-Regular.ttf"); }
+  :root { --bg: #2A2A25; --sunk: #20201C; --fg: #EFEDE4; --dim: #A6A99E; --faint: #787A6F;
+          --accent: #F5845B; --rule: #3A3A33; --frame: #E9B949; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); font-family: "Adwaita Sans"; }
+  body { overflow: hidden; position: relative; }
+
+  /* the middle */
+  .mid { position: absolute; top: 0; bottom: 0; left: 0; }
+  .mid .top { position: absolute; top: 26px; left: 34px; right: 34px; font: 13px "MonoR"; color: var(--faint);
+              letter-spacing: .6px; display: flex; gap: 18px; white-space: nowrap; overflow: hidden; }
+  .mid .top b { color: var(--dim); font-weight: normal; }
+  .mid .top .r { margin-left: auto; }
+  .page { position: absolute; top: 66px; bottom: 40px; background: #FBFAF6; color: #1d1d1b; overflow: hidden;
+          font-family: "Liberation Serif", "Times New Roman", serif; line-height: 1.5; }
+  .page h4 { font-family: "Liberation Sans", sans-serif; font-weight: bold; letter-spacing: .03em; margin: 1.2em 0 .4em; text-transform: uppercase; font-size: .86em; }
+  .page p { margin: 0 0 .6em; text-align: justify; hyphens: auto; }
+  .hl { background: #dfe6f0; } .cited { background: rgba(245,132,91,.28); }
+  .mid .foot { position: absolute; bottom: 12px; left: 34px; right: 34px; font: 12.5px "MonoR"; color: var(--faint);
+               text-align: right; letter-spacing: .4px; white-space: nowrap; }
+
+  /* the note (a day) */
+  .note { position: absolute; top: 66px; bottom: 40px; color: #E6E4DA; font-size: 17px; line-height: 1.6; }
+  .note h1 { font-size: 30px; font-weight: 600; margin: 0 0 18px; }
+  .note p { margin: 0 0 14px; }
+  .note .cb { color: var(--dim); }
+
+  /* the agent's pane */
+  .pane { position: absolute; top: 0; bottom: 0; right: 0; border-left: 1px solid #38382F; background: var(--bg); }
+  .pane.keys { box-shadow: inset 0 0 0 2px var(--frame); }
+  .pane .head { position: absolute; top: 24px; left: 30px; right: 26px; height: 24px; font: 13px "MonoR";
+                letter-spacing: 1.3px; color: var(--faint); text-transform: uppercase; display: flex; align-items: center; gap: 12px; white-space: nowrap; }
+  .pane .head .t { overflow: hidden; text-overflow: ellipsis; }
+  .split { margin-left: auto; text-transform: none; letter-spacing: .3px; display: flex; align-items: center; gap: 7px;
+           padding: 2px 6px; border-radius: 4px; color: var(--faint); flex: none; }
+  .split.hover { background: rgba(239,237,228,.07); color: var(--dim); }
+  .split .g { display: inline-flex; width: 18px; height: 11px; border: 1px solid currentColor; border-radius: 2px; overflow: hidden; }
+  .split .g i { display: block; height: 100%; } .split .g i.p { background: transparent; } .split .g i.c { background: currentColor; opacity: .75; }
+  .k { border: 1px solid #4A4A41; border-radius: 3px; padding: 0 4px; font: 11px "MonoR"; color: var(--dim); letter-spacing: 0; text-transform: none; }
+
+  .scroll { position: absolute; top: 62px; left: 30px; bottom: 112px; overflow: hidden;
+            display: flex; flex-direction: column; justify-content: flex-end; }
+  .pane .foot { position: absolute; left: 30px; right: 30px; bottom: 22px; }
+  .box { border: 1px solid #4f4f46; border-radius: 8px; height: 44px; padding: 11px 14px; color: var(--faint); font-size: 16px; }
+  .hint { margin-top: 10px; color: var(--faint); font-size: 12.5px; line-height: 1.5; }
+  .hint .new { color: var(--dim); }
+
+  .turn { margin-bottom: 28px; }
+  .ask { width: var(--measure); }
+  .ask .in { margin-left: auto; width: fit-content; max-width: 86%; }
+  .ref { font-size: 13px; line-height: 1.45; color: var(--dim); border-left: 2px solid var(--accent); padding: 1px 0 1px 10px; margin: 0 0 8px; }
+  .ref b { font-weight: 500; color: var(--faint); margin-right: 6px; font-size: 12px; }
+  .me { background: rgba(245,132,91,.12); padding: 9px 14px; border-radius: 10px; font-size: 16.5px; line-height: 1.55; }
+  .me.jumped { box-shadow: 0 0 0 2px var(--accent); }
+  .agent .row { display: grid; grid-template-columns: minmax(0, var(--measure)) var(--railw); column-gap: var(--railgap); }
+  .agent p { margin: 0 0 11px; font-size: 16.5px; line-height: 1.62; color: #E6E4DA; }
+  .agent p:last-child, .agent ul:last-child { margin-bottom: 0; }
+  .agent ul { margin: 0 0 11px; padding-left: 20px; font-size: 16.5px; line-height: 1.62; color: #E6E4DA; }
+  .agent strong { font-weight: 600; color: var(--fg); }
+  .agent q { quotes: "“" "”"; text-decoration: underline dotted rgba(245,132,91,.55); text-underline-offset: 4px; text-decoration-thickness: 1.5px; }
+  .cite { color: var(--accent); font-size: 13.5px; }
+  .rail { font-size: 13px; line-height: 1.5; color: var(--dim); border-left: 2px solid #55554b; padding: 1px 0 1px 12px; align-self: start; }
+  .rail b { display: block; font-weight: 500; color: var(--accent); font-size: 12px; margin-bottom: 2px; }
+  .rate { font-size: 12.5px; color: var(--faint); margin-top: 7px; }
+  .fold { font-size: 13px; color: var(--faint); border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); padding: 8px 0; margin-bottom: 26px; width: var(--measure); }
+  .fold.sel { color: var(--dim); background: rgba(239,237,228,.05); }
+  table { border-collapse: collapse; font-size: 14px; line-height: 1.4; margin: 4px 0 12px; color: #E6E4DA; width: 100%; }
+  th { text-align: left; font-weight: 500; color: var(--dim); border-bottom: 1px solid #4a4a41; padding: 4px 12px 5px 0; }
+  td { border-bottom: 1px solid var(--rule); padding: 5px 12px 5px 0; vertical-align: top; }
+
+  /* the edge, the tooltip, the pointer, the small-text hint */
+  .edge { position: absolute; top: 0; bottom: 0; width: 3px; background: var(--accent); opacity: .8; z-index: 5; }
+  .tick { position: absolute; width: 9px; height: 1px; background: var(--faint); z-index: 5; }
+  .tip { position: absolute; z-index: 8; background: var(--sunk); border: 1px solid rgba(239,237,228,.16); padding: 9px 11px;
+         font-size: 13px; line-height: 1.75; color: var(--fg); border-radius: 4px; white-space: nowrap; box-shadow: 0 8px 24px rgba(0,0,0,.35); }
+  .tip .row2 { display: grid; grid-template-columns: auto auto; column-gap: 14px; }
+  .tip .d { color: var(--dim); }
+  .ptr { position: absolute; z-index: 9; width: 22px; height: 22px; }
+  .toast { position: absolute; z-index: 7; background: var(--sunk); border: 1px solid rgba(239,237,228,.16); padding: 8px 12px;
+           font-size: 13px; color: var(--fg); border-radius: 4px; white-space: nowrap; }
+  .toast .d { color: var(--dim); }
+
+  /* the one-at-a-time strip */
+  .strip { position: absolute; top: 0; bottom: 0; right: 0; width: 30px; border-left: 1px solid #38382F; background: #26261F;
+           display: flex; flex-direction: column; align-items: center; padding-top: 24px; gap: 14px; color: var(--faint); }
+  .strip .v { writing-mode: vertical-rl; font: 12px "MonoR"; letter-spacing: 1.3px; text-transform: uppercase; }
+  .strip .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+  .strip.left { left: 0; right: auto; border-left: none; border-right: 1px solid #38382F; }
+
+  /* the keys sheet */
+  .sheet { position: absolute; inset: 0; padding: 34px 46px; }
+  .sheet .band { font: 13px "MonoR"; color: var(--faint); letter-spacing: 1.3px; text-transform: uppercase; padding-bottom: 8px; border-bottom: 1px solid var(--rule); margin: 0 0 6px; }
+  .sheet .kr { display: grid; grid-template-columns: 250px 1fr; padding: 9px 0; border-bottom: 1px solid #303029; font-size: 15px; color: #E6E4DA; }
+  .sheet .kr.newk { background: rgba(245,132,91,.07); box-shadow: -10px 0 0 rgba(245,132,91,.07), 10px 0 0 rgba(245,132,91,.07); }
+  .sheet .kc { display: flex; gap: 4px; align-items: center; }
+  .sheet .kc .k { font-size: 12px; padding: 1px 6px; background: #303029; }
+  .sheet .old { color: var(--dim); }
+  .sheet .n { position: absolute; right: 46px; top: 36px; font-size: 12.5px; color: var(--accent); }
+</style>
+</head>
+<body>
+<script>
+const P = new URLSearchParams(location.search);
+const s = P.get("s") || "lap-read";
+
+// ---------- content ----------
+const paperHTML = `
+<h4>2 Method</h4>
+<p>Cyclists wore a wristband that read their heart rate variability (HRV) and electrodermal activity (EDA) while riding through the city, and a GPS logger kept the route. <span class="hl">Moments of stress (MOS) were found where the EDA rose</span> and the HRV fell together. Each MOS was placed on the route by its GPS time, and the HRV around it was compared with the HRV of the same rider on a quiet street.</p>
+<p>A rise counted when the phasic EDA exceeded the rider's own baseline by 0.05 µS within a window of 3–6 s, and the RMSSD over the same window fell below the rider's tenth percentile.</p>
+<p>Thirty-two riders took the same 9.4 km route twice, once in the morning peak and once at midday. <span class="cited">The route was fixed so that every rider met the same junctions</span>; riders did not choose where to ride.</p>
+<h4>3 Results</h4>
+<p>Of 1,412 detected MOS, 61% fell within 30 m of a junction and 22% beside parked cars. Morning rides held 1.7 times as many MOS per kilometre as midday rides.</p>
+<p>Annotated video confirmed 74% of a random sample of 200 MOS; most of the rest were bumps in the road surface, which move the EDA without a change in HRV.</p>
+<h4>4 Limits</h4>
+<p>The sample was small and young. The wristband's EDA is noisier than a finger electrode, and cold mornings damp it.</p>
+<p>Routes in other cities, and riders who choose their own way, are left for later work.</p>`;
+
+const Q = {
+  q1: `<div class="turn ask"><div class="in"><div class="ref"><b>p. 1</b>“Moments of stress (MOS) were found where the EDA rose…”</div><div class="me">how do they decide a moment of stress?</div></div></div>`,
+  a1: { body: `<p>A moment of stress is a stretch where skin conductance rises while heart rate variability falls, both within a few seconds. The paper says <q>Moments of stress (MOS) were found where the EDA rose</q> <span class="cite">p. 1</span>: the rule needs <strong>both</strong> signals, so a rise in EDA alone, from heat or effort, does not count.</p>`,
+        rail: `<b>p. 1</b>“Moments of stress (MOS) were found where the EDA rose and the HRV fell together.”` },
+  q2: (j) => `<div class="turn ask"><div class="in"><div class="me ${j ? "jumped" : ""}">compare their detection rule with the two papers I read last week, in a table</div></div></div>`,
+  a2: { body: `<p>Side by side, from this paper and the two in your notes:</p>
+    <table><tr><th>Paper</th><th>Signals</th><th>Window</th><th>Threshold</th><th>Checked against</th></tr>
+      <tr><td>Stress on bikes</td><td>EDA ↑ and HRV ↓</td><td>3–6 s</td><td>+0.05 µS over own baseline; RMSSD &lt; p10</td><td>video, 74% agree</td></tr>
+      <tr><td>Kyriakou 2019</td><td>EDA ↑, skin temp ↓</td><td>3 s</td><td>rule set, fixed across riders</td><td>self-report</td></tr>
+      <tr><td>Zeile 2016</td><td>EDA ↑ only</td><td>1–5 s</td><td>slope over a fixed value</td><td>none</td></tr></table>
+    <p>Only this paper asks for HRV to fall too, which is why bumps in the road are mostly not counted here.</p>`,
+        rail: `<b>p. 2</b>“the RMSSD over the same window fell below the rider's tenth percentile.”` },
+  q3: `<div class="turn ask"><div class="in"><div class="me">so can they say junctions cause the stress?</div></div></div>`,
+  a3: { body: `<p>Not on their own. <q>The route was fixed so that every rider met the same junctions</q> <span class="cite">p. 2</span>: no rider chose where to ride, so junctions are confounded with the time into the ride and with traffic at that hour.</p>
+    <p>What they can say is that MOS cluster near junctions <em>on this route</em>. A claim about cause would need:</p>
+    <ul><li>riders on different routes, or choosing their own;</li><li>the same junctions met at different points of the ride.</li></ul>`,
+        rail: `<b>p. 2</b>“The route was fixed so that every rider met the same junctions; riders did not choose where to ride.”`, rate: true },
+};
+function agent(a, rail) {
+  return `<div class="turn agent"><div class="row"><div>${a.body}</div>${rail ? `<div class="rail">${a.rail}</div>` : "<div></div>"}</div>${a.rate ? `<div class="rate"><span class="k">Alt</span> <span class="k">=</span> helpful &nbsp; <span class="k">Alt</span> <span class="k">-</span> not helpful</div>` : ""}</div>`;
+}
+const fold = (sel) => `<div class="fold ${sel ? "sel" : ""}">▸ 6 earlier turns about this paper <span style="float:right"><span class="k">Enter</span> unfold</span></div>`;
+function stream(rail, o = {}) {
+  return (o.fold ? fold(o.foldSel) : "") + Q.q1 + agent(Q.a1, rail) + Q.q2(o.jump) + agent(Q.a2, rail) + Q.q3 + agent(Q.a3, rail);
+}
+
+// ---------- parts ----------
+const MEASURE = 580, RAIL = 230, GAP = 30;
+function splitWord(state, look, hover, chatShare) {
+  const word = { reading: "reading", discussing: "discussing", chat: "the chat", paper: "the paper" }[state] || state;
+  let inner = word;
+  if (look === "glyph") {
+    const c = Math.round(18 * chatShare);
+    inner = `<span class="g"><i class="p" style="width:${18 - c}px"></i><i class="c" style="width:${c}px"></i></span>${word}`;
+  } else if (look === "key") {
+    inner = `${word} <span class="k">Alt</span><span class="k">Z</span>`;
+  }
+  return `<span class="split ${hover ? "hover" : ""}" id="split">${inner}</span>`;
+}
+function pane(o) {
+  // o: { W, x, width, state, look, hover, rail, hint, title, streamOpts, keys }
+  const inner = o.width - 60;
+  const measure = Math.min(MEASURE, inner - (o.rail ? RAIL + GAP : 0));
+  const root = document.documentElement.style;
+  root.setProperty("--measure", measure + "px");
+  root.setProperty("--railw", o.rail ? RAIL + "px" : "0px");
+  root.setProperty("--railgap", o.rail ? GAP + "px" : "0px");
+  const used = o.rail ? measure + GAP + RAIL : measure;
+  const share = o.width / o.W;
+  return `<div class="pane ${o.keys === false ? "" : "keys"}" style="width:${o.width}px">
+    <div class="head"><span class="t">${o.title || "Chat · Stress on bikes.pdf"}</span>${splitWord(o.state, o.look || "word", o.hover, share)}</div>
+    <div class="scroll" style="width:${used}px">${o.body || stream(o.rail, o.streamOpts || {})}</div>
+    <div class="foot"><div class="box">${o.box || "ask about this paper…"}</div><div class="hint">${o.hint || defaultHint(o.state)}</div></div></div>`;
+}
+function defaultHint(state) {
+  const to = { reading: "discussing", discussing: "reading", chat: "the paper", paper: "the chat" }[state];
+  return `Enter sends · ^ attaches a mark · <span class="new"><span class="k">Alt</span><span class="k">Z</span> ${to}</span> · Esc back to the marks`;
+}
+function paper(width, pageW, o = {}) {
+  const pl = Math.round((width - pageW) / 2);
+  const fs = pageW / 51;  // a PDF does not reflow: the page scales with its column
+  return `<div class="mid" style="width:${width}px"><div class="top"><b>Stress on bikes.pdf</b><span>back to today</span><span class="r">pin ●</span></div>
+    <div class="page" style="left:${pl}px; width:${pageW}px; font-size:${fs.toFixed(1)}px; padding:${(fs * 2.6).toFixed(0)}px ${(fs * 2.8).toFixed(0)}px">${paperHTML}</div>
+    <div class="foot">page 2 of 9 · 1 mark${o.small ? "" : ""}</div></div>`;
+}
+const POINTER = `<svg viewBox="0 0 22 22"><path d="M3 2 L3 17 L7 13 L10 20 L12.5 19 L9.5 12 L15 12 Z" fill="#fff" stroke="#111" stroke-width="1.2"/></svg>`;
+const RESIZE = `<svg viewBox="0 0 22 22"><path d="M1 11 L6 6 L6 9 L16 9 L16 6 L21 11 L16 16 L16 13 L6 13 L6 16 Z" fill="#fff" stroke="#111" stroke-width="1.2"/></svg>`;
+function tipHTML(state, right, top) {
+  const to = state === "reading" ? "to discussing (the chat wide, the paper at its floor)" : "back to reading (the paper wide)";
+  return `<div class="tip" style="right:${right}px; top:${top}px"><div class="row2">
+    <span><span class="k">Alt</span><span class="k">Z</span> or click</span><span class="d">${to}</span>
+    <span><span class="k">Alt</span><span class="k">Shift</span><span class="k">←</span><span class="k">→</span></span><span class="d">nudge the edge</span>
+    <span>drag the edge</span><span class="d">any width; ${state} remembers it</span></div></div>`;
+}
+function size(W, H) { document.body.style.width = W + "px"; document.body.style.height = H + "px"; }
+
+// ---------- scenes ----------
+const GAPW = 18;
+let html = "";
+const sc = {
+  // The four screens: both sizes, both splits.
+  "big-read":  () => { const W = 1920, H = 1280, pw = 440; size(W, H);
+    return paper(W - pw - GAPW, 940) + pane({ W, width: pw, state: "reading" }); },
+  "big-disc":  () => { const W = 1920, H = 1280, pw = 60 + MEASURE + GAP + RAIL; size(W, H);
+    return paper(W - pw - GAPW, 820) + pane({ W, width: pw, state: "discussing", rail: true }); },
+  "lap-read":  () => { const W = 1440, H = 900, pw = 440; size(W, H);
+    return paper(W - pw - GAPW, 860) + pane({ W, width: pw, state: "reading" }); },
+  "lap-disc":  () => { const W = 1440, H = 900, pw = W - 600 - GAPW; size(W, H);
+    return paper(W - pw - GAPW, 560) + pane({ W, width: pw, state: "discussing", rail: true }); },
+
+  // Hovering the word: it names the three ways.
+  "lap-hover": () => { const W = 1440, H = 900, pw = 440; size(W, H);
+    const look = P.get("look") || "word";
+    return paper(W - pw - GAPW, 860) + pane({ W, width: pw, state: "reading", hover: true, look })
+      + tipHTML("reading", 24, 56) + `<div class="ptr" style="right:${look === "key" ? 70 : 50}px; top:34px">${POINTER}</div>`; },
+  // Look b (the glyph) under the mouse, in both splits on the laptop.
+  "glyph-hover-read": () => { const W = 1440, H = 900, pw = 440; size(W, H);
+    return paper(W - pw - GAPW, 860) + pane({ W, width: pw, state: "reading", hover: true, look: "glyph" })
+      + tipHTML("reading", 24, 56) + `<div class="ptr" style="right:40px; top:36px">${POINTER}</div>`; },
+  "glyph-hover-disc": () => { const W = 1440, H = 900, pw = W - 600 - GAPW; size(W, H);
+    return paper(W - pw - GAPW, 560) + pane({ W, width: pw, state: "discussing", hover: true, look: "glyph", rail: true })
+      + tipHTML("discussing", 24, 56) + `<div class="ptr" style="right:40px; top:36px">${POINTER}</div>`; },
+
+  // The edge under the mouse, then dragged: the pointer turns, the edge lights.
+  "lap-edge":  () => { const W = 1440, H = 900, pw = 440; size(W, H);
+    const x = W - pw;
+    return paper(W - pw - GAPW, 860) + pane({ W, width: pw, state: "reading", keys: false })
+      + `<div class="edge" style="left:${x - 1}px"></div><div class="ptr" style="left:${x - 11}px; top:430px">${RESIZE}</div>`; },
+  "lap-drag":  () => { const W = 1440, H = 900, pw = 640; size(W, H);
+    const x = W - pw, floorX = 600 + GAPW;
+    return paper(W - pw - GAPW, 740) + pane({ W, width: pw, state: "reading", keys: false })
+      + `<div class="edge" style="left:${x - 1}px"></div><div class="ptr" style="left:${x - 11}px; top:430px">${RESIZE}</div>
+         <div class="toast" style="left:${x - 250}px; top:470px">reading: chat 640 px <span class="d">· the paper's floor is at 600</span></div>`; },
+
+  // Dragged past the paper's floor: the page gets small, a hint says so.
+  "lap-below": () => { const W = 1440, H = 900, pw = 60 + MEASURE + GAP + RAIL; size(W, H);
+    const midW = W - pw - GAPW;
+    return paper(midW, midW - 28) + pane({ W, width: pw, state: "discussing", rail: true, keys: false })
+      + `<div class="edge" style="left:${W - pw - 1}px"></div><div class="ptr" style="left:${W - pw - 11}px; top:430px">${RESIZE}</div>
+         <div class="toast" style="left:40px; bottom:52px">the paper's text is small now <span class="d">(about 9 px) · drag back, or <span class="k">Alt</span><span class="k">Z</span></span></div>`; },
+
+  // Half the laptop (710 px): one at a time, the other a strip with its key.
+  "half-chat": () => { const W = 710, H = 900; size(W, H);
+    return `<div class="strip left"><span class="v">the paper · Alt+Z</span></div>`
+      + pane({ W, width: W - 30, state: "chat", rail: false }); },
+  "half-paper": () => { const W = 710, H = 900; size(W, H);
+    return paper(W - 30, 640) + `<div class="strip"><span class="dot"></span><span class="v">the chat · Alt+Z</span></div>`; },
+
+  // Beside a note: the day's chat at discussing; the note steps aside, then narrows.
+  "note-read": () => noteScene(440, "reading"),
+  "note-disc": () => noteScene(60 + MEASURE, "discussing"),  // no quotes, no rail: the ceiling is the measure
+
+  // A long chat: earlier turns folded, Alt+Up landed on a question.
+  "long":      () => { const W = 1440, H = 900, pw = W - 600 - GAPW; size(W, H);
+    return `<style>.scroll { justify-content: flex-start; }</style>` + paper(W - pw - GAPW, 560) + pane({ W, width: pw, state: "discussing", rail: true, streamOpts: { fold: true, jump: true },
+      hint: `Enter sends · <span class="new"><span class="k">Alt</span><span class="k">↑</span><span class="k">↓</span> your questions (2 of 9)</span> · <span class="k">Alt</span><span class="k">Z</span> reading · Esc back to the marks` }); },
+
+  // The keys sheet: the three keys, in the agent's band.
+  "keys":      () => { size(980, 430);
+    const r = (keys, does, n) => `<div class="kr ${n ? "newk" : ""}"><span class="kc">${keys.map(k => `<span class="k">${k}</span>`).join("")}</span><span class="${n ? "" : "old"}">${does}</span></div>`;
+    return `<div class="sheet"><div class="band">The agent's pane</div><span class="n">shaded: new</span>
+      ${r(["Ctrl", "3"], "The agent's pane: go there, opening it; in it, the whole chat ↔ this block's or task's chat")}
+      ${r(["Ctrl", "|"], "The agent's pane: open (on the day's chat) or close")}
+      ${r(["Alt", "Z"], "Flip the pane between reading (the middle wide) and discussing (the chat wide). Each remembers where you left it", 1)}
+      ${r(["Alt", "Shift", "←", "→"], "Nudge the pane's edge, about 100 px; a drag on the edge does the same", 1)}
+      ${r(["Alt", "↑", "↓"], "In the chat: your previous / next question", 1)}
+      ${r(["Esc"], "While the agent answers: stop it; else back out")}</div>`; },
+};
+function noteScene(pw, state) {
+  const W = 1440, H = 900; size(W, H);
+  const room = W - pw - GAPW, want = 700, w = Math.min(want, room - 60), x = Math.max(30, Math.round((W - w) / 2) > room - w - 30 ? room - w - 30 : Math.round((W - w) / 2));
+  const body = `<div class="turn ask"><div class="in"><div class="me">what do I still owe for the stats course this week?</div></div></div>
+    <div class="turn agent"><div class="row"><div><p>Two things, both from Thursday's note:</p>
+    <table><tr><th>What</th><th>When</th><th>Where it came from</th></tr>
+      <tr><td>Problem set 6, questions 3–5</td><td>Friday 10:00</td><td>“finish 3–5 before the tutorial”</td></tr>
+      <tr><td>Read Gelman ch. 4</td><td>before Monday</td><td>the course plan</td></tr></table>
+    <p>The problem set is the one with a deadline; ch. 4 can wait for the weekend.</p></div><div></div></div></div>`;
+  return `<div class="mid" style="width:${room}px"><div class="top"><b>Sunday, 22 November</b><span class="r">✿</span></div></div>
+    <div class="note" style="left:${x}px; width:${w}px"><h1>Sunday</h1>
+      <p>Stats tutorial moved to Friday morning. Ask about the bootstrap question.</p>
+      <p class="cb">☐ problem set 6, questions 3–5</p><p class="cb">☐ email the lab about Tuesday</p>
+      <p>Thinking about the bikes paper: the route was fixed, so junctions and time into the ride can't be told apart. Worth raising in the seminar.</p></div>`
+    + pane({ W, width: pw, state, rail: false, title: "Chat · today", box: "ask anything…", body,
+      hint: `Enter sends · @ mentions · <span class="new"><span class="k">Alt</span><span class="k">Z</span> ${state === "reading" ? "discussing" : "reading"}</span> · Esc closes` });
+}
+// The header alone, three looks, at rest and on hover (rendered at scale 2).
+for (const look of ["word", "glyph", "key"]) for (const st of ["reading", "discussing"]) for (const hv of [0, 1]) {
+  sc[`head-${look}-${st}${hv ? "-hover" : ""}`] = () => { size(520, 64);
+    return `<div class="pane keys" style="width:520px">
+      <div class="head"><span class="t">Chat · Stress on bikes.pdf</span>${splitWord(st, look, hv, st === "reading" ? 0.3 : 0.57)}</div></div>`
+      + (hv ? `<div class="ptr" style="right:${look === "key" ? 40 : 22}px; top:36px">${POINTER}</div>` : ""); };
+}
+for (const st of ["reading", "discussing"]) sc[`tip-glyph-${st}`] = () => { size(560, 170);
+  return `<div class="pane keys" style="width:560px"><div class="head"><span class="t">Chat · Stress on bikes.pdf</span>${splitWord(st, "glyph", 1, st === "reading" ? 0.3 : 0.57)}</div></div>`
+    + tipHTML(st, 24, 56) + `<div class="ptr" style="right:40px; top:36px">${POINTER}</div>`; };
+document.body.innerHTML = (sc[s] || sc["lap-read"])();
+</script>
+</body>
+</html>

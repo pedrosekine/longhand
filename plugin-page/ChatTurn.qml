@@ -27,6 +27,21 @@ Item {
   // the reply is written ("open"), underlined with their number once
   // attached or sent.
   property var marks: []
+  // The rail (2026-11-22, docs/explorations/chat-width): beside a paper's
+  // answer, in the room past the chat's measure, each passage it quotes
+  // stands by the line that quotes it, with its page; a click shows it on
+  // the page, as the quote's own link does. 0: no room, no rail.
+  property int railRoom: 0
+  readonly property var quotes: {
+    if (turn.mine || turn.railRoom <= 0) return []
+    var out = [], re = /\]\((quote:(\d+):([^)\s]+))\)/g, m
+    while ((m = re.exec(turn.text)) !== null) {
+      var words = ""
+      try { words = decodeURIComponent(m[3]) } catch (e) { words = m[3] }
+      out.push({ link: m[1], page: parseInt(m[2]), words: words })
+    }
+    return out
+  }
   signal linkActivated(string link)
   signal answer(string passage)
   function answerSelection() {
@@ -51,7 +66,8 @@ Item {
   readonly property int padY: Math.round(page.chatSize * 0.55)
 
   width: parent ? parent.width : 0
-  implicitHeight: mine ? bubble.height : said.implicitHeight
+  // An answer's rail may run past its words: the turn holds both.
+  implicitHeight: mine ? bubble.height : Math.max(said.implicitHeight, rail.visible ? rail.implicitHeight : 0)
 
   // How wide the words run unwrapped: a short message gets a short bubble,
   // a long one wraps at four fifths of the pane.
@@ -183,6 +199,70 @@ Item {
       else if (page.replyOffer && page.replyOffer.item === turn) page.replyOffer = null
     }
     HoverHandler { cursorShape: said.hoveredLink !== "" ? Qt.PointingHandCursor : Qt.IBeamCursor }
+  }
+
+  Column {
+    id: rail
+    visible: turn.quotes.length > 0
+    x: turn.width + turn.page.railGap
+    width: turn.railRoom
+    Repeater {
+      model: turn.quotes
+      Item {
+        id: railItem
+        required property var modelData
+        required property int index
+        // Where its line is in the answer (the words found in its text).
+        readonly property real target: {
+          said.length
+          var plainText = said.getText(0, said.length)
+          var at = plainText.indexOf(modelData.words.slice(0, 40))
+          return at < 0 ? 0 : said.positionToRectangle(at).y
+        }
+        width: rail.width
+        // Down to its line, never over the one before.
+        height: Math.max(0, target - y) + quoteCol.implicitHeight + turn.page.sp(10)
+        Rectangle {
+          y: quoteCol.y
+          width: turn.page.sp(2)
+          height: quoteCol.implicitHeight
+          color: turn.page.faint
+          opacity: 0.6
+        }
+        Column {
+          id: quoteCol
+          y: Math.max(0, railItem.target - railItem.y)
+          width: parent.width
+          leftPadding: turn.page.sp(12)
+          spacing: turn.page.sp(2)
+          Text {
+            textFormat: Text.PlainText
+            text: "p. " + railItem.modelData.page
+            color: turn.page.accent
+            font.family: turn.page.fontFamily
+            font.pixelSize: Math.round(turn.pixelSize * 0.75)
+          }
+          Text {
+            width: parent.width - parent.leftPadding
+            textFormat: Text.PlainText
+            wrapMode: Text.Wrap
+            text: "“" + railItem.modelData.words + "”"
+            color: railArea.containsMouse && turn.page.handOn ? turn.page.foreground : turn.page.dim
+            font.family: turn.page.fontFamily
+            font.styleName: turn.page.fontStyle
+            font.pixelSize: Math.round(turn.pixelSize * 0.8)
+            lineHeight: 1.35
+          }
+        }
+        MouseArea {
+          id: railArea
+          anchors.fill: quoteCol
+          hoverEnabled: true
+          cursorShape: Qt.PointingHandCursor
+          onClicked: turn.linkActivated(railItem.modelData.link)
+        }
+      }
+    }
   }
 
   // "reply", over the words selected (2026-11-18): drawn as the hover

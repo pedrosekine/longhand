@@ -367,6 +367,27 @@ def scenes(m, p, out, which):
         p.call("pdfKey", 0x01000004, 0)     # Enter: the chat at it
         time.sleep(0.8)
         shot("answers-1")
+    if which == "width":
+        # The agent's pane sized by hand (docs/explorations/chat-width):
+        # discussing (Alt+Z), a nudge, a drag past the paper's least.
+        scenes(m, p, out, "answers")
+        p.call("paneUnfold")
+        print(p.call("paneSize"))
+        p.call("paneFlip")
+        time.sleep(1.2)
+        print(p.call("paneSize"))
+        shot("width-0")
+        p.call("paneNudge", "-100")
+        time.sleep(1)
+        shot("width-1")
+        p.call("paneDrag", "200")
+        time.sleep(1.2)
+        print(p.call("paneSize"))
+        shot("width-2")
+        p.call("paneFlip")
+        time.sleep(1)
+        print(p.call("paneSize"))
+        shot("width-3")
     if which in ("all", "reach"):
         # Reaching a project (plan.md item 19): `#th` typed in the sidebar,
         # Hold Ctrl's Alt+digit on each project, the switcher.
@@ -581,7 +602,7 @@ def scenes(m, p, out, which):
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("out", type=pathlib.Path)
-    ap.add_argument("--scene", default="all", choices=["all", "dashboard", "note", "prose", "day", "keys", "chat", "project", "acronyms", "answers", "reach", "calm", "stop", "checkin", "one", "answer", "mention"])
+    ap.add_argument("--scene", default="all", choices=["all", "dashboard", "note", "prose", "day", "keys", "chat", "project", "acronyms", "answers", "reach", "calm", "stop", "checkin", "one", "answer", "mention", "width"])
     ap.add_argument("--order", default="ask", choices=["ask", "course", "date"])
     ap.add_argument("--root", type=pathlib.Path, default=HERE.parent.parent)
     ap.add_argument("--env", action="append", default=[])

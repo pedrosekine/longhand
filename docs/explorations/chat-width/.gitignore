@@ -1,0 +1,3 @@
+# Renders are redrawn by render.sh and render-controls.sh, never committed.
+*.png
+shots/
