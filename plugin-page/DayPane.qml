@@ -473,6 +473,7 @@ BorderSurface {
     // At the top, the days before come in, a few at a time (2026-11-21).
     property real keepFromBottom: -1
     onContentYChanged: {
+      if (!dayFlick.resizing) dayFlick.atFoot = contentY >= contentHeight - height - page.sp(4)
       if (keepFromBottom < 0 && contentHeight > height && contentY < page.sp(40)
           && contentHeight - contentY - height > page.sp(40) && page.historyMore) {
         keepFromBottom = contentHeight - contentY
@@ -481,6 +482,16 @@ BorderSurface {
     }
 
     TouchScroll { flickable: dayFlick }
+
+    // Kept at its foot when the box grows or shrinks under it (2026-11-22):
+    // the last answer's rating stayed half under a box of three lines.
+    property bool atFoot: true
+    property bool resizing: false
+    onHeightChanged: if (dayFlick.atFoot && contentHeight > height) {
+      dayFlick.resizing = true
+      contentY = contentHeight - height
+      dayFlick.resizing = false
+    }
 
     // The exchange shown on purpose, lit behind its turns a moment.
     Rectangle {
@@ -1056,8 +1067,9 @@ BorderSurface {
     visible: !dayPane.listing
     anchors.left: parent.left
     anchors.leftMargin: dayPane.contentLeftInset
-    anchors.right: parent.right
-    anchors.rightMargin: dayPane.contentRightInset
+    // As wide as the answers above it (2026-11-22): what you write lines up
+    // with what you read, at the chat's measure.
+    width: dayPane.columnWidth
     anchors.bottom: parent.bottom
     anchors.bottomMargin: dayPane.contentBottomInset
     spacing: page.sp(6)
