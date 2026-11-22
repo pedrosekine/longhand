@@ -104,6 +104,24 @@ TestCase {
                            questions: many.slice(0, 6) }], [], at).filter(function (x) { return x.kind === "question" }).length, 6)
   }
 
+  function test_papers_read_the_same_day_the_last_read_first() {
+    // Listed Z to A by file, as they come; saved Fox last, Resch first.
+    var ps = [
+      { pdf: "resch.pdf", kind: "paper", cite: { authors: "Resch et al.", year: "2020" }, last: "2026-11-20", saved: 100,
+        days: { "2026-11-20": { h: 6, q: 0 } }, questions: [] },
+      { pdf: "moser.pdf", kind: "paper", cite: { authors: "Moser et al.", year: "2023" }, last: "2026-11-20", saved: 200,
+        days: { "2026-11-19": { h: 1, q: 0 }, "2026-11-20": { h: 6, q: 0 } }, questions: [] },
+      { pdf: "fox.pdf", kind: "paper", cite: { authors: "Fox et al.", year: "2011" }, last: "2026-11-20", saved: 300,
+        days: { "2026-11-20": { h: 5, q: 0 } }, questions: [] },
+      { pdf: "zeile.pdf", kind: "paper", cite: { authors: "Zeile et al.", year: "2016" }, last: "2026-11-19", saved: 50,
+        days: { "2026-11-19": { h: 4, q: 0 } }, questions: [] }]
+    var read = PV.rows([], ps, [], at).filter(function (x) { return x.kind === "read" })
+    compare(read.map(function (x) { return x.day + " " + x.label }),
+            ["2026-11-20 Fox et al. 2011", "2026-11-20 Moser et al. 2023", "2026-11-20 Resch et al. 2020",
+             // Moser's earlier day has no time of its own: after the one known.
+             "2026-11-19 Zeile et al. 2016", "2026-11-19 Moser et al. 2023"])
+  }
+
   function test_nothing_open_the_week_and_its_page_still() {
     compare(kinds(PV.rows([sections[2]], [], [], at)), ["page", "cap", "page", "fold"])
   }

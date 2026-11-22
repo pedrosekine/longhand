@@ -200,6 +200,8 @@ def main() -> int:
     pp = json.loads(d.stdout)["papers"]
     check(d.returncode == 0 and [x["title"] for x in pp] == ["Smith 2020"] and pp[0]["h"] >= 1 and pp[0]["q"] == 1
           and pp[0]["waiting"] == 1, f"papers: a project's papers by tag, any case, with their marks counted ({pp})")
+    check(pp[0]["saved"] == int((vault / pp[0]["note"]).stat().st_mtime),
+          f"…and when its note was last saved, to order a day's reading ({pp[0]['saved']})")
     d = subprocess.run([str(READ), "papers", "--tag", "nothing"], capture_output=True, text=True, env=env)
     check(json.loads(d.stdout)["papers"] == [], "…and none for a tag no paper has")
     # With the project's folder: its PDFs too, marked or not; literature by
