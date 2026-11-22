@@ -10,8 +10,9 @@ import "PdfMarks.js" as Marks
 import "Answers.js" as Answers
 
 // A PDF in the middle, in the note's place (docs/files.md, step 5,
-// 2026-10-27): Qt's own view, fitted to the column, the pages drawn as they
-// come into view. Loaded only while a PDF is open — the document and its
+// 2026-10-27): its pages one under the next, fitted to the column, drawn as
+// they come into view (PdfPages.qml, Longhand's own view since 2026-11-22:
+// docs/explorations/pdf-view). Loaded only while a PDF is open — the document and its
 // pages are let go of when it closes — so a page that never opens a PDF
 // pays nothing for it. Read only: a PDF is not written here.
 //
@@ -39,8 +40,8 @@ import "Answers.js" as Answers
 // `n` writes a note under the mark picked, else the last one made. Every
 // mark is kept in the paper's reading note in the vault by
 // `longhand-read`, which also finds its words on the page again and hands
-// back the rectangles drawn here, over Qt's own page (a layer put into each
-// of its page delegates, which follows the page the delegate holds).
+// back the rectangles drawn here, over each page drawn (`marksLayer`, the
+// view's `overlay`).
 //
 // Acronyms (plan.md item 18, 2026-11-16): `longhand-read acronyms` finds,
 // once per paper, what each acronym stands for where the paper spells it
@@ -70,12 +71,8 @@ Item {
   property bool finding: false
   readonly property var view: loader.item ? loader.item.view : null
   readonly property int pages: loader.item ? loader.item.doc.pageCount : 0
-  // The page being read: the one across the view's middle. Qt's own
-  // currentPage moves only on a jump or a scrollbar drag, so after the
-  // touchpad, the wheel or the keys it said the page jumped to last (the
-  // foot read "page 5" over page 2, 2026-11-17); it is worked out here
-  // from where the view is instead, as it scrolls.
-  property int current: 0
+  // The page being read: the one across the view's middle.
+  readonly property int current: pane.view ? pane.view.currentPage : 0
   readonly property bool ready: loader.item ? loader.item.doc.status === PdfDocument.Ready : false
   readonly property string error: loader.item && loader.item.doc.status === PdfDocument.Error ? "this PDF could not be read" : ""
 
@@ -260,8 +257,7 @@ Item {
     id: tipShowTimer
     interval: 250
     onTriggered: {
-      var t = pane.table()
-      pane.tipY = t ? t.contentY : 0
+      pane.tipY = pane.view ? pane.view.flick.contentY : 0
       pane.tipOn = pane.tipHas()
     }
   }
@@ -270,8 +266,7 @@ Item {
   // acronym hovered just after End, so Enter did nothing).
   property real tipY: 0
   function tipScrolled() {
-    var t = pane.table()
-    if (!pane.tipOn || !t || Math.abs(t.contentY - pane.tipY) < page.sp(12)) return
+    if (!pane.tipOn || !pane.view || Math.abs(pane.view.flick.contentY - pane.tipY) < page.sp(12)) return
     pane.tipOn = false
     pane.hoverAcro = null
     pane.markHovers = []
@@ -334,8 +329,6 @@ Item {
   readonly property string readPath: (page.noteService.config && page.noteService.config.read)
     || (Quickshell.env("HOME") + "/.local/bin/longhand-read")
   property var readQueue: []
-  // The page delegates a layer of marks was put into.
-  property var dressed: []
   property int selectionRev: 0
 
   visible: rel !== ""
@@ -347,7 +340,6 @@ Item {
     pane.askingTag = false
     pane.jumpingPage = false
     pane.pendingAskMark = ""
-    pane.dressed = []
     pane.picked = ""; pane.lastMade = ""; pane.readError = ""; pane.noting = false; noteField.text = ""
     pane.readQueue = []
     pane.acro = ({ byShort: {}, list: [], spots: {} })
@@ -359,51 +351,18 @@ Item {
 
   // Where the view is now, or null while there is nothing to read: the
   // page and how far down it at the view's top, or `down` (0 to 1) of the
-  // way down the view.
-  // Read from the pages where the view has laid them (`laid`), as `jumpTo`
-  // goes by them too; the heights added up only before any is laid.
+  // way down the view. Read from where the view lays each page, which is
+  // where `jumpTo` goes.
   function here(down) {
-    var t = pane.table()
-    if (!t || !pane.ready || !loader.item) return null
-    var y = t.contentY + (down || 0) * t.height
-    var at = Places.onRows(pane.laid(), t.rowSpacing || 0, y)
-    if (!at) {
-      var doc = loader.item.doc, s = pane.view.renderScale, heights = []
-      for (var i = 0; i < pane.pages; i++) heights.push(doc.pagePointSize(i).height * s)
-      at = Places.at(heights, t.rowSpacing || 0, y - t.originY)
-    }
+    if (!pane.view || !pane.ready) return null
+    var f = pane.view.flick
+    var at = pane.view.placeAt(f.contentY + (down || 0) * f.height)
     if (!at) return null
     at.zoom = pane.zoom
     return at
   }
-  // The pages the view has laid now: { page, top, h }, `top` in the
-  // scroller's own pixels. Only those it holds at their page (it keeps
-  // spare ones, hidden, to use again).
-  function laid() {
-    var t = pane.table(), out = []
-    if (!t) return out
-    var kids = t.contentItem.children
-    for (var i = 0; i < kids.length; i++) {
-      var k = kids[i]
-      if (k.index === undefined || k.index < 0 || t.itemAtCell(Qt.point(0, k.index)) !== k) continue
-      out.push({ page: k.index, top: k.y, h: k.height })
-    }
-    return out
-  }
-  function track() {
-    var at = pane.here(0.5)
-    pane.current = at ? at.page : 0
-  }
-  Timer { id: trackTimer; interval: 50; onTriggered: pane.track() }
-  Connections {
-    target: pane.table()
-    ignoreUnknownSignals: true
-    function onContentYChanged() { trackTimer.restart() }
-    function onHeightChanged() { trackTimer.restart() }
-  }
   // A page down or up (PgDn, Space, PgUp): as far down the next page as
-  // the view's top is down this one. Qt's goToPage counted from its own
-  // current page, which the touchpad never moved.
+  // the view's top is down this one.
   function turn(d) {
     var at = pane.here()
     if (!at || !pane.view) return
@@ -435,17 +394,10 @@ Item {
       pane.fit()
       if (p && pane.view) {
         var h = loader.item.doc.pagePointSize(p.page).height
-        // Put as `here` reads it back, by the page laid; Qt's own jump went
-        // by its guess at the pages' places, and the place read back was
-        // another (2026-11-22).
-        pane.place(p.page, p.frac * h)
+        pane.view.place(p.page, p.frac * h)
         pane.resumed = p
       }
       pane.settled = true
-      pane.track()
-      pane.dress()
-      pane.alignSoon()
-      pane.redrawSoon()
       pane.showPending()
     })
   }
@@ -459,185 +411,73 @@ Item {
     return "file://" + path.split("/").map(encodeURIComponent).join("/")
   }
 
-  // The view keeps its scroller to itself; it is the child that scrolls.
-  function table() {
-    if (!pane.view) return null
-    var kids = pane.view.children
-    for (var i = 0; i < kids.length; i++) if (kids[i].rowSpacing !== undefined && kids[i].contentY !== undefined) return kids[i]
-    return null
-  }
-  function scrollBy(dy) {
-    var t = pane.table()
-    if (!t) return
-    glide.stop()
-    t.contentY = Math.max(t.originY, Math.min(t.originY + t.contentHeight - t.height, t.contentY + dy))
-  }
+  function scrollBy(dy) { if (pane.view) pane.view.scrollBy(dy) }
   // A jump to a place: page `index` (from 0), `y` points down it at the
   // view's top. It glides there up or down only, the page kept centred
-  // (2026-11-19): Qt's own jump put the place against the view's left
-  // and slid the page sideways to it, after the page had been centred,
-  // its right side cut off beside the chat. Worked out from where the view
-  // has laid the page, as `here` reads it back: not from the pages'
-  // heights added up, which the view does not keep to once it is made
-  // larger or smaller far down (2026-11-22: a quote on page 14, clicked,
-  // went to page 16, the foot saying 14; the fit to the text after the
-  // paper opened where it was left did it). A page not laid yet is laid
-  // by the view at the place, and the glide is the last stretch to it.
+  // (2026-11-19: Qt's own jump slid the page sideways), to where the view
+  // lays the page (2026-11-22: Qt's view laid pages elsewhere than their
+  // heights said after a resize far down, and a quote on page 14 went to
+  // page 16).
   function jumpTo(index, y) {
-    var t = pane.table()
-    if (!t || !pane.ready || !loader.item) return
-    glide.stop()
-    pane.align()
-    var from = t.contentY, wasLaid = t.itemAtCell(Qt.point(0, index)) !== null
-    var to = pane.placeOf(index, y)
-    if (to === null) return
-    if (Math.abs(to - from) < 1) { t.contentY = to; return }
-    // A page the view had to lay: from most of a view away, on the side
-    // it came from, so the pages in between are laid one from the next.
-    if (!wasLaid) {
-      var lead = Math.min(Math.abs(to - from), t.height * 0.75)
-      t.contentY = to + (from < to ? -lead : lead)
-    }
-    glide.target = t
-    glide.from = t.contentY
-    glide.to = to
-    glide.start()
+    if (!pane.ready || !pane.view) return
+    pane.view.jumpTo(index, y)
   }
-  // Where the view's top goes for page `index` (from 0), `y` points down
-  // it, by where the view has laid that page; one not laid yet the view
-  // lays first, at the place (and moves there). Null when it cannot. Not
-  // the view's own place: it puts it a pixel short, in the gap above the
-  // page (End read as the page before's foot).
-  function placeOf(index, y) {
-    var t = pane.table()
-    if (!t || !pane.view) return null
-    var s = pane.view.renderScale
-    var item = t.itemAtCell(Qt.point(0, index))
-    if (!item) {
-      t.positionViewAtRow(index, TableView.AlignTop, y * s)
-      t.forceLayout()
-      item = t.itemAtCell(Qt.point(0, index))
-    }
-    if (!item) return null
-    return Math.max(t.originY, Math.min(t.originY + Math.max(0, t.contentHeight - t.height), item.y + y * s))
+  // A link inside the PDF: glided to, as any jump, and the back key
+  // returns (a reference followed to the bibliography, then back).
+  function followLink(link) {
+    if (link.page < 0) { Qt.openUrlExternally(link.url); return }
+    pane.jumpBack = pane.here()
+    pane.jumpTo(link.page, Math.max(0, (link.location.y >= 0 ? link.location.y : 0) - 30))
+    keys.forceActiveFocus()
+    page.used("pdf", "link")
   }
-  // The view put there at once: opening where it was left, after a fit.
-  function place(index, y) {
-    glide.stop()
-    var to = pane.placeOf(index, y)
-    if (to !== null) pane.table().contentY = to
-  }
-  NumberAnimation { id: glide; property: "contentY"; duration: 400; easing.type: Easing.OutQuart }
   // Fitted by its text (2026-11-15): a paper's margins are a fifth of its
-  // width or more, so the text, not the paper, is fitted to the column.
-  // Qt's view keeps a page larger than the column centred (and its left
-  // side out of reach), so the fit is made about the page's middle: as
-  // large as the text's farther side allows. A paper with even margins
-  // fills the column; a lopsided one a little less, never cut. `0`
-  // switches to the whole page and back. A PDF with no words (or too few)
-  // is fitted by its page.
+  // width or more, so the text, not the paper, is fitted to the column,
+  // about the page's middle (the page stays centred): as large as the
+  // text's farther side allows. A paper with even margins fills the
+  // column; a lopsided one a little less, never cut. `0` switches to the
+  // whole page and back. A PDF with no words (or too few) is fitted by its
+  // first page's width.
   property bool wholePage: false
   readonly property var span: !pane.wholePage && pane.read && pane.read.span ? pane.read.span : null
   readonly property real spanPad: 14     // points kept beside the text
-  // What the fit makes before the zoom, so a pinch (Qt's own, which sets
-  // the view's scale) is taken back as the zoom: kept with the PDF's
-  // place, through the next fit, and sideways scrolling with it.
+  // What the fit makes before the zoom: a pinch is taken back as the zoom
+  // over it, so the next fit keeps it.
   property real fitBase: 0
-  property bool fitting: false
-  Connections {
-    target: pane.view
-    ignoreUnknownSignals: true
-    function onRenderScaleChanged() {
-      if (pane.fitting || !pane.settled || pane.fitBase <= 0) return
-      pane.zoom = Math.max(0.3, Math.min(4, pane.view.renderScale / pane.fitBase))
-    }
-    // Qt's own jump, a link inside the PDF: the page centred after it.
-    function onCurrentPageChanged() { pane.alignSoon() }
-  }
   function fit() {
     if (!pane.view || !pane.ready) return
-    var at = pane.settled ? pane.here() : null
-    var prevScale = pane.view.renderScale
-    pane.fitting = true
     var w = Math.max(100, pane.width)
     if (pane.span) {
       var mid = pane.span.w / 2
       var reach = Math.max(mid - pane.span.x0, pane.span.x1 - mid) + pane.spanPad
-      pane.view.renderScale = (w / 2) / Math.max(1, reach)
+      pane.fitBase = (w / 2) / Math.max(1, reach)
     }
-    // The column's whole width: the view lays a narrower page against its
-    // right edge rather than centring it.
-    else pane.view.scaleToWidth(w, pane.height)
-    pane.fitBase = pane.view.renderScale
-    pane.view.renderScale = pane.view.renderScale * pane.zoom
-    pane.fitting = false
-    if (at && loader.item && Math.abs(pane.view.renderScale - prevScale) > 0.001) {
-      var h = loader.item.doc.pagePointSize(at.page).height
-      pane.place(at.page, at.frac * h)
-    }
-    pane.alignSoon()
-    pane.redrawSoon()
-  }
-  // The view's own column is a little wider than the pane (its scrollbar);
-  // centred in it, so the page's middle is the pane's. Laid out again
-  // first: Qt's view measures its column before it has taken in a new
-  // size, so its width was the one before (2026-11-19: fitted by its text,
-  // the page stood against the column's left and its right side was cut,
-  // beside the chat; a fit to the whole page left it too far left).
-  function align() {
-    var t = pane.table()
-    if (!t) return
-    t.forceLayout()
-    t.contentX = t.originX + Math.max(0, (t.contentWidth - t.width) / 2)
-  }
-  Timer { id: alignTimer; interval: 60; onTriggered: pane.align() }
-  function alignSoon() { alignTimer.restart() }
-  // A page's picture is drawn asynchronously by Qt, and two drawings can
-  // race: the page the view was put back to on opening, and the same pages
-  // again at the size the fit to the text makes (the text's span arrives
-  // after the PDF). The older could land last, and a page showed another
-  // page's picture under its own marks (2026-11-18: page 2's words, page 5's
-  // two questions, "page 5" in the foot). So once things settle — after
-  // opening, a fit, a scroll — each page shown is drawn again, its own:
-  // the same frame at a size one pixel off, which Qt draws anew, the old
-  // picture kept until the new one is ready.
-  property bool nudged: false
-  Timer { id: redrawTimer; interval: 350; onTriggered: pane.redrawPages() }
-  function redrawSoon() { redrawTimer.restart() }
-  function redrawPages() {
-    pane.nudged = !pane.nudged
-    for (var i = 0; i < pane.dressed.length; i++) {
-      var h = pane.dressed[i]
-      var paper = h && h.selection ? h.selection.parent : null
-      if (!paper) continue
-      for (var k = 0; k < paper.data.length; k++) {
-        var o = paper.data[k]
-        if (String(o).indexOf("PdfPageImage") < 0) continue
-        if (o.currentFrame !== h.index) o.currentFrame = h.index
-        var w = paper.pagePointSize.width * pane.view.renderScale * Screen.devicePixelRatio
-        o.sourceSize.width = Math.round(w) + (pane.nudged ? 1 : 0)
-      }
-    }
-  }
-  Connections {
-    target: pane.table()
-    ignoreUnknownSignals: true
-    function onContentWidthChanged() { pane.alignSoon() }
+    else pane.fitBase = w / Math.max(1, loader.item.doc.pagePointSize(0).width)
+    // The view's top kept where it is, the pages centred.
+    pane.view.setScale(pane.fitBase * pane.zoom, -1, 0)
   }
   onWidthChanged: Qt.callLater(pane.fit)
   onZoomChanged: Qt.callLater(pane.fit)
   onSpanChanged: Qt.callLater(pane.fit)
-  onReadyChanged: if (ready) { Qt.callLater(pane.fit); Qt.callLater(pane.arrive); dressTimer.restart() }
-  // The view makes its page delegates when it lays out; a moment after it
-  // is ready, and as it scrolls, each gets its layer of marks.
-  Timer { id: dressTimer; interval: 300; onTriggered: pane.dress() }
+  onReadyChanged: if (ready) { Qt.callLater(pane.fit); Qt.callLater(pane.arrive) }
 
   // A pause in scrolling notes the place.
   Timer { id: keepTimer; interval: 800; onTriggered: pane.keep() }
   Connections {
-    target: pane.settled ? pane.table() : null
-    ignoreUnknownSignals: true
-    function onContentYChanged() { keepTimer.restart(); Qt.callLater(pane.dress); pane.tipScrolled() }
+    target: pane.settled && pane.view ? pane.view.flick : null
+    function onContentYChanged() { keepTimer.restart(); pane.tipScrolled(); if (pane.view.selectedText !== "") pane.selectionRev++ }
+  }
+  Connections {
+    target: pane.view
+    // Words selected on a page bring the keys here, wherever they were (a
+    // PDF opened from the Files tree leaves them in the sidebar): `m` and
+    // `q` must reach the words just selected.
+    function onSelectionMade(text) {
+      pane.selectionRev++
+      if (text !== "" && !pane.noting) keys.forceActiveFocus()
+    }
+    // A pinch sizes the view itself, about the fingers: taken as the zoom.
+    function onPinched() { if (pane.fitBase > 0) pane.zoom = pane.view.renderScale / pane.fitBase }
   }
   FileView {
     id: placesFile
@@ -774,15 +614,10 @@ Item {
   function reveal(box) {
     if (!pane.view || !box || !box.rects || box.rects.length === 0) return
     var s = pane.view.renderScale, first = box.rects[0], last = box.rects[box.rects.length - 1]
-    for (var k = 0; k < pane.dressed.length; k++) {
-      var h = pane.dressed[k]
-      if (!h || h.index !== box.page || !h.visible || !h.selection || !h.selection.parent) continue
-      var top = h.selection.parent.mapToItem(pane, 0, first[1] * s).y
-      var foot = h.selection.parent.mapToItem(pane, 0, (last[1] + last[3]) * s).y
-      var bottom = pane.finding ? findBar.y : pane.height
-      if (top >= page.sp(24) && foot <= bottom - page.sp(12)) return
-      break
-    }
+    var top = pane.view.pageTop(box.page) + first[1] * s
+    var foot = pane.view.pageTop(box.page) + (last[1] + last[3]) * s
+    var bottom = pane.finding ? findBar.y : pane.height
+    if (top >= page.sp(24) && foot <= bottom - page.sp(12)) return
     var room = (pane.finding ? findBar.y : pane.height) * 0.3
     pane.jumpTo(box.page, Math.max(0, first[1] - room / s))
   }
@@ -895,24 +730,11 @@ Item {
     return null
   }
 
-  // A mouse drag selects words; it never moves the pages. Qt's view is a
-  // Flickable a little wider than the column, so a drag panned it sideways
-  // (or up and down) instead of selecting (seen 2026-11-15). Its dragging is
-  // turned off; the touchpad scrolls it as it does the note (TouchScroll,
-  // with its glide), a mouse wheel through `wheel` below.
-  property Item tamed: null
-  function tame(t) {
-    if (pane.tamed === t) return
-    t.interactive = false
-    // Qt's own jumps (a link inside the PDF) land at once, then centred
-    // (its glide went sideways); longhand's glide up and down: `jumpTo`.
-    t.animate = false
-    touchScroll.createObject(t.contentItem, { flickable: t })
-    pane.tamed = t
-  }
-  Component { id: touchScroll; TouchScroll {} }
+  // A mouse drag selects words; it never moves the pages (PdfPages.qml).
+  // The touchpad scrolls it as it does the note (TouchScroll, with its
+  // glide), a mouse wheel through `wheel` below.
   function wheel(ev) {
-    var t = pane.table()
+    var t = pane.view ? pane.view.flick : null
     if (!t) { ev.accepted = false; return }
     // Ctrl and the wheel: larger or smaller, as = and - (2026-11-19: it
     // did nothing; only a pinch zoomed, Qt's own, and the next fit lost it).
@@ -926,41 +748,13 @@ Item {
     if (dy !== 0) pane.scrollBy(-dy)
     // Sideways only when it is sized up past the fit: fitted, the margins
     // beside the text are out of view on purpose.
-    if (dx !== 0 && pane.zoom > 1.01 && t.contentWidth - t.width > page.sp(40))
-      t.contentX = Math.max(t.originX, Math.min(t.originX + t.contentWidth - t.width, t.contentX - dx))
+    if (dx !== 0 && pane.view.canSideways()) t.contentX = pane.view.clampX(t.contentX - dx)
   }
   WheelHandler {
     target: null
     onWheel: function (ev) { pane.wheel(ev) }
   }
 
-  // Put a layer of marks into every page delegate the view has made.
-  function dress() {
-    var t = pane.table()
-    if (!t || !t.contentItem) return
-    pane.tame(t)
-    var kids = t.contentItem.children
-    for (var i = 0; i < kids.length; i++) {
-      var h = kids[i]
-      if (h.selection === undefined || h.index === undefined || pane.dressed.indexOf(h) >= 0) continue
-      var paper = h.selection.parent
-      if (!paper) continue
-      // Another PDF opened in its place keeps the view and its holders: a
-      // holder already dressed for the one before is not dressed again
-      // (it drew every mark twice, a shade darker).
-      if (pane.hasLayer(paper)) { pane.dressed = pane.dressed.concat([h]); continue }
-      marksLayer.createObject(paper, { holder: h, paper: paper })
-      pane.watch(h)
-      pane.touchpad(paper)
-      pane.darken(paper)
-      pane.dressed = pane.dressed.concat([h])
-    }
-  }
-  function hasLayer(paper) {
-    for (var i = 0; i < paper.children.length; i++)
-      if (paper.children[i].holder !== undefined && paper.children[i].count !== undefined) return true
-    return false
-  }
   // Dark pages (plan.md item 15, step 4): `i` draws the paper's pages in
   // the theme's colours — white paper the ground, black ink the text, a
   // figure's colours kept (dark-page.frag) — off by default, kept per paper
@@ -985,17 +779,6 @@ Item {
       property color ground: pane.darkGround
       property color ink: page.foreground
       fragmentShader: Qt.resolvedUrl("dark-page.frag.qsb")
-    }
-  }
-  function darken(paper) {
-    // Qt lays each page's picture on a white sheet (the paper, the picture
-    // see-through around the ink): the sheet takes the ground too.
-    paper.color = Qt.binding(function () { return pane.dark ? pane.darkGround : "white" })
-    for (var i = 0; i < paper.data.length; i++) {
-      var o = paper.data[i]
-      if (String(o).indexOf("PdfPageImage") < 0) continue
-      o.layer.effect = darkPage
-      o.layer.enabled = Qt.binding(function () { return pane.dark })
     }
   }
   FileView {
@@ -1041,49 +824,14 @@ Item {
     onRunningChanged: if (!running && ocrProc.forRel === pane.rel) pane.ocrProgress = null
   }
 
-  // Qt's page selects words with a drag from a mouse or a stylus only; on
-  // a laptop the touchpad is its own kind of device, so a drag there
-  // selected nothing (2026-11-15, seen on both laptops: first as the pages
-  // sliding, then as nothing at all). The page's drag and click take the
-  // touchpad too.
-  function touchpad(paper) {
-    for (var i = 0; i < paper.data.length; i++) {
-      var o = paper.data[i], name = String(o)
-      if ((name.indexOf("DragHandler") >= 0 || name.indexOf("TapHandler") >= 0)
-          && o.acceptedDevices !== undefined && (o.acceptedDevices & PointerDevice.Mouse))
-        o.acceptedDevices = o.acceptedDevices | PointerDevice.TouchPad
-    }
-  }
-  // Words selected on a page bring the keys here, wherever they were (a
-  // PDF opened from the Files tree leaves them in the sidebar): `m` and `q`
-  // must reach the words just selected.
-  function watch(h) {
-    // A holder handed another page as the view scrolls: drawn again once
-    // the scrolling stops (redrawPages says why).
-    h.indexChanged.connect(function () { pane.redrawSoon() })
-    h.selection.textChanged.connect(function () {
-      pane.selectionRev++
-      if (h.selection && h.selection.text !== "" && !pane.noting) keys.forceActiveFocus()
-    })
-  }
-  Connections {
-    target: pane.table() ? pane.table().contentItem : null
-    ignoreUnknownSignals: true
-    function onChildrenChanged() { Qt.callLater(pane.dress) }
-  }
-  Connections {
-    target: pane.table()
-    ignoreUnknownSignals: true
-    function onContentYChanged() { if (pane.view && pane.view.selectedText !== "") pane.selectionRev++ }
-  }
-
   // The words selected now: { page (from 0), text, y (points), holder }, or null.
   function selected() {
     pane.selectionRev
     if (!pane.view || pane.view.selectedText === "") return null
-    for (var i = 0; i < pane.dressed.length; i++) {
-      var h = pane.dressed[i]
-      if (!h || h.selection === undefined || h.selection.text === "" || h.selection.text !== pane.view.selectedText) continue
+    var ds = pane.view.drawn()
+    for (var i = 0; i < ds.length; i++) {
+      var h = ds[i]
+      if (h.selection.text === "" || h.selection.text !== pane.view.selectedText) continue
       var s = pane.view.renderScale || 1
       return { page: h.index, text: h.selection.text, y: Math.min(h.selection.from.y, h.selection.to.y) / s, holder: h }
     }
@@ -1127,10 +875,7 @@ Item {
     if (Math.abs(pane.zoom - 1) > 0.01) pane.zoom = 1
     else { pane.wholePage = !pane.wholePage; Qt.callLater(pane.fit) }
   }
-  function clearSelection() {
-    for (var i = 0; i < pane.dressed.length; i++) if (pane.dressed[i] && pane.dressed[i].selection) pane.dressed[i].selection.clear()
-    if (pane.view) pane.view.selectedText = ""
-  }
+  function clearSelection() { if (pane.view) pane.view.clearSelection() }
 
   // Keep the words given as a mark (`h` or `q`).
   function markText(pageIndex, text, y, kind) {
@@ -1245,7 +990,7 @@ Item {
     onRunningChanged: if (!running) Qt.callLater(pane.readNext)
   }
 
-  // The layer put into each page delegate: the marks on the page it holds.
+  // The layer over each page drawn: the marks on it.
   Component {
     id: marksLayer
     // Not `layer`: every Item has a `layer` of its own (its effects), and
@@ -1253,11 +998,8 @@ Item {
     // mark came out with no size (2026-11-15).
     Item {
       id: sheet
-      property Item holder
-      property Item paper
-      anchors.fill: parent
-      readonly property int index: holder ? holder.index : -1
-      readonly property real s: paper && paper.pageScale ? paper.pageScale : 1
+      property int index: -1
+      readonly property real s: pane.view ? pane.view.renderScale : 1
       readonly property var rects: pane.rectsOn(sheet.index)
       readonly property int count: painted.count
       TapHandler {
@@ -1270,7 +1012,8 @@ Item {
       // (PdfMarks.paint says why).
       Repeater {
         id: painted
-        model: Marks.paint(sheet.rects, 1.5 / sheet.s)
+        // Joined at the size drawn, not each step of a pinch.
+        model: Marks.paint(sheet.rects, 1.5 / (pane.view ? pane.view.drawScale : 1))
         delegate: Rectangle {
           required property var modelData
           x: modelData.x * sheet.s
@@ -1437,29 +1180,58 @@ Item {
     Keys.onPressed: function (event) { if (pane.key(event)) event.accepted = true }
   }
 
-  TextField {
-    id: noteField
+  // `n`: a note under a mark, in a panel as the find bar's (2026-11-22: a
+  // bare field, see-through, lay over the page's words).
+  Rectangle {
+    id: noteBar
     visible: pane.noting
+    z: 3
     anchors.bottom: foot.top
-    anchors.bottomMargin: page.sp(4)
+    anchors.bottomMargin: page.sp(6)
     width: Math.min(parent.width, page.sp(520))
-    placeholderText: {
-      var m = pane.markById(pane.notingId)
-      if (!m) return "a note"
-      var t = m.text.length > 40 ? m.text.substring(0, 40) + "…" : m.text
-      return "a note on “" + t + "” (p. " + m.page + ")"
-    }
-    font.family: page.fontFamily
-    font.styleName: page.fontStyle
-    font.pixelSize: page.fs(Style.font.bodySmall)
-    foreground: page.foreground
-    z: 2
-    Keys.priority: Keys.BeforeItem
-    Keys.onPressed: function (event) {
-      if (page.anywhereKey(event)) { event.accepted = true; return }
-      var seq = Sc.fromEvent(event)
-      if (seq === "Enter") { pane.saveNote(); event.accepted = true }
-      else if (seq === "Esc") { pane.noting = false; keys.forceActiveFocus(); event.accepted = true }
+    height: noteColumn.implicitHeight + page.sp(16)
+    radius: Style.cornerRadius
+    color: page.palette.background
+    border.width: 1
+    border.color: page.accent
+    Column {
+      id: noteColumn
+      x: page.sp(10)
+      y: page.sp(8)
+      width: parent.width - page.sp(20)
+      spacing: page.sp(4)
+      Text {
+        width: parent.width
+        textFormat: Text.PlainText
+        wrapMode: Text.WordWrap
+        maximumLineCount: 2
+        elide: Text.ElideRight
+        text: {
+          var m = pane.markById(pane.notingId)
+          var t = !m ? "" : m.text.length > 60 ? m.text.substring(0, 60) + "…" : m.text
+          return (m ? "A note under “" + t + "” (p. " + m.page + ")" : "A note") + " · Enter keeps it · Esc"
+        }
+        color: page.dim
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.caption)
+      }
+      TextField {
+        id: noteField
+        width: parent.width
+        placeholderText: "your note"
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.bodySmall)
+        foreground: page.foreground
+        Keys.priority: Keys.BeforeItem
+        Keys.onPressed: function (event) {
+          if (page.anywhereKey(event)) { event.accepted = true; return }
+          var seq = Sc.fromEvent(event)
+          if (seq === "Enter") { pane.saveNote(); event.accepted = true }
+          else if (seq === "Esc") { pane.noting = false; keys.forceActiveFocus(); event.accepted = true }
+        }
+      }
     }
   }
 
@@ -1847,11 +1619,22 @@ Item {
       property alias doc: doc
       property alias view: view
       PdfDocument { id: doc; source: pane.url() }
-      PdfMultiPageView {
+      PdfPages {
         id: view
         anchors.fill: parent
         document: doc
-        clip: true
+        live: pane.settled
+        minScale: 0.3 * (pane.fitBase || 1)
+        maxScale: 4 * (pane.fitBase || 1)
+        sidewaysScale: 1.01 * (pane.fitBase || 1)
+        slack: page.sp(40)
+        dark: pane.dark
+        // The paper under each page's picture (see-through around the
+        // ink): the ground too, dark.
+        paperColor: pane.dark ? pane.darkGround : "white"
+        darkEffect: darkPage
+        overlay: marksLayer
+        onLinkTapped: function (link) { pane.followLink(link) }
       }
     }
   }

@@ -7,29 +7,28 @@ import "../plugin-page/PdfPlaces.js" as Places
 TestCase {
   name: "PdfPlaces"
 
-  function test_where_the_view_is() {
-    // Three pages of 1000 px, 10 px between them.
-    var hs = [1000, 1000, 1000]
-    compare(Places.at(hs, 10, 0), { page: 0, frac: 0 })
-    compare(Places.at(hs, 10, 500), { page: 0, frac: 0.5 })
-    compare(Places.at(hs, 10, 1005), { page: 0, frac: 1 })      // in the gap: still the page above
-    compare(Places.at(hs, 10, 1010), { page: 1, frac: 0 })
-    compare(Places.at(hs, 10, 2270), { page: 2, frac: 0.25 })
-    compare(Places.at(hs, 10, 99999), { page: 2, frac: 1 })     // past the end: the last page's foot
-    compare(Places.at(hs, 10, -40), { page: 0, frac: 0 })
-    compare(Places.at([], 10, 0), null)
-  }
-
-  // Read from the pages as the view laid them, not from their heights
-  // added up: after a change of size far down, page 15 can sit where the
-  // heights put page 13.
-  function test_where_the_view_is_by_its_pages() {
-    var rows = [{ page: 15, top: 13000, h: 1000 }, { page: 14, top: 11990, h: 1000 }]
-    compare(Places.onRows(rows, 10, 12490), { page: 14, frac: 0.5 })
-    compare(Places.onRows(rows, 10, 12995), { page: 14, frac: 1 })   // in the gap: the page above
-    compare(Places.onRows(rows, 10, 13000), { page: 15, frac: 0 })
-    compare(Places.onRows(rows, 10, 500), null)                      // on no page laid
-    compare(Places.onRows([], 10, 0), null)
+  // Each page's top, and the page at a place: the view lays its pages
+  // exactly at these tops, at any scale, and reads them back from them.
+  function test_page_tops_and_the_page_at_a_place() {
+    compare(Places.tops([1000, 500, 1000], 6), [0, 1006, 1512])
+    compare(Places.tops([], 6), [])
+    var t = Places.tops([1000, 500, 1000], 6)
+    compare(Places.pageAt(t, 0), 0)
+    compare(Places.pageAt(t, 1003), 0)        // in the gap: the page above
+    compare(Places.pageAt(t, 1006), 1)
+    compare(Places.pageAt(t, 1511.5), 1)
+    compare(Places.pageAt(t, 1512), 2)
+    compare(Places.pageAt(t, 99999), 2)       // past the end: the last
+    compare(Places.pageAt(t, -40), 0)         // above the first: the first
+    compare(Places.pageAt([], 0), -1)
+    // Three hundred pages, any page found again from its own top.
+    var hs = []
+    for (var i = 0; i < 300; i++) hs.push(i % 7 === 0 ? 1188.4 : 1320.75)
+    var big = Places.tops(hs, 6)
+    for (var k = 0; k < 300; k += 13) {
+      compare(Places.pageAt(big, big[k]), k)
+      compare(Places.pageAt(big, big[k] + hs[k] + 5.9), k)
+    }
   }
 
   function test_kept_and_found_again() {

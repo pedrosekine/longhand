@@ -4158,6 +4158,31 @@ def checks() -> int:
             check(p.wait(lambda: abs(laid_at(page_index) - y) < 3 and (pd()["at"] or {}).get("page") == page_index),
                   f"…a jump to page {page_index + 1} ({said}) lands there, as the foot says "
                   f"({laid_at(page_index)} pt down it, wanted {y}; {pd()['at']})")
+        # The view lays every page where the heights before it add up to, at
+        # any size (Longhand's own view, 2026-11-22: Qt's guessed, and kept
+        # stale places after a rescale far down).
+        tops = lambda: json.loads(p.call("pdfTops"))
+        check(tops()["worst"] < 0.5 and abs(tops()["height"] - tops()["want"]) < 0.5,
+              f"every page is laid where the pages' heights put it ({tops()})")
+        p.call("pdfKey", 0x2B, 0)                           # +
+        check(p.wait(lambda: abs(pd()["zoom"] - 1.15 * 1.2) < 0.01) and tops()["worst"] < 0.5,
+              f"…made larger again, still ({tops()})")
+        # A pinch keeps the words under the fingers under them, each step of
+        # the way, and nothing moves when they lift (Qt's scaled one page
+        # alone, then laid them all out again and centred them a moment
+        # later).
+        fx, fy = pd()["width"] * 0.4, 260
+        seen = json.loads(p.call("pdfPinchAt", "1.3", fx, fy))
+        check(all(s["page"] == seen[0]["page"] and abs(s["x"] - seen[0]["x"]) < 0.5 and abs(s["y"] - seen[0]["y"]) < 0.5
+                  for s in seen), f"a pinch: what is under the fingers stays under them ({seen[0]} → {seen[1:]})")
+        time.sleep(0.6)
+        lifted = json.loads(p.call("pdfUnder", fx, fy))
+        check(lifted["page"] == seen[0]["page"] and abs(lifted["x"] - seen[0]["x"]) < 0.5 and abs(lifted["y"] - seen[0]["y"]) < 0.5
+              and abs(pd()["zoom"] - 1.15 * 1.2 * 1.3) < 0.01,
+              f"…and once they lift, nothing moves, the size taken as the zoom ({lifted}, zoom {pd()['zoom']:.3f})")
+        seen = json.loads(p.call("pdfPinchAt", str(1 / 1.3), fx, 500))
+        check(all(abs(s["y"] - seen[0]["y"]) < 0.5 for s in seen), f"…pinched smaller too ({seen[0]} → {seen[-1]})")
+        check(tops()["worst"] < 0.5, f"…every page still where its height puts it ({tops()})")
         p.call("pdfKey", KEY_ESC, 0)
         p.wait(lambda: not pd()["shown"])
         # Ctrl+F (2026-11-17): every place the words are, loosely, listed;
