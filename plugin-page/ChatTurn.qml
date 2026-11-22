@@ -191,14 +191,11 @@ Item {
     font.styleName: page.fontStyle
     font.pixelSize: turn.pixelSize
     onLinkActivated: function (link) { turn.linkActivated(link) }
-    onSelectedTextChanged: {
-      if (selectedText !== "") page.chatSelected(said)
-      // Offered over the box too, while it is selected (the bar, cue 3).
-      if (turn.answerable && selectedText.trim() !== "")
-        page.replyOffer = { pane: turn.pane, at: turn.at, quote: String(selectedText).replace(/\s+/g, " ").trim(), item: turn }
-      else if (page.replyOffer && page.replyOffer.item === turn) page.replyOffer = null
-    }
+    onSelectedTextChanged: if (selectedText !== "") page.chatSelected(said)
     HoverHandler { cursorShape: said.hoveredLink !== "" ? Qt.PointingHandCursor : Qt.IBeamCursor }
+    // The button held down: words still being dragged over (passive, the
+    // selection is the TextEdit's own).
+    PointHandler { id: pressing; acceptedButtons: Qt.LeftButton }
   }
 
   Column {
@@ -269,12 +266,13 @@ Item {
   // hints are — the sheet's darker paper, a faint edge, no shadow — the word
   // and its key set apart, above the selection's first line so it never
   // covers what is picked. The word turns accent under the pointer, as every
-  // button of the page does.
+  // button of the page does. Shown once the button is let go (2026-11-22):
+  // drawn while dragging it jumped with every word and covered the next.
   Rectangle {
     id: replyTool
     readonly property rect start: said.positionToRectangle(Math.min(said.selectionStart, said.selectionEnd))
     readonly property color edge: Qt.rgba(page.foreground.r, page.foreground.g, page.foreground.b, 0.16)
-    visible: turn.answerable && said.selectedText.trim() !== "" && page.chatSelection === said
+    visible: turn.answerable && !pressing.active && said.selectedText.trim() !== "" && page.chatSelection === said
     x: Math.max(0, Math.min(said.x + start.x - page.sp(2), turn.width - width))
     y: said.y + start.y - height - page.sp(8)
     z: 3

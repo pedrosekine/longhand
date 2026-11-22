@@ -1266,6 +1266,11 @@ this list, with *Open, in order* above. Each says why it waits.
   it would point all of them into another file, on the surface typed on
   all day, for a shorter file and no new test. Revisit if the editor's
   wiring is touched for another reason.
+- **An offer over the box for words selected** ("↩ reply to “…”",
+  2026-11-18, taken out 2026-11-22): it redrew its quote on every word
+  dragged over and, appearing and going, moved the chat up and down under
+  the pointer. The toolbar over the selection and Ctrl+R say the same.
+  Revisit only as a fixed line that never changes the pane's height.
 - **By design, not a gap:** the agent never rewords the person's boxes,
   never writes prose, and never raises its own autonomy (it may only
   suggest it, at 9 of the last 10 accepted).
@@ -1337,10 +1342,9 @@ from 2026-09/10 and still stand.
   time … my first answer stays connected to the first passage"; redone the
   same evening as design A, after the first try lost a reply and had two
   boxes that looked alike). Select words in one of the agent's answers,
-  Ctrl+R, "reply" in a toolbar over the selection (the hover hints' darker
-  paper, a faint edge, the word and its keycaps set apart; KeyCaps.qml), or
-  the offer over the box ("↩ reply to “…”", its words in the accent, the
-  frame faint; ReplyOffer.qml): the pane's one box becomes a
+  Ctrl+R, or "reply" in a toolbar over the selection (the hover hints' darker
+  paper, a faint edge, the word and its keycaps set apart; KeyCaps.qml),
+  shown once the button is let go: the pane's one box becomes a
   reply to them — a bar inside it ("↩ replying to ② “…” × esc"), the label
   REPLY n OF n, keys that say "Enter attaches · Esc cancels", the passage
   lit and numbered in the answer; what the box held is set aside and comes

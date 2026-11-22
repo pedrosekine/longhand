@@ -2440,15 +2440,6 @@ Item {
   // are in the pane — the turns never take them — unless the box has a
   // selection of its own.
   property Item chatSelection: null
-  // Words selected in one of the agent's answers, offered over that pane's
-  // box ("↩ reply to “…”", 2026-11-18): { pane, at, quote, item }, or null.
-  property var replyOffer: null
-  function takeOffer() {
-    var o = root.replyOffer
-    if (!o) return
-    if (!(o.item && o.item.answerSelection && o.item.answerSelection())) root.addReply(o.pane, o.quote, o.at)
-    root.replyOffer = null
-  }
   function chatSelected(edit) {
     if (root.chatSelection && root.chatSelection !== edit) root.chatSelection.deselect()
     root.chatSelection = edit
