@@ -97,12 +97,12 @@ def files(vault: Path, on: dict[str, bool], withheld: dict, hide=None) -> list[P
         for p in sorted((vault / folder).rglob("*")):
             if not p.is_file():
                 continue
-            why = _never(str(p.relative_to(vault)))
+            why = _never(p.relative_to(vault).as_posix())
             if why:
                 if why != "type" or p.suffix.lower() in (".docx", ".pptx", ".xlsx", ".odt", ".json", ".env", ".pem", ".key"):
                     withheld[why] = withheld.get(why, 0) + 1
                 continue
-            if hide and hide(str(p.relative_to(vault))):
+            if hide and hide(p.relative_to(vault).as_posix()):
                 withheld["horizon"] = withheld.get("horizon", 0) + 1
                 continue
             out.append(p)
@@ -219,7 +219,7 @@ def search(vault: Path, on: dict[str, bool], words: str, cache: Path, folder: st
     budget = {"until": time.monotonic() + PDF_BUDGET}
     found = []
     for p in files(vault, scope, withheld, hide):
-        rel = str(p.relative_to(vault))
+        rel = p.relative_to(vault).as_posix()
         for where, para in paragraphs(p, cache, budget, withheld):
             low = para.casefold()
             hits = sum(1 for t in set(want) if t in low)
@@ -245,7 +245,7 @@ def read(vault: Path, on: dict[str, bool], rel: str, cache: Path, hide=None, lim
     p = (vault / rel).resolve()
     if vault.resolve() not in p.parents or not p.is_file():
         return {"error": "not a file in the vault"}
-    rel = str(p.relative_to(vault.resolve()))
+    rel = p.relative_to(vault.resolve()).as_posix()
     if _never(rel):
         return {"error": "never shared"}
     if not any(y and (rel == f or rel.startswith(f + "/")) for f, y in on.items()):

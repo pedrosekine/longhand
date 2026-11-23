@@ -61,17 +61,22 @@ store, and says what the page did.
   (`tests/test_pomo_port.py` runs both and compares).
 - The tests run through the runner (`python tests\run_all.py`, or
   `… run_all.py check plan`), which gives each file what Linux gives it for
-  nothing (`tests/windows/`). On 2026-11-23: 53 files pass, 5 are passed
-  over as Omarchy's own (named, with the reason), 17 fail:
+  nothing (`tests/windows/`). On 2026-11-23: 55 files pass, 5 are passed
+  over as Omarchy's own (named, with the reason), 15 fail:
   - no `node` here: blocks, task, keys_guide, manual;
-  - no poppler (`pdftotext`): read, and parts of names, documents, search;
+  - no poppler (`pdftotext`): read, names, documents, and filing_papers by
+    the look of it;
+  - no `gitleaks`: note, convo, search — with nothing to check a passage
+    for secrets, the agent shares none, as it should (and its call writes
+    the report to `/dev/stdout`, which Windows has not);
   - no PyQt6: cursors;
-  - the agent writes a path inside the vault with this system's `\`
-    (`str(p.relative_to(vault))`), where the notes, the page and the other
-    machine have `/`: convo, filing_papers and search for certain; day,
-    documents, names, note, notebook and projects by the look of them;
   - the agent stops a model with `os.killpg` and SIGTERM, which Windows has
-    not: claude_route, stream_child.
+    not: claude_route, stream_child;
+  - projects, on a Monday on any system: it asks for yesterday's week and
+    expects a file touched today in it.
+- A path inside the vault is written with `/` on every system
+  (`.as_posix()`), and a day with no leading zero goes through `day_text`
+  (`%-d` is Linux's): both were the agent's, and both are the same on Linux.
 - A finished session's sound plays; there is no notification yet.
 - No global key, no tray, no bar widgets; no Start menu entry, and the
   programs the agent's extras call (pandoc, poppler, tesseract) are not

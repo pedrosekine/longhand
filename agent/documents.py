@@ -239,7 +239,7 @@ def set_folders(projects: list[tuple[str, str]], vault: Path) -> None:
         rel = m.group(1).strip().strip("/")
         f = (root / rel).resolve()
         if rel and root in f.parents:
-            FOLDERS[tag] = str(f.relative_to(root))
+            FOLDERS[tag] = f.relative_to(root).as_posix()
 
 
 def docs_dir(vault: Path, projects_dir: str, tag: str) -> Path:

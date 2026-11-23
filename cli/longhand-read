@@ -975,7 +975,7 @@ def relink(cfg: dict, note: Note, old: str, new: str, path: Path) -> list[str]:
         dest = new_note_path(cfg, new)
         if dest.stem in (n.stem, f"{n.stem} ({n.parent.name})") and not linked_from(cfg, note.path.stem, note.path):
             vault = Path(cfg["vault"])
-            old_rel = str(note.path.relative_to(vault)) if note.path.is_relative_to(vault) else ""
+            old_rel = note.path.relative_to(vault).as_posix() if note.path.is_relative_to(vault) else ""
             for i, line in enumerate(note.lines[note.body_start():], note.body_start()):
                 if line.strip() == f"# {o.stem}":
                     note.lines[i] = f"# {n.stem}"
@@ -984,7 +984,7 @@ def relink(cfg: dict, note: Note, old: str, new: str, path: Path) -> list[str]:
             os.replace(note.path, dest)
             note.path = dest
             if old_rel:
-                move_talk(cfg, old_rel, str(dest.relative_to(vault)))
+                move_talk(cfg, old_rel, dest.relative_to(vault).as_posix())
             said.append("renamed")
             return said
     note.save()
@@ -1067,7 +1067,7 @@ def cmd_move(cfg: dict, src: str, to: str) -> dict:
     if dest.is_dir() or to.endswith("/"):
         dest = dest / path.name
     try:
-        new = str(dest.resolve().relative_to(vault.resolve()))
+        new = dest.resolve().relative_to(vault.resolve()).as_posix()
     except ValueError:
         fail(f"not in the vault: {dest}")
     if dest.suffix.lower() != ".pdf":
@@ -1098,7 +1098,7 @@ def rel_of(cfg: dict, pdf: str) -> tuple[str, Path]:
     vault = Path(cfg["vault"])
     path = Path(pdf) if pdf.startswith("/") else vault / pdf
     try:
-        rel = str(path.resolve().relative_to(vault.resolve()))
+        rel = path.resolve().relative_to(vault.resolve()).as_posix()
     except ValueError:
         rel = str(path)
     if not path.is_file():
@@ -1117,7 +1117,7 @@ def state(cfg: dict, rel: str, path: Path, note: Note | None) -> dict:
            "ocr": str(copy) if copy and copy.is_file() else ""}
     if not note:
         return out
-    out["note"] = str(note.path.relative_to(Path(cfg["vault"]))) if note.path.is_relative_to(Path(cfg["vault"])) else str(note.path)
+    out["note"] = note.path.relative_to(Path(cfg["vault"])).as_posix() if note.path.is_relative_to(Path(cfg["vault"])) else str(note.path)
     out["tags"] = note.tags()
     for m in note.marks():
         at = place(pages, m["text"], m["page"] - 1, m["after"]) if has_text else None
@@ -1283,7 +1283,7 @@ def cmd_days(cfg: dict) -> dict:
             if not m["day"]:
                 continue
             row = days.setdefault(m["day"], {}).setdefault(pdf, {"pdf": pdf, "title": Path(pdf).stem, "name": paper_name(cfg, pdf), "h": 0, "q": 0,
-                                                                  "note": str(f.relative_to(Path(cfg["vault"])))})
+                                                                  "note": f.relative_to(Path(cfg["vault"])).as_posix()})
             row[m["kind"]] += 1
     return {"days": {d: sorted(v.values(), key=lambda r: r["name"].lower()) for d, v in sorted(days.items())}}
 
@@ -1352,7 +1352,7 @@ def cmd_papers(cfg: dict, tag: str, folder_rel: str = "") -> dict:
     if folder_rel and orphans(cfg):
         vault = Path(cfg["vault"])
         for f in sorted((vault / folder_rel).rglob("*.pdf")) if (vault / folder_rel).is_dir() else []:
-            r = str(f.relative_to(vault))
+            r = f.relative_to(vault).as_posix()
             if not is_private(cfg, r) and not find_note(cfg, r):
                 settle(cfg, r, f, marks=False)
     out = []
@@ -1373,7 +1373,7 @@ def cmd_papers(cfg: dict, tag: str, folder_rel: str = "") -> dict:
         vault = Path(cfg["vault"])
         have = {r["pdf"] for r in out}
         for f in sorted((vault / folder_rel).rglob("*.pdf")) if (vault / folder_rel).is_dir() else []:
-            rel = str(f.relative_to(vault))
+            rel = f.relative_to(vault).as_posix()
             if rel in have or is_private(cfg, rel) or "/archive/" in f"/{rel}" or "/build/" in f"/{rel}" \
                     or any(part.startswith(".") for part in Path(rel).parts):
                 continue
@@ -1414,7 +1414,7 @@ def paper_row(cfg: dict, pdf: str, note: "Note | None", near: str = "") -> dict:
     lit = bool(marks) or any(p.lower() in LITERATURE for p in Path(pdf).parts[:-1])
     return {"pdf": pdf, "title": Path(pdf).stem, "kind": "paper" if lit else "document",
             "missing": not (Path(cfg["vault"]) / pdf).is_file(),
-            "note": str(note.path.relative_to(Path(cfg["vault"]))) if note else "",
+            "note": note.path.relative_to(Path(cfg["vault"])).as_posix() if note else "",
             "h": sum(1 for m in marks if m["kind"] == "h"), "q": sum(1 for m in marks if m["kind"] == "q"),
             "waiting": len(waiting), "questions": [{"id": m["id"], "page": m["page"], "text": m["text"][:240], "note": m["note"][:240]}
                                                    for m in waiting],
