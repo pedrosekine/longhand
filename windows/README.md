@@ -35,9 +35,11 @@ says what the page did.
 
 ## Known, not done
 
-- The keys are not in the note on first open until `focusCenter()` runs: a
-  hidden `focus: true` item holds them. Whether Omarchy wins this by timing
-  is not checked.
+- First open: the page asks the note to take the keys before the note has
+  rows, and a sheet's hidden `focus: true` key catcher keeps them. The host
+  gives them to the note once it has loaded (`Main.qml`, `keysOwed`).
+  Whether Omarchy has the same order on its first open is not checked; if it
+  does, the place to fix it is `NoteEditor.focusNote`.
 - `hyprctl` (pointer follows the pane, raise, key capture) has no stand-in.
 - `pomo` is bash: it reads under Git's bash, and cannot write (no `flock`).
 - No global key, no tray, no bar widgets, no installer.

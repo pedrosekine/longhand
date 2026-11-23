@@ -362,8 +362,11 @@ class Process(QObject):
     def _drain(self, p):
         if p is not self._proc:
             return
-        out = bytes(p.readAllStandardOutput())
-        err = bytes(p.readAllStandardError())
+        try:
+            out = bytes(p.readAllStandardOutput())
+            err = bytes(p.readAllStandardError())
+        except RuntimeError:
+            return      # the host is closing: Qt has the process back already
         if out and isinstance(self._stdout, _Parser):
             self._stdout.feed(out)
         if err and isinstance(self._stderr, _Parser):
