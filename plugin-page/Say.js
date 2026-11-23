@@ -118,6 +118,24 @@ function sayDue(iso, now) {
   return /late/.test(s) ? s : "due " + s
 }
 
+// A project's next session in the sidebar and the switcher: "now · until
+// 12:15 · Gold", "today 13:15 · Gold", "Wed 10:45 · Seminar Room 1",
+// "30 Nov · Paris". The day is counted from `now`, so the page asks again
+// when the day turns (2026-11-23: a page left open overnight said
+// "tomorrow" all the next day).
+function saySession(n, now) {
+  if (!n) return ""
+  if (n.now) return "now · until " + Qt.formatTime(new Date(n.end), "HH:mm") + (n.room ? " · " + n.room : "")
+  var at = new Date(n.at)
+  var today = now ? new Date(now.getTime()) : new Date()
+  today.setHours(0, 0, 0, 0)
+  var days = Math.round((new Date(at.getFullYear(), at.getMonth(), at.getDate()).getTime() - today.getTime()) / 86400000)
+  var when = days === 0 ? "today " + Qt.formatTime(at, "HH:mm")
+    : days === 1 ? "tomorrow " + Qt.formatTime(at, "HH:mm")
+    : days > 1 && days < 7 ? Qt.formatDateTime(at, "ddd HH:mm") : Qt.formatDate(at, "d MMM")
+  return when + (n.room ? " · " + n.room : "")
+}
+
 function sayAge(age) {
   return age === 0 ? "written today" : age === 1 ? "written yesterday" : "written " + age + " days ago"
 }

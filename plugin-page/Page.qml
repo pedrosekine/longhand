@@ -8179,17 +8179,11 @@ Item {
 
   // "now · until 12:15 · Gold", "today 13:15 · Gold", "Wed 10:45 ·
   // Bronze", "19 Oct · Design Lab".
+  // Reading svc.today ties every label to the day: when it turns, they are
+  // said again (and the runner is asked again, onTodayChanged below).
   function sessionLabel(n) {
-    if (!n) return ""
-    if (n.now) return "now · until " + Qt.formatTime(new Date(n.end), "HH:mm") + (n.room ? " · " + n.room : "")
-    var at = new Date(n.at)
-    var today = new Date()
-    today.setHours(0, 0, 0, 0)
-    var days = Math.round((new Date(at.getFullYear(), at.getMonth(), at.getDate()) - today) / 86400000)
-    var when = days === 0 ? "today " + Qt.formatTime(at, "HH:mm")
-      : days === 1 ? "tomorrow " + Qt.formatTime(at, "HH:mm")
-      : days < 7 ? Qt.formatDateTime(at, "ddd HH:mm") : Qt.formatDate(at, "d MMM")
-    return when + (n.room ? " · " + n.room : "")
+    svc.today
+    return Say.saySession(n, new Date())
   }
 
   // A new section (once "start the class"; renamed 2026-10-28, Longhand
@@ -8449,6 +8443,9 @@ Item {
     // Another note in the sheet: the whole of it (a project's part is
     // asked for again by openSection, once it has loaded).
     onFilePathChanged: editor.focusTag = ""
+    // A new day: yesterday's sessions are behind, so the runner is asked
+    // which come next (a page left open overnight, 2026-11-23).
+    onTodayChanged: if (root.projectsListed.length > 0) root.refreshProjects()
     onLoaded: { root.applyText(svc.body); root.reconcilePending = true; root.startCheck(); root.reconcile(); root.openPass(); root.refreshDated() }
     // A write that never said it landed, written again (Service.unstick).
     onStall: root.showHint("a save did not land: writing it again")
