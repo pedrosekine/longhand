@@ -1,0 +1,28 @@
+# Longhand's commands on Windows: `pip install -e windows` (from the repo,
+# into the Python the host runs on) makes pomo.exe, longhand-agent.exe,
+# longhand-check.exe and longhand-read.exe beside python.exe, and `longhand`
+# for the page itself. Each runs the script in the repo: nothing is copied,
+# so a pull is the update.
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "longhand-windows"
+version = "0.1.0"
+description = "Longhand's page and commands on Windows: a host in place of omarchy-shell"
+requires-python = ">=3.11"
+dependencies = ["PySide6>=6.12"]
+
+[project.scripts]
+pomo = "longhand_launch:pomo"
+longhand-agent = "longhand_launch:agent"
+longhand-check = "longhand_launch:check"
+longhand-read = "longhand_launch:read"
+
+[project.gui-scripts]
+longhand = "longhand_host:main"
+
+[tool.setuptools]
+py-modules = ["longhand_launch", "longhand_host", "qs_io", "qs_wayland", "host_api", "spike_check"]

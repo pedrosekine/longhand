@@ -146,6 +146,20 @@ def run(app, engine, box, args, warnings):
 
     def after_external():
         step("external change seen", editorText=text())
+        # A box with a date, written and left: the line becomes a deadline
+        # (the page asks `pomo` what the date means, then keeps it in the store).
+        w = window()
+        key(w, Qt.Key.Key_End, "", Qt.KeyboardModifier.ControlModifier)
+        app.processEvents()
+        type_text(w, "\n- [ ] essay draft due friday 17:00\n")
+        store = box["state"] / "longhand" / "deadlines.tsv"
+        wait(lambda: store.exists() and "essay draft" in store.read_text(encoding="utf-8")
+             and "^d" in box["note"].read_text(encoding="utf-8"),
+             lambda: after_deadline(store), "the dated box in the store and its anchor in the note", 25.0)
+
+    def after_deadline(store):
+        line = next(l for l in box["note"].read_text(encoding="utf-8").split("\n") if "essay draft" in l)
+        step("deadline bound", noteLine=line, store=store.read_text(encoding="utf-8").strip())
         QTimer.singleShot(400, shot)
 
     def shot():

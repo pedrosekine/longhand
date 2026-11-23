@@ -49,7 +49,7 @@ def sandbox(root: Path) -> dict:
     os.environ["XDG_CONFIG_HOME"] = (root / "config").as_posix()
     os.environ["XDG_STATE_HOME"] = (root / "state").as_posix()
     os.environ["LONGHAND_SILENT"] = "1"
-    return {"vault": vault, "note": vault / "daily" / f"{datetime.date.today():%Y-%m-%d}.md"}
+    return {"vault": vault, "state": root / "state", "note": vault / "daily" / f"{datetime.date.today():%Y-%m-%d}.md"}
 
 
 def main() -> int:
