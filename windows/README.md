@@ -29,6 +29,16 @@ folder on its children's PATH; for a terminal, put it on yours.
 .venv\Scripts\longhand --overlay                          # the unpinned shape
 ```
 
+What the agent's extras call, and some tests: `gitleaks` (without it the
+agent shares no passage: it cannot check one for secrets), poppler's
+`pdftotext` (papers), and `node` (two tests compare the JS with the Python).
+
+```powershell
+winget install Gitleaks.Gitleaks
+winget install oschwartz10612.Poppler
+winget install OpenJS.NodeJS.LTS
+```
+
 `python windows\longhand_host.py --sandbox DIR --check out.json --shot out.png`
 types into the note as a keyboard would, saves, reads the file back, writes
 into it from outside, writes a box with a date and waits for it in the
@@ -61,19 +71,20 @@ store, and says what the page did.
   (`tests/test_pomo_port.py` runs both and compares).
 - The tests run through the runner (`python tests\run_all.py`, or
   `… run_all.py check plan`), which gives each file what Linux gives it for
-  nothing (`tests/windows/`). On 2026-11-23: 55 files pass, 5 are passed
-  over as Omarchy's own (named, with the reason), 15 fail:
-  - no `node` here: blocks, task, keys_guide, manual;
-  - no poppler (`pdftotext`): read, names, documents, and filing_papers by
-    the look of it;
-  - no `gitleaks`: note, convo, search — with nothing to check a passage
-    for secrets, the agent shares none, as it should (and its call writes
-    the report to `/dev/stdout`, which Windows has not);
+  nothing (`tests/windows/`). On 2026-11-23, with gitleaks, poppler and
+  node installed: 66 files pass, 5 are passed over as Omarchy's own (named,
+  with the reason), 4 fail:
   - no PyQt6: cursors;
   - the agent stops a model with `os.killpg` and SIGTERM, which Windows has
-    not: claude_route, stream_child;
-  - projects, on a Monday on any system: it asks for yesterday's week and
-    expects a file touched today in it.
+    not: claude_route (3 of its 47 checks), stream_child;
+  - projects (1 of its 51), on a Monday on any system: it asks for
+    yesterday's week and expects a file touched today in it.
+- Two holes in what the agent keeps back, both Windows' alone, found by the
+  suite and closed: gitleaks was told to report to `/dev/stdout`, failed,
+  said nothing, and that read as "no secret found"; and a day before the
+  agent's horizon was known by its folder as text, `human\Daily`, which
+  never matched. A passage with a token, or a day the agent was never
+  shown, would have been sent.
 - A path inside the vault is written with `/` on every system
   (`.as_posix()`), and a day with no leading zero goes through `day_text`
   (`%-d` is Linux's): both were the agent's, and both are the same on Linux.

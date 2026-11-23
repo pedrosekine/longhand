@@ -360,7 +360,7 @@ def horizon_hide(cfg: dict):
 
     def hide(rel: str) -> bool:
         p = Path(rel)
-        return str(p.parent) == daily and p.suffix.lower() == ".md" and before_horizon(cfg, p.stem)
+        return p.parent.as_posix() == daily and p.suffix.lower() == ".md" and before_horizon(cfg, p.stem)
     return hide
 
 
