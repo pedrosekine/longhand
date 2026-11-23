@@ -127,7 +127,7 @@ def run(tmp: pathlib.Path) -> int:
     wed = today + dt.timedelta(days=2)
     (stub / "pomo_when").write_text(f"{ts(wed)}\t{wed:%a %d %b}")
     env = dict(os.environ, LONGHAND_CONFIG=str(cfg), XDG_STATE_HOME=str(tmp / "state"), XDG_CONFIG_HOME=str(cfgdir),
-               STUB_DIR=str(stub), PATH=f"{bindir}:{os.environ['PATH']}")
+               STUB_DIR=str(stub), PATH=f"{bindir}{os.pathsep}{os.environ['PATH']}")
 
     def agent(*args):
         return subprocess.run([sys.executable, str(AGENT), *args], capture_output=True, text=True, env=env)

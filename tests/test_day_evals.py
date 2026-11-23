@@ -141,7 +141,7 @@ def end_to_end(tmp: pathlib.Path) -> None:
     stub = tmp / "stub"
     stub.mkdir()
     env = dict(os.environ, LONGHAND_CONFIG=str(cfg), XDG_STATE_HOME=str(tmp / "state"), XDG_CONFIG_HOME=str(cfgdir),
-               STUB_DIR=str(stub), PATH=f"{bindir}:{os.environ['PATH']}")
+               STUB_DIR=str(stub), PATH=f"{bindir}{os.pathsep}{os.environ['PATH']}")
 
     def agent(*args, ok=True):
         r = subprocess.run([sys.executable, str(AGENT), *args], capture_output=True, text=True, env=env)

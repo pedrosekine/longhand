@@ -59,10 +59,19 @@ store, and says what the page did.
 - `hyprctl` (pointer follows the pane, raise, key capture) has no stand-in.
 - `pomo` is `cli/pomo.py` here: the bash one command for command
   (`tests/test_pomo_port.py` runs both and compares).
-- The tests start the scripts by their path, which Windows cannot (no
-  shebang): only `test_pomo_port.py` and `test_parallel.py` run here as they
-  are. Through the launchers `test_pomo`, `test_dsync` and all of
-  `test_check` but its bash stand-in for `pomo` pass.
+- The tests run through the runner (`python tests\run_all.py`, or
+  `… run_all.py check plan`), which gives each file what Linux gives it for
+  nothing (`tests/windows/`). On 2026-11-24: 53 files pass, 5 are passed
+  over as Omarchy's own (named, with the reason), 17 fail:
+  - no `node` here: blocks, task, keys_guide, manual;
+  - no poppler (`pdftotext`): read, and parts of names, documents, search;
+  - no PyQt6: cursors;
+  - the agent writes a path inside the vault with this system's `\`
+    (`str(p.relative_to(vault))`), where the notes, the page and the other
+    machine have `/`: convo, filing_papers and search for certain; day,
+    documents, names, note, notebook and projects by the look of them;
+  - the agent stops a model with `os.killpg` and SIGTERM, which Windows has
+    not: claude_route, stream_child.
 - A finished session's sound plays; there is no notification yet.
 - No global key, no tray, no bar widgets; no Start menu entry, and the
   programs the agent's extras call (pandoc, poppler, tesseract) are not

@@ -260,7 +260,7 @@ def main() -> int:
     (bindir / "opencode").chmod(0o755)
     (stub / "asks.json").write_text(json.dumps([{"document": doc + ".pdf", "words": "myths autonomy"},
                                                  {"document": "Rechnung_2026_4711", "words": ""}]))
-    env.update(STUB_DIR=str(stub), PATH=f"{bindir}:{os.environ['PATH']}")
+    env.update(STUB_DIR=str(stub), PATH=f"{bindir}{os.pathsep}{os.environ['PATH']}")
     agent("run", "--trigger", "checkbox", "--hash", h)
     calls = sorted(stub.glob("call-*.json"))
     check(len(calls) == 2, f"asking to read makes one more run, and only one ({len(calls)} runs)")

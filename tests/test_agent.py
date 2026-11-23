@@ -105,7 +105,7 @@ class T:
         mine = fakes.machine(self.tmp)            # never the real ~/.config, nor the running Hyprland
         self.env = dict(os.environ, LONGHAND_CONFIG=str(self.cfg), XDG_STATE_HOME=str(self.state_home),
                         STUB_DIR=str(self.stub_dir), XDG_CONFIG_HOME=mine["XDG_CONFIG_HOME"],
-                        FAKE_HYPR_DIR=mine["FAKE_HYPR_DIR"], PATH=str(self.tmp / "bin") + ":" + mine["PATH"])
+                        FAKE_HYPR_DIR=mine["FAKE_HYPR_DIR"], PATH=str(self.tmp / "bin") + os.pathsep + mine["PATH"])
         # keep `pomo report` out of it: an empty PATH entry first means the real pomo is still found;
         # that is fine — its output is just another allowlisted source.
 

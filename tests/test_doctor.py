@@ -40,7 +40,7 @@ def main() -> int:
         os.environ,
         XDG_CONFIG_HOME=str(cfg_dir),
         XDG_STATE_HOME=str(state_dir),
-        PATH=f"{bin_dir}:{os.environ['PATH']}",
+        PATH=f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
     )
     base_env.pop("LONGHAND_CONFIG", None)
 

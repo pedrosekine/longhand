@@ -13,7 +13,8 @@ name = "longhand-windows"
 version = "0.1.0"
 description = "Longhand's page and commands on Windows: a host in place of omarchy-shell"
 requires-python = ">=3.11"
-dependencies = ["PySide6>=6.12"]
+# tzdata: Windows has no time zone database for Python's zoneinfo (the timetable).
+dependencies = ["PySide6>=6.12", "tzdata"]
 
 [project.scripts]
 pomo = "longhand_launch:pomo"

@@ -1,0 +1,132 @@
+"""Windows only: a script starts by its shebang, as it does on Linux.
+
+The tests start Longhand's scripts by their path (`cli/longhand-check`),
+write stand-ins of their own with a `#!` line (an `opencode`, a `hyprctl`)
+and put them first on PATH. Linux reads the shebang; Windows starts only an
+.exe, and looks on PATH only for one. tests/run_all.py puts this folder on
+PYTHONPATH when it runs on Windows, Python loads a `sitecustomize` it finds
+there by itself, and so every test — and every Python it starts — gets a
+`subprocess` that:
+
+- starts a file with a `#!` line through what the line names: this Python
+  for a Python script, Git for Windows' bash for a shell script;
+- finds a name with no extension on PATH (the stand-ins);
+- sends `cli/pomo`, the bash, to `cli/pomo.py`, its twin (the bash one has
+  no `flock` under Git's bash and cannot write);
+
+a `shutil.which` that finds such a stand-in too, and an `os.kill(pid, 0)`
+that asks whether a process is there (on Windows it would send Ctrl+C to
+the whole console). On Linux this file does nothing.
+"""
+import os
+import sys
+
+if os.name == "nt":
+    import shutil
+    import subprocess
+    from pathlib import Path
+
+    ROOT = Path(__file__).resolve().parents[2]
+    TWINS = {str(ROOT / "cli" / "pomo").lower(): ROOT / "cli" / "pomo.py"}
+    _which = shutil.which
+
+    def git_bin():
+        git = _which("git")
+        if git:
+            root = Path(git).resolve().parent.parent
+            for cand in (root / "usr" / "bin", root.parent / "usr" / "bin"):
+                if (cand / "bash.exe").is_file():
+                    return cand
+        return None
+
+    GIT_BIN = git_bin()
+
+    def bare_on_path(name, path=None):
+        """A file named exactly so (no extension) in a folder of PATH."""
+        for folder in (path if path is not None else os.environ.get("PATH", "")).split(os.pathsep):
+            if folder:
+                cand = Path(folder) / name
+                if cand.is_file():
+                    return cand
+        return None
+
+    def which(cmd, mode=os.F_OK | os.X_OK, path=None):
+        found = _which(cmd, mode, path)
+        if found or os.sep in str(cmd) or "/" in str(cmd):
+            return found
+        cand = bare_on_path(str(cmd), path)
+        return str(cand) if cand else None
+
+    def by_shebang(args, env):
+        """The command Windows can start for one written for Linux."""
+        if isinstance(args, (str, bytes)) or not args:
+            return args
+        try:
+            argv = [os.fspath(a) for a in args]
+        except TypeError:
+            return args
+        head = argv[0]
+        if isinstance(head, bytes):
+            return args
+        if os.sep in head or "/" in head:
+            script = Path(head)
+        else:
+            search = (env or os.environ).get("PATH", "")
+            if _which(head, path=search):
+                return args
+            script = bare_on_path(head, search)
+            if script is None:
+                if GIT_BIN and (GIT_BIN / (head + ".exe")).is_file():
+                    return [str(GIT_BIN / (head + ".exe")), *argv[1:]]      # sh, bash, sed…
+                return args
+        script = TWINS.get(str(script).lower(), script)
+        if not script.is_file() or script.suffix.lower() in (".exe", ".com", ".bat", ".cmd"):
+            return args
+        try:
+            with open(script, "rb") as f:
+                first = f.readline(256).decode("utf-8", "replace").strip()
+        except OSError:
+            return args
+        if script.suffix.lower() == ".py" or (first.startswith("#!") and "python" in first):
+            return [sys.executable, str(script), *argv[1:]]
+        if first.startswith("#!") and GIT_BIN and any(first.endswith(s) or (s + " ") in first for s in ("/sh", "/bash", " sh", " bash")):
+            return [str(GIT_BIN / "bash.exe"), str(script), *argv[1:]]
+        if first.startswith("#!"):
+            words = first[2:].split()
+            program = words[1] if words and words[0].endswith("env") and len(words) > 1 else (words[0] if words else "")
+            found = _which(Path(program).name) if program else None
+            if found:
+                return [found, str(script), *argv[1:]]
+        return args
+
+    class Popen(subprocess.Popen):
+        def __init__(self, args, *rest, **kw):
+            if not kw.get("shell"):
+                args = by_shebang(args, kw.get("env"))
+            super().__init__(args, *rest, **kw)
+
+    _kill = os.kill
+
+    def kill(pid, sig):
+        """`os.kill(pid, 0)` asks whether a process is there. On Windows 0 is
+        Ctrl+C, sent to everything on the console — the test, the runner and
+        the terminal with them. Asked of the system instead."""
+        if sig != 0:
+            return _kill(pid, sig)
+        import ctypes
+        k32 = ctypes.windll.kernel32
+        k32.OpenProcess.restype = ctypes.c_void_p
+        handle = k32.OpenProcess(0x1000, False, int(pid))       # PROCESS_QUERY_LIMITED_INFORMATION
+        if not handle:
+            raise ProcessLookupError(3, "No such process")
+        try:
+            code = ctypes.c_ulong()
+            alive = k32.GetExitCodeProcess(ctypes.c_void_p(handle), ctypes.byref(code)) and code.value == 259
+        finally:
+            k32.CloseHandle(ctypes.c_void_p(handle))
+        if not alive:
+            raise ProcessLookupError(3, "No such process")
+
+    subprocess.Popen = Popen
+    shutil.which = which
+    os.kill = kill
