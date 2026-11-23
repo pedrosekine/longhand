@@ -196,6 +196,26 @@ TestCase {
     compare(Say.sameSection(list, undefined), -1)
   }
 
+  // A project's next session, counted from the day it is asked: the same
+  // session says "tomorrow" on Sunday and "today" on Monday (2026-11-23,
+  // the sidebar said "tomorrow 15:05" all Monday).
+  function test_a_session_is_counted_from_the_day_asked() {
+    var respro = { at: "2026-11-23T15:05", end: "2026-11-23T17:35", now: false, room: "Seminar Room 4" }
+    var hfpi = { at: "2026-11-24T10:45", end: "2026-11-24T12:15", now: false, room: "Seminar Room 1" }
+    var studio = { at: "2026-11-30T10:45", now: false, room: "Paris" }
+    var sunday = new Date(2026, 10, 22, 21, 0), monday = new Date(2026, 10, 23, 9, 17)
+    compare(Say.saySession(respro, sunday), "tomorrow 15:05 · Seminar Room 4")
+    compare(Say.saySession(respro, monday), "today 15:05 · Seminar Room 4")
+    compare(Say.saySession(hfpi, sunday), Qt.formatDateTime(new Date(2026, 10, 24, 10, 45), "ddd HH:mm") + " · Seminar Room 1")
+    compare(Say.saySession(hfpi, monday), "tomorrow 10:45 · Seminar Room 1")
+    compare(Say.saySession(studio, monday), Qt.formatDate(new Date(2026, 10, 30), "d MMM") + " · Paris")
+    // Under way: until when, not the day.
+    compare(Say.saySession({ at: "2026-11-23T08:45", end: "2026-11-23T10:15", now: true, room: "Gold" }, monday), "now · until 10:15 · Gold")
+    // A session already behind is never named as a weekday ahead.
+    compare(Say.saySession({ at: "2026-11-20T10:45", now: false, room: "" }, monday), Qt.formatDate(new Date(2026, 10, 20), "d MMM"))
+    compare(Say.saySession(null, monday), "")
+  }
+
   function test_withheld_counts() {
     compare(Say.sayWithheld(null), "")
     compare(Say.sayWithheld({}), "")
