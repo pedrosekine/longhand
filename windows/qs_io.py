@@ -26,7 +26,8 @@ REPO = Path(__file__).resolve().parent.parent
 
 # What `tools/install` links into ~/.local/bin on Linux: here, by name.
 SCRIPTS = {
-    "pomo": REPO / "cli" / "pomo",
+    # The timer and the deadline store: bash on Omarchy, its Python twin here.
+    "pomo": REPO / "cli" / ("pomo.py" if os.name == "nt" else "pomo"),
     "longhand-agent": REPO / "agent" / "longhand-agent",
     "longhand-check": REPO / "cli" / "longhand-check",
     "longhand-read": REPO / "cli" / "longhand-read",

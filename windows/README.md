@@ -31,6 +31,7 @@ says what the page did.
 | `qs.Commons` — `Style`, `Color`, `Border`, `Util` | `shim/qs/Commons/`: Windows' light/dark and accent, live |
 | `qs.Ui` — `BorderSurface`, `TextField`, `PanelToolTip` | `shim/qs/Ui/` |
 | scripts by name or in `~/.local/bin` | `qs_io.resolve`: the repo's own, run by Python or Git's bash |
+| `pomo` (bash, sed, awk, flock, GNU date) | `cli/pomo.py` |
 | `fcntl.flock` | `pyshim/fcntl.py` |
 
 ## Known, not done
@@ -41,7 +42,12 @@ says what the page did.
   Whether Omarchy has the same order on its first open is not checked; if it
   does, the place to fix it is `NoteEditor.focusNote`.
 - `hyprctl` (pointer follows the pane, raise, key capture) has no stand-in.
-- `pomo` is bash: it reads under Git's bash, and cannot write (no `flock`).
+- `pomo` is `cli/pomo.py` here: the bash one command for command
+  (`tests/test_pomo_port.py` runs both and compares). The page reaches it
+  through the host; the agent and `longhand-check` call `pomo` by name, and
+  Windows starts only an `.exe` that way — they need real launchers, which
+  is the installer's work.
+- A finished session's sound plays; there is no notification yet.
 - No global key, no tray, no bar widgets, no installer.
 - Borders are flat (no gradient ring); the page's prose face is named in the
   sandbox config (`Segoe UI Variable Text`), since Windows has none of the
