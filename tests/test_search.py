@@ -73,6 +73,20 @@ def units(tmp: pathlib.Path) -> None:
     check(not any("Personal" in p or "_Secrets" in p or "Rechnung" in p or p.endswith(".docx") for p in paths),
           "never a folder switched off, _Secrets, a name of money, or another type")
     check("ghp_" not in texts and r["withheld"].get("secret", 0) >= 1, "a passage gitleaks flags is withheld, and counted")
+    # A gitleaks that ends badly and reports nothing (it could not write its
+    # report: 2026-11-24, in a container) has checked nothing.
+    mute = tmp / "mute-bin"
+    mute.mkdir()
+    (mute / "gitleaks").write_text("#!/bin/sh\ncat > /dev/null\nexit 1\n")
+    (mute / "gitleaks").chmod(0o755)
+    path = os.environ["PATH"]
+    os.environ["PATH"] = f"{mute}{os.pathsep}{path}"
+    try:
+        check(search.leaks(["one passage", "and another"]) == {0, 1},
+              "a gitleaks that ends badly and says nothing has checked nothing: every passage is withheld")
+    finally:
+        os.environ["PATH"] = path
+    check(search.leaks(["nothing secret here", "nor here"]) == set(), "…and one that finds nothing withholds nothing")
     check("AT61" not in texts and "[IBAN masked]" in texts, "an IBAN is masked")
     check(any(h["path"].endswith("RTA reading.pdf") and h["where"] == "p. 1" for h in r["hits"]), "a PDF's passage comes with its page")
     check(r["withheld"].get("private") == 1 and r["withheld"].get("name") == 1 and r["withheld"].get("type") == 1,

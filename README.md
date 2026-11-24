@@ -299,6 +299,12 @@ The runner starts one file per core at once (`-j 1` for one at a time); the
 live page test runs after them, alone. Each file also runs alone
 (`python3 tests/test_check.py`).
 
+On GitHub the offscreen suite runs on every push to `main` and every pull
+request (`.github/workflows/tests.yml`), in an Arch container. Two things
+are not run there, for want of a desktop: `test_popup` and the live page
+test. Run those on a machine with Hyprland before a change to the bar's
+widgets or the page lands.
+
 **Every test runs beside the others**, so a new one keeps to itself:
 
 - its folders come from `tempfile` (`mkdtemp`), never a fixed path such as
