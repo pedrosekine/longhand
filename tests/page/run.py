@@ -655,6 +655,15 @@ def checks() -> int:
     theme_switch()
     p = Page()
     try:
+        # 0. The first open after the shell starts asks the note for the keys
+        # before it has been read: they are in the note once it is. Until
+        # 2026-11-24 the overlay left them in the closed settings sheet's
+        # key catcher, and what was typed went to hidden settings.
+        (p.daily / f"{TODAY}.md").write_text(header(TODAY) + "Plan for the week.\n")
+        p.call("summon", "{}")
+        p.wait(lambda: json.loads(p.call("state"))["ready"])
+        check(p.wait(lambda: p.call("noteHasKeys") == "true", 3), "the first open: the keys are in the note once it is read")
+
         # 1. a checkbox written with a date at its end lights up, and binds
         # when it is left — no question asked
         (p.daily / f"{TODAY}.md").write_text(header(TODAY) + "Plan for the week.\n")

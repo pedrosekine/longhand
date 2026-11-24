@@ -15,17 +15,29 @@ users, nothing that needs an administrator):
   one button, the seal on it, and pinning it pins Longhand, not Python.
 - `longhand --tray` under the person's Run key: Longhand by the clock when
   the session starts, nothing opened.
+- the commands by name in any new terminal, as Omarchy's `~/.local/bin`
+  has them: a copy of each launcher `pip install -e windows` made beside
+  python.exe (`COMMANDS`) in `~/.local/bin`, and that folder on the
+  person's PATH (HKCU\\Environment, the type of the value kept). Not the
+  venv's Scripts folder itself: that would put its python.exe, pip.exe and
+  pyside6-*.exe on PATH too. A copy is enough: each launcher holds the
+  path of the python.exe it starts, and runs the script in the repo, so a
+  pull is still the update (`with_path=False`, `--no-path`, leaves this out).
 
-`longhand uninstall` takes both away, and the icon.
+`longhand uninstall` takes them away, and the icon: the copies, and the
+folder off PATH when nothing else is left in it (uv puts its tools there too).
 
 Where they go can be moved for a test: APPDATA (the Start menu is under
 it), XDG_STATE_HOME (the icon), LONGHAND_RUN_KEY (the key under
-HKEY_CURRENT_USER).
+HKEY_CURRENT_USER), LONGHAND_BIN (the commands' folder), LONGHAND_ENV_KEY
+(the key under HKEY_CURRENT_USER whose Path is the person's PATH; Windows
+is told of a change only to the real one).
 """
 from __future__ import annotations
 
 import json
 import os
+import shutil
 import struct
 import subprocess
 import sys
@@ -39,6 +51,10 @@ NAME = "Longhand"
 COMMENT = "Today's page: you write, the agent answers in the margin"
 SIZES = (16, 20, 24, 32, 40, 48, 64, 256)
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
+ENV_KEY = "Environment"
+MACHINE_ENV_KEY = r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment"
+# What Omarchy's tools/install links into ~/.local/bin, and the page.
+COMMANDS = ("pomo", "longhand-agent", "longhand-check", "longhand-read", "longhand-doctor", "longhand")
 
 
 def programs() -> Path:
@@ -172,11 +188,170 @@ def autostart() -> str:
         return ""
 
 
-def install(with_autostart: bool = True, out=None) -> int:
+def bin_dir() -> Path:
+    return Path(os.environ.get("LONGHAND_BIN") or Path.home() / ".local" / "bin")
+
+
+def env_key() -> str:
+    return os.environ.get("LONGHAND_ENV_KEY") or ENV_KEY
+
+
+def _read_path(root, subkey: str) -> tuple[str, int | None]:
+    """A key's Path as it is written, and its type; ("", None) when none."""
+    import winreg
+    try:
+        with winreg.OpenKey(root, subkey) as key:
+            value, kind = winreg.QueryValueEx(key, "Path")
+            return str(value), kind
+    except OSError:
+        return "", None
+
+
+def _same_folder(entry: str) -> str:
+    """A PATH entry as it compares: %VARS% expanded, no slash at the end, case
+    and "/" as Windows takes them."""
+    import winreg
+    entry = winreg.ExpandEnvironmentStrings(entry.strip().strip('"'))
+    return os.path.normcase(os.path.normpath(entry)) if entry else ""
+
+
+def new_terminal_path() -> list[str]:
+    """The PATH a terminal opened now starts with, as the registry holds it:
+    the machine's, then the person's, expanded. A process keeps the PATH it
+    started with, so what winget or `longhand install` added is only here."""
+    import winreg
+    entries = []
+    for root, subkey in ((winreg.HKEY_LOCAL_MACHINE, MACHINE_ENV_KEY), (winreg.HKEY_CURRENT_USER, env_key())):
+        value, _ = _read_path(root, subkey)
+        entries += [winreg.ExpandEnvironmentStrings(e) for e in value.split(";") if e.strip()]
+    return entries
+
+
+def reachable(name: str) -> str:
+    """Where a new terminal finds `name`; "" when it does not."""
+    return shutil.which(name, path=os.pathsep.join(new_terminal_path())) or ""
+
+
+def _broadcast_environment() -> None:
+    """Tell the open windows (Explorer first: what it starts next) that the
+    environment changed, as setx and the System dialog do."""
+    import ctypes
+    from ctypes import wintypes
+    user32 = ctypes.WinDLL("user32")   # its own: the host's windll.user32 keeps its argtypes
+    send = user32.SendMessageTimeoutW
+    send.argtypes = (wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPCWSTR, wintypes.UINT, wintypes.UINT,
+                     ctypes.POINTER(ctypes.c_size_t))
+    send.restype = ctypes.c_ssize_t
+    result = ctypes.c_size_t()
+    HWND_BROADCAST, WM_SETTINGCHANGE, SMTO_ABORTIFHUNG = 0xFFFF, 0x001A, 0x0002
+    send(HWND_BROADCAST, WM_SETTINGCHANGE, 0, "Environment", SMTO_ABORTIFHUNG, 2000, ctypes.byref(result))
+
+
+def set_on_path(folder: Path, on: bool) -> bool:
+    """`folder` on the person's PATH (on) or off it, everything else in the
+    value left as it was written, its type kept (REG_EXPAND_SZ when there was
+    none). True when the value changed. Already on the machine's PATH counts
+    as on."""
+    import winreg
+    value, kind = _read_path(winreg.HKEY_CURRENT_USER, env_key())
+    target = _same_folder(str(folder))
+    entries = value.split(";") if value else []
+    if on:
+        machine, _ = _read_path(winreg.HKEY_LOCAL_MACHINE, MACHINE_ENV_KEY)
+        if any(_same_folder(e) == target for e in entries + machine.split(";")):
+            return False
+        new = (value.rstrip(";") + ";" if value.strip(";") else "") + str(folder)
+    else:
+        kept = [e for e in entries if _same_folder(e) != target]
+        if len(kept) == len(entries):
+            return False
+        new = ";".join(kept)
+    if kind not in (winreg.REG_SZ, winreg.REG_EXPAND_SZ):
+        kind = winreg.REG_EXPAND_SZ
+    with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, env_key(), 0, winreg.KEY_SET_VALUE) as key:
+        winreg.SetValueEx(key, "Path", 0, kind, new)
+    if env_key() == ENV_KEY:
+        _broadcast_environment()
+    return True
+
+
+def place_commands(say) -> bool:
+    """A copy of each command's launcher in `bin_dir()`, and that folder on
+    the person's PATH. False when one there could not be replaced; one
+    `pip install -e windows` has not made is said, and left out."""
+    scripts = Path(sys.executable).parent
+    folder = bin_dir()
+    unmade = [name for name in COMMANDS if not (scripts / f"{name}.exe").is_file()]
+    if unmade:
+        say(f"longhand: no {', '.join(unmade)} in {scripts}: `pip install -e windows` (from the repo) makes "
+            f"{'it' if len(unmade) == 1 else 'them'}, then `longhand install` again")
+    if len(unmade) == len(COMMANDS):
+        return True
+    folder.mkdir(parents=True, exist_ok=True)
+    placed, failed = [], []
+    for name in COMMANDS:
+        src, dst = scripts / f"{name}.exe", folder / f"{name}.exe"
+        if name in unmade:
+            continue
+        try:
+            if dst.is_file() and dst.read_bytes() == src.read_bytes():
+                placed.append(name)
+                continue
+            tmp = dst.with_name(dst.name + ".tmp")
+            shutil.copyfile(src, tmp)
+            os.replace(tmp, dst)
+            placed.append(name)
+        except OSError as e:
+            # A copy running (`longhand` started from a terminal) cannot be replaced.
+            dst.with_name(dst.name + ".tmp").unlink(missing_ok=True)
+            failed.append(f"{name} ({e.strerror or e}: run `longhand install` again once it is closed)")
+    if placed:
+        say(f"commands → {folder} ({', '.join(placed)})")
+    for problem in failed:
+        say(f"longhand: not replaced: {problem}")
+    try:
+        if set_on_path(folder, True):
+            say(f"PATH → {folder} added to yours: open a new terminal to start them by name")
+    except OSError as e:
+        say(f"longhand: {folder} not put on your PATH ({e.strerror or e}): add it in Settings → System → "
+            "About → Advanced system settings → Environment Variables")
+        return False
+    return not failed
+
+
+def remove_commands(say) -> None:
+    """The copies away; the folder, and its place on PATH, too when nothing
+    else is in it."""
+    folder = bin_dir()
+    for name in COMMANDS:
+        path = folder / f"{name}.exe"
+        try:
+            path.unlink()
+            say(f"removed {path}")
+        except FileNotFoundError:
+            pass
+        except OSError as e:
+            say(f"longhand: {path} not removed ({e.strerror or e}): it is running")
+    try:
+        if folder.is_dir() and not any(folder.iterdir()):
+            folder.rmdir()
+    except OSError:
+        pass
+    if not folder.exists() and set_on_path(folder, False):
+        say(f"PATH → {folder} taken off yours")
+
+
+def install(with_autostart: bool = True, out=None, with_path: bool = True) -> int:
     say = (lambda line: print(line, file=out or sys.stdout, flush=True))
     if os.name != "nt":
         say("longhand install is for Windows; on Omarchy: tools/install")
         return 2
+    if with_path:
+        placed = place_commands(say)
+    else:
+        remove_commands(say)
+        placed = True
+        say(f"commands → not on PATH (--no-path): they are in {Path(sys.executable).parent}")
     icon = write_icon(REPO / "launcher" / "longhand.svg", icon_path())
     program, arguments = launcher()
     problem = write_shortcut(shortcut_path(), program, arguments, icon)
@@ -189,7 +364,7 @@ def install(with_autostart: bool = True, out=None) -> int:
         say(f"note: the taskbar will not know the window for the shortcut's ({problem[6:].strip()})")
     set_autostart(with_autostart)
     say(f"with the session → {autostart()}" if with_autostart else "with the session → not started (--no-autostart)")
-    return 0
+    return 0 if placed else 1
 
 
 def uninstall(out=None) -> int:
@@ -206,4 +381,5 @@ def uninstall(out=None) -> int:
     if autostart():
         set_autostart(False)
         say("no longer started with the session")
+    remove_commands(say)
     return 0

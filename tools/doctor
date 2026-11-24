@@ -3,8 +3,9 @@
 
 Read-only: inspects config.json, vault folders and daily template, CLI helpers
 on PATH, the agent's model programs (model, fallbackModel, planModel), what
-starts the page (Omarchy's shell plugins; on Windows the Start menu entry and
-the session's start), and optional PDF/search/OCR tools, reporting a crisp
+starts the page (Omarchy's shell plugins; on Windows the Start menu entry,
+the session's start, and whether a new terminal finds the commands by name),
+and optional PDF/search/OCR tools, reporting a crisp
 checklist with actionable fixes.
 """
 from __future__ import annotations
@@ -276,8 +277,17 @@ def _windows_rows() -> list[tuple[str, str, str]]:
         sc = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(sc)
         lnk, started = sc.shortcut_path(), sc.autostart()
+        # By name in a terminal opened now (this one's PATH may be older, or
+        # the launcher's: the registry's is what a new one gets).
+        unreached = [name for name in sc.COMMANDS if not sc.reachable(name)]
+        reached = sc.reachable(sc.COMMANDS[0])
     except Exception as e:  # noqa: BLE001 — a check, not a crash
         return rows + [("warn", "start menu", f"could not look: {e}")]
+    if not unreached:
+        rows.append(("ok", "commands by name", f"on PATH in a new terminal ({pathlib.Path(reached).parent})"))
+    else:
+        rows.append(("warn", "commands by name", f"not on PATH in a new terminal: {', '.join(unreached)} "
+                                                 f"— run `longhand install` (or start them from {pathlib.Path(sys.executable).parent})"))
     if lnk.is_file():
         rows.append(("ok", "start menu", str(lnk)))
     else:
