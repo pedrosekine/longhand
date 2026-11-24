@@ -466,6 +466,8 @@ ShellRoot {
     // Whether the agent still runs for a pane ("day", "margin", "talk"):
     // its answer is drawn once written, a moment before its process ends.
     function agentBusy(where: string): bool { return page.agentBusy(where) }
+    // The runner's process, still up or not (a run answered may still be ending).
+    function runnerRunning(): bool { return page.running }
     function daySend(text: string): void { page.sendDay(text) }
     function dayKey(key: int, mods: int): bool { return page.dayKey({ key: key, text: "", modifiers: mods }) }
     function dayTurns(): string { return JSON.stringify(page.dayTurns.map(function (t) { return t.role + ": " + t.text })) }
@@ -666,7 +668,7 @@ ShellRoot {
     function answering(): bool { return page.answering }
     function heldTurn(): string { return JSON.stringify(page.pendingChat) }
     function chatFocused(): bool { return page.marginFocus === page.currentProposals.length }
-    function sendChat(text: string): void { page.pendingChat = { hash: page.currentRec, text: text }; page.requestChat(page.currentRec, text, page.currentHash) }
+    function sendChat(text: string): void { page.pendingChat = { hash: page.currentRec, mark: page.currentHash, text: text }; page.requestChat(page.currentRec, text, page.currentHash) }
     // A key in the margin's chat box, through its own handler (Esc: 0x01000000).
     function chatBoxKey(key: int): void { page.marginItem.chatFieldRef.keyPressed({ key: key, modifiers: 0, text: "", accepted: false }) }
     function chatBoxText(): string { return page.marginItem.chatFieldRef.text }

@@ -72,7 +72,7 @@ class PageFrozen(Exception):
 # What the runner writes when the student talks to a block: both turns, the
 # way `longhand-agent chat` records them. Enough for the page to settle the
 # message it was holding and draw the answer.
-CHAT_STUB = """import datetime, json, pathlib, sys
+CHAT_STUB = """import datetime, json, os, pathlib, sys, time
 
 at = datetime.datetime.now().isoformat(timespec="seconds")   # as the runner does: the one conversation orders by it
 daily, args = pathlib.Path(sys.argv[1]), sys.argv[2:]
@@ -91,6 +91,10 @@ rec["read"] = False
 rec.setdefault("reply", "")
 path.parent.mkdir(parents=True, exist_ok=True)
 path.write_text(json.dumps(state))
+# With `linger` in the stub's folder, the run goes on a moment after its
+# answer is written, as a run's process closing does (longer on Windows).
+if os.path.exists(os.path.join(os.environ.get("STUB_DIR", ""), "linger")):
+    time.sleep(2.5)
 """
 
 # The planner's model, for the page's own tests: it answers only once a
@@ -1472,6 +1476,23 @@ def checks() -> int:
               and not json.loads(p.call("stopShown"))["square"],
               f"a click on the square stops it too, the words back in the box, the square gone ({p.call('chatBoxText')!r})")
         p.call("chatBoxClear")
+        # Answered while its run is still ending (its process closing, most
+        # of a second on Windows; here the stub lingers): the thinking stops
+        # with the answer, and Esc in the box stops nothing (2026-11-25: it
+        # stopped the finished run and put the message back in the box).
+        (p.stub / "linger").write_text("")
+        p.call("sendChat", "and once more?")
+        check(p.wait(lambda: "agent: stub answer to: and once more?" in p.call("chat"), 10)
+              and p.call("answering") == "false" and not json.loads(p.call("stopShown"))["square"],
+              f"answered while its run still ends: no more thinking, no stop square ({p.call('answering')}, {p.call('stopShown')})")
+        hint, ending = p.call("hint"), p.call("runnerRunning")
+        p.call("chatBoxKey", 0x01000000)
+        check(ending == "true" and p.call("hint") == hint and p.call("chatBoxText") == ""
+              and "agent: stub answer to: and once more?" in p.call("chat"),
+              f"…and Esc there, the run still ending ({ending}), stops nothing: the answer stays, the box empty "
+              f"({p.call('hint')!r}, {p.call('chatBoxText')!r})")
+        (p.stub / "linger").unlink()
+        p.wait(lambda: p.call("runnerRunning") == "false", 6)    # the lingering run ends
 
         before = len(list((p.state / "longhand" / "payloads").glob("*"))) \
             if (p.state / "longhand" / "payloads").is_dir() else 0
