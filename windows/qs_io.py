@@ -75,13 +75,32 @@ def git_usr_bin() -> Path | None:
 GIT_BIN = git_usr_bin() if os.name == "nt" else None
 
 
+def python() -> str:
+    """This Python, as a console program.
+
+    Started by its launcher (`longhand.exe`) the host is pythonw.exe, which
+    has no console. A script it started with pythonw had none either, and
+    Windows then gives every console program *that* starts — Claude Code,
+    Codex, gitleaks, pomo — a console window of its own, on screen: a black
+    window for as long as a model thinks, and a run ended with it when the
+    window is closed (found 2026-11-24, the first day opened from the
+    launcher: the plan's run, "Claude Code exited 129"). Qt starts a console
+    program from a window-less host with a console that has no window, and
+    what that program starts shares it."""
+    exe = Path(sys.executable)
+    console = exe.with_name("python.exe")
+    if exe.name.lower() == "pythonw.exe" and console.is_file():
+        return str(console)
+    return sys.executable
+
+
 def resolve(argv: list[str]) -> tuple[str, list[str]]:
     """The program Windows can start for a command written for Linux."""
     head, rest = argv[0], argv[1:]
     if os.name != "nt":
         return head, rest
     if head in ("python3", "python"):
-        return sys.executable, rest
+        return python(), rest
     if head in SCRIPTS:
         head = str(SCRIPTS[head])
     if head in POSIX and GIT_BIN and (GIT_BIN / f"{head}.exe").is_file():
@@ -106,7 +125,7 @@ def resolve(argv: list[str]) -> tuple[str, list[str]]:
     except OSError:
         first = ""
     if first.startswith("#!") and "python" in first or suffix == ".py":
-        return sys.executable, [str(path), *rest]
+        return python(), [str(path), *rest]
     if first.startswith("#!") and GIT_BIN:
         return str(GIT_BIN / "bash.exe"), [str(path), *rest]
     return str(path), rest

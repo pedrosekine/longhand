@@ -27,6 +27,13 @@ if os.name == "nt":
     from pathlib import Path
 
     ROOT = Path(__file__).resolve().parents[2]
+    # Python loads one `sitecustomize`, and this one is found first: the
+    # other, which a run outside the tests gets (windows/pyshim/), is "\n"
+    # as the line ending of what is written. Before `Popen` below, which
+    # builds on the one it leaves.
+    sys.path.insert(0, str(ROOT / "windows" / "pyshim"))
+    import longhand_lf  # noqa: F401
+    sys.path.pop(0)
     TWINS = {str(ROOT / "cli" / "pomo").lower(): ROOT / "cli" / "pomo.py"}
     _which = shutil.which
 

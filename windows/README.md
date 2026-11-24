@@ -117,7 +117,34 @@ with a marker in it (`agent-reply.png`):
 `LONGHAND_HOST_TRACE=1` puts every process the page starts, and how it
 ends, on the host's stderr with the second it happened.
 
-opencode, Codex and Antigravity are installed here and not tried.
+Codex (`"model": "codex/gpt-6.2-sol"`, with `"codex"` naming
+`codex-x86_64-pc-windows-msvc.exe` by its whole path: the `codex` on PATH is
+a `.cmd`, which is not started by name) was tried the same day, on a real
+vault first and it went wrong twice, both Windows' doing:
+
+- Every run was dropped by Longhand's own check and answered by the
+  fallback. Python on Windows writes `\r\n` for every `\n` of a file or a
+  pipe opened as text; Codex kept its instructions and the person's words
+  as it got them, and the check, holding them against what Longhand had
+  meant to send, found neither the same. Codex had carried nothing it
+  should not and called no tool. The same `\r\n` was in every file the
+  agent wrote into the vault — one shared with Linux machines — and in the
+  installed prompts, whose fingerprint was therefore not Linux's.
+  `pyshim/longhand_lf.py` makes `\n` the line ending of what Longhand's
+  Python writes and sends; `tests/test_line_endings.py` holds it.
+- The plan's run ended as "Claude Code exited 129". Opened from
+  `longhand.exe` the host is `pythonw.exe`, the agent it started had no
+  console, and each program the agent started got a console window of its
+  own, on screen, the run ending with the window. The host now starts its
+  scripts with `python.exe`, which Qt gives a console without a window
+  (`qs_io.python`).
+
+After both: one opening pass through Codex in a throwaway vault, on the
+sign-in made for Longhand (`CODEX_HOME` as the README says), answered and
+passed the check, the private marker in neither the payload log nor
+Codex's session file, no `\r` in anything written.
+
+opencode and Antigravity are installed here and not tried.
 
 ## What stands in for what
 
@@ -132,6 +159,7 @@ opencode, Codex and Antigravity are installed here and not tried.
 | `pomo` (bash, sed, awk, flock, GNU date) | `cli/pomo.py` |
 | `~/.local/bin` links and shebangs | `.exe` launchers from `pyproject.toml`, through `longhand_launch.py` |
 | UTF-8 as the system's encoding | Python's UTF-8 mode, switched on by the host and the launchers |
+| `\n` as the line ending of what is written and sent | `pyshim/longhand_lf.py`, loaded at start |
 | `fcntl.flock` | `pyshim/fcntl.py` |
 | a process group and SIGTERM, to stop a model's run | a job and a named event: `agent/winproc.py` |
 
@@ -148,7 +176,7 @@ opencode, Codex and Antigravity are installed here and not tried.
 - The tests run through the runner (`python tests\run_all.py`, or
   `… run_all.py check plan`), which gives each file what Linux gives it for
   nothing (`tests/windows/`). On 2026-11-24, with gitleaks, poppler and
-  node installed: 69 files pass in about four minutes, 5 are passed over as
+  node installed: 70 files pass in four to eight minutes, 5 are passed over as
   Omarchy's own (named, with the reason), 1 fails: cursors, which wants
   PyQt6. One check of projects fails on a Monday on any system: it asks
   for yesterday's week and expects a file touched today in it.

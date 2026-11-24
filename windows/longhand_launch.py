@@ -16,6 +16,7 @@ Two things the scripts take for granted on Linux are seen to on the way:
   before it starts, so a script that needs it is started again with it on
   (once: the host already starts its children that way).
 - `fcntl`, which the scripts lock with: pyshim/ has a stand-in.
+- "\\n" as the line ending of what is written: pyshim/longhand_lf.py.
 """
 from __future__ import annotations
 
@@ -54,6 +55,7 @@ def run(relative: str, utf8: bool = True) -> int:
             return 130
     if str(PYSHIM) not in sys.path:
         sys.path.insert(0, str(PYSHIM))
+    import longhand_lf  # noqa: F401 — "\n" as the line ending, if Python did not load it at start
     # As `python script` would: the script's own folder first, its name in argv.
     sys.path.insert(0, str(script.parent))
     sys.argv[0] = str(script)
