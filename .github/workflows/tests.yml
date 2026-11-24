@@ -2,10 +2,14 @@
 # (README → Tests): on Arch, which is what Omarchy is, and on Windows, for
 # the host that stands in for omarchy-shell there.
 #
-# Not run here, each for want of a desktop: `test_popup` (the bar's popup,
-# drawn by quickshell under the installed shell on a running Hyprland) and
-# the live page test (`--page`, a Hyprland of its own nested in a session).
-# Those stay with a machine that has one: `python3 tests/run_all.py --page`.
+# Not run here, for want of a desktop: `test_popup` (the bar's popup, drawn
+# by quickshell under the installed shell on a running Hyprland), and the
+# live page test in Quickshell (`--page`, a Hyprland of its own nested in a
+# session). Those stay with a machine that has one:
+# `python3 tests/run_all.py --page`. The same live page test does run here
+# on Windows, over the Windows host (`tests/page/run.py --host qt`,
+# offscreen): the page's own logic, driven over IPC, on Windows' processes,
+# files and paths.
 name: tests
 
 on:
@@ -49,9 +53,15 @@ jobs:
           python3 tests/run_all.py $names
 
   windows:
-    name: Windows
+    # Two halves side by side on the same setup: the offscreen suite, and
+    # the live page test over the Windows host (tests/page/run.py).
+    name: Windows (${{ matrix.part }})
     runs-on: windows-latest
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [suite, page]
     steps:
       - uses: actions/checkout@v4
       # The Windows host lives in windows/ and tests/windows/. A tree from
@@ -103,6 +113,13 @@ jobs:
           # Both are there: choco's own code (3010 asks for a reboot) is not the step's.
           $global:LASTEXITCODE = 0
       - name: The suite
-        if: steps.host.outputs.here == 'true'
+        if: steps.host.outputs.here == 'true' && matrix.part == 'suite'
         shell: pwsh
         run: .venv\Scripts\python -X utf8 tests\run_all.py
+      # The page as it runs on Omarchy, every check of it, over the host
+      # that stands in for Quickshell. A tree from before --host qt has
+      # nothing to run here.
+      - name: The page, live, over the Windows host
+        if: steps.host.outputs.here == 'true' && matrix.part == 'page' && hashFiles('tests/page/qt_host.py') != ''
+        shell: pwsh
+        run: .venv\Scripts\python -X utf8 -u tests\page\run.py --host qt
