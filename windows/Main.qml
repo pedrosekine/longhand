@@ -1,5 +1,6 @@
 import QtQuick
 import Qt.labs.platform as Platform
+import qs.Commons as Commons
 import "../plugin-page"
 import "../plugin" as Pomo
 import "../plugin-deadline" as Deadline
@@ -24,10 +25,44 @@ Item {
     manifest: ({ id: "longhand.page" })
   }
 
-  // The bar widgets' own services: the timer's state and the deadline store,
-  // read live, and `pomo expired` run when a session runs out.
-  Pomo.Service { id: pomo }
-  Deadline.Service { id: deadlines }
+  // The bar's two widgets, loaded as they are (plugin/Panel.qml,
+  // plugin-deadline/Panel.qml). Each holds its own service — the timer's
+  // state, the deadline store, read live, `pomo expired` run when a session
+  // runs out — and its popup, which the shim's KeyboardPanel opens as a
+  // small window by the clock. Where the shell has a bar to hold their
+  // labels, the tray says what the labels say, from the same services.
+  Pomo.Panel { id: pomoPanel; bar: barStandIn; onSwitchRequested: host.popup("deadlines") }
+  Deadline.Panel { id: deadlinePanel; bar: barStandIn; onSwitchRequested: host.popup("timer") }
+  // The bar a widget asks for its colours and its face. There is none: this
+  // answers with Windows' own (the shim's palette, the system's text face).
+  QtObject {
+    id: barStandIn
+    readonly property var faces: Qt.fontFamilies()
+    readonly property color foreground: Commons.Color.foreground
+    readonly property color barForeground: Commons.Color.foreground
+    readonly property color urgent: Commons.Color.urgent
+    readonly property string fontFamily: faces.indexOf("Segoe UI Variable Text") >= 0 ? "Segoe UI Variable Text" : "Segoe UI"
+    readonly property string position: "bottom"
+    readonly property bool vertical: false
+    readonly property var activePopout: null
+  }
+  // A widget's service is the one thing in it with a label for the bar.
+  function serviceOf(panel) {
+    for (var i = 0; i < panel.children.length; i++)
+      if (panel.children[i].labelText !== undefined && panel.children[i].text === undefined) return panel.children[i]
+    return null
+  }
+  readonly property var pomo: host.serviceOf(pomoPanel)
+  readonly property var deadlines: host.serviceOf(deadlinePanel)
+
+  // One popup at a time, as the bar has one open: the one asked for opens
+  // (or, open already, closes), the other goes.
+  function popup(which) {
+    var asked = which === "timer" ? pomoPanel : deadlinePanel
+    var other = which === "timer" ? deadlinePanel : pomoPanel
+    if (other.opened) other.close()
+    asked.toggle()
+  }
 
   // ------------------------------------------------------------ the page
 
@@ -91,7 +126,8 @@ Item {
     target: hostBridge
     function onSummonRequested(payload) { host.summon(payload) }
     function onToggleRequested(payload) { host.toggle(payload) }
-    function onPomoRequested(what) { if (what === "skip") pomo.skip(); else pomo.toggle() }
+    function onPomoRequested(what) { if (what === "skip") host.pomo.skip(); else host.pomo.toggle() }
+    function onPopupRequested(which) { host.popup(which) }
     function onQuitRequested() { host.leave() }
     function onKeysChanged() { host.keysRead++ }
   }
@@ -126,7 +162,7 @@ Item {
   property bool settled: false
   Timer { interval: 3000; running: true; onTriggered: host.settled = true }
   Connections {
-    target: pomo
+    target: host.pomo
     function onExpiredChanged() {
       if (!pomo.expired || !host.settled || !hostResident || pomo.runStatus === "done") return
       tray.showMessage("Pomodoro", pomo.phase === "focus" ? "Focus done — break time" : "Break over — back to focus")
@@ -138,9 +174,11 @@ Item {
     visible: hostResident
     icon.source: Qt.resolvedUrl("../launcher/longhand.svg")
     tooltip: ["Longhand", host.timerLine, host.deadlineLine].filter(function (s) { return s !== "" }).join(" · ").slice(0, 120)
-    // A click is the page as a window: the place to write.
+    // A click is the page as a window: the place to write. The middle
+    // button is the timer's popup, as it is the timer's on the bar.
     onActivated: function (reason) {
       if (reason === Platform.SystemTrayIcon.Trigger || reason === Platform.SystemTrayIcon.DoubleClick) host.pinned()
+      else if (reason === Platform.SystemTrayIcon.MiddleClick) host.popup("timer")
     }
 
     menu: Platform.Menu {
@@ -150,8 +188,11 @@ Item {
       Platform.MenuItem { text: host.timerAction + host.key("pomoToggle"); onTriggered: pomo.toggle() }
       Platform.MenuItem { text: "Skip to the next" + host.key("pomoSkip"); visible: pomo.phase !== "idle"; onTriggered: pomo.skip() }
       Platform.MenuItem { text: "Reset the timer"; visible: pomo.phase !== "idle"; onTriggered: pomo.reset() }
+      // The bar's two popups: the timer's (a length typed, the day's count)
+      // and the deadlines' (ticked, graded, opened in the note).
+      Platform.MenuItem { text: "Timer…" + host.key("pomoPopup"); onTriggered: host.popup("timer") }
       Platform.MenuSeparator {}
-      Platform.MenuItem { text: deadlines.tooltipText; enabled: false }
+      Platform.MenuItem { text: (deadlines.nextItem ? deadlines.tooltipText : "Deadlines") + "…" + host.key("deadlines"); onTriggered: host.popup("deadlines") }
       Platform.MenuSeparator {}
       Platform.MenuItem { text: "Quit Longhand"; onTriggered: host.leave() }
     }

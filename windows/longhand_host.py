@@ -11,6 +11,8 @@ qs_io.py, qs_wayland.py).
     longhand --tray               in the tray only, nothing opened (for the start of a session)
     longhand summon ['{json}']    as `omarchy-shell shell summon longhand.page` (or: summon alongside)
     longhand toggle ['{json}']    as `omarchy-shell shell toggle longhand.page`
+    longhand timer                the timer's popup, by the clock (again: away), as `omarchy-shell longhand.pomo toggle`
+    longhand deadlines            the deadlines' popup, as `omarchy-shell longhand.deadline toggle`
     longhand quit
     longhand install [--no-autostart]   in the Start menu, and started with the session (shortcuts.py)
     longhand uninstall
@@ -136,8 +138,9 @@ def to_console() -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser(prog="longhand", description="Longhand's page on Windows")
-    ap.add_argument("command", nargs="?", choices=("summon", "toggle", "quit", "install", "uninstall"),
-                    help="what to ask of Longhand; install: the Start menu entry, and Longhand started with the session")
+    ap.add_argument("command", nargs="?", choices=("summon", "toggle", "timer", "deadlines", "quit", "install", "uninstall"),
+                    help="what to ask of Longhand; timer, deadlines: the popup by the clock; "
+                         "install: the Start menu entry, and Longhand started with the session")
     ap.add_argument("payload", nargs="?", default="", help='for summon and toggle: {"shape":"alongside"}, {"goto":"…"}')
     ap.add_argument("--overlay", action="store_true", help="the page over everything, instead of as a window")
     ap.add_argument("--tray", action="store_true", help="start in the tray, nothing opened")
@@ -145,6 +148,8 @@ def main() -> int:
     ap.add_argument("--sandbox", type=Path, help="use a throwaway vault, config and state in this folder")
     ap.add_argument("--check", type=Path, help="drive the page and write what happened to this JSON file")
     ap.add_argument("--shot", type=Path, help="with --check: save a picture of the window here")
+    ap.add_argument("--popups", action="store_true",
+                    help="with --check: drive the timer's and the deadlines' popups instead of the page (popup_check.py)")
     args = ap.parse_args()
 
     if args.command in ("install", "uninstall"):
@@ -170,7 +175,9 @@ def main() -> int:
         # a bare word is taken for the shape (`longhand summon alongside`).
         payload = args.payload.strip() or "{}"
         asked = {"do": args.command, "payload": payload if payload.startswith("{") else json.dumps({"shape": payload})}
-    elif args.tray:
+    elif args.command in ("timer", "deadlines"):
+        asked = {"do": "popup", "payload": args.command}
+    elif args.tray or args.popups:
         asked = None
     elif args.overlay:
         asked = {"do": "toggle", "payload": "{}"}
@@ -250,6 +257,8 @@ def main() -> int:
             QTimer.singleShot(200, come_forward)
         elif do == "toggle":
             bridge.toggleRequested.emit(payload)
+        elif do == "popup":
+            bridge.popupRequested.emit(payload)
         elif do == "quit":
             bridge.quitRequested.emit()
 
@@ -291,7 +300,10 @@ def main() -> int:
             for why in keys.problems.values():
                 print("longhand: " + why, file=sys.stderr)
 
-    if args.check:
+    if args.check and args.popups:
+        import popup_check
+        popup_check.run(app, engine, box, args, warnings)
+    elif args.check:
         import spike_check
         spike_check.run(app, engine, box, args, warnings)
     if asked is not None:

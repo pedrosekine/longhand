@@ -101,6 +101,12 @@ def resolve(argv: list[str]) -> tuple[str, list[str]]:
         return head, rest
     if head in ("python3", "python"):
         return python(), rest
+    if head == "sh" and len(rest) >= 3 and rest[0] == "-c" and "pw-play" in rest[1] and "paplay" in rest[1]:
+        # A sound, as the page and the deadlines' popup play one (a tick):
+        # a line of shell that asks PipeWire or PulseAudio, the file after it.
+        # Windows plays it itself (play_sound.py). The shell's "notifications
+        # are silenced" is asked there first; Windows' is not asked here.
+        return python(), [str(Path(__file__).resolve().parent / "play_sound.py"), rest[2]]
     if head in SCRIPTS:
         head = str(SCRIPTS[head])
     if head in POSIX and GIT_BIN and (GIT_BIN / f"{head}.exe").is_file():

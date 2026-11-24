@@ -76,7 +76,12 @@ QtObject {
     readonly property int controlPaddingY: root.space(6)
     readonly property int inputPaddingY: root.space(7)
     readonly property int controlHeight: root.space(28)
+    readonly property int popupPadding: root.space(14)
   }
+
+  // Hyprland's gap around a window, as the shell keeps it: here only the
+  // room a popup leaves to the screen's edge.
+  readonly property int gapsOut: 5
 
   readonly property QtObject font: QtObject {
     readonly property string family: root.fontFamily
@@ -91,10 +96,12 @@ QtObject {
     readonly property int heading: root.fontPx(1.333)
     readonly property int display: root.fontPx(2.0)
     readonly property int displayLarge: root.fontPx(2.333)
+    readonly property int icon: root.fontPx(1.167)
   }
 
   readonly property QtObject bar: QtObject {
     readonly property int sizeHorizontal: 26
     readonly property int sizeVertical: 28
+    readonly property int iconSlot: 27
   }
 }

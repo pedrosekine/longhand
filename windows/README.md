@@ -62,10 +62,25 @@ the payload `omarchy-shell shell summon longhand.page` takes, or a bare
 `alongside`).
 
 The tray is the bar's two widgets as one icon: its tip and its menu say the
-timer and the next deadline (from `plugin/Service.qml` and
-`plugin-deadline/Service.qml`, loaded as they are), a click is today's
-note, the menu starts, pauses, skips and resets the timer, and a session
-that runs out is said there, as `notify-send` says it on Omarchy.
+timer and the next deadline, a click is today's note, the menu starts,
+pauses, skips and resets the timer, and a session that runs out is said
+there, as `notify-send` says it on Omarchy.
+
+The widgets themselves are loaded as they are (`plugin/Panel.qml`,
+`plugin-deadline/Panel.qml`), and so are their popups: the timer's, where a
+length is typed as on a microwave and the day's sessions are counted
+(`timer-popup.png`), and the deadlines', where one is ticked, graded,
+hidden, cancelled or opened on its line in the note (`deadlines-popup.png`).
+Each opens as a small window in the corner by the clock, from the tray's
+menu (Timer…, and the line of the next deadline), the tray's middle button
+(the timer's), a global key, or `longhand timer` / `longhand deadlines`.
+The keys in them are the bar's: arrows or `h j k l`, Enter, Tab from one to
+the other, Esc to put it away; clicking another window puts it away too.
+What the shell gives a widget for its popup — `Panel`, `KeyboardPanel`,
+`PanelKeyCatcher`, `CursorSurface`, the buttons and the switch — has
+stand-ins in `shim/qs/Ui/`; a button's picture is Windows' own for the same
+thing (`Glyphs.js`), since Windows has no Nerd Font. Where a widget asks
+the bar for its colours and face, `Main.qml` answers with Windows'.
 
 From anywhere, as Hyprland's keys with Win for Super (`hotkeys.py`):
 
@@ -75,6 +90,8 @@ From anywhere, as Hyprland's keys with Win for Super (`hotkeys.py`):
 | `Win+Alt+=` | the page over everything, and away |
 | `Win+Alt+P` | the timer: start, pause, resume |
 | `Win+Alt+N` | the timer: on to the next phase |
+| `Win+Alt+O` | the timer's popup |
+| `Win+Alt+D` | the deadlines' popup |
 
 `~/.config/longhand/windows-keys.json` moves one (`{"page": "Win+F9"}`) or,
 with `""`, leaves it without a key. A key must hold Win, and one Windows or
@@ -201,7 +218,7 @@ opencode and Antigravity are installed here and not tried.
 - The tests run through the runner (`python tests\run_all.py`, or
   `… run_all.py check plan`), which gives each file what Linux gives it for
   nothing (`tests/windows/`). On 2026-11-24, with gitleaks, poppler and
-  node installed: 72 files pass in four to eight minutes, 5 are passed over as
+  node installed: 73 files pass in four to eight minutes, 5 are passed over as
   Omarchy's own (named, with the reason), 1 fails: cursors, which wants
   PyQt6. One check of projects fails on a Monday on any system: it asks
   for yesterday's week and expects a file touched today in it.
@@ -220,11 +237,26 @@ opencode and Antigravity are installed here and not tried.
 - A path inside the vault is written with `/` on every system
   (`.as_posix()`), and a day with no leading zero goes through `day_text`
   (`%-d` is Linux's): both were the agent's, and both are the same on Linux.
-- A finished session's sound plays; there is no notification yet.
-- The bar's two popups (the timer's, the deadlines') are not here: the tray
-  says both and its menu works the timer, but a deadline is ticked in the
-  page. The keys sheet still lists Hyprland's six as none: the global keys
-  are moved in `windows-keys.json`, not from the sheet.
+- The bar's two popups are driven by the host itself on a throwaway vault
+  (`longhand_host.py --sandbox DIR --check OUT.json --popups`,
+  `popup_check.py`; `tests/test_tray_popups.py` reads what it says): opened
+  in the corner, a length typed and started, Tab to the deadlines', one
+  ticked in the store, Esc. Seen drawn on the screen that way. Not yet
+  opened by a hand from the tray's menu or a key pressed: Windows gives the
+  keyboard to a window only when its program is the one in front, which a
+  click on the tray or a global key makes it, and which the check has to
+  ask for.
+- In the timer's popup the row "Auto-start breaks & focus" is not drawn. It
+  is a `CursorSurface` in a `Column` with `Layout.fillWidth` and no width
+  of its own, so its width is 0 and the column passes over it. The shell's
+  own surface is a plain rectangle too, so the row is likely missing on
+  Omarchy as well: not looked at there. The keys still reach it.
+- A tick's sound (the popup's, and the page's) is played by Windows
+  (`play_sound.py`, in place of `pw-play`): at the system's volume, not the
+  shell's 0.6, and without asking whether notifications are silenced, which
+  the shell line asks `omarchy-shell`.
+- The keys sheet still lists Hyprland's six as none: the global keys are
+  moved in `windows-keys.json`, not from the sheet.
 - The programs the agent's extras call are not installed for you. The
   Start menu's entry and the start with the session are made by
   `longhand install` and read back as Windows holds them

@@ -18,6 +18,7 @@ class Bridge(QObject):
     summonRequested = Signal(str)       # a payload, as `omarchy-shell shell summon longhand.page` takes
     toggleRequested = Signal(str)
     pomoRequested = Signal(str)         # toggle | skip
+    popupRequested = Signal(str)        # timer | deadlines: the bar's two popups
     quitRequested = Signal()
     keysChanged = Signal()
 
@@ -44,6 +45,10 @@ class Bridge(QObject):
             self.pomoRequested.emit("toggle")
         elif action == "pomoSkip":
             self.pomoRequested.emit("skip")
+        elif action == "pomoPopup":
+            self.popupRequested.emit("timer")
+        elif action == "deadlines":
+            self.popupRequested.emit("deadlines")
 
 
 BRIDGE = Bridge()
@@ -62,6 +67,17 @@ class Host(QObject):
             # which Windows and Qt both take.
             return Path.home().as_posix()
         return ""
+
+    @Slot(result="QVariant")
+    def workArea(self):
+        """The main screen's room, the taskbar left out: where a popup by
+        the clock may be put (shim/qs/Ui/KeyboardPanel.qml)."""
+        from PySide6.QtGui import QGuiApplication
+        screen = QGuiApplication.primaryScreen()
+        if screen is None:
+            return {"x": 0, "y": 0, "width": 0, "height": 0}
+        g = screen.availableGeometry()
+        return {"x": g.x(), "y": g.y(), "width": g.width(), "height": g.height()}
 
     @Slot("QVariantList")
     def execDetached(self, command):

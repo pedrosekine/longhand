@@ -9,6 +9,8 @@ with Win for Super:
     alongside    Win+Alt+\\     the page as a window
     pomoToggle   Win+Alt+P     the timer: start, pause, resume
     pomoSkip     Win+Alt+N     the timer: on to the next phase
+    pomoPopup    Win+Alt+O     the timer's popup, by the clock
+    deadlines    Win+Alt+D     the deadlines' popup
 
 A key is written as the page writes one ("Alt+Win+=", any order, Super for
 Win). `<config>/longhand/windows-keys.json` moves them — {"page": "Win+F9"} —
@@ -26,7 +28,8 @@ from pathlib import Path
 
 from PySide6.QtCore import QAbstractNativeEventFilter
 
-DEFAULTS = {"page": "Win+Alt+=", "alongside": "Win+Alt+\\", "pomoToggle": "Win+Alt+P", "pomoSkip": "Win+Alt+N"}
+DEFAULTS = {"page": "Win+Alt+=", "alongside": "Win+Alt+\\", "pomoToggle": "Win+Alt+P", "pomoSkip": "Win+Alt+N",
+            "pomoPopup": "Win+Alt+O", "deadlines": "Win+Alt+D"}
 MODS = {"alt": 0x1, "ctrl": 0x2, "control": 0x2, "shift": 0x4, "win": 0x8, "super": 0x8, "meta": 0x8}
 NAMED = {"=": 0xBB, "equal": 0xBB, "plus": 0xBB, "-": 0xBD, "minus": 0xBD, "\\": 0xDC, "backslash": 0xDC,
          ",": 0xBC, "comma": 0xBC, ".": 0xBE, "period": 0xBE, "/": 0xBF, "slash": 0xBF, ";": 0xBA, "semicolon": 0xBA,
