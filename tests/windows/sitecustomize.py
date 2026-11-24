@@ -33,6 +33,8 @@ if os.name == "nt":
     # builds on the one it leaves.
     sys.path.insert(0, str(ROOT / "windows" / "pyshim"))
     import longhand_lf  # noqa: F401
+    import longhand_replace
+    longhand_replace.install()  # os.replace tries again while a reader holds the file
     sys.path.pop(0)
     TWINS = {str(ROOT / "cli" / "pomo").lower(): ROOT / "cli" / "pomo.py"}
     _which = shutil.which

@@ -8,6 +8,7 @@ from PySide6.QtCore import QObject, QProcess, Signal, Slot
 from PySide6.QtQml import QmlElement, QmlSingleton
 
 import qs_io
+from pyshim.longhand_replace import BRIEF, replace
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -170,7 +171,10 @@ class Host(QObject):
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_name("." + path.name + ".tmp")
         tmp.write_text(json.dumps(d, indent=2) + "\n", encoding="utf-8")
-        os.replace(tmp, path)
+        try:
+            replace(tmp, path, BRIEF)       # another Longhand may be reading it as it starts
+        except OSError:
+            pass                            # the next move writes it again
 
     @Slot(str, str, str, result=str)
     def themedIcon(self, background, foreground, accent):

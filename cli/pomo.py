@@ -1056,18 +1056,15 @@ def replace_store(lines: list) -> None:
         f.write("".join(line + "\n" for line in lines).encode("utf-8", "surrogateescape"))
     # Windows refuses to replace a file another process has open, and the
     # popup and `longhand-check` read this one while a tick is written
-    # (2026-11-24: the tick was lost, exit 1, under load). A moment later it
-    # can: try again for about three seconds, well inside the lock's ten.
-    for wait in (0.02, 0.05, 0.1, 0.2, 0.4, 0.8, 1.6, None):
-        try:
-            os.replace(tmp, DEADLINE_FILE)
-            return
-        except PermissionError:
-            if os.name != "nt" or wait is None:
-                with contextlib.suppress(OSError):
-                    os.unlink(tmp)
-                raise
-            time.sleep(wait)
+    # (2026-11-24: the tick was lost, exit 1, under load). There os.replace
+    # tries again for about three seconds, well inside the lock's ten
+    # (windows/pyshim/longhand_replace.py).
+    try:
+        os.replace(tmp, DEADLINE_FILE)
+    except OSError:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
 
 
 def clean_field(s: str) -> str:
