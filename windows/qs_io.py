@@ -21,6 +21,7 @@ from PySide6.QtQml import QmlElement, QmlSingleton
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import palette  # noqa: E402
+from pyshim.longhand_replace import BRIEF, replace  # noqa: E402
 
 QML_IMPORT_NAME = "Quickshell.Io"
 QML_IMPORT_MAJOR_VERSION = 1
@@ -756,14 +757,7 @@ class FileView(QObject):
                     os.fsync(f.fileno())
                 # Windows refuses the rename while another program holds the
                 # file open (a sync tool, an editor): a few tries, briefly.
-                for attempt in range(8):
-                    try:
-                        os.replace(tmp, path)
-                        break
-                    except PermissionError:
-                        if attempt == 7:
-                            raise
-                        time.sleep(0.02)
+                replace(tmp, path, BRIEF)
             else:
                 with open(path, "wb") as f:
                     f.write(data)
