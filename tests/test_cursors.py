@@ -107,7 +107,10 @@ def main() -> int:
         wheel(QPoint(0, 0), QPoint(0, 0), Qt.ScrollPhase.ScrollBegin)
         for _ in range(3):
             wheel(QPoint(0, -10), QPoint(0, -30), Qt.ScrollPhase.ScrollUpdate)
-        check(flick.property("contentY") == 60, f"the touchpad scrolls by its gain ({flick.property('contentY')})")
+        # 30 px of travel: twice that on Omarchy, which scales a touchpad by
+        # 0.4; the travel itself on Windows, which does not (TouchScroll.qml).
+        want = 30 if os.name == "nt" else 60
+        check(flick.property("contentY") == want, f"the touchpad scrolls by its gain ({flick.property('contentY')})")
         wheel(QPoint(0, 0), QPoint(0, 0), Qt.ScrollPhase.ScrollEnd)
         QTest.qWait(50)
         flick.setProperty("contentY", 0)
