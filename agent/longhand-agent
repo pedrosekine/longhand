@@ -4093,6 +4093,16 @@ def answer_proposal(cfg: dict, args) -> int:
         planlib.save_ledger(PROPOSALS, ledger)
         print(json.dumps({"id": args.id, "status": "undone", "changed": True, "back": back}))
         return 0
+    # A drop of a deadline with no line, accepted: the page cancels the
+    # deadline first, then says so here, and a list read in between found it
+    # cancelled and settled the drop as moot, as for one cancelled some other
+    # way (2026-11-24, on Windows, where a process is slower to start). The
+    # page asks only while the deadline is open, so an accept of such a moot
+    # drop whose deadline is cancelled is the person's answer: it stands.
+    if args.how == "accept" and item["status"] == "moot" and item["kind"] == "drop" and not item.get("key") \
+            and item.get("deadline") in {d["id"] for d in planlib.store_deadlines(STATE_HOME / "deadlines.tsv",
+                                                                                 ("cancelled",))}:
+        item["status"] = "open"
     if item["status"] != "open":
         print(json.dumps({"id": args.id, "status": item["status"], "changed": False}))
         return 0

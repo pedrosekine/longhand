@@ -301,10 +301,13 @@ live page test runs after them, alone. Each file also runs alone
 (`python3 tests/test_check.py`).
 
 On GitHub the offscreen suite runs on every push to `main` and every pull
-request (`.github/workflows/tests.yml`), in an Arch container. Two things
-are not run there, for want of a desktop: `test_popup` and the live page
-test. Run those on a machine with Hyprland before a change to the bar's
-widgets or the page lands.
+request (`.github/workflows/tests.yml`), in an Arch container and on
+Windows. Two things are not run on Arch, for want of a desktop:
+`test_popup` and the live page test in Quickshell. Run those on a machine
+with Hyprland before a change to the bar's widgets or the page lands. The
+live page test does run on GitHub's Windows machine, over the Windows host
+(`python tests/page/run.py --host qt`, offscreen; `windows/README.md`): the
+same checks, on Windows' processes, files and paths, not in Quickshell.
 
 **Every test runs beside the others**, so a new one keeps to itself:
 

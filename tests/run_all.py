@@ -107,7 +107,9 @@ def jobs() -> list[tuple[str, list[str], dict | None, int]]:
 def page_job(overlay: bool) -> tuple[str, list[str], dict | None, int]:
     args = ["--overlay"] if overlay else []
     env = windows_env() if WINDOWS else None
-    return ("page/run.py", [sys.executable, str(TESTS / "page" / "run.py"), *args], env, 900)
+    # Over the Windows host the page starts a Python for nearly everything
+    # it asks, each slower to start than on Linux: a run takes longer there.
+    return ("page/run.py", [sys.executable, str(TESTS / "page" / "run.py"), *args], env, 2400 if WINDOWS else 900)
 
 
 def run(job) -> tuple[str, bool, float, str]:

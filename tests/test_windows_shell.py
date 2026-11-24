@@ -222,6 +222,60 @@ def inside(app):
           f"a Process of hyprctl ends as a program would, its words on stderr ({ended})")
     w.close()
     other.close()
+    restart_when_finished(app)
+
+
+KEEP = []     # the Processes made here, alive until the end
+
+
+def restart_when_finished(app):
+    """As Quickshell (asked on Omarchy, 2026-11-24): when the output's
+    `streamFinished` is heard, `running` already reads false, and setting it
+    true there starts the process again. The page asks for its next check
+    that way (`checkDone`); the host once dropped it, and the page waited
+    eight seconds for a check that never ran (tests/page/run.py, section 5)."""
+    import qs_io
+    p = qs_io.Process()
+    out = qs_io.StdioCollector()
+    p._set_stdout(out)
+    seen = []
+
+    def finished():
+        seen.append((out.property("text").strip(), p._get_running()))
+        if len(seen) < 3:
+            p._set_running(True)
+    out.streamFinished.connect(lambda: finished())
+    p._set_command([sys.executable, "-c", "print('hi')"])
+    p._set_running(True)
+    loop_until(app, lambda: len(seen) >= 3 and not p._get_running(), 20.0)
+    check(seen == [("hi", False)] * 3,
+          f"a Process started again from its own streamFinished runs again, not running when it is heard ({seen})")
+
+    KEEP.append((p, out))
+    restart_while_ending(app)
+
+
+def restart_while_ending(app):
+    """`running = false`, a new command, `running = true` while the old
+    process is still ending: the new one runs once it has ended (as
+    Quickshell, asked on Omarchy; the page leaves Hyprland's submap so,
+    `hyprListen`, and the host once dropped it)."""
+    import qs_io
+    p = qs_io.Process()
+    out = qs_io.StdioCollector()
+    p._set_stdout(out)
+    said = []
+    out.streamFinished.connect(lambda: said.append(out.property("text").strip()))
+    p._set_command([sys.executable, "-c", "import time; time.sleep(30); print('first')"])
+    p._set_running(True)
+    loop_until(app, lambda: p._proc is not None and int(p._proc.processId()) > 0, 10.0)
+    p._set_running(False)
+    p._set_command([sys.executable, "-c", "print('second')"])
+    p._set_running(True)
+    loop_until(app, lambda: "second" in said and not p._get_running(), 20.0)
+    check(said[-1:] == ["second"] and "first" not in said,
+          f"stopped and started again before it ended: the new command runs once the old one has ({said})")
+    KEEP.append((p, out))
 
 
 def QGuiApplication_focus():

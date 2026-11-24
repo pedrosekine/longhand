@@ -334,6 +334,66 @@ opencode, whether Longhand's agents are where it reads them; on Windows
 for Antigravity, whether the Credential Manager holds its sign-in (asked
 by name, never read out).
 
+## The page's live test, here
+
+`tests/page/run.py`, the test that drives the page over IPC on Omarchy
+(about a thousand checks), runs here too, over the host
+(`tests/page/qt_host.py` loads `harness.qml` and the page in PySide6,
+offscreen, and answers over a local socket what `quickshell ipc` answers
+there):
+
+```powershell
+.venv\Scripts\python -X utf8 tests\page\run.py --host qt   # about 8 minutes here
+.venv\Scripts\python -X utf8 tests\run_all.py page         # the same, through the runner
+```
+
+`PAGE_LOG=file` keeps what the page says, `LONGHAND_HOST_TRACE=1` adds
+every process it starts, `PAGE_KEEP=1` leaves the throwaway vault and state
+to read after a failure. GitHub runs it on every pull request beside the
+offscreen suite (the workflow's Windows job, `page` half).
+
+First run whole on 2026-11-24: 28 checks failed, and it stopped halfway.
+What was found:
+
+- In the host, two orders Quickshell keeps (asked on Omarchy) and the
+  stand-in did not: a Process started again from its own output's
+  `streamFinished` did not start (`qs_io.Process._end` still counted it
+  running) — the page asks for its next deadline check that way, so a
+  check was now and then dropped and the page waited eight seconds for
+  it, and a bound line pasted back stayed cancelled; and `running =
+  false`, a new command, `running = true` before the old process had
+  ended dropped the new one — the page leaves Hyprland's submap that way.
+  `tests/test_windows_shell.py` holds both.
+- In the page: the second Enter that lets the page keep Hyprland's six
+  keys was lost when it came while the sheet was still reading them (a
+  Python started cold, most of a second here); now made when the read
+  ends (`Page.qml`, `hyprNext`). And an exported PDF opened under its
+  whole path in the header ("C:\Users\…\Downloads\Diary 1"): its name was
+  cut at the last "/" only (`fileName`).
+- In the agent: accepting a drop of a deadline with no line, the page
+  cancels it, then records the accept; a list read in between settled it
+  as moot (as one cancelled some other way is), and the accept that came
+  after changed nothing. The page asks only while the deadline is open,
+  so that accept now stands (`answer_proposal`;
+  `tests/test_margin_cards.py`).
+- In the test, the rest: the agent found the `opencode` installed on this
+  machine rather than the test's stand-in (a name is looked up with
+  PATHEXT here; the stand-in has no extension — it is now named by its
+  path, and nothing it was asked reached a model); the host put
+  `pyshim/` before the tests' own `sitecustomize` on its children's
+  PYTHONPATH, so they could not start a `#!` stand-in; offscreen Qt had
+  no fonts (the measure read 46 characters for 72; `QT_QPA_FONTDIR`); the
+  test's runner did not listen for a stop, so the host waited three
+  seconds before ending it; a note read at the instant the page renames
+  a new copy over it is refused here, briefly; and checks that acted on
+  a dashboard row or a card before it had caught up with the last edit,
+  which a Linux machine does before the next IPC call.
+
+Not run here, and said so: the overlay (`--overlay`, as on Omarchy), a
+scanned paper's read (magick, pdftoppm, tesseract, qpdf), and the PDF an
+export writes, where pandoc and xelatex are not on PATH (as
+`tests/test_export.py`).
+
 ## What stands in for what
 
 | The page imports | Here |

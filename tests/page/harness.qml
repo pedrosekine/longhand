@@ -463,6 +463,9 @@ ShellRoot {
     function dive(): void { page.diveIn(true) }
     function back(): void { page.backToNote() }
     function dayShown(): bool { return page.dayShown }
+    // Whether the agent still runs for a pane ("day", "margin", "talk"):
+    // its answer is drawn once written, a moment before its process ends.
+    function agentBusy(where: string): bool { return page.agentBusy(where) }
     function daySend(text: string): void { page.sendDay(text) }
     function dayKey(key: int, mods: int): bool { return page.dayKey({ key: key, text: "", modifiers: mods }) }
     function dayTurns(): string { return JSON.stringify(page.dayTurns.map(function (t) { return t.role + ": " + t.text })) }

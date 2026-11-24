@@ -162,8 +162,13 @@ def child_environment(extra: dict | None = None) -> QProcessEnvironment:
         env.insert("PYTHONUTF8", "1")
         env.insert("PYTHONIOENCODING", "utf-8")
         shim = Path(__file__).resolve().parent / "pyshim"
-        if shim.is_dir():
-            old = env.value("PYTHONPATH", "")
+        old = env.value("PYTHONPATH", "")
+        have = {os.path.normcase(os.path.normpath(p)) for p in old.split(os.pathsep) if p}
+        # Already on the path, it stays where it is: the tests put their own
+        # sitecustomize (tests/windows/, which loads this one's halves and
+        # starts their `#!` stand-ins) before it, and Python loads only the
+        # first it finds.
+        if shim.is_dir() and os.path.normcase(os.path.normpath(str(shim))) not in have:
             env.insert("PYTHONPATH", str(shim) + (os.pathsep + old if old else ""))
         front = [str(Path(sys.executable).parent), str(REPO / "cli"), str(REPO / "agent")]
         if GIT_BIN:
@@ -295,6 +300,7 @@ class Process(QObject):
         self._command = []
         self._wanted = False     # what `running` was last set to
         self._proc = None
+        self._stopping = False   # `running = false` asked, the process not ended yet
         self._stdout = None
         self._stderr = None
         self._stdin = False
@@ -319,7 +325,14 @@ class Process(QObject):
     def _set_running(self, v):
         v = bool(v)
         if v:
-            if self._proc is None and not self._wanted:
+            if self._proc is not None and self._stopping:
+                # As Quickshell (asked on Omarchy, 2026-11-24): `running =
+                # false` then `true` while the old process is still ending
+                # starts the command (a new one, maybe) once it has ended.
+                # The page leaves Hyprland's submap that way (hyprListen),
+                # and the host dropped it, leaving the submap on.
+                self._wanted = True
+            elif self._proc is None and not self._wanted:
                 self._wanted = True
                 # A tick later: a `running: true` written before `command:`
                 # in the same object must not start an empty command.
@@ -336,6 +349,7 @@ class Process(QObject):
             was = self._get_running()
             self._wanted = False
             if self._proc is not None:
+                self._stopping = True
                 self._end_tree(self._proc)
             elif was:
                 self.runningChanged.emit()
@@ -479,17 +493,26 @@ class Process(QObject):
 
     def _end(self, p, code, status):
         self._drain(p)
+        # As Quickshell: by the time `streamFinished` and `exited` are heard,
+        # `running` reads false, and `running = true` there starts the
+        # process again (seen on Omarchy, 2026-11-24). The page asks for its
+        # next check from the last one's streamFinished (`checkDone`); with
+        # the process still counted as running, that start was dropped and
+        # the page waited eight seconds for a check that never ran.
+        trace(f"exit {code}", self._command)
+        again = self._stopping       # stopped, and maybe started again before it ended
+        self._proc = None
+        self._stopping = False
+        self._close_stop()
         for parser in (self._stdout, self._stderr):
             if isinstance(parser, _Parser):
                 parser.finish()
-        # As Quickshell: by the time `exited` is heard, `running` reads false.
-        trace(f"exit {code}", self._command)
-        self._proc = None
-        self._close_stop()
         self.exited.emit(code, status)
         self.runningChanged.emit()
         self.processIdChanged.emit()
         p.deleteLater()
+        if again and self._wanted:        # started again while it was ending (`_set_running`)
+            QMetaObject.invokeMethod(self, "_launch", Qt.ConnectionType.QueuedConnection)
 
     def _on_finished(self, p, code, status):
         if p is self._proc:

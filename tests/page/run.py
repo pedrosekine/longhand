@@ -12,6 +12,11 @@ touched; and it runs with the lid shut, the screen off or the session locked.
 
 Run: python3 tests/page/run.py              # the window shape, as used most
      python3 tests/page/run.py --overlay    # also the overlay
+
+On Windows (or with no quickshell) it runs over the Windows host instead
+(`--host qt`: tests/page/qt_host.py, PySide6, offscreen; windows/README.md).
+PAGE_LOG=file keeps what the page says; PAGE_KEEP=1 keeps the throwaway
+vault, state and logs to read after a failure.
 """
 import argparse
 import datetime as dt
@@ -33,6 +38,22 @@ if os.name == "nt":
     sys.path.insert(0, str(ROOT / "tests" / "windows"))
     import sitecustomize as _win_sc  # noqa: E402, F401
     sys.path.pop(0)
+
+    # The page writes a note by renaming a new copy over it. Linux lets a
+    # reader in at any moment; Windows refuses one (PermissionError) for the
+    # instant the old file is being replaced. What this reads is tried again.
+    def _patient(read):
+        def again(self, *args, **kwargs):
+            for wait in (0.01, 0.02, 0.05, 0.1, 0.2, 0.4, None):
+                try:
+                    return read(self, *args, **kwargs)
+                except PermissionError:
+                    if wait is None:
+                        raise
+                    time.sleep(wait)
+        return again
+    pathlib.Path.read_text = _patient(pathlib.Path.read_text)
+    pathlib.Path.read_bytes = _patient(pathlib.Path.read_bytes)
 sys.path.insert(0, str(ROOT / "agent"))
 import blocks  # noqa: E402
 import lifespan  # noqa: E402
@@ -170,32 +191,53 @@ SYNTH_THEME_B = (
     'muted = "#928374"\nlight_foreground = "#d5c4a1"\ndark_foreground = "#a89984"\ndark_background = "#1d2021"\n'
 )
 
-PY_RUNNER = """#!/usr/bin/env python3
-import os, pathlib, subprocess, sys, time
+# The bash runner (Page), in Python, for the Qt host: no bash on Windows.
+# Page puts the paths it needs first in its arguments.
+PY_RUNNER = """
+import os, subprocess, sys, time
 calls, stub, agent, chatstub, daily = sys.argv[1:6]
 argv = sys.argv[6:]
 cmd = argv[0] if argv else ""
 arg3 = argv[2] if len(argv) > 2 else ""
+# Stopped as the page stops a run. On Linux the page's SIGTERM ends the bash
+# runner in its sleep, before the stub answers. Windows has no such signal:
+# the host sets a named event, and ends outright only what has not said it
+# listens, after three seconds (windows/qs_io.py, `signal`) -- longer than
+# the stub's two. So this listens, as the real runner does
+# (agent/winproc.py), and ends what it started.
+child = []
+if os.name == "nt":
+    sys.path.insert(0, os.path.dirname(agent))
+    import winproc
+    def stopped():
+        for c in child:
+            c.kill()
+        os._exit(143)
+    winproc.listen_for_stop(stopped)
+def run(cmdline):
+    c = subprocess.Popen(cmdline)
+    child.append(c)
+    return c.wait()
 with open(calls, "a", encoding="utf-8", newline="\\n") as f:
     f.write(f"{time.time():.6f} start {cmd} {arg3}\\n")
 if cmd == "projects":
     if os.path.exists(os.path.join(stub, "slow-fetch")):
         time.sleep(2)
-    r = subprocess.run([sys.executable, agent, *argv])
+    rc = run([sys.executable, agent, *argv])
     with open(calls, "a", encoding="utf-8", newline="\\n") as f:
         f.write(f"{time.time():.6f} end {cmd}\\n")
-    sys.exit(r.returncode)
+    sys.exit(rc)
 LOCAL = {"accept", "projects", "project", "project-page", "sections", "next", "dated", "tasks", "box", "timetable",
          "plan", "proposals", "proposal", "talk", "thread", "rate", "notebook", "autonomy", "day", "search", "horizon",
          "note", "export", "checkin", "conversation"}
 if cmd in LOCAL:
-    sys.exit(subprocess.run([sys.executable, agent, *argv]).returncode)
+    sys.exit(run([sys.executable, agent, *argv]))
 if cmd == "run":
     time.sleep(2)
     sys.exit(0)
 if cmd == "chat":
     time.sleep(2)
-    sys.exit(subprocess.run([sys.executable, chatstub, daily, *argv]).returncode)
+    sys.exit(run([sys.executable, chatstub, daily, *argv]))
 sys.exit(0)
 """
 
@@ -265,14 +307,12 @@ class Page:
                 (bindir / "opencode").chmod(0o755)
                 (bindir / "hyprctl").chmod(0o755)
                 (bindir / "pomo").symlink_to(ROOT / "cli" / "pomo")
-            runner_body = self.tmp / "runner_body.py"
-            runner_body.write_text(PY_RUNNER)
-            self.runner.write_text(
-                "#!/usr/bin/env python3\nimport subprocess, sys\n"
-                f"sys.exit(subprocess.run([sys.executable, {str(runner_body)!r}, {str(self.calls)!r}, {str(self.stub)!r}, "
-                f"{str(ROOT / 'agent' / 'longhand-agent')!r}, {str(chatstub)!r}, "
-                f"{str(self.vault / 'agents' / 'longhand' / 'daily')!r}, *sys.argv[1:]]).returncode)\n"
-            )
+            # One Python, not a wrapper starting another: on Windows each
+            # start costs a few hundred milliseconds, and the page starts the
+            # runner for nearly everything it asks.
+            baked = [str(self.calls), str(self.stub), str(ROOT / "agent" / "longhand-agent"), str(chatstub),
+                     str(self.vault / "agents" / "longhand" / "daily")]
+            self.runner.write_text(f"#!/usr/bin/env python3\nimport sys\nsys.argv[1:1] = {baked!r}\n" + PY_RUNNER)
             if os.name != "nt":
                 self.runner.chmod(0o755)
         else:
@@ -305,6 +345,10 @@ esac
 
         (cfg / "longhand" / "config.json").write_text(json.dumps({
             "vault": self.vault.as_posix(), "daily": {"dir": "Daily", "format": "YYYY.MM.DD"}, "horizon": "2000-01-01",
+            # The stub by its path, not its name: on Windows a name is looked
+            # up with PATHEXT (the agent's `_win_cmd`), which passes over the
+            # stub (no extension) for an opencode installed on the machine.
+            "opencode": (bindir / "opencode").as_posix(),
             "runner": self.runner.as_posix(), "check": (ROOT / "cli" / "longhand-check").as_posix(),
             "read": (ROOT / "cli" / "longhand-read").as_posix(), "weekStart": "monday",
             "inbox": (self.tmp / "Downloads").as_posix(),
@@ -343,12 +387,22 @@ esac
             if not copied:
                 (self.theme / "colors.toml").write_text(SYNTH_THEME_A)
             self.env["HOME"] = self.home.as_posix()
+            if os.name == "nt":
+                self.env["USERPROFILE"] = str(self.home)     # what Path.home() and Qt read there
         self._log = open(os.environ["PAGE_LOG"], "w") if os.environ.get("PAGE_LOG") else None
         log = self._log if self._log is not None else subprocess.DEVNULL
         if self.qt:
             self.env["LONGHAND_PLAY_LOG"] = str(self.played)
             if not os.environ.get("PAGE_SHOW"):
                 self.env["QT_QPA_PLATFORM"] = "offscreen"
+                # Offscreen Qt on Windows finds no fonts and draws every glyph
+                # as a box of one width, so the measure (72 characters) is
+                # off; given Windows' own folder it lays text out as on screen.
+                if os.name == "nt" and not self.env.get("QT_QPA_FONTDIR"):
+                    self.env["QT_QPA_FONTDIR"] = str(pathlib.Path(os.environ.get("WINDIR", "C:/Windows")) / "Fonts")
+            # Qt's warnings on stderr, for PAGE_LOG: on Windows it sends them
+            # to the debugger instead when no console is attached.
+            self.env["QT_FORCE_STDERR_LOGGING"] = "1"
             if os.name == "nt":
                 py_path = [str(ROOT / "tests" / "windows"), str(ROOT / "windows" / "pyshim")]
                 old_pp = self.env.get("PYTHONPATH", "")
@@ -517,7 +571,10 @@ esac
             self.proc.wait()
         if getattr(self, "_log", None) is not None:
             self._log.close()
-        shutil.rmtree(self.tmp, ignore_errors=True)
+        if os.environ.get("PAGE_KEEP"):            # the vault, state and logs, to read after a failure
+            print(f"     (kept {self.tmp})")
+        else:
+            shutil.rmtree(self.tmp, ignore_errors=True)
 
 
 def header(stem):
@@ -729,7 +786,11 @@ def checks() -> int:
         # is asked, and the line coming back brings it back (docs/tasks.md)
         p.call("removeLine", p.line_of("^d1"))
         check(p.wait(lambda: p.deadline(1)["status"] == "cancelled"), "deleting a bound line cancels its deadline")
-        check(p.call("ask") == "null" and "cancelled" in p.call("hint"), f"…said under the cursor, nothing asked ({p.call('hint')!r})")
+        # The check writes the store before it exits and says what it did:
+        # the hint comes a moment after the store (longer on Windows, where
+        # a Python takes longer to end).
+        check(p.wait(lambda: "cancelled" in p.call("hint"), 3) and p.call("ask") == "null",
+              f"…said under the cursor, nothing asked ({p.call('hint')!r})")
         bound = p.lines()[p.line_of("^d2")]
         p.call("undo")
         check(p.wait(lambda: p.deadline(1)["status"] == "done"), "Ctrl+Z brings the line back, and its deadline as it was")
@@ -856,6 +917,11 @@ def checks() -> int:
         time.sleep(0.4)
         p.call("acceptAt", 1)
         p.call("acceptAt", 2)
+        # Both written before anything below touches the store (each is a
+        # `pomo` of its own, later on Windows: one landing after the store
+        # is written by hand below would write it back without that line);
+        # then a moment more for a third that must not come.
+        p.wait(lambda: len(p.store.read_text().splitlines()) >= before + 2, 8)
         time.sleep(1.5)
         check(len(p.store.read_text().splitlines()) == before + 2, "another item offers it no more; a proposal naming no line adds once")
         check("- [ ] A0 poster\n" in p.note() and "Conference" not in p.note(), "…and that one takes no line")
@@ -897,9 +963,11 @@ def checks() -> int:
         p.call("acceptAt", 0)
         check(p.wait(lambda: p.deadline(77)["status"] == "cancelled", 8),
               f"Enter on a drop of a deadline with no line cancels it in the store ({p.deadline(77)})")
-        check(p.wait(lambda: any(x["id"] == nid and x["status"] == "accepted" for x in json.loads(ledger_path.read_text())["items"]))
-              and json.loads(p.call("marginListed")) == [{"kind": "drop", "live": False, "state": "accepted"},
-                                                          {"kind": "drop", "live": False, "state": "declined"}],
+        # The cards hear of it when the one list is read again, after the
+        # ledger: both waited for.
+        check(p.wait(lambda: any(x["id"] == nid and x["status"] == "accepted" for x in json.loads(ledger_path.read_text())["items"])
+                     and json.loads(p.call("marginListed")) == [{"kind": "drop", "live": False, "state": "accepted"},
+                                                                 {"kind": "drop", "live": False, "state": "declined"}]),
               f"…accepted in the one list, and both cards say how they were settled ({p.call('marginListed')})")
         check(line + "\n" in p.note(), "…and no note was written: it had no line")
 
@@ -1141,13 +1209,20 @@ def checks() -> int:
               f"…by writing the line the runner reads ({p.note()[:40]!r})")
         check("Dear diary." in p.note() and "|agent]]" in p.note(), "…leaving the note and its link line alone")
         check(p.call("agentOn") == "false", "…and the page stops offering the agent at all")
-        before = len(list((p.state / "longhand" / "payloads").glob("*"))) if (p.state / "longhand" / "payloads").is_dir() else 0
+        # The plan and the briefs are passes of their own, started when the
+        # page opened; one may still be writing its payload a second later
+        # (on Windows, where the agent is slower to start, it was): not an
+        # ask, so not counted.
+        def asked():
+            pl = p.state / "longhand" / "payloads"
+            return {x.name for x in pl.glob("*") if not re.search(r"-(plan|brief-[\d-]+)\.md$", x.name)} if pl.is_dir() else set()
+        before = asked()
         p.call("cursorEnd")
         p.call("type", " Is this ok?")
         p.call("askNow")
         time.sleep(1)
-        after = len(list((p.state / "longhand" / "payloads").glob("*"))) if (p.state / "longhand" / "payloads").is_dir() else 0
-        check(after == before, f"asking on a private note runs nothing ({before} → {after})")
+        after = asked()
+        check(after == before, f"asking on a private note runs nothing ({len(before)} → {len(after)}: {sorted(after - before)})")
         p.call("togglePrivate")
         check(p.wait(lambda: p.call("isPrivate") == "false"), "turning it off puts the day back")
         check(p.wait(lambda: not p.note().startswith("---")), f"…with no frontmatter left behind ({p.note()[:20]!r})")
@@ -1571,9 +1646,13 @@ def checks() -> int:
         def heads():
             return [r["text"] for r in json.loads(p.call("dashRows")) if r["kind"] == "head"]
 
-        def row(title):
+        def row(title, until=None):
             # The list is rebuilt whenever a line changes, so a row's index
-            # is only good once it has stopped moving.
+            # is only good once it has stopped moving — and, after an edit,
+            # once the row says what the edit made (`until`): the list is
+            # read again by `longhand-agent tasks`, which on Windows takes
+            # most of a second to start, and a key pressed on the row as it
+            # was undoes what the last one did.
             def at():
                 rows = json.loads(p.call("dashRows"))
                 return next((n for n, r in enumerate(rows) if r.get("text") == title), -1), rows
@@ -1581,7 +1660,7 @@ def checks() -> int:
             for _ in range(20):
                 time.sleep(0.3)
                 j, rows = at()
-                if i == j and j >= 0:
+                if i == j and j >= 0 and (until is None or until(rows[j])):
                     break
                 i = j
             p.call("dashFocus", i)
@@ -1623,12 +1702,12 @@ def checks() -> int:
               "Ctrl+L on a box done today opens it again, the day taken off")
         check(int(p.call("ticksHeard")) == heard + 1, "…with no sound: an untick is not a tick")
         p.call("tickSoundToggle")
-        row("draft the intro")
+        row("draft the intro", lambda r: not r["done"])
         p.call("dashKey", 0x4c, CTRL)
         check(p.wait(lambda: "- [x] draft the intro" in (p.daily / f"{YDAY}.md").read_text())
               and int(p.call("ticksHeard")) == heard + 1, "with the sound turned off in Settings, a tick is silent")
         p.call("tickSoundToggle")
-        row("draft the intro")
+        row("draft the intro", lambda r: r["done"])
         p.call("dashKey", 0x4c, CTRL)
         p.wait(lambda: "- [ ] draft the intro\n" in (p.daily / f"{YDAY}.md").read_text())
 
@@ -1648,14 +1727,14 @@ def checks() -> int:
         check(p.call("dashType", "p") == "true", "p is taken")
         check(p.wait(lambda: "- [ ] loose thought ⏫" in p.call("text")),
               f"p gives it a priority, written as Obsidian reads it ({p.call('text')[-40:]!r})")
-        row("loose thought")
+        row("loose thought", lambda r: r["prio"] == 2)
         p.call("dashType", "p")
         check(p.wait(lambda: "- [ ] loose thought 🔽" in p.call("text")), "…and walks the three levels")
-        row("loose thought")
+        row("loose thought", lambda r: r["prio"] == -1)
         p.call("dashType", "p")
         check(p.wait(lambda: "- [ ] loose thought\n" in p.call("text")), "…back round to none")
 
-        row("loose thought")
+        row("loose thought", lambda r: r["prio"] == 0)
         check(p.call("dashKey", KEY_DELETE, 0) == "true", "Delete drops it")
         gone = f"- [-] loose thought ❌ {dt.date.today().isoformat()}"
         check(p.wait(lambda: gone in p.call("text")), f"…cancelled, with the day it was dropped ({p.call('text')[-45:]!r})")
@@ -1728,7 +1807,20 @@ def checks() -> int:
         p.call("dashSearchKey", KEY_ESC, 0)
         check(strip()["query"] == "" and sf()["text"] == "" and strip()["at"] == 0, f"Esc there clears them ({sf()})")
         drawn = lambda: json.loads(p.call("dashDrawn"))
-        everything = drawn()["shown"]
+
+        def settled():
+            # A read of the list asked for by the edits above may still land
+            # and draw rows anew (each read starts a Python: later on
+            # Windows). Taken once two looks a moment apart agree.
+            last = drawn()
+            for _ in range(20):
+                time.sleep(0.5)
+                now = drawn()
+                if now["shown"] == last["shown"] and now["fresh"] == 0:
+                    break
+                last = now
+            return now
+        everything = settled()["shown"]
         for ch in "rubric":
             p.call("dashType", ch)
         check(p.wait(lambda: [r.get("text") for r in json.loads(p.call("dashRows")) if r["kind"] == "task"] == ["ask about the rubric"]),
@@ -1823,7 +1915,7 @@ def checks() -> int:
         p.call("dashKey", KEY_T, 0)
         p.call("dashWhen", "2030-01-05")
         check(p.wait(lambda: "read the paper ⏫ ⏳ 2030-01-05" in p.call("text")), f"t gives it a day ({p.call('text')[-60:]!r})")
-        row("read the paper")
+        row("read the paper", lambda r: r["when"] == "2030-01-05")
         check(p.call("dashKey", KEY_T, SHIFT) == "true", "Shift+T is taken")
         check(p.wait(lambda: "- [ ] read the paper ⏫\n" in p.call("text")),
               f"…and takes the day off again, the rest of the line kept ({p.call('text')[-60:]!r})")
@@ -1854,7 +1946,7 @@ def checks() -> int:
         check(p.call("dashType", "p") == "true", "p on a deadline row is taken")
         check(p.wait(lambda: f"- [ ] the lab notes [est:: 2h] ⏳ 2030-01-03 📅 2030-01-08 ^d{pid}" in p.call("text")),
               f"…and walks its line's priority ({p.call('text')[-80:]!r})")
-        row("the lab notes")
+        row("the lab notes", lambda r: r["mark"] != "▽")
         check(p.call("dashType", "t") == "true", "t on a deadline row asks when")
         p.call("dashWhen", "2030-01-04")
         check(p.wait(lambda: f"⏳ 2030-01-04 📅 2030-01-08 ^d{pid}" in p.call("text")),
@@ -2016,6 +2108,9 @@ def checks() -> int:
         check(p.wait(lambda: json.loads(p.call("dayTurns"))[-2:] == ["student: what comes first today?",
                                                                     "agent: day: what comes first today?"], timeout=12),
               f"a message to the day is answered, and kept in the day's state ({p.call('dayTurns')})")
+        # The answer is drawn once it is written, a moment before the run's
+        # process ends (longer on Windows); Esc while it runs stops it.
+        p.wait(lambda: p.call("agentBusy", "day") == "false", 5)
         p.call("dayKey", 0x01000000, 0)
         check(p.wait(lambda: p.call("dayShown") == "false"), "Esc closes it")
         note_before = p.note()
@@ -2456,8 +2551,12 @@ def checks() -> int:
         (p.state / "longhand" / "plan.json").unlink(missing_ok=True)
         p.open_fresh()
         def order():
+            # Runners started side by side append to the log at once; on
+            # Windows an append is a seek and a write, not one step, so a
+            # line can come torn: passed over.
             rows = [l.split(" ", 2) for l in p.calls.read_text().splitlines() if l.strip()]
-            return [(float(t), what, rest.strip()) for t, what, rest in rows]
+            return [(float(r[0]), r[1], r[2].strip()) for r in rows
+                    if len(r) == 3 and re.fullmatch(r"\d+\.\d+", r[0]) and r[1] in ("start", "end")]
         p.wait(lambda: any(r[2].startswith("plan") for r in order()) and any(r[2] == "run open" for r in order()), timeout=12)
         o = order()
         fetch_end = next((t for t, w, r in o if w == "end" and r == "projects"), None)
@@ -2630,7 +2729,9 @@ def checks() -> int:
               f"…and the page writes the do-date on the box's line (⏳ {when})")
         check(p.wait(lambda: any(x["kind"] == "do-date" and x["status"] == "accepted"
                                  for x in json.loads(ledger_file.read_text())["items"])), "…recorded as accepted")
-        check(p.wait(lambda: not any(r["kind"] == "proposal" for _, r in asks())), "…and the row goes")
+        # Its row, by its id: the planner, still on, may have proposed again.
+        check(p.wait(lambda: not any(r["kind"] == "proposal" and r["id"] == prop["id"] for _, r in asks())),
+              f"…and the row goes ({prop['id']}; {[(r['kind'], r['id']) for _, r in asks()]})")
         qi = next(n for n, r in asks() if r["kind"] == "question")
         p.call("dashFocus", qi)
         p.call("dashKey", KEY_RETURN, 0)
@@ -2865,7 +2966,7 @@ def checks() -> int:
         dash_was = p.call("dashOpen")
         p.call("sideKey", 0x50, 0)                          # P
         fl = lambda: json.loads(p.call("files"))
-        check(p.wait(lambda: fl()["filePath"].endswith("/longhand/pages/dtm.md") and fl()["readOnly"]
+        check(p.wait(lambda: fl()["filePath"].replace("\\", "/").endswith("/longhand/pages/dtm.md") and fl()["readOnly"]
                      and "Working files" in p.call("text") and "DTM handout" in p.call("text"), 20),
               f"P inside a project opens its page, read-only, its documents on it ({fl()}, {p.call('text')[:300]!r})")
         check(fl()["filePath"].startswith(str(p.state)), "…written in the state folder, not the vault")
@@ -3254,7 +3355,8 @@ def checks() -> int:
         check(p.wait(lambda: "refused" in p.call("keysNote")) and ours.read_text() == before and hrow("pomoToggle") == ["Alt+Super+P"],
               "a key Hyprland refuses: the file is put back, and the sheet says so")
         p.call("keysKey", KEY_ESC, 0)
-        check(p.wait(lambda: p.call("keysListening") == "false" and last_call().startswith("eval if hl.get_current_submap()")),
+        # Not the very last call, as above: the pointer asks Hyprland too.
+        check(p.wait(lambda: p.call("keysListening") == "false" and left_submap()),
               "Esc stops waiting and leaves the submap")
         (p.hypr / "break").unlink()
         p.call("keysKey", KEY_ESC, 0)
@@ -3901,6 +4003,7 @@ def checks() -> int:
         check(paper_talk.is_file() and json.loads(paper_talk.read_text())["turns"][-2].get("marks") == [qid],
               "…kept as the paper's conversation, the message pointing at the mark")
         check(pr()["marks"] == [], "…and the box lets go of it once sent")
+        p.wait(lambda: p.call("agentBusy", "day") == "false", 5)    # Esc while it runs stops it (as above)
         p.call("dayKey", KEY_ESC, 0)
         check(p.wait(lambda: pr()["list"] and pr()["here"] == "right" and sorted(pr()["rows"]) == sorted([hid, qid])),
               f"Esc in the chat turns the pane to the marks ({pr()})")
@@ -4057,9 +4160,12 @@ def checks() -> int:
             sj.unlink()
         else:
             sj.write_text(kept_settings)
+        # The paper's marks are read again as it comes back: the keys wait
+        # for its rows (a process of their own, later on Windows).
+        p.wait(lambda: pr()["rows"])
         p.call("paperKey", KEY_DOWN, 0)                     # as it was before: a mark picked, from the list
         p.call("paperKey", KEY_DOWN, 0)
-        p.wait(lambda: pr()["picked"] != "")
+        check(p.wait(lambda: pr()["picked"] != ""), f"↓ in the paper's list picks a mark again ({pr()})")
         links = p.call("paperLinks", "It says “Reflexive thematic analysis” (p. 1), plainly.")
         check("](quote:1:" in links and "[“Reflexive thematic analysis” (p. 1)]" in links, f"a quote with its page is a link ({links})")
         links = p.call("paperLinks", "It says “stress (MOS) were found” (p. 1), plainly.")
@@ -4781,11 +4887,19 @@ def checks() -> int:
         p.call("exportTitle", "Diary 1")
         p.call("exportKey", KEY_RETURN, 0)
         out = p.tmp / "Downloads" / "Diary 1.pdf"
-        check(p.wait(lambda: json.loads(p.call("pdf"))["shown"] and out.is_file(), 60),
-              f"Enter writes the PDF under its title, in Settings' folder ({ex()['error']!r})")
-        check(p.wait(lambda: json.loads(p.call("pdf"))["ready"]) and json.loads(p.call("pdf"))["label"] == "Diary 1"
-              and not ex()["open"], "…and it opens where the note was, the export closed")
-        check(p.call("hint").startswith("written to "), f"…saying where it went ({p.call('hint')!r})")
+        # The PDF itself only where pandoc and xelatex are (agent/export.py
+        # looks them up on PATH, as here; tests/test_export.py the same).
+        if shutil.which("pandoc", path=p.env["PATH"]) and shutil.which("xelatex", path=p.env["PATH"]):
+            check(p.wait(lambda: json.loads(p.call("pdf"))["shown"] and out.is_file(), 60),
+                  f"Enter writes the PDF under its title, in Settings' folder ({ex()['error']!r})")
+            check(p.wait(lambda: json.loads(p.call("pdf"))["ready"] and json.loads(p.call("pdf"))["label"] == "Diary 1"
+                         and not ex()["open"]),
+                  f"…and it opens where the note was, the export closed ({p.call('pdf')}, open: {ex()['open']})")
+            check(p.call("hint").startswith("written to "), f"…saying where it went ({p.call('hint')!r})")
+        else:
+            print("skip the PDF itself: pandoc or xelatex is not installed")
+            check(p.wait(lambda: "not installed" in ex()["error"], 15) and not out.exists(),
+                  f"…without pandoc or xelatex, Enter says so and writes nothing ({ex()['error']!r})")
         p.call("pdfKey", KEY_ESC, 0)
         check(p.wait(lambda: not json.loads(p.call("pdf"))["shown"]) and p.call("text") == before,
               "Esc: back to the note, its words untouched")
