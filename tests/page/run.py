@@ -611,7 +611,11 @@ def theme_switch() -> None:
             p.call("checkinKey", ord(k))
         check(ci()["answers"] == [6, 6, 5, 6, 4, 5, 6, 5], f"…a digit answers a line and moves on ({ci()['answers']})")
         p.call("checkinKey", 0x01000004)                # Enter
-        check(p.wait(lambda: not ci()["due"] and ci()["view"] == "", 4) and ci()["center"] == "dash",
+        # Enter keeps the week through `longhand-agent checkin`, a Python
+        # started cold: on a busy Windows runner that alone has taken more
+        # than the 4 s this waited (2026-11-24, three times: twice here
+        # beside other runs, once in CI). Waited for longer; still a check.
+        check(p.wait(lambda: not ci()["due"] and ci()["view"] == "", 15) and ci()["center"] == "dash",
               f"…Enter keeps the week, and the keys are back on the dashboard ({ci()})")
         logs = list((p.vault / "agents" / "longhand" / "checkins").glob("*.jsonl"))
         check(len(logs) == 1 and '"answers": [6, 6, 5, 6, 4, 5, 6, 5]' in logs[0].read_text(),
