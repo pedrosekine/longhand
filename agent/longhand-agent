@@ -1445,6 +1445,21 @@ def routed(cfg: dict) -> dict:
     return out
 
 
+def answered_by(cfg: dict, result: dict) -> str:
+    """Who answered a pass, for the small line under it in the transcript:
+    the model the config names and its effort — or, when that one failed and
+    the fallback answered, the fallback, and in whose place. The line named
+    the config's model either way (found 2026-11-24: Codex failed, Opus
+    answered, and the transcript said Codex had); the ledger and the day's
+    state already named the one that answered."""
+    named = f"{cfg.get('model') or 'agent default'}{' · ' + cfg['variant'] if cfg.get('variant') else ''}"
+    fell = result.get("fell_back") or {}
+    if not fell.get("from") or not result.get("model"):
+        return named
+    spoken = lambda model: " · ".join(p for p in str(model).partition("#")[::2] if p)
+    return f"{spoken(result['model'])}, in place of {spoken(fell['from'])}"
+
+
 def emit_status(phase: str) -> None:
     """Live progress phase for the UI (read line-by-line from stderr)."""
     print(f"status: {phase}", file=sys.stderr, flush=True)
@@ -1829,7 +1844,7 @@ def apply(cfg: dict, paths: Paths, trigger: str, fired: list[dict], visible: lis
     if result["error"]:
         sec.append(f"- error: {result['error']}")
     tk = result["tokens"]
-    sec.append(f"\n<small>${result['cost']:.4f} · {tk['total']} tokens · {cfg.get('model') or 'agent default'}{' · ' + cfg['variant'] if cfg.get('variant') else ''}</small>\n")
+    sec.append(f"\n<small>${result['cost']:.4f} · {tk['total']} tokens · {answered_by(cfg, result)}</small>\n")
     append_text(paths, paths.transcript, "\n".join(sec))
 
     # Ledger: one line per run, never synced.
