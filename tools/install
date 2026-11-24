@@ -15,12 +15,18 @@ On Windows (`python tools\\install`), the same steps as Windows has them:
      virtual environment this runs in), and `pip install -e windows` into
      it: PySide6, and the commands as .exe files beside its python.exe.
   2. The config, as above.
-  3. `longhand install`: the Start menu entry, and Longhand started with the
-     session (`--no-autostart` leaves that out).
+  3. `longhand install`: the commands by name in a new terminal (copies
+     of the launchers in ~/.local/bin, as on Omarchy, and that folder on
+     the person's PATH; `--no-path` leaves that out), the Start menu entry,
+     and Longhand started with the session (`--no-autostart` leaves that
+     out).
   4. (Omarchy's shell plugins: nothing; the page's host stands in for them.)
   5. `longhand-agent install`, as above.
   6. The doctor; `--tools` then installs with winget what it found missing
-     (pandoc, MiKTeX, poppler, gitleaks, Node), and says the rest.
+     (pandoc, MiKTeX, poppler, gitleaks, Node), and says the rest. winget
+     writes a program's folder into the registry's PATH only, so this
+     process takes the registry's PATH again before it starts one of them
+     (MiKTeX's initexmf).
 
 `--vault PATH` writes the vault into a config this makes (never into one
 that is there).
@@ -50,6 +56,71 @@ WINGET = {
     "gitleaks": "Gitleaks.Gitleaks",
     "node": "OpenJS.NodeJS.LTS",
 }
+MIKTEX_AUTOINSTALL = ["initexmf", "--set-config-value=[MPM]AutoInstall=1"]
+
+
+def run(cmd, **kw):
+    """subprocess.run, a seam for the test (tests/test_install.py)."""
+    return subprocess.run(cmd, **kw)
+
+
+def refresh_path(env: dict) -> None:
+    """What winget put on the registry's PATH, onto this process's and
+    `env`'s too (at the end: nothing already there moves)."""
+    import shortcuts
+    for target in (os.environ, env):
+        have = [p for p in target.get("PATH", "").split(os.pathsep) if p]
+        seen = {os.path.normcase(os.path.normpath(p)) for p in have}
+        for entry in shortcuts.new_terminal_path():
+            key = os.path.normcase(os.path.normpath(entry))
+            if key not in seen:
+                seen.add(key)
+                have.append(entry)
+        target["PATH"] = os.pathsep.join(have)
+
+
+def find_initexmf(path: str) -> str:
+    """MiKTeX's initexmf: on PATH, else where MiKTeX's installer puts it (for
+    the person alone, or for all users)."""
+    found = shutil.which("initexmf", path=path)
+    if found:
+        return found
+    bases = [pathlib.Path(os.environ[v]) / sub for v, sub in (("LOCALAPPDATA", "Programs"), ("ProgramFiles", ""))
+             if os.environ.get(v)]
+    for base in bases:
+        exe = base / "MiKTeX" / "miktex" / "bin" / "x64" / "initexmf.exe"
+        if exe.is_file():
+            return str(exe)
+    return ""
+
+
+def install_tools(packages: list[str], env: dict) -> None:
+    """Each winget package, then what one of them needs set (MiKTeX)."""
+    by_hand = [f"winget install {p}" for p in packages]
+    if "MiKTeX.MiKTeX" in packages:
+        by_hand.append(" ".join(MIKTEX_AUTOINSTALL))
+    winget = shutil.which("winget", path=env.get("PATH"))
+    if not winget:
+        print("\nwinget is not here (Windows' App Installer brings it, from the Microsoft Store); by hand:")
+        for line in by_hand:
+            print(f"  {line}")
+        return
+    for p in packages:
+        print(f"\nwinget install {p}")
+        run([winget, "install", "--id", p, "-e", "--silent",
+             "--accept-package-agreements", "--accept-source-agreements"], check=False)
+    refresh_path(env)
+    if "MiKTeX.MiKTeX" in packages:
+        print("MiKTeX fetches the LaTeX packages an export needs by itself:")
+        initexmf = find_initexmf(env["PATH"])
+        try:
+            if not initexmf:
+                raise FileNotFoundError("initexmf")
+            run([initexmf, *MIKTEX_AUTOINSTALL[1:]], check=False, env=env)
+        except OSError:
+            print("  MiKTeX's initexmf was not found: once MiKTeX is installed, in a new terminal:\n"
+                  f"  {by_hand[-1]}")
+    print("\nopen a new terminal for PATH to have them")
 
 
 def link(src: pathlib.Path, dst: pathlib.Path) -> None:
@@ -174,7 +245,7 @@ def windows(args) -> int:
     # 3. The Start menu, and the start with the session
     sys.path.insert(0, str(ROOT / "windows"))
     import shortcuts
-    shortcuts.install(with_autostart=not args.no_autostart)
+    shortcuts.install(with_autostart=not args.no_autostart, with_path=not args.no_path)
 
     # 5. Scaffold vault & agent prompts if vault already exists
     agent_install(cfg_path, sys.executable, env)
@@ -191,14 +262,7 @@ def windows(args) -> int:
     packages = list(dict.fromkeys(WINGET[m] for m in missing if m in WINGET))
     unsaid = [m for m in missing if m not in WINGET]
     if packages and args.tools:
-        for p in packages:
-            print(f"\nwinget install {p}")
-            subprocess.run(["winget", "install", "--id", p, "-e", "--silent",
-                            "--accept-package-agreements", "--accept-source-agreements"], check=False)
-        if "MiKTeX.MiKTeX" in packages:
-            print("MiKTeX fetches the LaTeX packages an export needs by itself:")
-            subprocess.run(["initexmf", "--set-config-value=[MPM]AutoInstall=1"], check=False)
-        print("\nopen a new terminal for PATH to have them")
+        install_tools(packages, env)
     elif packages:
         print("\nnot installed, and optional (`--tools` installs them):")
         for p in packages:
@@ -213,6 +277,8 @@ def main() -> int:
     ap.add_argument("--vault", default="", help="the vault folder, written into a config this makes")
     if WINDOWS:
         ap.add_argument("--no-autostart", action="store_true", help="not started with the session")
+        ap.add_argument("--no-path", action="store_true",
+                        help="the commands not put on PATH (~/.local/bin); .venv\\Scripts\\pomo and the like still work")
         ap.add_argument("--tools", action="store_true", help="install the optional tools the doctor finds missing, with winget")
     else:
         ap.add_argument("--restart", action="store_true", help="restart omarchy-shell after installing plugins")

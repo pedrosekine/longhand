@@ -20,6 +20,13 @@ Item {
 
   // Somewhere else the keys can be: another pane's box.
   TextInput { id: elsewhere; y: 790; width: 100; height: 10 }
+  // A closed sheet's key catcher: hidden, and holding the keys.
+  Item { id: closedSheet; visible: false }
+  // A note not read yet: no lines.
+  Component {
+    id: unreadEditor
+    NoteEditor { width: 560; height: implicitHeight; textSize: 16; fontFamily: "monospace" }
+  }
 
   SignalSpy { id: kept; target: ed; signalName: "cueDismissed" }
 
@@ -154,6 +161,32 @@ after")
       ed.load("\nline one")
       verify(elsewhere.activeFocus, "and keeps them")
       verify(!ed.hasFocus)
+    }
+
+    // The page's first open asks for the keys before its note is read
+    // (2026-11-24): the ask is owed, and paid when the lines come — out of
+    // a closed sheet's catcher, which held them, and the person's typing
+    // went into hidden settings.
+    function test_keys_asked_for_before_the_note_is_read_come_with_it() {
+      var unread = createTemporaryObject(unreadEditor, top)
+      closedSheet.forceActiveFocus()
+      unread.focusNote()
+      verify(!unread.holdsFocus(), "no line yet to hold them")
+      unread.load("\nfirst words")
+      verify(unread.hasFocus, "the note has the keys once it is read")
+      verify(!closedSheet.activeFocus, "and the hidden catcher has let go")
+      type("!")
+      compare(unread.text, "\nfirst words!")
+    }
+
+    // …unless something shown was given them meanwhile.
+    function test_an_owed_ask_never_takes_the_keys_from_something_shown() {
+      var unread = createTemporaryObject(unreadEditor, top)
+      unread.focusNote()
+      elsewhere.forceActiveFocus()
+      unread.load("\nfirst words")
+      verify(elsewhere.activeFocus, "the box keeps them")
+      verify(!unread.holdsFocus())
     }
 
     // Emphasis writes the markers the file keeps; nothing is drawn styled.

@@ -355,9 +355,12 @@ Item {
   // Replace everything (a load from disk). The cursor goes to the end and
   // the undo history starts over. If a line held the keys, a line still
   // does: the one they were in may be rebuilt, and the keys would go with
-  // it, leaving every shortcut deaf until a click (2026-11-17).
+  // it, leaving every shortcut deaf until a click (2026-11-17). Keys asked
+  // for before there were lines (`focusNote`) come now, unless something
+  // shown was given them meanwhile.
   function load(t) {
-    var held = ed.holdsFocus()
+    var held = ed.holdsFocus() || (ed.focusOwed && ed.keysUnclaimed())
+    ed.focusOwed = false
     ed.loading = true
     ed.shown = null
     ed.clearSelection()
@@ -512,7 +515,28 @@ Item {
     ed.placeCursor(focus === true)
   }
 
-  function focusNote() { ed.placeCursor(true) }
+  // Asked for the keys before the note has a line to hold them: the page
+  // opened before its note was read, as its first open after the shell
+  // starts is. The note owes itself the keys until its lines come (`load`).
+  // Until 2026-11-24 the ask was simply lost, and a closed sheet's key
+  // catcher kept the keys: on Omarchy the overlay's first open typed into
+  // hidden settings (the alongside window was saved by a second ask when
+  // Wayland mapped it); Windows had a stand-in in its host.
+  property bool focusOwed: false
+  function focusNote() {
+    if (ed.rows.length === 0) { ed.focusOwed = true; return }
+    ed.placeCursor(true)
+  }
+
+  // Nothing shown was given the keys: nothing has them, or what has them
+  // is hidden (a closed sheet's catcher) or something the note sits in.
+  // Then an owed ask is still the last word on where they go.
+  function keysUnclaimed() {
+    var f = ed.Window.activeFocusItem
+    if (!f || !f.visible) return true
+    for (var p = ed.parent; p; p = p.parent) if (p === f) return true
+    return false
+  }
 
   function commit(t, cur) {
     ed.cursorPosition = Math.max(0, Math.min(t.length, cur))

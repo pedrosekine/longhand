@@ -15,6 +15,16 @@ the page's reader (a picture in a note had the same URL; not looked at on
 screen); a path from `/` gives the
 same URL as before (`tests/tst_links.qml`).
 
+Found here, and fixed in `plugin-page/` for both: the first open after the
+shell starts asks the note for the keys before it has been read, and the ask
+was lost — a closed sheet's hidden key catcher kept them. On Omarchy the
+overlay typed into hidden settings that way (the window shape was saved by a
+second ask, made when Wayland maps it, after the read); here both shapes did,
+and the host gave the note the keys itself (`keysOwed`, gone). Now
+`NoteEditor.focusNote` owes the note the keys until its lines come, unless
+something shown has been given them meanwhile (`tests/tst_editor.qml`; the
+first check of `tests/page/run.py`).
+
 ## Install and run
 
 Python 3.13. Git for Windows is no longer needed by the page: what it ran
@@ -30,11 +40,22 @@ python tools\install --tools                          # …and with winget, the 
 `tools/install` makes the repo's `.venv` (or uses the virtual environment
 it runs in), installs Longhand into it (`pip install -e windows`), writes
 a config from `config.example.json` if there is none (`--vault` goes into
-it), puts Longhand in the Start menu and starts it with the session
-(`longhand install`; `--no-autostart` leaves that out), runs
-`longhand-agent install` once the vault is there, and ends with the doctor.
-Run again, it changes nothing that is already right. By hand, the first of
-those is:
+it), puts the commands on your PATH, puts Longhand in the Start menu and
+starts it with the session (`longhand install`; `--no-path` and
+`--no-autostart` leave those out), runs `longhand-agent install` once the
+vault is there, and ends with the doctor. Run again, it changes nothing
+that is already right. Open a new terminal afterwards: one already open
+keeps the PATH it started with.
+
+`--tools` installs with winget what the doctor found missing. winget
+writes a program's folder into the registry's PATH only, so before
+starting MiKTeX's `initexmf` (below) the install takes the registry's PATH
+again, and looks in MiKTeX's own folders
+(`%LOCALAPPDATA%\Programs\MiKTeX\miktex\bin\x64`, the same under
+`%ProgramFiles%`); found nowhere, or with no winget, it says what to run by
+hand (`tests/test_install.py`, with winget and the registry played).
+
+By hand, the first of those is:
 
 ```powershell
 python -m venv .venv
@@ -42,27 +63,42 @@ python -m venv .venv
 ```
 
 That brings PySide6 (6.12, the Qt the page is written for) and makes the
-commands beside `python.exe`, where Windows can start them by name:
-`pomo.exe`, `longhand-agent.exe`, `longhand-check.exe`, `longhand-read.exe`,
-`longhand-doctor.exe` (`longhand_launch.py`), and `longhand.exe`, the page. Each runs the script
-in the repo; nothing is copied, so a pull is the update. The host puts that
-folder on its children's PATH; for a terminal, put it on yours.
+commands beside `python.exe`: `pomo.exe`, `longhand-agent.exe`,
+`longhand-check.exe`, `longhand-read.exe`, `longhand-doctor.exe`
+(`longhand_launch.py`), and `longhand.exe`, the page. Each runs the
+script in the repo, so a pull is the update. The host puts that folder on
+its children's PATH. For a terminal, `longhand install` does what
+Omarchy's `tools/install` does with `~/.local/bin`: it copies the six
+launchers into `%USERPROFILE%\.local\bin` and adds that folder at the end
+of your PATH (`HKCU\Environment`, the value's type kept, never twice,
+Windows told of the change). Not `.venv\Scripts` itself, which would put
+that Python's `python.exe`, `pip.exe` and `pyside6-*.exe` on your PATH as
+well. A copied launcher holds the path of the `python.exe` it starts, so
+it works from anywhere; a pull still needs nothing, a new `.venv` needs
+`longhand install` again. `longhand uninstall` (or `install --no-path`)
+takes the copies away, and the folder off PATH when nothing else is in it
+(uv keeps its tools there too). `longhand-doctor` says whether a new
+terminal finds each command by name.
 
 ```powershell
-.venv\Scripts\longhand --sandbox $env:TEMP\longhand-try   # a throwaway vault
-.venv\Scripts\longhand                                    # today's note as a window: your own ~/.config/longhand/config.json
-.venv\Scripts\longhand --overlay                          # the page over everything (again: away)
-.venv\Scripts\longhand --tray                             # in the tray only, nothing opened
-.venv\Scripts\longhand quit
+longhand --sandbox $env:TEMP\longhand-try   # a throwaway vault
+longhand                                    # today's note as a window: your own ~/.config/longhand/config.json
+longhand --overlay                          # the page over everything (again: away)
+longhand --tray                             # in the tray only, nothing opened
+longhand quit
 ```
 
 ```powershell
-.venv\Scripts\longhand install      # in the Start menu, and started with the session (in the tray)
-.venv\Scripts\longhand uninstall
-.venv\Scripts\longhand-doctor      # what is there and what is missing (tools/doctor), read-only
+longhand install      # the commands on PATH, in the Start menu, and started with the session (in the tray)
+longhand uninstall
+longhand-doctor       # what is there and what is missing (tools/doctor), read-only
 ```
 
-`longhand-doctor` looks over the config, the vault, the commands, the
+(Before `longhand install`, or with `--no-path`: `.venv\Scripts\longhand`
+and the like.)
+
+`longhand-doctor` looks over the config, the vault, the commands (and
+whether a new terminal finds them by name), the
 program of each model the config names (`model`, `fallbackModel`,
 `planModel`; `"codex"` and the like when the config gives a path), the
 Start menu entry and the session's start, and the optional tools: pandoc
@@ -283,11 +319,6 @@ opencode and Antigravity are installed here and not tried.
 
 ## Known, not done
 
-- First open: the page asks the note to take the keys before the note has
-  rows, and a sheet's hidden `focus: true` key catcher keeps them. The host
-  gives them to the note once it has loaded (`Main.qml`, `keysOwed`).
-  Whether Omarchy has the same order on its first open is not checked; if it
-  does, the place to fix it is `NoteEditor.focusNote`.
 - `pomo` is `cli/pomo.py` here: the bash one command for command
   (`tests/test_pomo_port.py` runs both and compares).
 - The tests run through the runner (`python tests\run_all.py`, or
@@ -333,7 +364,12 @@ opencode and Antigravity are installed here and not tried.
 - The programs the agent's extras call are not installed for you. The
   Start menu's entry and the start with the session are made by
   `longhand install` and read back as Windows holds them
-  (`tests/test_start_menu.py`). Started from the shortcut, the taskbar
+  (`tests/test_start_menu.py`); so are the commands' copies and their
+  folder's place on PATH, in a registry key of the test's own. On the
+  real PATH, a new terminal starting `pomo` by name after `tools/install`
+  on a fresh machine, and `--tools` installing MiKTeX and setting it with
+  `initexmf` in the same run, have not been seen yet (2026-11-24): the
+  test plays winget and the registry. Started from the shortcut, the taskbar
   shows the seal (seen 2026-11-24); before Longhand gave itself a name
   Windows filed its window under IDLE, the shortcut that points at
   `pythonw.exe`, and showed that icon. How it looks in the Start menu
