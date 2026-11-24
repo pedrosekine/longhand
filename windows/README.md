@@ -426,10 +426,10 @@ export writes, where pandoc and xelatex are not on PATH (as
 - The tests run through the runner (`python tests\run_all.py`, or
   `… run_all.py check plan`), which gives each file what Linux gives it for
   nothing (`tests/windows/`). On 2026-11-24, with gitleaks, poppler and
-  node installed: 73 files pass in four to eight minutes, 5 are passed over as
-  Omarchy's own (named, with the reason), 1 fails: cursors, which wants
-  PyQt6 (`pip install PyQt6` into the same Python, and it passes: on a
-  Windows machine of GitHub's, where the workflow installs it, all 74 do).
+  node installed: 74 files pass in four to eight minutes, 5 are passed over as
+  Omarchy's own (named, with the reason). `test_cursors` wanted PyQt6, which
+  nothing here installs; it runs on PySide6, the host's own Qt, when PyQt6
+  is not there (2026-11-25).
   One check of projects fails on a Monday on any system: it asks
   for yesterday's week and expects a file touched today in it.
 - A clone needs its text files with `\n`: a prompt's fingerprint is taken

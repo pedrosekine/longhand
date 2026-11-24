@@ -81,8 +81,8 @@ jobs:
         with:
           python-version: "3.13"
       # As windows/README.md installs it: a Python of Longhand's own with
-      # PySide6 and the launchers; PyQt6 beside it for test_cursors; gitleaks
-      # and poppler as the agent's extras. Git for Windows (bash, GNU date)
+      # PySide6 and the launchers (test_cursors runs on PySide6 here, the
+      # host's own Qt); gitleaks and poppler as the agent's extras. Git for Windows (bash, GNU date)
       # and node are the runner's own.
       #
       # pwsh goes on past a native command that fails, so each one is checked.
@@ -96,7 +96,7 @@ jobs:
         run: |
           python -m venv .venv
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          .venv\Scripts\python -m pip install --quiet -e windows PyQt6
+          .venv\Scripts\python -m pip install --quiet -e windows
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           $tools = 'gitleaks', 'pdftotext'
           foreach ($try in 1..3) {
