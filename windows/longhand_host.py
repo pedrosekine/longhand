@@ -12,6 +12,8 @@ qs_io.py, qs_wayland.py).
     longhand summon ['{json}']    as `omarchy-shell shell summon longhand.page` (or: summon alongside)
     longhand toggle ['{json}']    as `omarchy-shell shell toggle longhand.page`
     longhand quit
+    longhand install [--no-autostart]   in the Start menu, and started with the session (shortcuts.py)
+    longhand uninstall
 
 One Longhand runs at a time: a second `longhand` tells the first what was
 asked and ends. From anywhere, Win+Alt+\\ is the window and Win+Alt+= the
@@ -85,20 +87,80 @@ def tell_running(message: dict) -> bool:
     return True
 
 
+def to_console() -> None:
+    """Somewhere to say a thing. Started as `longhand.exe` this is a program
+    without a console, and what it prints goes nowhere; the terminal it was
+    started from is taken up, when there is one."""
+    if os.name != "nt" or sys.stdout is not None:
+        return
+    import ctypes
+    from ctypes import wintypes
+
+    class Entry(ctypes.Structure):          # PROCESSENTRY32W
+        _fields_ = [("dwSize", wintypes.DWORD), ("cntUsage", wintypes.DWORD), ("th32ProcessID", wintypes.DWORD),
+                    ("th32DefaultHeapID", ctypes.c_size_t), ("th32ModuleID", wintypes.DWORD),
+                    ("cntThreads", wintypes.DWORD), ("th32ParentProcessID", wintypes.DWORD),
+                    ("pcPriClassBase", wintypes.LONG), ("dwFlags", wintypes.DWORD), ("szExeFile", wintypes.WCHAR * 260)]
+
+    k32 = ctypes.windll.kernel32
+    k32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+    k32.Process32FirstW.argtypes = k32.Process32NextW.argtypes = (wintypes.HANDLE, ctypes.POINTER(Entry))
+    k32.CloseHandle.argtypes = (wintypes.HANDLE,)
+    parent: dict[int, int] = {}
+    snap = k32.CreateToolhelp32Snapshot(2, 0)               # TH32CS_SNAPPROCESS
+    if snap and snap != wintypes.HANDLE(-1).value:
+        entry = Entry()
+        entry.dwSize = ctypes.sizeof(Entry)
+        more = k32.Process32FirstW(snap, ctypes.byref(entry))
+        while more:
+            parent[entry.th32ProcessID] = entry.th32ParentProcessID
+            more = k32.Process32NextW(snap, ctypes.byref(entry))
+        k32.CloseHandle(snap)
+    # Whose terminal: not the one above (that is longhand.exe, which has no
+    # console either) but the first up the line that has one.
+    pid = os.getpid()
+    for _ in range(5):
+        pid = parent.get(pid, 0)
+        if not pid:
+            return
+        if k32.AttachConsole(pid):
+            break
+    else:
+        return
+    try:
+        sys.stdout = sys.stderr = open("CONOUT$", "w", encoding="utf-8", errors="replace")
+        print()                                              # the prompt is already back: start on a line of our own
+    except OSError:
+        sys.stdout = sys.stderr = None
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(prog="longhand", description="Longhand's page on Windows")
-    ap.add_argument("command", nargs="?", choices=("summon", "toggle", "quit"), help="what to ask of Longhand")
+    ap.add_argument("command", nargs="?", choices=("summon", "toggle", "quit", "install", "uninstall"),
+                    help="what to ask of Longhand; install: the Start menu entry, and Longhand started with the session")
     ap.add_argument("payload", nargs="?", default="", help='for summon and toggle: {"shape":"alongside"}, {"goto":"…"}')
     ap.add_argument("--overlay", action="store_true", help="the page over everything, instead of as a window")
     ap.add_argument("--tray", action="store_true", help="start in the tray, nothing opened")
+    ap.add_argument("--no-autostart", action="store_true", help="with install: the Start menu entry only")
     ap.add_argument("--sandbox", type=Path, help="use a throwaway vault, config and state in this folder")
     ap.add_argument("--check", type=Path, help="drive the page and write what happened to this JSON file")
     ap.add_argument("--shot", type=Path, help="with --check: save a picture of the window here")
     args = ap.parse_args()
 
+    if args.command in ("install", "uninstall"):
+        import shortcuts
+        to_console()
+        return shortcuts.install(not args.no_autostart) if args.command == "install" else shortcuts.uninstall()
+
     box = sandbox(args.sandbox.resolve()) if args.sandbox else None
     if args.check and not box:
         ap.error("--check needs --sandbox: it types into the note")
+    if os.name == "nt" and not box:
+        # The name Windows knows this Longhand by, and the Start menu's
+        # shortcut with it (shortcuts.py): one taskbar button, the seal on it.
+        import ctypes
+        import shortcuts
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(shortcuts.APP_ID)
 
     # What was asked, as the running Longhand (this one, or one already there) takes it.
     if args.command == "quit":

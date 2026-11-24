@@ -35,6 +35,21 @@ folder on its children's PATH; for a terminal, put it on yours.
 .venv\Scripts\longhand quit
 ```
 
+```powershell
+.venv\Scripts\longhand install      # in the Start menu, and started with the session (in the tray)
+.venv\Scripts\longhand uninstall
+```
+
+`install` (`shortcuts.py`) is the desktop entry and the shell's start of the
+plugins, as Windows has them, for the person alone: a shortcut, Longhand, in
+the Start menu's Programs, which opens today's note as a window; its icon,
+the launcher's seal on its tile, drawn from `launcher/longhand.svg` at eight
+sizes into `~/.local/state/longhand/icon/longhand.ico` (a derivative, made
+where it is used: `docs/brand/README.md`); and `longhand --tray` under the
+person's Run key (`--no-autostart` leaves that out). The shortcut carries
+the name the running Longhand gives itself to Windows, so the taskbar shows
+one button for both, and pinning it pins Longhand, not Python.
+
 Longhand stays by the clock once started: closing the page's window puts
 the page away, and Quit in the tray's menu ends it. One runs at a time; a
 second `longhand` tells the first what was asked (`summon` and `toggle` take
@@ -177,7 +192,7 @@ opencode and Antigravity are installed here and not tried.
 - The tests run through the runner (`python tests\run_all.py`, or
   `… run_all.py check plan`), which gives each file what Linux gives it for
   nothing (`tests/windows/`). On 2026-11-24, with gitleaks, poppler and
-  node installed: 70 files pass in four to eight minutes, 5 are passed over as
+  node installed: 72 files pass in four to eight minutes, 5 are passed over as
   Omarchy's own (named, with the reason), 1 fails: cursors, which wants
   PyQt6. One check of projects fails on a Monday on any system: it asks
   for yesterday's week and expects a file touched today in it.
@@ -201,8 +216,13 @@ opencode and Antigravity are installed here and not tried.
   says both and its menu works the timer, but a deadline is ticked in the
   page. The keys sheet still lists Hyprland's six as none: the global keys
   are moved in `windows-keys.json`, not from the sheet.
-- No Start menu entry and nothing starts Longhand with the session; the
-  programs the agent's extras call are not installed for you.
+- The programs the agent's extras call are not installed for you. The
+  Start menu's entry and the start with the session are made by
+  `longhand install` and read back as Windows holds them
+  (`tests/test_start_menu.py`); how they look in the Start menu, on the
+  taskbar and in Settings → Apps → Startup has not been looked at on
+  screen. The icon keeps the launcher's own colours: it does not follow
+  Windows' light and dark as the Omarchy launcher follows a theme.
 - In the tray with the page loaded and nothing shown, the host holds about
   150 MB.
 - Borders are flat (no gradient ring); the page's prose face is named in the
