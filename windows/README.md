@@ -23,6 +23,20 @@ where Git is installed, a script with a bash shebang still runs under its
 bash. From the repo, into a Python of Longhand's own:
 
 ```powershell
+python tools\install --vault C:/Users/you/your-vault   # all of it, as on Omarchy
+python tools\install --tools                          # …and with winget, the optional tools it finds missing
+```
+
+`tools/install` makes the repo's `.venv` (or uses the virtual environment
+it runs in), installs Longhand into it (`pip install -e windows`), writes
+a config from `config.example.json` if there is none (`--vault` goes into
+it), puts Longhand in the Start menu and starts it with the session
+(`longhand install`; `--no-autostart` leaves that out), runs
+`longhand-agent install` once the vault is there, and ends with the doctor.
+Run again, it changes nothing that is already right. By hand, the first of
+those is:
+
+```powershell
 python -m venv .venv
 .venv\Scripts\python -m pip install -e windows
 ```
