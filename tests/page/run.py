@@ -1000,7 +1000,9 @@ def checks() -> int:
         check(p.wait(lambda: "read ch.7 📅 " in p.note() and len(p.store.read_text().splitlines()) == count + 1), "bound as it was left")
         p.call("undo")
         check(p.wait(lambda: "- [ ] read ch.7 by tomorrow\n" in p.note() and len(p.store.read_text().splitlines()) == count),
-              "Ctrl+Z: the words are back and the deadline it made is gone")
+              f"Ctrl+Z: the words are back and the deadline it made is gone ({p.note()[-60:]!r}; "
+              f"store {len(p.store.read_text().splitlines())} lines for {count}: {p.store.read_text().splitlines()[-2:]}; "
+              f"{p.call('checkState')})")
         p.call("cursor", p.offset_of_line(p.line_of("read ch.7")) + 8)
         p.call("cursor", p.offset_of_line(p.line_of("next item")) + 2)
         time.sleep(1)
