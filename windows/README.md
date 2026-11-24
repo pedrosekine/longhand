@@ -220,8 +220,14 @@ opencode and Antigravity are installed here and not tried.
   nothing (`tests/windows/`). On 2026-11-24, with gitleaks, poppler and
   node installed: 73 files pass in four to eight minutes, 5 are passed over as
   Omarchy's own (named, with the reason), 1 fails: cursors, which wants
-  PyQt6. One check of projects fails on a Monday on any system: it asks
+  PyQt6 (`pip install PyQt6` into the same Python, and it passes: on a
+  Windows machine of GitHub's, where the workflow installs it, all 74 do).
+  One check of projects fails on a Monday on any system: it asks
   for yesterday's week and expects a file touched today in it.
+- A clone needs its text files with `\n`: a prompt's fingerprint is taken
+  from its bytes, and bash reads `\r` as part of a word. `.gitattributes`
+  says so (`* text=auto eol=lf`), whatever git's own setting on the machine;
+  found by the suite's first run on GitHub, where git hands out `\r\n`.
 - Stopping a run: Windows has no process group and no SIGTERM a process
   can take and go on. The model's process is in a job, ended whole; the
   page's host asks the runner to stop through a named event, and the runner
