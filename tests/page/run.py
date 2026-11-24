@@ -2729,7 +2729,9 @@ def checks() -> int:
               f"…and the page writes the do-date on the box's line (⏳ {when})")
         check(p.wait(lambda: any(x["kind"] == "do-date" and x["status"] == "accepted"
                                  for x in json.loads(ledger_file.read_text())["items"])), "…recorded as accepted")
-        check(p.wait(lambda: not any(r["kind"] == "proposal" for _, r in asks())), "…and the row goes")
+        # Its row, by its id: the planner, still on, may have proposed again.
+        check(p.wait(lambda: not any(r["kind"] == "proposal" and r["id"] == prop["id"] for _, r in asks())),
+              f"…and the row goes ({prop['id']}; {[(r['kind'], r['id']) for _, r in asks()]})")
         qi = next(n for n, r in asks() if r["kind"] == "question")
         p.call("dashFocus", qi)
         p.call("dashKey", KEY_RETURN, 0)
