@@ -95,6 +95,48 @@ def themed_icon(background: str, foreground: str, accent: str) -> str:
     return path.as_uri()
 
 
+GLYPH_KEEP = 120          # glyph pictures kept: a minute each for two hours, and the deadlines'
+
+
+def tray_glyph(text: str, role: str, background: str, foreground: str, accent: str, muted: str, urgent: str) -> str:
+    """A tray icon that says a word or two, as the bar's labels do: the
+    timer's minutes, the next deadline's distance. The tile in the ground,
+    as the seal's; the text in the role's colour: "accent" (the accent
+    moved towards the text until it reads, as the seal's mark), "text",
+    "muted", "urgent". An SVG, so Windows draws it sharp at its own size;
+    a file URL whose name carries a hash of what it shows."""
+    import hashlib
+    import html
+    import importlib.util
+    bg, fg = hexed(background), hexed(foreground)
+    if role == "accent":
+        spec = importlib.util.spec_from_file_location("longhand_theme_icon", REPO / "tools" / "theme_icon.py")
+        ti = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(ti)
+        ink = ti.colours({"background": bg, "foreground": fg, "accent": hexed(accent)})[1]
+    else:
+        ink = {"muted": hexed(muted), "urgent": hexed(urgent)}.get(role, fg)
+    size = {1: 27, 2: 23}.get(len(text), 16)
+    svg = (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">'
+           f'<rect x="1" y="1" width="30" height="30" rx="7" fill="{bg}"/>'
+           f'<text x="16" y="{16 + size * 0.36:.1f}" text-anchor="middle" font-family="Segoe UI" '
+           f'font-weight="700" font-size="{size}" fill="{ink}">{html.escape(text)}</text></svg>')
+    out = state_dir() / "icon" / "tray"
+    out.mkdir(parents=True, exist_ok=True)
+    path = out / f"glyph-{hashlib.sha256(svg.encode()).hexdigest()[:10]}.svg"
+    if not path.exists():
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(svg, encoding="utf-8")
+        os.replace(tmp, path)
+        old = sorted(out.glob("glyph-*.svg"), key=lambda p: p.stat().st_mtime)
+        for stale in old[:-GLYPH_KEEP]:
+            try:
+                stale.unlink()
+            except OSError:
+                pass
+    return path.as_uri()
+
+
 def hexed(c: str) -> str:
     """"#aarrggbb" (QML's colour as a string, with alpha) → "#rrggbb"."""
     c = str(c).strip().lower()
@@ -182,6 +224,15 @@ class Host(QObject):
             return themed_icon(background, foreground, accent)
         except Exception as e:  # noqa: BLE001 — the canonical icon stands in
             print(f"longhand: the tray's icon in the theme's colours: {e}", file=sys.stderr)
+            return ""
+
+    @Slot(str, str, str, str, str, str, str, result=str)
+    def trayGlyph(self, text, role, background, foreground, accent, muted, urgent):
+        """The timer's and the deadlines' tray icons (tray_glyph)."""
+        try:
+            return tray_glyph(text, role, background, foreground, accent, muted, urgent)
+        except Exception as e:  # noqa: BLE001 — the tray keeps its last picture
+            print(f"longhand: a tray icon's picture: {e}", file=sys.stderr)
             return ""
 
     @Slot("QVariantList")

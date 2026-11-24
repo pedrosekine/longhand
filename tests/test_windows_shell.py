@@ -307,6 +307,20 @@ def places_and_icon(tmp):
           "…the tile in the mode's ground, the canonical seal's shape kept")
     check(host.themedIcon("#f9f9f9", "#1b1b1b", "#005fb8") == b, "the same colours, the same picture")
 
+    # The timer's and the deadlines' own tray icons: a word on the tile.
+    colours = ("#ff202020", "#f3f3f3", "#3a0a08", "#9a9a9a", "#ff99a4")   # an accent too dark to read there
+    t = host.trayGlyph("25", "accent", *colours)
+    late = host.trayGlyph("!", "urgent", *colours)
+    odd = host.trayGlyph("<&>", "text", *colours)
+    files = [pathlib.Path(QUrl(u).toLocalFile()) for u in (t, late, odd)]
+    texts = [f.read_text(encoding="utf-8") if f.is_file() else "" for f in files]
+    check(all(f.is_file() and f.name.startswith("glyph-") for f in files) and pb.is_file(),
+          "the timer's and the deadlines' icons are drawn beside the seal's, which stays")
+    check(">25</text>" in texts[0] and 'fill="#202020"' in texts[0] and 'fill="#3a0a08"' not in texts[0],
+          "…the minutes on the mode's ground, the accent moved to read on it, as the seal's")
+    check('fill="#ff99a4"' in texts[1] and "&lt;&amp;&gt;" in texts[2], "…late in the urgent colour; the word escaped")
+    check(host.trayGlyph("25", "accent", *colours) == t, "the same word and colours, the same picture")
+
 
 # ------------------------------------------------------------ the tray
 
