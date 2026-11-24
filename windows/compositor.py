@@ -48,6 +48,11 @@ WARP_MONITOR = re.compile(r'hl\.get_monitor\("([^"]*)"\).*?x\s*=\s*m\.position\.
 WARP_WINDOW = re.compile(r'hl\.get_window\("title:\^(.*?)\$"\).*?x\s*=\s*w\.at\.x\s*\+\s*(-?\d+)\s*,\s*y\s*=\s*w\.at\.y\s*\+\s*(-?\d+)', re.S)
 
 
+def plain(name: str) -> str:
+    """A screen's name as the page writes it into Lua (Page.qml warpNow)."""
+    return re.sub(r"[^A-Za-z0-9_.-]", "", name)
+
+
 def window(title: str):
     for w in QGuiApplication.allWindows():
         if w.title() == title:
@@ -101,7 +106,11 @@ def eval_lua(lua: str) -> tuple[int, str, str]:
     if m:
         name, x, y = m.group(1), int(m.group(2)), int(m.group(3))
         for s in QGuiApplication.screens():
-            if s.name() == name or name == "":
+            # The page keeps only [A-Za-z0-9_.-] of a monitor's name for the
+            # Lua it writes; a laptop's screen is "\\.\DISPLAY1" here, which
+            # came as ".DISPLAY1", matched none, and the pointer stayed put on
+            # that screen while it went where it should on the other.
+            if plain(s.name()) == name or name == "":
                 g = s.geometry()
                 QCursor.setPos(s, g.x() + x, g.y() + y)
                 break
