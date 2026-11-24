@@ -64,7 +64,8 @@ folder on its children's PATH; for a terminal, put it on yours.
 
 `longhand-doctor` looks over the config, the vault, the commands, the
 program of each model the config names (`model`, `fallbackModel`,
-`planModel`; `"codex"` and the like when the config gives a path), the
+`planModel`; `"codex"` and the like when the config gives a path) and
+whether it can run (opencode's agents installed, Antigravity signed in), the
 Start menu entry and the session's start, and the optional tools: pandoc
 and xelatex (the export), poppler (`pdftotext`, `pdfinfo`, `pdftoppm`;
 it says so when xpdf's `pdftotext`, which Git's shell carries, is found
@@ -254,7 +255,48 @@ sign-in made for Longhand (`CODEX_HOME` as the README says), answered and
 passed the check, the private marker in neither the payload log nor
 Codex's session file, no `\r` in anything written.
 
-opencode and Antigravity are installed here and not tried.
+opencode (2.3.2, winget) and Antigravity (`agy` 1.5.16, winget) were
+tried the same evening, each in a throwaway vault of made-up notes with a
+private callout holding a marker, `XDG_CONFIG_HOME` and `XDG_STATE_HOME`
+in scratch folders, `longhand-agent install` run first:
+
+- opencode, on its own sign-in (`~/.local/share/opencode`, which neither
+  variable moves), the agent's own model (`opencode-go/deepseek-v4.1-flash`):
+  `run --trigger open` answered into `agents/longhand/daily/`; a `chat` on a
+  block answered on that block, and a second resumed the same session. On
+  Windows opencode reads its config, agents included, from
+  `$XDG_CONFIG_HOME/opencode` (else `~/.config/opencode`; not `%APPDATA%`;
+  `opencode debug paths` says so), which is where `install` writes them;
+  without them a run fails "Agent not found", it never falls back to an
+  agent with tools.
+- One thing was wrong, not Windows' own: the price of a run is asked of
+  the session afterwards (`opencode session export`), and without
+  `--standalone` opencode 2 asks its background service, starting one if
+  none runs. Here another program's opencode held the service's port, so
+  every export took 25 s to fail, and the ledger's tokens, which the run's
+  events had, were overwritten with zeros. The export now runs standalone
+  (1 s), and the events' tokens stand when the session cannot be asked
+  (opencode 2.3 also stopped saying their total; it is the three added).
+- Antigravity (`"model": "antigravity/gemini-3.8-flash#low"`): the opening
+  pass (10 s), a chat (7 s) and its second turn (6 s, the same
+  conversation resumed, Antigravity's "server restart" notice passed over
+  as PR #27 meant) all answered. The sign-in is not a file: agy keeps it in
+  the Credential Manager (`gemini:antigravity`; its log: "authenticated
+  via keyring"), so the home Longhand gives it (`USERPROFILE`, `HOMEDRIVE`,
+  `HOMEPATH` and `HOME` all pointed at `STATE_HOME/antigravity`) finds it
+  from a fresh, empty folder. Nothing was written into the person's own
+  `~/.gemini` or AppData.
+- Neither note was touched (bytes and time), the marker was in no payload,
+  event log or reply, and no fallback ran.
+
+Not tried: Antigravity with no sign-in at all. Its print mode tries a
+silent sign-in from the keyring and has an "authentication failed" error
+for when that fails; whether it ends there or waits on a code was not
+seen, as it would mean signing the person out. `longhand-doctor` now says
+whether each route can run, not only that its program is there: for
+opencode, whether Longhand's agents are where it reads them; on Windows
+for Antigravity, whether the Credential Manager holds its sign-in (asked
+by name, never read out).
 
 ## What stands in for what
 

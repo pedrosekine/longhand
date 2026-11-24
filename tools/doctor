@@ -32,6 +32,12 @@ ROUTES = (
     ("antigravity/", "antigravity", "agy"),
     ("", "opencode", "opencode"),
 )
+# What `longhand-agent install` puts where opencode reads its agents.
+OPENCODE_AGENTS = ("longhand", "longhand-day", "longhand-plan", "longhand-judge")
+# Where Antigravity (agy 1.5.16) keeps its Google sign-in on Windows: a
+# generic credential of the Credential Manager (its log: "authenticated via
+# keyring"), not a file in the home Longhand gives it.
+AGY_CREDENTIAL = "gemini:antigravity"
 
 
 def _cfg_path() -> pathlib.Path:
@@ -146,6 +152,7 @@ def diagnose() -> tuple[list[tuple[str, str, str]], bool]:
         label = f"model route ({program})"
         if found:
             rows.append(("ok", label, found + (f" for {model}" if model else "")))
+            rows += _route_ready(program)
         else:
             named = f"\"{cfg_key}\" in config.json ({custom})" if custom else f"{program} on PATH"
             rows.append(("warn", label, f"{named} not found (needed for {key} {model or 'opencode'})"))
@@ -174,6 +181,51 @@ def diagnose() -> tuple[list[tuple[str, str, str]], bool]:
 
     ok = not any(st == "fail" for st, _, _ in rows)
     return rows, ok
+
+
+def _route_ready(program: str) -> list[tuple[str, str, str]]:
+    """Whether a route whose program is there can run, as far as can be
+    told without calling a model: opencode needs Longhand's agents where it
+    reads them (`$XDG_CONFIG_HOME/opencode/agent`, on Windows too: opencode
+    2.3 reads ~/.config there, not %APPDATA%), or every run fails "Agent not
+    found"; Antigravity needs its sign-in, which on Windows it keeps in the
+    Credential Manager, whatever home Longhand gives it."""
+    if program == "opencode":
+        agents = pathlib.Path(os.environ.get("XDG_CONFIG_HOME") or pathlib.Path.home() / ".config") / "opencode" / "agent"
+        missing = [n for n in OPENCODE_AGENTS if not (agents / f"{n}.md").is_file()]
+        if missing:
+            return [("warn", "opencode agents", f"{', '.join(missing)} not in {agents} — run `longhand-agent install`")]
+        return [("ok", "opencode agents", str(agents))]
+    if program == "agy" and WINDOWS:
+        target = os.environ.get("LONGHAND_AGY_CREDENTIAL") or AGY_CREDENTIAL
+        signed = _windows_credential(target)
+        if signed is None:
+            return []
+        if not signed:
+            return [("warn", "antigravity sign-in", f"none in the Credential Manager ({target}) — run `agy` once "
+                                                    "in a terminal and sign in with Google")]
+        return [("ok", "antigravity sign-in", f"in the Credential Manager ({target})")]
+    return []
+
+
+def _windows_credential(target: str) -> bool | None:
+    """Whether the Credential Manager holds a generic credential `target`;
+    None when it could not be asked. The secret is never read out: only
+    whether there is one."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+        advapi = ctypes.WinDLL("advapi32", use_last_error=True)
+        advapi.CredReadW.argtypes = (wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, ctypes.POINTER(ctypes.c_void_p))
+        advapi.CredReadW.restype = wintypes.BOOL
+        advapi.CredFree.argtypes = (ctypes.c_void_p,)
+        cred = ctypes.c_void_p()
+        if advapi.CredReadW(target, 1, 0, ctypes.byref(cred)):          # CRED_TYPE_GENERIC
+            advapi.CredFree(cred)
+            return True
+        return False if ctypes.get_last_error() == 1168 else None      # ERROR_NOT_FOUND
+    except (OSError, AttributeError):
+        return None
 
 
 def _omarchy_rows() -> list[tuple[str, str, str]]:
