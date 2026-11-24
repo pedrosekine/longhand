@@ -188,15 +188,17 @@ def leaks(texts: list[str]) -> set[int]:
         for l in t.split("\n"):
             lines.append(l)
             owner.append(i)
-    # Windows has no /dev/stdout: there gitleaks ended in an error with
-    # nothing said, which read as "nothing found" and shared a token whole.
-    # It takes "-" for its own stdout.
-    report = "-" if os.name == "nt" else "/dev/stdout"
+    # The report on gitleaks' own stdout, which it names "-". It was asked
+    # for at "/dev/stdout", a file gitleaks has to open; where it cannot (a
+    # container, a service whose stdout is a socket) it found the secret,
+    # ended with 1 and wrote nothing, which read as "nothing found": the
+    # passage was sent whole (2026-11-24, the suite's first run on GitHub).
+    # A run that ends badly and reports nothing has checked nothing.
     try:
         r = subprocess.run(["gitleaks", "stdin", "--no-banner", "--redact", "--report-format", "json",
-                            "--report-path", report], input="\n".join(lines), capture_output=True, text=True, timeout=30)
+                            "--report-path", "-"], input="\n".join(lines), capture_output=True, text=True, timeout=30)
         if r.returncode != 0 and not r.stdout.strip():
-            return set(range(len(texts)))           # it failed and reported nothing: unchecked, so share nothing
+            return set(range(len(texts)))           # unchecked: share nothing
         found = json.loads(r.stdout or "[]")
     except (OSError, subprocess.TimeoutExpired, ValueError):
         return set(range(len(texts)))               # cannot check: share nothing
