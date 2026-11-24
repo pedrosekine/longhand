@@ -27,8 +27,8 @@ python -m venv .venv
 
 That brings PySide6 (6.12, the Qt the page is written for) and makes the
 commands beside `python.exe`, where Windows can start them by name:
-`pomo.exe`, `longhand-agent.exe`, `longhand-check.exe`, `longhand-read.exe`
-(`longhand_launch.py`), and `longhand.exe`, the page. Each runs the script
+`pomo.exe`, `longhand-agent.exe`, `longhand-check.exe`, `longhand-read.exe`,
+`longhand-doctor.exe` (`longhand_launch.py`), and `longhand.exe`, the page. Each runs the script
 in the repo; nothing is copied, so a pull is the update. The host puts that
 folder on its children's PATH; for a terminal, put it on yours.
 
@@ -43,7 +43,16 @@ folder on its children's PATH; for a terminal, put it on yours.
 ```powershell
 .venv\Scripts\longhand install      # in the Start menu, and started with the session (in the tray)
 .venv\Scripts\longhand uninstall
+.venv\Scripts\longhand-doctor      # what is there and what is missing (tools/doctor), read-only
 ```
+
+`longhand-doctor` looks over the config, the vault, the commands, the
+program of each model the config names (`model`, `fallbackModel`,
+`planModel`; `"codex"` and the like when the config gives a path), the
+Start menu entry and the session's start, and the optional tools: pandoc
+and xelatex (the export), poppler (`pdftotext`, `pdfinfo`, `pdftoppm`;
+it says so when xpdf's `pdftotext`, which Git's shell carries, is found
+first), gitleaks, tesseract and qpdf (reading a scan).
 
 `install` (`shortcuts.py`) is the desktop entry and the shell's start of the
 plugins, as Windows has them, for the person alone: a shortcut, Longhand, in

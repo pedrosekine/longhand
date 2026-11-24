@@ -51,7 +51,6 @@ WINDOWS = os.name == "nt"
 # Files that test what Windows does not have, each with the reason. They are
 # named and passed over there; everywhere else this is not read.
 NOT_ON_WINDOWS: dict[str, str] = {
-    "test_doctor.py": "tools/doctor looks over an Omarchy install (links in ~/.local/bin, the shell's plugins)",
     "test_hyprkeys.py": "hyprkeys.py keeps Hyprland's keys for the page",
     "test_migrate.py": "tools/migrate-to-longhand moves an omarchy-student install",
     "test_popup.py": "the bar's popup, drawn by quickshell on a running Hyprland",

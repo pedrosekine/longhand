@@ -21,6 +21,7 @@ pomo = "longhand_launch:pomo"
 longhand-agent = "longhand_launch:agent"
 longhand-check = "longhand_launch:check"
 longhand-read = "longhand_launch:read"
+longhand-doctor = "longhand_launch:doctor"
 
 [project.gui-scripts]
 longhand = "longhand_host:main"
@@ -32,4 +33,8 @@ longhand = "longhand_host:main"
 # Python took twice as long (136 ms for 74) — every call of the agent, and
 # every `pomo`.
 package-dir = { "" = "." }
-py-modules = ["longhand_launch", "longhand_host", "qs_io", "qs_wayland", "host_api", "spike_check"]
+# Only an editable install works: the launchers run the scripts where the
+# repo has them (cli/, agent/, tools/), and the host loads plugin-page/ and
+# shim/ from beside this folder. Every module is named all the same.
+py-modules = ["compositor", "file_urls", "host_api", "hotkeys", "longhand_host", "longhand_launch", "notify",
+              "palette", "play_sound", "popup_check", "qs_io", "qs_wayland", "shortcuts", "spike_check", "winkeys"]

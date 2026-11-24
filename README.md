@@ -43,7 +43,7 @@ to your own Claude plan, or the Codex CLI signed in to your own ChatGPT plan
 tools/install --restart   # symlinks CLIs, scaffolds config.json + launcher, installs plugins, runs `longhand-agent install` & `tools/doctor`
 # then edit "vault" in ~/.config/longhand/config.json if newly created, and add
 # {"id":"longhand.page"}, {"id":"longhand.pomo"}, {"id":"longhand.deadline"} to plugins[] in ~/.config/omarchy/shell.json
-tools/doctor              # verify config, vault, CLIs, plugins, and optional tools (pandoc/xelatex/pdftotext/gitleaks)
+tools/doctor              # verify config, vault, CLIs, model programs, plugins, and optional tools (pandoc/xelatex/poppler/gitleaks/OCR)
 ```
 
 Upgrading from **omarchy-student** (Longhand's name until 2026-10-16): run
