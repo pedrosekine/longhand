@@ -64,13 +64,20 @@ def win_first(key: str) -> str:
     return "Win+" + key.replace("Super+", "", 1) if "Super+" in key else key
 
 
-def render(text: str, k: dict[str, list[str]]) -> str:
+SYSTEM = "windows" if os.name == "nt" else "omarchy"
+OS_WORDS = re.compile(r"\{os:([^{}|]*)\|([^{}|]*)\}")
+
+
+def render(text: str, k: dict[str, list[str]], system: str = SYSTEM) -> str:
+    """The manual as this student reads it: their keys, and the words for
+    the system it runs on ({os:Omarchy's|Windows'})."""
     def one(m):
         ks = k.get(m.group(1))
         if not ks:
             return "(its key: see the keys list)" if k else "(a key: see the keys list, Ctrl+/)"
         return " or ".join(f"`` {x} ``" if "`" in x else f"`{x}`" for x in ks[:2])
     text = re.sub(r"<!--.*?-->\n*", "", text, flags=re.S)
+    text = OS_WORDS.sub(lambda m: m.group(2) if system == "windows" else m.group(1), text)
     return re.sub(r"\{key:([\w:]+)\}", one, text)
 
 

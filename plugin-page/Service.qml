@@ -351,7 +351,9 @@ Item {
           root.configError = "the vault folder was not found: " + s.slice(6) + "\nset \"vault\" in " + root.configPath + " to your notes folder"
           root.ready = false
         } else if (s.indexOf("missing:") === 0) {
-          root.toolWarning = "not installed:" + s.slice(8) + " — tools/install links them into ~/.local/bin"
+          root.toolWarning = "not installed:" + s.slice(8) + (Qt.platform.os === "windows"
+            ? " — `pip install -e windows` (from the repo) makes them beside Longhand's Python"
+            : " — tools/install links them into ~/.local/bin")
         } else {
           root.toolWarning = ""
         }

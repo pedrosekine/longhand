@@ -1213,7 +1213,10 @@ def run_codex(cfg: dict, paths: Paths, payload: str, session: str, message: str,
     # Codex will not sign in to a folder that does not exist yet.
     home.mkdir(mode=0o700, parents=True, exist_ok=True)
     if not (home / "auth.json").exists():
-        raise Fail(f"Codex is not signed in for Longhand: run `CODEX_HOME={home} codex login` once")
+        # The line as the person's shell takes it: PowerShell on Windows.
+        login = (f"$env:CODEX_HOME='{home}'; codex login" if os.name == "nt"
+                 else f"CODEX_HOME={home} codex login")
+        raise Fail(f"Codex is not signed in for Longhand: run `{login}` once")
     instructions = instructions_of(name, cfg.get("_prompts"))
     idir = home / "instructions"
     idir.mkdir(parents=True, exist_ok=True)

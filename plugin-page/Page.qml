@@ -124,6 +124,10 @@ Item {
   id: root
 
   property string omarchyPath: Quickshell.env("OMARCHY_PATH")
+  // On Windows the host stands in for the shell (windows/): what the page
+  // says of the system, it says in Windows' words there.
+  readonly property bool onWindows: Sc.onWindows
+  readonly property string themeName: onWindows ? "Windows colours" : "Omarchy theme"
   property var shell: null
   property var manifest: null
 

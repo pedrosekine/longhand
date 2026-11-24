@@ -593,7 +593,7 @@ BorderSurface {
           width: parent.width
           textFormat: Text.PlainText
           wrapMode: Text.WordWrap
-          text: "The mouse pointer goes where the keys go, as Hyprland's goes to the window you move to: into the pane that has "
+          text: "The mouse pointer goes where the keys go" + (page.onWindows ? "" : ", as Hyprland's goes to the window you move to") + ": into the pane that has "
             + "the keys, onto the row selected in it, beside the note's cursor. Never while your hand is on the mouse."
           color: page.faint
           font.family: page.fontFamily
