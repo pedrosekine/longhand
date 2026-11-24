@@ -105,6 +105,9 @@ Item {
   function centre() { flick.contentX = Math.max(0, (flick.contentWidth - flick.width) / 2) }
   // After a change of width: centred, unless it may be moved sideways.
   function settleX() {
+    // Asked for with Qt.callLater on a change of width, which a closing
+    // reader also makes: by then the pages may be gone.
+    if (!pages || typeof pages.canSideways !== "function") return
     if (pages.canSideways()) flick.contentX = pages.clampX(flick.contentX)
     else pages.centre()
   }

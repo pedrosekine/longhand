@@ -19,7 +19,11 @@ import QtQuick
 MouseArea {
   id: ts
   required property Flickable flickable
-  property real gain: 2.0
+  // 2: what Omarchy's 0.4 takes away, and a little more. Windows does not
+  // scale a precision touchpad's travel, so there it is the travel itself
+  // (and Qt there mostly reports a touchpad as a wheel, without the pixel
+  // travel this needs: then the Flickable scrolls as Windows' apps do).
+  property real gain: Qt.platform.os === "windows" ? 1.0 : 2.0
   // Recent finger travel: [{ t, dy }] from the last `window` ms.
   property var samples: []
   readonly property int window: 90

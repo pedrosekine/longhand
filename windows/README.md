@@ -17,8 +17,10 @@ same URL as before (`tests/tst_links.qml`).
 
 ## Install and run
 
-Python 3.13, and Git for Windows for the page's few `sh`/`find` calls. From
-the repo, into a Python of Longhand's own:
+Python 3.13. Git for Windows is no longer needed by the page: what it ran
+through `sh` and `find` is done in Python (`page_fs.py`, `play_sound.py`);
+where Git is installed, a script with a bash shebang still runs under its
+bash. From the repo, into a Python of Longhand's own:
 
 ```powershell
 python -m venv .venv
@@ -124,10 +126,10 @@ winget install OpenJS.NodeJS.LTS
 ## Your own vault
 
 `%USERPROFILE%\.config\longhand\config.json`, as `config.example.json`, with
-two things Windows asks for: the vault written with `/`
-(`"C:/Users/you/your-vault"`), and a `font` and `codeFont` Windows has
-(`Segoe UI Variable Text`, `Cascadia Mono`), since it has none of the faces
-the page looks for. Then `longhand-agent install`, which puts the agent's
+the vault written with `/` (`"C:/Users/you/your-vault"`). `font` and
+`codeFont` can stay empty: the page falls back to Windows' own faces
+(`Segoe UI Variable Text`, `Cascadia Mono`) when none of Omarchy's is
+installed. Then `longhand-agent install`, which puts the agent's
 four prompts in `~/.config/opencode/agent` and writes nothing into a vault
 that already has its folders.
 
@@ -172,8 +174,10 @@ with a marker in it (`agent-reply.png`):
 ends, on the host's stderr with the second it happened.
 
 Codex (`"model": "codex/gpt-6.2-sol"`, with `"codex"` naming
-`codex-x86_64-pc-windows-msvc.exe` by its whole path: the `codex` on PATH is
-a `.cmd`, which is not started by name) was tried the same day, on a real
+`codex-x86_64-pc-windows-msvc.exe` by its whole path: the `codex` on PATH was
+a `.cmd`, which Windows does not start by name. The agent now finds a
+`.cmd` on PATH itself (`_win_cmd`), so `"codex"` can be left out; naming
+the `.exe` still skips cmd.exe in between) was tried the same day, on a real
 vault first and it went wrong twice, both Windows' doing:
 
 - Every run was dropped by Longhand's own check and answered by the
@@ -270,11 +274,6 @@ opencode and Antigravity are installed here and not tried.
   keyboard to a window only when its program is the one in front, which a
   click on the tray or a global key makes it, and which the check has to
   ask for.
-- In the timer's popup the row "Auto-start breaks & focus" is not drawn. It
-  is a `CursorSurface` in a `Column` with `Layout.fillWidth` and no width
-  of its own, so its width is 0 and the column passes over it. The shell's
-  own surface is a plain rectangle too, so the row is likely missing on
-  Omarchy as well: not looked at there. The keys still reach it.
 - Do Not Disturb is read from Windows' Focus assist profile (the shell's
   own toggle publishes it; `play_sound.silenced`), an undocumented state
   that Windows 11 still keeps: read as off on 2026-11-24, not yet seen on.
@@ -296,6 +295,3 @@ opencode and Antigravity are installed here and not tried.
   (its `hyprland.lua`), and Windows has none to give; the accent stands in,
   as it does on Omarchy for a theme that names none. The title bar is dark
   in dark mode by Qt's own doing (checked 2026-11-24).
-- The page's prose face is named in the sandbox config
-  (`Segoe UI Variable Text`), since Windows has none of the faces the page
-  looks for.
