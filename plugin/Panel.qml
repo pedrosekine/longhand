@@ -392,10 +392,11 @@ Panel {
 
         CursorSurface {
           id: autoRow
+          objectName: "pomoAutoRow"
           hasCursor: root.cellHot(root.autoRow, 0)
           foreground: root.foreground
 
-          Layout.fillWidth: true
+          width: parent.width
           implicitHeight: Math.max(autoLabel.implicitHeight, autoToggle.implicitHeight) + Style.space(10)
 
           MouseArea {

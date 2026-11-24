@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -218,14 +219,56 @@ def look_tex(look: str, colors: dict) -> str:
     return "\n".join(tex) + "\n"
 
 
+def _win_fonts() -> set[str]:
+    """Installed font family names from the Windows Fonts registry keys."""
+    if os.name != "nt":
+        return set()
+    import winreg
+    out: set[str] = set()
+    style = re.compile(r"\s+(?:Regular|Bold|Italic|Oblique|Light|Semilight|Semibold|Medium|Black|Thin|Heavy|ExtraLight|ExtraBold)$", re.I)
+    for hive in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
+        try:
+            with winreg.OpenKey(hive, r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts") as key:
+                i = 0
+                while True:
+                    try:
+                        name, _, _ = winreg.EnumValue(key, i)
+                    except OSError:
+                        break
+                    i += 1
+                    clean = re.sub(r"\s*\([^)]*\)\s*$", "", str(name)).strip()
+                    for part in clean.split("&"):
+                        base = part.strip()
+                        if not base:
+                            continue
+                        out.add(base)
+                        cur = base
+                        while True:
+                            nxt = style.sub("", cur).strip()
+                            if nxt == cur or not nxt:
+                                break
+                            cur = nxt
+                            out.add(cur)
+        except OSError:
+            pass
+    return out
+
+
+def installed_fonts() -> set[str]:
+    """Font families installed on this machine: fc-list where available,
+    falling back to the Windows Fonts registry when fc-list is absent."""
+    try:
+        have = {f.strip() for f in subprocess.run(["fc-list", ":", "family"], capture_output=True, text=True,
+                                                  timeout=10).stdout.replace(",", "\n").splitlines() if f.strip()}
+    except (OSError, subprocess.SubprocessError):
+        have = set()
+    return have or _win_fonts()
+
+
 def font(wanted: str = "") -> str:
     """The face to set it in: the one asked for, else the page's, when
     installed; "" leaves pandoc's own."""
-    try:
-        have = set(subprocess.run(["fc-list", ":", "family"], capture_output=True, text=True,
-                                  timeout=10).stdout.replace(",", "\n").splitlines())
-    except (OSError, subprocess.SubprocessError):
-        have = set()
+    have = installed_fonts()
     for f in ((wanted,) if wanted else ()) + FONTS:
         if f in have:
             return f

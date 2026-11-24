@@ -11,6 +11,7 @@ import "Dates.js" as Dates
 import "Days.js" as Days
 import "Task.js" as Task
 import "Authorship.js" as Authorship
+import "Links.js" as Links
 import "Shortcuts.js" as Sc
 
 // Settings (Ctrl+, or "settings" at the sidebar's foot): calendars, the agent, sound
@@ -512,7 +513,7 @@ BorderSurface {
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onClicked: Qt.openUrlExternally("file://" + page.agentChecks.latest_review)
+            onClicked: Qt.openUrlExternally(Links.fileUrl(page.agentChecks.latest_review))
           }
         }
 

@@ -151,6 +151,13 @@ def units() -> None:
         check([pathlib.Path(x["src"]).name for x in new] == ["Slides.pdf"],
               "the Downloads inbox never proposes filing an export")
 
+    if os.name == "nt":
+        have = export.installed_fonts()
+        check("Segoe UI" in have or "Arial" in have, "Windows font discovery finds system fonts without fc-list")
+        sample = "Segoe UI" if "Segoe UI" in have else "Arial"
+        check(export.font(sample) == sample, f"export.font({sample!r}) resolves an installed Windows face")
+        check(export.font("NoSuchLonghandFontXYZ") == "", "export.font returns empty when wanted face is absent")
+
 
 def end_to_end() -> None:
     tmp = pathlib.Path(tempfile.mkdtemp(prefix="export-test-"))

@@ -82,6 +82,12 @@ function at(links, col) {
   return null
 }
 
+// An absolute path: from `/` on Linux, or from a drive (`C:/…`, `C:\…`) on Windows.
+function isAbs(path) {
+  var p = String(path || "")
+  return p.charAt(0) === "/" || /^[A-Za-z]:[\\/]/.test(p)
+}
+
 // A file's whole path as a file:// URL, each part encoded: "/home/…" is
 // file:///home/…, and a path from a drive ("C:/Users/…", the vault on
 // Windows) file:///C:/Users/…, its colon left as it is (2026-11-24: encoded,
@@ -89,8 +95,18 @@ function at(links, col) {
 function fileUrl(path) {
   var p = String(path)
   var enc = function (s) { return s.split("/").map(encodeURIComponent).join("/") }
-  if (/^[A-Za-z]:\//.test(p)) return "file:///" + p.substring(0, 2) + enc(p.substring(2))
+  if (/^[A-Za-z]:[\\/]/.test(p)) {
+    p = p.replace(/\\/g, "/")
+    return "file:///" + p.substring(0, 2) + enc(p.substring(2))
+  }
   return "file://" + enc(p)
+}
+
+// A file:// URL back to a local path: `file:///home/…` → `/home/…`,
+// and `file:///C:/…` (Windows) → `C:/…` without the leading slash.
+function fromFileUrl(url) {
+  var s = decode(String(url || "").replace(/^file:\/\//i, ""))
+  return /^\/[A-Za-z]:\//.test(s) ? s.substring(1) : s
 }
 
 function folderOf(rel) { var i = rel.lastIndexOf("/"); return i < 0 ? "" : rel.substring(0, i) }

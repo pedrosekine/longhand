@@ -53,8 +53,6 @@ def sandbox(root: Path) -> dict:
         "agentDir": "agents/longhand",
         "runner": (REPO / "agent" / "longhand-agent").as_posix(),
         "read": (REPO / "cli" / "longhand-read").as_posix(),
-        # Windows has none of the page's own faces; this is its reading face.
-        "font": "Segoe UI Variable Text",
         "languages": ["English"],
         "weekStart": "monday",
     }
