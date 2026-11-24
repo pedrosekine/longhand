@@ -17,7 +17,9 @@ Three places differ from the bash on purpose:
 - JSON escapes a backslash and control characters in a title (the awk left a
   backslash bare, which is not JSON);
 - a sound is played without holding the caller's stdout open;
-- Windows has no notify-send: the bell there is the sound alone.
+- Windows has no notify-send: there the running Longhand says it from the
+  tray, else a Windows toast (windows/notify.py); the sound, at the shell's
+  volume and never under Do Not Disturb, is windows/play_sound.py.
 """
 from __future__ import annotations
 
@@ -222,7 +224,27 @@ def is_expired_running() -> bool:
 
 # ------------------------------------------------------------------ bell
 
+WINDOWS_DIR = os.path.join(SCRIPT_DIR, "..", "windows")
+
+
+def windows_helper(name: str, *args: str) -> None:
+    """windows/<name>.py, started and left: pomo does not wait on Windows'
+    sound or toast, as it does not wait on pw-play."""
+    flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    subprocess.Popen([sys.executable, os.path.join(WINDOWS_DIR, name + ".py"), *args], creationflags=flags,
+                     close_fds=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
 def notify(message: str) -> None:
+    if os.name == "nt":
+        # Windows has no notify-send: the running Longhand says it from the
+        # tray, else Windows itself (windows/notify.py). Quiet in a test.
+        if not os.environ.get("LONGHAND_SILENT") and os.path.isfile(os.path.join(WINDOWS_DIR, "notify.py")):
+            try:
+                windows_helper("notify", "Pomodoro", message)
+            except OSError:
+                pass
+        return
     if shutil.which("notify-send"):
         try:
             subprocess.run(["notify-send", "Pomodoro", message], stderr=subprocess.DEVNULL)
@@ -236,12 +258,10 @@ def play_sound() -> None:
     quiet = dict(stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
         if os.name == "nt":
-            if not os.path.isfile(SOUND_FILE):
-                return
-            flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NO_WINDOW", 0)
-            subprocess.Popen([sys.executable, "-c",
-                              "import sys, winsound; winsound.PlaySound(sys.argv[1], winsound.SND_FILENAME)",
-                              SOUND_FILE], creationflags=flags, close_fds=True, **quiet)
+            # As pw-play --volume=0.6, and not under Do Not Disturb
+            # (windows/play_sound.py asks Windows, as the shell is asked below).
+            if os.path.isfile(SOUND_FILE):
+                windows_helper("play_sound", "--volume", "0.6", SOUND_FILE)
             return
         if shutil.which("omarchy-shell"):
             dnd = subprocess.run(["omarchy-shell", "notifications", "isDnd"], capture_output=True, text=True)

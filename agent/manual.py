@@ -3,7 +3,8 @@ item "the agent's cheap tiers": self-knowledge, static and auditable).
 
 `agent/manual.md` is written by hand; its `{key:<id>}` are filled in here
 with the student's own keys — Shortcuts.js with keys.json applied, and
-Hyprland's as they are now (tools/keys_guide.py reads both) — so "press
+Hyprland's as they are now, or on Windows the host's (tools/keys_guide.py
+reads both) — so "press
 Ctrl+D" is true for this student even after they moved a key. A run whose
 block asks how to do something in Longhand carries the manual whole; every
 other run about a block lists it, and the agent can ask to read it (or
@@ -52,8 +53,15 @@ def keys(config_home: Path | None = None) -> dict[str, list[str]]:
         return {}
     out = {a["id"]: a["keys"] for a in d["actions"]}
     for (aid, *_), h in zip(hyprkeys.ACTIONS, d["hypr"]):
-        out["sys:" + aid] = h["keys"]
+        # Windows calls Super its own key's name, and says it first
+        # (windows/winkeys.py keeps them there).
+        out["sys:" + aid] = [win_first(k) for k in h["keys"]] if os.name == "nt" else h["keys"]
     return out
+
+
+def win_first(key: str) -> str:
+    """"Alt+Super+=" as Windows says it: "Win+Alt+="."""
+    return "Win+" + key.replace("Super+", "", 1) if "Super+" in key else key
 
 
 def render(text: str, k: dict[str, list[str]]) -> str:

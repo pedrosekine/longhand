@@ -1,5 +1,8 @@
 import QtQuick
 import Qt.labs.platform as Platform
+import Quickshell
+import Quickshell.Io
+import LonghandHost
 import qs.Commons as Commons
 import "../plugin-page"
 import "../plugin" as Pomo
@@ -157,23 +160,50 @@ Item {
   readonly property string deadlineLine: deadlines.nextItem
     ? deadlines.nextItem.title + " · " + deadlines.fmtRel(deadlines.nextItem.due) : ""
 
-  // A session ran out: said by the tray, as notify-send says it on Omarchy.
-  // (The sound is `pomo expired`'s, which the timer's service runs.)
-  property bool settled: false
-  Timer { interval: 3000; running: true; onTriggered: host.settled = true }
-  Connections {
-    target: host.pomo
-    function onExpiredChanged() {
-      if (!pomo.expired || !host.settled || !hostResident || pomo.runStatus === "done") return
-      tray.showMessage("Pomodoro", pomo.phase === "focus" ? "Focus done — break time" : "Break over — back to focus")
+  // What the bar's page glyph says (plugin-page/BarWidget.qml): a reply
+  // waiting that has not been looked at, and what the agent proposes or
+  // asks. The tray says both in words, in its tip and its menu — never on
+  // the seal, which identifies Longhand and is no status light
+  // (docs/brand/README.md), and never as a notification or a sound.
+  AgentState { id: agent; config: page.noteService.config }
+  property int asks: 0
+  FileView {
+    path: (Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state") + "/longhand/proposals.json"
+    watchChanges: true
+    printErrors: false
+    onLoaded: {
+      try { host.asks = JSON.parse(text()).items.filter(function (x) { return x.status === "open" }).length }
+      catch (e) { host.asks = 0 }
     }
+    onLoadFailed: host.asks = 0
+    onFileChanged: reload()
   }
+  readonly property string agentLine: [
+    agent.unread > 0 ? agent.unread + (agent.unread === 1 ? " reply" : " replies") + " waiting" : "",
+    host.asks > 0 ? host.asks + " from the agent, in the dashboard" : ""
+  ].filter(function (s) { return s !== "" }).join(" · ")
+
+  // A session ran out: `pomo expired`, which the timer's service runs, says
+  // it as notify-send says it on Omarchy, and here that comes to the tray
+  // (windows/notify.py). The sound is pomo's too.
+  Connections {
+    target: hostBridge
+    function onNotifyRequested(title, body) { if (hostResident) tray.showMessage(title, body) }
+  }
+
+  // The seal in Windows' colours, as the launcher's is in the theme's on
+  // Omarchy (tools/theme_icon.py): the tile in the ground of the mode the
+  // apps are in, the seal in the accent, followed live.
+  readonly property string themedIcon: hostResident
+    ? Host.themedIcon(String(Commons.Color.background), String(Commons.Color.foreground), String(Commons.Color.accent)) : ""
 
   Platform.SystemTrayIcon {
     id: tray
     visible: hostResident
-    icon.source: Qt.resolvedUrl("../launcher/longhand.svg")
-    tooltip: ["Longhand", host.timerLine, host.deadlineLine].filter(function (s) { return s !== "" }).join(" · ").slice(0, 120)
+    icon.source: host.themedIcon !== "" ? host.themedIcon : Qt.resolvedUrl("../launcher/longhand.svg")
+    // Windows cuts a tip at 127 characters: the agent's line first, it is
+    // the one that asks for something.
+    tooltip: ["Longhand", host.agentLine, host.timerLine, host.deadlineLine].filter(function (s) { return s !== "" }).join(" · ").slice(0, 127)
     // A click is the page as a window: the place to write. The middle
     // button is the timer's popup, as it is the timer's on the bar.
     onActivated: function (reason) {
@@ -183,6 +213,7 @@ Item {
 
     menu: Platform.Menu {
       Platform.MenuItem { text: "Today's note" + host.key("alongside"); onTriggered: host.pinned() }
+      Platform.MenuItem { text: host.agentLine; visible: host.agentLine !== ""; onTriggered: host.pinned() }
       Platform.MenuItem { text: "Over everything" + host.key("page"); onTriggered: host.toggle("{}") }
       Platform.MenuSeparator {}
       Platform.MenuItem { text: host.timerAction + host.key("pomoToggle"); onTriggered: pomo.toggle() }

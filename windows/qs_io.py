@@ -19,6 +19,9 @@ from PySide6.QtCore import (Property, QEnum, QFileSystemWatcher, QMetaObject, QO
                             QProcessEnvironment, Qt, QTimer, QUrl, Signal, Slot)
 from PySide6.QtQml import QmlElement, QmlSingleton
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import palette  # noqa: E402
+
 QML_IMPORT_NAME = "Quickshell.Io"
 QML_IMPORT_MAJOR_VERSION = 1
 
@@ -36,6 +39,11 @@ SCRIPTS = {
 POSIX = {"sh", "bash", "find", "file", "sed", "grep", "date", "test", "cat", "ls", "head", "tail", "sort", "xargs"}
 
 LOG = []  # what could not be started, for the spike's report
+
+# Commands the host answers itself, without a process: name -> a function
+# of the arguments giving (exit code, stdout, stderr). On Windows, `hyprctl`
+# (compositor.py), set by the host.
+INSIDE: dict = {}
 
 
 def _winproc():
@@ -100,12 +108,17 @@ def resolve(argv: list[str]) -> tuple[str, list[str]]:
     if os.name != "nt":
         return head, rest
     if head in ("python3", "python"):
+        if rest and rest[0].replace("\\", "/").endswith("/plugin-page/hyprkeys.py"):
+            # The keys sheet's six keys from anywhere: Windows keeps them
+            # here, not Hyprland (winkeys.py answers in hyprkeys.py's words).
+            return python(), [str(Path(__file__).resolve().parent / "winkeys.py"), *rest[1:]]
         return python(), rest
     if head == "sh" and len(rest) >= 3 and rest[0] == "-c" and "pw-play" in rest[1] and "paplay" in rest[1]:
         # A sound, as the page and the deadlines' popup play one (a tick):
         # a line of shell that asks PipeWire or PulseAudio, the file after it.
-        # Windows plays it itself (play_sound.py). The shell's "notifications
-        # are silenced" is asked there first; Windows' is not asked here.
+        # Windows plays it itself (play_sound.py), at the line's volume, and
+        # not while Windows has notifications silenced (Do Not Disturb), as
+        # the line asks the shell first.
         return python(), [str(Path(__file__).resolve().parent / "play_sound.py"), rest[2]]
     if head in SCRIPTS:
         head = str(SCRIPTS[head])
@@ -388,6 +401,9 @@ class Process(QObject):
         if not self._command:
             self.runningChanged.emit()
             return
+        if os.name == "nt" and self._command[0] in INSIDE:
+            self._answer(INSIDE[self._command[0]])
+            return
         program, args = resolve(self._command)
         p = QProcess(self)
         extra = dict(self._env)
@@ -411,6 +427,29 @@ class Process(QObject):
         self._proc = p
         trace("start", self._command)
         p.start(program, args)
+
+    def _answer(self, inside):
+        """A command the host answers itself: started, said, ended, as a
+        process would be, with nothing started."""
+        trace("inside", self._command)
+        try:
+            code, out, err = inside(self._command[1:])
+        except Exception as e:  # noqa: BLE001 — a fault here is the command's failure, not the host's
+            code, out, err = 1, "", f"{self._command[0]}: {e}\n"
+        for parser in (self._stdout, self._stderr):
+            if isinstance(parser, _Parser):
+                parser.begin()
+        self.started.emit()
+        if out and isinstance(self._stdout, _Parser):
+            self._stdout.feed(out.encode("utf-8"))
+        if err and isinstance(self._stderr, _Parser):
+            self._stderr.feed(err.encode("utf-8"))
+        for parser in (self._stdout, self._stderr):
+            if isinstance(parser, _Parser):
+                parser.finish()
+        trace(f"exit {code}", self._command)
+        self.exited.emit(code, 0)
+        self.runningChanged.emit()
 
     def _on_started(self, p):
         if p is not self._proc:
@@ -667,6 +706,8 @@ class FileView(QObject):
         """(text, error): the file as it is, never translated."""
         if not self._path:
             return None, FileViewError.Enum.FileNotFound
+        if os.name == "nt" and self._path.replace("\\", "/").endswith(palette.SUFFIX) and not os.path.exists(self._path):
+            return palette.colors_toml(), FileViewError.Enum.Success     # Windows' own palette, under the theme's name
         try:
             if os.path.isdir(self._path):
                 return None, FileViewError.Enum.NotAFile

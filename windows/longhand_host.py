@@ -208,6 +208,9 @@ def main() -> int:
     import qs_io  # noqa: F401                  (registers Quickshell.Io)
     import qs_wayland  # noqa: F401             (registers Quickshell.Wayland)
     import file_urls
+    if os.name == "nt":
+        import compositor
+        qs_io.INSIDE["hyprctl"] = compositor.hyprctl     # what the page asks Hyprland, answered here
     file_handler = file_urls.install()          # held: the page's file:// links, by drive  # noqa: F841
     bridge = host_api.BRIDGE
     icon = REPO / "launcher" / "longhand.svg"
@@ -259,6 +262,10 @@ def main() -> int:
             bridge.toggleRequested.emit(payload)
         elif do == "popup":
             bridge.popupRequested.emit(payload)
+        elif do == "notify":
+            # `pomo` said something (a session ran out), as notify-send
+            # says it on Omarchy: the tray says it here.
+            bridge.notifyRequested.emit(str(message.get("title") or "Longhand"), str(message.get("body") or ""))
         elif do == "quit":
             bridge.quitRequested.emit()
 
@@ -294,11 +301,41 @@ def main() -> int:
                     QTimer.singleShot(200, come_forward)
             keys = hotkeys.Keys(pressed)
             app.installNativeEventFilter(keys)
-            keys.register()
-            bridge.keys, bridge.problems = dict(keys.held), dict(keys.problems)
-            bridge.keysChanged.emit()
-            for why in keys.problems.values():
-                print("longhand: " + why, file=sys.stderr)
+
+            def registered() -> None:
+                bridge.keys, bridge.problems = dict(keys.held), dict(keys.problems)
+                bridge.keysChanged.emit()
+                for why in keys.problems.values():
+                    print("longhand: " + why, file=sys.stderr)
+            keys.on_register = registered
+            compositor.KEYS = keys
+
+            # The keys sheet writes windows-keys.json (winkeys.py), and a
+            # person may by hand: either is taken at once. The folder is
+            # watched too, since a file written whole is a new file.
+            from PySide6.QtCore import QFileSystemWatcher
+            keys_path = hotkeys.keys_file()
+            keys_path.parent.mkdir(parents=True, exist_ok=True)
+            watcher = QFileSystemWatcher([str(keys_path.parent)])
+            rekey = QTimer()
+            rekey.setSingleShot(True)
+            rekey.setInterval(150)
+
+            # The folder is the config's, which the page writes often
+            # (settings, its own keys): only a change to the six counts.
+            taken: list = [None]
+
+            def reread() -> None:
+                if keys_path.exists() and str(keys_path) not in watcher.files():
+                    watcher.addPath(str(keys_path))
+                now = hotkeys.wanted()
+                if now != taken[0] and not compositor.listening():
+                    taken[0] = now
+                    keys.register()
+            rekey.timeout.connect(reread)
+            watcher.directoryChanged.connect(lambda _p: rekey.start())
+            watcher.fileChanged.connect(lambda _p: rekey.start())
+            reread()
 
     if args.check and args.popups:
         import popup_check
