@@ -250,11 +250,12 @@ def main() -> int:
     roots = engine.rootObjects()               # held: let go of, PySide deletes the page with them
 
     def come_forward() -> None:
-        """The page's window to the front: Hyprland does this for the page there."""
+        """The page's window to the front, out of the taskbar as it was put
+        there: Hyprland does this for the page there."""
+        import compositor
         for w in app.allWindows():
-            if w.isVisible() and w.title():
-                w.raise_()
-                w.requestActivate()
+            if w.title():
+                compositor.come_forward(w)
 
     def act(message: dict) -> None:
         do, payload = message.get("do"), str(message.get("payload") or "{}")

@@ -169,6 +169,25 @@ def inside(app):
     compositor.hyprctl(["eval", 'hl.dispatch(hl.dsp.focus({ window = "title:^Page — today\'s note$" }))'])
     loop_until(app, lambda: QGuiApplication_focus() is w, 2.0)
     check(QGuiApplication_focus() is w, "the page's window, behind another, is brought forward and given the keys")
+    # Put in the taskbar, it comes back as it was put there (a second
+    # `longhand`, Win+Alt+\, the Start menu: all come_forward). Maximized
+    # first, Windows keeps both states while it is down; showNormal brought
+    # it back at its old size.
+    from PySide6.QtCore import Qt
+    WS = Qt.WindowState
+    for before, label in ((WS.WindowNoState, "at its size"), (WS.WindowMaximized, "maximized")):
+        w.setWindowStates(before)
+        app.processEvents()
+        w.setWindowStates(before | WS.WindowMinimized)
+        other.requestActivate()
+        loop_until(app, lambda: QGuiApplication_focus() is other, 1.0)
+        compositor.hyprctl(["eval", 'hl.dispatch(hl.dsp.focus({ window = "title:^Page — today\'s note$" }))'])
+        loop_until(app, lambda: QGuiApplication_focus() is w, 2.0)
+        check(w.windowStates() == before and QGuiApplication_focus() is w,
+              f"the page's window, in the taskbar, comes back {label}, with the keys ({w.windowStates()})")
+    w.setWindowStates(WS.WindowNoState)
+    app.processEvents()
+    check(not compositor.come_forward(None), "no such window: nothing to bring forward")
     compositor.hyprctl(["eval", 'local w = hl.get_window("title:^Page — today\'s note$"); '
                                 'if w and w.active then hl.dispatch(hl.dsp.cursor.move({ x = w.at.x + 30, y = w.at.y + 40 })) end'])
     at = QCursor.pos()

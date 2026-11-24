@@ -353,11 +353,26 @@ opencode and Antigravity are installed here and not tried.
   (`longhand_host.py --sandbox DIR --check OUT.json --popups`,
   `popup_check.py`; `tests/test_tray_popups.py` reads what it says): opened
   in the corner, a length typed and started, Tab to the deadlines', one
-  ticked in the store, Esc. Seen drawn on the screen that way. Not yet
-  opened by a hand from the tray's menu or a key pressed: Windows gives the
-  keyboard to a window only when its program is the one in front, which a
-  click on the tray or a global key makes it, and which the check has to
-  ask for.
+  ticked in the store, Esc; opened again, it goes when another window
+  takes the keys. Seen drawn on the screen that way. Not yet opened by a
+  hand from the tray: Windows gives the keyboard to a window only when its
+  program may take the front, which a click on the tray or a global key
+  lets it, and which the check has to ask for.
+- Who may take the front (tried 2026-11-24 on the real screen, with
+  another program in front and getting input every 300 ms, Windows'
+  foreground lock on): a global key (one of the six, pressed as input)
+  brought the popup to the front with the keys; so did `longhand timer`
+  started by the program in front, with or without the
+  `AllowSetForegroundWindow` the client gives first. Started by a program
+  in the background, the popup came up over the others without the keys,
+  and stayed: it closes only once it has had the keys and lost them, so a
+  refused activation leaves it open (put it away the way it came, or click
+  it and then elsewhere) instead of flashing.
+- Put in the taskbar, the page's window comes back as it went down when a
+  second `longhand`, `longhand summon`, the Start menu or Win+Alt+\ asks
+  for it: maximized stays maximized (`compositor.come_forward`, which the
+  page's raise and the host both use; before, it came back at its old
+  size). Seen on the screen and in `tests/test_windows_shell.py`.
 - Do Not Disturb is read from Windows' Focus assist profile (the shell's
   own toggle publishes it; `play_sound.silenced`), an undocumented state
   that Windows 11 still keeps: read as off on 2026-11-24, not yet seen on.
