@@ -228,4 +228,58 @@ Item {
       Platform.MenuItem { text: "Quit Longhand"; onTriggered: host.leave() }
     }
   }
+
+  // The bar's other two widgets, each an icon of its own beside the seal,
+  // as they stand beside the page's glyph on Omarchy: what each label says,
+  // one click to its popup (2026-11-24, the user: the timer and the
+  // deadlines were "inside the Longhand icon", too many clicks away).
+  // Windows puts a new icon under the ^ arrow until the person pins it
+  // (Settings → Personalization → Taskbar → Other system tray icons).
+  function glyph(text, role) {
+    return Host.trayGlyph(text, role, String(Commons.Color.background), String(Commons.Color.foreground),
+                          String(Commons.Color.accent), String(Commons.Color.muted), String(Commons.Color.urgent))
+  }
+
+  // The timer: the minutes left (or gone, counting up), in the accent while
+  // a focus runs, the text's colour in a break, faint paused or not started.
+  readonly property string timerGlyph: pomo.phase === "idle" ? "○" : pomo.expired ? "✓"
+    : String(pomo.countup ? Math.floor(pomo.remaining / 60)
+             : pomo.remaining >= 5940 ? Math.round(pomo.remaining / 3600) + "h" : Math.ceil(pomo.remaining / 60))
+  readonly property string timerRole: !pomo.live ? "muted" : pomo.phase === "focus" ? "accent" : "text"
+  Platform.SystemTrayIcon {
+    id: timerTray
+    visible: hostResident
+    icon.source: host.glyph(host.timerGlyph, host.timerRole) || Qt.resolvedUrl("../launcher/longhand.svg")
+    tooltip: ("Longhand timer · " + (host.timerLine || "not started")).slice(0, 127)
+    onActivated: function (reason) {
+      if (reason === Platform.SystemTrayIcon.Trigger || reason === Platform.SystemTrayIcon.DoubleClick) host.popup("timer")
+      else if (reason === Platform.SystemTrayIcon.MiddleClick) pomo.toggle()
+    }
+    menu: Platform.Menu {
+      Platform.MenuItem { text: host.timerAction + host.key("pomoToggle"); onTriggered: pomo.toggle() }
+      Platform.MenuItem { text: "Skip to the next" + host.key("pomoSkip"); visible: pomo.phase !== "idle"; onTriggered: pomo.skip() }
+      Platform.MenuItem { text: "Reset the timer"; visible: pomo.phase !== "idle"; onTriggered: pomo.reset() }
+      Platform.MenuItem { text: "Timer…" + host.key("pomoPopup"); onTriggered: host.popup("timer") }
+    }
+  }
+
+  // The deadlines: how far off the next one is (4d, 9h, 25m), "!" in the
+  // urgent colour once it is late, a tick when all are handed in.
+  readonly property string deadlineGlyph: deadlines.nextItem
+    ? (deadlines.isLate(deadlines.nextItem.due) ? "!" : deadlines.unit(deadlines.nextItem.due - deadlines.nowSec))
+    : deadlines.items.length > 0 ? "✓" : "–"
+  readonly property string deadlineRole: !deadlines.nextItem ? "muted"
+    : deadlines.isLate(deadlines.nextItem.due) || deadlines.isUrgent(deadlines.nextItem.due) ? "urgent" : "text"
+  Platform.SystemTrayIcon {
+    id: deadlineTray
+    visible: hostResident
+    icon.source: host.glyph(host.deadlineGlyph, host.deadlineRole) || Qt.resolvedUrl("../launcher/longhand.svg")
+    tooltip: ("Longhand deadlines · " + deadlines.tooltipText).slice(0, 127)
+    onActivated: function (reason) {
+      if (reason === Platform.SystemTrayIcon.Trigger || reason === Platform.SystemTrayIcon.DoubleClick) host.popup("deadlines")
+    }
+    menu: Platform.Menu {
+      Platform.MenuItem { text: (deadlines.nextItem ? deadlines.tooltipText : "Deadlines") + "…" + host.key("deadlines"); onTriggered: host.popup("deadlines") }
+    }
+  }
 }

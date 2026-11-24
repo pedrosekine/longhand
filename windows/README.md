@@ -99,6 +99,18 @@ the apps' ground and the seal in the accent, as `tools/theme_icon.py`
 draws the Omarchy launcher's in the theme's, and follows a change of
 either at once.
 
+Beside the seal stand the bar's other two widgets, an icon each, as they
+stand beside the page's glyph on Omarchy: the timer, saying the minutes
+left (in the accent while a focus runs, faint paused or not started; a
+click is its popup, the middle button starts or pauses it, its menu
+skips and resets), and the deadlines, saying how far off the next one is
+as the bar does (`4d`, `9h`, `!` once late, a tick when all are handed
+in; a click is their popup). Their pictures are drawn as they change
+(`host_api.tray_glyph`: an SVG, sharp at whatever size Windows asks).
+Windows puts a new program's icons under the `^` arrow; one switch shows
+all three: Settings → Personalization → Taskbar → Other system tray icons
+→ Longhand (the three share it, as Windows keeps the setting by program).
+
 The widgets themselves are loaded as they are (`plugin/Panel.qml`,
 `plugin-deadline/Panel.qml`), and so are their popups: the timer's, where a
 length is typed as on a microwave and the day's sessions are counted
