@@ -73,15 +73,9 @@ Item {
   // summon waits until the page has read its config (or found there is none).
   property bool configRead: false
   property var waiting: null
-  // Opened before the note has been read, the page asks the note to take the
-  // keys while it has no rows yet, and a sheet's hidden key catcher keeps
-  // them (so the page's own "keys nowhere" net never fires). The host owes
-  // the note the keys once it has loaded: the page's own way to the middle.
-  property bool keysOwed: false
 
   function open(payload) {
     if (!host.configRead) { host.waiting = payload; return }
-    host.keysOwed = !page.noteService.ready
     page.open(payload)
   }
   // As shell.qml: summon opens, toggle opens or hides the overlay.
@@ -100,11 +94,6 @@ Item {
   Connections {
     target: page.noteService
     function onConfigChanged() { host.ready() }
-    function onLoaded() {
-      if (!host.keysOwed) return
-      host.keysOwed = false
-      Qt.callLater(page.focusCenter)
-    }
   }
   Timer { interval: 1500; running: true; onTriggered: host.ready() }
 

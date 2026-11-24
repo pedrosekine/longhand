@@ -41,6 +41,9 @@ ShellRoot {
     function state(): string { return JSON.stringify({ overlay: page.overlayOpen, window: page.windowOpen, ready: page.editorItem.enabled }) }
     // The note
     function text(): string { return page.editorItem.text }
+    // A line of the note holds the window's keys (whether or not the
+    // window, told never to take focus, is the active one).
+    function noteHasKeys(): bool { return page.editorItem.holdsFocus() }
     // The page photographs itself, whatever is in front of it on screen.
     function shot(path: string): void { page.contentItem.grabToImage(function (r) { r.saveToFile(path) }) }
     function insert(s: string): void { var e = page.editorItem; e.insert(e.cursorPosition, s) }
