@@ -675,10 +675,11 @@ class FileView(QObject):
 
     # --- the queue: one job a tick, in the order asked
     # Posted, not timed: a job asked for now is heard before anything the
-    # page puts off with Qt.callLater afterwards. The page counts on that —
-    # it opens today's note, then asks (later) for the keys to go to it, and
-    # by then the note must have rows. Quickshell reads on a thread that has
-    # long finished; a zero timer here came after, and the note opened deaf.
+    # page puts off with Qt.callLater afterwards, as Quickshell's read on a
+    # thread mostly is; a zero timer came after it. Not always, here or
+    # there: a callLater made earlier in the same turn runs first, and the
+    # page puts its later ones in with it. So the note does not count on it
+    # for the keys (NoteEditor.focusNote owes them until its lines come).
     def _queue(self, op):
         self._ops.append(op)
         self._post()

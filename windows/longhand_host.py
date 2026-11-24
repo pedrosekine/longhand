@@ -14,7 +14,8 @@ qs_io.py, qs_wayland.py).
     longhand timer                the timer's popup, by the clock (again: away), as `omarchy-shell longhand.pomo toggle`
     longhand deadlines            the deadlines' popup, as `omarchy-shell longhand.deadline toggle`
     longhand quit
-    longhand install [--no-autostart]   in the Start menu, and started with the session (shortcuts.py)
+    longhand install [--no-autostart] [--no-path]   in the Start menu, started with the session, and
+                                  the commands on PATH in ~/.local/bin (shortcuts.py)
     longhand uninstall
 
 One Longhand runs at a time: a second `longhand` tells the first what was
@@ -138,11 +139,13 @@ def main() -> int:
     ap = argparse.ArgumentParser(prog="longhand", description="Longhand's page on Windows")
     ap.add_argument("command", nargs="?", choices=("summon", "toggle", "timer", "deadlines", "quit", "install", "uninstall"),
                     help="what to ask of Longhand; timer, deadlines: the popup by the clock; "
-                         "install: the Start menu entry, and Longhand started with the session")
+                         "install: the Start menu entry, Longhand started with the session, the commands on PATH")
     ap.add_argument("payload", nargs="?", default="", help='for summon and toggle: {"shape":"alongside"}, {"goto":"…"}')
     ap.add_argument("--overlay", action="store_true", help="the page over everything, instead of as a window")
     ap.add_argument("--tray", action="store_true", help="start in the tray, nothing opened")
-    ap.add_argument("--no-autostart", action="store_true", help="with install: the Start menu entry only")
+    ap.add_argument("--no-autostart", action="store_true", help="with install: not started with the session")
+    ap.add_argument("--no-path", action="store_true",
+                    help="with install: the commands not put on PATH (in ~/.local/bin), and taken off it")
     ap.add_argument("--sandbox", type=Path, help="use a throwaway vault, config and state in this folder")
     ap.add_argument("--check", type=Path, help="drive the page and write what happened to this JSON file")
     ap.add_argument("--shot", type=Path, help="with --check: save a picture of the window here")
@@ -153,7 +156,9 @@ def main() -> int:
     if args.command in ("install", "uninstall"):
         import shortcuts
         to_console()
-        return shortcuts.install(not args.no_autostart) if args.command == "install" else shortcuts.uninstall()
+        if args.command == "install":
+            return shortcuts.install(not args.no_autostart, with_path=not args.no_path)
+        return shortcuts.uninstall()
 
     box = sandbox(args.sandbox.resolve()) if args.sandbox else None
     if args.check and not box:
@@ -245,11 +250,12 @@ def main() -> int:
     roots = engine.rootObjects()               # held: let go of, PySide deletes the page with them
 
     def come_forward() -> None:
-        """The page's window to the front: Hyprland does this for the page there."""
+        """The page's window to the front, out of the taskbar as it was put
+        there: Hyprland does this for the page there."""
+        import compositor
         for w in app.allWindows():
-            if w.isVisible() and w.title():
-                w.raise_()
-                w.requestActivate()
+            if w.title():
+                compositor.come_forward(w)
 
     def act(message: dict) -> None:
         do, payload = message.get("do"), str(message.get("payload") or "{}")

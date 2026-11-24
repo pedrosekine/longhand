@@ -194,6 +194,27 @@ def run(app, engine, box, args, warnings):
     def away():
         step("put away", popups=[w.title() for w in app.allWindows() if w.isVisible()])
         ev("pomo.reset()")
-        wait(lambda: ev("pomo.phase") == "idle", lambda: (step("timer reset"), finish(True)), "the timer back to idle")
+        wait(lambda: ev("pomo.phase") == "idle", lambda: (step("timer reset"), click_away()), "the timer back to idle")
+
+    # --- another window clicked: a popup that had the keys goes. (One that
+    # Windows never gave them to stays until it is put away: a refused
+    # activation is no click elsewhere. Tried on the real screen, 2026-11-24.)
+    def click_away():
+        ev('popup("deadlines")')
+        wait(lambda: popup("longhand.deadline") is not None and give_keyboard(popup("longhand.deadline")),
+             clicked_elsewhere, "the deadlines' popup open again, with the keys")
+
+    def clicked_elsewhere():
+        from PySide6.QtGui import QWindow
+        other = QWindow()
+        state["other"] = other
+        other.setTitle("somewhere else")
+        other.setGeometry(40, 40, 200, 120)
+        other.show()
+        other.requestActivate()
+        wait(lambda: popup("longhand.deadline") is None and ev("deadlinePanel.opened") is False,
+             lambda: (step("another window clicked", popups=[w.title() for w in app.allWindows() if w.isVisible()]),
+                      other.close(), finish(True)),
+             "the popup going when another window takes the keys", 5.0)
 
     wait(loaded, seed, "the two widgets and their services", 20.0)

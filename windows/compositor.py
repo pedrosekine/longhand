@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import re
 
-from PySide6.QtCore import QPoint, QTimer
+from PySide6.QtCore import QPoint, Qt, QTimer
 from PySide6.QtGui import QCursor, QGuiApplication
 
 # The host's keys (hotkeys.Keys), set when it registers them.
@@ -62,12 +62,22 @@ def window(title: str):
 
 def come_forward(w) -> bool:
     """A window to the front and given the keys, out of the taskbar if it
-    was put there."""
+    was put there — as it was before: maximized, it comes back maximized
+    (showNormal brought it back at its old size). The page's raise, a
+    second `longhand` and the global keys all come here (longhand_host).
+
+    Windows decides whether it may take the foreground. Asked from a global
+    key or a `longhand` started by the program in front, it may (tried
+    2026-11-24 with another program holding the front and getting input:
+    the popup came to the front each time; a click on the tray is Windows'
+    to grant as well, not yet tried by a hand); asked by
+    a program in the background, it is raised without the keys, and stays
+    until it is put away or clicked."""
     if w is None or not w.isVisible():
         return False
-    from PySide6.QtGui import QWindow
-    if w.visibility() == QWindow.Visibility.Minimized:
-        w.showNormal()
+    states = w.windowStates()
+    if states & Qt.WindowState.WindowMinimized:
+        w.setWindowStates(states & ~Qt.WindowState.WindowMinimized)
     w.raise_()
     w.requestActivate()
     return True
