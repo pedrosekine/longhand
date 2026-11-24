@@ -149,7 +149,7 @@ def end_to_end(tmp: pathlib.Path) -> None:
     stub = tmp / "stub"
     stub.mkdir()
     env = dict(os.environ, LONGHAND_CONFIG=str(cfg), XDG_STATE_HOME=str(tmp / "state"), XDG_CONFIG_HOME=str(cfgdir),
-               STUB_DIR=str(stub), PATH=f"{bindir}:{os.environ['PATH']}")
+               STUB_DIR=str(stub), PATH=f"{bindir}{os.pathsep}{os.environ['PATH']}")
     r = subprocess.run([sys.executable, str(AGENT), "day", "--message", "where did I write about the shortlist?"],
                        capture_output=True, text=True, env=env)
     assert r.returncode == 0, r.stderr

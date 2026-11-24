@@ -112,6 +112,13 @@ FEEDBACK = STATE_HOME / "feedback.tsv"
 EXPORTS = STATE_HOME / "exports.json"
 
 
+def day_text(when, pattern: str) -> str:
+    """A date or a moment as words, where `%-d` is the day with no leading
+    zero ("Mon 3 Nov") on every system: the C library's strftime knows `%-d`
+    on Linux only, and Windows refuses the whole pattern."""
+    return when.strftime(pattern.replace("%-d", str(when.day)))
+
+
 class Fail(Exception):
     pass
 
@@ -353,7 +360,7 @@ def horizon_hide(cfg: dict):
 
     def hide(rel: str) -> bool:
         p = Path(rel)
-        return str(p.parent) == daily and p.suffix.lower() == ".md" and before_horizon(cfg, p.stem)
+        return p.parent.as_posix() == daily and p.suffix.lower() == ".md" and before_horizon(cfg, p.stem)
     return hide
 
 
@@ -367,7 +374,7 @@ def read_tree(root: Path | None, suffix: str = ".md") -> list[tuple[str, str]]:
     out = []
     for p in sorted(root.rglob(f"*{suffix}")):
         if p.is_file():
-            out.append((str(p.relative_to(root)), p.read_text(errors="replace")))
+            out.append((p.relative_to(root).as_posix(), p.read_text(errors="replace")))
     return out
 
 
@@ -863,8 +870,25 @@ def earlier_turns(turns: list[dict], agent: str = "you") -> list[str]:
 # model's process (its whole group) is ended, the run is logged as stopped,
 # and no turn is written — the page gives the student's words back to the
 # box. Any other command still dies on it at once, as before.
+#
+# Windows has no process groups and no SIGTERM a process can handle and go
+# on (winproc.py): there the model's process is in a job, ended whole the
+# same way, and the page asks for the stop through a named event, which
+# calls `_on_stop` as the signal would.
 STOPPED = "stopped"
 _STOP: dict = {"asked": False, "child": None}
+WINDOWS = os.name == "nt"
+if WINDOWS:
+    import winproc  # noqa: E402
+
+
+def end_group(p: subprocess.Popen, hard: bool = False) -> None:
+    """A model's process and everything it started, ended: asked to (SIGTERM)
+    or, `hard`, killed. On Windows there is only the one way."""
+    if WINDOWS:
+        winproc.end(p)
+    else:
+        os.killpg(p.pid, signal.SIGKILL if hard else signal.SIGTERM)
 
 
 def _on_stop(signum, frame) -> None:
@@ -872,7 +896,7 @@ def _on_stop(signum, frame) -> None:
     child = _STOP["child"]
     if child is not None and child.poll() is None:
         try:
-            os.killpg(child.pid, signal.SIGTERM)
+            end_group(child)
         except OSError:
             pass
 
@@ -888,19 +912,23 @@ def run_child(cmd: list[str], payload: str, timeout: int, cwd: str, env: dict | 
         return subprocess.CompletedProcess(cmd, -signal.SIGTERM, "", "")
     p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                          cwd=cwd, env=env, start_new_session=True)
+    if WINDOWS:
+        winproc.adopt(p)
     _STOP["child"] = p
     try:
         if on_line is None:
             try:
                 out, err = p.communicate(payload, timeout=timeout)
             except subprocess.TimeoutExpired:
-                os.killpg(p.pid, signal.SIGKILL)
+                end_group(p, hard=True)
                 p.communicate()
                 raise
             return subprocess.CompletedProcess(cmd, p.returncode, out, err)
         return _stream_child(p, cmd, payload, timeout, on_line)
     finally:
         _STOP["child"] = None
+        if WINDOWS:
+            winproc.release(p)
 
 
 def _stream_child(p: subprocess.Popen, cmd: list[str], payload: str, timeout: int, on_line) -> subprocess.CompletedProcess:
@@ -925,7 +953,7 @@ def _stream_child(p: subprocess.Popen, cmd: list[str], payload: str, timeout: in
     def kill():
         timed_out.set()
         try:
-            os.killpg(p.pid, signal.SIGKILL)
+            end_group(p, hard=True)
         except OSError:
             pass
 
@@ -1821,7 +1849,7 @@ def apply(cfg: dict, paths: Paths, trigger: str, fired: list[dict], visible: lis
     # Transcript: for the student, one section per run.
     if not paths.transcript.exists():
         append_text(paths, paths.transcript,
-                    f"# {paths.stamp} — agent\n\nNote: [[{paths.daily_dir.relative_to(paths.vault)}/{paths.stamp}]]\n")
+                    f"# {paths.stamp} — agent\n\nNote: [[{paths.daily_dir.relative_to(paths.vault).as_posix()}/{paths.stamp}]]\n")
     sec = [f"\n## {now.strftime('%H:%M')} · {trigger}" + (f" · `{','.join(hashes)}`" if hashes else ""), ""]
     if fired and not chat:
         sec += ["> " + l for b in fired for l in b["text"].split("\n")] + [""]
@@ -2608,7 +2636,7 @@ def page_box(line: str) -> str:
     rest = re.sub(r"\s*(?:📅|⏳|🛫|➕|✅|❌)\s*\d{4}-\d{2}-\d{2}(?:\s+\d{1,2}:\d{2})?", "", rest)
     rest = re.sub(r"\s*[⏫🔼🔽🔺⏬]", "", rest).rstrip()
     if due:
-        rest += f" · due {dt.date.fromisoformat(due.group(1)):%a %-d %b}"
+        rest += f" · due {day_text(dt.date.fromisoformat(due.group(1)), '%a %-d %b')}"
     return f"{m.group(1)}{mark} {rest}"
 
 
@@ -2669,7 +2697,7 @@ def coming_up(tag: str, now: dt.datetime, horizon: int = 21) -> list[str]:
 
     def line(d: dict) -> str:
         days = (d["due"].date() - today).days
-        at = f"{d['due']:%a %-d %b}" + (f" {d['due']:%Y}" if d["due"].year != today.year else "") \
+        at = f"{day_text(d['due'], '%a %-d %b')}" + (f" {d['due']:%Y}" if d["due"].year != today.year else "") \
             + (f" {d['due']:%H:%M}" if d["due"].strftime("%H:%M") != "23:59" else "")
         return f"- {d['title']} · {at} · **{until_text(days)}**" + (" — still open: done? tick its line" if days < 0 else "")
     near = [d for d in dls if (d["due"].date() - today).days <= horizon]
@@ -2723,12 +2751,12 @@ def week_lines(cfg: dict, tag: str, now: dt.datetime, folder: str, day: dt.date 
                 opened.append((sec["date"], shown))
         if in_week(sec["date"]):
             words = sec.get("words") or 0
-            written.append(f"- {dt.date.fromisoformat(sec['date']):%a %-d %b} — {sec['title'] or '#' + tag}"
+            written.append(f"- {day_text(dt.date.fromisoformat(sec['date']), '%a %-d %b')} — {sec['title'] or '#' + tag}"
                            + (f" · {words} words" if words else ""))
             for line in (sec.get("text") or "").split("\n"):
                 t = line.strip()
                 if t.endswith("?") and not t.startswith(">") and len(t) > 3:
-                    asked.append(f"- {re.sub(r'^[-*+]\s+(\[.\]\s+)?', '', t)} *(your note, {dt.date.fromisoformat(sec['date']):%a %-d %b})*")
+                    asked.append(f"- {re.sub(r'^[-*+]\s+(\[.\]\s+)?', '', t)} *(your note, {day_text(dt.date.fromisoformat(sec['date']), '%a %-d %b')})*")
     papers = [x for x in project_papers(tag, folder) if x.get("kind", "paper") == "paper"]
     read = []
     for x in papers:
@@ -2760,7 +2788,7 @@ def week_lines(cfg: dict, tag: str, now: dt.datetime, folder: str, day: dt.date 
                   f"{len(read)} paper{'s' if len(read) != 1 else ''} read" if read else "",
                   f"{len(files)} file{'s' if len(files) != 1 else ''} worked on" if files else ""]
         counts = [c for c in counts if c]
-        out += [f"**This week** ({start:%a %-d} – {end:%a %-d %b}): " + (" · ".join(counts) if counts else "nothing yet")
+        out += [f"**This week** ({day_text(start, '%a %-d')} – {day_text(end, '%a %-d %b')}): " + (" · ".join(counts) if counts else "nothing yet")
                 + f" — the whole week: `longhand-agent week --tag {tag}`", ""]
         return out
     out = []
@@ -2771,11 +2799,11 @@ def week_lines(cfg: dict, tag: str, now: dt.datetime, folder: str, day: dt.date 
     if read:
         out += ["## Read", ""] + read + [""]
     if files:
-        out += ["## Files worked on", ""] + [f"- {wiki(f'{folder}/{rel}', str(rel))} · {dt.datetime.fromtimestamp(mt):%a %-d %b}" for mt, rel in files[:15]] \
+        out += ["## Files worked on", ""] + [f"- {wiki(f'{folder}/{rel.as_posix()}', rel.as_posix())} ·{day_text(dt.datetime.fromtimestamp(mt), '%a %-d %b')}" for mt, rel in files[:15]] \
             + ([f"- *and {len(files) - 15} more*"] if len(files) > 15 else []) + [""]
     if opened:
         opened.sort(reverse=True)
-        out += ["## Still open", ""] + [f"- {t} *(written {dt.date.fromisoformat(d):%a %-d %b})*" for d, t in opened[:12]] \
+        out += ["## Still open", ""] + [f"- {t} *(written {day_text(dt.date.fromisoformat(d), '%a %-d %b')})*" for d, t in opened[:12]] \
             + ([f"- *and {len(opened) - 12} more*"] if len(opened) > 12 else []) + [""]
     if asked:
         out += ["## Questions to bring", ""] + asked + [""]
@@ -2789,8 +2817,8 @@ def project_week(cfg: dict, tag: str, now: dt.datetime, day: dt.date | None = No
     folder = project_folder(cfg, tag, pr.get("file") or "")
     start, end = week_bounds(day or now.date())
     head = [f"# {pr['name']} — week {start.isocalendar()[1]}", "",
-            f"*#{tag}, {start:%a %-d %b} – {end:%a %-d %b %Y}: what was done, written and read, what is coming and what to ask. "
-            f"Gathered from your notes, papers and deadlines at {now:%a %-d %b, %H:%M}; nothing was sent anywhere.*", ""]
+            f"*#{tag}, {day_text(start, '%a %-d %b')} – {day_text(end, '%a %-d %b %Y')}: what was done, written and read, what is coming and what to ask. "
+            f"Gathered from your notes, papers and deadlines at {day_text(now, '%a %-d %b, %H:%M')}; nothing was sent anywhere.*", ""]
     return "\n".join(head + week_lines(cfg, tag, now, folder, day)).rstrip() + "\n"
 
 
@@ -2837,13 +2865,13 @@ def project_page(cfg: dict, tag: str, now: dt.datetime) -> tuple[str, str]:
     pr = next((p for p in projects if p["tag"].lower() == tag), {"tag": tag, "name": tag, "file": "", "next": None})
     folder = project_folder(cfg, tag, pr.get("file") or "")
     out = [f"# {pr['name']}", "",
-           f"*#{tag} — everything of it in one place, as Longhand found it at {now:%a %-d %b, %H:%M}. Read-only: "
+           f"*#{tag} — everything of it in one place, as Longhand found it at {day_text(now, '%a %-d %b, %H:%M')}. Read-only: "
            "follow a link (Alt+Enter, or a click) to where each thing is written; open the page again to bring it up "
            "to date.*", ""]
     nxt = pr.get("next") or {}
     if nxt.get("at"):
         at = dt.datetime.fromisoformat(nxt["at"])
-        out.append(f"**Next session:** {at:%a %-d %b, %H:%M}" + (f" · {nxt['room']}" if nxt.get("room") else ""))
+        out.append(f"**Next session:** {day_text(at, '%a %-d %b, %H:%M')}" + (f" · {nxt['room']}" if nxt.get("room") else ""))
     if nxt.get("at"):
         out.append("")
     # What is coming, and the week so far, before anything else.
@@ -2880,7 +2908,7 @@ def project_page(cfg: dict, tag: str, now: dt.datetime) -> tuple[str, str]:
         files = [p for p in sorted((vault / folder).glob("*.md"))]
     if files or documents:
         out += ["## Working files", ""]
-        out += [f"- {wiki(str(f.relative_to(vault)), f.stem)}" for f in files]
+        out += [f"- {wiki(f.relative_to(vault).as_posix(), f.stem)}" for f in files]
         out += [f"- {wiki(x['pdf'], x['title'])} (PDF)" for x in documents]
         out.append("")
     # Every section of its tag in the daily notes, newest first; never a
@@ -2905,7 +2933,7 @@ def project_page(cfg: dict, tag: str, now: dt.datetime) -> tuple[str, str]:
         for sec in kept:
             d = dt.date.fromisoformat(sec["date"]) if re.match(r"\d{4}-\d{2}-\d{2}$", sec["date"]) else None
             stem = Path(sec["file"]).stem
-            where = wiki(f"{daily}/{stem}" + (f"#{sec['heading']}" if sec.get("heading") else ""), f"{d:%a %-d %b}" if d else stem)
+            where = wiki(f"{daily}/{stem}" + (f"#{sec['heading']}" if sec.get("heading") else ""), f"{day_text(d, '%a %-d %b')}" if d else stem)
             out.append(f"### {where}" + (f" — {sec['title']}" if sec.get("title") and sec.get("heading") else ""))
             out.append("")
             body = sec.get("text") or ""
@@ -4450,7 +4478,7 @@ def file_ref(cfg: dict, paths: Paths, rel: str) -> dict | None:
     f = (root / rel).resolve()
     if root not in f.parents or not f.is_file() or f.suffix.lower() not in (".md", ".pdf"):
         return None
-    rel = str(f.relative_to(root))
+    rel = f.relative_to(root).as_posix()
     if not note_shared(cfg, paths, rel):
         return None
     kind = "paper" if f.suffix.lower() == ".pdf" else "note"
@@ -4475,7 +4503,7 @@ def file_refs_list(cfg: dict, paths: Paths) -> list[dict]:
     bibs = bibs_of(paths.vault)
     out = []
     for f in searchlib.files(paths.vault, on, {}, horizon_hide(cfg)):
-        rel = str(f.relative_to(paths.vault))
+        rel = f.relative_to(paths.vault).as_posix()
         if f.suffix.lower() not in (".md", ".pdf") or rel.startswith(daily + "/"):
             continue
         if any(part.startswith((".", "_")) for part in Path(rel).parts):
@@ -4878,7 +4906,7 @@ def convo_view(turns: list[dict], today: dt.date) -> dict:
     for d in sorted(k for k in by_day if k and k < iso)[-VIEW_DAYS:]:
         groups = convo_groups(turns, by_day[d])
         try:
-            label = dt.date.fromisoformat(d).strftime("%a %-d %b")
+            label = day_text(dt.date.fromisoformat(d), "%a %-d %b")
         except ValueError:
             label = d
         said = [{"id": t["id"], "at": t.get("at", ""), "role": t["role"], "text": t["text"], "where": t.get("where", ""),
@@ -4985,12 +5013,12 @@ def open_targets(cfg: dict, asks: list[dict]) -> list[dict]:
             rel = str(a["file"]).strip().lstrip("/")
             f = (vault / rel).resolve()
             if vault in f.parents and f.is_file() and f.suffix.lower() in (".md", ".pdf") and not searchlib._never(rel):
-                return [{"kind": "file", "rel": str(f.relative_to(vault)), "name": f.stem}]
+                return [{"kind": "file", "rel": f.relative_to(vault).as_posix(), "name": f.stem}]
         elif a.get("day"):
             d = stamp_date(cfg, str(a["day"])[:10]) if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(a["day"])[:10]) \
                 else dt.date.fromisoformat(str(a["day"])[:10])
             if d and Paths(cfg, d).note.is_file():
-                return [{"kind": "day", "date": day_stamp(cfg, d), "name": d.strftime("%a %-d %b")}]
+                return [{"kind": "day", "date": day_stamp(cfg, d), "name": day_text(d, "%a %-d %b")}]
         elif a.get("task"):
             task = next((x for x in plan_tasks(cfg) if x.get("key") == a["task"]), None)
             if task:
@@ -5228,7 +5256,7 @@ def day_file(cfg: dict, asks: list[dict], message: str, at: str) -> tuple[list[d
         # Already kept, anywhere in the vault: not filed twice (2026-11-19).
         twin = doclib.in_vault(src, paths.vault)
         if twin is not None:
-            refused.append(f"{doc_words}: already in your vault, the same file, at {twin.relative_to(paths.vault)}"
+            refused.append(f"{doc_words}: already in your vault, the same file, at {twin.relative_to(paths.vault).as_posix()}"
                            " — left in Downloads")
             continue
         same = [x for x in planlib.open_items(ledger) if x["kind"] == "file" and x.get("doc") == doc]
@@ -5669,7 +5697,7 @@ def note_talk(paths: Paths, rel: str) -> tuple[str, list[dict], str]:
     p = (root / rel).resolve()
     if root not in p.parents or not p.is_file() or p.suffix.lower() != ".md":
         raise Fail(f"not a note in the vault: {rel}")
-    rel = str(p.relative_to(root))
+    rel = p.relative_to(root).as_posix()
     if searchlib._never(rel):
         raise Fail(f"never shared: {rel}")
     shown = [b for b in visible_blocks(blocklib.split(p.read_text(errors="replace"))) if b["kind"] != "frontmatter"]
@@ -5741,7 +5769,7 @@ def paper_talk(paths: Paths, rel: str) -> tuple[str, dict, str]:
     p = (root / rel).resolve()
     if root not in p.parents or not p.is_file() or p.suffix.lower() != ".pdf":
         raise Fail(f"not a PDF in the vault: {rel}")
-    rel = str(p.relative_to(root))
+    rel = p.relative_to(root).as_posix()
     if searchlib._never(rel):
         raise Fail(f"never shared: {rel}")
     st = paper_state(rel)
@@ -7014,6 +7042,8 @@ def main(argv: list[str]) -> int:
     # still ends on SIGTERM at once.
     if args.cmd in ("run", "chat", "day", "note", "talk", "plan"):
         signal.signal(signal.SIGTERM, _on_stop)
+        if WINDOWS:
+            winproc.listen_for_stop(lambda: _on_stop(signal.SIGTERM, None))
     try:
         cfg = load_config()
         doc_folders(cfg)

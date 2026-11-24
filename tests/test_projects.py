@@ -107,7 +107,7 @@ def end_to_end() -> None:
     stub = tmp / "stub"
     stub.mkdir()
     env = dict(os.environ, LONGHAND_CONFIG=str(cfg), XDG_STATE_HOME=str(state), XDG_CONFIG_HOME=str(cfgdir),
-               STUB_DIR=str(stub), PATH=f"{bindir}:{os.environ['PATH']}")
+               STUB_DIR=str(stub), PATH=f"{bindir}{os.pathsep}{os.environ['PATH']}")
 
     def agent(*args, ok=True):
         r = subprocess.run([sys.executable, str(AGENT), *args], capture_output=True, text=True, env=env)
@@ -260,7 +260,7 @@ def project_page() -> None:
           and "Hand in the thesis" in w and "weeks**" in w and "DTM poster" not in w,
           "coming up: the near deadlines and the last one however far, never another project's")
     check("## Done" in w and "- read Moser" in w, "…what was ticked in the week")
-    check("## Written" in w and f"{d1:%a %-d %b}" in w, "…the days the project was written in")
+    check("## Written" in w and f"{d1:%a} {d1.day} {d1:%b}" in w, "…the days the project was written in")
     check("## Still open" in w and "email the supervisor" in w and "⏫" not in w and "^d4" not in w,
           "…its open boxes, marks off")
     check("## Questions to bring" in w and "Should RQ3 ask what explains the disagreements?" in w,

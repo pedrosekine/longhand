@@ -239,7 +239,7 @@ def set_folders(projects: list[tuple[str, str]], vault: Path) -> None:
         rel = m.group(1).strip().strip("/")
         f = (root / rel).resolve()
         if rel and root in f.parents:
-            FOLDERS[tag] = str(f.relative_to(root))
+            FOLDERS[tag] = f.relative_to(root).as_posix()
 
 
 def docs_dir(vault: Path, projects_dir: str, tag: str) -> Path:
@@ -527,7 +527,10 @@ def index(vault: Path, projects_dir: str, tag: str, cache: dict | None = None) -
                 pages = 0
             if cache is not None:
                 cache[key] = pages
-        out.append({"name": p.stem, "file": p.name, "path": str(p), "pages": pages})
+        # Forward slashes: the page finds the vault in the path by its
+        # config's spelling, and builds file:// links from it (on Windows,
+        # str() would give backslashes; on Linux the two are the same).
+        out.append({"name": p.stem, "file": p.name, "path": p.as_posix(), "pages": pages})
     return out
 
 

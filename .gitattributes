@@ -1,0 +1,7 @@
+# Every text file comes out of git ending its lines with "\n", on every
+# system. Git for Windows, left to itself, hands them out with "\r\n", and
+# Longhand counts on the bytes: a prompt's fingerprint is taken from its
+# file as it lies (agent/longhand-agent, `prompt_version`), and the shell
+# scripts are run by a bash that reads "\r" as part of a word. Found by the
+# suite's first run on a Windows machine of GitHub's (tests/test_line_endings.py).
+* text=auto eol=lf

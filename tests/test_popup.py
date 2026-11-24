@@ -94,7 +94,7 @@ def main() -> int:
     state, cfg = tmp / "state", tmp / "config"
     (cfg / "longhand").mkdir(parents=True)
     env = dict(os.environ, XDG_STATE_HOME=str(state), XDG_CONFIG_HOME=str(cfg), LONGHAND_SILENT="1",
-               PATH=f"{bindir}:{os.environ['PATH']}")
+               PATH=f"{bindir}{os.pathsep}{os.environ['PATH']}")
     subprocess.run(["pomo", "deadline", "add", "Essay draft", "in", "3", "days"], env=env, check=True, capture_output=True)
 
     out = run(tmp, env)

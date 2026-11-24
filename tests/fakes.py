@@ -31,4 +31,4 @@ def machine(tmp: pathlib.Path, config: pathlib.Path | None = None) -> dict:
     (bindir / "hyprctl").write_text(f'#!/bin/sh\nexec {sys.executable} "{ROOT}/tests/fake_hyprctl.py" "$@"\n')
     (bindir / "hyprctl").chmod(0o755)
     return {"XDG_CONFIG_HOME": str(config), "FAKE_HYPR_DIR": str(hypr),
-            "PATH": f"{bindir}:{os.environ['PATH']}"}
+            "PATH": f"{bindir}{os.pathsep}{os.environ['PATH']}"}

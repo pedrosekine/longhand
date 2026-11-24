@@ -139,7 +139,7 @@ def end_to_end() -> None:
     (stub / "knowledge.json").write_text(json.dumps([{"file": "profile.md", "content": PROFILE},
                                                       {"file": "corrections.md", "content": "# mine now\n"}]))
     env = dict(os.environ, LONGHAND_CONFIG=str(cfg), XDG_STATE_HOME=str(tmp / "state"), XDG_CONFIG_HOME=str(cfgdir),
-               STUB_DIR=str(stub), PATH=f"{bindir}:{os.environ['PATH']}")
+               STUB_DIR=str(stub), PATH=f"{bindir}{os.pathsep}{os.environ['PATH']}")
 
     def agent(*args, ok=True):
         r = subprocess.run([sys.executable, str(AGENT), *args], capture_output=True, text=True, env=env)

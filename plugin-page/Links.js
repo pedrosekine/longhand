@@ -82,6 +82,17 @@ function at(links, col) {
   return null
 }
 
+// A file's whole path as a file:// URL, each part encoded: "/home/…" is
+// file:///home/…, and a path from a drive ("C:/Users/…", the vault on
+// Windows) file:///C:/Users/…, its colon left as it is (2026-11-24: encoded,
+// "file://C%3A/…" was a host Qt could not parse, and no PDF opened).
+function fileUrl(path) {
+  var p = String(path)
+  var enc = function (s) { return s.split("/").map(encodeURIComponent).join("/") }
+  if (/^[A-Za-z]:\//.test(p)) return "file:///" + p.substring(0, 2) + enc(p.substring(2))
+  return "file://" + enc(p)
+}
+
 function folderOf(rel) { var i = rel.lastIndexOf("/"); return i < 0 ? "" : rel.substring(0, i) }
 function baseOf(rel) { return rel.substring(rel.lastIndexOf("/") + 1) }
 

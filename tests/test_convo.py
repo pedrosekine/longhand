@@ -193,7 +193,7 @@ def runner(tmp: pathlib.Path) -> None:
         st = tmp / f"state-{host}"
         (st / "longhand").mkdir(parents=True, exist_ok=True)
         return dict(os.environ, LONGHAND_CONFIG=str(cfg), XDG_STATE_HOME=str(st), XDG_CONFIG_HOME=str(cfgdir),
-                    STUB_DIR=str(stub), PATH=f"{bindir}:{os.environ['PATH']}", LONGHAND_HOST=host)
+                    STUB_DIR=str(stub), PATH=f"{bindir}{os.pathsep}{os.environ['PATH']}", LONGHAND_HOST=host)
     here, there = env_of("here"), env_of("there")
     key = "thesis\t- write the intro"
     for e in (here, there):                                # the planner's conversations sync as part of the ledger

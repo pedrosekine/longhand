@@ -237,6 +237,8 @@ def main() -> int:
     check(len(docs) == 1 and docs[0]["pages"] == 1 and docs[0]["name"].endswith("Autonomous Systems"), "documents lists a course's, with pages")
     projects = json.loads(agent("projects", "--now", dt.datetime.now().isoformat(timespec="minutes")).stdout)
     check(next(p for p in projects if p["tag"] == "intsem")["docs"] == docs, "…and the sidebar's projects carry them")
+    check(docs[0]["path"].startswith(vault.as_posix() + "/") and "\\" not in docs[0]["path"],
+          f"…by a path with forward slashes, so the page finds its vault in it and opens it in the reader ({docs[0]['path']})")
     note = daily / f"{dt.date.today().isoformat()}.md"
     note.write_text("# Interdisciplinary Seminar #intsem\n\n- [ ] what does the reading say about autonomy?\n")
     import blocks  # noqa: E402
@@ -260,7 +262,7 @@ def main() -> int:
     (bindir / "opencode").chmod(0o755)
     (stub / "asks.json").write_text(json.dumps([{"document": doc + ".pdf", "words": "myths autonomy"},
                                                  {"document": "Rechnung_2026_4711", "words": ""}]))
-    env.update(STUB_DIR=str(stub), PATH=f"{bindir}:{os.environ['PATH']}")
+    env.update(STUB_DIR=str(stub), PATH=f"{bindir}{os.pathsep}{os.environ['PATH']}")
     agent("run", "--trigger", "checkbox", "--hash", h)
     calls = sorted(stub.glob("call-*.json"))
     check(len(calls) == 2, f"asking to read makes one more run, and only one ({len(calls)} runs)")
