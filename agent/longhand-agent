@@ -1315,6 +1315,14 @@ ANTIGRAVITY_EFFORTS = ("low", "medium", "high", "xhigh")
 # offers `manage_task` and `schedule`, whatever the agent's `tools` say, and
 # a `permissions.deny` in its settings does not stop them (found 2026-11-19).
 ANTIGRAVITY_STEPS_OK = {"user_input", "agent_response", "checkpoint"}
+# Antigravity's own notice, sent as `system_message` with no tool on it.
+# Every resumed conversation gets one, since each `agy -p` is a new
+# process: "All your subagents and background tasks have been stopped due
+# to server restart" (agy 1.5.16; found 2026-11-24, the first live run on
+# Windows: every chat's second turn was dropped and went to the fallback).
+# It is Antigravity's, as its other notes are, and calls nothing; one
+# that names a tool is still a tool step.
+ANTIGRAVITY_NOTICE = "system_message"
 # What a person's own Antigravity would carry into every run, relative to the
 # home Longhand gives it: rules, skills, plugins, hooks, MCP servers. None
 # belong in Longhand's own; a run is refused before any call if one is there.
@@ -1433,7 +1441,8 @@ def run_antigravity(cfg: dict, paths: Paths, payload: str, session: str, message
             out["session"] = str(ev.get("conversation_id") or "")
         elif ev.get("event") == "step_update":
             s = ev.get("step_update") or {}
-            if s.get("step_type") not in ANTIGRAVITY_STEPS_OK:
+            notice = s.get("step_type") == ANTIGRAVITY_NOTICE and not (s.get("tool_name") or s.get("tool_info"))
+            if s.get("step_type") not in ANTIGRAVITY_STEPS_OK and not notice:
                 steps.append(str(s.get("tool_name") or (s.get("tool_info") or {}).get("name")
                                  or s.get("step_type") or "a step it did not name"))
         elif ev.get("event") == "result":
