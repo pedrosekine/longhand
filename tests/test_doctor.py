@@ -1,6 +1,8 @@
 """Health check (`tools/doctor`): reports missing config/vault as failures and
 a healthy throwaway setup as ok; names the program each configured model
-route starts (Antigravity's is `agy`); on Omarchy the shell's plugins, on
+route starts (Antigravity's is `agy`), and whether it can run: opencode's
+agents installed where it reads them, on Windows Antigravity's sign-in in
+the Credential Manager; on Omarchy the shell's plugins, on
 Windows the Start menu entry and the session's start in their place.
 
 Run: python3 tests/test_doctor.py
@@ -38,6 +40,7 @@ def main() -> int:
         ("longhand-read", "cli/longhand-read"),
         ("longhand", "windows/longhand_host.py"),
         ("agy", ""),
+        ("opencode", ""),
     ):
         if WINDOWS:
             # pip's .exe launchers stand where Linux has links: a .cmd is
@@ -60,6 +63,9 @@ def main() -> int:
         LONGHAND_RUN_KEY="Software\\LonghandDoctorTest\\NoSuchRun",
         # …and the person's PATH from a key nothing writes either.
         LONGHAND_ENV_KEY="Software\\LonghandDoctorTest\\NoSuchEnvironment",
+        # Windows: Antigravity's sign-in looked for under a name no one has,
+        # never the machine's own.
+        LONGHAND_AGY_CREDENTIAL="LonghandDoctorTest:no-such-sign-in",
     )
     base_env.pop("LONGHAND_CONFIG", None)
 
@@ -104,6 +110,27 @@ def main() -> int:
     codex = [l for l in r6.stdout.splitlines() if "model route (codex)" in l]
     check(bool(codex) and codex[0].startswith("WARN") and "no-such-codex" in codex[0] and "fallbackModel" in codex[0],
           f"the fallback's program, by the path the config gives it ({codex})")
+    if WINDOWS:
+        sign = [l for l in r6.stdout.splitlines() if "antigravity sign-in" in l]
+        check(bool(sign) and sign[0].startswith("WARN") and "agy" in sign[0] and "Credential Manager" in sign[0],
+              f"Windows: no Antigravity sign-in is named, with how to make one ({sign})")
+
+    # opencode's route needs Longhand's agents where opencode reads them,
+    # $XDG_CONFIG_HOME/opencode/agent (on Windows too), else every run
+    # fails "Agent not found".
+    cfg_path.write_text(json.dumps({"vault": str(vault), "daily": {"dir": "Daily"}, "agentDir": "agents/longhand",
+                                    "model": "opencode/big-pickle"}))
+    r8 = subprocess.run([sys.executable, str(DOCTOR)], env=base_env, capture_output=True, text=True)
+    oc = [l for l in r8.stdout.splitlines() if "opencode agents" in l]
+    check(bool(oc) and oc[0].startswith("WARN") and "longhand-agent install" in oc[0]
+          and str(cfg_dir / "opencode" / "agent") in oc[0], f"opencode's agents missing are named ({oc})")
+    agents = cfg_dir / "opencode" / "agent"
+    agents.mkdir(parents=True)
+    for name in ("longhand", "longhand-day", "longhand-plan", "longhand-judge"):
+        (agents / f"{name}.md").write_text("---\n---\n")
+    r9 = subprocess.run([sys.executable, str(DOCTOR)], env=base_env, capture_output=True, text=True)
+    oc = [l for l in r9.stdout.splitlines() if "opencode agents" in l]
+    check(bool(oc) and oc[0].startswith("ok"), f"…and installed, ok ({oc})")
 
     if WINDOWS:
         lines = r3.stdout.splitlines()
