@@ -28,6 +28,9 @@ DARK = {
 }
 SUFFIX = "/.local/state/omarchy/current/theme/colors.toml"
 
+# The grounds and text the shell's palette draws with (shim/qs/Commons/Color.qml).
+GROUND = {False: ("#f9f9f9", "#1b1b1b"), True: ("#202020", "#f3f3f3")}
+
 
 def dark() -> bool:
     try:
@@ -37,6 +40,48 @@ def dark() -> bool:
         return hints is not None and hints.colorScheme() == Qt.ColorScheme.Dark
     except Exception:  # noqa: BLE001 — no application yet: light, as Windows starts
         return False
+
+
+def registry_dark() -> bool:
+    """Whether apps are dark, from the registry: for what runs without Qt
+    (the export), where dark() above cannot ask."""
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                            r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize") as key:
+            return winreg.QueryValueEx(key, "AppsUseLightTheme")[0] == 0
+    except (ImportError, OSError):
+        return False
+
+
+def accent_text(is_dark: bool) -> str | None:
+    """The accent as Windows sets text in it on that mode's ground (Fluent's
+    AccentTextFillColorPrimary: the accent's second-darkest shade on light,
+    its lightest on dark), from the eight shades Settings keeps. None where
+    there is no such key."""
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                            r"Software\Microsoft\Windows\CurrentVersion\Explorer\Accent") as key:
+            shades = bytes(winreg.QueryValueEx(key, "AccentPalette")[0])
+    except (ImportError, OSError, TypeError):
+        return None
+    i = 0 if is_dark else 5                       # Light3, else Dark2
+    if len(shades) < 4 * (i + 1):
+        return None
+    r, g, b = shades[4 * i:4 * i + 3]
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def theme(is_dark: bool | None = None) -> dict:
+    """Windows' colours under a theme's names, ground and text and accent
+    too: what a colors.toml would say, for what reads one outside the page
+    (the export's omarchy look)."""
+    is_dark = registry_dark() if is_dark is None else is_dark
+    ground, text = GROUND[is_dark]
+    out = dict(DARK if is_dark else LIGHT, background=ground, foreground=text)
+    out["accent"] = accent_text(is_dark) or out["blue"]
+    return out
 
 
 def colors_toml(is_dark: bool | None = None) -> str:
