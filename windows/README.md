@@ -305,8 +305,6 @@ opencode and Antigravity are installed here and not tried.
 - Do Not Disturb is read from Windows' Focus assist profile (the shell's
   own toggle publishes it; `play_sound.silenced`), an undocumented state
   that Windows 11 still keeps: read as off on 2026-11-24, not yet seen on.
-- The keys sheet still says "Hyprland" beside the six and "with Super" when
-  it waits for one: its words are the page's, unchanged.
 - The programs the agent's extras call are not installed for you. The
   Start menu's entry and the start with the session are made by
   `longhand install` and read back as Windows holds them

@@ -260,8 +260,8 @@ BorderSurface {
           width: parent.width
           textFormat: Text.PlainText
           wrapMode: Text.WordWrap
-          text: page.keysListen ? (page.keysListen.hypr ? "press the key, with Super, and Ctrl, Alt or Shift if you want them · Esc keeps the old one"
-              : "press the key, with Ctrl, Alt, Shift or Super if you want them · Esc keeps the old one")
+          text: page.keysListen ? (page.keysListen.hypr ? "press the key, with " + (page.onWindows ? "Win" : "Super") + ", and Ctrl, Alt or Shift if you want them · Esc keeps the old one"
+              : "press the key, with Ctrl, Alt, Shift or " + (page.onWindows ? "Win" : "Super") + " if you want them · Esc keeps the old one")
             : "↑↓ move · Enter changes the key · Shift+Enter adds one · Del gives back its own · type to find · Esc back"
           color: page.faint
           font.family: page.fontFamily

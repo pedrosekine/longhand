@@ -60,6 +60,9 @@ TestCase {
     compare(Sc.show("T"), "t")
     compare(Sc.show("Ctrl+T"), "Ctrl+T")
     compare(Sc.show("Ctrl+Plus"), "Ctrl++")
+    // Super is Windows' own key there, said first, as the manual says it.
+    compare(Sc.show("Alt+Super+P"), Qt.platform.os === "windows" ? "Win+Alt+P" : "Alt+Super+P")
+    compare(Sc.show("Super"), "Super")
   }
 
   function test_defaults_hit() {
