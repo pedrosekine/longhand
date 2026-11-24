@@ -219,9 +219,11 @@ opencode and Antigravity are installed here and not tried.
 - The programs the agent's extras call are not installed for you. The
   Start menu's entry and the start with the session are made by
   `longhand install` and read back as Windows holds them
-  (`tests/test_start_menu.py`); how they look in the Start menu, on the
-  taskbar and in Settings → Apps → Startup has not been looked at on
-  screen. The icon keeps the launcher's own colours: it does not follow
+  (`tests/test_start_menu.py`). Started from the shortcut, the taskbar
+  shows the seal (seen 2026-11-24); before Longhand gave itself a name
+  Windows filed its window under IDLE, the shortcut that points at
+  `pythonw.exe`, and showed that icon. How it looks in the Start menu
+  and in Settings → Apps → Startup has not been looked at. The icon keeps the launcher's own colours: it does not follow
   Windows' light and dark as the Omarchy launcher follows a theme.
 - In the tray with the page loaded and nothing shown, the host holds about
   150 MB.
