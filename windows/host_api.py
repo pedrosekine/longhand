@@ -72,6 +72,30 @@ def screen_here():
     return QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
 
 
+def write_once(path: Path, text: str) -> bool:
+    """A tray picture written whole under its content-hashed name, unless it
+    is there already; True if it was written now. The name is new, so no
+    reader holds it; but the fresh temporary file can be held for a moment
+    (a virus scanner reading what was just written), and then Windows
+    refuses the move. The host's BRIEF tries, as keepPlace's: the tray is
+    drawn on the window's thread. If even those fail, the temporary file
+    goes and OSError is raised: the tray keeps the picture it has
+    (Host.themedIcon, Host.trayGlyph), and the next change tries again."""
+    if path.exists():
+        return False
+    tmp = path.with_suffix(".tmp")
+    try:
+        tmp.write_text(text, encoding="utf-8")
+        replace(tmp, path, BRIEF)
+    except OSError:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        raise
+    return True
+
+
 def themed_icon(background: str, foreground: str, accent: str) -> str:
     import hashlib
     import importlib.util
@@ -83,10 +107,7 @@ def themed_icon(background: str, foreground: str, accent: str) -> str:
     out = state_dir() / "icon" / "tray"
     out.mkdir(parents=True, exist_ok=True)
     path = out / f"longhand-{hashlib.sha256(svg.encode()).hexdigest()[:10]}.svg"
-    if not path.exists():
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text(svg, encoding="utf-8")
-        os.replace(tmp, path)
+    write_once(path, svg)
     for old in out.glob("longhand-*.svg"):
         if old != path:
             try:
@@ -125,10 +146,7 @@ def tray_glyph(text: str, role: str, background: str, foreground: str, accent: s
     out = state_dir() / "icon" / "tray"
     out.mkdir(parents=True, exist_ok=True)
     path = out / f"glyph-{hashlib.sha256(svg.encode()).hexdigest()[:10]}.svg"
-    if not path.exists():
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text(svg, encoding="utf-8")
-        os.replace(tmp, path)
+    if write_once(path, svg):
         old = sorted(out.glob("glyph-*.svg"), key=lambda p: p.stat().st_mtime)
         for stale in old[:-GLYPH_KEEP]:
             try:
@@ -142,6 +160,13 @@ def hexed(c: str) -> str:
     """"#aarrggbb" (QML's colour as a string, with alpha) → "#rrggbb"."""
     c = str(c).strip().lower()
     return "#" + c[3:] if len(c) == 9 else c
+
+
+# What each tray icon shows now, by tray ("seal", "timer", "deadlines"): given
+# back when a new picture cannot be made, so the icon stays as it was rather
+# than turning into another (a stale minute is better than the seal where
+# the timer was).
+SHOWN: dict[str, str] = {}
 
 
 @QmlElement
@@ -225,19 +250,20 @@ class Host(QObject):
         accent moved towards the text until it reads (3:1). A file URL; its
         name carries a hash of its colours, so a change is a new picture."""
         try:
-            return themed_icon(background, foreground, accent)
-        except Exception as e:  # noqa: BLE001 — the canonical icon stands in
+            SHOWN["seal"] = themed_icon(background, foreground, accent)
+        except Exception as e:  # noqa: BLE001 — the seal it has stays, else the canonical one stands in
             print(f"longhand: the tray's icon in the theme's colours: {e}", file=sys.stderr)
-            return ""
+        return SHOWN.get("seal", "")
 
-    @Slot(str, str, str, str, str, str, str, result=str)
-    def trayGlyph(self, text, role, background, foreground, accent, muted, urgent):
-        """The timer's and the deadlines' tray icons (tray_glyph)."""
+    @Slot(str, str, str, str, str, str, str, str, result=str)
+    def trayGlyph(self, which, text, role, background, foreground, accent, muted, urgent):
+        """The timer's and the deadlines' tray icons (tray_glyph); `which`
+        of the two, for the picture it keeps if a new one cannot be made."""
         try:
-            return tray_glyph(text, role, background, foreground, accent, muted, urgent)
+            SHOWN[which] = tray_glyph(text, role, background, foreground, accent, muted, urgent)
         except Exception as e:  # noqa: BLE001 — the tray keeps its last picture
             print(f"longhand: a tray icon's picture: {e}", file=sys.stderr)
-            return ""
+        return SHOWN.get(which, "")
 
     @Slot("QVariantList")
     def execDetached(self, command):
