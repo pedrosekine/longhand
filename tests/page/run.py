@@ -2815,8 +2815,10 @@ def checks() -> int:
         check(p.wait(lambda: next(x for x in json.loads(ledger_file.read_text())["items"] if x["id"] == revised["id"])["status"] == "accepted")
               and next(x for x in json.loads(ledger_file.read_text())["items"] if x["id"] == revised["id"]).get("reason") == "ok, that works",
               f"…accepted, the student's words kept as the reason ({got.get('status')}, {got.get('reason')!r})")
-        check(json.loads(p.call("talk"))["settled"] == "accepted" and "Good, it is on its line." in json.loads(p.call("talk"))["turns"][-1],
-              "…and the margin says how it ended, after the planner's last word")
+        # The margin hears of it when the talk is read again, after the ledger.
+        check(p.wait(lambda: json.loads(p.call("talk"))["settled"] == "accepted"
+                     and "Good, it is on its line." in json.loads(p.call("talk"))["turns"][-1]),
+              f"…and the margin says how it ended, after the planner's last word ({p.call('talk')[:300]})")
         check(p.call("talkKey", KEY_ESC, 0) == "true" and not json.loads(p.call("talk"))["open"]
               and json.loads(p.call("talk"))["dashWidth"] == wide and p.call("dashOpen") == "true",
               "Esc: back to the list, the dashboard whole again")
