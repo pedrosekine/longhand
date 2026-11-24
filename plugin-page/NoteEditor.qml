@@ -2086,12 +2086,21 @@ Item {
           radius: Math.max(2, Math.round(ed.cornerRadius / 2))
           // The person's box is this square; the agent's and the shared one
           // draw their own shape inside it, and the square gives way.
-          readonly property color edge: boxArea.containsMouse && ed.handOn ? ed.accent : ed.boxColor
+          // Under the pointer (the lines' own area says which box that is:
+          // `boxHover`) a box's edge turns the accent; its fill never does.
+          // A ticked box stays the tick's colour, with the accent edge round
+          // it. Before (2026-11-24) the box asked its own area, which hears
+          // a click but no longer the hover: a box ticked by a click stayed
+          // filled with the accent after the pointer had gone, while one
+          // ticked with Ctrl+L was green.
+          readonly property bool lit: ed.boxHover === row.index && ed.handOn
+          readonly property color edge: box.lit ? ed.accent : ed.boxColor
+          readonly property int stroke: Math.max(1, Math.round(ed.textSize * 0.08))
           // Cancelled is closed but not done (2026-11-15): grey, with a
           // dash, so it is never read as ticked.
           readonly property color shut: row.cancelled ? ed.cancelColor : ed.checkColor
-          color: row.checked && row.author === "" ? (boxArea.containsMouse && ed.handOn ? ed.accent : box.shut) : "transparent"
-          border.width: row.checked || row.author !== "" ? 0 : Math.max(1, Math.round(ed.textSize * 0.08))
+          color: row.checked && row.author === "" ? box.shut : "transparent"
+          border.width: row.author !== "" || (row.checked && !box.lit) ? 0 : box.stroke
           border.color: box.edge
 
           // The agent's: a diamond, outlined while open, filled when done.
@@ -2102,8 +2111,8 @@ Item {
             height: width
             rotation: 45
             radius: Math.max(1, Math.round(ed.cornerRadius / 2))
-            color: row.checked ? (boxArea.containsMouse && ed.handOn ? ed.accent : box.shut) : "transparent"
-            border.width: row.checked ? 0 : Math.max(1, Math.round(ed.textSize * 0.08))
+            color: row.checked ? box.shut : "transparent"
+            border.width: row.checked && !box.lit ? 0 : box.stroke
             border.color: box.edge
           }
 
@@ -2115,8 +2124,8 @@ Item {
             width: Math.round(box.size * 1.12)
             height: width
             outline: !row.checked
-            strokePx: Math.max(1, Math.round(ed.textSize * 0.08))
-            color: row.checked ? (boxArea.containsMouse && ed.handOn ? ed.accent : box.shut) : box.edge
+            strokePx: box.stroke
+            color: row.checked ? box.shut : box.edge
           }
 
           Text {
@@ -2138,15 +2147,11 @@ Item {
             anchors.fill: parent
             anchors.margins: -Math.round(ed.textSize * 0.25)
             enabled: box.visible
-            hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onContainsMouseChanged: {
-              if (containsMouse) ed.boxHover = row.index
-              else if (ed.boxHover === row.index) ed.boxHover = -1
-            }
+            // The click only: the hover is the lines' area's (`pointer`).
             Component.onDestruction: if (ed.boxHover === row.index) ed.boxHover = -1
             onClicked: ed.clickCheckbox(row.index)
-            Loader { anchors.fill: parent; active: !!ed.boxTip && parent.containsMouse; sourceComponent: ed.boxTip }
+            Loader { anchors.fill: parent; active: !!ed.boxTip && box.lit; sourceComponent: ed.boxTip }
           }
           Loader {
             active: !!ed.boxBadge && row.index === ed.focusedRow

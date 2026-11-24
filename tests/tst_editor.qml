@@ -75,6 +75,35 @@ Item {
       ed.checkColor = ed.dim
     }
 
+    // A box ticked by a click is the same green as one ticked with
+    // Ctrl+L: under the pointer its edge turns the accent, its fill never
+    // does, and once the pointer goes it is lit no more (2026-11-24: the
+    // box asked its own area, which hears the click but not the hover, and
+    // stayed filled with the accent).
+    function test_a_clicked_box_keeps_the_tick_colour() {
+      ed.checkColor = "green"
+      ed.accent = "orange"
+      ed.load("- [ ] read ch.7
+after")
+      var box = findChild(ed.rowItem(0), "box")
+      tryVerify(function () { return box.visible && box.width > 0 })
+      mouseMove(top, 590, 790)
+      mouseMove(box, box.width / 2, box.height / 2)
+      tryCompare(box, "lit", true)
+      verify(Qt.colorEqual(box.border.color, "orange") && box.border.width > 0, "an open box under the pointer: an accent edge")
+      mouseClick(box, box.width / 2, box.height / 2)
+      tryVerify(function () { return ed.rows[0].checked })
+      box = findChild(ed.rowItem(0), "box")
+      verify(Qt.colorEqual(box.color, "green"), "ticked by a click, the pointer still on it: the tick's colour (" + box.color + ")")
+      verify(box.lit && Qt.colorEqual(box.border.color, "orange") && box.border.width > 0, "…with the accent edge round it")
+      var after = ed.rowItem(1)
+      mouseMove(ed, after.field.x + 20, after.y + after.height / 2)
+      tryCompare(box, "lit", false)
+      verify(Qt.colorEqual(box.color, "green") && box.border.width === 0, "the pointer gone: the plain ticked box")
+      ed.checkColor = ed.dim
+      ed.accent = "orange"
+    }
+
     function test_vertical_rhythm() {
       var r = Rows.derive("para one\npara two\n\n\n## Section\n- a\n\n# Top\ntext")
       compare(r[1].space, 0.25)                    // the next line of text
