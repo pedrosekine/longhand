@@ -175,6 +175,17 @@ def inside(app):
     want = w.mapToGlobal(QPoint(30, 40))
     check(at == want or QGuiApplication_platform() == "offscreen" and at in (want, QPoint(0, 0)),
           f"the pointer is put where the page asks, from the window's corner ({at.x()},{at.y()} for {want.x()},{want.y()})")
+    # The overlay's pointer, on every screen, named as the page names it
+    # (only [A-Za-z0-9_.-]: a laptop's "\\.\DISPLAY1" comes as ".DISPLAY1",
+    # matched no screen, and the pointer stayed put there).
+    check(compositor.plain("\\\\.\\DISPLAY1") == ".DISPLAY1", "a screen's name, as the page writes it")
+    from PySide6.QtGui import QGuiApplication
+    for s in QGuiApplication.screens():
+        compositor.hyprctl(["eval", f'local m = hl.get_monitor("{compositor.plain(s.name())}"); '
+                                    'if m then hl.dispatch(hl.dsp.cursor.move({ x = m.position.x + 40, y = m.position.y + 50 })) end'])
+        at, want = QCursor.pos(), s.geometry().topLeft() + QPoint(40, 50)
+        check(at == want or QGuiApplication_platform() == "offscreen",
+              f"the overlay's pointer goes to its own screen, {s.name()!r} ({at.x()},{at.y()} for {want.x()},{want.y()})")
     code, _out, err = compositor.hyprctl(["eval", "hl.exec_cmd('rm -rf /')"])
     check(code == 1 and "not Hyprland" in err, "anything else asked of Hyprland is refused, as without Hyprland")
 
