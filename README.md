@@ -41,6 +41,7 @@ to your own Claude plan, or the Codex CLI signed in to your own ChatGPT plan
 
 ```bash
 tools/install --restart   # symlinks CLIs, scaffolds config.json + launcher, installs plugins, runs `longhand-agent install` & `tools/doctor`
+                          # (--vault PATH writes the vault into a config it makes; on Windows: windows/README.md)
 # then edit "vault" in ~/.config/longhand/config.json if newly created, and add
 # {"id":"longhand.page"}, {"id":"longhand.pomo"}, {"id":"longhand.deadline"} to plugins[] in ~/.config/omarchy/shell.json
 tools/doctor              # verify config, vault, CLIs, plugins, and optional tools (pandoc/xelatex/pdftotext/gitleaks)
