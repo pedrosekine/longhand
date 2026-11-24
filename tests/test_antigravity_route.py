@@ -71,6 +71,13 @@ emit("init", conversation_id=cid, init={"model": opt("--model"), "cwd": os.getcw
      "agent": os.environ.get("STUB_OTHER_AGENT") or agent, "tools": ["manage_task", "run_command", "schedule"],
      "permission_mode": "request-review"})
 emit("step_update", step_update={"conversation_id": cid, "step_index": 0, "state": "DONE", "step_type": "user_input"})
+if opt("--conversation"):
+    # As agy 1.5.16 does on every resume: its own notice, no tool on it.
+    emit("step_update", step_update={"conversation_id": cid, "step_index": 1, "state": "DONE",
+         "step_type": "system_message", "duration_seconds": "0.0004"})
+if os.environ.get("STUB_NOTICE_TOOL"):
+    emit("step_update", step_update={"conversation_id": cid, "step_index": 1, "state": "DONE",
+         "step_type": "system_message", "tool_name": "schedule"})
 if os.environ.get("STUB_TOOL_CALL"):
     emit("step_update", step_update={"conversation_id": cid, "step_index": 1, "state": "DONE", "step_type": "tool",
          "tool_name": "manage_task", "tool_info": {"name": "manage_task", "parameters": {"Action": "list"}}})
@@ -162,6 +169,9 @@ def main() -> int:
         called = json.loads((t.stub_dir / "agy_argv.json").read_text())
         check(chat_cid not in ("", CID) and opt(called["argv"], "--conversation") == chat_cid,
               "the next resumes its conversation")
+        check(json.loads(state.read_text())["blocks"][at_block["hash"]]["chat"][-1].get("role") == "agent"
+              and not json.loads(state.read_text())["runs"][-1].get("error"),
+              "…past Antigravity's own notice on a resume (a system message, no tool), answered")
         check("- [ ] why do you think so?" in json.loads(called["stdin"])["message"]["content"]
               and not any("why do you think" in a for a in called["argv"]), "the student's words, never a flag")
 
@@ -186,6 +196,16 @@ def main() -> int:
         check(r.returncode != 0 and "call tools" in run["error"] and "manage_task" in run["error"],
               "the run fails and names the tool")
         check("WORDS-FROM-A-RUN-WITH-TOOLS" not in transcript.read_text(), "its words never reach the transcript")
+
+        print("-- a system message that names a tool: still a tool step, dropped")
+        t.set_reply(reply="WORDS-FROM-A-NOTICE-WITH-A-TOOL")
+        t.env["STUB_NOTICE_TOOL"] = "1"
+        r = t.agent("run", "--trigger", "mention", "--hash", at_block["hash"], "--date", DAY)
+        t.env.pop("STUB_NOTICE_TOOL")
+        run = json.loads(state.read_text())["runs"][-1]
+        check(r.returncode != 0 and "call tools" in run["error"] and "schedule" in run["error"],
+              "the run fails and names the tool")
+        check("WORDS-FROM-A-NOTICE-WITH-A-TOOL" not in transcript.read_text(), "its words never reach the transcript")
 
         print("-- another agent ran: the run is dropped")
         t.set_reply(reply="WORDS-FROM-ANOTHER-AGENT")
