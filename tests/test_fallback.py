@@ -5,7 +5,8 @@ fallback).
 Run: python3 tests/test_fallback.py
 
 - a pass the model in use fails (a usage limit) is answered by
-  `fallbackModel`, and the ledger names the model that answered
+  `fallbackModel`, and the ledger and the transcript name the model that
+  answered (the transcript named the one that failed: 2026-11-24)
 - the model that failed is passed over for a while: the next pass goes
   straight to the fallback, and once the while is over, back to it
 - a chat that had a session on the failed model falls back afresh: the
@@ -65,6 +66,10 @@ def main() -> int:
         def ledger_model():
             return (t.state_home / "longhand" / "cost.tsv").read_text().splitlines()[-1].split("\t")[10]
 
+        def small_line():
+            """The last pass's small line in the transcript: what it cost, and who answered."""
+            return [l for l in transcript.read_text().splitlines() if l.startswith("<small>")][-1]
+
         print("-- without a fallback, a failure stays a failure")
         t.set_reply(reply="from the fallback")
         t.env["STUB_ERROR"] = "1"
@@ -80,6 +85,8 @@ def main() -> int:
               f"Codex was tried, then Claude Code answered ({r.stderr.strip()[-200:]})")
         check("from the fallback" in transcript.read_text(), "the fallback's reply lands in the transcript")
         check(ledger_model() == FALLBACK, "the ledger names the model that answered")
+        check(small_line().endswith("claude-code/claude-opus-5-5 · medium, in place of codex/gpt-6.2-sol · high</small>"),
+              f"…and so does the transcript, and in whose place ({small_line()})")
         argv = json.loads(claude_argv.read_text())["argv"]
         check(argv[argv.index("--model") + 1] == "claude-opus-5-5" and argv[argv.index("--effort") + 1] == "medium",
               "the fallback at its own effort, not the config's variant")
@@ -92,6 +99,8 @@ def main() -> int:
         t.set_reply(reply="still the fallback")
         r = t.agent("run", "--trigger", "mention", "--hash", at_block["hash"], "--date", DAY)
         check(r.returncode == 0 and not codex_argv.exists() and ledger_model() == FALLBACK, "Codex is not called")
+        check("claude-opus-5-5" in small_line() and "codex" not in small_line(),
+              f"the transcript names the fallback, which was asked first ({small_line()})")
 
         print("-- once the while is over, the model in use again")
         t.env.pop("STUB_ERROR")
@@ -100,6 +109,8 @@ def main() -> int:
         t.set_reply(reply="back on codex")
         r = t.agent("run", "--trigger", "mention", "--hash", at_block["hash"], "--date", DAY)
         check(r.returncode == 0 and codex_argv.exists() and ledger_model() == PRIMARY, "Codex answers")
+        check(small_line().endswith("codex/gpt-6.2-sol#high</small>") and "in place of" not in small_line(),
+              f"…and the transcript's line is as it always was ({small_line()})")
 
         print("-- a chat with a session on the failed model falls back afresh")
         r = t.agent("chat", "--hash", at_block["hash"], "--message", "what do you mean?", "--date", DAY)

@@ -4054,11 +4054,30 @@ def checks() -> int:
         p.call("pdfKey", 0x01000011, 0)                    # End
         p.wait(lambda: ac()["page"] == 2)
 
+        def view_rests():
+            # The view where it stays: the same place read three times over.
+            seen = [None]
+            def still():
+                now = pd()["at"]
+                rest, seen[0] = now == seen[0], now
+                return rest
+            return p.wait(lambda: still() and still())
+
         def rest_on(a):
-            # The pointer resting on it, off it first; again if the view
-            # laid its page out anew under the pointer meanwhile.
+            # The pointer resting on it, off it first, once the view rests:
+            # End, Enter and Ctrl+[ glide for 400 ms, and a word the pointer
+            # is put on meanwhile slides from under it, so the page lets go
+            # of it (2026-11-24: put there 200 ms after End, the word still
+            # 20 to 30 px short of its place, it was let go of 10 times in
+            # 12, now and then just after its tip showed). Again if it was
+            # let go of all the same.
             for _ in range(6):
-                r = next(x for x in ac()["spots"][2] if x["a"] == a)["r"]
+                view_rests()
+                # Not written on this page (the paper left, its acronyms
+                # gone): said by the check, the rest of the run goes on.
+                r = next((x["r"] for x in ac()["spots"][2] if x["a"] == a), None)
+                if r is None:
+                    return False
                 p.call("pdfHover", "2", "300", "400")
                 p.wait(lambda: ac()["hover"] == "", 2)
                 p.call("pdfHover", "2", str(r[0] + r[2] / 2), str(r[1] + r[3] / 2))
@@ -4068,9 +4087,19 @@ def checks() -> int:
         check(rest_on("HRV"), f"hovered, HRV says what it stands for ({ac()})")
         read_at = pd()["at"]
         same = lambda a: a and a["page"] == read_at["page"] and abs(a["frac"] - read_at["frac"]) < 0.05
-        p.call("pdfKey", KEY_RETURN, 0)
-        check(p.wait(lambda: ac()["page"] == 0 and ac()["back"] and ac()["flash"] == 1 and not ac()["tip"]),
-              f"Enter: to page 1, where it is spelled out, lit a moment ({ac()})")
+        # Enter while it is under the pointer (rested on again if the page
+        # let go of it meanwhile: Enter on nothing goes nowhere, and every
+        # check after it failed with it, 2026-11-24).
+        went, seen = False, []
+        for _ in range(3):
+            if ac()["hover"] != "HRV" and not rest_on("HRV"):
+                continue
+            seen.append((ac()["hover"], ac()["tip"]))
+            p.call("pdfKey", KEY_RETURN, 0)
+            if p.wait(lambda: ac()["page"] == 0 and ac()["back"] and ac()["flash"] == 1 and not ac()["tip"]):
+                went = True
+                break
+        check(went, f"Enter: to page 1, where it is spelled out, lit a moment (before Enter {seen}; {ac()})")
         p.call("pdfKey", KEY_LBRACKET, CTRL)
         check(p.wait(lambda: same(pd()["at"]) and not ac()["back"] and pd()["shown"]),
               f"Ctrl+[: back to where it was read, the PDF still open ({pd()['at']}, read at {read_at})")
