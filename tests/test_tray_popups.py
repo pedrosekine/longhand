@@ -58,6 +58,8 @@ def main() -> int:
     check(ticked.get("doneInStore") == 1 and ticked.get("title") == "Essay draft",
           f"d ticks the one under the cursor, in the store ({ticked})")
     check(steps.get("put away", {}).get("popups") == [], "Esc puts the popup away")
+    check(steps.get("another window clicked", {}).get("popups") == ["somewhere else"],
+          f"opened again, it goes when another window takes the keys ({steps.get('another window clicked')})")
     check("timer reset" in steps, "the timer is back to idle")
 
     # The tick: the shell line the page and the popup ask for is played by
