@@ -22,6 +22,21 @@ QtObject {
 
   readonly property var shellValues: ({})
 
+  function loadColors(raw) {
+    var lines = String(raw || "").split("\n"), got = {}
+    for (var i = 0; i < lines.length; i++) {
+      var m = lines[i].match(/^\s*([A-Za-z0-9_-]+)\s*=\s*["']?(#[0-9A-Fa-f]{6})/)
+      if (m) got[m[1]] = m[2]
+    }
+    if (got.foreground) root.foreground = got.foreground
+    if (got.background) root.background = got.background
+    if (got.accent) root.accent = got.accent
+    if (got.red) root.urgent = got.red
+    if (got.yellow) root.warning = got.yellow
+    if (got.muted) root.muted = got.muted
+  }
+  function loadShell(raw) { /* shell.toml overrides, unused on Windows */ }
+
   function fade(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
 
   readonly property QtObject menu: QtObject {

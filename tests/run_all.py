@@ -107,7 +107,8 @@ def jobs() -> list[tuple[str, list[str], dict | None, int]]:
 
 def page_job(overlay: bool) -> tuple[str, list[str], dict | None, int]:
     args = ["--overlay"] if overlay else []
-    return ("page/run.py", [sys.executable, str(TESTS / "page" / "run.py"), *args], None, 900)
+    env = windows_env() if WINDOWS else None
+    return ("page/run.py", [sys.executable, str(TESTS / "page" / "run.py"), *args], env, 900)
 
 
 def run(job) -> tuple[str, bool, float, str]:

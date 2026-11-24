@@ -19,6 +19,7 @@ while notifications are silenced").
 from __future__ import annotations
 
 import io
+import os
 import sys
 import wave
 from array import array
@@ -97,12 +98,19 @@ def main(argv: list[str]) -> int:
         except ValueError:
             pass
         argv = argv[2:]
-    if not argv or sys.platform != "win32":
+    if not argv:
+        return 2
+    path = path_of(argv[0])
+    log = os.environ.get("LONGHAND_PLAY_LOG")
+    if log:
+        with open(log, "a", encoding="utf-8", newline="\n") as f:
+            f.write(path + "\n")
+        return 0
+    if sys.platform != "win32":
         return 2
     if silenced():
         return 0
     import winsound
-    path = path_of(argv[0])
     data = quieter(path, volume)
     try:
         if data is not None:

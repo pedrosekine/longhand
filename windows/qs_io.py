@@ -44,6 +44,10 @@ LOG = []  # what could not be started, for the spike's report
 # of the arguments giving (exit code, stdout, stderr). On Windows, `hyprctl`
 # (compositor.py), set by the host.
 INSIDE: dict = {}
+# Whether `hyprkeys.py` calls are redirected to `winkeys.py` on Windows.
+# True for the real Windows host; tests/page/qt_host.py clears it so the
+# Hyprland-focused live page suite can still exercise hyprkeys.py.
+REWRITE_HYPRKEYS: bool = True
 
 
 def _winproc():
@@ -108,7 +112,7 @@ def resolve(argv: list[str]) -> tuple[str, list[str]]:
     if os.name != "nt":
         return head, rest
     if head in ("python3", "python"):
-        if rest and rest[0].replace("\\", "/").endswith("/plugin-page/hyprkeys.py"):
+        if REWRITE_HYPRKEYS and rest and rest[0].replace("\\", "/").endswith("/plugin-page/hyprkeys.py"):
             # The keys sheet's six keys from anywhere: Windows keeps them
             # here, not Hyprland (winkeys.py answers in hyprkeys.py's words).
             return python(), [str(Path(__file__).resolve().parent / "winkeys.py"), *rest[1:]]
@@ -629,6 +633,7 @@ class FileView(QObject):
         self._sig = None         # the file's (mtime, size) when last read or written here
         self._posted = False
         self._watcher = None
+        self._poll = None
 
     # --- properties
     def _get_path(self):
@@ -708,27 +713,31 @@ class FileView(QObject):
             return None, FileViewError.Enum.FileNotFound
         if os.name == "nt" and self._path.replace("\\", "/").endswith(palette.SUFFIX) and not os.path.exists(self._path):
             return palette.colors_toml(), FileViewError.Enum.Success     # Windows' own palette, under the theme's name
-        try:
-            if os.path.isdir(self._path):
-                return None, FileViewError.Enum.NotAFile
-            with open(self._path, "rb") as f:
-                raw = f.read()
-            return raw.decode("utf-8", "replace"), FileViewError.Enum.Success
-        except FileNotFoundError:
-            return None, FileViewError.Enum.FileNotFound
-        except PermissionError:
-            return None, FileViewError.Enum.PermissionDenied
-        except OSError:
-            return None, FileViewError.Enum.Unknown
+        for wait in (0.01, 0.02, 0.05, None):
+            try:
+                if os.path.isdir(self._path):
+                    return None, FileViewError.Enum.NotAFile
+                with open(self._path, "rb") as f:
+                    raw = f.read()
+                return raw.decode("utf-8", "replace"), FileViewError.Enum.Success
+            except FileNotFoundError:
+                return None, FileViewError.Enum.FileNotFound
+            except PermissionError:
+                if os.name != "nt" or wait is None:
+                    return None, FileViewError.Enum.PermissionDenied
+                time.sleep(wait)
+            except OSError:
+                return None, FileViewError.Enum.Unknown
 
     def _load(self, announce):
         text, err = self._read()
-        self._sig = self._stat()
         if text is None:
+            self._sig = None
             self._text = None
             if announce:
                 self.loadFailed.emit(int(err))
             return False
+        self._sig = self._stat()
         self._text = text
         if announce:
             self.textChanged.emit()
@@ -811,6 +820,8 @@ class FileView(QObject):
             if old:
                 self._watcher.removePaths(old)
         if not (self._watch and self._path):
+            if self._poll is not None:
+                self._poll.stop()
             return
         if self._watcher is None:
             self._watcher = QFileSystemWatcher(self)
@@ -818,6 +829,17 @@ class FileView(QObject):
             self._watcher.fileChanged.connect(lambda where: self._changed(where))
             self._watcher.directoryChanged.connect(lambda where: self._changed(where))
         self._take_up()
+        if os.name == "nt":
+            # Windows' FindFirstChangeNotification can drop an os.replace that
+            # lands right after a sibling mkstemp while Qt re-arms the watch
+            # (2026-11-24: pomo wrote done to deadlines.tsv while FileView
+            # stayed deaf). A lightweight stat check catches any dropped event.
+            if self._poll is None:
+                self._poll = QTimer(self)
+                self._poll.setInterval(500)
+                self._poll.timeout.connect(lambda: self._changed(self._path))
+            if not self._poll.isActive():
+                self._poll.start()
 
     def _take_up(self):
         """Watch the file, and its folder for the day it is made or replaced.
@@ -846,3 +868,25 @@ class FileView(QObject):
         if now != self._sig:
             self._sig = now
             self.fileChanged.emit()
+
+
+@QmlElement
+class IpcHandler(QObject):
+    """Quickshell.Io.IpcHandler stand-in: holds declared QML methods under
+    `target` so tests/page/qt_host.py can drive tests/page/harness.qml."""
+    targetChanged = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._target = ""
+
+    def _get_target(self):
+        return self._target
+
+    def _set_target(self, v):
+        v = str(v or "")
+        if v != self._target:
+            self._target = v
+            self.targetChanged.emit()
+
+    target = Property(str, _get_target, _set_target, notify=targetChanged)
