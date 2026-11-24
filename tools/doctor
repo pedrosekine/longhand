@@ -2,8 +2,10 @@
 """Health check for a Longhand installation (`tools/doctor` / `longhand-doctor`).
 
 Read-only: inspects config.json, vault folders and daily template, CLI helpers
-on PATH, Omarchy shell plugins, agent route binary, and optional PDF/search
-tools, reporting a crisp checklist with actionable fixes.
+on PATH, the agent's model programs (model, fallbackModel, planModel), what
+starts the page (Omarchy's shell plugins; on Windows the Start menu entry and
+the session's start), and optional PDF/search/OCR tools, reporting a crisp
+checklist with actionable fixes.
 """
 from __future__ import annotations
 
@@ -11,9 +13,25 @@ import json
 import os
 import pathlib
 import shutil
+import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+WINDOWS = os.name == "nt"
+# Where the commands come from: tools/install links them into ~/.local/bin
+# on Omarchy; on Windows `pip install -e windows` makes them as .exe files
+# beside the Python the host runs on.
+INSTALL = "`pip install -e windows` (from the repo, into Longhand's Python)" if WINDOWS else "tools/install"
+PLUGINS = ("longhand.page", "longhand.pomo", "longhand.deadline")
+
+# A model route: its prefix, the config key that can name its program, and
+# the program's own name (longhand-agent's run_* start these).
+ROUTES = (
+    ("claude-code/", "claude", "claude"),
+    ("codex/", "codex", "codex"),
+    ("antigravity/", "antigravity", "agy"),
+    ("", "opencode", "opencode"),
+)
 
 
 def _cfg_path() -> pathlib.Path:
@@ -21,18 +39,40 @@ def _cfg_path() -> pathlib.Path:
     return pathlib.Path(os.environ.get("LONGHAND_CONFIG") or base / "longhand" / "config.json")
 
 
-def _bin_found(name: str, extra_path: str = "") -> str:
+def _bin_found(name: str, extra_path: str = "", strict: bool = False) -> str:
+    """Where a program is: the path the config gives (or the name it gives,
+    on PATH), else `name` on PATH, else in ~/.local/bin. "" when nowhere.
+    `strict`: what the config names is what is started, so only that."""
     if extra_path:
         p = pathlib.Path(os.path.expanduser(extra_path))
         if p.is_file() and os.access(p, os.X_OK):
             return str(p)
+        if p.name == extra_path and shutil.which(extra_path):     # a program's name, not a path
+            return shutil.which(extra_path) or ""
+        if strict:
+            return ""
     found = shutil.which(name)
     if found:
         return found
+    beside = pathlib.Path(sys.executable).with_name(name + ".exe")    # where pip puts Longhand's .exe files
+    if WINDOWS and beside.is_file():
+        return str(beside)
     local = pathlib.Path.home() / ".local" / "bin" / name
     if local.is_file() and os.access(local, os.X_OK):
         return str(local)
     return ""
+
+
+def _is_poppler(pdftotext: str) -> bool:
+    """Whether a pdftotext is poppler's (the one whose -bbox-layout Longhand
+    reads), not xpdf's: Git for Windows' shell carries xpdf's, and it can be
+    found first. Unknown counts as poppler's."""
+    try:
+        r = subprocess.run([pdftotext, "-v"], capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return True
+    said = (r.stdout + r.stderr).lower()
+    return "poppler" in said or ("glyph & cog" not in said and "xpdf" not in said)
 
 
 def diagnose() -> tuple[list[tuple[str, str, str]], bool]:
@@ -43,10 +83,11 @@ def diagnose() -> tuple[list[tuple[str, str, str]], bool]:
 
     # 1. config.json
     if not cfg_p.is_file():
-        rows.append(("fail", "config.json", f"missing at {cfg_p} — copy config.example.json or run tools/install"))
+        rows.append(("fail", "config.json", f"missing at {cfg_p} — copy config.example.json"
+                                            + ("" if WINDOWS else " or run tools/install")))
     else:
         try:
-            cfg = json.loads(cfg_p.read_text())
+            cfg = json.loads(cfg_p.read_text(encoding="utf-8"))
             if not isinstance(cfg, dict) or not cfg.get("vault") or not (cfg.get("daily") or {}).get("dir"):
                 rows.append(("fail", "config.json", f"{cfg_p} needs \"vault\" and \"daily.dir\""))
                 cfg = None
@@ -76,38 +117,71 @@ def diagnose() -> tuple[list[tuple[str, str, str]], bool]:
                     rows.append(("warn", "daily template", f"missing: {tpl_p} — run `longhand-agent install`"))
 
     # 3. Required CLI helpers
-    runner_cfg = str((cfg or {}).get("runner") or "")
-    read_cfg = str((cfg or {}).get("read") or "")
     for name, custom in (
         ("pomo", ""),
-        ("longhand-agent", runner_cfg),
+        ("longhand-agent", str((cfg or {}).get("runner") or "")),
         ("longhand-check", str((cfg or {}).get("check") or "")),
-        ("longhand-read", read_cfg),
+        ("longhand-read", str((cfg or {}).get("read") or "")),
     ):
         found = _bin_found(name, custom)
         if found:
             rows.append(("ok", f"cli:{name}", found))
         else:
-            rows.append(("fail", f"cli:{name}", f"not on PATH or ~/.local/bin — run tools/install"))
+            where = "on PATH" if WINDOWS else "on PATH or ~/.local/bin"
+            rows.append(("fail", f"cli:{name}", f"not {where} — run {INSTALL}"))
 
-    # 4. Agent route binary (based on configured model)
-    model = str((cfg or {}).get("model") or "")
-    route_bin = (
-        "claude" if model.startswith("claude-code/")
-        else "codex" if model.startswith("codex/")
-        else "antigravity" if model.startswith("antigravity/")
-        else "opencode"
-    )
-    found_route = _bin_found(route_bin)
-    if found_route:
-        rows.append(("ok", f"model route ({route_bin})", f"{found_route}" + (f" for {model}" if model else "")))
-    else:
-        rows.append(("warn", f"model route ({route_bin})", f"{route_bin} not found on PATH (needed for agent replies)"))
+    # 4. The model programs: each route the config names (the model, its
+    # fallback, the plan's), by the program the agent starts for it.
+    seen: set[str] = set()
+    for key in ("model", "fallbackModel", "planModel"):
+        model = str((cfg or {}).get(key) or "")
+        if key != "model" and not model:
+            continue
+        _, cfg_key, program = next(r for r in ROUTES if model.startswith(r[0]))
+        if program in seen:
+            continue
+        seen.add(program)
+        custom = str((cfg or {}).get(cfg_key) or "")
+        found = _bin_found(program, custom, strict=True)
+        label = f"model route ({program})"
+        if found:
+            rows.append(("ok", label, found + (f" for {model}" if model else "")))
+        else:
+            named = f"\"{cfg_key}\" in config.json ({custom})" if custom else f"{program} on PATH"
+            rows.append(("warn", label, f"{named} not found (needed for {key} {model or 'opencode'})"))
 
-    # 5. Omarchy plugins & shell.json
+    # 5. What starts the page
+    rows += _windows_rows() if WINDOWS else _omarchy_rows()
+
+    # 6. Optional helpers
+    for opt, why in (
+        ("pandoc", "PDF export"),
+        ("xelatex", "PDF export"),
+        ("pdftotext", "PDF search & reading"),
+        ("pdfinfo", "the Downloads inbox's PDF titles"),
+        ("gitleaks", "secret scrubbing before agent search"),
+        ("pdftoppm", "reading a scanned PDF (OCR)"),
+        ("tesseract", "reading a scanned PDF (OCR)"),
+        ("qpdf", "reading a scanned PDF (OCR)"),
+    ):
+        found = _bin_found(opt)
+        if not found:
+            rows.append(("warn", f"optional:{opt}", f"not installed (optional, used for {why})"))
+        elif opt == "pdftotext" and not _is_poppler(found):
+            rows.append(("warn", f"optional:{opt}", f"{found} is xpdf's, not poppler's: put poppler's first on PATH"))
+        else:
+            rows.append(("ok", f"optional:{opt}", found))
+
+    ok = not any(st == "fail" for st, _, _ in rows)
+    return rows, ok
+
+
+def _omarchy_rows() -> list[tuple[str, str, str]]:
+    """Omarchy's shell plugins, and whether shell.json switches them on."""
+    rows: list[tuple[str, str, str]] = []
     xdg_cfg = pathlib.Path(os.environ.get("XDG_CONFIG_HOME") or pathlib.Path.home() / ".config")
     plugins_dir = xdg_cfg / "omarchy" / "plugins"
-    missing_plugins = [pid for pid in ("longhand.page", "longhand.pomo", "longhand.deadline") if not (plugins_dir / pid).is_dir()]
+    missing_plugins = [pid for pid in PLUGINS if not (plugins_dir / pid).is_dir()]
     if not missing_plugins:
         rows.append(("ok", "omarchy plugins", str(plugins_dir)))
     else:
@@ -124,29 +198,44 @@ def diagnose() -> tuple[list[tuple[str, str, str]], bool]:
             layout = (sh.get("bar") or {}).get("layout") or {}
             for side in (layout.values() if isinstance(layout, dict) else []):
                 ids |= {w.get("id") for w in (side if isinstance(side, list) else []) if isinstance(w, dict)}
-            unlisted = [pid for pid in ("longhand.page", "longhand.pomo", "longhand.deadline") if pid not in ids]
+            unlisted = [pid for pid in PLUGINS if pid not in ids]
             if not unlisted:
                 rows.append(("ok", "shell.json", "all 3 plugins enabled"))
             else:
                 rows.append(("warn", "shell.json", f"not in plugins[] nor in the bar's layout: {', '.join(unlisted)}"))
         except (OSError, ValueError):
             rows.append(("warn", "shell.json", f"could not parse {shell_json}"))
+    return rows
 
-    # 6. Optional helpers
-    for opt, why in (
-        ("pandoc", "PDF export"),
-        ("xelatex", "PDF export"),
-        ("pdftotext", "PDF search & reading"),
-        ("gitleaks", "secret scrubbing before agent search"),
-    ):
-        found = _bin_found(opt)
-        if found:
-            rows.append(("ok", f"optional:{opt}", found))
-        else:
-            rows.append(("warn", f"optional:{opt}", f"not installed (optional, used for {why})"))
 
-    ok = not any(st == "fail" for st, _, _ in rows)
-    return rows, ok
+def _windows_rows() -> list[tuple[str, str, str]]:
+    """What stands in for the shell's plugins on Windows: the page's host
+    (longhand.exe), its Start menu entry and the session's start, both
+    written by `longhand install` (windows/shortcuts.py)."""
+    rows: list[tuple[str, str, str]] = []
+    host = _bin_found("longhand")
+    if host:
+        rows.append(("ok", "page (longhand)", host))
+    else:
+        rows.append(("fail", "page (longhand)", f"longhand.exe not on PATH — run {INSTALL}"))
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("longhand_shortcuts", ROOT / "windows" / "shortcuts.py")
+        sc = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(sc)
+        lnk, started = sc.shortcut_path(), sc.autostart()
+    except Exception as e:  # noqa: BLE001 — a check, not a crash
+        return rows + [("warn", "start menu", f"could not look: {e}")]
+    if lnk.is_file():
+        rows.append(("ok", "start menu", str(lnk)))
+    else:
+        rows.append(("warn", "start menu", f"no entry at {lnk} — run `longhand install`"))
+    if started:
+        rows.append(("ok", "with the session", started))
+    else:
+        rows.append(("warn", "with the session", "not started at sign-in, so its keys work only once it is opened "
+                                                 "— run `longhand install`"))
+    return rows
 
 
 def main() -> int:

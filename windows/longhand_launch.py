@@ -89,3 +89,7 @@ def check() -> int:
 
 def read() -> int:
     return run("cli/longhand-read")
+
+
+def doctor() -> int:
+    return run("tools/doctor")
