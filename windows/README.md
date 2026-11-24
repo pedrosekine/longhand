@@ -75,6 +75,28 @@ types into the note as a keyboard would, saves, reads the file back, writes
 into it from outside, writes a box with a date and waits for it in the
 store, and says what the page did.
 
+## With a real model
+
+Tried on 2026-11-24 with Claude Code 2.1.330 (`"model": "claude-code/sonnet"`)
+on its own sign-in, in a throwaway vault whose note held a private block
+with a marker in it (`agent-reply.png`):
+
+- `longhand-agent run --trigger open` answered in six seconds, into
+  `agents/longhand/daily/`; the note was the same file, byte for byte.
+- The marker was in none of it: not the payload log, not the events, not
+  Claude Code's own transcript. Claude Code said it offered no tools and no
+  MCP servers, and attached the six things it may and nothing else.
+- From the page: a question written, `Ctrl+Enter`, and its answer beside it
+  fifteen seconds on (behind the day's opening pass and plan); `Ctrl+Enter`
+  again opens the conversation.
+- A second message stopped midway ended in 0.2 s, the run logged as
+  stopped, no Claude Code left running, the words back in the box.
+
+`LONGHAND_HOST_TRACE=1` puts every process the page starts, and how it
+ends, on the host's stderr with the second it happened.
+
+opencode, Codex and Antigravity are installed here and not tried.
+
 ## What stands in for what
 
 | The page imports | Here |

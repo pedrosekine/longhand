@@ -50,6 +50,15 @@ def _winproc():
 
 
 WINPROC = _winproc()
+_T0 = time.monotonic()
+
+
+def trace(what: str, command: list) -> None:
+    """LONGHAND_HOST_TRACE=1: every process the page starts, and how it ends,
+    on stderr with the second it happened."""
+    if os.environ.get("LONGHAND_HOST_TRACE"):
+        words = [os.path.basename(str(c)) if i == 0 else str(c)[:40] for i, c in enumerate(command[:7])]
+        print(f"longhand-host {time.monotonic() - _T0:7.2f}s {what}: {' '.join(words)}", file=sys.stderr, flush=True)
 
 
 def git_usr_bin() -> Path | None:
@@ -250,10 +259,6 @@ class Process(QObject):
         self._cwd = ""
         self._clear = False
         self._stop_name, self._stop_handle, self._started_at = "", 0, 0.0
-        self._kick = QTimer(self)
-        self._kick.setSingleShot(True)
-        self._kick.setInterval(0)
-        self._kick.timeout.connect(self._launch)
 
     # --- properties
     def _get_command(self):
@@ -275,12 +280,18 @@ class Process(QObject):
                 self._wanted = True
                 # A tick later: a `running: true` written before `command:`
                 # in the same object must not start an empty command.
-                self._kick.start()
+                #
+                # Posted to a declared slot, not a timer connected to
+                # `self._launch`: on a Process the page gives a property of
+                # its own (`runner`, with `said`) such a connection never
+                # fired — QML's object stands where PySide hung the bound
+                # method, as far as could be told — and the agent's run was
+                # never started, the page waiting on it for good.
+                QMetaObject.invokeMethod(self, "_launch", Qt.ConnectionType.QueuedConnection)
                 self.runningChanged.emit()
         else:
             was = self._get_running()
             self._wanted = False
-            self._kick.stop()
             if self._proc is not None:
                 self._end_tree(self._proc)
             elif was:
@@ -344,6 +355,7 @@ class Process(QObject):
     processId = Property(int, _get_pid, notify=processIdChanged)
 
     # --- running one
+    @Slot()
     def _launch(self):
         if not self._wanted or self._proc is not None:
             return
@@ -372,6 +384,7 @@ class Process(QObject):
         p.finished.connect(lambda code, status: self._on_finished(p, code, status))
         p.errorOccurred.connect(lambda err: self._on_error(p, err))
         self._proc = p
+        trace("start", self._command)
         p.start(program, args)
 
     def _on_started(self, p):
@@ -401,6 +414,7 @@ class Process(QObject):
             if isinstance(parser, _Parser):
                 parser.finish()
         # As Quickshell: by the time `exited` is heard, `running` reads false.
+        trace(f"exit {code}", self._command)
         self._proc = None
         self._close_stop()
         self.exited.emit(code, status)
@@ -734,8 +748,9 @@ class FileView(QObject):
             return
         if self._watcher is None:
             self._watcher = QFileSystemWatcher(self)
-            self._watcher.fileChanged.connect(self._changed)
-            self._watcher.directoryChanged.connect(self._changed)
+            # Through a lambda, not the bound method: see Process._set_running.
+            self._watcher.fileChanged.connect(lambda where: self._changed(where))
+            self._watcher.directoryChanged.connect(lambda where: self._changed(where))
         self._take_up()
 
     def _take_up(self):

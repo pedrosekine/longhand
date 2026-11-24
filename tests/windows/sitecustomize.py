@@ -41,21 +41,28 @@ if os.name == "nt":
 
     GIT_BIN = git_bin()
 
-    def bare_on_path(name, path=None):
-        """A file named exactly so (no extension) in a folder of PATH."""
+    def on_path(name, path=None):
+        """The first file of that name in PATH's own order: one named exactly
+        so (a test's stand-in, no extension) or a program (.exe, .cmd…).
+
+        The order is the point. A test puts its `opencode` first on PATH and
+        Linux runs that one; Windows' own search looks only for an .exe, and
+        on a machine that has the real opencode installed found it further
+        along and ran it in the stand-in's place."""
+        exts = [e for e in os.environ.get("PATHEXT", ".COM;.EXE;.BAT;.CMD").split(os.pathsep) if e]
         for folder in (path if path is not None else os.environ.get("PATH", "")).split(os.pathsep):
-            if folder:
-                cand = Path(folder) / name
+            if not folder:
+                continue
+            for cand in [Path(folder) / name] + [Path(folder) / (name + e) for e in exts]:
                 if cand.is_file():
                     return cand
         return None
 
     def which(cmd, mode=os.F_OK | os.X_OK, path=None):
-        found = _which(cmd, mode, path)
-        if found or os.sep in str(cmd) or "/" in str(cmd):
-            return found
-        cand = bare_on_path(str(cmd), path)
-        return str(cand) if cand else None
+        if os.sep in str(cmd) or "/" in str(cmd):
+            return _which(cmd, mode, path)
+        found = on_path(str(cmd), path)
+        return str(found) if found else None
 
     def by_shebang(args, env):
         """The command Windows can start for one written for Linux."""
@@ -72,13 +79,13 @@ if os.name == "nt":
             script = Path(head)
         else:
             search = (env or os.environ).get("PATH", "")
-            if _which(head, path=search):
-                return args
-            script = bare_on_path(head, search)
+            script = on_path(head, search)
             if script is None:
                 if GIT_BIN and (GIT_BIN / (head + ".exe")).is_file():
                     return [str(GIT_BIN / (head + ".exe")), *argv[1:]]      # sh, bash, sed…
                 return args
+            if script.suffix.lower() in (".exe", ".com", ".bat", ".cmd"):
+                return [str(script), *argv[1:]]         # the one PATH's order names, by its whole path
         script = TWINS.get(str(script).lower(), script)
         if not script.is_file() or script.suffix.lower() in (".exe", ".com", ".bat", ".cmd"):
             return args

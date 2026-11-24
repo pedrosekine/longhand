@@ -63,7 +63,9 @@ def windows_env() -> dict:
     """What a test finds on Windows in place of what Linux gives it: a
     `subprocess` that starts a script by its shebang (tests/windows/), the
     stand-in for fcntl (windows/pyshim/), UTF-8 as every file's and pipe's
-    encoding, and Git's sh and tools after everything else on PATH."""
+    encoding, and Git's bash and tools first on PATH — before Windows' own
+    `find` and `sort`, and before the `bash` that is WSL's launcher, which a
+    script's `env bash` would otherwise find."""
     env = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8")
     python_path = [str(TESTS / "windows"), str(ROOT / "windows" / "pyshim")]
     env["PYTHONPATH"] = os.pathsep.join(python_path + ([env["PYTHONPATH"]] if env.get("PYTHONPATH") else []))
@@ -72,7 +74,7 @@ def windows_env() -> dict:
         root = pathlib.Path(git).resolve().parent.parent
         for tools in (root / "usr" / "bin", root.parent / "usr" / "bin"):
             if (tools / "bash.exe").is_file():
-                env["PATH"] = env.get("PATH", "") + os.pathsep + str(tools)
+                env["PATH"] = str(tools) + os.pathsep + env.get("PATH", "")
                 break
     return env
 
