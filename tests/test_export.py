@@ -156,7 +156,30 @@ def units() -> None:
         check("Segoe UI" in have or "Arial" in have, "Windows font discovery finds system fonts without fc-list")
         sample = "Segoe UI" if "Segoe UI" in have else "Arial"
         check(export.font(sample) == sample, f"export.font({sample!r}) resolves an installed Windows face")
-        check(export.font("NoSuchLonghandFontXYZ") == "", "export.font returns empty when wanted face is absent")
+        check(export.font("NoSuchLonghandFontXYZ") == export.font(),
+              "export.font passes over a face asked for that is not installed")
+        check(export.font() == "Segoe UI" or "iA Writer Quattro S" in have or "iA Writer Duo S" in have,
+              "with no face asked for, Windows' reading face rather than pandoc's Computer Modern")
+
+        # No theme file on Windows: the omarchy look is Windows' own light
+        # or dark and accent, as the page draws there.
+        sys.path.insert(0, str(ROOT / "windows"))
+        import palette  # noqa: E402
+        for dark in (False, True):
+            got = palette.theme(dark)
+            check(got["background"] == palette.GROUND[dark][0] and got["foreground"] == palette.GROUND[dark][1]
+                  and got["accent"].startswith("#") and len(got["accent"]) == 7,
+                  f"Windows' {'dark' if dark else 'light'} ground, text and accent under a theme's names")
+        if not export.COLORS.is_file():
+            got = export.theme_colors()
+            check({"background", "foreground", "accent", "muted", "blue"} <= set(got)
+                  and all(len(v) == 6 and not v.startswith("#") for v in got.values()),
+                  "no colors.toml on Windows: the theme's colours are Windows' own")
+            check(r"\pagecolor{lhbg}" in export.look_tex("omarchy", got),
+                  "…and the omarchy look is drawn in them, not a white page")
+        with tempfile.TemporaryDirectory() as t:
+            check(export.theme_colors(pathlib.Path(t) / "none.toml") == {},
+                  "a colors.toml asked for by name and missing is still no colours")
 
 
 def end_to_end() -> None:

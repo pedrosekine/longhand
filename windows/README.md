@@ -121,6 +121,23 @@ winget install oschwartz10612.Poppler
 winget install OpenJS.NodeJS.LTS
 ```
 
+Exporting a note as a PDF (`Ctrl+Shift+E` in the page) takes pandoc and a
+xelatex; MiKTeX's, told to fetch the LaTeX packages it lacks by itself
+(otherwise it asks in a window, and an export from the page waits on it):
+
+```powershell
+winget install JohnMacFarlane.Pandoc
+winget install MiKTeX.MiKTeX
+initexmf --set-config-value="[MPM]AutoInstall=1"
+```
+
+The first export fetches those packages and takes a minute or two; after
+that, seconds. With no `font` in the export's config it is set in Segoe UI
+(the variable Segoe UI Variable is one xelatex cannot load), and the look
+`omarchy` ("your Windows colours" in the page) is Windows' own light or
+dark, headings in the accent as Windows sets text in it
+(`palette.theme`), checked on both 2026-11-24.
+
 ## Your own vault
 
 `%USERPROFILE%\.config\longhand\config.json`, as `config.example.json`, with

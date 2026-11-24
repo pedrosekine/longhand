@@ -6,8 +6,9 @@ next heading as high — and each block starts in or out: Longhand's agent
 link, checkboxes and private blocks out, everything else in. What is kept
 loses the layer's marks (tags, task dates, block ids, wikilink brackets)
 and keeps its words. Two looks: minimal (a white page, black headings)
-and omarchy (the current theme's colours, read when it is made). pandoc
-and xelatex make the PDF, only when asked; nothing stays resident.
+and omarchy (the current theme's colours, read when it is made: on
+Windows, which has no theme file, Windows' own light or dark and accent).
+pandoc and xelatex make the PDF, only when asked; nothing stays resident.
 """
 from __future__ import annotations
 
@@ -24,7 +25,9 @@ from pathlib import Path
 import blocks as blocklib
 
 LOOKS = ("minimal", "omarchy")
-FONTS = ("iA Writer Quattro S", "iA Writer Duo S")      # the page's own, in its order
+# The page's own, in its order; on Windows then its reading face (the
+# static Segoe UI: xelatex takes no variable font's named instance).
+FONTS = ("iA Writer Quattro S", "iA Writer Duo S") + (("Segoe UI",) if os.name == "nt" else ())
 COLORS = Path.home() / ".local" / "state" / "omarchy" / "current" / "theme" / "colors.toml"
 
 LINK_LINE = re.compile(r"^\[\[[^\]\n]*\|agent\]\]$")
@@ -194,14 +197,32 @@ def theme_colors(path: Path = COLORS) -> dict:
     try:
         raw = tomllib.loads(path.read_text())
     except (OSError, ValueError):
-        return {}
+        return windows_colors() if os.name == "nt" and path == COLORS else {}
     return {k: v.lstrip("#") for k, v in raw.items() if isinstance(v, str) and re.fullmatch(r"#?[0-9A-Fa-f]{6}", v)}
+
+
+def windows_colors() -> dict:
+    """Windows' light or dark and accent under a theme's names, as the page
+    draws with them there (windows/palette.py says them for both)."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "longhand_palette", Path(__file__).resolve().parent.parent / "windows" / "palette.py")
+    try:
+        palette = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(palette)
+        got = palette.theme()
+    except (OSError, ImportError, AttributeError):
+        return {}
+    return {k: v.lstrip("#") for k, v in got.items()}
 
 
 def look_tex(look: str, colors: dict) -> str:
     """The LaTeX each look adds. Both left-align: the page's faces are
     near-monospaced, and justifying them opens holes between words."""
-    tex = [r"\raggedright", r"\usepackage{xcolor}"]
+    # The PDF's text is the text written: without this, a face whose one
+    # hyphen glyph serves both "-" and U+2010 (Segoe UI, Calibri) gives
+    # "kick‐off" to a copy or a search, not "kick-off".
+    tex = [r"\XeTeXgenerateactualtext=1", r"\raggedright", r"\usepackage{xcolor}"]
     if look == "omarchy" and colors.get("background") and colors.get("foreground"):
         bg, fg = colors["background"], colors["foreground"]
         ac = colors.get("accent", fg)
