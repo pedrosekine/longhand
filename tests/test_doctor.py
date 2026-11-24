@@ -58,6 +58,8 @@ def main() -> int:
         # start read from a key nothing writes.
         APPDATA=str(tmp / "appdata"),
         LONGHAND_RUN_KEY="Software\\LonghandDoctorTest\\NoSuchRun",
+        # …and the person's PATH from a key nothing writes either.
+        LONGHAND_ENV_KEY="Software\\LonghandDoctorTest\\NoSuchEnvironment",
     )
     base_env.pop("LONGHAND_CONFIG", None)
 
@@ -110,6 +112,8 @@ def main() -> int:
               "Windows: no Start menu entry is named, with what makes one")
         check(any(l.startswith("WARN") and "with the session" in l for l in lines),
               "Windows: not started with the session is named")
+        check(any(l.startswith("WARN") and "commands by name" in l and "longhand install" in l for l in lines),
+              "Windows: commands a new terminal cannot start by name are named, with what puts them on PATH")
         check(not any("omarchy plugins" in l or "shell.json" in l for l in lines),
               "Windows: Omarchy's plugins are not asked for")
         lnk = tmp / "appdata" / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Longhand.lnk"
