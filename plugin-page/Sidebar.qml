@@ -240,11 +240,16 @@ BorderSurface {
       anchors.verticalCenter: parent.verticalCenter
       spacing: page.sp(8)
       Text {
+        readonly property string winIcons: {
+          var f = Qt.fontFamilies()
+          return f.indexOf("Segoe Fluent Icons") >= 0 ? "Segoe Fluent Icons"
+            : f.indexOf("Segoe MDL2 Assets") >= 0 ? "Segoe MDL2 Assets" : ""
+        }
         anchors.verticalCenter: parent.verticalCenter
         textFormat: Text.PlainText
-        text: "\uf002"
+        text: winIcons !== "" ? "\ue721" : "\uf002"
         color: box.typing ? page.foreground : page.faint
-        font.family: Style.font.family
+        font.family: winIcons !== "" ? winIcons : Style.font.family
         font.pixelSize: Math.round(page.fs(Style.font.caption) * 0.95)
       }
       Text {

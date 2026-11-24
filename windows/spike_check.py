@@ -135,6 +135,12 @@ def run(app, engine, box, args, warnings):
         raw = box["note"].read_bytes()
         step("saved", file=str(box["note"]), bytes=len(raw), crlf=b"\r\n" in raw,
              onDisk=raw.decode("utf-8"), sameAsEditor=raw.decode("utf-8").endswith(text() or "\0"))
+        # FolderListModel sees today's saved note (Links.fileUrl gives file:///C:/…).
+        wait(lambda: (ev("dayStems.length") or 0) >= 1, after_day_files,
+             "FolderListModel seeing today's saved daily note", 8.0)
+
+    def after_day_files():
+        step("dayFiles saw note", stems=ev("dayStems.join(',')"))
         # Something else writes the note (Obsidian, a sync): the page must take it up.
         wait(lambda: ev("noteSaving") is not True, write_behind, "the save to land", 5.0)
 
@@ -189,8 +195,23 @@ def run(app, engine, box, args, warnings):
             QTimer.singleShot(400, lambda: shot(False))
             return
         # longhand-read answers too: the page shown, its marks read.
-        wait(lambda: ev("pdfItem.view.drawn().length") not in (None, 0), lambda: QTimer.singleShot(600, shot),
+        wait(lambda: ev("pdfItem.view.drawn().length") not in (None, 0), open_outside,
              "the PDF's first page drawn", 8.0)
+
+    # An absolute Windows path outside the vault (as a project's page or
+    # agent payload is opened): Links.isAbs recognizes C:/… instead of
+    # prepending the vault path.
+    outside = box["state"] / "outside-note.md"
+
+    def open_outside():
+        outside.write_text("# Outside Note\nOpened by absolute drive path.\n", encoding="utf-8")
+        ev("openFile(" + json.dumps(outside.as_posix()) + ", true)")
+        wait(lambda: ev("noteService.ready") is True and "Opened by absolute drive path." in (text() or ""),
+             outside_open, "outside-vault file opened by absolute Windows path", 8.0)
+
+    def outside_open():
+        step("outside file opened", path=outside.as_posix(), pageOutside=ev("pageOutside"), readOnly=ev("noteService.readOnly"))
+        QTimer.singleShot(400, lambda: shot(ev("pageOutside") is True))
 
     def shot(ok=True):
         w = window()

@@ -755,8 +755,8 @@ def session_cost(cfg: dict, paths: Paths, session: str) -> tuple[float, dict]:
     if not session:
         return 0.0, tokens
     try:
-        proc = subprocess.run([cfg.get("opencode", "opencode"), "session", "export", session], stdin=subprocess.DEVNULL,
-                              capture_output=True, text=True, timeout=30, cwd=str(paths.cwd))
+        proc = subprocess.run(_win_cmd([cfg.get("opencode", "opencode"), "session", "export", session], None),
+                              stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=30, cwd=str(paths.cwd))
         info = (json.loads(proc.stdout) or {}).get("info") or {}
     except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError, AttributeError):
         return 0.0, tokens
@@ -901,6 +901,19 @@ def _on_stop(signum, frame) -> None:
             pass
 
 
+def _win_cmd(cmd: list[str], env: dict | None) -> list[str]:
+    """On Windows, CreateProcess finds only .exe by bare name, not .cmd/.bat
+    shims (such as npm-installed codex.cmd). Resolving through PATH hands
+    Popen the full path, which Windows runs cleanly even with spaces."""
+    if not WINDOWS or not cmd:
+        return cmd
+    head = str(cmd[0])
+    if Path(head).is_file():
+        return cmd
+    found = shutil.which(head, path=(env or os.environ).get("PATH"))
+    return [found, *cmd[1:]] if found else cmd
+
+
 def run_child(cmd: list[str], payload: str, timeout: int, cwd: str, env: dict | None,
               on_line=None) -> subprocess.CompletedProcess:
     """A model's process, as subprocess.run would run it, but in a group of
@@ -910,8 +923,8 @@ def run_child(cmd: list[str], payload: str, timeout: int, cwd: str, env: dict | 
     fails never fails the run."""
     if _STOP["asked"]:
         return subprocess.CompletedProcess(cmd, -signal.SIGTERM, "", "")
-    p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-                         cwd=cwd, env=env, start_new_session=True)
+    p = subprocess.Popen(_win_cmd(cmd, env), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                         text=True, cwd=cwd, env=env, start_new_session=True)
     if WINDOWS:
         winproc.adopt(p)
     _STOP["child"] = p
@@ -1384,9 +1397,17 @@ def run_antigravity(cfg: dict, paths: Paths, payload: str, session: str, message
     said = message.strip()
     if payload:
         said += "\n\n<stdin>\n" + payload.rstrip("\n") + "\n</stdin>"
+    run_env = dict(env or os.environ, HOME=str(home))
+    if WINDOWS:
+        # On Windows, CLIs resolve ~ and ~/.gemini via USERPROFILE (and
+        # HOMEDRIVE/HOMEPATH) rather than HOME.
+        run_env["USERPROFILE"] = str(home)
+        if home.drive:
+            run_env["HOMEDRIVE"] = home.drive
+            run_env["HOMEPATH"] = str(home)[len(home.drive):]
     try:
         proc = run_child(cmd, json.dumps({"event": "user", "message": {"content": said}}) + "\n", 600,
-                         str(paths.cwd), dict(env or os.environ, HOME=str(home)))
+                         str(paths.cwd), run_env)
     except FileNotFoundError:
         raise Fail(f"Antigravity not found ({cmd[0]})")
     except subprocess.TimeoutExpired:

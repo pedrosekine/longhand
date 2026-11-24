@@ -291,7 +291,7 @@ Item {
     root.sizeQueue = root.sizeQueue.slice(200)
     for (var i = 0; i < batch.length; i++) root.sizeAsked[batch[i]] = true
     sizeProc.batch = batch
-    sizeProc.command = ["file", "-b", "-L", "--"].concat(batch.map(function (u) { return decodeURIComponent(u.replace(/^file:\/\//, "")) }))
+    sizeProc.command = ["file", "-b", "-L", "--"].concat(batch.map(Links.fromFileUrl))
     sizeProc.running = true
   }
 
@@ -360,7 +360,7 @@ Item {
   // config names another; otherwise the first of these the machine has.
   // Fenced code and frontmatter keep a monospace, where columns mean
   // something — the editor already draws those rows apart.
-  readonly property var proseChoices: [svc.pageFont, "Adwaita Sans", "Inter", "Noto Sans", "iA Writer Quattro S", Style.font.family]
+  readonly property var proseChoices: [svc.pageFont, "Adwaita Sans", "Inter", "Noto Sans", "Segoe UI Variable Text", "Segoe UI", "iA Writer Quattro S", Style.font.family]
   readonly property string fontFamily: {
     var have = Qt.fontFamilies()
     for (var i = 0; i < root.proseChoices.length; i++)
@@ -1931,7 +1931,7 @@ Item {
     : svc.ready && root.noteRel !== "" && !root.pageOutside && (!root.dayNote || root.beforeHorizon || svc.notePrivate)
   // A note written outside the vault (a project's page): read, never asked
   // about or exported — it is gathered from notes that are.
-  readonly property bool pageOutside: svc.filePath.charAt(0) === "/"
+  readonly property bool pageOutside: Links.isAbs(svc.filePath)
   // What the room talks about: the PDF open in the vault (plan.md item 15,
   // step 2), else the note.
   readonly property string roomRel: root.paneHeld !== "" ? root.paneHeld : root.paper.shown ? root.pdfRel : root.noteRel
@@ -3100,7 +3100,7 @@ Item {
       return row && row.kind === "task" && row.task.file ? row.task.file + ":" + (row.task.line + 1) : ""
     }
     if (root.centerView !== "note") return ""
-    if (root.pdfShown) return root.pdfRel.charAt(0) === "/" ? root.pdfRel : vault !== "" ? vault + "/" + root.pdfRel : ""
+    if (root.pdfShown) return Links.isAbs(root.pdfRel) ? root.pdfRel : vault !== "" ? vault + "/" + root.pdfRel : ""
     if (svc.notePath === "" || !svc.ready) return ""
     var body = editor.text
     var whole = svc.joinHeader(body)
@@ -4604,7 +4604,7 @@ Item {
       if (line > 0) Qt.callLater(function () { pdfPane.jumpTo(line - 1, 0) })
       return
     }
-    Qt.openUrlExternally("file://" + svc.config.vault + "/" + path)
+    Qt.openUrlExternally(Links.fileUrl(svc.config.vault + "/" + path))
   }
 
   function jumpToMark(id) {
@@ -5087,7 +5087,7 @@ Item {
 
   // hyprkeys.py, beside this file, keeps the six in ~/.config/hypr/longhand.lua
   // and answers every call with its state. One call at a time.
-  readonly property string hyprKeysPy: decodeURIComponent(Qt.resolvedUrl("hyprkeys.py").toString().replace(/^file:\/\//, ""))
+  readonly property string hyprKeysPy: Links.fromFileUrl(Qt.resolvedUrl("hyprkeys.py").toString())
   function hypr(args) {
     if (hyprProc.running) return false
     hyprProc.kind = args[0]
@@ -5966,7 +5966,7 @@ Item {
       root.openPdf(String(d.path).slice(vault.length))
       return
     }
-    Qt.openUrlExternally("file://" + d.path)
+    Qt.openUrlExternally(Links.fileUrl(d.path))
   }
 
   // Enter in a project, by what the row is: the project's or the week's
@@ -6698,7 +6698,7 @@ Item {
     // did on its own — is a conversation with it (2026-10-20: writing back
     // means there is something to talk about). A document to file opens.
     if ((row.kind === "proposal" || row.kind === "told") && row.item.kind === "file") {
-      Qt.openUrlExternally("file://" + (row.item.filed || row.item.src)); root.used("document", "open"); return
+      Qt.openUrlExternally(Links.fileUrl(row.item.filed || row.item.src)); root.used("document", "open"); return
     }
     if (row.kind === "proposal" || row.kind === "question" || row.kind === "told") { root.openTalk(row.item); return }
     if (row.kind === "shelf") { root.showShelf = true; return }
@@ -8794,7 +8794,7 @@ Item {
   // soon as it is written.
   FolderListModel {
     id: dayFiles
-    folder: svc.configured ? "file://" + svc.config.vault + "/" + svc.config.daily.dir : ""
+    folder: svc.configured ? Links.fileUrl(svc.config.vault + "/" + svc.config.daily.dir) : ""
     nameFilters: ["*.md"]
     showDirs: false
     showDotAndDotDot: false

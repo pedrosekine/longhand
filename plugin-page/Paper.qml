@@ -1,6 +1,7 @@
 import QtQuick
 import "Shortcuts.js" as Sc
 import "Answers.js" as Answers
+import "Links.js" as Links
 
 // The paper's room (plan.md item 15, step 2), moved out of Page.qml on
 // 2026-11-16 (plan item 4): what the agent's pane holds beside a PDF of the
@@ -22,7 +23,7 @@ Item {
   // comes back. Above the list a strip: all, highlights, questions (the
   // waiting ones first); Ctrl+Enter asks every waiting question at once.
   // `^` in the box attaches a mark, as `@` points at a block.
-  readonly property bool shown: page.pdfShown && page.pdfRel !== "" && page.pdfRel.charAt(0) !== "/"
+  readonly property bool shown: page.pdfShown && page.pdfRel !== "" && !Links.isAbs(page.pdfRel)
   readonly property bool askable: pp.shown && page.pdfItem.read.text !== false && !page.pdfItem.read.private
   readonly property bool room: page.noteRoom && pp.shown && page.paneHeld === ""
   property var marks: []          // attached to the next message

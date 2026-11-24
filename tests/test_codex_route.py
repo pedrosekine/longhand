@@ -271,6 +271,27 @@ def main() -> int:
         r = t.agent("run", "--trigger", "mention", "--hash", at_block["hash"], "--date", DAY)
         check(r.returncode == 0 and (t.stub_dir / "argv.json").exists()
               and not (t.stub_dir / "codex_argv.json").exists(), "opencode, not Codex")
+
+        if sys.platform == "win32":
+            print("-- on Windows, a .cmd shim on PATH is resolved by bare name")
+            cmd_dir = t.tmp / "cmd bin"
+            cmd_dir.mkdir(parents=True, exist_ok=True)
+            py_stub = cmd_dir / "codex_stub.py"
+            py_stub.write_text(STUB, encoding="utf-8")
+            cmd_shim = cmd_dir / "codex.cmd"
+            cmd_shim.write_text(f'@echo off\r\n"{sys.executable}" "{py_stub}" %*\r\n', encoding="utf-8")
+            cfg.update(model="codex/gpt-6.2-sol#high", variant="", codex="codex")
+            t.cfg.write_text(json.dumps(cfg))
+            t.set_reply(reply="from cmd shim")
+            old_path = t.env.get("PATH", "")
+            t.env["PATH"] = str(cmd_dir) + ";" + old_path
+            try:
+                (t.stub_dir / "codex_argv.json").unlink(missing_ok=True)
+                r = t.agent("run", "--trigger", "mention", "--hash", at_block["hash"], "--date", DAY)
+            finally:
+                t.env["PATH"] = old_path
+            check(r.returncode == 0 and (t.stub_dir / "codex_argv.json").exists(),
+                  f"bare 'codex' resolves codex.cmd in a spaced dir ({r.stderr.strip()[-300:]})")
     finally:
         t.cleanup()
 

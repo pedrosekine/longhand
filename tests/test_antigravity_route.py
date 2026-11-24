@@ -39,7 +39,7 @@ argv = sys.argv[1:]
 stdin = sys.stdin.read()
 home = os.environ.get("HOME", "")
 open(os.path.join(d, "agy_argv.json"), "w").write(json.dumps({"argv": argv, "cwd": os.getcwd(), "stdin": stdin,
-                                                               "home": home}))
+                                                               "home": home, "userprofile": os.environ.get("USERPROFILE", "")}))
 def opt(name):
     return argv[argv.index(name) + 1] if name in argv else None
 convs = os.path.join(home, ".gemini", "antigravity-cli", "conversations")
@@ -122,6 +122,9 @@ def main() -> int:
               and opt(argv, "--output-format") == "stream-json", "one headless pass, its words and events as JSON")
         check(opt(argv, "--model") == "gemini-4-neon-high", "the model, without the route's prefix, its effort as slug")
         check(pathlib.Path(called["home"]).resolve() == home.resolve(), "Longhand's own Antigravity home")
+        if sys.platform == "win32":
+            check(pathlib.Path(called["userprofile"]).resolve() == home.resolve(),
+                  "on Windows, USERPROFILE is isolated to Longhand's Antigravity home too")
         check("--disable-slash-commands" in argv and "--conversation" not in argv, "no slash commands, a new chat")
         defn = (home / ".gemini" / "config" / "agents" / f"{opt(argv, '--agent')}.md").read_text()
         own = (ROOT / "agent" / "opencode" / "longhand.md").read_text()

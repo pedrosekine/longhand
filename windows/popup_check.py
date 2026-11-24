@@ -16,7 +16,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from PySide6.QtCore import QCoreApplication, QEvent, Qt, QTimer
+from PySide6.QtCore import QCoreApplication, QEvent, QObject, Qt, QTimer
 from PySide6.QtGui import QKeyEvent
 from PySide6.QtQml import QQmlExpression, qmlContext
 
@@ -136,10 +136,12 @@ def run(app, engine, box, args, warnings):
     def timer_open():
         w = popup("longhand.pomo")
         area = app.primaryScreen().availableGeometry()
+        auto_row = w.findChild(QObject, "pomoAutoRow") if w is not None else None
         step("timer popup open", size=[w.width(), w.height()], at=[w.x(), w.y()],
              workArea=[area.x(), area.y(), area.width(), area.height()],
              inTheCorner=abs((w.x() + w.width()) - (area.x() + area.width())) <= 40
              and abs((w.y() + w.height()) - (area.y() + area.height())) <= 40,
+             autoRowWidth=round(auto_row.property("width"), 1) if auto_row is not None else 0,
              flags=int(w.flags()), entry=ev("pomoPanel.entryText()"), hasKeyboard=give_keyboard(w))
         for ch in "2500":
             key(w, Qt.Key(ord(ch)), ch)
