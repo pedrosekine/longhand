@@ -138,6 +138,8 @@ def main() -> int:
     import host_api                            # registers LonghandHost
     import qs_io  # noqa: F401                  (registers Quickshell.Io)
     import qs_wayland  # noqa: F401             (registers Quickshell.Wayland)
+    import file_urls
+    file_handler = file_urls.install()          # held: the page's file:// links, by drive  # noqa: F841
     bridge = host_api.BRIDGE
     icon = REPO / "launcher" / "longhand.svg"
     if icon.is_file():

@@ -237,6 +237,8 @@ def main() -> int:
     check(len(docs) == 1 and docs[0]["pages"] == 1 and docs[0]["name"].endswith("Autonomous Systems"), "documents lists a course's, with pages")
     projects = json.loads(agent("projects", "--now", dt.datetime.now().isoformat(timespec="minutes")).stdout)
     check(next(p for p in projects if p["tag"] == "intsem")["docs"] == docs, "…and the sidebar's projects carry them")
+    check(docs[0]["path"].startswith(vault.as_posix() + "/") and "\\" not in docs[0]["path"],
+          f"…by a path with forward slashes, so the page finds its vault in it and opens it in the reader ({docs[0]['path']})")
     note = daily / f"{dt.date.today().isoformat()}.md"
     note.write_text("# Interdisciplinary Seminar #intsem\n\n- [ ] what does the reading say about autonomy?\n")
     import blocks  # noqa: E402

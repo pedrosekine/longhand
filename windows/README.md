@@ -160,6 +160,7 @@ opencode and Antigravity are installed here and not tried.
 | `~/.local/bin` links and shebangs | `.exe` launchers from `pyproject.toml`, through `longhand_launch.py` |
 | UTF-8 as the system's encoding | Python's UTF-8 mode, switched on by the host and the launchers |
 | `\n` as the line ending of what is written and sent | `pyshim/longhand_lf.py`, loaded at start |
+| `Qt.openUrlExternally("file://" + path)` with a path from `/` | `file_urls.py`: `file://C:/…` (and its unparseable spellings) opened as the file on that drive |
 | `fcntl.flock` | `pyshim/fcntl.py` |
 | a process group and SIGTERM, to stop a model's run | a job and a named event: `agent/winproc.py` |
 

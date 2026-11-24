@@ -527,7 +527,10 @@ def index(vault: Path, projects_dir: str, tag: str, cache: dict | None = None) -
                 pages = 0
             if cache is not None:
                 cache[key] = pages
-        out.append({"name": p.stem, "file": p.name, "path": str(p), "pages": pages})
+        # Forward slashes: the page finds the vault in the path by its
+        # config's spelling, and builds file:// links from it (on Windows,
+        # str() would give backslashes; on Linux the two are the same).
+        out.append({"name": p.stem, "file": p.name, "path": p.as_posix(), "pages": pages})
     return out
 
 
