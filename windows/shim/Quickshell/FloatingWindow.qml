@@ -17,4 +17,15 @@ Window {
   height: Math.min(implicitHeight, Screen.desktopAvailableHeight - 80)
   minimumWidth: minimumSize.width
   minimumHeight: minimumSize.height
+
+  // Hyprland gives a new window its place; Windows would put this one in
+  // the screen's corner. The first time it is shown, the middle; after
+  // that, wherever it was left.
+  property bool placed: false
+  onVisibleChanged: {
+    if (!visible || placed) return
+    placed = true
+    x = Screen.virtualX + Math.max(0, Math.round((Screen.desktopAvailableWidth - width) / 2))
+    y = Screen.virtualY + Math.max(0, Math.round((Screen.desktopAvailableHeight - height) / 2))
+  }
 }

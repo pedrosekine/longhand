@@ -1,10 +1,14 @@
-# Longhand on Windows — spike
+# Longhand on Windows
 
 A host that stands in for `omarchy-shell`, so `plugin-page/` loads on Windows
-with nothing in it changed. Started 2026-11-23 to answer one question: does
-`Page.qml` load, draw and take keys under a shim? It does (`first-run.png`).
+with nothing in it changed. Started 2026-11-23 as a spike to answer one
+question: does `Page.qml` load, draw and take keys under a shim? It does
+(`first-run.png`, the page as a window; `overlay.png`, over everything).
 
-Nothing here is used on Omarchy, and nothing outside `windows/` was touched.
+Nothing here is used on Omarchy. Outside `windows/`: `cli/pomo.py` (the bash
+`pomo`'s twin), `agent/winproc.py` (stopping a run), `tests/windows/`, and
+the few lines in the agent and the tests that took Linux for granted, each
+the same on Linux.
 
 ## Install and run
 
@@ -25,9 +29,36 @@ folder on its children's PATH; for a terminal, put it on yours.
 
 ```powershell
 .venv\Scripts\longhand --sandbox $env:TEMP\longhand-try   # a throwaway vault
-.venv\Scripts\longhand                                    # your own ~/.config/longhand/config.json
-.venv\Scripts\longhand --overlay                          # the unpinned shape
+.venv\Scripts\longhand                                    # today's note as a window: your own ~/.config/longhand/config.json
+.venv\Scripts\longhand --overlay                          # the page over everything (again: away)
+.venv\Scripts\longhand --tray                             # in the tray only, nothing opened
+.venv\Scripts\longhand quit
 ```
+
+Longhand stays by the clock once started: closing the page's window puts
+the page away, and Quit in the tray's menu ends it. One runs at a time; a
+second `longhand` tells the first what was asked (`summon` and `toggle` take
+the payload `omarchy-shell shell summon longhand.page` takes, or a bare
+`alongside`).
+
+The tray is the bar's two widgets as one icon: its tip and its menu say the
+timer and the next deadline (from `plugin/Service.qml` and
+`plugin-deadline/Service.qml`, loaded as they are), a click is today's
+note, the menu starts, pauses, skips and resets the timer, and a session
+that runs out is said there, as `notify-send` says it on Omarchy.
+
+From anywhere, as Hyprland's keys with Win for Super (`hotkeys.py`):
+
+| | |
+|---|---|
+| `Win+Alt+\` | the page as a window |
+| `Win+Alt+=` | the page over everything, and away |
+| `Win+Alt+P` | the timer: start, pause, resume |
+| `Win+Alt+N` | the timer: on to the next phase |
+
+`~/.config/longhand/windows-keys.json` moves one (`{"page": "Win+F9"}`) or,
+with `""`, leaves it without a key. A key must hold Win, and one Windows or
+another program has is not taken: it is said on stderr.
 
 What the agent's extras call, and some tests: `gitleaks` (without it the
 agent shares no passage: it cannot check one for secrets), poppler's
@@ -93,9 +124,14 @@ store, and says what the page did.
   (`.as_posix()`), and a day with no leading zero goes through `day_text`
   (`%-d` is Linux's): both were the agent's, and both are the same on Linux.
 - A finished session's sound plays; there is no notification yet.
-- No global key, no tray, no bar widgets; no Start menu entry, and the
-  programs the agent's extras call (pandoc, poppler, tesseract) are not
-  installed for you.
+- The bar's two popups (the timer's, the deadlines') are not here: the tray
+  says both and its menu works the timer, but a deadline is ticked in the
+  page. The keys sheet still lists Hyprland's six as none: the global keys
+  are moved in `windows-keys.json`, not from the sheet.
+- No Start menu entry and nothing starts Longhand with the session; the
+  programs the agent's extras call are not installed for you.
+- In the tray with the page loaded and nothing shown, the host holds about
+  150 MB.
 - Borders are flat (no gradient ring); the page's prose face is named in the
   sandbox config (`Segoe UI Variable Text`), since Windows has none of the
   faces the page looks for.

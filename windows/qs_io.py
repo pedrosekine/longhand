@@ -736,17 +736,32 @@ class FileView(QObject):
             self._watcher = QFileSystemWatcher(self)
             self._watcher.fileChanged.connect(self._changed)
             self._watcher.directoryChanged.connect(self._changed)
+        self._take_up()
+
+    def _take_up(self):
+        """Watch the file, and its folder for the day it is made or replaced.
+        On a first run the folder is not there either (the timer's state,
+        before `pomo` has ever run): then the nearest folder above that is,
+        until it comes — or a bar would stay deaf to the file for good."""
+        if self._watcher is None:
+            return
         folder = os.path.dirname(self._path)
-        if os.path.isdir(folder):
-            self._watcher.addPath(folder)
-        if os.path.isfile(self._path):
-            self._watcher.addPath(self._path)
+        while folder and not os.path.isdir(folder):
+            above = os.path.dirname(folder)
+            if above == folder:
+                break
+            folder = above
+        want = ([folder] if os.path.isdir(folder) else []) + ([self._path] if os.path.isfile(self._path) else [])
+        have = {os.path.normcase(os.path.normpath(p)) for p in self._watcher.files() + self._watcher.directories()}
+        for p in want:
+            if os.path.normcase(os.path.normpath(p)) not in have:
+                self._watcher.addPath(p)
 
     def _changed(self, _where):
         now = self._stat()
-        # A file replaced by a rename drops out of the watch: take it up again.
-        if self._watcher is not None and os.path.isfile(self._path) and self._path not in self._watcher.files():
-            self._watcher.addPath(self._path)
+        # A file replaced by a rename drops out of the watch, and a folder
+        # that was missing may be there now: take them up again.
+        self._take_up()
         if now != self._sig:
             self._sig = now
             self.fileChanged.emit()
