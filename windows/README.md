@@ -15,6 +15,16 @@ the page's reader (a picture in a note had the same URL; not looked at on
 screen); a path from `/` gives the
 same URL as before (`tests/tst_links.qml`).
 
+Found here, and fixed in `plugin-page/` for both: the first open after the
+shell starts asks the note for the keys before it has been read, and the ask
+was lost — a closed sheet's hidden key catcher kept them. On Omarchy the
+overlay typed into hidden settings that way (the window shape was saved by a
+second ask, made when Wayland maps it, after the read); here both shapes did,
+and the host gave the note the keys itself (`keysOwed`, gone). Now
+`NoteEditor.focusNote` owes the note the keys until its lines come, unless
+something shown has been given them meanwhile (`tests/tst_editor.qml`; the
+first check of `tests/page/run.py`).
+
 ## Install and run
 
 Python 3.13. Git for Windows is no longer needed by the page: what it ran
@@ -283,11 +293,6 @@ opencode and Antigravity are installed here and not tried.
 
 ## Known, not done
 
-- First open: the page asks the note to take the keys before the note has
-  rows, and a sheet's hidden `focus: true` key catcher keeps them. The host
-  gives them to the note once it has loaded (`Main.qml`, `keysOwed`).
-  Whether Omarchy has the same order on its first open is not checked; if it
-  does, the place to fix it is `NoteEditor.focusNote`.
 - `pomo` is `cli/pomo.py` here: the bash one command for command
   (`tests/test_pomo_port.py` runs both and compares).
 - The tests run through the runner (`python tests\run_all.py`, or
