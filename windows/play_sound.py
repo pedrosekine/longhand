@@ -26,6 +26,11 @@ from array import array
 from urllib.parse import unquote, urlsplit
 
 VOLUME = 0.6                                  # pw-play --volume=0.6, the shell's
+# Silence before the sound. A laptop's sound chip sleeps when nothing has
+# played for a while and wakes as the next sound starts, and what plays
+# while it wakes is lost: the tick is 90 ms, so all of it was (2026-11-24,
+# the user heard no tick; the same tick after 300 ms of silence, heard).
+LEAD = 0.3
 # Windows' "Focus assist" profile, as the shell's own toggle publishes it:
 # 0 off, 1 priority only (Do Not Disturb), 2 alarms only.
 WNF_SHEL_QUIETHOURS_ACTIVE_PROFILE_CHANGED = 0x0D83063EA3BF1C75
@@ -64,9 +69,10 @@ def silenced() -> bool:
     return False
 
 
-def quieter(path: str, volume: float) -> bytes | None:
-    """The file's sound at `volume` of its own, as a WAV in memory; None
-    when it is not 16-bit PCM (then it is played as it is)."""
+def quieter(path: str, volume: float, lead: float = LEAD) -> bytes | None:
+    """The file's sound at `volume` of its own, after `lead` seconds of
+    silence, as a WAV in memory; None when it is not 16-bit PCM (then it is
+    played as it is)."""
     try:
         with wave.open(path, "rb") as w:
             params = w.getparams()
@@ -83,10 +89,11 @@ def quieter(path: str, volume: float) -> bytes | None:
     samples = array("h", (int(s * v) for s in samples))
     if sys.byteorder != "little":
         samples.byteswap()
+    silence = bytes(2 * params.nchannels * int(params.framerate * max(0.0, lead)))
     out = io.BytesIO()
     with wave.open(out, "wb") as w:
         w.setparams(params)
-        w.writeframes(samples.tobytes())
+        w.writeframes(silence + samples.tobytes())
     return out.getvalue()
 
 

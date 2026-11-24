@@ -214,7 +214,7 @@ opencode and Antigravity are installed here and not tried.
 | `hyprkeys.py` (the keys sheet's six keys from anywhere) | `winkeys.py`, in its words, over `windows-keys.json` and `hotkeys.py` |
 | `hyprctl eval` — raise the window, put the pointer, the keys sheet's submap | `compositor.py`, answered inside the host (`qs_io.INSIDE`): Qt's raise and activate, `QCursor.setPos`, the global keys let go |
 | a theme's `colors.toml` (red, yellow, green, blue…) | `palette.py`: Windows 11's colours for each role, light or dark, under that path where no theme is |
-| `notify-send`, `pw-play --volume=0.6`, `omarchy-shell notifications isDnd` | `notify.py` (the tray, else a toast), `play_sound.py` (scaled to 0.6, not under Do Not Disturb) |
+| `notify-send`, `pw-play --volume=0.6`, `omarchy-shell notifications isDnd` | `notify.py` (the tray, else a toast), `play_sound.py` (scaled to 0.6, after 300 ms of silence for a sleeping sound chip to wake in, not under Do Not Disturb) |
 | a layer on the focused monitor; a window placed by Hyprland | `PanelWindow` on the screen the pointer is on; `FloatingWindow` where it was left (`windows.json` in the state folder) |
 | `~/.local/bin` links and shebangs | `.exe` launchers from `pyproject.toml`, through `longhand_launch.py` |
 | UTF-8 as the system's encoding | Python's UTF-8 mode, switched on by the host and the launchers |

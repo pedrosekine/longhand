@@ -244,10 +244,17 @@ def sounds(tmp):
         w.setframerate(8000)
         w.writeframes(array("h", [10000, -20000, 30000, 0]).tobytes())
     import io
-    data = play_sound.quieter(str(loud), 0.6)
+    data = play_sound.quieter(str(loud), 0.6, lead=0)
     with wave.open(io.BytesIO(data), "rb") as w:
         got = list(array("h", w.readframes(w.getnframes())))
     check(got == [6000, -12000, 18000, 0], f"the bell is played at six tenths, as pw-play --volume=0.6 ({got})")
+    # A sleeping sound chip loses what plays while it wakes: the whole tick,
+    # until it was given silence to wake in.
+    with wave.open(io.BytesIO(play_sound.quieter(str(loud), 0.6)), "rb") as w:
+        got = list(array("h", w.readframes(w.getnframes())))
+    lead = int(8000 * play_sound.LEAD)
+    check(play_sound.LEAD >= 0.25 and got[:lead] == [0] * lead and got[lead:] == [6000, -12000, 18000, 0],
+          f"the sound comes after {play_sound.LEAD}s of silence, for the sound chip to wake")
     check(isinstance(play_sound.silenced(), bool), "Windows is asked whether notifications are silenced")
     check(play_sound.main([str(tmp / "none.wav")]) in (0, 1) and play_sound.main([]) == 2, "a missing file is not a fault")
 
