@@ -47,13 +47,25 @@ process.stdout.write(JSON.stringify({
 """
 
 
+def system_keys():
+    """The six keys from anywhere, as this machine keeps them, in hyprkeys.py's
+    words: Hyprland's, or on Windows the host's (the same six, in the same
+    order)."""
+    if os.name == "nt":
+        sys.path.insert(0, str(ROOT / "windows"))
+        import winkeys
+        return winkeys.state()
+    return hyprkeys.state()
+
+
 def read(mine=None, env=None):
     if mine is None:
         hypr = [{"does": does, "keys": [hyprkeys.from_hypr(key)], "changed": False} for _id, does, _cmd, key in hyprkeys.ACTIONS]
     else:
         # Yours: as Hyprland has them now (longhand.lua once the page keeps
-        # them, bindings.lua before). Only read, never written.
-        hypr = [{"does": a["does"], "keys": a["keys"], "changed": a["keys"] != a["own"]} for a in hyprkeys.state()["actions"]]
+        # them, bindings.lua before) — on Windows, as Windows keeps them for
+        # Longhand (windows/winkeys.py). Only read, never written.
+        hypr = [{"does": a["does"], "keys": a["keys"], "changed": a["keys"] != a["own"]} for a in system_keys()["actions"]]
     out = subprocess.run(["node", "-e", JS, str(SHORTCUTS)], input=json.dumps({"mine": mine, "hypr": hypr}),
                          capture_output=True, text=True, check=True, env=env)
     return json.loads(out.stdout)

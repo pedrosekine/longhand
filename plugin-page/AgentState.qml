@@ -18,8 +18,14 @@ Item {
   }
 
   property string stamp: ""
+  // Read from `config` itself, not `configured`: called from
+  // onConfigChanged, where that binding is still the config before, and
+  // the bar's glyph (no `date` of its own) went a minute blind to replies
+  // after the shell started (found 2026-11-24, the Windows tray).
   function refreshStamp() {
-    root.stamp = configured ? Qt.formatDate(new Date(), momentToQt((config.daily && config.daily.format) || "YYYY-MM-DD")) : ""
+    var c = root.config
+    var ok = !!(c && c.vault && c.daily && c.daily.dir)
+    root.stamp = ok ? Qt.formatDate(new Date(), momentToQt(c.daily.format || "YYYY-MM-DD")) : ""
   }
   onConfigChanged: refreshStamp()
   Component.onCompleted: refreshStamp()

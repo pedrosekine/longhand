@@ -61,10 +61,18 @@ second `longhand` tells the first what was asked (`summon` and `toggle` take
 the payload `omarchy-shell shell summon longhand.page` takes, or a bare
 `alongside`).
 
-The tray is the bar's two widgets as one icon: its tip and its menu say the
-timer and the next deadline, a click is today's note, the menu starts,
+The tray is the bar's three widgets as one icon: its tip and its menu say
+the timer, the next deadline and — as the page glyph turns urgent on the
+bar — a reply waiting that has not been read and what the agent proposes
+(`proposals.json`), in words, never on the seal (`docs/brand/README.md`:
+the seal is no status light). A click is today's note, the menu starts,
 pauses, skips and resets the timer, and a session that runs out is said
-there, as `notify-send` says it on Omarchy.
+there: `pomo` says it as it says it to `notify-send` on Omarchy, and the
+running Longhand takes it (`notify.py`); with no Longhand running, a
+Windows toast says it. The seal is drawn in Windows' colours, the tile in
+the apps' ground and the seal in the accent, as `tools/theme_icon.py`
+draws the Omarchy launcher's in the theme's, and follows a change of
+either at once.
 
 The widgets themselves are loaded as they are (`plugin/Panel.qml`,
 `plugin-deadline/Panel.qml`), and so are their popups: the timer's, where a
@@ -93,9 +101,15 @@ From anywhere, as Hyprland's keys with Win for Super (`hotkeys.py`):
 | `Win+Alt+O` | the timer's popup |
 | `Win+Alt+D` | the deadlines' popup |
 
-`~/.config/longhand/windows-keys.json` moves one (`{"page": "Win+F9"}`) or,
-with `""`, leaves it without a key. A key must hold Win, and one Windows or
-another program has is not taken: it is said on stderr.
+They move in the page's keys sheet (`Ctrl+/`), as Hyprland's do on Omarchy:
+Enter on one, then the new key. The sheet asks `hyprkeys.py`; here
+`winkeys.py` answers in its words and writes
+`~/.config/longhand/windows-keys.json`, which the running Longhand watches
+and takes at once (by hand too: `{"page": "Win+F9"}`, several as a list,
+`""` for none). While the sheet waits for a key, Longhand lets go of its
+own, so the key reaches the sheet (Hyprland's submap, here). A key must
+hold Win, and one Windows or another program has is refused, saying so.
+The agent's manual says these keys, as Windows writes them.
 
 What the agent's extras call, and some tests: `gitleaks` (without it the
 agent shares no passage: it cannot check one for secrets), poppler's
@@ -197,6 +211,11 @@ opencode and Antigravity are installed here and not tried.
 | `qs.Ui` — `BorderSurface`, `TextField`, `PanelToolTip` | `shim/qs/Ui/` |
 | scripts by name or in `~/.local/bin` | `qs_io.resolve`: the repo's own, run by Python or Git's bash |
 | `pomo` (bash, sed, awk, flock, GNU date) | `cli/pomo.py` |
+| `hyprkeys.py` (the keys sheet's six keys from anywhere) | `winkeys.py`, in its words, over `windows-keys.json` and `hotkeys.py` |
+| `hyprctl eval` — raise the window, put the pointer, the keys sheet's submap | `compositor.py`, answered inside the host (`qs_io.INSIDE`): Qt's raise and activate, `QCursor.setPos`, the global keys let go |
+| a theme's `colors.toml` (red, yellow, green, blue…) | `palette.py`: Windows 11's colours for each role, light or dark, under that path where no theme is |
+| `notify-send`, `pw-play --volume=0.6`, `omarchy-shell notifications isDnd` | `notify.py` (the tray, else a toast), `play_sound.py` (scaled to 0.6, not under Do Not Disturb) |
+| a layer on the focused monitor; a window placed by Hyprland | `PanelWindow` on the screen the pointer is on; `FloatingWindow` where it was left (`windows.json` in the state folder) |
 | `~/.local/bin` links and shebangs | `.exe` launchers from `pyproject.toml`, through `longhand_launch.py` |
 | UTF-8 as the system's encoding | Python's UTF-8 mode, switched on by the host and the launchers |
 | `\n` as the line ending of what is written and sent | `pyshim/longhand_lf.py`, loaded at start |
@@ -212,7 +231,6 @@ opencode and Antigravity are installed here and not tried.
   gives them to the note once it has loaded (`Main.qml`, `keysOwed`).
   Whether Omarchy has the same order on its first open is not checked; if it
   does, the place to fix it is `NoteEditor.focusNote`.
-- `hyprctl` (pointer follows the pane, raise, key capture) has no stand-in.
 - `pomo` is `cli/pomo.py` here: the bash one command for command
   (`tests/test_pomo_port.py` runs both and compares).
 - The tests run through the runner (`python tests\run_all.py`, or
@@ -257,12 +275,11 @@ opencode and Antigravity are installed here and not tried.
   of its own, so its width is 0 and the column passes over it. The shell's
   own surface is a plain rectangle too, so the row is likely missing on
   Omarchy as well: not looked at there. The keys still reach it.
-- A tick's sound (the popup's, and the page's) is played by Windows
-  (`play_sound.py`, in place of `pw-play`): at the system's volume, not the
-  shell's 0.6, and without asking whether notifications are silenced, which
-  the shell line asks `omarchy-shell`.
-- The keys sheet still lists Hyprland's six as none: the global keys are
-  moved in `windows-keys.json`, not from the sheet.
+- Do Not Disturb is read from Windows' Focus assist profile (the shell's
+  own toggle publishes it; `play_sound.silenced`), an undocumented state
+  that Windows 11 still keeps: read as off on 2026-11-24, not yet seen on.
+- The keys sheet still says "Hyprland" beside the six and "with Super" when
+  it waits for one: its words are the page's, unchanged.
 - The programs the agent's extras call are not installed for you. The
   Start menu's entry and the start with the session are made by
   `longhand install` and read back as Windows holds them
@@ -270,10 +287,15 @@ opencode and Antigravity are installed here and not tried.
   shows the seal (seen 2026-11-24); before Longhand gave itself a name
   Windows filed its window under IDLE, the shortcut that points at
   `pythonw.exe`, and showed that icon. How it looks in the Start menu
-  and in Settings → Apps → Startup has not been looked at. The icon keeps the launcher's own colours: it does not follow
-  Windows' light and dark as the Omarchy launcher follows a theme.
+  and in Settings → Apps → Startup has not been looked at. The Start menu's
+  icon keeps the launcher's own colours (Windows caches a shortcut's icon);
+  the tray's follows Windows' light, dark and accent.
 - In the tray with the page loaded and nothing shown, the host holds about
   150 MB.
-- Borders are flat (no gradient ring); the page's prose face is named in the
-  sandbox config (`Segoe UI Variable Text`), since Windows has none of the
-  faces the page looks for.
+- Borders are flat: the gradient ring is a Hyprland theme's active border
+  (its `hyprland.lua`), and Windows has none to give; the accent stands in,
+  as it does on Omarchy for a theme that names none. The title bar is dark
+  in dark mode by Qt's own doing (checked 2026-11-24).
+- The page's prose face is named in the sandbox config
+  (`Segoe UI Variable Text`), since Windows has none of the faces the page
+  looks for.
