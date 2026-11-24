@@ -9,6 +9,7 @@ import pathlib
 import subprocess
 import sys
 import tempfile
+import time
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 POMO = ROOT / "cli" / "pomo"
@@ -101,6 +102,31 @@ def main() -> int:
     r = pomo("done", "1", "--at", "1790000000")
     check(r.returncode == 0 and by_id(1)["status"] == "done" and by_id(1)["done_at"] == 1790000000,
           "done --at brings it back with the time it was really done")
+
+    # Windows refuses to replace a file another process has open: the popup
+    # and longhand-check read the store while a tick is written. Held open
+    # until pomo has its new copy ready and is waiting to put it in place,
+    # then let go: the tick still lands.
+    if os.name == "nt":
+        r = pomo("add", "Held open", "friday")
+        held_id = int(r.stdout.split("#")[1].split()[0])
+        store = pathlib.Path(state) / "longhand" / "deadlines.tsv"
+
+        def copies():  # pomo's new store, not yet in place (deadlines.tsv.lock is its lock)
+            return [f for f in store.parent.glob("deadlines.tsv.*") if f.suffix != ".lock"]
+        holder = open(store, "rb")
+        p = subprocess.Popen([sys.executable, "-X", "utf8", str(ROOT / "cli" / "pomo.py"), "deadline", "done", str(held_id)],
+                             env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        until = time.monotonic() + 20
+        while p.poll() is None and not copies() and time.monotonic() < until:
+            time.sleep(0.01)
+        waited = p.poll() is None
+        time.sleep(0.1)
+        holder.close()
+        said = p.communicate(timeout=20)
+        check(waited and p.returncode == 0 and by_id(held_id)["status"] == "done",
+              f"a tick written while the store is open elsewhere lands once it is let go ({p.returncode}, {said[1].strip()[-160:]})")
+        check(not copies(), "…leaving no copy behind")
     print("PASS" if failures == 0 else f"{failures} FAILED")
     return 1 if failures else 0
 
