@@ -70,6 +70,28 @@ winget install oschwartz10612.Poppler
 winget install OpenJS.NodeJS.LTS
 ```
 
+## Your own vault
+
+`%USERPROFILE%\.config\longhand\config.json`, as `config.example.json`, with
+two things Windows asks for: the vault written with `/`
+(`"C:/Users/you/your-vault"`), and a `font` and `codeFont` Windows has
+(`Segoe UI Variable Text`, `Cascadia Mono`), since it has none of the faces
+the page looks for. Then `longhand-agent install`, which puts the agent's
+four prompts in `~/.config/opencode/agent` and writes nothing into a vault
+that already has its folders.
+
+What stays with a machine does not come with a synced vault: `settings.json`
+beside the config (the horizon, how far the agent may go, calendars, the
+folders it may search) and the state in `~/.local/state/longhand`. Without
+a horizon of its own a machine falls back to the first day the agent has a
+record of, which is the same day everywhere.
+
+Set up on 2026-11-24 against a vault Syncthing shares with an Omarchy
+machine: `install`, `horizon`, `dated` and `documents` read it as they
+should, nothing in the vault changed and nothing was sent. The page has not
+been opened on it by the checks: opening it is the day's first pass and
+plan, and those are the person's to start.
+
 `python windows\longhand_host.py --sandbox DIR --check out.json --shot out.png`
 types into the note as a keyboard would, saves, reads the file back, writes
 into it from outside, writes a box with a date and waits for it in the
