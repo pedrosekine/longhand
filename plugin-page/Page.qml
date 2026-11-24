@@ -229,7 +229,7 @@ Item {
       root.openPdf(rel)
       return
     }
-    if (!/\.md$/i.test(rel)) { Qt.openUrlExternally("file://" + (svc.config.vault + "/" + rel).split("/").map(encodeURIComponent).join("/")); return }
+    if (!/\.md$/i.test(rel)) { Qt.openUrlExternally(Links.fileUrl(svc.config.vault + "/" + rel)); return }
     root.remember()
     var heading = l.heading.charAt(0) === "^" ? "" : l.heading
     var block = l.heading.charAt(0) === "^" ? l.heading.substring(1) : ""
@@ -308,7 +308,7 @@ Item {
       if (!root.missedNames[target]) { var m = root.missedNames; m[target] = true; root.missedNames = m; reindexTimer.restart() }
       return ""
     }
-    return "file://" + (svc.config.vault + "/" + rel).split("/").map(encodeURIComponent).join("/")
+    return Links.fileUrl(svc.config.vault + "/" + rel)
   }
   readonly property alias sidebarItem: sidebar
   readonly property alias pdfItem: pdfPane

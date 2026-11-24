@@ -8,6 +8,7 @@ import "Shortcuts.js" as Sc
 import "PdfPlaces.js" as Places
 import "PdfMarks.js" as Marks
 import "Answers.js" as Answers
+import "Links.js" as Links
 
 // A PDF in the middle, in the note's place (docs/files.md, step 5,
 // 2026-10-27): its pages one under the next, fitted to the column, drawn as
@@ -408,7 +409,7 @@ Item {
     // A scan read (plan.md item 15, step 5): its copy with words, which
     // looks as the scan does; the scan itself is never written.
     var path = pane.read && pane.read.ocr ? pane.read.ocr : pane.rel.charAt(0) === "/" ? pane.rel : v + "/" + pane.rel
-    return "file://" + path.split("/").map(encodeURIComponent).join("/")
+    return Links.fileUrl(path)
   }
 
   function scrollBy(dy) { if (pane.view) pane.view.scrollBy(dy) }

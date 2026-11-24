@@ -160,13 +160,43 @@ def run(app, engine, box, args, warnings):
     def after_deadline(store):
         line = next(l for l in box["note"].read_text(encoding="utf-8").split("\n") if "essay draft" in l)
         step("deadline bound", noteLine=line, store=store.read_text(encoding="utf-8").strip())
-        QTimer.singleShot(400, shot)
+        QTimer.singleShot(400, open_pdf)
 
-    def shot():
+    # A paper in the vault, opened in the page's own reader (2026-11-24: on
+    # Windows its URL was file://C%3A/…, and every PDF said "could not be read").
+    pdf_rel = "projects/My Papers/2026-11-17 A paper #1.pdf"
+
+    def open_pdf():
+        from PySide6.QtGui import QPageSize, QPainter, QPdfWriter
+        path = box["vault"] / pdf_rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        writer = QPdfWriter(str(path))
+        writer.setPageSize(QPageSize(QPageSize.PageSizeId.A4))
+        p = QPainter(writer)
+        p.drawText(400, 400, "Time pressure and explanations: a paper written by the check.")
+        writer.newPage()
+        p.drawText(400, 400, "The second page.")
+        p.end()
+        ev("openPdf(" + json.dumps(pdf_rel) + ")")
+        wait(lambda: ev("pdfItem.ready") is True or ev("pdfItem.error") not in (None, ""), pdf_open,
+             "the PDF in the page's reader", 10.0)
+
+    def pdf_open():
+        ready = ev("pdfItem.ready") is True
+        step("pdf opened" if ready else "pdf could not be read", rel=pdf_rel, url=ev("pdfItem.url()"),
+             pages=ev("pdfItem.pages"), error=ev("pdfItem.error"))
+        if not ready:
+            QTimer.singleShot(400, lambda: shot(False))
+            return
+        # longhand-read answers too: the page shown, its marks read.
+        wait(lambda: ev("pdfItem.view.drawn().length") not in (None, 0), lambda: QTimer.singleShot(600, shot),
+             "the PDF's first page drawn", 8.0)
+
+    def shot(ok=True):
         w = window()
         if args.shot:
             img = w.grabWindow()
             step("shot", saved=img.save(str(args.shot)), size=[img.width(), img.height()])
-        finish(True)
+        finish(ok)
 
     wait(ready, after_ready, "the page's window and editor")

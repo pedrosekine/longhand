@@ -1,14 +1,19 @@
 # Longhand on Windows
 
 A host that stands in for `omarchy-shell`, so `plugin-page/` loads on Windows
-with nothing in it changed. Started 2026-11-23 as a spike to answer one
+with one thing in it changed (below). Started 2026-11-23 as a spike to answer one
 question: does `Page.qml` load, draw and take keys under a shim? It does
 (`first-run.png`, the page as a window; `overlay.png`, over everything).
 
 Nothing here is used on Omarchy. Outside `windows/`: `cli/pomo.py` (the bash
 `pomo`'s twin), `agent/winproc.py` (stopping a run), `tests/windows/`, and
 the few lines in the agent and the tests that took Linux for granted, each
-the same on Linux.
+the same on Linux. In `plugin-page/`, one: a vault file's `file://` URL is
+built by `Links.fileUrl`, which writes a drive's path as `file:///C:/…`.
+The page wrote `file://C%3A/…`, which Qt cannot parse, so no PDF opened in
+the page's reader (a picture in a note had the same URL; not looked at on
+screen); a path from `/` gives the
+same URL as before (`tests/tst_links.qml`).
 
 ## Install and run
 
@@ -110,7 +115,10 @@ plan, and those are the person's to start.
 `python windows\longhand_host.py --sandbox DIR --check out.json --shot out.png`
 types into the note as a keyboard would, saves, reads the file back, writes
 into it from outside, writes a box with a date and waits for it in the
-store, and says what the page did.
+store, opens a PDF it writes into the vault (a folder and a name with spaces
+and a `#`) in the page's reader, and says what the page did. In a fresh
+sandbox the page's first line says the agent could not run, "no note for"
+today: the day's pass starts before the check has typed the note.
 
 ## With a real model
 
@@ -176,6 +184,7 @@ opencode and Antigravity are installed here and not tried.
 | UTF-8 as the system's encoding | Python's UTF-8 mode, switched on by the host and the launchers |
 | `\n` as the line ending of what is written and sent | `pyshim/longhand_lf.py`, loaded at start |
 | `Qt.openUrlExternally("file://" + path)` with a path from `/` | `file_urls.py`: `file://C:/…` (and its unparseable spellings) opened as the file on that drive |
+| `"file://" + path` given to the page's own PDF reader and pictures | `Links.fileUrl` in `plugin-page/`: no host can reach a URL Qt fails to parse before it loads |
 | `fcntl.flock` | `pyshim/fcntl.py` |
 | a process group and SIGTERM, to stop a model's run | a job and a named event: `agent/winproc.py` |
 

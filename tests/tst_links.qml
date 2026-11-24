@@ -41,6 +41,19 @@ Item {
       compare(Links.at(l, l[0].at + 3).target, "Session 1")
     }
 
+    function test_a_file_url() {
+      compare(Links.fileUrl("/home/me/My Vault/a#1.pdf"), "file:///home/me/My%20Vault/a%231.pdf", "from /, each part encoded")
+      compare(Links.fileUrl("C:/Users/me/My Vault/projects/2026-11-17 Does Time Slow Down.pdf"),
+              "file:///C:/Users/me/My%20Vault/projects/2026-11-17%20Does%20Time%20Slow%20Down.pdf",
+              "from a drive: three slashes, the colon kept")
+      compare(Links.fileUrl("d:/notes/a.md"), "file:///d:/notes/a.md", "any drive")
+      compare(Links.fileUrl("/home/me/C:/x.pdf"), "file:///home/me/C%3A/x.pdf", "a colon further in is encoded")
+      // What Qt reads it as: the file, not a host.
+      var u = new URL(Links.fileUrl("C:/Users/me/a b.pdf"))
+      compare(u.host, "")
+      compare(decodeURIComponent(u.pathname), "/C:/Users/me/a b.pdf")
+    }
+
     function test_resolving() {
       var idx = Links.index(["human/Studies/IT-U/Session 1.md", "human/Archive/Session 1.md", "human/Reference/People/Ada.md",
                              "human/_Attachments/shot.png", "human/Daily/2022-01-01.assets/cat one.png", "human/Daily/2022-01-01.md"])
