@@ -44,6 +44,10 @@ LOG = []  # what could not be started, for the spike's report
 # of the arguments giving (exit code, stdout, stderr). On Windows, `hyprctl`
 # (compositor.py), set by the host.
 INSIDE: dict = {}
+# Whether `hyprkeys.py` calls are redirected to `winkeys.py` on Windows.
+# True for the real Windows host; tests/page/qt_host.py clears it so the
+# Hyprland-focused live page suite can still exercise hyprkeys.py.
+REWRITE_HYPRKEYS: bool = True
 
 
 def _winproc():
@@ -108,7 +112,7 @@ def resolve(argv: list[str]) -> tuple[str, list[str]]:
     if os.name != "nt":
         return head, rest
     if head in ("python3", "python"):
-        if rest and rest[0].replace("\\", "/").endswith("/plugin-page/hyprkeys.py"):
+        if REWRITE_HYPRKEYS and rest and rest[0].replace("\\", "/").endswith("/plugin-page/hyprkeys.py"):
             # The keys sheet's six keys from anywhere: Windows keeps them
             # here, not Hyprland (winkeys.py answers in hyprkeys.py's words).
             return python(), [str(Path(__file__).resolve().parent / "winkeys.py"), *rest[1:]]
@@ -846,3 +850,25 @@ class FileView(QObject):
         if now != self._sig:
             self._sig = now
             self.fileChanged.emit()
+
+
+@QmlElement
+class IpcHandler(QObject):
+    """Quickshell.Io.IpcHandler stand-in: holds declared QML methods under
+    `target` so tests/page/qt_host.py can drive tests/page/harness.qml."""
+    targetChanged = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._target = ""
+
+    def _get_target(self):
+        return self._target
+
+    def _set_target(self, v):
+        v = str(v or "")
+        if v != self._target:
+            self._target = v
+            self.targetChanged.emit()
+
+    target = Property(str, _get_target, _set_target, notify=targetChanged)

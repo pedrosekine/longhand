@@ -13,18 +13,26 @@ touched; and it runs with the lid shut, the screen off or the session locked.
 Run: python3 tests/page/run.py              # the window shape, as used most
      python3 tests/page/run.py --overlay    # also the overlay
 """
+import argparse
 import datetime as dt
 import json
 import os
 import pathlib
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
 import time
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
+if os.name == "nt":
+    # Shebang execution, LF line endings, and Windows process helpers even when
+    # tests/page/run.py is invoked directly outside tests/run_all.py.
+    sys.path.insert(0, str(ROOT / "tests" / "windows"))
+    import sitecustomize as _win_sc  # noqa: E402, F401
+    sys.path.pop(0)
 sys.path.insert(0, str(ROOT / "agent"))
 import blocks  # noqa: E402
 import lifespan  # noqa: E402
@@ -147,6 +155,49 @@ TODAY = dt.date.today().strftime("%Y.%m.%d")
 YDAY = (dt.date.today() - dt.timedelta(days=1)).strftime("%Y.%m.%d")
 TODAY_ISO = dt.date.today().isoformat()
 failures = 0
+HOST = "quickshell"          # set in main(): "quickshell" on Omarchy, "qt" on Windows / headless PySide6
+
+SYNTH_THEME_A = (
+    'background = "#1a1b26"\nforeground = "#c0caf5"\naccent = "#7aa2f7"\n'
+    'red = "#f7768e"\nyellow = "#e0af68"\norange = "#ff9e64"\ngreen = "#9ece6a"\n'
+    'blue = "#7aa2f7"\nmagenta = "#bb9af7"\ncyan = "#7dcfff"\n'
+    'muted = "#565f89"\nlight_foreground = "#a9b1d6"\ndark_foreground = "#565f89"\ndark_background = "#16161e"\n'
+)
+SYNTH_THEME_B = (
+    'background = "#282828"\nforeground = "#ebdbb2"\naccent = "#fabd2f"\n'
+    'red = "#fb4934"\nyellow = "#fabd2f"\norange = "#fe8019"\ngreen = "#b8bb26"\n'
+    'blue = "#83a598"\nmagenta = "#d3869b"\ncyan = "#8ec07c"\n'
+    'muted = "#928374"\nlight_foreground = "#d5c4a1"\ndark_foreground = "#a89984"\ndark_background = "#1d2021"\n'
+)
+
+PY_RUNNER = """#!/usr/bin/env python3
+import os, pathlib, subprocess, sys, time
+calls, stub, agent, chatstub, daily = sys.argv[1:6]
+argv = sys.argv[6:]
+cmd = argv[0] if argv else ""
+arg3 = argv[2] if len(argv) > 2 else ""
+with open(calls, "a", encoding="utf-8", newline="\\n") as f:
+    f.write(f"{time.time():.6f} start {cmd} {arg3}\\n")
+if cmd == "projects":
+    if os.path.exists(os.path.join(stub, "slow-fetch")):
+        time.sleep(2)
+    r = subprocess.run([sys.executable, agent, *argv])
+    with open(calls, "a", encoding="utf-8", newline="\\n") as f:
+        f.write(f"{time.time():.6f} end {cmd}\\n")
+    sys.exit(r.returncode)
+LOCAL = {"accept", "projects", "project", "project-page", "sections", "next", "dated", "tasks", "box", "timetable",
+         "plan", "proposals", "proposal", "talk", "thread", "rate", "notebook", "autonomy", "day", "search", "horizon",
+         "note", "export", "checkin", "conversation"}
+if cmd in LOCAL:
+    sys.exit(subprocess.run([sys.executable, agent, *argv]).returncode)
+if cmd == "run":
+    time.sleep(2)
+    sys.exit(0)
+if cmd == "chat":
+    time.sleep(2)
+    sys.exit(subprocess.run([sys.executable, chatstub, daily, *argv]).returncode)
+sys.exit(0)
+"""
 
 
 def check(cond, what):
@@ -157,14 +208,27 @@ def check(cond, what):
 
 
 class Page:
-    def __init__(self, fake_home=False):
+    def __init__(self, fake_home=False, host=None):
+        self.host = host or HOST
+        self.qt = self.host == "qt"
+        self._sock = None
+        self._sock_f = None
+        self._after_call_stat = None
         self.tmp = pathlib.Path(tempfile.mkdtemp(prefix="page-test-"))
         self.shell = self.tmp / "shell"
         self.shell.mkdir()
-        for mod in ("Commons", "Ui"):
-            (self.shell / mod).symlink_to(f"/usr/share/omarchy/shell/{mod}")
-        (self.shell / "page").symlink_to(ROOT / "plugin-page")
-        shutil.copy(ROOT / "tests" / "page" / "harness.qml", self.shell / "shell.qml")
+        if not self.qt:
+            for mod in ("Commons", "Ui"):
+                (self.shell / mod).symlink_to(f"/usr/share/omarchy/shell/{mod}")
+            (self.shell / "page").symlink_to(ROOT / "plugin-page")
+            shutil.copy(ROOT / "tests" / "page" / "harness.qml", self.shell / "shell.qml")
+        else:
+            page_url = (ROOT / "plugin-page").as_uri().rstrip("/")
+            qml = (ROOT / "tests" / "page" / "harness.qml").read_text(encoding="utf-8")
+            qml = qml.replace('import "page"', f'import "{page_url}"')
+            qml = qml.replace('import "page/', f'import "{page_url}/')
+            qml = qml.replace('Qt.resolvedUrl("page/', f'Qt.resolvedUrl("{page_url}/')
+            (self.shell / "shell.qml").write_text(qml, encoding="utf-8")
         self.vault = self.tmp / "vault"
         self.daily = self.vault / "Daily"
         self.daily.mkdir(parents=True)
@@ -176,50 +240,54 @@ class Page:
         self.store = self.state / "longhand" / "deadlines.tsv"
         cfg = self.tmp / "config"
         (cfg / "longhand").mkdir(parents=True)
-        (cfg / "omarchy").symlink_to(pathlib.Path.home() / ".config" / "omarchy")   # the theme
-        self.runner = self.tmp / "runner"
-        (cfg / "longhand" / "config.json").write_text(json.dumps({
-            "vault": str(self.vault), "daily": {"dir": "Daily", "format": "YYYY.MM.DD"}, "horizon": "2000-01-01",
-            "runner": str(self.runner), "check": str(ROOT / "cli" / "longhand-check"), "read": str(ROOT / "cli" / "longhand-read"), "weekStart": "monday",
-            "inbox": str(self.tmp / "Downloads"),
-            "export": {"author": "A. Student", "dir": str(self.tmp / "Downloads")}}))
-        (self.tmp / "Downloads").mkdir()
-        bindir = self.tmp / "bin"
-        bindir.mkdir()
-        (bindir / "pomo").symlink_to(ROOT / "cli" / "pomo")
-        # The tick's sound, heard by a stub: each play is logged, never
-        # sounded, and Do Not Disturb is off. Until 2026-10-19 the tests
-        # silenced the page instead, and so missed that it never played.
+        if not self.qt:
+            (cfg / "omarchy").symlink_to(pathlib.Path.home() / ".config" / "omarchy")   # the theme
+        self.runner = self.tmp / ("runner.py" if self.qt else "runner")
         self.played = self.tmp / "played.log"
-        (bindir / "pw-play").write_text(f'#!/bin/sh\necho "$@" >> "{self.played}"\n')
-        (bindir / "pw-play").chmod(0o755)
-        real_shell = shutil.which("omarchy-shell") or "false"
-        (bindir / "omarchy-shell").write_text('#!/bin/sh\n[ "$1 $2" = "notifications isDnd" ] && { echo off; exit 0; }\n'
-                                              f'exec "{real_shell}" "$@"\n')
-        (bindir / "omarchy-shell").chmod(0o755)
-        (bindir / "opencode").write_text(PLAN_STUB)
-        (bindir / "opencode").chmod(0o755)
+        self.calls = self.tmp / "calls.log"
         self.stub = self.tmp / "stub"
         self.stub.mkdir()
-        # Hyprland, played over a throwaway hypr folder: the keys sheet's
-        # writes, reloads and submap never reach the real one.
-        self.hypr = cfg / "hypr"
-        self.hypr.mkdir()
-        (self.hypr / "bindings.lua").write_text(BINDINGS)
-        (bindir / "hyprctl").write_text(f'#!/bin/sh\nexec python3 "{ROOT}/tests/fake_hyprctl.py" "$@"\n')
-        (bindir / "hyprctl").chmod(0o755)
-        # Only the local commands run (no model): accept, projects, sections.
-        # A model pass is a stub that takes its time, so the page's "this is
-        # away" mark can be seen while it is away; `chat` also writes the
-        # day's state the way the runner would, so the whole turn can be
-        # followed — sent, thinking, answered.
+        bindir = self.tmp / "bin"
+        bindir.mkdir()
         chatstub = self.tmp / "chatstub.py"
         chatstub.write_text(CHAT_STUB)
-        # Every call is logged with when it started (and, for the fetch, when
-        # it ended), so the order of an opening can be checked; with
-        # `slow-fetch` present the fetch takes two seconds, as a network does.
-        self.calls = self.tmp / "calls.log"
-        self.runner.write_text(f"""#!/bin/bash
+
+        if self.qt:
+            # Cross-platform stubs: no symlinks, no bash required. On Windows
+            # tests/windows/sitecustomize.py starts extensionless #! scripts
+            # directly via python.exe without cmd.exe (preserving newlines in args).
+            (bindir / "opencode").write_text(PLAN_STUB)
+            (bindir / "hyprctl").write_text(
+                f'#!/usr/bin/env python3\nimport subprocess, sys\n'
+                f'sys.exit(subprocess.run([sys.executable, {str(ROOT / "tests" / "fake_hyprctl.py")!r}, *sys.argv[1:]]).returncode)\n'
+            )
+            if os.name != "nt":
+                (bindir / "opencode").chmod(0o755)
+                (bindir / "hyprctl").chmod(0o755)
+                (bindir / "pomo").symlink_to(ROOT / "cli" / "pomo")
+            runner_body = self.tmp / "runner_body.py"
+            runner_body.write_text(PY_RUNNER)
+            self.runner.write_text(
+                "#!/usr/bin/env python3\nimport subprocess, sys\n"
+                f"sys.exit(subprocess.run([sys.executable, {str(runner_body)!r}, {str(self.calls)!r}, {str(self.stub)!r}, "
+                f"{str(ROOT / 'agent' / 'longhand-agent')!r}, {str(chatstub)!r}, "
+                f"{str(self.vault / 'agents' / 'longhand' / 'daily')!r}, *sys.argv[1:]]).returncode)\n"
+            )
+            if os.name != "nt":
+                self.runner.chmod(0o755)
+        else:
+            (bindir / "pomo").symlink_to(ROOT / "cli" / "pomo")
+            (bindir / "pw-play").write_text(f'#!/bin/sh\necho "$@" >> "{self.played}"\n')
+            (bindir / "pw-play").chmod(0o755)
+            real_shell = shutil.which("omarchy-shell") or "false"
+            (bindir / "omarchy-shell").write_text('#!/bin/sh\n[ "$1 $2" = "notifications isDnd" ] && { echo off; exit 0; }\n'
+                                                  f'exec "{real_shell}" "$@"\n')
+            (bindir / "omarchy-shell").chmod(0o755)
+            (bindir / "opencode").write_text(PLAN_STUB)
+            (bindir / "opencode").chmod(0o755)
+            (bindir / "hyprctl").write_text(f'#!/bin/sh\nexec python3 "{ROOT}/tests/fake_hyprctl.py" "$@"\n')
+            (bindir / "hyprctl").chmod(0o755)
+            self.runner.write_text(f"""#!/bin/bash
 echo "$(date +%s.%N) start $1 $3" >> "{self.calls}"
 if [ "$1" = projects ]; then
   [ -e "{self.stub}/slow-fetch" ] && sleep 2
@@ -233,40 +301,115 @@ case "$1" in
   chat) sleep 2; exec python3 "{chatstub}" "{self.vault}/agents/longhand/daily" "$@" ;;
 esac
 """)
-        self.runner.chmod(0o755)
-        self.env = dict(os.environ, XDG_CONFIG_HOME=str(cfg), XDG_STATE_HOME=str(self.state),
+            self.runner.chmod(0o755)
+
+        (cfg / "longhand" / "config.json").write_text(json.dumps({
+            "vault": self.vault.as_posix(), "daily": {"dir": "Daily", "format": "YYYY.MM.DD"}, "horizon": "2000-01-01",
+            "runner": self.runner.as_posix(), "check": (ROOT / "cli" / "longhand-check").as_posix(),
+            "read": (ROOT / "cli" / "longhand-read").as_posix(), "weekStart": "monday",
+            "inbox": (self.tmp / "Downloads").as_posix(),
+            "export": {"author": "A. Student", "dir": (self.tmp / "Downloads").as_posix()}}))
+        (self.tmp / "Downloads").mkdir()
+        # Hyprland, played over a throwaway hypr folder: the keys sheet's
+        # writes, reloads and submap never reach the real one.
+        self.hypr = cfg / "hypr"
+        self.hypr.mkdir()
+        (self.hypr / "bindings.lua").write_text(BINDINGS)
+        extra_path = [str(bindir)]
+        if os.name == "nt":
+            extra_path.append(str(pathlib.Path(sys.executable).parent))
+        self.env = dict(os.environ, XDG_CONFIG_HOME=cfg.as_posix(), XDG_STATE_HOME=self.state.as_posix(),
                         STUB_DIR=str(self.stub),
-                        PATH=f"{bindir}:{os.environ['PATH']}", FAKE_HYPR_DIR=str(self.hypr),
+                        PATH=os.pathsep.join(extra_path + [os.environ["PATH"]]), FAKE_HYPR_DIR=str(self.hypr),
                         FAKE_HYPR_REAL=shutil.which("hyprctl") or "")
         self.env.pop("LONGHAND_SILENT", None)
         # Every deadline the check cancels, and why (cli/longhand-check,
         # `trace`): said in the failures that come from a line lost.
         self.cancels = self.tmp / "cancels.log"
         self.env["LONGHAND_CHECK_LOG"] = str(self.cancels)
-        if fake_home:
-            # A home of its own, holding a copy of the current theme, so a
-            # theme switch can be replayed without touching the real one.
+        if fake_home or self.qt:
+            # A home of its own, holding a theme palette, so a theme switch can
+            # be replayed without touching the real one (and on Qt host without
+            # an Omarchy install, a synthetic palette provides every role).
             self.home = self.tmp / "home"
             self.theme = self.home / ".local" / "state" / "omarchy" / "current" / "theme"
             self.theme.mkdir(parents=True)
             real = pathlib.Path.home() / ".local" / "state" / "omarchy" / "current" / "theme"
+            copied = False
             for name in ("colors.toml", "shell.toml"):
                 if (real / name).exists():
                     shutil.copy(real / name, self.theme / name)
-            self.env["HOME"] = str(self.home)
-        subprocess.run(["hyprctl", "eval", 'hl.window_rule({ match = { title = "^Page scratch$" }, no_initial_focus = true })'],
-                       capture_output=True)
-        # A known size, whatever else is open on the workspace (tiled into a
-        # full one, the window can be a few pixels wide).
-        subprocess.run(["hyprctl", "eval", 'hl.window_rule({ match = { title = "^Page scratch$" }, float = true, size = { 701, 850 } })'],
-                       capture_output=True)
-        # PAGE_LOG=file keeps what the page says (its QML warnings), to read
-        # when a run goes wrong.
-        log = open(os.environ["PAGE_LOG"], "w") if os.environ.get("PAGE_LOG") else subprocess.DEVNULL
-        self.proc = subprocess.Popen(["quickshell", "-p", str(self.shell)], env=self.env, stdout=log, stderr=log)
-        self.wait(lambda: self.call("state").startswith("{"), 10)
+                    copied = True
+            if not copied:
+                (self.theme / "colors.toml").write_text(SYNTH_THEME_A)
+            self.env["HOME"] = self.home.as_posix()
+        self._log = open(os.environ["PAGE_LOG"], "w") if os.environ.get("PAGE_LOG") else None
+        log = self._log if self._log is not None else subprocess.DEVNULL
+        if self.qt:
+            self.env["LONGHAND_PLAY_LOG"] = str(self.played)
+            if not os.environ.get("PAGE_SHOW"):
+                self.env["QT_QPA_PLATFORM"] = "offscreen"
+            if os.name == "nt":
+                py_path = [str(ROOT / "tests" / "windows"), str(ROOT / "windows" / "pyshim")]
+                old_pp = self.env.get("PYTHONPATH", "")
+                self.env["PYTHONPATH"] = os.pathsep.join(py_path + ([old_pp] if old_pp else []))
+                self.env["PYTHONUTF8"] = "1"
+                self.env["PYTHONIOENCODING"] = "utf-8"
+            self.proc = subprocess.Popen(
+                [sys.executable, str(ROOT / "tests" / "page" / "qt_host.py"), str(self.shell), "701", "850"],
+                env=self.env, stdout=log, stderr=log)
+            port_file = self.shell / ".qt-ipc-port"
+            end = time.time() + 15
+            while time.time() < end and not port_file.is_file():
+                if self.proc.poll() is not None:
+                    raise PageFrozen(f"qt_host exited early ({self.proc.returncode})")
+                time.sleep(0.05)
+            if not port_file.is_file():
+                raise PageFrozen("qt_host never wrote its IPC port")
+            port = int(port_file.read_text().strip())
+            self._sock = socket.create_connection(("127.0.0.1", port), timeout=CALL_TIMEOUT)
+            self._sock.settimeout(CALL_TIMEOUT)
+            self._sock_f = self._sock.makefile("r", encoding="utf-8")
+            self.wait(lambda: self.call("state").startswith("{"), 10)
+            # Push the synthetic/copied colors.toml into Commons.Color so
+            # ThemeColors and the shell palette agree from the start.
+            if (self.theme / "colors.toml").is_file():
+                import base64
+                c64 = base64.b64encode((self.theme / "colors.toml").read_bytes()).decode()
+                s64 = base64.b64encode((self.theme / "shell.toml").read_bytes()).decode() if (self.theme / "shell.toml").is_file() else ""
+                self.call("applyTheme", c64, s64)
+        else:
+            subprocess.run(["hyprctl", "eval", 'hl.window_rule({ match = { title = "^Page scratch$" }, no_initial_focus = true })'],
+                           capture_output=True)
+            # A known size, whatever else is open on the workspace (tiled into a
+            # full one, the window can be a few pixels wide).
+            subprocess.run(["hyprctl", "eval", 'hl.window_rule({ match = { title = "^Page scratch$" }, float = true, size = { 701, 850 } })'],
+                           capture_output=True)
+            # PAGE_LOG=file keeps what the page says (its QML warnings), to read
+            # when a run goes wrong.
+            self.proc = subprocess.Popen(["quickshell", "-p", str(self.shell)], env=self.env, stdout=log, stderr=log)
+            self.wait(lambda: self.call("state").startswith("{"), 10)
 
     def call(self, fn, *args):
+        if self.qt:
+            try:
+                req = json.dumps({"fn": fn, "args": [str(a) for a in args]}) + "\n"
+                self._sock.sendall(req.encode("utf-8"))
+                line = self._sock_f.readline()
+                if not line:
+                    raise PageFrozen(f"qt_host closed IPC during {fn}")
+                resp = json.loads(line)
+                if not resp.get("ok"):
+                    return ""
+                today_file = self.daily / f"{TODAY}.md"
+                try:
+                    st = today_file.stat()
+                    self._after_call_stat = (st.st_mtime_ns, st.st_size)
+                except OSError:
+                    self._after_call_stat = None
+                return str(resp.get("out", ""))
+            except (socket.timeout, TimeoutError):
+                raise PageFrozen(f"the page stopped answering ({fn} {' '.join(map(str, args))}, {CALL_TIMEOUT}s)") from None
         try:
             r = subprocess.run(["quickshell", "ipc", "-p", str(self.shell), "call", "page", fn, *map(str, args)],
                                capture_output=True, text=True, env=self.env, timeout=CALL_TIMEOUT)
@@ -280,7 +423,9 @@ esac
         return out[:-1] if out.endswith("\n") else out   # only IPC's own newline: a note may start with one
 
     def wait(self, cond, timeout=6.0):
-        end = time.time() + timeout
+        # Process creation on Windows is slower than Linux fork(), so give
+        # conditions a little more headroom without changing Linux timeouts.
+        end = time.time() + (timeout * 2.0 if os.name == "nt" else timeout)
         while time.time() < end:
             try:
                 if cond():
@@ -291,11 +436,13 @@ esac
         return False
 
     def pomo(self, *args):
-        return subprocess.run(["pomo", "deadline", *args], capture_output=True, text=True, env=self.env).stdout
+        cmd = [sys.executable, str(ROOT / "cli" / "pomo.py"), "deadline", *args] if os.name == "nt" else ["pomo", "deadline", *args]
+        return subprocess.run(cmd, capture_output=True, text=True, env=self.env).stdout
 
     def check(self):
         """The check, as the popup runs it after a change."""
-        return subprocess.run([str(ROOT / "cli" / "longhand-check"), "--quiet"], capture_output=True, text=True, env=self.env)
+        cmd = [sys.executable, str(ROOT / "cli" / "longhand-check"), "--quiet"]
+        return subprocess.run(cmd, capture_output=True, text=True, env=self.env)
 
     def deadline(self, i):
         for line in (self.store.read_text().splitlines() if self.store.exists() else []):
@@ -319,21 +466,57 @@ esac
         return sum(len(l) + 1 for l in self.lines()[:i])
 
     def open_fresh(self, payload='{"shape":"alongside"}'):
-        self.call("closeAll")
+        if self.qt:
+            # Fast TCP IPC can reach write_text() + open_fresh() before a 300ms
+            # saveTimer from the previous test fires; if the test just wrote a
+            # fresh fixture to TODAY.md after the last IPC call, keep it from
+            # being overwritten by closeAll() -> flush().
+            today_file = self.daily / f"{TODAY}.md"
+            try:
+                st = today_file.stat()
+                cur_stat = (st.st_mtime_ns, st.st_size)
+            except OSError:
+                cur_stat = None
+            fixture = today_file.read_bytes() if (cur_stat is not None and cur_stat != self._after_call_stat) else None
+            self.call("closeAll")
+            if fixture is not None:
+                time.sleep(0.05)
+                today_file.write_bytes(fixture)
+        else:
+            self.call("closeAll")
         self.call("summon", payload)
         self.wait(lambda: json.loads(self.call("state"))["ready"])
         time.sleep(0.5)
 
     def resize(self, w, h):
-        subprocess.run(["hyprctl", "eval",
-                        f'hl.window_rule({{ match = {{ title = "^Page scratch$" }}, float = true, size = {{ {w}, {h} }} }})'],
-                       capture_output=True)
+        if self.qt:
+            self.call("__resize", w, h)
+        else:
+            subprocess.run(["hyprctl", "eval",
+                            f'hl.window_rule({{ match = {{ title = "^Page scratch$" }}, float = true, size = {{ {w}, {h} }} }})'],
+                           capture_output=True)
         self.open_fresh()
         self.wait(lambda: abs(json.loads(self.call("sides"))["width"] - w) < 20, 4)
 
     def close(self):
+        if self.qt and self._sock is not None:
+            try:
+                self.call("__quit")
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                self._sock_f.close()
+                self._sock.close()
+            except OSError:
+                pass
         self.proc.terminate()
-        self.proc.wait()
+        try:
+            self.proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            self.proc.kill()
+            self.proc.wait()
+        if getattr(self, "_log", None) is not None:
+            self._log.close()
         shutil.rmtree(self.tmp, ignore_errors=True)
 
 
@@ -380,8 +563,11 @@ def theme_switch() -> None:
     to the shell over IPC. The page must repaint at once."""
     import base64
     themes = pathlib.Path("/usr/share/omarchy/themes")
-    target = next(t for t in ("tokyo-night", "gruvbox", "nord") if (themes / t / "colors.toml").exists())
-    want = re.search(r'^accent\s*=\s*"(#[0-9A-Fa-f]{6})"', (themes / target / "colors.toml").read_text(), re.M).group(1).lower()
+    target = next((t for t in ("tokyo-night", "gruvbox", "nord") if (themes / t / "colors.toml").exists()), None)
+    next_colors = (themes / target / "colors.toml").read_text() if target else SYNTH_THEME_B
+    next_shell = (themes / target / "shell.toml").read_text() if (target and (themes / target / "shell.toml").exists()) else ""
+    label = target or "synthetic-gruvbox"
+    want = re.search(r'^accent\s*=\s*"(#[0-9A-Fa-f]{6})"', next_colors, re.M).group(1).lower()
     p = Page(fake_home=True)
     try:
         (p.daily / f"{TODAY}.md").write_text(header(TODAY) + "# heading\n")
@@ -389,9 +575,9 @@ def theme_switch() -> None:
         before = p.call("palette")
         nxt = p.theme.parent / "next-theme"
         nxt.mkdir()
-        for name in ("colors.toml", "shell.toml"):
-            if (themes / target / name).exists():
-                shutil.copy(themes / target / name, nxt / name)
+        (nxt / "colors.toml").write_text(next_colors)
+        if next_shell:
+            (nxt / "shell.toml").write_text(next_shell)
         shutil.rmtree(p.theme)
         nxt.rename(p.theme)
         moved = time.time()
@@ -402,7 +588,7 @@ def theme_switch() -> None:
         repainted = p.wait(lambda: f"accent={want}" in p.call("palette"), 3)
         took = time.time() - sent
         print(f"     (file watch alone caught it: {file_only}; after the shell's push: {took:.2f}s)")
-        check(f"accent={want}" not in before and repainted and took < 1.0, f"a theme switch repaints the page at once ({target})")
+        check(f"accent={want}" not in before and repainted and took < 1.0, f"a theme switch repaints the page at once ({label})")
         heads = p.call("palette").split(" h=")[1].split(" ")[0].split(",")
         # H1 is the new accent, deepened if that accent sat too near the text:
         # the same colour, never another one.
@@ -435,11 +621,29 @@ def theme_switch() -> None:
 
 
 def main() -> int:
+    global HOST
+    ap = argparse.ArgumentParser(description="Drive Longhand's live page over IPC.")
+    ap.add_argument("--overlay", action="store_true", help="also test the overlay shape")
+    ap.add_argument("--host", choices=("auto", "quickshell", "qt"), default="auto",
+                    help="host backend: quickshell (Omarchy/Hyprland) or qt (PySide6 offscreen, default on Windows)")
+    ap.add_argument("--smoke", action="store_true", help="run only the theme-switch & weekly check-in smoke pass")
+    args = ap.parse_args()
+    HOST = ("qt" if (os.name == "nt" or not shutil.which("quickshell")) else "quickshell") if args.host == "auto" else args.host
+    if HOST == "qt":
+        if args.smoke:
+            theme_switch()
+            print("PASS" if failures == 0 else f"{failures} FAILED")
+            return 1 if failures else 0
+        return checks()
     # The page draws in a Hyprland of its own, on a headless output: never on
     # your screen, and drawn whatever the session is doing (lid shut, screen
     # off, locked: then a window on it gets no frames and the page freezes).
     desktop.reach("the page", wake_screen=False)
     with desktop.Private():
+        if args.smoke:
+            theme_switch()
+            print("PASS" if failures == 0 else f"{failures} FAILED")
+            return 1 if failures else 0
         return checks()
 
 
@@ -554,12 +758,12 @@ def checks() -> int:
         # 7. a store that cannot be read is unknown, not empty
         p.call("openDay", TODAY)
         p.wait(lambda: p.call("header").startswith(dt.date.today().strftime("%A")))
-        p.store.rename(p.store.with_suffix(".away"))
+        p.store.replace(p.store.with_suffix(".away"))
         time.sleep(0.6)
         p.call("openDay", YDAY)
         time.sleep(1.5)
         check("^d3" in p.note(YDAY), f"with the store unreadable, opening a note keeps its anchors ({p.note(YDAY)!r})")
-        p.store.with_suffix(".away").rename(p.store)
+        p.store.with_suffix(".away").replace(p.store)
 
         # 8. an edit made outside the page while it is open is kept
         p.call("openDay", TODAY)
@@ -572,7 +776,7 @@ def checks() -> int:
         check(p.wait(lambda: "written in obsidian" in p.note() and "and then here" in p.note()), "…and its next save keeps both")
         tmpf = f.with_suffix(".tmp")
         tmpf.write_text(f.read_text() + "written by rename\n")
-        tmpf.rename(f)
+        tmpf.replace(f)
         check(p.wait(lambda: "written by rename" in p.call("text")), "…also when written by rename (atomic save)")
         # The line the keys are in, taken away outside (2026-11-17): its
         # field is rebuilt, and the keys went with it — every shortcut deaf
@@ -1031,7 +1235,7 @@ def checks() -> int:
               f"…and bolds the word under the cursor ({p.call('text')!r})")
         check(json.loads(p.call("panel"))["project"] is False and p.call("keyPage", 0x5c, CTRL) == "true",
               "Ctrl+\\ is taken too")
-        check(p.wait(lambda: "**chapter**" in p.call("text")), "…and does not touch the words")
+        check(p.wait(lambda: "**chapter**" in p.note()), "…and does not touch the words")
         # Words selected inside one line are the field's own selection, not
         # the editor's: they are what is wrapped, never the word after them
         # (2026-11-04), and a space at the edge stays outside the markers.
@@ -2626,7 +2830,7 @@ def checks() -> int:
         p.call("refreshProposals")
         time.sleep(1.5)
         check(not filing(), f"…and it is not offered again ({filing()})")
-        (inbox / "DTM_handout.pdf").rename(filed)       # filed again by hand, as the checks after this expect
+        (inbox / "DTM_handout.pdf").replace(filed)       # filed again by hand, as the checks after this expect
         time.sleep(1)                                    # the put-back's own read of the projects, done
         p.call("refreshProjects")
         p.call("dash")

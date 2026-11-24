@@ -328,19 +328,16 @@ Item {
     onFileChanged: reload()
   }
 
+  readonly property string pageFsPy: Links.fromFileUrl(Qt.resolvedUrl("page_fs.py").toString())
+
   function runPreflight() {
     if (!root.configured) return
     var customRunner = !!(root.config && root.config.runner)
     var customRead = !!(root.config && root.config.read)
     preflightProc.command = [
-      "sh", "-c",
-      "test -d \"$1\" || { echo \"vault:$1\"; exit 0; }; "
-      + "miss=''; "
-      + "test -x \"$2\" || command -v \"$2\" >/dev/null 2>&1 || { test -z \"$4\" && command -v longhand-agent >/dev/null 2>&1; } || miss=\"$miss longhand-agent\"; "
-      + "command -v pomo >/dev/null 2>&1 || test -x \"$HOME/.local/bin/pomo\" || miss=\"$miss pomo\"; "
-      + "test -x \"$3\" || command -v \"$3\" >/dev/null 2>&1 || { test -z \"$5\" && command -v longhand-read >/dev/null 2>&1; } || miss=\"$miss longhand-read\"; "
-      + "test -n \"$miss\" && echo \"missing:$miss\" || true",
-      "--", String(root.config.vault || ""), root.runner, root.readBin, customRunner ? "1" : "", customRead ? "1" : ""
+      "python3", root.pageFsPy, "preflight",
+      String(root.config.vault || ""), root.runner, root.readBin,
+      customRunner ? "1" : "", customRead ? "1" : ""
     ]
     preflightProc.running = true
   }

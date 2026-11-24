@@ -139,10 +139,10 @@ Item {
   property int vaultIndexVersion: 0
   property var missedNames: ({})      // names not found, each read again once
   Timer { id: reindexTimer; interval: 1200; onTriggered: { root.vaultIndex = null; root.needIndex() } }
+  readonly property string pageFsPy: Links.fromFileUrl(Qt.resolvedUrl("page_fs.py").toString())
   function needIndex() {
     if (root.vaultIndex !== null || indexProc.running || !svc.configured) return
-    indexProc.command = ["find", svc.config.vault, "-name", ".*", "-prune", "-o", "-type", "f", "-regextype", "posix-extended",
-                         "-iregex", ".*\\.(md|pdf|png|jpe?g|gif|webp|bmp|svg|avif)", "-print"]
+    indexProc.command = ["python3", root.pageFsPy, "index", svc.config.vault]
     indexProc.running = true
   }
   // Following links (docs/files.md, 2026-10-27). Where it leads: a day's
@@ -291,7 +291,7 @@ Item {
     root.sizeQueue = root.sizeQueue.slice(200)
     for (var i = 0; i < batch.length; i++) root.sizeAsked[batch[i]] = true
     sizeProc.batch = batch
-    sizeProc.command = ["file", "-b", "-L", "--"].concat(batch.map(Links.fromFileUrl))
+    sizeProc.command = ["python3", root.pageFsPy, "sizes"].concat(batch.map(Links.fromFileUrl))
     sizeProc.running = true
   }
 
@@ -875,7 +875,7 @@ Item {
   }
   Process {
     id: exportDepsProc
-    command: ["sh", "-c", "miss=''; command -v pandoc >/dev/null 2>&1 || miss='pandoc'; command -v xelatex >/dev/null 2>&1 || miss=\"${miss:+$miss and }xelatex\"; printf '%s' \"$miss\""]
+    command: ["python3", root.pageFsPy, "which", "pandoc", "xelatex"]
     stdout: StdioCollector {
       onStreamFinished: {
         var m = text.trim()
@@ -3010,7 +3010,7 @@ Item {
 
   function flushUsage() {
     if (root.usageBuf.length === 0 || usageProc.running) return
-    usageProc.command = ["sh", "-c", 'printf "%s\n" "$1" >> "$2"', "sh", root.usageBuf.join("\n"), root.usagePath]
+    usageProc.command = ["python3", root.pageFsPy, "append", root.usagePath, root.usageBuf.join("\n")]
     root.usageBuf = []
     usageProc.running = true
   }
