@@ -1464,7 +1464,9 @@ Item {
   }
   function fileName(rel) {
     var p = String(rel || "")
-    return root.refNames[p] || p.replace(/^.*\//, "").replace(/\.(md|pdf)$/i, "")
+    // Either separator: an export's whole path on Windows has "\" (the
+    // header said "C:\Users\…\Downloads\Diary 1" for "Diary 1").
+    return root.refNames[p] || p.replace(/^.*[\\\/]/, "").replace(/\.(md|pdf)$/i, "")
   }
   // One `@` row: its kind, its name, a paper's title where there is room.
   function refItem(f) {
@@ -5092,8 +5094,17 @@ Item {
   // hyprkeys.py, beside this file, keeps the six in ~/.config/hypr/longhand.lua
   // and answers every call with its state. One call at a time.
   readonly property string hyprKeysPy: Links.fromFileUrl(Qt.resolvedUrl("hyprkeys.py").toString())
+  // A call asked while another runs is made when that one ends; a state
+  // read is not, since every call answers with the state (2026-11-24: the
+  // second Enter that lets the page keep the six came while the sheet was
+  // still reading them, and was lost, the note left at "…" — on Windows,
+  // where the read takes most of a second).
+  property var hyprNext: null
   function hypr(args) {
-    if (hyprProc.running) return false
+    if (hyprProc.running) {
+      if (args[0] !== "state") root.hyprNext = args
+      return false
+    }
     hyprProc.kind = args[0]
     hyprProc.command = ["python3", root.hyprKeysPy].concat(args)
     hyprProc.running = true
@@ -9290,6 +9301,9 @@ Item {
         var st = null
         try { st = JSON.parse(text) } catch (e) { console.warn("longhand.page hyprkeys: " + text.trim()) }
         root.hyprDone(st)
+        var next = root.hyprNext
+        root.hyprNext = null
+        if (next) root.hypr(next)
       }
     }
     stderr: StdioCollector { onStreamFinished: if (text.trim() !== "") console.warn("longhand.page hyprkeys: " + text.trim()) }
