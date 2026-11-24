@@ -1,0 +1,87 @@
+# The offscreen suite on every push to main and every pull request
+# (README → Tests): on Arch, which is what Omarchy is, and on Windows, for
+# the host that stands in for omarchy-shell there.
+#
+# Not run here, each for want of a desktop: `test_popup` (the bar's popup,
+# drawn by quickshell under the installed shell on a running Hyprland) and
+# the live page test (`--page`, a Hyprland of its own nested in a session).
+# Those stay with a machine that has one: `python3 tests/run_all.py --page`.
+name: tests
+
+on:
+  push:
+    branches: [main, "ci/**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: Arch
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    timeout-minutes: 20
+    steps:
+      # What the suite calls, by Arch's names: qmltestrunner (qt6-declarative),
+      # PyQt6 for test_cursors, gitleaks and pdftotext for what the agent
+      # holds back and reads, node for the halves written twice, a font for
+      # Qt to lay text out in. pandoc and xelatex are left out: test_export
+      # says so and passes over the PDF itself.
+      - name: The tools the suite calls
+        run: >
+          pacman -Syu --noconfirm --needed
+          git python python-pyqt6 qt6-declarative qt6-svg
+          gitleaks poppler nodejs ttf-dejavu
+      - uses: actions/checkout@v4
+      - name: The offscreen suite
+        env:
+          LANG: C.UTF-8
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          names=$(python3 tests/run_all.py --list | awk '{print $1}' | grep -vxE 'popup|page' | sort -u)
+          python3 tests/run_all.py $names
+
+  windows:
+    name: Windows
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      # The Windows host lives in windows/ and tests/windows/. A tree from
+      # before it has nothing for this job to run, and the job says so.
+      - name: Is the Windows host in this tree?
+        id: host
+        shell: bash
+        run: |
+          if [ -f tests/windows/sitecustomize.py ] && [ -f windows/pyproject.toml ]; then
+            echo "here=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "here=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No Windows host in this tree (windows/, tests/windows/): nothing run on Windows."
+          fi
+      - if: steps.host.outputs.here == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      # As windows/README.md installs it: a Python of Longhand's own with
+      # PySide6 and the launchers; PyQt6 beside it for test_cursors; gitleaks
+      # and poppler as the agent's extras. Git for Windows (bash, GNU date)
+      # and node are the runner's own.
+      - name: Longhand's Python and the tools the suite calls
+        if: steps.host.outputs.here == 'true'
+        shell: pwsh
+        run: |
+          python -m venv .venv
+          .venv\Scripts\python -m pip install --quiet -e windows PyQt6
+          choco install gitleaks poppler --no-progress -y
+      - name: The suite
+        if: steps.host.outputs.here == 'true'
+        shell: pwsh
+        run: .venv\Scripts\python -X utf8 tests\run_all.py
