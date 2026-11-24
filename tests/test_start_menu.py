@@ -16,6 +16,15 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 HOST = ROOT / "windows" / "longhand_host.py"
 failures = 0
 
+# A reader in another process: opens the file, says so, holds it.
+HOLDER = """
+import sys, time
+f = open(sys.argv[1], "rb")
+f.read()
+print("held", flush=True)
+time.sleep(float(sys.argv[2]))
+"""
+
 
 def check(cond, what):
     global failures
@@ -95,6 +104,30 @@ def main() -> int:
         check(all(pathlib.Path(shortcuts.reachable(n)).parent == bin_dir for n in made),
               "…so a new terminal finds each by name there")
         check("open a new terminal" in r.stdout, "…and install says to open a new terminal")
+
+        # Explorer reads the icon to draw the shortcut: an install while
+        # something holds it open waits a moment for it, and one that never
+        # lets go leaves the icon there as it was, rather than failing.
+        def holding(seconds):
+            p = subprocess.Popen([sys.executable, "-c", HOLDER, str(icon), str(seconds)], stdout=subprocess.PIPE, text=True)
+            p.stdout.readline()
+            return p
+
+        stamp = icon.stat().st_mtime_ns
+        reader = holding(2.0)
+        r = host("install")
+        reader.wait()
+        check(r.returncode == 0 and icon.stat().st_mtime_ns != stamp and shortcuts.icon_sizes(icon) == list(shortcuts.SIZES),
+              "install while a reader holds the icon for a moment: the new icon lands")
+        stamp = icon.stat().st_mtime_ns
+        reader = holding(30.0)
+        try:
+            r = host("install")
+        finally:
+            reader.kill()
+            reader.wait()
+        check(r.returncode == 0 and icon.stat().st_mtime_ns == stamp and not icon.with_name(icon.name + ".tmp").exists(),
+              "…and with a reader that never lets go, the icon there stays: " + (r.stderr or "").strip()[-300:])
 
         # Again changes nothing; --no-autostart keeps the shortcut and takes the start away.
         r = host("install", "--no-autostart")

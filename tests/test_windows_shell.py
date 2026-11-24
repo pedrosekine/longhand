@@ -346,9 +346,9 @@ def places_and_icon(tmp):
 
     # The timer's and the deadlines' own tray icons: a word on the tile.
     colours = ("#ff202020", "#f3f3f3", "#3a0a08", "#9a9a9a", "#ff99a4")   # an accent too dark to read there
-    t = host.trayGlyph("25", "accent", *colours)
-    late = host.trayGlyph("!", "urgent", *colours)
-    odd = host.trayGlyph("<&>", "text", *colours)
+    t = host.trayGlyph("timer", "25", "accent", *colours)
+    late = host.trayGlyph("deadlines", "!", "urgent", *colours)
+    odd = host.trayGlyph("deadlines", "<&>", "text", *colours)
     files = [pathlib.Path(QUrl(u).toLocalFile()) for u in (t, late, odd)]
     texts = [f.read_text(encoding="utf-8") if f.is_file() else "" for f in files]
     check(all(f.is_file() and f.name.startswith("glyph-") for f in files) and pb.is_file(),
@@ -356,7 +356,25 @@ def places_and_icon(tmp):
     check(">25</text>" in texts[0] and 'fill="#202020"' in texts[0] and 'fill="#3a0a08"' not in texts[0],
           "…the minutes on the mode's ground, the accent moved to read on it, as the seal's")
     check('fill="#ff99a4"' in texts[1] and "&lt;&amp;&gt;" in texts[2], "…late in the urgent colour; the word escaped")
-    check(host.trayGlyph("25", "accent", *colours) == t, "the same word and colours, the same picture")
+    check(host.trayGlyph("timer", "25", "accent", *colours) == t, "the same word and colours, the same picture")
+
+    # A new picture Windows will not let be put in place (its temporary file
+    # held past the host's brief tries): each icon keeps the picture it has,
+    # no exception reaches the window's thread, nothing is left behind.
+    def refused(src, dst, waits=None):
+        raise PermissionError(5, "Access is denied", str(dst))
+    kept = host_api.replace
+    host_api.replace = refused
+    try:
+        timer_now = host.trayGlyph("timer", "24", "accent", *colours)
+        seal_now = host.themedIcon("#ff000000", "#ffffff", "#ff0000")
+    finally:
+        host_api.replace = kept
+    tray_dir = pb.parent
+    check(timer_now == t and seal_now == b and pb.is_file(),
+          "a tray picture that cannot be put in place: the timer and the seal keep the ones they show")
+    check(not list(tray_dir.glob("*.tmp")), "…and no temporary file is left in the tray's folder")
+    check(host.trayGlyph("timer", "24", "accent", *colours) not in ("", t), "…and the next minute draws again")
 
 
 # ------------------------------------------------------------ the tray

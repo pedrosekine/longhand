@@ -224,8 +224,8 @@ Item {
   // deadlines were "inside the Longhand icon", too many clicks away).
   // Windows puts a new icon under the ^ arrow until the person pins it
   // (Settings → Personalization → Taskbar → Other system tray icons).
-  function glyph(text, role) {
-    return Host.trayGlyph(text, role, String(Commons.Color.background), String(Commons.Color.foreground),
+  function glyph(which, text, role) {
+    return Host.trayGlyph(which, text, role, String(Commons.Color.background), String(Commons.Color.foreground),
                           String(Commons.Color.accent), String(Commons.Color.muted), String(Commons.Color.urgent))
   }
 
@@ -238,7 +238,7 @@ Item {
   Platform.SystemTrayIcon {
     id: timerTray
     visible: hostResident
-    icon.source: host.glyph(host.timerGlyph, host.timerRole) || Qt.resolvedUrl("../launcher/longhand.svg")
+    icon.source: host.glyph("timer", host.timerGlyph, host.timerRole) || Qt.resolvedUrl("../launcher/longhand.svg")
     tooltip: ("Longhand timer · " + (host.timerLine || "not started")).slice(0, 127)
     onActivated: function (reason) {
       if (reason === Platform.SystemTrayIcon.Trigger || reason === Platform.SystemTrayIcon.DoubleClick) host.popup("timer")
@@ -262,7 +262,7 @@ Item {
   Platform.SystemTrayIcon {
     id: deadlineTray
     visible: hostResident
-    icon.source: host.glyph(host.deadlineGlyph, host.deadlineRole) || Qt.resolvedUrl("../launcher/longhand.svg")
+    icon.source: host.glyph("deadlines", host.deadlineGlyph, host.deadlineRole) || Qt.resolvedUrl("../launcher/longhand.svg")
     tooltip: ("Longhand deadlines · " + deadlines.tooltipText).slice(0, 127)
     onActivated: function (reason) {
       if (reason === Platform.SystemTrayIcon.Trigger || reason === Platform.SystemTrayIcon.DoubleClick) host.popup("deadlines")

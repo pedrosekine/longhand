@@ -353,7 +353,7 @@ by name, never read out).
 | `~/.local/bin` links and shebangs | `.exe` launchers from `pyproject.toml`, through `longhand_launch.py` |
 | UTF-8 as the system's encoding | Python's UTF-8 mode, switched on by the host and the launchers |
 | `\n` as the line ending of what is written and sent | `pyshim/longhand_lf.py`, loaded at start |
-| `os.replace` over a file another process is reading (always works on Linux) | `pyshim/longhand_replace.py`, loaded at start: Windows refuses it while the file is open, so it tries again for about three seconds; the host itself tries only briefly, so the window never freezes |
+| `os.replace` over a file another process is reading (always works on Linux) | `pyshim/longhand_replace.py`, loaded at start: Windows refuses it while the file is open, so it tries again for about three seconds; the host itself tries only briefly, so the window never freezes (the windows' places, the reader's files, the tray's pictures: a tray picture that still cannot be put in place leaves the icon showing what it showed, and the next change draws again). `longhand install`, in the host's process but with no window, tries the patient way over the Start menu's icon, which Explorer reads, and keeps the icon there if it never lets go |
 | `Qt.openUrlExternally("file://" + path)` with a path from `/` | `file_urls.py`: `file://C:/…` (and its unparseable spellings) opened as the file on that drive |
 | `"file://" + path` given to the page's own PDF reader and pictures | `Links.fileUrl` in `plugin-page/`: no host can reach a URL Qt fails to parse before it loads |
 | `fcntl.flock` | `pyshim/fcntl.py` |

@@ -43,6 +43,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from pyshim.longhand_replace import replace
+
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
 APP_ID = "Longhand"
@@ -121,7 +123,16 @@ def write_icon(svg: Path, out: Path) -> Path:
     out.parent.mkdir(parents=True, exist_ok=True)
     tmp = out.with_name(out.name + ".tmp")
     tmp.write_bytes(head + entries + body)
-    os.replace(tmp, out)
+    # The same name each install, and Explorer reads it to draw the shortcut:
+    # tried again while it does, as every Longhand script's replace is (this
+    # is the host's process, which is not given the patient one; but here no
+    # window waits). Should it still be held, the icon already there stays.
+    try:
+        replace(tmp, out)
+    except OSError:
+        tmp.unlink(missing_ok=True)
+        if not out.is_file():
+            raise
     return out
 
 
