@@ -38,6 +38,20 @@ POSIX = {"sh", "bash", "find", "file", "sed", "grep", "date", "test", "cat", "ls
 LOG = []  # what could not be started, for the spike's report
 
 
+def _winproc():
+    """agent/winproc.py: how a runner is asked to stop on Windows."""
+    if os.name != "nt":
+        return None
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("longhand_winproc", REPO / "agent" / "winproc.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+WINPROC = _winproc()
+
+
 def git_usr_bin() -> Path | None:
     git = shutil.which("git")
     if not git:
@@ -235,6 +249,7 @@ class Process(QObject):
         self._env = {}
         self._cwd = ""
         self._clear = False
+        self._stop_name, self._stop_handle, self._started_at = "", 0, 0.0
         self._kick = QTimer(self)
         self._kick.setSingleShot(True)
         self._kick.setInterval(0)
@@ -267,7 +282,7 @@ class Process(QObject):
             self._wanted = False
             self._kick.stop()
             if self._proc is not None:
-                self._proc.kill()
+                self._end_tree(self._proc)
             elif was:
                 self.runningChanged.emit()
 
@@ -338,7 +353,14 @@ class Process(QObject):
             return
         program, args = resolve(self._command)
         p = QProcess(self)
-        p.setProcessEnvironment(child_environment(self._env))
+        extra = dict(self._env)
+        if WINPROC:
+            # The event `signal` sets to ask a runner to stop (agent/winproc.py).
+            self._close_stop()
+            self._stop_name, self._stop_handle = WINPROC.new_stop()
+            self._started_at = time.monotonic()
+            extra[WINPROC.STOP_ENV] = self._stop_name
+        p.setProcessEnvironment(child_environment(extra))
         if self._cwd:
             p.setWorkingDirectory(self._cwd)
         for parser in (self._stdout, self._stderr):
@@ -380,6 +402,7 @@ class Process(QObject):
                 parser.finish()
         # As Quickshell: by the time `exited` is heard, `running` reads false.
         self._proc = None
+        self._close_stop()
         self.exited.emit(code, status)
         self.runningChanged.emit()
         self.processIdChanged.emit()
@@ -398,11 +421,59 @@ class Process(QObject):
             print("longhand-host: could not start", self._command[:4], file=sys.stderr)
             self._end(p, 127, 1)
 
+    def _close_stop(self):
+        if WINPROC and self._stop_handle:
+            WINPROC.close(self._stop_handle)
+        self._stop_name, self._stop_handle = "", 0
+
+    def _end_tree(self, p):
+        """The process and what it started, outright."""
+        if p is not self._proc:
+            return
+        pid = int(p.processId())
+        if os.name == "nt" and pid:
+            kill = QProcess()
+            kill.setProgram("taskkill")
+            kill.setArguments(["/T", "/F", "/PID", str(pid)])
+            kill.setStandardOutputFile(QProcess.nullDevice())
+            kill.setStandardErrorFile(QProcess.nullDevice())
+            kill.startDetached()
+        else:
+            p.kill()
+
     @Slot(int)
     def signal(self, signum):
-        if self._proc is not None:
-            # Windows has no SIGTERM for a console child: the spike ends it.
-            self._proc.kill() if os.name == "nt" else os.kill(self._proc.processId(), signum)
+        """SIGTERM, as the page sends it to stop a run. On Windows no process
+        can take a signal and go on, so a runner is asked through its event
+        and ends the model itself, as it does on SIGTERM (agent/winproc.py).
+        What is not a runner — it never says it listens — is ended outright:
+        at once when it has been up a while, and when it has only just
+        started, after the moment a runner needs to get as far as listening."""
+        p = self._proc
+        if p is None:
+            return
+        if not WINPROC:
+            if os.name == "nt":
+                p.kill()
+            else:
+                os.kill(p.processId(), signum)
+            return
+        name = self._stop_name
+        WINPROC.ask_stop(name)
+
+        def settle(tries=0):
+            if p is not self._proc:
+                return                                      # it ended
+            if WINPROC.listening(name):
+                if tries >= 50:                             # heard, and ten seconds on still there
+                    self._end_tree(p)
+                else:
+                    QTimer.singleShot(200, lambda: settle(tries + 1))
+            elif time.monotonic() - self._started_at < 3.0:
+                QTimer.singleShot(200, lambda: settle(tries))
+            else:
+                self._end_tree(p)
+        settle()
 
     @Slot(str)
     def write(self, data):

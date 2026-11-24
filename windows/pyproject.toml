@@ -26,4 +26,10 @@ longhand-read = "longhand_launch:read"
 longhand = "longhand_host:main"
 
 [tool.setuptools]
+# package-dir is here for what it makes `pip install -e` do: with it the
+# install is one line in a .pth naming this folder; without it setuptools
+# installs a finder that every Python start imports, and each start in this
+# Python took twice as long (136 ms for 74) — every call of the agent, and
+# every `pomo`.
+package-dir = { "" = "." }
 py-modules = ["longhand_launch", "longhand_host", "qs_io", "qs_wayland", "host_api", "spike_check"]

@@ -870,8 +870,25 @@ def earlier_turns(turns: list[dict], agent: str = "you") -> list[str]:
 # model's process (its whole group) is ended, the run is logged as stopped,
 # and no turn is written — the page gives the student's words back to the
 # box. Any other command still dies on it at once, as before.
+#
+# Windows has no process groups and no SIGTERM a process can handle and go
+# on (winproc.py): there the model's process is in a job, ended whole the
+# same way, and the page asks for the stop through a named event, which
+# calls `_on_stop` as the signal would.
 STOPPED = "stopped"
 _STOP: dict = {"asked": False, "child": None}
+WINDOWS = os.name == "nt"
+if WINDOWS:
+    import winproc  # noqa: E402
+
+
+def end_group(p: subprocess.Popen, hard: bool = False) -> None:
+    """A model's process and everything it started, ended: asked to (SIGTERM)
+    or, `hard`, killed. On Windows there is only the one way."""
+    if WINDOWS:
+        winproc.end(p)
+    else:
+        os.killpg(p.pid, signal.SIGKILL if hard else signal.SIGTERM)
 
 
 def _on_stop(signum, frame) -> None:
@@ -879,7 +896,7 @@ def _on_stop(signum, frame) -> None:
     child = _STOP["child"]
     if child is not None and child.poll() is None:
         try:
-            os.killpg(child.pid, signal.SIGTERM)
+            end_group(child)
         except OSError:
             pass
 
@@ -895,19 +912,23 @@ def run_child(cmd: list[str], payload: str, timeout: int, cwd: str, env: dict | 
         return subprocess.CompletedProcess(cmd, -signal.SIGTERM, "", "")
     p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                          cwd=cwd, env=env, start_new_session=True)
+    if WINDOWS:
+        winproc.adopt(p)
     _STOP["child"] = p
     try:
         if on_line is None:
             try:
                 out, err = p.communicate(payload, timeout=timeout)
             except subprocess.TimeoutExpired:
-                os.killpg(p.pid, signal.SIGKILL)
+                end_group(p, hard=True)
                 p.communicate()
                 raise
             return subprocess.CompletedProcess(cmd, p.returncode, out, err)
         return _stream_child(p, cmd, payload, timeout, on_line)
     finally:
         _STOP["child"] = None
+        if WINDOWS:
+            winproc.release(p)
 
 
 def _stream_child(p: subprocess.Popen, cmd: list[str], payload: str, timeout: int, on_line) -> subprocess.CompletedProcess:
@@ -932,7 +953,7 @@ def _stream_child(p: subprocess.Popen, cmd: list[str], payload: str, timeout: in
     def kill():
         timed_out.set()
         try:
-            os.killpg(p.pid, signal.SIGKILL)
+            end_group(p, hard=True)
         except OSError:
             pass
 
@@ -7006,6 +7027,8 @@ def main(argv: list[str]) -> int:
     # still ends on SIGTERM at once.
     if args.cmd in ("run", "chat", "day", "note", "talk", "plan"):
         signal.signal(signal.SIGTERM, _on_stop)
+        if WINDOWS:
+            winproc.listen_for_stop(lambda: _on_stop(signal.SIGTERM, None))
     try:
         cfg = load_config()
         doc_folders(cfg)

@@ -199,7 +199,9 @@ def stand_ins(folder: pathlib.Path) -> pathlib.Path:
     bin_dir = folder / "bin"
     bin_dir.mkdir()
     (folder / "fake_date.py").write_text(FAKE_DATE, encoding="utf-8")
-    scripts = {"date": f'#!/bin/sh\nexec "{posix(sys.executable)}" "{posix(folder / "fake_date.py")}" "{posix(PY_POMO)}" "$@"\n',
+    # -S: this `date` is started many times a command and needs nothing a
+    # site brings (nor, on Windows, the runner's stand-ins).
+    scripts = {"date": f'#!/bin/sh\nexec "{posix(sys.executable)}" -S "{posix(folder / "fake_date.py")}" "{posix(PY_POMO)}" "$@"\n',
                "notify-send": "#!/bin/sh\nexit 0\n"}
     if not find("flock"):
         scripts["flock"] = "#!/bin/sh\nexit 0\n"

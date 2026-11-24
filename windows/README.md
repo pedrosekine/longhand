@@ -58,6 +58,7 @@ store, and says what the page did.
 | `~/.local/bin` links and shebangs | `.exe` launchers from `pyproject.toml`, through `longhand_launch.py` |
 | UTF-8 as the system's encoding | Python's UTF-8 mode, switched on by the host and the launchers |
 | `fcntl.flock` | `pyshim/fcntl.py` |
+| a process group and SIGTERM, to stop a model's run | a job and a named event: `agent/winproc.py` |
 
 ## Known, not done
 
@@ -71,14 +72,17 @@ store, and says what the page did.
   (`tests/test_pomo_port.py` runs both and compares).
 - The tests run through the runner (`python tests\run_all.py`, or
   `… run_all.py check plan`), which gives each file what Linux gives it for
-  nothing (`tests/windows/`). On 2026-11-23, with gitleaks, poppler and
-  node installed: 66 files pass, 5 are passed over as Omarchy's own (named,
-  with the reason), 4 fail:
-  - no PyQt6: cursors;
-  - the agent stops a model with `os.killpg` and SIGTERM, which Windows has
-    not: claude_route (3 of its 47 checks), stream_child;
-  - projects (1 of its 51), on a Monday on any system: it asks for
-    yesterday's week and expects a file touched today in it.
+  nothing (`tests/windows/`). On 2026-11-24, with gitleaks, poppler and
+  node installed: 69 files pass in about four minutes, 5 are passed over as
+  Omarchy's own (named, with the reason), 1 fails: cursors, which wants
+  PyQt6. One check of projects fails on a Monday on any system: it asks
+  for yesterday's week and expects a file touched today in it.
+- Stopping a run: Windows has no process group and no SIGTERM a process
+  can take and go on. The model's process is in a job, ended whole; the
+  page's host asks the runner to stop through a named event, and the runner
+  does what it does on SIGTERM (`agent/winproc.py`). What is not a runner is
+  ended outright, tree and all — after three seconds when it has only just
+  started, since a runner needs that long to say it listens.
 - Two holes in what the agent keeps back, both Windows' alone, found by the
   suite and closed: gitleaks was told to report to `/dev/stdout`, failed,
   said nothing, and that read as "no secret found"; and a day before the

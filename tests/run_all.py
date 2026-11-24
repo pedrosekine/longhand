@@ -92,7 +92,10 @@ def short(path: pathlib.Path) -> str:
 def jobs() -> list[tuple[str, list[str], dict | None, int]]:
     """Every test the runner knows: (file, command, env, timeout)."""
     env = windows_env() if WINDOWS else None
-    out = [(f.name, [sys.executable, str(f)], env, 600) for f in sorted(TESTS.glob("test_*.py"))]
+    # The port test runs the bash pomo 190 times; under Git's bash on Windows,
+    # beside the other files, that is slow going.
+    slow = {"test_pomo_port.py": 1800} if WINDOWS else {}
+    out = [(f.name, [sys.executable, str(f)], env, slow.get(f.name, 600)) for f in sorted(TESTS.glob("test_*.py"))]
     qml_env = dict(env or os.environ, QT_QPA_PLATFORM="offscreen")
     # Qt from PySide6 brings no qmltestrunner: Qt Quick Test, from Python.
     runner = [sys.executable, str(TESTS / "windows" / "qmltest.py")] if WINDOWS else [QMLTEST]

@@ -99,18 +99,61 @@ if os.name == "nt":
                 return [found, str(script), *argv[1:]]
         return args
 
+    def winproc():
+        """agent/winproc.py: how a runner is asked to stop on Windows."""
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("longhand_winproc", ROOT / "agent" / "winproc.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    import signal
+    _winproc = None
+
     class Popen(subprocess.Popen):
+        """Started by its shebang; and SIGTERM sent to it asks a runner to
+        stop, as the page's host does (agent/winproc.py), where Windows'
+        own `terminate` would end it before it could say it was stopped."""
+
         def __init__(self, args, *rest, **kw):
+            global _winproc
+            self._stop_name, self._stop_handle = "", 0
             if not kw.get("shell"):
                 args = by_shebang(args, kw.get("env"))
+                try:
+                    _winproc = _winproc or winproc()
+                    self._stop_name, self._stop_handle = _winproc.new_stop()
+                    kw["env"] = dict(kw["env"] if kw.get("env") is not None else os.environ)
+                    kw["env"][_winproc.STOP_ENV] = self._stop_name
+                except Exception:       # noqa: BLE001 — a test's process starts all the same
+                    self._stop_name = ""
             super().__init__(args, *rest, **kw)
+
+        def send_signal(self, sig):
+            if sig == signal.SIGTERM and self._stop_name and self.poll() is None and _winproc.listening(self._stop_name):
+                _winproc.ask_stop(self._stop_name)
+                return
+            super().send_signal(sig)
+
+        def __del__(self, *a, **kw):
+            if self._stop_handle and _winproc:
+                _winproc.close(self._stop_handle)
+                self._stop_handle = 0
+            super().__del__(*a, **kw)
 
     _kill = os.kill
 
     def kill(pid, sig):
         """`os.kill(pid, 0)` asks whether a process is there. On Windows 0 is
         Ctrl+C, sent to everything on the console — the test, the runner and
-        the terminal with them. Asked of the system instead."""
+        the terminal with them. Asked of the system instead. And SIGTERM sent
+        to oneself runs the handler set for it, as on Linux, where Windows
+        would end the process there and then."""
+        if sig == signal.SIGTERM and pid == os.getpid():
+            handler = signal.getsignal(signal.SIGTERM)
+            if callable(handler):
+                handler(signal.SIGTERM, None)
+                return
         if sig != 0:
             return _kill(pid, sig)
         import ctypes
