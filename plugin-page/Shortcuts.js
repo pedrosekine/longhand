@@ -19,6 +19,10 @@
 // no action can be moved onto them and take typing away.
 .pragma library
 
+// On Windows the host stands in for the shell and Hyprland (windows/):
+// what the sheet says of the system is said in Windows' words there.
+var onWindows = typeof Qt !== "undefined" && Qt.platform.os === "windows"
+
 // Where an action works. "any" is everywhere in the page; the typing ones
 // are where a bare letter has to stay a letter.
 var places = {
@@ -65,7 +69,7 @@ var groups = [
   { id: "margin", title: "The margin" },
   { id: "settings", title: "Settings" },
   { id: "typing", title: "Typing (the text field's own, not changeable)" },
-  { id: "system", title: "Outside the page (Hyprland)" }
+  { id: "system", title: onWindows ? "Outside the page (anywhere in Windows)" : "Outside the page (Hyprland)" }
 ]
 
 // A key is global ("any") when it is about the page itself or where you
@@ -370,7 +374,7 @@ var actions = [
   { id: "exportPick", group: "export", places: ["export"], does: "Put the block in, or leave it out", keys: ["Space"] },
   { id: "exportPrevSection", group: "export", places: ["export"], does: "From a deadline: the section found before (its likelier one)", keys: ["Left"] },
   { id: "exportNextSection", group: "export", places: ["export"], does: "From a deadline: the next section found", keys: ["Right"] },
-  { id: "exportLook", group: "export", places: ["export"], does: "The look: minimal or your Omarchy theme", keys: ["L"] },
+  { id: "exportLook", group: "export", places: ["export"], does: "The look: minimal or your " + (onWindows ? "Windows colours" : "Omarchy theme"), keys: ["L"] },
   { id: "exportTitle", group: "export", places: ["export"], does: "Edit the title (Enter or Esc: back to the blocks)", keys: ["Tab"] },
   { id: "exportWrite", group: "export", places: ["export"], does: "Write the PDF and open it", keys: ["Enter"] },
   { id: "exportClose", group: "export", places: ["export"], does: "Close it, back to the note (or the dashboard it came from)", keys: ["Esc"] },
@@ -442,6 +446,13 @@ var dead = { 0x01001250: "`", 0x01001251: "'", 0x01001252: "^", 0x01001253: "~",
 var lone = { 0x01000020: 1, 0x01000021: 1, 0x01000022: 1, 0x01000023: 1, 0x01000024: 1, 0x01000025: 1,
   0x01000053: 1, 0x01000054: 1, 0x01000055: 1, 0x01000056: 1, 0x01000057: 1, 0x01001103: 1, 0x01ffffff: 1 }
 
+// A letter's capital, as keys are written; ß has none of one letter ("SS"),
+// and stays ß, so a German keyboard's ß key is a key like any other.
+function upper(ch) {
+  var up = ch.toUpperCase()
+  return up.length === 1 ? up : ch
+}
+
 function isSymbol(name) {
   return name === "Plus" || (name.length === 1 && name.toUpperCase() === name.toLowerCase())
 }
@@ -462,7 +473,7 @@ function fromEvent(event) {
   else if (named[k] !== undefined) name = named[k]
   else if (dead[k] !== undefined) name = dead[k]
   else if (k >= 0x01000030 && k <= 0x01000047) name = "F" + (k - 0x01000030 + 1)
-  else if (k > 0x20 && k < 0x01000000) name = String.fromCharCode(k).toUpperCase()
+  else if (k > 0x20 && k < 0x01000000) name = upper(String.fromCharCode(k))
   else return ""
   return compose(!!(m & CTRL), !!(m & ALT), shift, !!(m & META), name)
 }
@@ -485,7 +496,7 @@ function canonical(s) {
   }
   var last = parts[parts.length - 1].trim()
   var name
-  if (last.length === 1) name = last.toUpperCase()
+  if (last.length === 1) name = upper(last)
   else if (aliases[last.toLowerCase()] !== undefined) name = aliases[last.toLowerCase()]
   else if (/^f([1-9]|1[0-9]|2[0-4])$/i.test(last)) name = last.toUpperCase()
   else return ""
@@ -500,6 +511,10 @@ function show(seq) {
   if (glyphs[last]) last = glyphs[last]
   if (parts.length === 1 && last.length === 1) last = last.toLowerCase()   // a bare letter is the letter you type
   parts[parts.length - 1] = last
+  // Windows calls Super its own key's name, and says it first: Win+Alt+=
+  // (as agent/manual.py tells the agent).
+  var sup = parts.indexOf("Super")
+  if (onWindows && sup >= 0 && sup < parts.length - 1) parts = ["Win"].concat(parts.slice(0, sup), parts.slice(sup + 1))
   return parts.join("+")
 }
 

@@ -1,0 +1,40 @@
+# Longhand's commands on Windows: `pip install -e windows` (from the repo,
+# into the Python the host runs on) makes pomo.exe, longhand-agent.exe,
+# longhand-check.exe and longhand-read.exe beside python.exe, and `longhand`
+# for the page itself. Each runs the script in the repo: nothing is copied,
+# so a pull is the update.
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "longhand-windows"
+version = "0.1.0"
+description = "Longhand's page and commands on Windows: a host in place of omarchy-shell"
+requires-python = ">=3.11"
+# tzdata: Windows has no time zone database for Python's zoneinfo (the timetable).
+dependencies = ["PySide6>=6.12", "tzdata"]
+
+[project.scripts]
+pomo = "longhand_launch:pomo"
+longhand-agent = "longhand_launch:agent"
+longhand-check = "longhand_launch:check"
+longhand-read = "longhand_launch:read"
+longhand-doctor = "longhand_launch:doctor"
+
+[project.gui-scripts]
+longhand = "longhand_host:main"
+
+[tool.setuptools]
+# package-dir is here for what it makes `pip install -e` do: with it the
+# install is one line in a .pth naming this folder; without it setuptools
+# installs a finder that every Python start imports, and each start in this
+# Python took twice as long (136 ms for 74) — every call of the agent, and
+# every `pomo`.
+package-dir = { "" = "." }
+# Only an editable install works: the launchers run the scripts where the
+# repo has them (cli/, agent/, tools/), and the host loads plugin-page/ and
+# shim/ from beside this folder. Every module is named all the same.
+py-modules = ["compositor", "file_urls", "host_api", "hotkeys", "longhand_host", "longhand_launch", "notify",
+              "palette", "play_sound", "popup_check", "qs_io", "qs_wayland", "shortcuts", "spike_check", "winkeys"]

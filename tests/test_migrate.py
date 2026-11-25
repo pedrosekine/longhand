@@ -74,7 +74,7 @@ bindir.mkdir()
 (bindir / "hyprctl").write_text(f'#!/bin/sh\nexec python3 "{ROOT}/tests/fake_hyprctl.py" "$@"\n')
 (bindir / "hyprctl").chmod(0o755)
 env = {k: v for k, v in os.environ.items() if not k.startswith("XDG_")}
-env.update(HOME=str(home), FAKE_HYPR_DIR=str(hypr), PATH=f"{bindir}:{os.environ['PATH']}")
+env.update(HOME=str(home), FAKE_HYPR_DIR=str(hypr), PATH=f"{bindir}{os.pathsep}{os.environ['PATH']}")
 
 
 def run(*args):

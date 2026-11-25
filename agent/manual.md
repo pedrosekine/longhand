@@ -5,13 +5,15 @@
      docs/; {key:<id>} is filled in with the student's own keys from
      plugin-page/Shortcuts.js and keys.json when a payload is built, so a key
      the student moved reads as theirs. Keep it short and true: a feature not
-     here does not exist as far as the agent knows. -->
+     here does not exist as far as the agent knows. {os:<Omarchy's words>|<Windows'>}
+     is filled in with the words for the system it runs on (no braces,
+     no bar inside either). -->
 
 ## The page
 
-Longhand is a daily note in the Omarchy shell: today's note as a blank sheet,
+Longhand is a daily note {os:in the Omarchy shell|on Windows, kept by the clock in the tray}: today's note as a blank sheet,
 saved on every keystroke, plain markdown in the vault where Obsidian keeps
-its daily notes. {key:sys:page} opens it from anywhere (or the bar's glyph);
+its daily notes. {key:sys:page} opens it from anywhere (or {os:the bar's glyph|a click on the tray's icon, or Longhand in the Start menu});
 {key:close} closes it. {key:sys:alongside} opens the same sheet as a window to
 tile beside something; {key:pin} flips between the two. {key:zoomIn},
 {key:zoomOut}, {key:zoomReset} zoom. {key:find} finds in the note.
@@ -46,7 +48,7 @@ on purpose, asks "due?" on a line with no date, and on a bound line
 reschedules it (empty unbinds). The line is the task: its words are the
 title, its `#tag` (or the tagged heading above it) the project; a tick or a
 date changed anywhere reaches everywhere. Deleting the line cancels the
-deadline, and Ctrl+Z brings it back. The bar's deadline popup
+deadline, and Ctrl+Z brings it back. The {os:bar's deadline popup|deadline popup by the clock}
 ({key:sys:deadlines}) is the glance.
 
 ## Do-dates and priorities

@@ -44,12 +44,12 @@ def _files(folder: Path) -> list[Path]:
     # The days' briefs (`days/<date>.md`) after the rest, the newest first.
     days = sorted((p for p in own if p.parent.name == "days"), key=lambda p: p.name, reverse=True)
     rest = sorted((p for p in own if p.parent.name != "days"),
-                  key=lambda p: (order.get(str(p.relative_to(folder)), 2), str(p.relative_to(folder))))
+                  key=lambda p: (order.get(p.relative_to(folder).as_posix(), 2), p.relative_to(folder).as_posix()))
     return rest + days
 
 
 def _entries_of(folder: Path, f: Path) -> tuple[str, list[dict]]:
-    name = str(f.relative_to(folder))
+    name = f.relative_to(folder).as_posix()
     title, out = "", []
     for i, raw in enumerate(f.read_text(errors="replace").split("\n")):
         if not raw.strip():
@@ -69,7 +69,7 @@ def read(folder: Path) -> dict:
     for f in _files(folder):
         title, lines = _entries_of(folder, f)
         if lines:
-            files.append({"file": str(f.relative_to(folder)), "title": title, "lines": lines})
+            files.append({"file": f.relative_to(folder).as_posix(), "title": title, "lines": lines})
     answers = []
     if (folder / ANSWERS).is_file():
         answers = _entries_of(folder, folder / ANSWERS)[1]

@@ -145,6 +145,64 @@ def class_at(when: dt.datetime, events: list[dict], courses: list[dict], matches
     return None
 
 
+FOLDERID_DOWNLOADS = (0x374DE290, 0x123F, 0x4565, (0x91, 0x64, 0x39, 0xC4, 0x92, 0x5E, 0x46, 0x7B))
+FOLDERID_PROFILE = (0x5E6C858F, 0x0E22, 0x4760, (0x9A, 0xFE, 0xEA, 0x33, 0x17, 0xB6, 0x71, 0x73))
+
+
+def _known_folder(fid: tuple) -> Path | None:
+    """A folder as Windows knows it (SHGetKnownFolderPath), wherever the
+    person has moved it; None elsewhere or when Windows cannot say."""
+    if os.name != "nt":
+        return None
+    import ctypes
+
+    class GUID(ctypes.Structure):
+        _fields_ = [("Data1", ctypes.c_ulong), ("Data2", ctypes.c_ushort), ("Data3", ctypes.c_ushort),
+                    ("Data4", ctypes.c_ubyte * 8)]
+
+    guid = GUID(fid[0], fid[1], fid[2], (ctypes.c_ubyte * 8)(*fid[3]))
+    got = ctypes.c_wchar_p()
+    shell32, ole32 = ctypes.windll.shell32, ctypes.windll.ole32
+    shell32.SHGetKnownFolderPath.restype = ctypes.c_long
+    shell32.SHGetKnownFolderPath.argtypes = (ctypes.POINTER(GUID), ctypes.c_ulong, ctypes.c_void_p,
+                                             ctypes.POINTER(ctypes.c_wchar_p))
+    try:
+        hr = shell32.SHGetKnownFolderPath(ctypes.byref(guid), 0, None, ctypes.byref(got))
+        return Path(got.value) if hr == 0 and got.value else None
+    except OSError:
+        return None
+    finally:
+        if got:
+            ole32.CoTaskMemFree(got)
+
+
+def downloads() -> Path:
+    """This machine's Downloads folder. On Windows the one Windows knows, which
+    a person may have moved (to OneDrive, to another drive: Properties →
+    Location), where `~/Downloads` would name an empty or missing folder.
+    Only while `~` is the profile Windows knows: a home set elsewhere (a
+    test's, a sandbox's) keeps its own Downloads, never the person's."""
+    home = Path.home()
+    profile = _known_folder(FOLDERID_PROFILE)
+    if profile is not None and os.path.normcase(str(profile)) == os.path.normcase(str(home)):
+        known = _known_folder(FOLDERID_DOWNLOADS)
+        if known is not None:
+            return known
+    return home / "Downloads"
+
+
+def folder(path: str) -> Path:
+    """A folder named in the config or Settings (`inbox`, `export.dir`), `~`
+    expanded. `~/Downloads` means this machine's Downloads (`downloads`):
+    the config travels with the vault between machines, and the folder is
+    each one's own."""
+    raw = str(path).strip()
+    norm = raw.replace("\\", "/").rstrip("/")
+    if norm == "~/Downloads" or norm.startswith("~/Downloads/"):
+        return downloads().joinpath(*[p for p in norm[len("~/Downloads"):].split("/") if p])
+    return Path(raw).expanduser()
+
+
 def inbox_pdfs(inbox: Path) -> list[Path]:
     """The inbox's PDFs: at its top and one folder down (an unpacked
     course export), hidden folders skipped."""
@@ -239,7 +297,7 @@ def set_folders(projects: list[tuple[str, str]], vault: Path) -> None:
         rel = m.group(1).strip().strip("/")
         f = (root / rel).resolve()
         if rel and root in f.parents:
-            FOLDERS[tag] = str(f.relative_to(root))
+            FOLDERS[tag] = f.relative_to(root).as_posix()
 
 
 def docs_dir(vault: Path, projects_dir: str, tag: str) -> Path:
@@ -527,7 +585,10 @@ def index(vault: Path, projects_dir: str, tag: str, cache: dict | None = None) -
                 pages = 0
             if cache is not None:
                 cache[key] = pages
-        out.append({"name": p.stem, "file": p.name, "path": str(p), "pages": pages})
+        # Forward slashes: the page finds the vault in the path by its
+        # config's spelling, and builds file:// links from it (on Windows,
+        # str() would give backslashes; on Linux the two are the same).
+        out.append({"name": p.stem, "file": p.name, "path": p.as_posix(), "pages": pages})
     return out
 
 
@@ -541,9 +602,21 @@ def load_cache(path: Path) -> dict:
 
 def save_cache(path: Path, data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False))
-    os.replace(tmp, path)
+    _replace_with(path, json.dumps(data, ensure_ascii=False))
+
+
+def _replace_with(path: Path, text: str) -> None:
+    """`path` holds `text`, written whole beside it and renamed over it.
+    The copy is this process's own: `projects` and `proposals` (and the
+    page's other listings) run side by side and each saves the caches; with
+    one shared `.tmp` the second rename found it gone and that listing
+    failed (2026-11-25, lifespan.py's clock the same)."""
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    try:
+        tmp.write_text(text)
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 # ------------------------------------------------------------------ reading
@@ -578,9 +651,7 @@ def pages(pdf: Path, cache_dir: Path) -> list[str]:
     while out and not out[-1]:
         out.pop()
     cache_dir.mkdir(parents=True, exist_ok=True)
-    tmp = cached.with_name(cached.name + ".tmp")
-    tmp.write_text(json.dumps({"name": pdf.name, "pages": out}, ensure_ascii=False))
-    os.replace(tmp, cached)
+    _replace_with(cached, json.dumps({"name": pdf.name, "pages": out}, ensure_ascii=False))
     return out
 
 

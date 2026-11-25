@@ -58,7 +58,7 @@ class Hypr:
         (bindir / "hyprctl").write_text(f'#!/bin/sh\nexec python3 "{ROOT}/tests/fake_hyprctl.py" "$@"\n')
         (bindir / "hyprctl").chmod(0o755)
         self.env = dict(os.environ, XDG_CONFIG_HOME=str(self.tmp / "config"), FAKE_HYPR_DIR=str(self.dir),
-                        PATH=f"{bindir}:{os.environ['PATH']}")
+                        PATH=f"{bindir}{os.pathsep}{os.environ['PATH']}")
 
     def run(self, *args):
         r = subprocess.run([sys.executable, str(ROOT / "plugin-page" / "hyprkeys.py"), *args],

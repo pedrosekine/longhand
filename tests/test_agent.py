@@ -30,6 +30,12 @@ os.makedirs(os.environ["STUB_DIR"], exist_ok=True)
 open(os.path.join(os.environ["STUB_DIR"], "argv.json"), "w").write(
     json.dumps({"argv": sys.argv[1:], "cwd": os.getcwd()}))
 if sys.argv[1:2] == ["session"]:
+    open(os.path.join(os.environ["STUB_DIR"], "session_argv.json"), "w").write(json.dumps(sys.argv[1:]))
+    if os.environ.get("STUB_EXPORT_FAILS") or "--standalone" not in sys.argv:
+        # opencode 2 without --standalone asks its background service, and
+        # fails when another program holds the service's port
+        print("Error: Managed service port 28894 on 127.0.0.1 is already in use", file=sys.stderr)
+        sys.exit(1)
     print(json.dumps({"info": {"cost": 0.5, "tokens": {"input": 7, "output": 3, "reasoning": 1}}}))
     sys.exit(0)
 if os.environ.get("STUB_DEAF"):
@@ -47,7 +53,11 @@ text = "```json\\n" + json.dumps(reply) + "\\n```"
 ev = lambda t, part: print(json.dumps({"type": t, "sessionID": "ses_stub", "part": part}))
 ev("step_start", {"type": "step-start"})
 ev("text", {"type": "text", "text": text, "time": {"start": 1, "end": 2}})
-if not os.environ.get("STUB_FREE"):
+if os.environ.get("STUB_SUBSCRIPTION"):
+    # opencode 2.3 on a subscription: no price, and no total
+    ev("step_finish", {"type": "step-finish", "cost": 0, "tokens": {"input": 4066, "output": 95, "reasoning": 532,
+                                                                    "cache": {"read": 0, "write": 0}}})
+elif not os.environ.get("STUB_FREE"):
     ev("step_finish", {"type": "step-finish", "cost": 0.0002, "tokens": {"input": 100, "output": 20, "reasoning": 5, "total": 125}})
 """
 
@@ -105,7 +115,7 @@ class T:
         mine = fakes.machine(self.tmp)            # never the real ~/.config, nor the running Hyprland
         self.env = dict(os.environ, LONGHAND_CONFIG=str(self.cfg), XDG_STATE_HOME=str(self.state_home),
                         STUB_DIR=str(self.stub_dir), XDG_CONFIG_HOME=mine["XDG_CONFIG_HOME"],
-                        FAKE_HYPR_DIR=mine["FAKE_HYPR_DIR"], PATH=str(self.tmp / "bin") + ":" + mine["PATH"])
+                        FAKE_HYPR_DIR=mine["FAKE_HYPR_DIR"], PATH=str(self.tmp / "bin") + os.pathsep + mine["PATH"])
         # keep `pomo report` out of it: an empty PATH entry first means the real pomo is still found;
         # that is fine — its output is just another allowlisted source.
 
@@ -678,6 +688,26 @@ def main() -> int:
         last = json.loads((t.vault / "agents" / "longhand" / "daily" / f"{DAY}.json").read_text())["runs"][-1]
         check(abs(last["cost"] - 0.5) < 1e-9, "cost read back from the session")
         check(last["tokens"]["total"] == 11, "and its tokens")
+        asked = json.loads((t.stub_dir / "session_argv.json").read_text())
+        check(asked[:2] == ["session", "export"] and "--standalone" in asked,
+              "the session is asked with a server of its own, not opencode's background service")
+        # A subscription's run (opencode 2.3): no price, no total in the
+        # events. Its tokens are the events' own, also when the session
+        # cannot be asked.
+        print("-- a subscription's run is counted")
+        t.env["STUB_SUBSCRIPTION"] = "1"
+        r = t.agent("run", "--trigger", "mention", "--hash", at_block["hash"], "--date", DAY)
+        last = json.loads((t.vault / "agents" / "longhand" / "daily" / f"{DAY}.json").read_text())["runs"][-1]
+        check(last["tokens"] == {"input": 4066, "output": 95, "reasoning": 532, "total": 4693},
+              f"the events' tokens, their total made ({last['tokens']})")
+        check(abs(last["cost"] - 0.5) < 1e-9, "the price still from the session")
+        t.env["STUB_EXPORT_FAILS"] = "1"
+        r = t.agent("run", "--trigger", "mention", "--hash", at_block["hash"], "--date", DAY)
+        t.env.pop("STUB_EXPORT_FAILS")
+        t.env.pop("STUB_SUBSCRIPTION")
+        last = json.loads((t.vault / "agents" / "longhand" / "daily" / f"{DAY}.json").read_text())["runs"][-1]
+        check(r.returncode == 0 and not last["error"], "a session that cannot be asked fails nothing")
+        check(last["tokens"]["total"] == 4693 and last["cost"] == 0, "…and zeroes nothing")
     finally:
         t.cleanup()
 

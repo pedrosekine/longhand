@@ -25,11 +25,18 @@ runs alone after the rest.
 
 A summary at the end: what failed, by file, and the exit code is how many.
 What failed is kept in tests/.last-failed for --failed.
+
+On Windows the runner gives each file what Linux gives it for nothing
+(`windows_env`: scripts started by their shebang, UTF-8, Git's sh), runs the
+QML files with Qt Quick Test from PySide6, and passes over the files that
+test Omarchy's own parts (NOT_ON_WINDOWS), saying so. A file there is run
+through this runner, not alone: `python tests\\run_all.py check`.
 """
 import argparse
 import fnmatch
 import os
 import pathlib
+import shutil
 import subprocess
 import sys
 import time
@@ -39,6 +46,36 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 TESTS = ROOT / "tests"
 QMLTEST = "/usr/lib/qt6/bin/qmltestrunner"
 LAST_FAILED = TESTS / ".last-failed"
+WINDOWS = os.name == "nt"
+
+# Files that test what Windows does not have, each with the reason. They are
+# named and passed over there; everywhere else this is not read.
+NOT_ON_WINDOWS: dict[str, str] = {
+    "test_hyprkeys.py": "hyprkeys.py keeps Hyprland's keys for the page",
+    "test_migrate.py": "tools/migrate-to-longhand moves an omarchy-student install",
+    "test_popup.py": "the bar's popup, drawn by quickshell on a running Hyprland",
+    "test_theme_icon.py": "tools/theme_icon.py tints the launcher's icon for an Omarchy theme",
+}
+
+
+def windows_env() -> dict:
+    """What a test finds on Windows in place of what Linux gives it: a
+    `subprocess` that starts a script by its shebang (tests/windows/), the
+    stand-in for fcntl (windows/pyshim/), UTF-8 as every file's and pipe's
+    encoding, and Git's bash and tools first on PATH — before Windows' own
+    `find` and `sort`, and before the `bash` that is WSL's launcher, which a
+    script's `env bash` would otherwise find."""
+    env = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8")
+    python_path = [str(TESTS / "windows"), str(ROOT / "windows" / "pyshim")]
+    env["PYTHONPATH"] = os.pathsep.join(python_path + ([env["PYTHONPATH"]] if env.get("PYTHONPATH") else []))
+    git = shutil.which("git")
+    if git:
+        root = pathlib.Path(git).resolve().parent.parent
+        for tools in (root / "usr" / "bin", root.parent / "usr" / "bin"):
+            if (tools / "bash.exe").is_file():
+                env["PATH"] = str(tools) + os.pathsep + env.get("PATH", "")
+                break
+    return env
 
 # Files that cannot run beside the others, each with the reason. Empty is
 # the goal: fix the test before adding to it.
@@ -55,15 +92,24 @@ def short(path: pathlib.Path) -> str:
 
 def jobs() -> list[tuple[str, list[str], dict | None, int]]:
     """Every test the runner knows: (file, command, env, timeout)."""
-    out = [(f.name, [sys.executable, str(f)], None, 600) for f in sorted(TESTS.glob("test_*.py"))]
-    qml_env = dict(os.environ, QT_QPA_PLATFORM="offscreen")
-    out += [(f.name, [QMLTEST, "-input", str(f)], qml_env, 600) for f in sorted(TESTS.glob("tst_*.qml"))]
+    env = windows_env() if WINDOWS else None
+    # The port test runs the bash pomo 190 times; under Git's bash on Windows,
+    # beside the other files, that is slow going.
+    slow = {"test_pomo_port.py": 1800} if WINDOWS else {}
+    out = [(f.name, [sys.executable, str(f)], env, slow.get(f.name, 600)) for f in sorted(TESTS.glob("test_*.py"))]
+    qml_env = dict(env or os.environ, QT_QPA_PLATFORM="offscreen")
+    # Qt from PySide6 brings no qmltestrunner: Qt Quick Test, from Python.
+    runner = [sys.executable, str(TESTS / "windows" / "qmltest.py")] if WINDOWS else [QMLTEST]
+    out += [(f.name, [*runner, "-input", str(f)], qml_env, 600) for f in sorted(TESTS.glob("tst_*.qml"))]
     return out
 
 
 def page_job(overlay: bool) -> tuple[str, list[str], dict | None, int]:
     args = ["--overlay"] if overlay else []
-    return ("page/run.py", [sys.executable, str(TESTS / "page" / "run.py"), *args], None, 900)
+    env = windows_env() if WINDOWS else None
+    # Over the Windows host the page starts a Python for nearly everything
+    # it asks, each slower to start than on Linux: a run takes longer there.
+    return ("page/run.py", [sys.executable, str(TESTS / "page" / "run.py"), *args], env, 2400 if WINDOWS else 900)
 
 
 def run(job) -> tuple[str, bool, float, str]:
@@ -73,7 +119,7 @@ def run(job) -> tuple[str, bool, float, str]:
         # No test reads the terminal: side by side they would share it, and a
         # stub that waits for input would wait on the keyboard.
         r = subprocess.run(cmd, cwd=ROOT, stdin=subprocess.DEVNULL, capture_output=True, text=True, env=env,
-                           timeout=timeout)
+                           timeout=timeout, encoding="utf-8", errors="replace")
         out, ok = r.stdout + r.stderr, r.returncode == 0
     except subprocess.TimeoutExpired:
         out, ok = f"timed out after {timeout}s", False
@@ -147,6 +193,12 @@ def main() -> int:
             return 2
         seen = set()
         known = [j for j in picked if not (j[0] in seen or seen.add(j[0]))]
+
+    if WINDOWS:
+        for j in known:
+            if j[0] in NOT_ON_WINDOWS:
+                print(f"skip {j[0]}: {NOT_ON_WINDOWS[j[0]]}", flush=True)
+        known = [j for j in known if j[0] not in NOT_ON_WINDOWS]
 
     together = [j for j in known if j[0] not in SERIAL]
     alone = [j for j in known if j[0] in SERIAL]

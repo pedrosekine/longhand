@@ -11,6 +11,7 @@ import "Dates.js" as Dates
 import "Days.js" as Days
 import "Task.js" as Task
 import "Authorship.js" as Authorship
+import "Links.js" as Links
 import "Shortcuts.js" as Sc
 
 // Settings (Ctrl+, or "settings" at the sidebar's foot): calendars, the agent, sound
@@ -512,7 +513,7 @@ BorderSurface {
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onClicked: Qt.openUrlExternally("file://" + page.agentChecks.latest_review)
+            onClicked: Qt.openUrlExternally(Links.fileUrl(page.agentChecks.latest_review))
           }
         }
 
@@ -592,7 +593,7 @@ BorderSurface {
           width: parent.width
           textFormat: Text.PlainText
           wrapMode: Text.WordWrap
-          text: "The mouse pointer goes where the keys go, as Hyprland's goes to the window you move to: into the pane that has "
+          text: "The mouse pointer goes where the keys go" + (page.onWindows ? "" : ", as Hyprland's goes to the window you move to") + ": into the pane that has "
             + "the keys, onto the row selected in it, beside the note's cursor. Never while your hand is on the mouse."
           color: page.faint
           font.family: page.fontFamily

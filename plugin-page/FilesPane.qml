@@ -3,6 +3,7 @@ import Quickshell.Io
 import QtQuick
 import qs.Commons
 import qs.Ui
+import "Links.js" as Links
 import "Shortcuts.js" as Sc
 
 // The sidebar's Files space (docs/files.md, 2026-10-26): the notes as folders
@@ -36,6 +37,7 @@ Item {
   readonly property string agentRoot: svc.agentRoot
   readonly property string dailyDir: svc.configured ? String(svc.config.daily.dir).replace(/^\/+|\/+$/g, "") : ""
 
+  readonly property string pageFsPy: Links.fromFileUrl(Qt.resolvedUrl("page_fs.py").toString())
   function abs(rel) { return files.vault + (rel === "" ? "" : "/" + rel) }
 
   // What is never listed (docs/files.md): dot and underscore names
@@ -95,7 +97,7 @@ Item {
   function next() {
     if (files.queue.length === 0) return
     var q = files.queue[0]
-    lister.command = ["find", files.abs(q.rel), "-mindepth", "1", "-maxdepth", "1", "-printf", "%y\t%f\n"]
+    lister.command = ["python3", files.pageFsPy, "list", files.abs(q.rel)]
     lister.running = true
   }
   Process {
@@ -196,7 +198,7 @@ Item {
     if (files.allNames === null && !walker.running) {
       var roots = [files.abs(files.notesRoot)]
       if (files.agentRoot !== "" && files.notesRoot !== "") roots.push(files.abs(files.agentRoot))
-      walker.command = ["find"].concat(roots, ["-type", "f", "(", "-iname", "*.md", "-o", "-iname", "*.pdf", ")"])
+      walker.command = ["python3", files.pageFsPy, "walk"].concat(roots)
       walker.running = true
     }
     page.used("files-filter")

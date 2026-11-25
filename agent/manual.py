@@ -3,7 +3,8 @@ item "the agent's cheap tiers": self-knowledge, static and auditable).
 
 `agent/manual.md` is written by hand; its `{key:<id>}` are filled in here
 with the student's own keys — Shortcuts.js with keys.json applied, and
-Hyprland's as they are now (tools/keys_guide.py reads both) — so "press
+Hyprland's as they are now, or on Windows the host's (tools/keys_guide.py
+reads both) — so "press
 Ctrl+D" is true for this student even after they moved a key. A run whose
 block asks how to do something in Longhand carries the manual whole; every
 other run about a block lists it, and the agent can ask to read it (or
@@ -52,17 +53,31 @@ def keys(config_home: Path | None = None) -> dict[str, list[str]]:
         return {}
     out = {a["id"]: a["keys"] for a in d["actions"]}
     for (aid, *_), h in zip(hyprkeys.ACTIONS, d["hypr"]):
-        out["sys:" + aid] = h["keys"]
+        # Windows calls Super its own key's name, and says it first
+        # (windows/winkeys.py keeps them there).
+        out["sys:" + aid] = [win_first(k) for k in h["keys"]] if os.name == "nt" else h["keys"]
     return out
 
 
-def render(text: str, k: dict[str, list[str]]) -> str:
+def win_first(key: str) -> str:
+    """"Alt+Super+=" as Windows says it: "Win+Alt+="."""
+    return "Win+" + key.replace("Super+", "", 1) if "Super+" in key else key
+
+
+SYSTEM = "windows" if os.name == "nt" else "omarchy"
+OS_WORDS = re.compile(r"\{os:([^{}|]*)\|([^{}|]*)\}")
+
+
+def render(text: str, k: dict[str, list[str]], system: str = SYSTEM) -> str:
+    """The manual as this student reads it: their keys, and the words for
+    the system it runs on ({os:Omarchy's|Windows'})."""
     def one(m):
         ks = k.get(m.group(1))
         if not ks:
             return "(its key: see the keys list)" if k else "(a key: see the keys list, Ctrl+/)"
         return " or ".join(f"`` {x} ``" if "`" in x else f"`{x}`" for x in ks[:2])
     text = re.sub(r"<!--.*?-->\n*", "", text, flags=re.S)
+    text = OS_WORDS.sub(lambda m: m.group(2) if system == "windows" else m.group(1), text)
     return re.sub(r"\{key:([\w:]+)\}", one, text)
 
 

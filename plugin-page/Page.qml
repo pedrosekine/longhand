@@ -124,6 +124,10 @@ Item {
   id: root
 
   property string omarchyPath: Quickshell.env("OMARCHY_PATH")
+  // On Windows the host stands in for the shell (windows/): what the page
+  // says of the system, it says in Windows' words there.
+  readonly property bool onWindows: Sc.onWindows
+  readonly property string themeName: onWindows ? "Windows colours" : "Omarchy theme"
   property var shell: null
   property var manifest: null
 
@@ -139,10 +143,10 @@ Item {
   property int vaultIndexVersion: 0
   property var missedNames: ({})      // names not found, each read again once
   Timer { id: reindexTimer; interval: 1200; onTriggered: { root.vaultIndex = null; root.needIndex() } }
+  readonly property string pageFsPy: Links.fromFileUrl(Qt.resolvedUrl("page_fs.py").toString())
   function needIndex() {
     if (root.vaultIndex !== null || indexProc.running || !svc.configured) return
-    indexProc.command = ["find", svc.config.vault, "-name", ".*", "-prune", "-o", "-type", "f", "-regextype", "posix-extended",
-                         "-iregex", ".*\\.(md|pdf|png|jpe?g|gif|webp|bmp|svg|avif)", "-print"]
+    indexProc.command = ["python3", root.pageFsPy, "index", svc.config.vault]
     indexProc.running = true
   }
   // Following links (docs/files.md, 2026-10-27). Where it leads: a day's
@@ -229,7 +233,7 @@ Item {
       root.openPdf(rel)
       return
     }
-    if (!/\.md$/i.test(rel)) { Qt.openUrlExternally("file://" + (svc.config.vault + "/" + rel).split("/").map(encodeURIComponent).join("/")); return }
+    if (!/\.md$/i.test(rel)) { Qt.openUrlExternally(Links.fileUrl(svc.config.vault + "/" + rel)); return }
     root.remember()
     var heading = l.heading.charAt(0) === "^" ? "" : l.heading
     var block = l.heading.charAt(0) === "^" ? l.heading.substring(1) : ""
@@ -291,7 +295,7 @@ Item {
     root.sizeQueue = root.sizeQueue.slice(200)
     for (var i = 0; i < batch.length; i++) root.sizeAsked[batch[i]] = true
     sizeProc.batch = batch
-    sizeProc.command = ["file", "-b", "-L", "--"].concat(batch.map(function (u) { return decodeURIComponent(u.replace(/^file:\/\//, "")) }))
+    sizeProc.command = ["python3", root.pageFsPy, "sizes"].concat(batch.map(Links.fromFileUrl))
     sizeProc.running = true
   }
 
@@ -308,7 +312,7 @@ Item {
       if (!root.missedNames[target]) { var m = root.missedNames; m[target] = true; root.missedNames = m; reindexTimer.restart() }
       return ""
     }
-    return "file://" + (svc.config.vault + "/" + rel).split("/").map(encodeURIComponent).join("/")
+    return Links.fileUrl(svc.config.vault + "/" + rel)
   }
   readonly property alias sidebarItem: sidebar
   readonly property alias pdfItem: pdfPane
@@ -360,7 +364,7 @@ Item {
   // config names another; otherwise the first of these the machine has.
   // Fenced code and frontmatter keep a monospace, where columns mean
   // something — the editor already draws those rows apart.
-  readonly property var proseChoices: [svc.pageFont, "Adwaita Sans", "Inter", "Noto Sans", "iA Writer Quattro S", Style.font.family]
+  readonly property var proseChoices: [svc.pageFont, "Adwaita Sans", "Inter", "Noto Sans", "Segoe UI Variable Text", "Segoe UI", "iA Writer Quattro S", Style.font.family]
   readonly property string fontFamily: {
     var have = Qt.fontFamilies()
     for (var i = 0; i < root.proseChoices.length; i++)
@@ -875,7 +879,7 @@ Item {
   }
   Process {
     id: exportDepsProc
-    command: ["sh", "-c", "miss=''; command -v pandoc >/dev/null 2>&1 || miss='pandoc'; command -v xelatex >/dev/null 2>&1 || miss=\"${miss:+$miss and }xelatex\"; printf '%s' \"$miss\""]
+    command: ["python3", root.pageFsPy, "which", "pandoc", "xelatex"]
     stdout: StdioCollector {
       onStreamFinished: {
         var m = text.trim()
@@ -1164,6 +1168,13 @@ Item {
   property var queued: []      // runner commands waiting, oldest first
   property bool running: false
   property string runningHash: ""
+  // The running run's answer is in: the turn it was asked for is written
+  // and drawn, and the run is only ending (its process still closing, for
+  // most of a second on Windows). It thinks no more, and Esc there is no
+  // stop: it closes, as it would a moment later (2026-11-25: Esc right as
+  // an answer landed stopped a run that had finished, and put the message
+  // back in the box under its own answer).
+  property bool runAnswered: false
   property string runnerPhase: ""
   property string talkPhase: ""
   property string planPhase: ""
@@ -1460,7 +1471,9 @@ Item {
   }
   function fileName(rel) {
     var p = String(rel || "")
-    return root.refNames[p] || p.replace(/^.*\//, "").replace(/\.(md|pdf)$/i, "")
+    // Either separator: an export's whole path on Windows has "\" (the
+    // header said "C:\Users\…\Downloads\Diary 1" for "Diary 1").
+    return root.refNames[p] || p.replace(/^.*[\\\/]/, "").replace(/\.(md|pdf)$/i, "")
   }
   // One `@` row: its kind, its name, a paper's title where there is room.
   function refItem(f) {
@@ -1931,7 +1944,7 @@ Item {
     : svc.ready && root.noteRel !== "" && !root.pageOutside && (!root.dayNote || root.beforeHorizon || svc.notePrivate)
   // A note written outside the vault (a project's page): read, never asked
   // about or exported — it is gathered from notes that are.
-  readonly property bool pageOutside: svc.filePath.charAt(0) === "/"
+  readonly property bool pageOutside: Links.isAbs(svc.filePath)
   // What the room talks about: the PDF open in the vault (plan.md item 15,
   // step 2), else the note.
   readonly property string roomRel: root.paneHeld !== "" ? root.paneHeld : root.paper.shown ? root.pdfRel : root.noteRel
@@ -1974,7 +1987,7 @@ Item {
   }
 
   readonly property string roomHash: root.noteRoom ? "note:" + root.roomRel : "day"
-  readonly property bool dayThinking: root.runningHash === root.roomHash
+  readonly property bool dayThinking: (root.runningHash === root.roomHash && !root.runAnswered)
     || root.queued.some(function (q) { return q.hash === root.roomHash })
   readonly property bool dayCanSend: root.noteRoom ? root.paneHeld !== "" || root.noteAskable : svc.isToday && root.agentDay && !root.beforeHorizon
   readonly property bool dayShown: root.dayOpen && !root.marginOpen && !root.talkOpen && !root.keysOpen && !root.settingsOpen
@@ -2058,7 +2071,7 @@ Item {
     var ids = where === "day" ? [root.roomHash] : [root.currentHash, root.currentRec]
     ids = ids.filter(function (x) { return x !== "" })
     var hit = function (h) { return String(h || "").split(",").some(function (x) { return ids.indexOf(x) >= 0 }) }
-    return (root.running && hit(root.runningHash)) || root.queued.some(function (q) { return hit(q.hash) })
+    return (root.running && !root.runAnswered && hit(root.runningHash)) || root.queued.some(function (q) { return hit(q.hash) })
   }
   function stopAgent(where) {
     if (!root.agentBusy(where)) return false
@@ -2159,6 +2172,7 @@ Item {
     for (var i = turns.length - 1; i >= 0; i--)
       if (turns[i].role === "student" && turns[i].text === p.text) {
         root.dayPending = null
+        if (root.running && root.runningHash === root.roomHash && turns[i + 1]) root.runAnswered = true
         root.openFromTurn(turns[i + 1])
         return
       }
@@ -2741,8 +2755,8 @@ Item {
   // This block is away: asked and not back. `runningHash` can name a whole
   // list submission.
   readonly property bool answering: root.currentHash !== ""
-    && (root.runningHash.split(",").indexOf(root.currentHash) >= 0
-        || root.runningHash.split(",").indexOf(root.currentRec) >= 0
+    && ((!root.runAnswered && (root.runningHash.split(",").indexOf(root.currentHash) >= 0
+                               || root.runningHash.split(",").indexOf(root.currentRec) >= 0))
         || root.sending.indexOf(root.currentHash) >= 0)
   // "read: The Seven Deadly Myths… (p. 1, 4)": what the agent read for the
   // reply under the cursor; nothing when it read nothing.
@@ -3001,7 +3015,7 @@ Item {
 
   function flushUsage() {
     if (root.usageBuf.length === 0 || usageProc.running) return
-    usageProc.command = ["sh", "-c", 'printf "%s\n" "$1" >> "$2"', "sh", root.usageBuf.join("\n"), root.usagePath]
+    usageProc.command = ["python3", root.pageFsPy, "append", root.usagePath, root.usageBuf.join("\n")]
     root.usageBuf = []
     usageProc.running = true
   }
@@ -3091,7 +3105,7 @@ Item {
       return row && row.kind === "task" && row.task.file ? row.task.file + ":" + (row.task.line + 1) : ""
     }
     if (root.centerView !== "note") return ""
-    if (root.pdfShown) return root.pdfRel.charAt(0) === "/" ? root.pdfRel : vault !== "" ? vault + "/" + root.pdfRel : ""
+    if (root.pdfShown) return Links.isAbs(root.pdfRel) ? root.pdfRel : vault !== "" ? vault + "/" + root.pdfRel : ""
     if (svc.notePath === "" || !svc.ready) return ""
     var body = editor.text
     var whole = svc.joinHeader(body)
@@ -3793,6 +3807,7 @@ Item {
     root.queued = root.queued.slice(1)
     root.running = true
     root.runningHash = q.hash
+    root.runAnswered = false
     runner.command = q.cmd
     runner.running = true
   }
@@ -4604,7 +4619,7 @@ Item {
       if (line > 0) Qt.callLater(function () { pdfPane.jumpTo(line - 1, 0) })
       return
     }
-    Qt.openUrlExternally("file://" + svc.config.vault + "/" + path)
+    Qt.openUrlExternally(Links.fileUrl(svc.config.vault + "/" + path))
   }
 
   function jumpToMark(id) {
@@ -5087,9 +5102,18 @@ Item {
 
   // hyprkeys.py, beside this file, keeps the six in ~/.config/hypr/longhand.lua
   // and answers every call with its state. One call at a time.
-  readonly property string hyprKeysPy: decodeURIComponent(Qt.resolvedUrl("hyprkeys.py").toString().replace(/^file:\/\//, ""))
+  readonly property string hyprKeysPy: Links.fromFileUrl(Qt.resolvedUrl("hyprkeys.py").toString())
+  // A call asked while another runs is made when that one ends; a state
+  // read is not, since every call answers with the state (2026-11-24: the
+  // second Enter that lets the page keep the six came while the sheet was
+  // still reading them, and was lost, the note left at "…" — on Windows,
+  // where the read takes most of a second).
+  property var hyprNext: null
   function hypr(args) {
-    if (hyprProc.running) return false
+    if (hyprProc.running) {
+      if (args[0] !== "state") root.hyprNext = args
+      return false
+    }
     hyprProc.kind = args[0]
     hyprProc.command = ["python3", root.hyprKeysPy].concat(args)
     hyprProc.running = true
@@ -5966,7 +5990,7 @@ Item {
       root.openPdf(String(d.path).slice(vault.length))
       return
     }
-    Qt.openUrlExternally("file://" + d.path)
+    Qt.openUrlExternally(Links.fileUrl(d.path))
   }
 
   // Enter in a project, by what the row is: the project's or the week's
@@ -6698,7 +6722,7 @@ Item {
     // did on its own — is a conversation with it (2026-10-20: writing back
     // means there is something to talk about). A document to file opens.
     if ((row.kind === "proposal" || row.kind === "told") && row.item.kind === "file") {
-      Qt.openUrlExternally("file://" + (row.item.filed || row.item.src)); root.used("document", "open"); return
+      Qt.openUrlExternally(Links.fileUrl(row.item.filed || row.item.src)); root.used("document", "open"); return
     }
     if (row.kind === "proposal" || row.kind === "question" || row.kind === "told") { root.openTalk(row.item); return }
     if (row.kind === "shelf") { root.showShelf = true; return }
@@ -7400,6 +7424,7 @@ Item {
   property bool quiet: false        // the page is writing (binding, catching up): not the student
   property var declined: ({})       // raw lines whose date stays words (Backspace, Ctrl+D, Ctrl+Z)
   property var autoBound: null      // { id, raw, made }: the line the page just bound as it was left
+  property var unmade: []           // deadlines the page made for a line and took back (Ctrl+Z, the line gone)
   property int lastLine: -1
   property bool reconcilePending: false
   property var pendingAccept: null  // { hash, index }: an agent proposal accepted, its line to bind
@@ -7563,7 +7588,7 @@ Item {
     var i = svc.noteDate === rec.stem ? Bound.tabBound(editor.rows, rec) : -1
     var r = editor.rows[i]
     if (!r) {
-      if (made) dl.remove(id)
+      if (made) root.unmake(id)
       root.decline(rec.raw)
       return
     }
@@ -7576,6 +7601,21 @@ Item {
     root.autoBound = { id: id, raw: rec.raw, made: made }
     dl.set(id, ["--link", Bound.link(rec.stem, id)])
     root.used("bound")
+  }
+
+  // A deadline the page made for a line, taken back: removed from the
+  // store, and remembered, because a check already running can bring it
+  // back. It reads the open note from disk, where the line may still carry
+  // the tag until the undo's save lands, and the store after the removal:
+  // a tag with no deadline behind it is one made on another machine, and
+  // the check adopts it; the next check finds its line gone and cancels it
+  // (2026-11-25, the live page test on GitHub's Windows machine: "Ctrl+Z:
+  // the words are back and the deadline it made is gone", the deadline
+  // left cancelled). The page knows better: what it took back it removes
+  // again (checkDone).
+  function unmake(id) {
+    if (root.unmade.indexOf(id) < 0) root.unmade = root.unmade.concat([id]).slice(-20)
+    dl.remove(id)
   }
 
   // What changed among bound lines with the last edit. A line gone, back,
@@ -7592,7 +7632,7 @@ Item {
       // (The text, not editor.rows: they catch up after this signal.)
       if (ab && ab.id === e.gone[i] && editor.text.split("\n").indexOf(ab.raw) >= 0) {
         root.autoBound = null
-        if (ab.made) dl.remove(ab.id)
+        if (ab.made) root.unmake(ab.id)
         else dl.set(ab.id, ["--link", ""])
         root.decline(ab.raw)
         root.used("bound", "undone")
@@ -8036,7 +8076,12 @@ Item {
   }
 
   function runCheck() {
-    if (!root.checkWanted || root.checking || !svc.ready || svc.saving || svc.pending || !root.dayNote) return
+    // Not while the page's own writes to the store are on their way: the
+    // check read the store before a deadline the page was removing (Ctrl+Z
+    // right after a binding) was gone, found its line gone, and cancelled
+    // it after the removal, bringing it back as cancelled (2026-11-25, on
+    // GitHub's Windows machine). It runs when they have landed (dl idle).
+    if (!root.checkWanted || root.checking || !svc.ready || svc.saving || svc.pending || !root.dayNote || dl.busy) return
     root.checkWanted = false
     root.checking = true
     checkGuard.restart()
@@ -8058,6 +8103,15 @@ Item {
       root.origins = out.origins || ({})
       root.dueDates = out.dates || ({})
       root.sayChecked(out)
+      // A deadline the page took back, adopted again from a tag still on
+      // disk (unmake): removed again, before any other check can start —
+      // unless the note in the page holds its tag again, which is then
+      // the person's to keep.
+      var adopted = out.adopted || []
+      for (var a = 0; a < adopted.length; a++) {
+        var aid = adopted[a].id
+        if (root.unmade.indexOf(aid) >= 0 && root.bound[String(aid)] === undefined) dl.remove(aid)
+      }
     }
     // The store as the check left it, then the open note in line with it
     // (reconcile runs when the store's items arrive).
@@ -8390,7 +8444,7 @@ Item {
     var savedRefs = root.marginRefs.slice()
     margin.chatFieldRef.text = ""
     root.clearReplies("margin")
-    root.pendingChat = { hash: root.currentRec, text: msg, raw: raw, replies: savedReplies, savedRefs: savedRefs }
+    root.pendingChat = { hash: root.currentRec, mark: root.currentHash, text: msg, raw: raw, replies: savedReplies, savedRefs: savedRefs }
     root.requestChat(root.currentRec, msg, root.currentHash, root.takeMarginRefs())
   }
   // The chips a task's or a block's message carries besides its own
@@ -8431,6 +8485,14 @@ Item {
     for (var i = turns.length - 1; i >= 0; i--)
       if (turns[i].role === "student" && turns[i].text === p.text) {
         root.pendingChat = null
+        // Its answer with it: the run is only ending, and the block it was
+        // asked from (the run's own hash, `mark`) is no longer away.
+        var ran = root.runningHash.split(",")
+        if (root.running && turns[i + 1] && (ran.indexOf(p.hash) >= 0 || ran.indexOf(p.mark || "") >= 0)) {
+          root.runAnswered = true
+          root.sending = root.sending.filter(function (h) { return h !== p.mark && h !== p.hash })
+          root.scheduleRepaint()
+        }
         root.openFromTurn(turns[i + 1])
         return
       }
@@ -8502,6 +8564,7 @@ Item {
       var waiting = root.afterWrites
       root.afterWrites = []
       for (var i = 0; i < waiting.length; i++) waiting[i]()
+      if (root.checkWanted) root.runCheck()
     }
   }
 
@@ -8540,6 +8603,7 @@ Item {
     // nothing to say. Silence is now only ever an answer, never a fault.
     onExited: function (code, status) {
       root.running = false
+      root.runAnswered = false
       root.runnerPhase = ""
       // The day's answer may have proposed: its cards are the dashboard's items.
       if (root.runningHash === "day") { Qt.callLater(root.refreshProposals); Qt.callLater(root.refreshTasks) }
@@ -8791,7 +8855,7 @@ Item {
   // soon as it is written.
   FolderListModel {
     id: dayFiles
-    folder: svc.configured ? "file://" + svc.config.vault + "/" + svc.config.daily.dir : ""
+    folder: svc.configured ? Links.fileUrl(svc.config.vault + "/" + svc.config.daily.dir) : ""
     nameFilters: ["*.md"]
     showDirs: false
     showDotAndDotDot: false
@@ -8828,8 +8892,13 @@ Item {
       }
     }
     onExited: function (code, status) {
+      // Asked again while it ran (an opening while the last one's fetch was
+      // still going): what waits for the opening's fetch waits for that one,
+      // not this (2026-11-25: the first pass and the plan went before the
+      // fetch the opening asked for had begun). fetchPatience still lets
+      // them go after 20 seconds.
+      if (root.projectsAgain) { root.projectsAgain = false; Qt.callLater(root.refreshProjects); return }
       root.fetched()
-      if (root.projectsAgain) { root.projectsAgain = false; Qt.callLater(root.refreshProjects) }
     }
   }
   Timer { interval: 300000; running: root.usageBuf.length > 0; repeat: true; onTriggered: root.flushUsage() }
@@ -9283,6 +9352,9 @@ Item {
         var st = null
         try { st = JSON.parse(text) } catch (e) { console.warn("longhand.page hyprkeys: " + text.trim()) }
         root.hyprDone(st)
+        var next = root.hyprNext
+        root.hyprNext = null
+        if (next) root.hypr(next)
       }
     }
     stderr: StdioCollector { onStreamFinished: if (text.trim() !== "") console.warn("longhand.page hyprkeys: " + text.trim()) }

@@ -39,6 +39,38 @@ def by_title(rows):
     return {r["title"]: r for r in rows}
 
 
+LISTING = """import pathlib, sys
+sys.path.insert(0, sys.argv[1])
+import lifespan, task
+path, me = pathlib.Path(sys.argv[2]), sys.argv[3]
+for i in range(60):
+    t = task.parse(f"- [ ] {me}'s box {i}")
+    t["age"] = 0
+    lifespan.apply([t], path)                 # a new box each time: the clock is saved each time
+print("done")
+"""
+
+
+def side_by_side(folder: pathlib.Path) -> None:
+    """Every listing brings the clocks up to date and saves them, and the
+    page runs several at once (the dashboard's, the plan's, a project's).
+    With one shared `.tmp`, the second rename found it gone (Linux) or held
+    (Windows) and that listing failed: the dashboard read nothing, and a
+    line just written was missing from it (2026-11-25)."""
+    import subprocess
+    script = folder / "listing.py"
+    script.write_text(LISTING)
+    clock = folder / "side-by-side.json"
+    procs = [subprocess.Popen([sys.executable, str(script), str(ROOT / "agent"), str(clock), who],
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL, text=True)
+             for who in ("a", "b", "c")]
+    outs = [p.communicate(timeout=120) for p in procs]
+    failed = [err.strip().splitlines()[-1] for (out, err), p in zip(outs, procs) if p.returncode != 0 or "done" not in out]
+    check(not failed, f"three listings side by side, each saving the clocks: none fails ({failed[:1]})")
+    left = sorted(x.name for x in folder.iterdir() if x.name.endswith(".tmp"))
+    check(not left and lifespan.load(clock) is not None, f"…the clock readable after, no copy left beside it ({left})")
+
+
 def main() -> int:
     path = pathlib.Path(tempfile.mkdtemp(prefix="lifespan-")) / "silence.json"
 
@@ -116,6 +148,7 @@ def main() -> int:
     check(r["an old thought"]["away"] == "" and r["an old thought"]["warn"],
           "an unreadable clock never sends a box away unwarned")
 
+    side_by_side(path.parent)
     print("PASS" if failures == 0 else f"{failures} FAILED")
     return 1 if failures else 0
 

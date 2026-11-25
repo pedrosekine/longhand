@@ -20,6 +20,13 @@ Item {
 
   // Somewhere else the keys can be: another pane's box.
   TextInput { id: elsewhere; y: 790; width: 100; height: 10 }
+  // A closed sheet's key catcher: hidden, and holding the keys.
+  Item { id: closedSheet; visible: false }
+  // A note not read yet: no lines.
+  Component {
+    id: unreadEditor
+    NoteEditor { width: 560; height: implicitHeight; textSize: 16; fontFamily: "monospace" }
+  }
 
   SignalSpy { id: kept; target: ed; signalName: "cueDismissed" }
 
@@ -66,6 +73,35 @@ Item {
       verify(Qt.colorEqual(dropped.color, ed.cancelColor) && !Qt.colorEqual(dropped.color, "green"), "a cancelled one: grey")
       compare([findChild(done, "tick").text, findChild(dropped, "tick").text], ["✓", "–"])
       ed.checkColor = ed.dim
+    }
+
+    // A box ticked by a click is the same green as one ticked with
+    // Ctrl+L: under the pointer its edge turns the accent, its fill never
+    // does, and once the pointer goes it is lit no more (2026-11-24: the
+    // box asked its own area, which hears the click but not the hover, and
+    // stayed filled with the accent).
+    function test_a_clicked_box_keeps_the_tick_colour() {
+      ed.checkColor = "green"
+      ed.accent = "orange"
+      ed.load("- [ ] read ch.7
+after")
+      var box = findChild(ed.rowItem(0), "box")
+      tryVerify(function () { return box.visible && box.width > 0 })
+      mouseMove(top, 590, 790)
+      mouseMove(box, box.width / 2, box.height / 2)
+      tryCompare(box, "lit", true)
+      verify(Qt.colorEqual(box.border.color, "orange") && box.border.width > 0, "an open box under the pointer: an accent edge")
+      mouseClick(box, box.width / 2, box.height / 2)
+      tryVerify(function () { return ed.rows[0].checked })
+      box = findChild(ed.rowItem(0), "box")
+      verify(Qt.colorEqual(box.color, "green"), "ticked by a click, the pointer still on it: the tick's colour (" + box.color + ")")
+      verify(box.lit && Qt.colorEqual(box.border.color, "orange") && box.border.width > 0, "…with the accent edge round it")
+      var after = ed.rowItem(1)
+      mouseMove(ed, after.field.x + 20, after.y + after.height / 2)
+      tryCompare(box, "lit", false)
+      verify(Qt.colorEqual(box.color, "green") && box.border.width === 0, "the pointer gone: the plain ticked box")
+      ed.checkColor = ed.dim
+      ed.accent = "orange"
     }
 
     function test_vertical_rhythm() {
@@ -125,6 +161,32 @@ Item {
       ed.load("\nline one")
       verify(elsewhere.activeFocus, "and keeps them")
       verify(!ed.hasFocus)
+    }
+
+    // The page's first open asks for the keys before its note is read
+    // (2026-11-24): the ask is owed, and paid when the lines come — out of
+    // a closed sheet's catcher, which held them, and the person's typing
+    // went into hidden settings.
+    function test_keys_asked_for_before_the_note_is_read_come_with_it() {
+      var unread = createTemporaryObject(unreadEditor, top)
+      closedSheet.forceActiveFocus()
+      unread.focusNote()
+      verify(!unread.holdsFocus(), "no line yet to hold them")
+      unread.load("\nfirst words")
+      verify(unread.hasFocus, "the note has the keys once it is read")
+      verify(!closedSheet.activeFocus, "and the hidden catcher has let go")
+      type("!")
+      compare(unread.text, "\nfirst words!")
+    }
+
+    // …unless something shown was given them meanwhile.
+    function test_an_owed_ask_never_takes_the_keys_from_something_shown() {
+      var unread = createTemporaryObject(unreadEditor, top)
+      unread.focusNote()
+      elsewhere.forceActiveFocus()
+      unread.load("\nfirst words")
+      verify(elsewhere.activeFocus, "the box keeps them")
+      verify(!unread.holdsFocus())
     }
 
     // Emphasis writes the markers the file keeps; nothing is drawn styled.

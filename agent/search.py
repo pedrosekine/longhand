@@ -97,12 +97,12 @@ def files(vault: Path, on: dict[str, bool], withheld: dict, hide=None) -> list[P
         for p in sorted((vault / folder).rglob("*")):
             if not p.is_file():
                 continue
-            why = _never(str(p.relative_to(vault)))
+            why = _never(p.relative_to(vault).as_posix())
             if why:
                 if why != "type" or p.suffix.lower() in (".docx", ".pptx", ".xlsx", ".odt", ".json", ".env", ".pem", ".key"):
                     withheld[why] = withheld.get(why, 0) + 1
                 continue
-            if hide and hide(str(p.relative_to(vault))):
+            if hide and hide(p.relative_to(vault).as_posix()):
                 withheld["horizon"] = withheld.get("horizon", 0) + 1
                 continue
             out.append(p)
@@ -143,8 +143,19 @@ def _pdf_pages(p: Path, cache: Path, budget: dict) -> list[str] | None:
         pages = []
     while pages and not pages[-1]:
         pages.pop()
-    cache.mkdir(parents=True, exist_ok=True)
-    f.write_text(json.dumps({"pages": pages}))
+    # Written whole, through a copy of this search's own, and renamed over:
+    # written in place, a search beside it (the page searches as the person
+    # types) read half a file, took it for none and read the PDF again; and
+    # a cache that could not be written is only a cache.
+    tmp = f.with_name(f"{f.name}.{os.getpid()}.tmp")
+    try:
+        cache.mkdir(parents=True, exist_ok=True)
+        tmp.write_text(json.dumps({"pages": pages}))
+        os.replace(tmp, f)
+    except OSError:
+        pass
+    finally:
+        tmp.unlink(missing_ok=True)
     return pages
 
 
@@ -188,9 +199,17 @@ def leaks(texts: list[str]) -> set[int]:
         for l in t.split("\n"):
             lines.append(l)
             owner.append(i)
+    # The report on gitleaks' own stdout, which it names "-". It was asked
+    # for at "/dev/stdout", a file gitleaks has to open; where it cannot (a
+    # container, a service whose stdout is a socket) it found the secret,
+    # ended with 1 and wrote nothing, which read as "nothing found": the
+    # passage was sent whole (2026-11-24, the suite's first run on GitHub).
+    # A run that ends badly and reports nothing has checked nothing.
     try:
         r = subprocess.run(["gitleaks", "stdin", "--no-banner", "--redact", "--report-format", "json",
-                            "--report-path", "/dev/stdout"], input="\n".join(lines), capture_output=True, text=True, timeout=30)
+                            "--report-path", "-"], input="\n".join(lines), capture_output=True, text=True, timeout=30)
+        if r.returncode != 0 and not r.stdout.strip():
+            return set(range(len(texts)))           # unchecked: share nothing
         found = json.loads(r.stdout or "[]")
     except (OSError, subprocess.TimeoutExpired, ValueError):
         return set(range(len(texts)))               # cannot check: share nothing
@@ -219,7 +238,7 @@ def search(vault: Path, on: dict[str, bool], words: str, cache: Path, folder: st
     budget = {"until": time.monotonic() + PDF_BUDGET}
     found = []
     for p in files(vault, scope, withheld, hide):
-        rel = str(p.relative_to(vault))
+        rel = p.relative_to(vault).as_posix()
         for where, para in paragraphs(p, cache, budget, withheld):
             low = para.casefold()
             hits = sum(1 for t in set(want) if t in low)
@@ -245,7 +264,7 @@ def read(vault: Path, on: dict[str, bool], rel: str, cache: Path, hide=None, lim
     p = (vault / rel).resolve()
     if vault.resolve() not in p.parents or not p.is_file():
         return {"error": "not a file in the vault"}
-    rel = str(p.relative_to(vault.resolve()))
+    rel = p.relative_to(vault.resolve()).as_posix()
     if _never(rel):
         return {"error": "never shared"}
     if not any(y and (rel == f or rel.startswith(f + "/")) for f, y in on.items()):

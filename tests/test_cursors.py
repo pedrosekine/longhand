@@ -8,7 +8,9 @@ moves a real (offscreen) mouse, and reads the cursor the window was given:
 a text cursor over the words, a hand over a checkbox, and touchpad and wheel
 scrolling still working.
 
-Needs PyQt6 built against the system's Qt 6.
+Needs PyQt6 built against the system's Qt 6 (on Omarchy, where the page
+runs in Quickshell's Qt), or else PySide6 — the Qt of the Windows host,
+which `pip install -e windows` brings, so it runs there with nothing more.
 Run: QT_QPA_PLATFORM=offscreen python3 tests/test_cursors.py
 """
 import os
@@ -17,10 +19,16 @@ import sys
 import tempfile
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from PyQt6.QtCore import QObject, QPoint, QPointF, Qt, QUrl  # noqa: E402
-from PyQt6.QtGui import QGuiApplication, QWheelEvent  # noqa: E402
-from PyQt6.QtQuick import QQuickView  # noqa: E402
-from PyQt6.QtTest import QTest  # noqa: E402
+try:
+    from PyQt6.QtCore import QObject, QPoint, QPointF, Qt, QUrl  # noqa: E402
+    from PyQt6.QtGui import QGuiApplication, QWheelEvent  # noqa: E402
+    from PyQt6.QtQuick import QQuickView  # noqa: E402
+    from PyQt6.QtTest import QTest  # noqa: E402
+except ImportError:
+    from PySide6.QtCore import QObject, QPoint, QPointF, Qt, QUrl  # noqa: E402
+    from PySide6.QtGui import QGuiApplication, QWheelEvent  # noqa: E402
+    from PySide6.QtQuick import QQuickView  # noqa: E402
+    from PySide6.QtTest import QTest  # noqa: E402
 
 PAGE = pathlib.Path(__file__).resolve().parent.parent / "plugin-page"
 
@@ -107,7 +115,10 @@ def main() -> int:
         wheel(QPoint(0, 0), QPoint(0, 0), Qt.ScrollPhase.ScrollBegin)
         for _ in range(3):
             wheel(QPoint(0, -10), QPoint(0, -30), Qt.ScrollPhase.ScrollUpdate)
-        check(flick.property("contentY") == 60, f"the touchpad scrolls by its gain ({flick.property('contentY')})")
+        # 30 px of travel: twice that on Omarchy, which scales a touchpad by
+        # 0.4; the travel itself on Windows, which does not (TouchScroll.qml).
+        want = 30 if os.name == "nt" else 60
+        check(flick.property("contentY") == want, f"the touchpad scrolls by its gain ({flick.property('contentY')})")
         wheel(QPoint(0, 0), QPoint(0, 0), Qt.ScrollPhase.ScrollEnd)
         QTest.qWait(50)
         flick.setProperty("contentY", 0)

@@ -12,19 +12,48 @@ touched; and it runs with the lid shut, the screen off or the session locked.
 
 Run: python3 tests/page/run.py              # the window shape, as used most
      python3 tests/page/run.py --overlay    # also the overlay
+
+On Windows (or with no quickshell) it runs over the Windows host instead
+(`--host qt`: tests/page/qt_host.py, PySide6, offscreen; windows/README.md).
+PAGE_LOG=file keeps what the page says; PAGE_KEEP=1 keeps the throwaway
+vault, state and logs to read after a failure.
 """
+import argparse
 import datetime as dt
 import json
 import os
 import pathlib
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
 import time
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
+if os.name == "nt":
+    # Shebang execution, LF line endings, and Windows process helpers even when
+    # tests/page/run.py is invoked directly outside tests/run_all.py.
+    sys.path.insert(0, str(ROOT / "tests" / "windows"))
+    import sitecustomize as _win_sc  # noqa: E402, F401
+    sys.path.pop(0)
+
+    # The page writes a note by renaming a new copy over it. Linux lets a
+    # reader in at any moment; Windows refuses one (PermissionError) for the
+    # instant the old file is being replaced. What this reads is tried again.
+    def _patient(read):
+        def again(self, *args, **kwargs):
+            for wait in (0.01, 0.02, 0.05, 0.1, 0.2, 0.4, None):
+                try:
+                    return read(self, *args, **kwargs)
+                except PermissionError:
+                    if wait is None:
+                        raise
+                    time.sleep(wait)
+        return again
+    pathlib.Path.read_text = _patient(pathlib.Path.read_text)
+    pathlib.Path.read_bytes = _patient(pathlib.Path.read_bytes)
 sys.path.insert(0, str(ROOT / "agent"))
 import blocks  # noqa: E402
 import lifespan  # noqa: E402
@@ -43,7 +72,7 @@ class PageFrozen(Exception):
 # What the runner writes when the student talks to a block: both turns, the
 # way `longhand-agent chat` records them. Enough for the page to settle the
 # message it was holding and draw the answer.
-CHAT_STUB = """import datetime, json, pathlib, sys
+CHAT_STUB = """import datetime, json, os, pathlib, sys, time
 
 at = datetime.datetime.now().isoformat(timespec="seconds")   # as the runner does: the one conversation orders by it
 daily, args = pathlib.Path(sys.argv[1]), sys.argv[2:]
@@ -62,6 +91,10 @@ rec["read"] = False
 rec.setdefault("reply", "")
 path.parent.mkdir(parents=True, exist_ok=True)
 path.write_text(json.dumps(state))
+# With `linger` in the stub's folder, the run goes on a moment after its
+# answer is written, as a run's process closing does (longer on Windows).
+if os.path.exists(os.path.join(os.environ.get("STUB_DIR", ""), "linger")):
+    time.sleep(2.5)
 """
 
 # The planner's model, for the page's own tests: it answers only once a
@@ -147,6 +180,91 @@ TODAY = dt.date.today().strftime("%Y.%m.%d")
 YDAY = (dt.date.today() - dt.timedelta(days=1)).strftime("%Y.%m.%d")
 TODAY_ISO = dt.date.today().isoformat()
 failures = 0
+HOST = "quickshell"          # set in main(): "quickshell" on Omarchy, "qt" on Windows / headless PySide6
+
+SYNTH_THEME_A = (
+    'background = "#1a1b26"\nforeground = "#c0caf5"\naccent = "#7aa2f7"\n'
+    'red = "#f7768e"\nyellow = "#e0af68"\norange = "#ff9e64"\ngreen = "#9ece6a"\n'
+    'blue = "#7aa2f7"\nmagenta = "#bb9af7"\ncyan = "#7dcfff"\n'
+    'muted = "#565f89"\nlight_foreground = "#a9b1d6"\ndark_foreground = "#565f89"\ndark_background = "#16161e"\n'
+)
+SYNTH_THEME_B = (
+    'background = "#282828"\nforeground = "#ebdbb2"\naccent = "#fabd2f"\n'
+    'red = "#fb4934"\nyellow = "#fabd2f"\norange = "#fe8019"\ngreen = "#b8bb26"\n'
+    'blue = "#83a598"\nmagenta = "#d3869b"\ncyan = "#8ec07c"\n'
+    'muted = "#928374"\nlight_foreground = "#d5c4a1"\ndark_foreground = "#a89984"\ndark_background = "#1d2021"\n'
+)
+
+# The bash runner (Page), in Python, for the Qt host: no bash on Windows.
+# Page puts the paths it needs first in its arguments.
+PY_RUNNER = """
+import os, subprocess, sys, time
+calls, stub, agent, chatstub, daily = sys.argv[1:6]
+argv = sys.argv[6:]
+cmd = argv[0] if argv else ""
+arg3 = argv[2] if len(argv) > 2 else ""
+# Stopped as the page stops a run. On Linux the page's SIGTERM ends the bash
+# runner in its sleep, before the stub answers. Windows has no such signal:
+# the host sets a named event, and ends outright only what has not said it
+# listens, after three seconds (windows/qs_io.py, `signal`) -- longer than
+# the stub's two. So this listens, as the real runner does
+# (agent/winproc.py), and ends what it started.
+child = []
+if os.name == "nt":
+    sys.path.insert(0, os.path.dirname(agent))
+    import winproc
+    def stopped():
+        for c in child:
+            c.kill()
+        os._exit(143)
+    winproc.listen_for_stop(stopped)
+def run(cmdline):
+    c = subprocess.Popen(cmdline)
+    child.append(c)
+    return c.wait()
+# One line of the log, whole. Runners start side by side and append at
+# once; a file opened for appending is a seek and a write on Windows, and
+# one runner's line overwrote another's ("start plan" lost, 2026-11-25).
+# Opened for appending only (FILE_APPEND_DATA), Windows appends a write
+# whole, as O_APPEND does on Linux.
+def log(line):
+    data = line.encode("utf-8")
+    if os.name != "nt":
+        with open(calls, "ab") as f:
+            f.write(data)
+        return
+    import ctypes
+    from ctypes import wintypes
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    k32.CreateFileW.restype = wintypes.HANDLE
+    k32.CreateFileW.argtypes = (wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p,
+                                wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE)
+    h = k32.CreateFileW(calls, 0x0004, 0x7, None, 4, 0x80, None)   # append only, shared, open always
+    try:
+        done = wintypes.DWORD()
+        k32.WriteFile(wintypes.HANDLE(h), data, len(data), ctypes.byref(done), None)
+    finally:
+        k32.CloseHandle(wintypes.HANDLE(h))
+log(f"{time.time():.6f} start {cmd} {arg3}\\n")
+if cmd == "projects":
+    if os.path.exists(os.path.join(stub, "slow-fetch")):
+        time.sleep(2)
+    rc = run([sys.executable, agent, *argv])
+    log(f"{time.time():.6f} end {cmd}\\n")
+    sys.exit(rc)
+LOCAL = {"accept", "projects", "project", "project-page", "sections", "next", "dated", "tasks", "box", "timetable",
+         "plan", "proposals", "proposal", "talk", "thread", "rate", "notebook", "autonomy", "day", "search", "horizon",
+         "note", "export", "checkin", "conversation"}
+if cmd in LOCAL:
+    sys.exit(run([sys.executable, agent, *argv]))
+if cmd == "run":
+    time.sleep(2)
+    sys.exit(0)
+if cmd == "chat":
+    time.sleep(2)
+    sys.exit(run([sys.executable, chatstub, daily, *argv]))
+sys.exit(0)
+"""
 
 
 def check(cond, what):
@@ -157,14 +275,27 @@ def check(cond, what):
 
 
 class Page:
-    def __init__(self, fake_home=False):
+    def __init__(self, fake_home=False, host=None):
+        self.host = host or HOST
+        self.qt = self.host == "qt"
+        self._sock = None
+        self._sock_f = None
+        self._after_call_stat = None
         self.tmp = pathlib.Path(tempfile.mkdtemp(prefix="page-test-"))
         self.shell = self.tmp / "shell"
         self.shell.mkdir()
-        for mod in ("Commons", "Ui"):
-            (self.shell / mod).symlink_to(f"/usr/share/omarchy/shell/{mod}")
-        (self.shell / "page").symlink_to(ROOT / "plugin-page")
-        shutil.copy(ROOT / "tests" / "page" / "harness.qml", self.shell / "shell.qml")
+        if not self.qt:
+            for mod in ("Commons", "Ui"):
+                (self.shell / mod).symlink_to(f"/usr/share/omarchy/shell/{mod}")
+            (self.shell / "page").symlink_to(ROOT / "plugin-page")
+            shutil.copy(ROOT / "tests" / "page" / "harness.qml", self.shell / "shell.qml")
+        else:
+            page_url = (ROOT / "plugin-page").as_uri().rstrip("/")
+            qml = (ROOT / "tests" / "page" / "harness.qml").read_text(encoding="utf-8")
+            qml = qml.replace('import "page"', f'import "{page_url}"')
+            qml = qml.replace('import "page/', f'import "{page_url}/')
+            qml = qml.replace('Qt.resolvedUrl("page/', f'Qt.resolvedUrl("{page_url}/')
+            (self.shell / "shell.qml").write_text(qml, encoding="utf-8")
         self.vault = self.tmp / "vault"
         self.daily = self.vault / "Daily"
         self.daily.mkdir(parents=True)
@@ -176,50 +307,52 @@ class Page:
         self.store = self.state / "longhand" / "deadlines.tsv"
         cfg = self.tmp / "config"
         (cfg / "longhand").mkdir(parents=True)
-        (cfg / "omarchy").symlink_to(pathlib.Path.home() / ".config" / "omarchy")   # the theme
-        self.runner = self.tmp / "runner"
-        (cfg / "longhand" / "config.json").write_text(json.dumps({
-            "vault": str(self.vault), "daily": {"dir": "Daily", "format": "YYYY.MM.DD"}, "horizon": "2000-01-01",
-            "runner": str(self.runner), "check": str(ROOT / "cli" / "longhand-check"), "read": str(ROOT / "cli" / "longhand-read"), "weekStart": "monday",
-            "inbox": str(self.tmp / "Downloads"),
-            "export": {"author": "A. Student", "dir": str(self.tmp / "Downloads")}}))
-        (self.tmp / "Downloads").mkdir()
-        bindir = self.tmp / "bin"
-        bindir.mkdir()
-        (bindir / "pomo").symlink_to(ROOT / "cli" / "pomo")
-        # The tick's sound, heard by a stub: each play is logged, never
-        # sounded, and Do Not Disturb is off. Until 2026-10-19 the tests
-        # silenced the page instead, and so missed that it never played.
+        if not self.qt:
+            (cfg / "omarchy").symlink_to(pathlib.Path.home() / ".config" / "omarchy")   # the theme
+        self.runner = self.tmp / ("runner.py" if self.qt else "runner")
         self.played = self.tmp / "played.log"
-        (bindir / "pw-play").write_text(f'#!/bin/sh\necho "$@" >> "{self.played}"\n')
-        (bindir / "pw-play").chmod(0o755)
-        real_shell = shutil.which("omarchy-shell") or "false"
-        (bindir / "omarchy-shell").write_text('#!/bin/sh\n[ "$1 $2" = "notifications isDnd" ] && { echo off; exit 0; }\n'
-                                              f'exec "{real_shell}" "$@"\n')
-        (bindir / "omarchy-shell").chmod(0o755)
-        (bindir / "opencode").write_text(PLAN_STUB)
-        (bindir / "opencode").chmod(0o755)
+        self.calls = self.tmp / "calls.log"
         self.stub = self.tmp / "stub"
         self.stub.mkdir()
-        # Hyprland, played over a throwaway hypr folder: the keys sheet's
-        # writes, reloads and submap never reach the real one.
-        self.hypr = cfg / "hypr"
-        self.hypr.mkdir()
-        (self.hypr / "bindings.lua").write_text(BINDINGS)
-        (bindir / "hyprctl").write_text(f'#!/bin/sh\nexec python3 "{ROOT}/tests/fake_hyprctl.py" "$@"\n')
-        (bindir / "hyprctl").chmod(0o755)
-        # Only the local commands run (no model): accept, projects, sections.
-        # A model pass is a stub that takes its time, so the page's "this is
-        # away" mark can be seen while it is away; `chat` also writes the
-        # day's state the way the runner would, so the whole turn can be
-        # followed — sent, thinking, answered.
+        bindir = self.tmp / "bin"
+        bindir.mkdir()
         chatstub = self.tmp / "chatstub.py"
         chatstub.write_text(CHAT_STUB)
-        # Every call is logged with when it started (and, for the fetch, when
-        # it ended), so the order of an opening can be checked; with
-        # `slow-fetch` present the fetch takes two seconds, as a network does.
-        self.calls = self.tmp / "calls.log"
-        self.runner.write_text(f"""#!/bin/bash
+
+        if self.qt:
+            # Cross-platform stubs: no symlinks, no bash required. On Windows
+            # tests/windows/sitecustomize.py starts extensionless #! scripts
+            # directly via python.exe without cmd.exe (preserving newlines in args).
+            (bindir / "opencode").write_text(PLAN_STUB)
+            (bindir / "hyprctl").write_text(
+                f'#!/usr/bin/env python3\nimport subprocess, sys\n'
+                f'sys.exit(subprocess.run([sys.executable, {str(ROOT / "tests" / "fake_hyprctl.py")!r}, *sys.argv[1:]]).returncode)\n'
+            )
+            if os.name != "nt":
+                (bindir / "opencode").chmod(0o755)
+                (bindir / "hyprctl").chmod(0o755)
+                (bindir / "pomo").symlink_to(ROOT / "cli" / "pomo")
+            # One Python, not a wrapper starting another: on Windows each
+            # start costs a few hundred milliseconds, and the page starts the
+            # runner for nearly everything it asks.
+            baked = [str(self.calls), str(self.stub), str(ROOT / "agent" / "longhand-agent"), str(chatstub),
+                     str(self.vault / "agents" / "longhand" / "daily")]
+            self.runner.write_text(f"#!/usr/bin/env python3\nimport sys\nsys.argv[1:1] = {baked!r}\n" + PY_RUNNER)
+            if os.name != "nt":
+                self.runner.chmod(0o755)
+        else:
+            (bindir / "pomo").symlink_to(ROOT / "cli" / "pomo")
+            (bindir / "pw-play").write_text(f'#!/bin/sh\necho "$@" >> "{self.played}"\n')
+            (bindir / "pw-play").chmod(0o755)
+            real_shell = shutil.which("omarchy-shell") or "false"
+            (bindir / "omarchy-shell").write_text('#!/bin/sh\n[ "$1 $2" = "notifications isDnd" ] && { echo off; exit 0; }\n'
+                                                  f'exec "{real_shell}" "$@"\n')
+            (bindir / "omarchy-shell").chmod(0o755)
+            (bindir / "opencode").write_text(PLAN_STUB)
+            (bindir / "opencode").chmod(0o755)
+            (bindir / "hyprctl").write_text(f'#!/bin/sh\nexec python3 "{ROOT}/tests/fake_hyprctl.py" "$@"\n')
+            (bindir / "hyprctl").chmod(0o755)
+            self.runner.write_text(f"""#!/bin/bash
 echo "$(date +%s.%N) start $1 $3" >> "{self.calls}"
 if [ "$1" = projects ]; then
   [ -e "{self.stub}/slow-fetch" ] && sleep 2
@@ -233,40 +366,129 @@ case "$1" in
   chat) sleep 2; exec python3 "{chatstub}" "{self.vault}/agents/longhand/daily" "$@" ;;
 esac
 """)
-        self.runner.chmod(0o755)
-        self.env = dict(os.environ, XDG_CONFIG_HOME=str(cfg), XDG_STATE_HOME=str(self.state),
+            self.runner.chmod(0o755)
+
+        (cfg / "longhand" / "config.json").write_text(json.dumps({
+            "vault": self.vault.as_posix(), "daily": {"dir": "Daily", "format": "YYYY.MM.DD"}, "horizon": "2000-01-01",
+            # The stub by its path, not its name: on Windows a name is looked
+            # up with PATHEXT (the agent's `_win_cmd`), which passes over the
+            # stub (no extension) for an opencode installed on the machine.
+            "opencode": (bindir / "opencode").as_posix(),
+            "runner": self.runner.as_posix(), "check": (ROOT / "cli" / "longhand-check").as_posix(),
+            "read": (ROOT / "cli" / "longhand-read").as_posix(), "weekStart": "monday",
+            "inbox": (self.tmp / "Downloads").as_posix(),
+            "export": {"author": "A. Student", "dir": (self.tmp / "Downloads").as_posix()}}))
+        (self.tmp / "Downloads").mkdir()
+        # Hyprland, played over a throwaway hypr folder: the keys sheet's
+        # writes, reloads and submap never reach the real one.
+        self.hypr = cfg / "hypr"
+        self.hypr.mkdir()
+        (self.hypr / "bindings.lua").write_text(BINDINGS)
+        extra_path = [str(bindir)]
+        if os.name == "nt":
+            extra_path.append(str(pathlib.Path(sys.executable).parent))
+        self.env = dict(os.environ, XDG_CONFIG_HOME=cfg.as_posix(), XDG_STATE_HOME=self.state.as_posix(),
                         STUB_DIR=str(self.stub),
-                        PATH=f"{bindir}:{os.environ['PATH']}", FAKE_HYPR_DIR=str(self.hypr),
+                        PATH=os.pathsep.join(extra_path + [os.environ["PATH"]]), FAKE_HYPR_DIR=str(self.hypr),
                         FAKE_HYPR_REAL=shutil.which("hyprctl") or "")
         self.env.pop("LONGHAND_SILENT", None)
         # Every deadline the check cancels, and why (cli/longhand-check,
         # `trace`): said in the failures that come from a line lost.
         self.cancels = self.tmp / "cancels.log"
         self.env["LONGHAND_CHECK_LOG"] = str(self.cancels)
-        if fake_home:
-            # A home of its own, holding a copy of the current theme, so a
-            # theme switch can be replayed without touching the real one.
+        if fake_home or self.qt:
+            # A home of its own, holding a theme palette, so a theme switch can
+            # be replayed without touching the real one (and on Qt host without
+            # an Omarchy install, a synthetic palette provides every role).
             self.home = self.tmp / "home"
             self.theme = self.home / ".local" / "state" / "omarchy" / "current" / "theme"
             self.theme.mkdir(parents=True)
             real = pathlib.Path.home() / ".local" / "state" / "omarchy" / "current" / "theme"
+            copied = False
             for name in ("colors.toml", "shell.toml"):
                 if (real / name).exists():
                     shutil.copy(real / name, self.theme / name)
-            self.env["HOME"] = str(self.home)
-        subprocess.run(["hyprctl", "eval", 'hl.window_rule({ match = { title = "^Page scratch$" }, no_initial_focus = true })'],
-                       capture_output=True)
-        # A known size, whatever else is open on the workspace (tiled into a
-        # full one, the window can be a few pixels wide).
-        subprocess.run(["hyprctl", "eval", 'hl.window_rule({ match = { title = "^Page scratch$" }, float = true, size = { 701, 850 } })'],
-                       capture_output=True)
-        # PAGE_LOG=file keeps what the page says (its QML warnings), to read
-        # when a run goes wrong.
-        log = open(os.environ["PAGE_LOG"], "w") if os.environ.get("PAGE_LOG") else subprocess.DEVNULL
-        self.proc = subprocess.Popen(["quickshell", "-p", str(self.shell)], env=self.env, stdout=log, stderr=log)
-        self.wait(lambda: self.call("state").startswith("{"), 10)
+                    copied = True
+            if not copied:
+                (self.theme / "colors.toml").write_text(SYNTH_THEME_A)
+            self.env["HOME"] = self.home.as_posix()
+            if os.name == "nt":
+                self.env["USERPROFILE"] = str(self.home)     # what Path.home() and Qt read there
+        self._log = open(os.environ["PAGE_LOG"], "w") if os.environ.get("PAGE_LOG") else None
+        log = self._log if self._log is not None else subprocess.DEVNULL
+        if self.qt:
+            self.env["LONGHAND_PLAY_LOG"] = str(self.played)
+            if not os.environ.get("PAGE_SHOW"):
+                self.env["QT_QPA_PLATFORM"] = "offscreen"
+                # Offscreen Qt on Windows finds no fonts and draws every glyph
+                # as a box of one width, so the measure (72 characters) is
+                # off; given Windows' own folder it lays text out as on screen.
+                if os.name == "nt" and not self.env.get("QT_QPA_FONTDIR"):
+                    self.env["QT_QPA_FONTDIR"] = str(pathlib.Path(os.environ.get("WINDIR", "C:/Windows")) / "Fonts")
+            # Qt's warnings on stderr, for PAGE_LOG: on Windows it sends them
+            # to the debugger instead when no console is attached.
+            self.env["QT_FORCE_STDERR_LOGGING"] = "1"
+            if os.name == "nt":
+                py_path = [str(ROOT / "tests" / "windows"), str(ROOT / "windows" / "pyshim")]
+                old_pp = self.env.get("PYTHONPATH", "")
+                self.env["PYTHONPATH"] = os.pathsep.join(py_path + ([old_pp] if old_pp else []))
+                self.env["PYTHONUTF8"] = "1"
+                self.env["PYTHONIOENCODING"] = "utf-8"
+            self.proc = subprocess.Popen(
+                [sys.executable, str(ROOT / "tests" / "page" / "qt_host.py"), str(self.shell), "701", "850"],
+                env=self.env, stdout=log, stderr=log)
+            port_file = self.shell / ".qt-ipc-port"
+            end = time.time() + 15
+            while time.time() < end and not port_file.is_file():
+                if self.proc.poll() is not None:
+                    raise PageFrozen(f"qt_host exited early ({self.proc.returncode})")
+                time.sleep(0.05)
+            if not port_file.is_file():
+                raise PageFrozen("qt_host never wrote its IPC port")
+            port = int(port_file.read_text().strip())
+            self._sock = socket.create_connection(("127.0.0.1", port), timeout=CALL_TIMEOUT)
+            self._sock.settimeout(CALL_TIMEOUT)
+            self._sock_f = self._sock.makefile("r", encoding="utf-8")
+            self.wait(lambda: self.call("state").startswith("{"), 10)
+            # Push the synthetic/copied colors.toml into Commons.Color so
+            # ThemeColors and the shell palette agree from the start.
+            if (self.theme / "colors.toml").is_file():
+                import base64
+                c64 = base64.b64encode((self.theme / "colors.toml").read_bytes()).decode()
+                s64 = base64.b64encode((self.theme / "shell.toml").read_bytes()).decode() if (self.theme / "shell.toml").is_file() else ""
+                self.call("applyTheme", c64, s64)
+        else:
+            subprocess.run(["hyprctl", "eval", 'hl.window_rule({ match = { title = "^Page scratch$" }, no_initial_focus = true })'],
+                           capture_output=True)
+            # A known size, whatever else is open on the workspace (tiled into a
+            # full one, the window can be a few pixels wide).
+            subprocess.run(["hyprctl", "eval", 'hl.window_rule({ match = { title = "^Page scratch$" }, float = true, size = { 701, 850 } })'],
+                           capture_output=True)
+            # PAGE_LOG=file keeps what the page says (its QML warnings), to read
+            # when a run goes wrong.
+            self.proc = subprocess.Popen(["quickshell", "-p", str(self.shell)], env=self.env, stdout=log, stderr=log)
+            self.wait(lambda: self.call("state").startswith("{"), 10)
 
     def call(self, fn, *args):
+        if self.qt:
+            try:
+                req = json.dumps({"fn": fn, "args": [str(a) for a in args]}) + "\n"
+                self._sock.sendall(req.encode("utf-8"))
+                line = self._sock_f.readline()
+                if not line:
+                    raise PageFrozen(f"qt_host closed IPC during {fn}")
+                resp = json.loads(line)
+                if not resp.get("ok"):
+                    return ""
+                today_file = self.daily / f"{TODAY}.md"
+                try:
+                    st = today_file.stat()
+                    self._after_call_stat = (st.st_mtime_ns, st.st_size)
+                except OSError:
+                    self._after_call_stat = None
+                return str(resp.get("out", ""))
+            except (socket.timeout, TimeoutError):
+                raise PageFrozen(f"the page stopped answering ({fn} {' '.join(map(str, args))}, {CALL_TIMEOUT}s)") from None
         try:
             r = subprocess.run(["quickshell", "ipc", "-p", str(self.shell), "call", "page", fn, *map(str, args)],
                                capture_output=True, text=True, env=self.env, timeout=CALL_TIMEOUT)
@@ -280,7 +502,9 @@ esac
         return out[:-1] if out.endswith("\n") else out   # only IPC's own newline: a note may start with one
 
     def wait(self, cond, timeout=6.0):
-        end = time.time() + timeout
+        # Process creation on Windows is slower than Linux fork(), so give
+        # conditions a little more headroom without changing Linux timeouts.
+        end = time.time() + (timeout * 2.0 if os.name == "nt" else timeout)
         while time.time() < end:
             try:
                 if cond():
@@ -291,11 +515,13 @@ esac
         return False
 
     def pomo(self, *args):
-        return subprocess.run(["pomo", "deadline", *args], capture_output=True, text=True, env=self.env).stdout
+        cmd = [sys.executable, str(ROOT / "cli" / "pomo.py"), "deadline", *args] if os.name == "nt" else ["pomo", "deadline", *args]
+        return subprocess.run(cmd, capture_output=True, text=True, env=self.env).stdout
 
     def check(self):
         """The check, as the popup runs it after a change."""
-        return subprocess.run([str(ROOT / "cli" / "longhand-check"), "--quiet"], capture_output=True, text=True, env=self.env)
+        cmd = [sys.executable, str(ROOT / "cli" / "longhand-check"), "--quiet"]
+        return subprocess.run(cmd, capture_output=True, text=True, env=self.env)
 
     def deadline(self, i):
         for line in (self.store.read_text().splitlines() if self.store.exists() else []):
@@ -319,22 +545,64 @@ esac
         return sum(len(l) + 1 for l in self.lines()[:i])
 
     def open_fresh(self, payload='{"shape":"alongside"}'):
-        self.call("closeAll")
+        if self.qt:
+            # Fast TCP IPC can reach write_text() + open_fresh() before a 300ms
+            # saveTimer from the previous test fires; if the test just wrote a
+            # fresh fixture to TODAY.md after the last IPC call, keep it from
+            # being overwritten by closeAll() -> flush().
+            today_file = self.daily / f"{TODAY}.md"
+            try:
+                st = today_file.stat()
+                cur_stat = (st.st_mtime_ns, st.st_size)
+            except OSError:
+                cur_stat = None
+            fixture = today_file.read_bytes() if (cur_stat is not None and cur_stat != self._after_call_stat) else None
+            self.call("closeAll")
+            if fixture is not None:
+                # Put back once the page's last save has landed: on GitHub's
+                # Windows machine a save from the edits before landed after
+                # a fixed 50 ms, over the note put back (2026-11-25).
+                self.wait(lambda: self.call("noteSaving") == "false", 5)
+                today_file.write_bytes(fixture)
+        else:
+            self.call("closeAll")
         self.call("summon", payload)
         self.wait(lambda: json.loads(self.call("state"))["ready"])
         time.sleep(0.5)
 
     def resize(self, w, h):
-        subprocess.run(["hyprctl", "eval",
-                        f'hl.window_rule({{ match = {{ title = "^Page scratch$" }}, float = true, size = {{ {w}, {h} }} }})'],
-                       capture_output=True)
+        if self.qt:
+            self.call("__resize", w, h)
+        else:
+            subprocess.run(["hyprctl", "eval",
+                            f'hl.window_rule({{ match = {{ title = "^Page scratch$" }}, float = true, size = {{ {w}, {h} }} }})'],
+                           capture_output=True)
         self.open_fresh()
         self.wait(lambda: abs(json.loads(self.call("sides"))["width"] - w) < 20, 4)
 
     def close(self):
+        if self.qt and self._sock is not None:
+            try:
+                self.call("__quit")
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                self._sock_f.close()
+                self._sock.close()
+            except OSError:
+                pass
         self.proc.terminate()
-        self.proc.wait()
-        shutil.rmtree(self.tmp, ignore_errors=True)
+        try:
+            self.proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            self.proc.kill()
+            self.proc.wait()
+        if getattr(self, "_log", None) is not None:
+            self._log.close()
+        if os.environ.get("PAGE_KEEP"):            # the vault, state and logs, to read after a failure
+            print(f"     (kept {self.tmp})")
+        else:
+            shutil.rmtree(self.tmp, ignore_errors=True)
 
 
 def header(stem):
@@ -380,8 +648,11 @@ def theme_switch() -> None:
     to the shell over IPC. The page must repaint at once."""
     import base64
     themes = pathlib.Path("/usr/share/omarchy/themes")
-    target = next(t for t in ("tokyo-night", "gruvbox", "nord") if (themes / t / "colors.toml").exists())
-    want = re.search(r'^accent\s*=\s*"(#[0-9A-Fa-f]{6})"', (themes / target / "colors.toml").read_text(), re.M).group(1).lower()
+    target = next((t for t in ("tokyo-night", "gruvbox", "nord") if (themes / t / "colors.toml").exists()), None)
+    next_colors = (themes / target / "colors.toml").read_text() if target else SYNTH_THEME_B
+    next_shell = (themes / target / "shell.toml").read_text() if (target and (themes / target / "shell.toml").exists()) else ""
+    label = target or "synthetic-gruvbox"
+    want = re.search(r'^accent\s*=\s*"(#[0-9A-Fa-f]{6})"', next_colors, re.M).group(1).lower()
     p = Page(fake_home=True)
     try:
         (p.daily / f"{TODAY}.md").write_text(header(TODAY) + "# heading\n")
@@ -389,9 +660,9 @@ def theme_switch() -> None:
         before = p.call("palette")
         nxt = p.theme.parent / "next-theme"
         nxt.mkdir()
-        for name in ("colors.toml", "shell.toml"):
-            if (themes / target / name).exists():
-                shutil.copy(themes / target / name, nxt / name)
+        (nxt / "colors.toml").write_text(next_colors)
+        if next_shell:
+            (nxt / "shell.toml").write_text(next_shell)
         shutil.rmtree(p.theme)
         nxt.rename(p.theme)
         moved = time.time()
@@ -402,7 +673,7 @@ def theme_switch() -> None:
         repainted = p.wait(lambda: f"accent={want}" in p.call("palette"), 3)
         took = time.time() - sent
         print(f"     (file watch alone caught it: {file_only}; after the shell's push: {took:.2f}s)")
-        check(f"accent={want}" not in before and repainted and took < 1.0, f"a theme switch repaints the page at once ({target})")
+        check(f"accent={want}" not in before and repainted and took < 1.0, f"a theme switch repaints the page at once ({label})")
         heads = p.call("palette").split(" h=")[1].split(" ")[0].split(",")
         # H1 is the new accent, deepened if that accent sat too near the text:
         # the same colour, never another one.
@@ -425,7 +696,11 @@ def theme_switch() -> None:
             p.call("checkinKey", ord(k))
         check(ci()["answers"] == [6, 6, 5, 6, 4, 5, 6, 5], f"…a digit answers a line and moves on ({ci()['answers']})")
         p.call("checkinKey", 0x01000004)                # Enter
-        check(p.wait(lambda: not ci()["due"] and ci()["view"] == "", 4) and ci()["center"] == "dash",
+        # Enter keeps the week through `longhand-agent checkin`, a Python
+        # started cold: on a busy Windows runner that alone has taken more
+        # than the 4 s this waited (2026-11-24, three times: twice here
+        # beside other runs, once in CI). Waited for longer; still a check.
+        check(p.wait(lambda: not ci()["due"] and ci()["view"] == "", 15) and ci()["center"] == "dash",
               f"…Enter keeps the week, and the keys are back on the dashboard ({ci()})")
         logs = list((p.vault / "agents" / "longhand" / "checkins").glob("*.jsonl"))
         check(len(logs) == 1 and '"answers": [6, 6, 5, 6, 4, 5, 6, 5]' in logs[0].read_text(),
@@ -435,11 +710,29 @@ def theme_switch() -> None:
 
 
 def main() -> int:
+    global HOST
+    ap = argparse.ArgumentParser(description="Drive Longhand's live page over IPC.")
+    ap.add_argument("--overlay", action="store_true", help="also test the overlay shape")
+    ap.add_argument("--host", choices=("auto", "quickshell", "qt"), default="auto",
+                    help="host backend: quickshell (Omarchy/Hyprland) or qt (PySide6 offscreen, default on Windows)")
+    ap.add_argument("--smoke", action="store_true", help="run only the theme-switch & weekly check-in smoke pass")
+    args = ap.parse_args()
+    HOST = ("qt" if (os.name == "nt" or not shutil.which("quickshell")) else "quickshell") if args.host == "auto" else args.host
+    if HOST == "qt":
+        if args.smoke:
+            theme_switch()
+            print("PASS" if failures == 0 else f"{failures} FAILED")
+            return 1 if failures else 0
+        return checks()
     # The page draws in a Hyprland of its own, on a headless output: never on
     # your screen, and drawn whatever the session is doing (lid shut, screen
     # off, locked: then a window on it gets no frames and the page freezes).
     desktop.reach("the page", wake_screen=False)
     with desktop.Private():
+        if args.smoke:
+            theme_switch()
+            print("PASS" if failures == 0 else f"{failures} FAILED")
+            return 1 if failures else 0
         return checks()
 
 
@@ -447,6 +740,15 @@ def checks() -> int:
     theme_switch()
     p = Page()
     try:
+        # 0. The first open after the shell starts asks the note for the keys
+        # before it has been read: they are in the note once it is. Until
+        # 2026-11-24 the overlay left them in the closed settings sheet's
+        # key catcher, and what was typed went to hidden settings.
+        (p.daily / f"{TODAY}.md").write_text(header(TODAY) + "Plan for the week.\n")
+        p.call("summon", "{}")
+        p.wait(lambda: json.loads(p.call("state"))["ready"])
+        check(p.wait(lambda: p.call("noteHasKeys") == "true", 3), "the first open: the keys are in the note once it is read")
+
         # 1. a checkbox written with a date at its end lights up, and binds
         # when it is left — no question asked
         (p.daily / f"{TODAY}.md").write_text(header(TODAY) + "Plan for the week.\n")
@@ -512,7 +814,11 @@ def checks() -> int:
         # is asked, and the line coming back brings it back (docs/tasks.md)
         p.call("removeLine", p.line_of("^d1"))
         check(p.wait(lambda: p.deadline(1)["status"] == "cancelled"), "deleting a bound line cancels its deadline")
-        check(p.call("ask") == "null" and "cancelled" in p.call("hint"), f"…said under the cursor, nothing asked ({p.call('hint')!r})")
+        # The check writes the store before it exits and says what it did:
+        # the hint comes a moment after the store (longer on Windows, where
+        # a Python takes longer to end).
+        check(p.wait(lambda: "cancelled" in p.call("hint"), 3) and p.call("ask") == "null",
+              f"…said under the cursor, nothing asked ({p.call('hint')!r})")
         bound = p.lines()[p.line_of("^d2")]
         p.call("undo")
         check(p.wait(lambda: p.deadline(1)["status"] == "done"), "Ctrl+Z brings the line back, and its deadline as it was")
@@ -554,12 +860,12 @@ def checks() -> int:
         # 7. a store that cannot be read is unknown, not empty
         p.call("openDay", TODAY)
         p.wait(lambda: p.call("header").startswith(dt.date.today().strftime("%A")))
-        p.store.rename(p.store.with_suffix(".away"))
+        p.store.replace(p.store.with_suffix(".away"))
         time.sleep(0.6)
         p.call("openDay", YDAY)
         time.sleep(1.5)
         check("^d3" in p.note(YDAY), f"with the store unreadable, opening a note keeps its anchors ({p.note(YDAY)!r})")
-        p.store.with_suffix(".away").rename(p.store)
+        p.store.with_suffix(".away").replace(p.store)
 
         # 8. an edit made outside the page while it is open is kept
         p.call("openDay", TODAY)
@@ -572,7 +878,7 @@ def checks() -> int:
         check(p.wait(lambda: "written in obsidian" in p.note() and "and then here" in p.note()), "…and its next save keeps both")
         tmpf = f.with_suffix(".tmp")
         tmpf.write_text(f.read_text() + "written by rename\n")
-        tmpf.rename(f)
+        tmpf.replace(f)
         check(p.wait(lambda: "written by rename" in p.call("text")), "…also when written by rename (atomic save)")
         # The line the keys are in, taken away outside (2026-11-17): its
         # field is rebuilt, and the keys went with it — every shortcut deaf
@@ -639,6 +945,11 @@ def checks() -> int:
         time.sleep(0.4)
         p.call("acceptAt", 1)
         p.call("acceptAt", 2)
+        # Both written before anything below touches the store (each is a
+        # `pomo` of its own, later on Windows: one landing after the store
+        # is written by hand below would write it back without that line);
+        # then a moment more for a third that must not come.
+        p.wait(lambda: len(p.store.read_text().splitlines()) >= before + 2, 8)
         time.sleep(1.5)
         check(len(p.store.read_text().splitlines()) == before + 2, "another item offers it no more; a proposal naming no line adds once")
         check("- [ ] A0 poster\n" in p.note() and "Conference" not in p.note(), "…and that one takes no line")
@@ -680,9 +991,11 @@ def checks() -> int:
         p.call("acceptAt", 0)
         check(p.wait(lambda: p.deadline(77)["status"] == "cancelled", 8),
               f"Enter on a drop of a deadline with no line cancels it in the store ({p.deadline(77)})")
-        check(p.wait(lambda: any(x["id"] == nid and x["status"] == "accepted" for x in json.loads(ledger_path.read_text())["items"]))
-              and json.loads(p.call("marginListed")) == [{"kind": "drop", "live": False, "state": "accepted"},
-                                                          {"kind": "drop", "live": False, "state": "declined"}],
+        # The cards hear of it when the one list is read again, after the
+        # ledger: both waited for.
+        check(p.wait(lambda: any(x["id"] == nid and x["status"] == "accepted" for x in json.loads(ledger_path.read_text())["items"])
+                     and json.loads(p.call("marginListed")) == [{"kind": "drop", "live": False, "state": "accepted"},
+                                                                 {"kind": "drop", "live": False, "state": "declined"}]),
               f"…accepted in the one list, and both cards say how they were settled ({p.call('marginListed')})")
         check(line + "\n" in p.note(), "…and no note was written: it had no line")
 
@@ -700,8 +1013,14 @@ def checks() -> int:
         p.call("ctrlD")
         check(p.call("pending", p.line_of("essay")) == "false", "Ctrl+D on a lit-up date keeps it as words")
         p.call("cursor", p.offset_of_line(p.line_of("next item")) + 2)
+        # The words on disk first (a save can take longer than a second on
+        # GitHub's Windows machine), then a moment for a binding that must
+        # not come.
+        p.wait(lambda: "essay by the 19th of Feb\n" in p.note(), 5)
         time.sleep(1)
-        check("essay by the 19th of Feb\n" in p.note() and len(p.store.read_text().splitlines()) == count, "…and leaving does not bind it")
+        check("essay by the 19th of Feb\n" in p.note() and len(p.store.read_text().splitlines()) == count,
+              f"…and leaving does not bind it ({[l for l in p.note().splitlines() if 'essay' in l]}, "
+              f"store {len(p.store.read_text().splitlines())} lines for {count})")
         p.call("cursor", p.offset_of_line(p.line_of("essay")) + 8)
         p.call("ctrlD")
         check(p.wait(lambda: "- [ ] essay 📅 " in p.note() and "^d" in p.note()), "Ctrl+D again makes it the deadline")
@@ -715,7 +1034,9 @@ def checks() -> int:
         check(p.wait(lambda: "read ch.7 📅 " in p.note() and len(p.store.read_text().splitlines()) == count + 1), "bound as it was left")
         p.call("undo")
         check(p.wait(lambda: "- [ ] read ch.7 by tomorrow\n" in p.note() and len(p.store.read_text().splitlines()) == count),
-              "Ctrl+Z: the words are back and the deadline it made is gone")
+              f"Ctrl+Z: the words are back and the deadline it made is gone ({p.note()[-60:]!r}; "
+              f"store {len(p.store.read_text().splitlines())} lines for {count}: {p.store.read_text().splitlines()[-2:]}; "
+              f"{p.call('checkState')})")
         p.call("cursor", p.offset_of_line(p.line_of("read ch.7")) + 8)
         p.call("cursor", p.offset_of_line(p.line_of("next item")) + 2)
         time.sleep(1)
@@ -924,13 +1245,20 @@ def checks() -> int:
               f"…by writing the line the runner reads ({p.note()[:40]!r})")
         check("Dear diary." in p.note() and "|agent]]" in p.note(), "…leaving the note and its link line alone")
         check(p.call("agentOn") == "false", "…and the page stops offering the agent at all")
-        before = len(list((p.state / "longhand" / "payloads").glob("*"))) if (p.state / "longhand" / "payloads").is_dir() else 0
+        # The plan and the briefs are passes of their own, started when the
+        # page opened; one may still be writing its payload a second later
+        # (on Windows, where the agent is slower to start, it was): not an
+        # ask, so not counted.
+        def asked():
+            pl = p.state / "longhand" / "payloads"
+            return {x.name for x in pl.glob("*") if not re.search(r"-(plan|brief-[\d-]+)\.md$", x.name)} if pl.is_dir() else set()
+        before = asked()
         p.call("cursorEnd")
         p.call("type", " Is this ok?")
         p.call("askNow")
         time.sleep(1)
-        after = len(list((p.state / "longhand" / "payloads").glob("*"))) if (p.state / "longhand" / "payloads").is_dir() else 0
-        check(after == before, f"asking on a private note runs nothing ({before} → {after})")
+        after = asked()
+        check(after == before, f"asking on a private note runs nothing ({len(before)} → {len(after)}: {sorted(after - before)})")
         p.call("togglePrivate")
         check(p.wait(lambda: p.call("isPrivate") == "false"), "turning it off puts the day back")
         check(p.wait(lambda: not p.note().startswith("---")), f"…with no frontmatter left behind ({p.note()[:20]!r})")
@@ -1015,6 +1343,10 @@ def checks() -> int:
         p.call("sidebarProject", "Bikeability in Linz #bikes")
         check(p.wait(lambda: (pd / "bikes.md").exists()) and (pd / "bikes.md").read_text() == "# Bikeability in Linz\n\n- Tag: `#bikes`\n"
               and p.call("addingProject") == "false", "the sidebar's field makes one: its name, and its #tag")
+        # Made and read back before the next: its file is written before the
+        # runner ends, and one asked meanwhile is "still making the last one"
+        # (a slower end on Windows; 2026-11-25 on GitHub's machine).
+        p.wait(lambda: any(t.startswith("bikes|") for t in json.loads(p.call("projects"))), 10)
         p.call("sidebarProject", "#DTM")
         check(p.wait(lambda: p.call("hint") == "#DTM is a project already"), f"…never one that exists ({p.call('hint')!r})")
         for f in ("thesis.md", "bikes.md"):
@@ -1031,7 +1363,7 @@ def checks() -> int:
               f"…and bolds the word under the cursor ({p.call('text')!r})")
         check(json.loads(p.call("panel"))["project"] is False and p.call("keyPage", 0x5c, CTRL) == "true",
               "Ctrl+\\ is taken too")
-        check(p.wait(lambda: "**chapter**" in p.call("text")), "…and does not touch the words")
+        check(p.wait(lambda: "**chapter**" in p.note()), "…and does not touch the words")
         # Words selected inside one line are the field's own selection, not
         # the editor's: they are what is wrapped, never the word after them
         # (2026-11-04), and a space at the edge stays outside the markers.
@@ -1180,6 +1512,23 @@ def checks() -> int:
               and not json.loads(p.call("stopShown"))["square"],
               f"a click on the square stops it too, the words back in the box, the square gone ({p.call('chatBoxText')!r})")
         p.call("chatBoxClear")
+        # Answered while its run is still ending (its process closing, most
+        # of a second on Windows; here the stub lingers): the thinking stops
+        # with the answer, and Esc in the box stops nothing (2026-11-25: it
+        # stopped the finished run and put the message back in the box).
+        (p.stub / "linger").write_text("")
+        p.call("sendChat", "and once more?")
+        check(p.wait(lambda: "agent: stub answer to: and once more?" in p.call("chat"), 10)
+              and p.call("answering") == "false" and not json.loads(p.call("stopShown"))["square"],
+              f"answered while its run still ends: no more thinking, no stop square ({p.call('answering')}, {p.call('stopShown')})")
+        hint, ending = p.call("hint"), p.call("runnerRunning")
+        p.call("chatBoxKey", 0x01000000)
+        check(ending == "true" and p.call("hint") == hint and p.call("chatBoxText") == ""
+              and "agent: stub answer to: and once more?" in p.call("chat"),
+              f"…and Esc there, the run still ending ({ending}), stops nothing: the answer stays, the box empty "
+              f"({p.call('hint')!r}, {p.call('chatBoxText')!r})")
+        (p.stub / "linger").unlink()
+        p.wait(lambda: p.call("runnerRunning") == "false", 6)    # the lingering run ends
 
         before = len(list((p.state / "longhand" / "payloads").glob("*"))) \
             if (p.state / "longhand" / "payloads").is_dir() else 0
@@ -1354,9 +1703,13 @@ def checks() -> int:
         def heads():
             return [r["text"] for r in json.loads(p.call("dashRows")) if r["kind"] == "head"]
 
-        def row(title):
+        def row(title, until=None):
             # The list is rebuilt whenever a line changes, so a row's index
-            # is only good once it has stopped moving.
+            # is only good once it has stopped moving — and, after an edit,
+            # once the row says what the edit made (`until`): the list is
+            # read again by `longhand-agent tasks`, which on Windows takes
+            # most of a second to start, and a key pressed on the row as it
+            # was undoes what the last one did.
             def at():
                 rows = json.loads(p.call("dashRows"))
                 return next((n for n, r in enumerate(rows) if r.get("text") == title), -1), rows
@@ -1364,7 +1717,7 @@ def checks() -> int:
             for _ in range(20):
                 time.sleep(0.3)
                 j, rows = at()
-                if i == j and j >= 0:
+                if i == j and j >= 0 and (until is None or until(rows[j])):
                     break
                 i = j
             p.call("dashFocus", i)
@@ -1406,12 +1759,12 @@ def checks() -> int:
               "Ctrl+L on a box done today opens it again, the day taken off")
         check(int(p.call("ticksHeard")) == heard + 1, "…with no sound: an untick is not a tick")
         p.call("tickSoundToggle")
-        row("draft the intro")
+        row("draft the intro", lambda r: not r["done"])
         p.call("dashKey", 0x4c, CTRL)
         check(p.wait(lambda: "- [x] draft the intro" in (p.daily / f"{YDAY}.md").read_text())
               and int(p.call("ticksHeard")) == heard + 1, "with the sound turned off in Settings, a tick is silent")
         p.call("tickSoundToggle")
-        row("draft the intro")
+        row("draft the intro", lambda r: r["done"])
         p.call("dashKey", 0x4c, CTRL)
         p.wait(lambda: "- [ ] draft the intro\n" in (p.daily / f"{YDAY}.md").read_text())
 
@@ -1431,14 +1784,14 @@ def checks() -> int:
         check(p.call("dashType", "p") == "true", "p is taken")
         check(p.wait(lambda: "- [ ] loose thought ⏫" in p.call("text")),
               f"p gives it a priority, written as Obsidian reads it ({p.call('text')[-40:]!r})")
-        row("loose thought")
+        row("loose thought", lambda r: r["prio"] == 2)
         p.call("dashType", "p")
         check(p.wait(lambda: "- [ ] loose thought 🔽" in p.call("text")), "…and walks the three levels")
-        row("loose thought")
+        row("loose thought", lambda r: r["prio"] == -1)
         p.call("dashType", "p")
         check(p.wait(lambda: "- [ ] loose thought\n" in p.call("text")), "…back round to none")
 
-        row("loose thought")
+        row("loose thought", lambda r: r["prio"] == 0)
         check(p.call("dashKey", KEY_DELETE, 0) == "true", "Delete drops it")
         gone = f"- [-] loose thought ❌ {dt.date.today().isoformat()}"
         check(p.wait(lambda: gone in p.call("text")), f"…cancelled, with the day it was dropped ({p.call('text')[-45:]!r})")
@@ -1511,7 +1864,20 @@ def checks() -> int:
         p.call("dashSearchKey", KEY_ESC, 0)
         check(strip()["query"] == "" and sf()["text"] == "" and strip()["at"] == 0, f"Esc there clears them ({sf()})")
         drawn = lambda: json.loads(p.call("dashDrawn"))
-        everything = drawn()["shown"]
+
+        def settled():
+            # A read of the list asked for by the edits above may still land
+            # and draw rows anew (each read starts a Python: later on
+            # Windows). Taken once two looks a moment apart agree.
+            last = drawn()
+            for _ in range(20):
+                time.sleep(0.5)
+                now = drawn()
+                if now["shown"] == last["shown"] and now["fresh"] == 0:
+                    break
+                last = now
+            return now
+        everything = settled()["shown"]
         for ch in "rubric":
             p.call("dashType", ch)
         check(p.wait(lambda: [r.get("text") for r in json.loads(p.call("dashRows")) if r["kind"] == "task"] == ["ask about the rubric"]),
@@ -1606,7 +1972,7 @@ def checks() -> int:
         p.call("dashKey", KEY_T, 0)
         p.call("dashWhen", "2030-01-05")
         check(p.wait(lambda: "read the paper ⏫ ⏳ 2030-01-05" in p.call("text")), f"t gives it a day ({p.call('text')[-60:]!r})")
-        row("read the paper")
+        row("read the paper", lambda r: r["when"] == "2030-01-05")
         check(p.call("dashKey", KEY_T, SHIFT) == "true", "Shift+T is taken")
         check(p.wait(lambda: "- [ ] read the paper ⏫\n" in p.call("text")),
               f"…and takes the day off again, the rest of the line kept ({p.call('text')[-60:]!r})")
@@ -1637,7 +2003,7 @@ def checks() -> int:
         check(p.call("dashType", "p") == "true", "p on a deadline row is taken")
         check(p.wait(lambda: f"- [ ] the lab notes [est:: 2h] ⏳ 2030-01-03 📅 2030-01-08 ^d{pid}" in p.call("text")),
               f"…and walks its line's priority ({p.call('text')[-80:]!r})")
-        row("the lab notes")
+        row("the lab notes", lambda r: r["mark"] != "▽")
         check(p.call("dashType", "t") == "true", "t on a deadline row asks when")
         p.call("dashWhen", "2030-01-04")
         check(p.wait(lambda: f"⏳ 2030-01-04 📅 2030-01-08 ^d{pid}" in p.call("text")),
@@ -1799,6 +2165,9 @@ def checks() -> int:
         check(p.wait(lambda: json.loads(p.call("dayTurns"))[-2:] == ["student: what comes first today?",
                                                                     "agent: day: what comes first today?"], timeout=12),
               f"a message to the day is answered, and kept in the day's state ({p.call('dayTurns')})")
+        # The answer is drawn once it is written, a moment before the run's
+        # process ends (longer on Windows); Esc while it runs stops it.
+        p.wait(lambda: p.call("agentBusy", "day") == "false", 5)
         p.call("dayKey", 0x01000000, 0)
         check(p.wait(lambda: p.call("dayShown") == "false"), "Esc closes it")
         note_before = p.note()
@@ -2234,13 +2603,22 @@ def checks() -> int:
         # 12c'. the calendars and the first pass of the day (2026-10-18): what
         # reads the calendars waits for the fetch the same opening started.
         (p.stub / "slow-fetch").write_text("")
+        # A plan still running from before is the day's plan, and the
+        # opening asks for no other (runPlan): let it end first, or the
+        # opening's never starts and its start was in the log cleared here
+        # (slower on Windows, 2026-11-25).
+        p.wait(lambda: p.call("planRunning") == "false", 30)
         p.call("closeAll")
         p.calls.write_text("")
         (p.state / "longhand" / "plan.json").unlink(missing_ok=True)
         p.open_fresh()
         def order():
+            # Runners started side by side append to the log at once; on
+            # Windows an append is a seek and a write, not one step, so a
+            # line can come torn: passed over.
             rows = [l.split(" ", 2) for l in p.calls.read_text().splitlines() if l.strip()]
-            return [(float(t), what, rest.strip()) for t, what, rest in rows]
+            return [(float(r[0]), r[1], r[2].strip()) for r in rows
+                    if len(r) == 3 and re.fullmatch(r"\d+\.\d+", r[0]) and r[1] in ("start", "end")]
         p.wait(lambda: any(r[2].startswith("plan") for r in order()) and any(r[2] == "run open" for r in order()), timeout=12)
         o = order()
         fetch_end = next((t for t, w, r in o if w == "end" and r == "projects"), None)
@@ -2413,7 +2791,9 @@ def checks() -> int:
               f"…and the page writes the do-date on the box's line (⏳ {when})")
         check(p.wait(lambda: any(x["kind"] == "do-date" and x["status"] == "accepted"
                                  for x in json.loads(ledger_file.read_text())["items"])), "…recorded as accepted")
-        check(p.wait(lambda: not any(r["kind"] == "proposal" for _, r in asks())), "…and the row goes")
+        # Its row, by its id: the planner, still on, may have proposed again.
+        check(p.wait(lambda: not any(r["kind"] == "proposal" and r["id"] == prop["id"] for _, r in asks())),
+              f"…and the row goes ({prop['id']}; {[(r['kind'], r['id']) for _, r in asks()]})")
         qi = next(n for n, r in asks() if r["kind"] == "question")
         p.call("dashFocus", qi)
         p.call("dashKey", KEY_RETURN, 0)
@@ -2495,8 +2875,10 @@ def checks() -> int:
         check(p.wait(lambda: next(x for x in json.loads(ledger_file.read_text())["items"] if x["id"] == revised["id"])["status"] == "accepted")
               and next(x for x in json.loads(ledger_file.read_text())["items"] if x["id"] == revised["id"]).get("reason") == "ok, that works",
               f"…accepted, the student's words kept as the reason ({got.get('status')}, {got.get('reason')!r})")
-        check(json.loads(p.call("talk"))["settled"] == "accepted" and "Good, it is on its line." in json.loads(p.call("talk"))["turns"][-1],
-              "…and the margin says how it ended, after the planner's last word")
+        # The margin hears of it when the talk is read again, after the ledger.
+        check(p.wait(lambda: json.loads(p.call("talk"))["settled"] == "accepted"
+                     and "Good, it is on its line." in json.loads(p.call("talk"))["turns"][-1]),
+              f"…and the margin says how it ended, after the planner's last word ({p.call('talk')[:300]})")
         check(p.call("talkKey", KEY_ESC, 0) == "true" and not json.loads(p.call("talk"))["open"]
               and json.loads(p.call("talk"))["dashWidth"] == wide and p.call("dashOpen") == "true",
               "Esc: back to the list, the dashboard whole again")
@@ -2626,7 +3008,7 @@ def checks() -> int:
         p.call("refreshProposals")
         time.sleep(1.5)
         check(not filing(), f"…and it is not offered again ({filing()})")
-        (inbox / "DTM_handout.pdf").rename(filed)       # filed again by hand, as the checks after this expect
+        (inbox / "DTM_handout.pdf").replace(filed)       # filed again by hand, as the checks after this expect
         time.sleep(1)                                    # the put-back's own read of the projects, done
         p.call("refreshProjects")
         p.call("dash")
@@ -2648,7 +3030,7 @@ def checks() -> int:
         dash_was = p.call("dashOpen")
         p.call("sideKey", 0x50, 0)                          # P
         fl = lambda: json.loads(p.call("files"))
-        check(p.wait(lambda: fl()["filePath"].endswith("/longhand/pages/dtm.md") and fl()["readOnly"]
+        check(p.wait(lambda: fl()["filePath"].replace("\\", "/").endswith("/longhand/pages/dtm.md") and fl()["readOnly"]
                      and "Working files" in p.call("text") and "DTM handout" in p.call("text"), 20),
               f"P inside a project opens its page, read-only, its documents on it ({fl()}, {p.call('text')[:300]!r})")
         check(fl()["filePath"].startswith(str(p.state)), "…written in the state folder, not the vault")
@@ -2995,7 +3377,10 @@ def checks() -> int:
         p.call("keysKey", KEY_RETURN, 0)
         check("Enter again" in p.call("keysNote") and not ours.exists(), "Enter on it says what it will write, and writes nothing")
         p.call("keysKey", KEY_RETURN, 0)
-        check(p.wait(lambda: hk()["owned"]), "…Enter again: the page keeps them")
+        # The adopt waits behind the sheet's read of the keys (hyprNext),
+        # and writes, backs up and reloads: with three suites at once here
+        # the two took 13 s (2026-11-25). Waited for longer.
+        check(p.wait(lambda: hk()["owned"], 10), "…Enter again: the page keeps them")
         b = (p.hypr / "bindings.lua").read_text()
         check(b.count("hypr.longhand") == 1 and '-- o.bind("SUPER + ALT + P", "Pomo toggle"' in b and b.startswith('o.bind("SUPER + SHIFT + T"'),
               "…bindings.lua loads longhand.lua, the six commented out, the student's own line kept")
@@ -3037,7 +3422,8 @@ def checks() -> int:
         check(p.wait(lambda: "refused" in p.call("keysNote")) and ours.read_text() == before and hrow("pomoToggle") == ["Alt+Super+P"],
               "a key Hyprland refuses: the file is put back, and the sheet says so")
         p.call("keysKey", KEY_ESC, 0)
-        check(p.wait(lambda: p.call("keysListening") == "false" and last_call().startswith("eval if hl.get_current_submap()")),
+        # Not the very last call, as above: the pointer asks Hyprland too.
+        check(p.wait(lambda: p.call("keysListening") == "false" and left_submap()),
               "Esc stops waiting and leaves the submap")
         (p.hypr / "break").unlink()
         p.call("keysKey", KEY_ESC, 0)
@@ -3561,8 +3947,9 @@ def checks() -> int:
         line = p.line_of("therapy appointment")
         check(json.loads(p.call("rowKinds"))[line] == "task", "a box in a private block is a box")
         p.call("cursor", 1)
+        p.wait(lambda: "therapy" in p.note(), 5)            # on disk first, then a moment for a binding
         time.sleep(1.2)
-        check("^d" not in [l for l in p.note().split("\n") if "therapy" in l][0],
+        check("^d" not in ([l for l in p.note().split("\n") if "therapy" in l] or ["^d (not saved)"])[0],
               f"…left with a date at its end, it is not bound ({[l for l in p.note().split(chr(10)) if 'therapy' in l]})")
         p.call("cursor", p.offset_of_line(line) + 8)
         p.call("askNow")
@@ -3684,6 +4071,7 @@ def checks() -> int:
         check(paper_talk.is_file() and json.loads(paper_talk.read_text())["turns"][-2].get("marks") == [qid],
               "…kept as the paper's conversation, the message pointing at the mark")
         check(pr()["marks"] == [], "…and the box lets go of it once sent")
+        p.wait(lambda: p.call("agentBusy", "day") == "false", 5)    # Esc while it runs stops it (as above)
         p.call("dayKey", KEY_ESC, 0)
         check(p.wait(lambda: pr()["list"] and pr()["here"] == "right" and sorted(pr()["rows"]) == sorted([hid, qid])),
               f"Esc in the chat turns the pane to the marks ({pr()})")
@@ -3840,9 +4228,12 @@ def checks() -> int:
             sj.unlink()
         else:
             sj.write_text(kept_settings)
+        # The paper's marks are read again as it comes back: the keys wait
+        # for its rows (a process of their own, later on Windows).
+        p.wait(lambda: pr()["rows"])
         p.call("paperKey", KEY_DOWN, 0)                     # as it was before: a mark picked, from the list
         p.call("paperKey", KEY_DOWN, 0)
-        p.wait(lambda: pr()["picked"] != "")
+        check(p.wait(lambda: pr()["picked"] != ""), f"↓ in the paper's list picks a mark again ({pr()})")
         links = p.call("paperLinks", "It says “Reflexive thematic analysis” (p. 1), plainly.")
         check("](quote:1:" in links and "[“Reflexive thematic analysis” (p. 1)]" in links, f"a quote with its page is a link ({links})")
         links = p.call("paperLinks", "It studied “Reflexive thematic analysis” (p. 1, `Studies/Course A/Reading.pdf`); still open.")
@@ -4060,11 +4451,30 @@ def checks() -> int:
         p.call("pdfKey", 0x01000011, 0)                    # End
         p.wait(lambda: ac()["page"] == 2)
 
+        def view_rests():
+            # The view where it stays: the same place read three times over.
+            seen = [None]
+            def still():
+                now = pd()["at"]
+                rest, seen[0] = now == seen[0], now
+                return rest
+            return p.wait(lambda: still() and still())
+
         def rest_on(a):
-            # The pointer resting on it, off it first; again if the view
-            # laid its page out anew under the pointer meanwhile.
+            # The pointer resting on it, off it first, once the view rests:
+            # End, Enter and Ctrl+[ glide for 400 ms, and a word the pointer
+            # is put on meanwhile slides from under it, so the page lets go
+            # of it (2026-11-24: put there 200 ms after End, the word still
+            # 20 to 30 px short of its place, it was let go of 10 times in
+            # 12, now and then just after its tip showed). Again if it was
+            # let go of all the same.
             for _ in range(6):
-                r = next(x for x in ac()["spots"][2] if x["a"] == a)["r"]
+                view_rests()
+                # Not written on this page (the paper left, its acronyms
+                # gone): said by the check, the rest of the run goes on.
+                r = next((x["r"] for x in ac()["spots"][2] if x["a"] == a), None)
+                if r is None:
+                    return False
                 p.call("pdfHover", "2", "300", "400")
                 p.wait(lambda: ac()["hover"] == "", 2)
                 p.call("pdfHover", "2", str(r[0] + r[2] / 2), str(r[1] + r[3] / 2))
@@ -4074,9 +4484,19 @@ def checks() -> int:
         check(rest_on("HRV"), f"hovered, HRV says what it stands for ({ac()})")
         read_at = pd()["at"]
         same = lambda a: a and a["page"] == read_at["page"] and abs(a["frac"] - read_at["frac"]) < 0.05
-        p.call("pdfKey", KEY_RETURN, 0)
-        check(p.wait(lambda: ac()["page"] == 0 and ac()["back"] and ac()["flash"] == 1 and not ac()["tip"]),
-              f"Enter: to page 1, where it is spelled out, lit a moment ({ac()})")
+        # Enter while it is under the pointer (rested on again if the page
+        # let go of it meanwhile: Enter on nothing goes nowhere, and every
+        # check after it failed with it, 2026-11-24).
+        went, seen = False, []
+        for _ in range(3):
+            if ac()["hover"] != "HRV" and not rest_on("HRV"):
+                continue
+            seen.append((ac()["hover"], ac()["tip"]))
+            p.call("pdfKey", KEY_RETURN, 0)
+            if p.wait(lambda: ac()["page"] == 0 and ac()["back"] and ac()["flash"] == 1 and not ac()["tip"]):
+                went = True
+                break
+        check(went, f"Enter: to page 1, where it is spelled out, lit a moment (before Enter {seen}; {ac()})")
         p.call("pdfKey", KEY_LBRACKET, CTRL)
         check(p.wait(lambda: same(pd()["at"]) and not ac()["back"] and pd()["shown"]),
               f"Ctrl+[: back to where it was read, the PDF still open ({pd()['at']}, read at {read_at})")
@@ -4541,11 +4961,19 @@ def checks() -> int:
         p.call("exportTitle", "Diary 1")
         p.call("exportKey", KEY_RETURN, 0)
         out = p.tmp / "Downloads" / "Diary 1.pdf"
-        check(p.wait(lambda: json.loads(p.call("pdf"))["shown"] and out.is_file(), 60),
-              f"Enter writes the PDF under its title, in Settings' folder ({ex()['error']!r})")
-        check(p.wait(lambda: json.loads(p.call("pdf"))["ready"]) and json.loads(p.call("pdf"))["label"] == "Diary 1"
-              and not ex()["open"], "…and it opens where the note was, the export closed")
-        check(p.call("hint").startswith("written to "), f"…saying where it went ({p.call('hint')!r})")
+        # The PDF itself only where pandoc and xelatex are (agent/export.py
+        # looks them up on PATH, as here; tests/test_export.py the same).
+        if shutil.which("pandoc", path=p.env["PATH"]) and shutil.which("xelatex", path=p.env["PATH"]):
+            check(p.wait(lambda: json.loads(p.call("pdf"))["shown"] and out.is_file(), 60),
+                  f"Enter writes the PDF under its title, in Settings' folder ({ex()['error']!r})")
+            check(p.wait(lambda: json.loads(p.call("pdf"))["ready"] and json.loads(p.call("pdf"))["label"] == "Diary 1"
+                         and not ex()["open"]),
+                  f"…and it opens where the note was, the export closed ({p.call('pdf')}, open: {ex()['open']})")
+            check(p.call("hint").startswith("written to "), f"…saying where it went ({p.call('hint')!r})")
+        else:
+            print("skip the PDF itself: pandoc or xelatex is not installed")
+            check(p.wait(lambda: "not installed" in ex()["error"], 15) and not out.exists(),
+                  f"…without pandoc or xelatex, Enter says so and writes nothing ({ex()['error']!r})")
         p.call("pdfKey", KEY_ESC, 0)
         check(p.wait(lambda: not json.loads(p.call("pdf"))["shown"]) and p.call("text") == before,
               "Esc: back to the note, its words untouched")

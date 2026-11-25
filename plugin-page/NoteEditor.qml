@@ -355,9 +355,12 @@ Item {
   // Replace everything (a load from disk). The cursor goes to the end and
   // the undo history starts over. If a line held the keys, a line still
   // does: the one they were in may be rebuilt, and the keys would go with
-  // it, leaving every shortcut deaf until a click (2026-11-17).
+  // it, leaving every shortcut deaf until a click (2026-11-17). Keys asked
+  // for before there were lines (`focusNote`) come now, unless something
+  // shown was given them meanwhile.
   function load(t) {
-    var held = ed.holdsFocus()
+    var held = ed.holdsFocus() || (ed.focusOwed && ed.keysUnclaimed())
+    ed.focusOwed = false
     ed.loading = true
     ed.shown = null
     ed.clearSelection()
@@ -512,7 +515,28 @@ Item {
     ed.placeCursor(focus === true)
   }
 
-  function focusNote() { ed.placeCursor(true) }
+  // Asked for the keys before the note has a line to hold them: the page
+  // opened before its note was read, as its first open after the shell
+  // starts is. The note owes itself the keys until its lines come (`load`).
+  // Until 2026-11-24 the ask was simply lost, and a closed sheet's key
+  // catcher kept the keys: on Omarchy the overlay's first open typed into
+  // hidden settings (the alongside window was saved by a second ask when
+  // Wayland mapped it); Windows had a stand-in in its host.
+  property bool focusOwed: false
+  function focusNote() {
+    if (ed.rows.length === 0) { ed.focusOwed = true; return }
+    ed.placeCursor(true)
+  }
+
+  // Nothing shown was given the keys: nothing has them, or what has them
+  // is hidden (a closed sheet's catcher) or something the note sits in.
+  // Then an owed ask is still the last word on where they go.
+  function keysUnclaimed() {
+    var f = ed.Window.activeFocusItem
+    if (!f || !f.visible) return true
+    for (var p = ed.parent; p; p = p.parent) if (p === f) return true
+    return false
+  }
 
   function commit(t, cur) {
     ed.cursorPosition = Math.max(0, Math.min(t.length, cur))
@@ -2062,12 +2086,21 @@ Item {
           radius: Math.max(2, Math.round(ed.cornerRadius / 2))
           // The person's box is this square; the agent's and the shared one
           // draw their own shape inside it, and the square gives way.
-          readonly property color edge: boxArea.containsMouse && ed.handOn ? ed.accent : ed.boxColor
+          // Under the pointer (the lines' own area says which box that is:
+          // `boxHover`) a box's edge turns the accent; its fill never does.
+          // A ticked box stays the tick's colour, with the accent edge round
+          // it. Before (2026-11-24) the box asked its own area, which hears
+          // a click but no longer the hover: a box ticked by a click stayed
+          // filled with the accent after the pointer had gone, while one
+          // ticked with Ctrl+L was green.
+          readonly property bool lit: ed.boxHover === row.index && ed.handOn
+          readonly property color edge: box.lit ? ed.accent : ed.boxColor
+          readonly property int stroke: Math.max(1, Math.round(ed.textSize * 0.08))
           // Cancelled is closed but not done (2026-11-15): grey, with a
           // dash, so it is never read as ticked.
           readonly property color shut: row.cancelled ? ed.cancelColor : ed.checkColor
-          color: row.checked && row.author === "" ? (boxArea.containsMouse && ed.handOn ? ed.accent : box.shut) : "transparent"
-          border.width: row.checked || row.author !== "" ? 0 : Math.max(1, Math.round(ed.textSize * 0.08))
+          color: row.checked && row.author === "" ? box.shut : "transparent"
+          border.width: row.author !== "" || (row.checked && !box.lit) ? 0 : box.stroke
           border.color: box.edge
 
           // The agent's: a diamond, outlined while open, filled when done.
@@ -2078,8 +2111,8 @@ Item {
             height: width
             rotation: 45
             radius: Math.max(1, Math.round(ed.cornerRadius / 2))
-            color: row.checked ? (boxArea.containsMouse && ed.handOn ? ed.accent : box.shut) : "transparent"
-            border.width: row.checked ? 0 : Math.max(1, Math.round(ed.textSize * 0.08))
+            color: row.checked ? box.shut : "transparent"
+            border.width: row.checked && !box.lit ? 0 : box.stroke
             border.color: box.edge
           }
 
@@ -2091,8 +2124,8 @@ Item {
             width: Math.round(box.size * 1.12)
             height: width
             outline: !row.checked
-            strokePx: Math.max(1, Math.round(ed.textSize * 0.08))
-            color: row.checked ? (boxArea.containsMouse && ed.handOn ? ed.accent : box.shut) : box.edge
+            strokePx: box.stroke
+            color: row.checked ? box.shut : box.edge
           }
 
           Text {
@@ -2114,15 +2147,11 @@ Item {
             anchors.fill: parent
             anchors.margins: -Math.round(ed.textSize * 0.25)
             enabled: box.visible
-            hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onContainsMouseChanged: {
-              if (containsMouse) ed.boxHover = row.index
-              else if (ed.boxHover === row.index) ed.boxHover = -1
-            }
+            // The click only: the hover is the lines' area's (`pointer`).
             Component.onDestruction: if (ed.boxHover === row.index) ed.boxHover = -1
             onClicked: ed.clickCheckbox(row.index)
-            Loader { anchors.fill: parent; active: !!ed.boxTip && parent.containsMouse; sourceComponent: ed.boxTip }
+            Loader { anchors.fill: parent; active: !!ed.boxTip && box.lit; sourceComponent: ed.boxTip }
           }
           Loader {
             active: !!ed.boxBadge && row.index === ed.focusedRow

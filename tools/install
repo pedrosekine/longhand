@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """One-command installer for Longhand (`tools/install`).
 
-Idempotent setup:
+Idempotent setup, on Omarchy:
   1. Symlinks CLI helpers into ~/.local/bin (pomo, longhand-agent,
      longhand-check, longhand-read, longhand-doctor).
   2. Copies config.example.json to ~/.config/longhand/config.json if absent.
@@ -9,6 +9,27 @@ Idempotent setup:
   4. Runs tools/install-plugins (passing --restart if requested).
   5. Runs `longhand-agent install` if config.json points at an existing vault.
   6. Runs tools/doctor to verify the installation.
+
+On Windows (`python tools\\install`), the same steps as Windows has them:
+  1. A Python of Longhand's own (the repo's .venv, made if absent; or the
+     virtual environment this runs in), and `pip install -e windows` into
+     it: PySide6, and the commands as .exe files beside its python.exe.
+  2. The config, as above.
+  3. `longhand install`: the commands by name in a new terminal (copies
+     of the launchers in ~/.local/bin, as on Omarchy, and that folder on
+     the person's PATH; `--no-path` leaves that out), the Start menu entry,
+     and Longhand started with the session (`--no-autostart` leaves that
+     out).
+  4. (Omarchy's shell plugins: nothing; the page's host stands in for them.)
+  5. `longhand-agent install`, as above.
+  6. The doctor; `--tools` then installs with winget what it found missing
+     (pandoc, MiKTeX, poppler, gitleaks, Node), and says the rest. winget
+     writes a program's folder into the registry's PATH only, so this
+     process takes the registry's PATH again before it starts one of them
+     (MiKTeX's initexmf).
+
+`--vault PATH` writes the vault into a config this makes (never into one
+that is there).
 """
 from __future__ import annotations
 
@@ -21,6 +42,85 @@ import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+WINDOWS = os.name == "nt"
+
+# What the doctor names as missing, and the winget package that brings it
+# (README → Windows, windows/README.md). tesseract and qpdf have none that
+# brings them whole: said, not installed.
+WINGET = {
+    "pandoc": "JohnMacFarlane.Pandoc",
+    "xelatex": "MiKTeX.MiKTeX",
+    "pdftotext": "oschwartz10612.Poppler",
+    "pdfinfo": "oschwartz10612.Poppler",
+    "pdftoppm": "oschwartz10612.Poppler",
+    "gitleaks": "Gitleaks.Gitleaks",
+    "node": "OpenJS.NodeJS.LTS",
+}
+MIKTEX_AUTOINSTALL = ["initexmf", "--set-config-value=[MPM]AutoInstall=1"]
+
+
+def run(cmd, **kw):
+    """subprocess.run, a seam for the test (tests/test_install.py)."""
+    return subprocess.run(cmd, **kw)
+
+
+def refresh_path(env: dict) -> None:
+    """What winget put on the registry's PATH, onto this process's and
+    `env`'s too (at the end: nothing already there moves)."""
+    import shortcuts
+    for target in (os.environ, env):
+        have = [p for p in target.get("PATH", "").split(os.pathsep) if p]
+        seen = {os.path.normcase(os.path.normpath(p)) for p in have}
+        for entry in shortcuts.new_terminal_path():
+            key = os.path.normcase(os.path.normpath(entry))
+            if key not in seen:
+                seen.add(key)
+                have.append(entry)
+        target["PATH"] = os.pathsep.join(have)
+
+
+def find_initexmf(path: str) -> str:
+    """MiKTeX's initexmf: on PATH, else where MiKTeX's installer puts it (for
+    the person alone, or for all users)."""
+    found = shutil.which("initexmf", path=path)
+    if found:
+        return found
+    bases = [pathlib.Path(os.environ[v]) / sub for v, sub in (("LOCALAPPDATA", "Programs"), ("ProgramFiles", ""))
+             if os.environ.get(v)]
+    for base in bases:
+        exe = base / "MiKTeX" / "miktex" / "bin" / "x64" / "initexmf.exe"
+        if exe.is_file():
+            return str(exe)
+    return ""
+
+
+def install_tools(packages: list[str], env: dict) -> None:
+    """Each winget package, then what one of them needs set (MiKTeX)."""
+    by_hand = [f"winget install {p}" for p in packages]
+    if "MiKTeX.MiKTeX" in packages:
+        by_hand.append(" ".join(MIKTEX_AUTOINSTALL))
+    winget = shutil.which("winget", path=env.get("PATH"))
+    if not winget:
+        print("\nwinget is not here (Windows' App Installer brings it, from the Microsoft Store); by hand:")
+        for line in by_hand:
+            print(f"  {line}")
+        return
+    for p in packages:
+        print(f"\nwinget install {p}")
+        run([winget, "install", "--id", p, "-e", "--silent",
+             "--accept-package-agreements", "--accept-source-agreements"], check=False)
+    refresh_path(env)
+    if "MiKTeX.MiKTeX" in packages:
+        print("MiKTeX fetches the LaTeX packages an export needs by itself:")
+        initexmf = find_initexmf(env["PATH"])
+        try:
+            if not initexmf:
+                raise FileNotFoundError("initexmf")
+            run([initexmf, *MIKTEX_AUTOINSTALL[1:]], check=False, env=env)
+        except OSError:
+            print("  MiKTeX's initexmf was not found: once MiKTeX is installed, in a new terminal:\n"
+                  f"  {by_hand[-1]}")
+    print("\nopen a new terminal for PATH to have them")
 
 
 def link(src: pathlib.Path, dst: pathlib.Path) -> None:
@@ -33,11 +133,39 @@ def link(src: pathlib.Path, dst: pathlib.Path) -> None:
     print(f"linked {dst} → {src}")
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--restart", action="store_true", help="restart omarchy-shell after installing plugins")
-    args = ap.parse_args()
+def scaffold_config(cfg_path: pathlib.Path, vault: str) -> None:
+    """config.example.json, if there is no config; with the vault given."""
+    if cfg_path.exists():
+        if vault:
+            print(f"{cfg_path} is there already: \"vault\" left as it is")
+        return
+    cfg_path.parent.mkdir(parents=True, exist_ok=True)
+    if vault:
+        cfg = json.loads((ROOT / "config.example.json").read_text(encoding="utf-8"))
+        # Written with "/": the page and the agent read a path that way on
+        # every system (windows/README.md, "Your own vault").
+        cfg["vault"] = pathlib.Path(os.path.expanduser(vault)).resolve().as_posix()
+        cfg_path.write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        print(f"created {cfg_path}, the vault {cfg['vault']}")
+    else:
+        shutil.copy2(ROOT / "config.example.json", cfg_path)
+        print(f"created {cfg_path} — edit \"vault\" to point at your Obsidian folder")
 
+
+def agent_install(cfg_path: pathlib.Path, python: str, env: dict | None = None) -> None:
+    """`longhand-agent install`, when the config's vault is there."""
+    try:
+        cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+        vault = pathlib.Path(os.path.expanduser(str(cfg.get("vault") or "")))
+        if vault.is_dir():
+            subprocess.run([python, str(ROOT / "agent" / "longhand-agent"), "install"], check=False, env=env)
+        else:
+            print(f"the vault in {cfg_path} is not there yet: `longhand-agent install` once it is")
+    except (OSError, ValueError):
+        pass
+
+
+def omarchy(args) -> int:
     home = pathlib.Path.home()
     xdg_cfg = pathlib.Path(os.environ.get("XDG_CONFIG_HOME") or home / ".config")
     xdg_data = pathlib.Path(os.environ.get("XDG_DATA_HOME") or home / ".local" / "share")
@@ -55,10 +183,7 @@ def main() -> int:
 
     # 2. Config scaffold (never overwrites existing config.json)
     cfg_path = xdg_cfg / "longhand" / "config.json"
-    if not cfg_path.exists():
-        cfg_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(ROOT / "config.example.json", cfg_path)
-        print(f"created {cfg_path} — edit \"vault\" to point at your Obsidian folder")
+    scaffold_config(cfg_path, args.vault)
 
     # 3. App launcher entry & icon
     link(ROOT / "launcher" / "longhand.desktop", xdg_data / "applications" / "longhand.desktop")
@@ -71,18 +196,94 @@ def main() -> int:
     subprocess.run(cmd, check=True)
 
     # 5. Scaffold vault & agent prompts if vault already exists
-    try:
-        cfg = json.loads(cfg_path.read_text())
-        vault = pathlib.Path(os.path.expanduser(str(cfg.get("vault") or "")))
-        if vault.is_dir():
-            subprocess.run([sys.executable, str(ROOT / "agent" / "longhand-agent"), "install"], check=False)
-    except (OSError, ValueError):
-        pass
+    agent_install(cfg_path, sys.executable)
 
     # 6. Health check
     print("\n--- longhand doctor ---")
     r = subprocess.run([sys.executable, str(ROOT / "tools" / "doctor")])
     return r.returncode
+
+
+def in_venv() -> bool:
+    return sys.prefix != getattr(sys, "base_prefix", sys.prefix)
+
+
+def windows(args) -> int:
+    # Said in UTF-8 whatever the console's code page ("→" stopped a first
+    # run whose output went into a pipe).
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
+    # 1. A Python of Longhand's own: this one when it is a virtual
+    # environment, else the repo's .venv (made when absent), and the
+    # install run again from there.
+    if not in_venv():
+        venv = ROOT / ".venv"
+        python = venv / "Scripts" / "python.exe"
+        if not python.is_file():
+            print(f"making {venv}")
+            subprocess.run([sys.executable, "-m", "venv", str(venv)], check=True)
+        return subprocess.call([str(python), str(pathlib.Path(__file__).resolve()), *sys.argv[1:]])
+    print(f"pip install -e windows → {pathlib.Path(sys.executable).parent}")
+    r = subprocess.run([sys.executable, "-m", "pip", "install", "--quiet", "-e", str(ROOT / "windows")])
+    if r.returncode != 0:
+        print("pip install failed: Longhand's commands are not there")
+        return r.returncode
+    scripts = pathlib.Path(sys.executable).parent
+    # What the launchers give every script they start (longhand_launch.py):
+    # the stand-ins on Python's path, UTF-8.
+    old = os.environ.get("PYTHONPATH", "")
+    env = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8",
+               PYTHONPATH=str(ROOT / "windows" / "pyshim") + (os.pathsep + old if old else ""),
+               PATH=str(scripts) + os.pathsep + os.environ.get("PATH", ""))
+
+    # 2. Config scaffold (never overwrites existing config.json)
+    xdg_cfg = pathlib.Path(os.environ.get("XDG_CONFIG_HOME") or pathlib.Path.home() / ".config")
+    cfg_path = xdg_cfg / "longhand" / "config.json"
+    scaffold_config(cfg_path, args.vault)
+
+    # 3. The Start menu, and the start with the session
+    sys.path.insert(0, str(ROOT / "windows"))
+    import shortcuts
+    shortcuts.install(with_autostart=not args.no_autostart, with_path=not args.no_path)
+
+    # 5. Scaffold vault & agent prompts if vault already exists
+    agent_install(cfg_path, sys.executable, env)
+
+    # 6. Health check, and what it found missing
+    print("\n--- longhand doctor ---")
+    r = subprocess.run([sys.executable, str(ROOT / "tools" / "doctor")], env=env, capture_output=True,
+                       text=True, encoding="utf-8", errors="replace")
+    print(r.stdout, end="")
+    missing = [line.split()[1].split(":", 1)[1] for line in r.stdout.splitlines()
+               if line.startswith("WARN") and line.split()[1].startswith("optional:")]
+    if not shutil.which("node", path=env["PATH"]):
+        missing.append("node")
+    packages = list(dict.fromkeys(WINGET[m] for m in missing if m in WINGET))
+    unsaid = [m for m in missing if m not in WINGET]
+    if packages and args.tools:
+        install_tools(packages, env)
+    elif packages:
+        print("\nnot installed, and optional (`--tools` installs them):")
+        for p in packages:
+            print(f"  winget install {p}")
+    if unsaid:
+        print(f"no winget package brings {', '.join(unsaid)} (reading a scanned PDF): see their own sites")
+    return r.returncode
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--vault", default="", help="the vault folder, written into a config this makes")
+    if WINDOWS:
+        ap.add_argument("--no-autostart", action="store_true", help="not started with the session")
+        ap.add_argument("--no-path", action="store_true",
+                        help="the commands not put on PATH (~/.local/bin); .venv\\Scripts\\pomo and the like still work")
+        ap.add_argument("--tools", action="store_true", help="install the optional tools the doctor finds missing, with winget")
+    else:
+        ap.add_argument("--restart", action="store_true", help="restart omarchy-shell after installing plugins")
+    args = ap.parse_args()
+    return windows(args) if WINDOWS else omarchy(args)
 
 
 if __name__ == "__main__":

@@ -8,6 +8,7 @@ import "Shortcuts.js" as Sc
 import "PdfPlaces.js" as Places
 import "PdfMarks.js" as Marks
 import "Answers.js" as Answers
+import "Links.js" as Links
 
 // A PDF in the middle, in the note's place (docs/files.md, step 5,
 // 2026-10-27): its pages one under the next, fitted to the column, drawn as
@@ -325,7 +326,7 @@ Item {
   property var flashBoxes: []
   property string flashMissed: ""
   // Marks are kept only for a PDF in the vault, with words in it.
-  readonly property bool markable: rel !== "" && rel.charAt(0) !== "/" && read.text !== false
+  readonly property bool markable: rel !== "" && !Links.isAbs(rel) && read.text !== false
   readonly property string readPath: (page.noteService.config && page.noteService.config.read)
     || (Quickshell.env("HOME") + "/.local/bin/longhand-read")
   property var readQueue: []
@@ -344,7 +345,7 @@ Item {
     pane.readQueue = []
     pane.acro = ({ byShort: {}, list: [], spots: {} })
     pane.hoverAcro = null; pane.tipOn = false; pane.markHovers = []; pane.acroListing = false; pane.jumpBack = null
-    if (pane.rel !== "" && pane.rel.charAt(0) !== "/") pane.readRun(["state"])
+    if (pane.rel !== "" && !Links.isAbs(pane.rel)) pane.readRun(["state"])
     if (pane.rel !== "") pane.readRun(["acronyms"])
     Qt.callLater(pane.arrive)
   }
@@ -407,8 +408,8 @@ Item {
     var v = pane.page.noteService.config.vault
     // A scan read (plan.md item 15, step 5): its copy with words, which
     // looks as the scan does; the scan itself is never written.
-    var path = pane.read && pane.read.ocr ? pane.read.ocr : pane.rel.charAt(0) === "/" ? pane.rel : v + "/" + pane.rel
-    return "file://" + path.split("/").map(encodeURIComponent).join("/")
+    var path = pane.read && pane.read.ocr ? pane.read.ocr : Links.isAbs(pane.rel) ? pane.rel : v + "/" + pane.rel
+    return Links.fileUrl(path)
   }
 
   function scrollBy(dy) { if (pane.view) pane.view.scrollBy(dy) }
@@ -794,7 +795,7 @@ Item {
   // with an invisible text layer), saying how far it is; read, the copy
   // takes its place and it is marked as any paper is.
   property var ocrProgress: null        // { page, pages } while it reads
-  readonly property bool ocrable: pane.rel !== "" && pane.rel.charAt(0) !== "/" && !!pane.read.scanned && !pane.read.ocr
+  readonly property bool ocrable: pane.rel !== "" && !Links.isAbs(pane.rel) && !!pane.read.scanned && !pane.read.ocr
   function readScan() {
     if (!pane.ocrable || ocrProc.running) return
     pane.ocrProgress = { page: 0, pages: pane.pages }
@@ -879,7 +880,7 @@ Item {
 
   // Keep the words given as a mark (`h` or `q`).
   function markText(pageIndex, text, y, kind) {
-    if (!pane.markable) { pane.readError = pane.rel.charAt(0) === "/" ? "only a PDF in the vault keeps marks" : "a scan, no words to mark: " + page.keyName("pdfOcr") + " reads it"; return false }
+    if (!pane.markable) { pane.readError = Links.isAbs(pane.rel) ? "only a PDF in the vault keeps marks" : "a scan, no words to mark: " + page.keyName("pdfOcr") + " reads it"; return false }
     var args = ["mark", "--page", String(pageIndex + 1), "--text", text, "--kind", kind]
     if (y !== undefined && y !== null && !isNaN(y)) args.push("--y", String(Math.round(y * 10) / 10))
     pane.awaitingMark = true

@@ -56,7 +56,7 @@ Item {
     Text {
       anchors.verticalCenter: parent.verticalCenter
       textFormat: Text.PlainText
-      text: page.exportLook === "omarchy" ? "look: your Omarchy theme" : "look: minimal"
+      text: page.exportLook === "omarchy" ? "look: your " + page.themeName : "look: minimal"
       color: lookArea.containsMouse && page.handOn ? page.accent : page.foreground
       font.family: page.fontFamily
       font.styleName: page.fontStyle
@@ -68,7 +68,7 @@ Item {
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
         onClicked: { page.exportLook = page.exportLook === "omarchy" ? "minimal" : "omarchy"; keys.forceActiveFocus() }
-        Tip { host: page; act: "exportLook"; shown: parent.containsMouse; text: page.tip("Switch between minimal (white) and your Omarchy theme", "exportLook") }
+        Tip { host: page; act: "exportLook"; shown: parent.containsMouse; text: page.tip("Switch between minimal (white) and your " + page.themeName, "exportLook") }
       }
     }
   }

@@ -112,6 +112,13 @@ FEEDBACK = STATE_HOME / "feedback.tsv"
 EXPORTS = STATE_HOME / "exports.json"
 
 
+def day_text(when, pattern: str) -> str:
+    """A date or a moment as words, where `%-d` is the day with no leading
+    zero ("Mon 3 Nov") on every system: the C library's strftime knows `%-d`
+    on Linux only, and Windows refuses the whole pattern."""
+    return when.strftime(pattern.replace("%-d", str(when.day)))
+
+
 class Fail(Exception):
     pass
 
@@ -198,6 +205,20 @@ def guard_write(paths: Paths, target: Path) -> None:
         n, a = (paths.vault / paths.notes_root).resolve(), paths.agent_dir.resolve()
         if (t == n or n in t.parents) and not (t == a or a in t.parents):
             raise Fail(f"refusing to write under the notes: {target}")
+
+
+def replace_with(target: Path, text: str) -> None:
+    """`target` holds `text`, written whole beside it and renamed over it,
+    through a copy of this process's own: the page runs listings side by
+    side (two project pages, a week and its project), and with one shared
+    `.tmp` the second rename found it gone, or on Windows still held
+    (2026-11-25, as the clocks' in lifespan.py)."""
+    tmp = target.with_name(f"{target.name}.{os.getpid()}.tmp")
+    try:
+        tmp.write_text(text)
+        os.replace(tmp, target)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def write_atomic(paths: Paths, target: Path, text: str) -> None:
@@ -353,7 +374,7 @@ def horizon_hide(cfg: dict):
 
     def hide(rel: str) -> bool:
         p = Path(rel)
-        return str(p.parent) == daily and p.suffix.lower() == ".md" and before_horizon(cfg, p.stem)
+        return p.parent.as_posix() == daily and p.suffix.lower() == ".md" and before_horizon(cfg, p.stem)
     return hide
 
 
@@ -367,7 +388,7 @@ def read_tree(root: Path | None, suffix: str = ".md") -> list[tuple[str, str]]:
     out = []
     for p in sorted(root.rglob(f"*{suffix}")):
         if p.is_file():
-            out.append((str(p.relative_to(root)), p.read_text(errors="replace")))
+            out.append((p.relative_to(root).as_posix(), p.read_text(errors="replace")))
     return out
 
 
@@ -738,21 +759,31 @@ def project_of(prop: dict) -> str:
     return str(prop.get("project") or prop.get("subject") or "")
 
 
-def session_cost(cfg: dict, paths: Paths, session: str) -> tuple[float, dict]:
-    """What the pass cost, asked of opencode after the fact.
+def session_cost(cfg: dict, paths: Paths, session: str) -> tuple[float, dict] | None:
+    """What the pass cost, asked of opencode after the fact; None when it
+    could not be asked.
 
     opencode stopped reporting cost in the run's event stream, so the ledger
     is read from the session it just wrote. Best effort: a pass that happened
-    is never failed for want of its price."""
+    is never failed for want of its price.
+
+    `--standalone`, as the run itself: without it opencode 2 hands the
+    question to its background service, starting one if none runs, and
+    fails when another program holds the service's port (found 2026-11-24
+    on Windows, where an editor's own opencode held it: every export took
+    25 s to fail and the ledger's tokens were zeroed)."""
     tokens = {"input": 0, "output": 0, "reasoning": 0, "total": 0}
     if not session:
-        return 0.0, tokens
+        return None
     try:
-        proc = subprocess.run([cfg.get("opencode", "opencode"), "session", "export", session], stdin=subprocess.DEVNULL,
-                              capture_output=True, text=True, timeout=30, cwd=str(paths.cwd))
+        proc = subprocess.run(_win_cmd([cfg.get("opencode", "opencode"), "session", "export", session,
+                                        "--standalone"], None),
+                              stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=30, cwd=str(paths.cwd))
         info = (json.loads(proc.stdout) or {}).get("info") or {}
     except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError, AttributeError):
-        return 0.0, tokens
+        return None
+    if not isinstance(info, dict) or "tokens" not in info and "cost" not in info:
+        return None
     got = info.get("tokens") or {}
     for k in ("input", "output", "reasoning"):
         tokens[k] = int(got.get(k) or 0)
@@ -863,8 +894,25 @@ def earlier_turns(turns: list[dict], agent: str = "you") -> list[str]:
 # model's process (its whole group) is ended, the run is logged as stopped,
 # and no turn is written — the page gives the student's words back to the
 # box. Any other command still dies on it at once, as before.
+#
+# Windows has no process groups and no SIGTERM a process can handle and go
+# on (winproc.py): there the model's process is in a job, ended whole the
+# same way, and the page asks for the stop through a named event, which
+# calls `_on_stop` as the signal would.
 STOPPED = "stopped"
 _STOP: dict = {"asked": False, "child": None}
+WINDOWS = os.name == "nt"
+if WINDOWS:
+    import winproc  # noqa: E402
+
+
+def end_group(p: subprocess.Popen, hard: bool = False) -> None:
+    """A model's process and everything it started, ended: asked to (SIGTERM)
+    or, `hard`, killed. On Windows there is only the one way."""
+    if WINDOWS:
+        winproc.end(p)
+    else:
+        os.killpg(p.pid, signal.SIGKILL if hard else signal.SIGTERM)
 
 
 def _on_stop(signum, frame) -> None:
@@ -872,9 +920,22 @@ def _on_stop(signum, frame) -> None:
     child = _STOP["child"]
     if child is not None and child.poll() is None:
         try:
-            os.killpg(child.pid, signal.SIGTERM)
+            end_group(child)
         except OSError:
             pass
+
+
+def _win_cmd(cmd: list[str], env: dict | None) -> list[str]:
+    """On Windows, CreateProcess finds only .exe by bare name, not .cmd/.bat
+    shims (such as npm-installed codex.cmd). Resolving through PATH hands
+    Popen the full path, which Windows runs cleanly even with spaces."""
+    if not WINDOWS or not cmd:
+        return cmd
+    head = str(cmd[0])
+    if Path(head).is_file():
+        return cmd
+    found = shutil.which(head, path=(env or os.environ).get("PATH"))
+    return [found, *cmd[1:]] if found else cmd
 
 
 def run_child(cmd: list[str], payload: str, timeout: int, cwd: str, env: dict | None,
@@ -886,21 +947,25 @@ def run_child(cmd: list[str], payload: str, timeout: int, cwd: str, env: dict | 
     fails never fails the run."""
     if _STOP["asked"]:
         return subprocess.CompletedProcess(cmd, -signal.SIGTERM, "", "")
-    p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-                         cwd=cwd, env=env, start_new_session=True)
+    p = subprocess.Popen(_win_cmd(cmd, env), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                         text=True, cwd=cwd, env=env, start_new_session=True)
+    if WINDOWS:
+        winproc.adopt(p)
     _STOP["child"] = p
     try:
         if on_line is None:
             try:
                 out, err = p.communicate(payload, timeout=timeout)
             except subprocess.TimeoutExpired:
-                os.killpg(p.pid, signal.SIGKILL)
+                end_group(p, hard=True)
                 p.communicate()
                 raise
             return subprocess.CompletedProcess(cmd, p.returncode, out, err)
         return _stream_child(p, cmd, payload, timeout, on_line)
     finally:
         _STOP["child"] = None
+        if WINDOWS:
+            winproc.release(p)
 
 
 def _stream_child(p: subprocess.Popen, cmd: list[str], payload: str, timeout: int, on_line) -> subprocess.CompletedProcess:
@@ -925,7 +990,7 @@ def _stream_child(p: subprocess.Popen, cmd: list[str], payload: str, timeout: in
     def kill():
         timed_out.set()
         try:
-            os.killpg(p.pid, signal.SIGKILL)
+            end_group(p, hard=True)
         except OSError:
             pass
 
@@ -1172,7 +1237,10 @@ def run_codex(cfg: dict, paths: Paths, payload: str, session: str, message: str,
     # Codex will not sign in to a folder that does not exist yet.
     home.mkdir(mode=0o700, parents=True, exist_ok=True)
     if not (home / "auth.json").exists():
-        raise Fail(f"Codex is not signed in for Longhand: run `CODEX_HOME={home} codex login` once")
+        # The line as the person's shell takes it: PowerShell on Windows.
+        login = (f"$env:CODEX_HOME='{home}'; codex login" if os.name == "nt"
+                 else f"CODEX_HOME={home} codex login")
+        raise Fail(f"Codex is not signed in for Longhand: run `{login}` once")
     instructions = instructions_of(name, cfg.get("_prompts"))
     idir = home / "instructions"
     idir.mkdir(parents=True, exist_ok=True)
@@ -1271,6 +1339,14 @@ ANTIGRAVITY_EFFORTS = ("low", "medium", "high", "xhigh")
 # offers `manage_task` and `schedule`, whatever the agent's `tools` say, and
 # a `permissions.deny` in its settings does not stop them (found 2026-11-19).
 ANTIGRAVITY_STEPS_OK = {"user_input", "agent_response", "checkpoint"}
+# Antigravity's own notice, sent as `system_message` with no tool on it.
+# Every resumed conversation gets one, since each `agy -p` is a new
+# process: "All your subagents and background tasks have been stopped due
+# to server restart" (agy 1.5.16; found 2026-11-24, the first live run on
+# Windows: every chat's second turn was dropped and went to the fallback).
+# It is Antigravity's, as its other notes are, and calls nothing; one
+# that names a tool is still a tool step.
+ANTIGRAVITY_NOTICE = "system_message"
 # What a person's own Antigravity would carry into every run, relative to the
 # home Longhand gives it: rules, skills, plugins, hooks, MCP servers. None
 # belong in Longhand's own; a run is refused before any call if one is there.
@@ -1356,9 +1432,17 @@ def run_antigravity(cfg: dict, paths: Paths, payload: str, session: str, message
     said = message.strip()
     if payload:
         said += "\n\n<stdin>\n" + payload.rstrip("\n") + "\n</stdin>"
+    run_env = dict(env or os.environ, HOME=str(home))
+    if WINDOWS:
+        # On Windows, CLIs resolve ~ and ~/.gemini via USERPROFILE (and
+        # HOMEDRIVE/HOMEPATH) rather than HOME.
+        run_env["USERPROFILE"] = str(home)
+        if home.drive:
+            run_env["HOMEDRIVE"] = home.drive
+            run_env["HOMEPATH"] = str(home)[len(home.drive):]
     try:
         proc = run_child(cmd, json.dumps({"event": "user", "message": {"content": said}}) + "\n", 600,
-                         str(paths.cwd), dict(env or os.environ, HOME=str(home)))
+                         str(paths.cwd), run_env)
     except FileNotFoundError:
         raise Fail(f"Antigravity not found ({cmd[0]})")
     except subprocess.TimeoutExpired:
@@ -1381,7 +1465,8 @@ def run_antigravity(cfg: dict, paths: Paths, payload: str, session: str, message
             out["session"] = str(ev.get("conversation_id") or "")
         elif ev.get("event") == "step_update":
             s = ev.get("step_update") or {}
-            if s.get("step_type") not in ANTIGRAVITY_STEPS_OK:
+            notice = s.get("step_type") == ANTIGRAVITY_NOTICE and not (s.get("tool_name") or s.get("tool_info"))
+            if s.get("step_type") not in ANTIGRAVITY_STEPS_OK and not notice:
                 steps.append(str(s.get("tool_name") or (s.get("tool_info") or {}).get("name")
                                  or s.get("step_type") or "a step it did not name"))
         elif ev.get("event") == "result":
@@ -1443,6 +1528,21 @@ def routed(cfg: dict) -> dict:
         if out.get(model) and model_of(dict(cfg, model=cfg[model], variant=cfg.get(variant, "")), "") == down["model"]:
             out[model], out[variant] = fb, ""
     return out
+
+
+def answered_by(cfg: dict, result: dict) -> str:
+    """Who answered a pass, for the small line under it in the transcript:
+    the model the config names and its effort — or, when that one failed and
+    the fallback answered, the fallback, and in whose place. The line named
+    the config's model either way (found 2026-11-24: Codex failed, Opus
+    answered, and the transcript said Codex had); the ledger and the day's
+    state already named the one that answered."""
+    named = f"{cfg.get('model') or 'agent default'}{' · ' + cfg['variant'] if cfg.get('variant') else ''}"
+    fell = result.get("fell_back") or {}
+    if not fell.get("from") or not result.get("model"):
+        return named
+    spoken = lambda model: " · ".join(p for p in str(model).partition("#")[::2] if p)
+    return f"{spoken(result['model'])}, in place of {spoken(fell['from'])}"
 
 
 def emit_status(phase: str) -> None:
@@ -1576,8 +1676,11 @@ def _run_model(cfg: dict, paths: Paths, payload: str, session: str = "", message
         elif ev.get("type") == "step_finish":
             out["cost"] += float(part.get("cost") or 0)
             tk = part.get("tokens") or {}
-            for k in ("input", "output", "reasoning", "total"):
+            for k in ("input", "output", "reasoning"):
                 out["tokens"][k] += int(tk.get(k) or 0)
+            # opencode 2.3 no longer says the total: it is the three.
+            out["tokens"]["total"] += int(tk.get("total") or sum(int(tk.get(k) or 0)
+                                                                 for k in ("input", "output", "reasoning")))
         elif ev.get("type") == "error":
             err = ev.get("error")
             out["error"] = json.dumps(err) if not isinstance(err, str) else err
@@ -1589,8 +1692,13 @@ def _run_model(cfg: dict, paths: Paths, payload: str, session: str = "", message
     # went unnoticed for a day.
     if not out["error"] and not out["text"] and not out["session"]:
         out["error"] = ((proc.stderr or "") + (proc.stdout or "")).strip()[-2000:] or "opencode said nothing"
-    if out["session"] and not out["cost"]:
-        out["cost"], out["tokens"] = session_cost(cfg, paths, out["session"])
+    # The price from the session; its tokens only when the events said none
+    # (a subscription's run costs 0 and still counts what it read and wrote).
+    asked = session_cost(cfg, paths, out["session"]) if out["session"] and not out["cost"] else None
+    if asked:
+        out["cost"] = asked[0]
+        if not out["tokens"]["total"]:
+            out["tokens"] = asked[1]
     return out
 
 
@@ -1611,9 +1719,7 @@ def record_cost(ledger: Path, at: str, stamp: str, trigger: str, block: str, res
         text = ledger.read_text()
         head, _, rest = text.partition("\n")
         if head + "\n" != LEDGER_HEAD:
-            tmp = ledger.with_name(ledger.name + ".tmp")
-            tmp.write_text(LEDGER_HEAD + rest)
-            os.replace(tmp, ledger)
+            replace_with(ledger, LEDGER_HEAD + rest)
     tk = result.get("tokens") or {}
     error = " ".join(str(result.get("error") or "").split())[:300]   # one line, no tabs
     with open(ledger, "a") as f:
@@ -1806,7 +1912,7 @@ def apply(cfg: dict, paths: Paths, trigger: str, fired: list[dict], visible: lis
     # Transcript: for the student, one section per run.
     if not paths.transcript.exists():
         append_text(paths, paths.transcript,
-                    f"# {paths.stamp} — agent\n\nNote: [[{paths.daily_dir.relative_to(paths.vault)}/{paths.stamp}]]\n")
+                    f"# {paths.stamp} — agent\n\nNote: [[{paths.daily_dir.relative_to(paths.vault).as_posix()}/{paths.stamp}]]\n")
     sec = [f"\n## {now.strftime('%H:%M')} · {trigger}" + (f" · `{','.join(hashes)}`" if hashes else ""), ""]
     if fired and not chat:
         sec += ["> " + l for b in fired for l in b["text"].split("\n")] + [""]
@@ -1829,7 +1935,7 @@ def apply(cfg: dict, paths: Paths, trigger: str, fired: list[dict], visible: lis
     if result["error"]:
         sec.append(f"- error: {result['error']}")
     tk = result["tokens"]
-    sec.append(f"\n<small>${result['cost']:.4f} · {tk['total']} tokens · {cfg.get('model') or 'agent default'}{' · ' + cfg['variant'] if cfg.get('variant') else ''}</small>\n")
+    sec.append(f"\n<small>${result['cost']:.4f} · {tk['total']} tokens · {answered_by(cfg, result)}</small>\n")
     append_text(paths, paths.transcript, "\n".join(sec))
 
     # Ledger: one line per run, never synced.
@@ -2593,7 +2699,7 @@ def page_box(line: str) -> str:
     rest = re.sub(r"\s*(?:📅|⏳|🛫|➕|✅|❌)\s*\d{4}-\d{2}-\d{2}(?:\s+\d{1,2}:\d{2})?", "", rest)
     rest = re.sub(r"\s*[⏫🔼🔽🔺⏬]", "", rest).rstrip()
     if due:
-        rest += f" · due {dt.date.fromisoformat(due.group(1)):%a %-d %b}"
+        rest += f" · due {day_text(dt.date.fromisoformat(due.group(1)), '%a %-d %b')}"
     return f"{m.group(1)}{mark} {rest}"
 
 
@@ -2654,7 +2760,7 @@ def coming_up(tag: str, now: dt.datetime, horizon: int = 21) -> list[str]:
 
     def line(d: dict) -> str:
         days = (d["due"].date() - today).days
-        at = f"{d['due']:%a %-d %b}" + (f" {d['due']:%Y}" if d["due"].year != today.year else "") \
+        at = f"{day_text(d['due'], '%a %-d %b')}" + (f" {d['due']:%Y}" if d["due"].year != today.year else "") \
             + (f" {d['due']:%H:%M}" if d["due"].strftime("%H:%M") != "23:59" else "")
         return f"- {d['title']} · {at} · **{until_text(days)}**" + (" — still open: done? tick its line" if days < 0 else "")
     near = [d for d in dls if (d["due"].date() - today).days <= horizon]
@@ -2708,12 +2814,12 @@ def week_lines(cfg: dict, tag: str, now: dt.datetime, folder: str, day: dt.date 
                 opened.append((sec["date"], shown))
         if in_week(sec["date"]):
             words = sec.get("words") or 0
-            written.append(f"- {dt.date.fromisoformat(sec['date']):%a %-d %b} — {sec['title'] or '#' + tag}"
+            written.append(f"- {day_text(dt.date.fromisoformat(sec['date']), '%a %-d %b')} — {sec['title'] or '#' + tag}"
                            + (f" · {words} words" if words else ""))
             for line in (sec.get("text") or "").split("\n"):
                 t = line.strip()
                 if t.endswith("?") and not t.startswith(">") and len(t) > 3:
-                    asked.append(f"- {re.sub(r'^[-*+]\s+(\[.\]\s+)?', '', t)} *(your note, {dt.date.fromisoformat(sec['date']):%a %-d %b})*")
+                    asked.append(f"- {re.sub(r'^[-*+]\s+(\[.\]\s+)?', '', t)} *(your note, {day_text(dt.date.fromisoformat(sec['date']), '%a %-d %b')})*")
     papers = [x for x in project_papers(tag, folder) if x.get("kind", "paper") == "paper"]
     read = []
     for x in papers:
@@ -2745,7 +2851,7 @@ def week_lines(cfg: dict, tag: str, now: dt.datetime, folder: str, day: dt.date 
                   f"{len(read)} paper{'s' if len(read) != 1 else ''} read" if read else "",
                   f"{len(files)} file{'s' if len(files) != 1 else ''} worked on" if files else ""]
         counts = [c for c in counts if c]
-        out += [f"**This week** ({start:%a %-d} – {end:%a %-d %b}): " + (" · ".join(counts) if counts else "nothing yet")
+        out += [f"**This week** ({day_text(start, '%a %-d')} – {day_text(end, '%a %-d %b')}): " + (" · ".join(counts) if counts else "nothing yet")
                 + f" — the whole week: `longhand-agent week --tag {tag}`", ""]
         return out
     out = []
@@ -2756,11 +2862,11 @@ def week_lines(cfg: dict, tag: str, now: dt.datetime, folder: str, day: dt.date 
     if read:
         out += ["## Read", ""] + read + [""]
     if files:
-        out += ["## Files worked on", ""] + [f"- {wiki(f'{folder}/{rel}', str(rel))} · {dt.datetime.fromtimestamp(mt):%a %-d %b}" for mt, rel in files[:15]] \
+        out += ["## Files worked on", ""] + [f"- {wiki(f'{folder}/{rel.as_posix()}', rel.as_posix())} ·{day_text(dt.datetime.fromtimestamp(mt), '%a %-d %b')}" for mt, rel in files[:15]] \
             + ([f"- *and {len(files) - 15} more*"] if len(files) > 15 else []) + [""]
     if opened:
         opened.sort(reverse=True)
-        out += ["## Still open", ""] + [f"- {t} *(written {dt.date.fromisoformat(d):%a %-d %b})*" for d, t in opened[:12]] \
+        out += ["## Still open", ""] + [f"- {t} *(written {day_text(dt.date.fromisoformat(d), '%a %-d %b')})*" for d, t in opened[:12]] \
             + ([f"- *and {len(opened) - 12} more*"] if len(opened) > 12 else []) + [""]
     if asked:
         out += ["## Questions to bring", ""] + asked + [""]
@@ -2774,8 +2880,8 @@ def project_week(cfg: dict, tag: str, now: dt.datetime, day: dt.date | None = No
     folder = project_folder(cfg, tag, pr.get("file") or "")
     start, end = week_bounds(day or now.date())
     head = [f"# {pr['name']} — week {start.isocalendar()[1]}", "",
-            f"*#{tag}, {start:%a %-d %b} – {end:%a %-d %b %Y}: what was done, written and read, what is coming and what to ask. "
-            f"Gathered from your notes, papers and deadlines at {now:%a %-d %b, %H:%M}; nothing was sent anywhere.*", ""]
+            f"*#{tag}, {day_text(start, '%a %-d %b')} – {day_text(end, '%a %-d %b %Y')}: what was done, written and read, what is coming and what to ask. "
+            f"Gathered from your notes, papers and deadlines at {day_text(now, '%a %-d %b, %H:%M')}; nothing was sent anywhere.*", ""]
     return "\n".join(head + week_lines(cfg, tag, now, folder, day)).rstrip() + "\n"
 
 
@@ -2792,9 +2898,7 @@ def cmd_week(cfg: dict, args) -> int:
         # For the page: read-only in the state folder, as the project's page.
         PAGES.mkdir(parents=True, exist_ok=True)
         out = PAGES / f"{args.tag.lstrip('#').lower()}-week.md"
-        tmp = out.with_suffix(".tmp")
-        tmp.write_text(text + f"\n*To keep it in the vault, to edit or hand in: `longhand-agent week --tag {args.tag.lstrip('#').lower()} --write`.*\n")
-        os.replace(tmp, out)
+        replace_with(out, text + f"\n*To keep it in the vault, to edit or hand in: `longhand-agent week --tag {args.tag.lstrip('#').lower()} --write`.*\n")
         print(json.dumps({"path": str(out)}))
         return 0
     if not args.write:
@@ -2807,9 +2911,7 @@ def cmd_week(cfg: dict, args) -> int:
     if target.exists() and not args.force:
         raise Fail(f"{rel} is there already (yours to edit); --force writes it again")
     target.parent.mkdir(parents=True, exist_ok=True)
-    tmp = target.with_suffix(".tmp")
-    tmp.write_text(text)
-    os.replace(tmp, target)
+    replace_with(target, text)
     print(json.dumps({"path": str(target), "file": rel}))
     return 0
 
@@ -2822,13 +2924,13 @@ def project_page(cfg: dict, tag: str, now: dt.datetime) -> tuple[str, str]:
     pr = next((p for p in projects if p["tag"].lower() == tag), {"tag": tag, "name": tag, "file": "", "next": None})
     folder = project_folder(cfg, tag, pr.get("file") or "")
     out = [f"# {pr['name']}", "",
-           f"*#{tag} — everything of it in one place, as Longhand found it at {now:%a %-d %b, %H:%M}. Read-only: "
+           f"*#{tag} — everything of it in one place, as Longhand found it at {day_text(now, '%a %-d %b, %H:%M')}. Read-only: "
            "follow a link (Alt+Enter, or a click) to where each thing is written; open the page again to bring it up "
            "to date.*", ""]
     nxt = pr.get("next") or {}
     if nxt.get("at"):
         at = dt.datetime.fromisoformat(nxt["at"])
-        out.append(f"**Next session:** {at:%a %-d %b, %H:%M}" + (f" · {nxt['room']}" if nxt.get("room") else ""))
+        out.append(f"**Next session:** {day_text(at, '%a %-d %b, %H:%M')}" + (f" · {nxt['room']}" if nxt.get("room") else ""))
     if nxt.get("at"):
         out.append("")
     # What is coming, and the week so far, before anything else.
@@ -2865,7 +2967,7 @@ def project_page(cfg: dict, tag: str, now: dt.datetime) -> tuple[str, str]:
         files = [p for p in sorted((vault / folder).glob("*.md"))]
     if files or documents:
         out += ["## Working files", ""]
-        out += [f"- {wiki(str(f.relative_to(vault)), f.stem)}" for f in files]
+        out += [f"- {wiki(f.relative_to(vault).as_posix(), f.stem)}" for f in files]
         out += [f"- {wiki(x['pdf'], x['title'])} (PDF)" for x in documents]
         out.append("")
     # Every section of its tag in the daily notes, newest first; never a
@@ -2890,7 +2992,7 @@ def project_page(cfg: dict, tag: str, now: dt.datetime) -> tuple[str, str]:
         for sec in kept:
             d = dt.date.fromisoformat(sec["date"]) if re.match(r"\d{4}-\d{2}-\d{2}$", sec["date"]) else None
             stem = Path(sec["file"]).stem
-            where = wiki(f"{daily}/{stem}" + (f"#{sec['heading']}" if sec.get("heading") else ""), f"{d:%a %-d %b}" if d else stem)
+            where = wiki(f"{daily}/{stem}" + (f"#{sec['heading']}" if sec.get("heading") else ""), f"{day_text(d, '%a %-d %b')}" if d else stem)
             out.append(f"### {where}" + (f" — {sec['title']}" if sec.get("title") and sec.get("heading") else ""))
             out.append("")
             body = sec.get("text") or ""
@@ -2910,9 +3012,7 @@ def cmd_project_page(cfg: dict, args) -> int:
     text, folder = project_page(cfg, args.tag, dt.datetime.now())
     PAGES.mkdir(parents=True, exist_ok=True)
     out = PAGES / f"{args.tag.lstrip('#').lower()}.md"
-    tmp = out.with_suffix(".tmp")
-    tmp.write_text(text)
-    os.replace(tmp, out)
+    replace_with(out, text)
     print(json.dumps({"path": str(out), "folder": folder}))
     return 0
 
@@ -3808,7 +3908,7 @@ def inbox_pass(cfg: dict, ledger: dict, at: str) -> int:
     level = planlib.autonomy(cfg)["file"]
     if not cfg.get("inbox") or level == "never":      # opt-in: config.json's "inbox"
         return n
-    inbox = Path(cfg["inbox"]).expanduser()
+    inbox = doclib.folder(cfg["inbox"])
     now = dt.datetime.now()
     courses = [{"code": c, "name": name, "tag": tag} for c, name, tag in course_codes(cfg, now.date()) if tag]
     if not courses:
@@ -3956,7 +4056,7 @@ def unfile(item: dict) -> str:
     if not filed.is_file():
         raise Fail(f"“{filed.name}” is no longer where it was filed")
     src = Path(str(item.get("src") or ""))
-    folder = src.parent if src.parent.is_dir() else Path.home() / "Downloads"
+    folder = src.parent if src.parent.is_dir() else doclib.downloads()
     dest, n = folder / src.name, 2
     while dest.exists():
         dest = folder / f"{src.stem} ({n}){src.suffix}"
@@ -3999,6 +4099,16 @@ def answer_proposal(cfg: dict, args) -> int:
         planlib.save_ledger(PROPOSALS, ledger)
         print(json.dumps({"id": args.id, "status": "undone", "changed": True, "back": back}))
         return 0
+    # A drop of a deadline with no line, accepted: the page cancels the
+    # deadline first, then says so here, and a list read in between found it
+    # cancelled and settled the drop as moot, as for one cancelled some other
+    # way (2026-11-24, on Windows, where a process is slower to start). The
+    # page asks only while the deadline is open, so an accept of such a moot
+    # drop whose deadline is cancelled is the person's answer: it stands.
+    if args.how == "accept" and item["status"] == "moot" and item["kind"] == "drop" and not item.get("key") \
+            and item.get("deadline") in {d["id"] for d in planlib.store_deadlines(STATE_HOME / "deadlines.tsv",
+                                                                                 ("cancelled",))}:
+        item["status"] = "open"
     if item["status"] != "open":
         print(json.dumps({"id": args.id, "status": item["status"], "changed": False}))
         return 0
@@ -4435,7 +4545,7 @@ def file_ref(cfg: dict, paths: Paths, rel: str) -> dict | None:
     f = (root / rel).resolve()
     if root not in f.parents or not f.is_file() or f.suffix.lower() not in (".md", ".pdf"):
         return None
-    rel = str(f.relative_to(root))
+    rel = f.relative_to(root).as_posix()
     if not note_shared(cfg, paths, rel):
         return None
     kind = "paper" if f.suffix.lower() == ".pdf" else "note"
@@ -4460,7 +4570,7 @@ def file_refs_list(cfg: dict, paths: Paths) -> list[dict]:
     bibs = bibs_of(paths.vault)
     out = []
     for f in searchlib.files(paths.vault, on, {}, horizon_hide(cfg)):
-        rel = str(f.relative_to(paths.vault))
+        rel = f.relative_to(paths.vault).as_posix()
         if f.suffix.lower() not in (".md", ".pdf") or rel.startswith(daily + "/"):
             continue
         if any(part.startswith((".", "_")) for part in Path(rel).parts):
@@ -4863,7 +4973,7 @@ def convo_view(turns: list[dict], today: dt.date) -> dict:
     for d in sorted(k for k in by_day if k and k < iso)[-VIEW_DAYS:]:
         groups = convo_groups(turns, by_day[d])
         try:
-            label = dt.date.fromisoformat(d).strftime("%a %-d %b")
+            label = day_text(dt.date.fromisoformat(d), "%a %-d %b")
         except ValueError:
             label = d
         said = [{"id": t["id"], "at": t.get("at", ""), "role": t["role"], "text": t["text"], "where": t.get("where", ""),
@@ -4970,12 +5080,12 @@ def open_targets(cfg: dict, asks: list[dict]) -> list[dict]:
             rel = str(a["file"]).strip().lstrip("/")
             f = (vault / rel).resolve()
             if vault in f.parents and f.is_file() and f.suffix.lower() in (".md", ".pdf") and not searchlib._never(rel):
-                return [{"kind": "file", "rel": str(f.relative_to(vault)), "name": f.stem}]
+                return [{"kind": "file", "rel": f.relative_to(vault).as_posix(), "name": f.stem}]
         elif a.get("day"):
             d = stamp_date(cfg, str(a["day"])[:10]) if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(a["day"])[:10]) \
                 else dt.date.fromisoformat(str(a["day"])[:10])
             if d and Paths(cfg, d).note.is_file():
-                return [{"kind": "day", "date": day_stamp(cfg, d), "name": d.strftime("%a %-d %b")}]
+                return [{"kind": "day", "date": day_stamp(cfg, d), "name": day_text(d, "%a %-d %b")}]
         elif a.get("task"):
             task = next((x for x in plan_tasks(cfg) if x.get("key") == a["task"]), None)
             if task:
@@ -5006,7 +5116,7 @@ def downloads_papers(cfg: dict) -> list[dict]:
         return []
     cache = doclib.load_cache(PAPERS_CACHE)
     try:
-        out = doclib.papers(Path(cfg["inbox"]).expanduser(), cache, dt.datetime.now(), Path(cfg["vault"]))
+        out = doclib.papers(doclib.folder(cfg["inbox"]), cache, dt.datetime.now(), Path(cfg["vault"]))
     except OSError:
         return []
     doclib.save_cache(PAPERS_CACHE, cache)
@@ -5160,7 +5270,7 @@ def day_file(cfg: dict, asks: list[dict], message: str, at: str) -> tuple[list[d
         return [], [f"{what(a)}: filing documents is set to never" for a in asks]
     if not cfg.get("inbox"):
         return [], [f"{what(a)}: no Downloads inbox is set in the config" for a in asks]
-    inbox = Path(cfg["inbox"]).expanduser()
+    inbox = doclib.folder(cfg["inbox"])
     names = {t: n for _, n, t in course_codes(cfg, dt.date.today()) if t}
     projects_dir = cfg.get("projectsDir", "projects")
     paths = Paths(cfg, dt.date.today())
@@ -5213,7 +5323,7 @@ def day_file(cfg: dict, asks: list[dict], message: str, at: str) -> tuple[list[d
         # Already kept, anywhere in the vault: not filed twice (2026-11-19).
         twin = doclib.in_vault(src, paths.vault)
         if twin is not None:
-            refused.append(f"{doc_words}: already in your vault, the same file, at {twin.relative_to(paths.vault)}"
+            refused.append(f"{doc_words}: already in your vault, the same file, at {twin.relative_to(paths.vault).as_posix()}"
                            " — left in Downloads")
             continue
         same = [x for x in planlib.open_items(ledger) if x["kind"] == "file" and x.get("doc") == doc]
@@ -5654,7 +5764,7 @@ def note_talk(paths: Paths, rel: str) -> tuple[str, list[dict], str]:
     p = (root / rel).resolve()
     if root not in p.parents or not p.is_file() or p.suffix.lower() != ".md":
         raise Fail(f"not a note in the vault: {rel}")
-    rel = str(p.relative_to(root))
+    rel = p.relative_to(root).as_posix()
     if searchlib._never(rel):
         raise Fail(f"never shared: {rel}")
     shown = [b for b in visible_blocks(blocklib.split(p.read_text(errors="replace"))) if b["kind"] != "frontmatter"]
@@ -5726,7 +5836,7 @@ def paper_talk(paths: Paths, rel: str) -> tuple[str, dict, str]:
     p = (root / rel).resolve()
     if root not in p.parents or not p.is_file() or p.suffix.lower() != ".pdf":
         raise Fail(f"not a PDF in the vault: {rel}")
-    rel = str(p.relative_to(root))
+    rel = p.relative_to(root).as_posix()
     if searchlib._never(rel):
         raise Fail(f"never shared: {rel}")
     st = paper_state(rel)
@@ -6753,7 +6863,7 @@ def cmd_export(cfg: dict, args) -> int:
     look = args.look or opts.get("look") or "minimal"
     if look not in exportlib.LOOKS:
         raise Fail(f"--look is one of {', '.join(exportlib.LOOKS)}")
-    folder = Path(args.out or opts.get("dir") or "~/Downloads").expanduser()
+    folder = doclib.folder(args.out or opts.get("dir") or "~/Downloads")
     author = str(opts.get("author") or "").strip()
     when = exportlib.day_words(day) if day else ""
     meta = {"title": title, "author": author, "date": " · ".join(x for x in (course, when) if x)}
@@ -6783,9 +6893,7 @@ def cmd_export(cfg: dict, args) -> int:
     done.append({"path": str(out), "sha256": sha, "title": title, "note": str(note),
                  "at": dt.datetime.now().isoformat(timespec="seconds")})
     STATE_HOME.mkdir(parents=True, exist_ok=True)
-    tmp = EXPORTS.with_suffix(".tmp")
-    tmp.write_text(json.dumps({"files": done}, ensure_ascii=False, indent=1))
-    tmp.replace(EXPORTS)
+    replace_with(EXPORTS, json.dumps({"files": done}, ensure_ascii=False, indent=1))
     print(json.dumps(report, ensure_ascii=False))
     return 0
 
@@ -6999,6 +7107,8 @@ def main(argv: list[str]) -> int:
     # still ends on SIGTERM at once.
     if args.cmd in ("run", "chat", "day", "note", "talk", "plan"):
         signal.signal(signal.SIGTERM, _on_stop)
+        if WINDOWS:
+            winproc.listen_for_stop(lambda: _on_stop(signal.SIGTERM, None))
     try:
         cfg = load_config()
         doc_folders(cfg)

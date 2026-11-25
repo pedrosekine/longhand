@@ -127,7 +127,7 @@ def run(tmp: pathlib.Path) -> int:
     wed = today + dt.timedelta(days=2)
     (stub / "pomo_when").write_text(f"{ts(wed)}\t{wed:%a %d %b}")
     env = dict(os.environ, LONGHAND_CONFIG=str(cfg), XDG_STATE_HOME=str(tmp / "state"), XDG_CONFIG_HOME=str(cfgdir),
-               STUB_DIR=str(stub), PATH=f"{bindir}:{os.environ['PATH']}")
+               STUB_DIR=str(stub), PATH=f"{bindir}{os.pathsep}{os.environ['PATH']}")
 
     def agent(*args):
         return subprocess.run([sys.executable, str(AGENT), *args], capture_output=True, text=True, env=env)
@@ -246,6 +246,14 @@ def run(tmp: pathlib.Path) -> int:
     check(not any(x.get("deadline") == 64 for x in out["open"])
           and next(x for x in ledger()["items"] if x.get("deadline") == 64)["status"] == "moot",
           "…until #64 is cancelled some other way: moot")
+    # …but accepted from the page: the page cancels #64 first and then
+    # records the accept, and a list read in between made it moot (seen on
+    # Windows, 2026-11-24). The page asks only while #64 is open, so the
+    # accept that follows is the person's answer, and it stands.
+    drop = next(x for x in ledger()["items"] if x.get("deadline") == 64 and x["kind"] == "drop")
+    r = agent("proposal", "accept", "--id", str(drop["id"]))
+    check(r.returncode == 0 and next(x for x in ledger()["items"] if x["id"] == drop["id"])["status"] == "accepted",
+          f"…and an accept that comes after, from the page that cancelled it, is accepted ({r.stdout.strip()})")
 
     # 7. The day conversation is shown the deadlines with no line too.
     ctx = agent("day", "--message", "anything to tidy?")

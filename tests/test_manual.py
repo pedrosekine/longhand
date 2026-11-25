@@ -65,6 +65,13 @@ def main() -> int:
     check("`Ctrl+Shift+D`" in t and "{key:" not in t and "<!--" not in t,
           "a key the student moved reads as theirs, and nothing is left unfilled")
     check(manual.render("{key:deadline}", {}) == "(a key: see the keys list, Ctrl+/)", "…without node, it says where the keys are")
+    check("{os:" not in t, "the system's own words are filled in")
+    raw = manual.MANUAL.read_text()
+    omarchy, windows = manual.render(raw, k, "omarchy"), manual.render(raw, k, "windows")
+    check("Omarchy shell" in omarchy and "bar's glyph" in omarchy and "tray" not in omarchy,
+          "on Omarchy the manual speaks of the shell and the bar")
+    check("Omarchy" not in windows and not re.search(r"\bbar's", windows) and "tray" in windows,
+          "on Windows, of the tray and the Start menu, never the bar")
     pages = manual.pages(cfgdir)
     check(pages[0].startswith("## The page") and any(p.startswith("## Deadlines") for p in pages), "cut into its sections")
 
@@ -87,7 +94,7 @@ def main() -> int:
     stub = tmp / "stub"
     stub.mkdir()
     env = dict(os.environ, LONGHAND_CONFIG=str(cfg), XDG_STATE_HOME=str(tmp / "state"), XDG_CONFIG_HOME=str(cfgdir),
-               STUB_DIR=str(stub), PATH=f"{bindir}:{os.environ['PATH']}")
+               STUB_DIR=str(stub), PATH=f"{bindir}{os.pathsep}{os.environ['PATH']}")
 
     def agent(*args):
         r = subprocess.run([sys.executable, str(AGENT), *args], capture_output=True, text=True, env=env)

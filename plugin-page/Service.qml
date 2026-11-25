@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "Links.js" as Links
 
 // Today's note: where it is, what it says, and the one place that writes it.
 //
@@ -204,7 +205,7 @@ Item {
     if (!configured) return
     // A whole path: a note written outside the vault for the page to show
     // (a project's page, 2026-11-16), read-only.
-    var p = rel.charAt(0) === "/" ? rel : config.vault + "/" + rel
+    var p = Links.isAbs(rel) ? rel : config.vault + "/" + rel
     root.today = todayStamp()
     root.readOnly = !!readOnly
     if (p === notePath && ready) {
@@ -327,17 +328,16 @@ Item {
     onFileChanged: reload()
   }
 
+  readonly property string pageFsPy: Links.fromFileUrl(Qt.resolvedUrl("page_fs.py").toString())
+
   function runPreflight() {
     if (!root.configured) return
+    var customRunner = !!(root.config && root.config.runner)
+    var customRead = !!(root.config && root.config.read)
     preflightProc.command = [
-      "sh", "-c",
-      "test -d \"$1\" || { echo \"vault:$1\"; exit 0; }; "
-      + "miss=''; "
-      + "test -x \"$2\" || command -v \"$2\" >/dev/null 2>&1 || miss=\"$miss longhand-agent\"; "
-      + "command -v pomo >/dev/null 2>&1 || test -x \"$HOME/.local/bin/pomo\" || miss=\"$miss pomo\"; "
-      + "test -x \"$3\" || command -v \"$3\" >/dev/null 2>&1 || miss=\"$miss longhand-read\"; "
-      + "test -n \"$miss\" && echo \"missing:$miss\" || true",
-      "--", String(root.config.vault || ""), root.runner, root.readBin
+      "python3", root.pageFsPy, "preflight",
+      String(root.config.vault || ""), root.runner, root.readBin,
+      customRunner ? "1" : "", customRead ? "1" : ""
     ]
     preflightProc.running = true
   }
@@ -351,7 +351,9 @@ Item {
           root.configError = "the vault folder was not found: " + s.slice(6) + "\nset \"vault\" in " + root.configPath + " to your notes folder"
           root.ready = false
         } else if (s.indexOf("missing:") === 0) {
-          root.toolWarning = "not installed:" + s.slice(8) + " — tools/install links them into ~/.local/bin"
+          root.toolWarning = "not installed:" + s.slice(8) + (Qt.platform.os === "windows"
+            ? " — `pip install -e windows` (from the repo) makes them beside Longhand's Python"
+            : " — tools/install links them into ~/.local/bin")
         } else {
           root.toolWarning = ""
         }

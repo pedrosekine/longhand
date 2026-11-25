@@ -112,7 +112,7 @@ def main() -> int:
     stub = tmp / "stub"
     stub.mkdir()
     env = dict(os.environ, LONGHAND_CONFIG=str(cfg), XDG_STATE_HOME=str(state), XDG_CONFIG_HOME=str(cfgdir),
-               STUB_DIR=str(stub), PATH=f"{bindir}:{os.environ['PATH']}")
+               STUB_DIR=str(stub), PATH=f"{bindir}{os.pathsep}{os.environ['PATH']}")
 
     def agent(*args, ok=True):
         r = subprocess.run([sys.executable, str(AGENT), *args], capture_output=True, text=True, env=env)
@@ -121,8 +121,21 @@ def main() -> int:
         return r
 
     def calls():
+        # The stand-in writes its count by emptying the file and then writing
+        # the number. Read between the two, while a plan runs beside the test
+        # (the slow plan below is waited for by this very count), the file
+        # is there and empty: int("") ended the whole run on GitHub once
+        # (2026-11-24). Empty is "being written": read again.
         f = stub / "calls"
-        return int(f.read_text()) if f.exists() else 0
+        for _ in range(200):
+            try:
+                text = f.read_text()
+            except FileNotFoundError:
+                return 0
+            if text.strip():
+                return int(text)
+            time.sleep(0.005)
+        raise AssertionError("the stand-in's count stayed empty for a second")
 
     def ledger():
         return json.loads((state / "longhand" / "proposals.json").read_text())["items"]

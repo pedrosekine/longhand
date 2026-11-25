@@ -41,9 +41,10 @@ to your own Claude plan, or the Codex CLI signed in to your own ChatGPT plan
 
 ```bash
 tools/install --restart   # symlinks CLIs, scaffolds config.json + launcher, installs plugins, runs `longhand-agent install` & `tools/doctor`
+                          # (--vault PATH writes the vault into a config it makes; on Windows: windows/README.md)
 # then edit "vault" in ~/.config/longhand/config.json if newly created, and add
 # {"id":"longhand.page"}, {"id":"longhand.pomo"}, {"id":"longhand.deadline"} to plugins[] in ~/.config/omarchy/shell.json
-tools/doctor              # verify config, vault, CLIs, plugins, and optional tools (pandoc/xelatex/pdftotext/gitleaks)
+tools/doctor              # verify config, vault, CLIs, model programs, plugins, and optional tools (pandoc/xelatex/poppler/gitleaks/OCR)
 ```
 
 Upgrading from **omarchy-student** (Longhand's name until 2026-10-16): run
@@ -299,6 +300,15 @@ The runner starts one file per core at once (`-j 1` for one at a time); the
 live page test runs after them, alone. Each file also runs alone
 (`python3 tests/test_check.py`).
 
+On GitHub the offscreen suite runs on every push to `main` and every pull
+request (`.github/workflows/tests.yml`), in an Arch container and on
+Windows. Two things are not run on Arch, for want of a desktop:
+`test_popup` and the live page test in Quickshell. Run those on a machine
+with Hyprland before a change to the bar's widgets or the page lands. The
+live page test does run on GitHub's Windows machine, over the Windows host
+(`python tests/page/run.py --host qt`, offscreen; `windows/README.md`): the
+same checks, on Windows' processes, files and paths, not in Quickshell.
+
 **Every test runs beside the others**, so a new one keeps to itself:
 
 - its folders come from `tempfile` (`mkdtemp`), never a fixed path such as
@@ -319,7 +329,7 @@ to it. The offscreen ones
 build a throwaway vault, state and config, and play Hyprland with
 `tests/fake_hyprctl.py`, so they never read or write yours. Some need node
 (the JS and Python halves of the block splitter and the checkbox grammar are
-compared), PyQt6 (`test_cursors`) or quickshell (`test_popup`).
+compared), PyQt6 or PySide6 (`test_cursors`) or quickshell (`test_popup`).
 `tests/page/run.py` drives the real page over IPC in a window titled "Page
 scratch", in a Hyprland of its own nested in yours and drawing on a headless
 output (`tests/desktop.py` → `Private`, which `tests/page/shots.py` uses

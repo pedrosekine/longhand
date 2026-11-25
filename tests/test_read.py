@@ -342,9 +342,51 @@ def main() -> int:
     r = run("state", "--pdf", "lit/missing.pdf", ok=False)
     check(r.returncode != 0 and "no PDF" in r.stderr, "a PDF that is not there is refused")
 
+    held(tmp, env, run)
     moves()
     print("PASS" if failures == 0 else f"{failures} FAILED")
     return 1 if failures else 0
+
+
+HELD = """#!/usr/bin/env python3
+import os, subprocess, sys
+with open(os.environ["PDF_TRIES"], "a") as f:
+    f.write("x")
+if os.path.exists(os.environ["PDF_HELD"]):
+    print("I/O Error: Couldn't open file", file=sys.stderr)
+    sys.exit(1)
+sys.exit(subprocess.run([os.environ["PDF_REAL"], *sys.argv[1:]]).returncode)
+"""
+
+
+def held(tmp: pathlib.Path, env: dict, run) -> None:
+    """A PDF just written can be held a moment (on Windows, by its writer or
+    a scanner), and pdftotext cannot open it. Tried again; and what that
+    read gave is never kept, or the PDF stayed "a scan, no words" for good
+    (2026-11-25, on GitHub's Windows machine)."""
+    real = shutil.which("pdftotext")
+    if not real:
+        print("skip a PDF held a moment: no pdftotext")
+        return
+    bindir = tmp / "heldbin"
+    bindir.mkdir()
+    (bindir / "pdftotext").write_text(HELD)
+    (bindir / "pdftotext").chmod(0o755)
+    tries, lock = tmp / "tries", tmp / "held"
+    lock.write_text("")
+    pdf(env_vault(env) / "lit/held.pdf", [["Words a held file has."]])
+    env2 = dict(env, PATH=str(bindir) + os.pathsep + env["PATH"], PDF_TRIES=str(tries), PDF_HELD=str(lock), PDF_REAL=real)
+    r = subprocess.run([str(READ), "state", "--pdf", "lit/held.pdf"], capture_output=True, text=True, env=env2)
+    s = json.loads(r.stdout) if r.returncode == 0 else {}
+    check(not s.get("text") and len(tries.read_text()) > 1,
+          f"a PDF that cannot be opened is tried again ({len(tries.read_text())} tries), and has no words yet")
+    lock.unlink()
+    s = run("state", "--pdf", "lit/held.pdf")
+    check(s["text"] and s["pages"] == 1, f"…and let go, it is read: what the failed read gave was not kept ({s.get('pages')})")
+
+
+def env_vault(env: dict) -> pathlib.Path:
+    return pathlib.Path(json.loads(pathlib.Path(env["LONGHAND_CONFIG"]).read_text())["vault"])
 
 
 def moves() -> None:

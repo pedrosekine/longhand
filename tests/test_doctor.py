@@ -1,5 +1,10 @@
 """Health check (`tools/doctor`): reports missing config/vault as failures and
-a healthy throwaway setup as ok.
+a healthy throwaway setup as ok; names the program each configured model
+route starts (Antigravity's is `agy`), and whether it can run: opencode's
+agents installed where it reads them, Codex's sign-in in Longhand's own
+Codex folder, on Windows Antigravity's sign-in in the Credential Manager;
+on Omarchy the shell's plugins, on
+Windows the Start menu entry and the session's start in their place.
 
 Run: python3 tests/test_doctor.py
 """
@@ -12,6 +17,7 @@ import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DOCTOR = ROOT / "tools" / "doctor"
+WINDOWS = os.name == "nt"
 failures = 0
 
 
@@ -33,14 +39,34 @@ def main() -> int:
         ("longhand-agent", "agent/longhand-agent"),
         ("longhand-check", "cli/longhand-check"),
         ("longhand-read", "cli/longhand-read"),
+        ("longhand", "windows/longhand_host.py"),
+        ("agy", ""),
+        ("opencode", ""),
     ):
-        (bin_dir / name).symlink_to(ROOT / rel)
+        if WINDOWS:
+            # pip's .exe launchers stand where Linux has links: a .cmd is
+            # found by its name the same way.
+            (bin_dir / f"{name}.cmd").write_text(f"@echo {name}\n")
+        elif rel:
+            (bin_dir / name).symlink_to(ROOT / rel)
+        else:
+            (bin_dir / name).write_text("#!/bin/sh\n")
+            (bin_dir / name).chmod(0o755)
 
     base_env = dict(
         os.environ,
         XDG_CONFIG_HOME=str(cfg_dir),
         XDG_STATE_HOME=str(state_dir),
-        PATH=f"{bin_dir}:{os.environ['PATH']}",
+        PATH=f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        # Windows: the Start menu under a throwaway APPDATA, the session's
+        # start read from a key nothing writes.
+        APPDATA=str(tmp / "appdata"),
+        LONGHAND_RUN_KEY="Software\\LonghandDoctorTest\\NoSuchRun",
+        # …and the person's PATH from a key nothing writes either.
+        LONGHAND_ENV_KEY="Software\\LonghandDoctorTest\\NoSuchEnvironment",
+        # Windows: Antigravity's sign-in looked for under a name no one has,
+        # never the machine's own.
+        LONGHAND_AGY_CREDENTIAL="LonghandDoctorTest:no-such-sign-in",
     )
     base_env.pop("LONGHAND_CONFIG", None)
 
@@ -72,6 +98,87 @@ def main() -> int:
     r3 = subprocess.run([sys.executable, str(DOCTOR)], env=base_env, capture_output=True, text=True)
     check(r3.returncode == 0 and "ok   vault" in r3.stdout and "ok   daily template" in r3.stdout,
           f"healthy setup exits 0 ({r3.stdout.strip()})")
+
+    # Each configured route by the program the agent starts: Antigravity's
+    # is `agy` (the doctor looked for `antigravity`, which nobody has).
+    cfg_path.write_text(json.dumps({
+        "vault": str(vault), "daily": {"dir": "Daily"}, "agentDir": "agents/longhand",
+        "model": "antigravity/gemini-3-pro", "fallbackModel": "codex/gpt-5", "codex": str(tmp / "no-such-codex.exe"),
+    }))
+    r6 = subprocess.run([sys.executable, str(DOCTOR)], env=base_env, capture_output=True, text=True)
+    agy = [l for l in r6.stdout.splitlines() if "model route (agy)" in l]
+    check(bool(agy) and agy[0].startswith("ok") and str(bin_dir) in agy[0], f"antigravity/ is agy, found ({agy})")
+    codex = [l for l in r6.stdout.splitlines() if "model route (codex)" in l]
+    check(bool(codex) and codex[0].startswith("WARN") and "no-such-codex" in codex[0] and "fallbackModel" in codex[0],
+          f"the fallback's program, by the path the config gives it ({codex})")
+    if WINDOWS:
+        sign = [l for l in r6.stdout.splitlines() if "antigravity sign-in" in l]
+        check(bool(sign) and sign[0].startswith("WARN") and "agy" in sign[0] and "Credential Manager" in sign[0],
+              f"Windows: no Antigravity sign-in is named, with how to make one ({sign})")
+
+    # opencode's route needs Longhand's agents where opencode reads them,
+    # $XDG_CONFIG_HOME/opencode/agent (on Windows too), else every run
+    # fails "Agent not found".
+    cfg_path.write_text(json.dumps({"vault": str(vault), "daily": {"dir": "Daily"}, "agentDir": "agents/longhand",
+                                    "model": "opencode/big-pickle"}))
+    r8 = subprocess.run([sys.executable, str(DOCTOR)], env=base_env, capture_output=True, text=True)
+    oc = [l for l in r8.stdout.splitlines() if "opencode agents" in l]
+    check(bool(oc) and oc[0].startswith("WARN") and "longhand-agent install" in oc[0]
+          and str(cfg_dir / "opencode" / "agent") in oc[0], f"opencode's agents missing are named ({oc})")
+    agents = cfg_dir / "opencode" / "agent"
+    agents.mkdir(parents=True)
+    for name in ("longhand", "longhand-day", "longhand-plan", "longhand-judge"):
+        (agents / f"{name}.md").write_text("---\n---\n")
+    r9 = subprocess.run([sys.executable, str(DOCTOR)], env=base_env, capture_output=True, text=True)
+    oc = [l for l in r9.stdout.splitlines() if "opencode agents" in l]
+    check(bool(oc) and oc[0].startswith("ok"), f"…and installed, ok ({oc})")
+
+    # Codex's route needs a sign-in made for Longhand's own Codex folder
+    # (the state folder's codex/), not ~/.codex, or the agent refuses every
+    # run: named with the line that makes one.
+    codex_bin = tmp / ("codex.exe" if WINDOWS else "codex")
+    codex_bin.write_text("#!/bin/sh\n")
+    codex_bin.chmod(0o755)
+    cfg_path.write_text(json.dumps({"vault": str(vault), "daily": {"dir": "Daily"}, "agentDir": "agents/longhand",
+                                    "model": "codex/gpt-5", "codex": str(codex_bin)}))
+    home = state_dir / "longhand" / "codex"
+    r10 = subprocess.run([sys.executable, str(DOCTOR)], env=base_env, capture_output=True, text=True)
+    cx = [l for l in r10.stdout.splitlines() if "codex sign-in" in l]
+    check(bool(cx) and cx[0].startswith("WARN") and str(home) in cx[0] and "codex login" in cx[0]
+          and ("$env:CODEX_HOME" if WINDOWS else "CODEX_HOME=") in cx[0],
+          f"no Codex sign-in for Longhand is named, with the line that makes one ({cx})")
+    home.mkdir(parents=True)
+    (home / "auth.json").write_text("{}")
+    r11 = subprocess.run([sys.executable, str(DOCTOR)], env=base_env, capture_output=True, text=True)
+    cx = [l for l in r11.stdout.splitlines() if "codex sign-in" in l]
+    check(bool(cx) and cx[0].startswith("ok"), f"…and signed in, ok ({cx})")
+    # A folder the config names is the one asked about.
+    other = tmp / "codex-elsewhere"
+    cfg_path.write_text(json.dumps({"vault": str(vault), "daily": {"dir": "Daily"}, "agentDir": "agents/longhand",
+                                    "model": "codex/gpt-5", "codex": str(codex_bin), "codexHome": str(other)}))
+    r12 = subprocess.run([sys.executable, str(DOCTOR)], env=base_env, capture_output=True, text=True)
+    cx = [l for l in r12.stdout.splitlines() if "codex sign-in" in l]
+    check(bool(cx) and cx[0].startswith("WARN") and str(other) in cx[0], f"codexHome is the folder asked about ({cx})")
+
+    if WINDOWS:
+        lines = r3.stdout.splitlines()
+        check(any(l.startswith("ok") and "page (longhand)" in l for l in lines), "Windows: the page's host is found")
+        check(any(l.startswith("WARN") and "start menu" in l and "longhand install" in l for l in lines),
+              "Windows: no Start menu entry is named, with what makes one")
+        check(any(l.startswith("WARN") and "with the session" in l for l in lines),
+              "Windows: not started with the session is named")
+        check(any(l.startswith("WARN") and "commands by name" in l and "longhand install" in l for l in lines),
+              "Windows: commands a new terminal cannot start by name are named, with what puts them on PATH")
+        check(not any("omarchy plugins" in l or "shell.json" in l for l in lines),
+              "Windows: Omarchy's plugins are not asked for")
+        lnk = tmp / "appdata" / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Longhand.lnk"
+        lnk.parent.mkdir(parents=True)
+        lnk.write_bytes(b"")
+        r7 = subprocess.run([sys.executable, str(DOCTOR)], env=base_env, capture_output=True, text=True)
+        check(any(l.startswith("ok") and "start menu" in l for l in r7.stdout.splitlines()),
+              "Windows: …and an entry there is ok")
+        print("PASS" if failures == 0 else f"{failures} FAILED")
+        return 1 if failures else 0
 
     # 4. shell.json: a plugin counts as on in plugins[] or as a widget in the
     # bar's layout (2026-11-20: the timer and the deadlines, bar widgets only,

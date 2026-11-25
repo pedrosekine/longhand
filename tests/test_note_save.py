@@ -91,8 +91,11 @@ def main() -> int:
     (cfg / "longhand" / "config.json").write_text(json.dumps(
         {"vault": str(vault), "daily": {"dir": "Daily", "format": "YYYY-MM-DD", "template": "tpl/daily"}}))
     shell = tmp / "shell"
-    (shell / "page").mkdir(parents=True)
-    (shell / "page" / "Service.qml").symlink_to(ROOT / "plugin-page" / "Service.qml")
+    shell.mkdir()
+    # The page's folder whole, as tests/page/run.py links it: Service.qml
+    # imports Links.js beside it (since 2026-11-24), and linked alone it
+    # failed to load, every check here reading nothing.
+    (shell / "page").symlink_to(ROOT / "plugin-page")
     (shell / "shell.qml").write_text(QML)
     env = dict(os.environ, XDG_CONFIG_HOME=str(cfg), XDG_STATE_HOME=str(state), QT_QPA_PLATFORM="offscreen",
                QML_XHR_ALLOW_FILE_READ="1")

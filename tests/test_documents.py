@@ -99,6 +99,52 @@ def pdf(path: pathlib.Path, text: str, title: str = "", when: dt.datetime | None
         os.utime(path, (when.timestamp(), when.timestamp()))
 
 
+def downloads_folder(tmp: pathlib.Path) -> None:
+    """`~/Downloads` in the config (the inbox, the export's folder) is this
+    machine's Downloads: on Windows the one Windows knows, which a person
+    may have moved to OneDrive or another drive. Windows is stood in for
+    here, and the home is the test's own (HOME and USERPROFILE, for the
+    while), so no path here is the person's."""
+    home = tmp / "home"
+    moved = tmp / "OneDrive" / "Downloads"
+    real = doclib._known_folder
+    kept = {k: os.environ.get(k) for k in ("HOME", "USERPROFILE")}
+    os.environ.update(HOME=str(home), USERPROFILE=str(home))
+    try:
+        doclib._known_folder = lambda fid: home if fid == doclib.FOLDERID_PROFILE else moved
+        check(doclib.downloads() == moved, f"Downloads moved elsewhere is found where Windows says ({doclib.downloads()})")
+        check(doclib.folder("~/Downloads") == moved and doclib.folder("~/Downloads/") == moved,
+              "…and `~/Downloads` in the config names it")
+        check(doclib.folder("~/Downloads/papers") == moved / "papers", "…a folder in it too")
+        check(doclib.folder("~/Documents") == home / "Documents", "any other `~` folder is the home's")
+        check(doclib.folder(str(tmp / "inbox")) == tmp / "inbox", "a whole path is left as it is")
+        doclib._known_folder = lambda fid: (tmp / "someone") if fid == doclib.FOLDERID_PROFILE else moved
+        check(doclib.downloads() == home / "Downloads",
+              "with a home that is not the profile Windows knows (a test's, a sandbox's), its own Downloads, never the person's")
+        doclib._known_folder = lambda fid: None
+        check(doclib.downloads() == home / "Downloads", "where nothing is known (Linux), ~/Downloads")
+    finally:
+        doclib._known_folder = real
+        for k, v in kept.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+    if os.name == "nt":
+        import winreg
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                                r"Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders") as k:
+                said = winreg.QueryValueEx(k, "{374DE290-123F-4565-9164-39C4925E467B}")[0]
+        except OSError:
+            said = ""           # never moved: Windows' own default, not asked here
+        want = pathlib.Path(os.path.expandvars(said)) if said else doclib._known_folder(doclib.FOLDERID_DOWNLOADS)
+        check(os.path.normcase(str(doclib._known_folder(doclib.FOLDERID_DOWNLOADS))) == os.path.normcase(str(want)),
+              f"Windows is asked where its Downloads is, and says what the registry does ({want})")
+    else:
+        check(doclib._known_folder(doclib.FOLDERID_DOWNLOADS) is None, "elsewhere Windows is not asked")
+
+
 def main() -> int:
     tmp = pathlib.Path(tempfile.mkdtemp(prefix="docs-test-"))
     vault = tmp / "vault"
@@ -237,6 +283,8 @@ def main() -> int:
     check(len(docs) == 1 and docs[0]["pages"] == 1 and docs[0]["name"].endswith("Autonomous Systems"), "documents lists a course's, with pages")
     projects = json.loads(agent("projects", "--now", dt.datetime.now().isoformat(timespec="minutes")).stdout)
     check(next(p for p in projects if p["tag"] == "intsem")["docs"] == docs, "…and the sidebar's projects carry them")
+    check(docs[0]["path"].startswith(vault.as_posix() + "/") and "\\" not in docs[0]["path"],
+          f"…by a path with forward slashes, so the page finds its vault in it and opens it in the reader ({docs[0]['path']})")
     note = daily / f"{dt.date.today().isoformat()}.md"
     note.write_text("# Interdisciplinary Seminar #intsem\n\n- [ ] what does the reading say about autonomy?\n")
     import blocks  # noqa: E402
@@ -260,7 +308,7 @@ def main() -> int:
     (bindir / "opencode").chmod(0o755)
     (stub / "asks.json").write_text(json.dumps([{"document": doc + ".pdf", "words": "myths autonomy"},
                                                  {"document": "Rechnung_2026_4711", "words": ""}]))
-    env.update(STUB_DIR=str(stub), PATH=f"{bindir}:{os.environ['PATH']}")
+    env.update(STUB_DIR=str(stub), PATH=f"{bindir}{os.pathsep}{os.environ['PATH']}")
     agent("run", "--trigger", "checkbox", "--hash", h)
     calls = sorted(stub.glob("call-*.json"))
     check(len(calls) == 2, f"asking to read makes one more run, and only one ({len(calls)} runs)")
@@ -394,6 +442,8 @@ def main() -> int:
     check([pathlib.Path(x["src"]).name for x in found] == ["DTM_syllabus.pdf"],
           f"a PDF one folder down is proposed; two down, a hidden folder, or no match is not ({[x['src'] for x in found]})")
     check(len(seen) == 2 and "Rechnung" not in json.dumps(seen), "…and the cache still keeps only hashes")
+
+    downloads_folder(tmp)
 
     print("PASS" if failures == 0 else f"{failures} FAILED")
     return 1 if failures else 0
