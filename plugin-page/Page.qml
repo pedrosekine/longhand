@@ -8864,8 +8864,13 @@ Item {
       }
     }
     onExited: function (code, status) {
+      // Asked again while it ran (an opening while the last one's fetch was
+      // still going): what waits for the opening's fetch waits for that one,
+      // not this (2026-11-25: the first pass and the plan went before the
+      // fetch the opening asked for had begun). fetchPatience still lets
+      // them go after 20 seconds.
+      if (root.projectsAgain) { root.projectsAgain = false; Qt.callLater(root.refreshProjects); return }
       root.fetched()
-      if (root.projectsAgain) { root.projectsAgain = false; Qt.callLater(root.refreshProjects) }
     }
   }
   Timer { interval: 300000; running: root.usageBuf.length > 0; repeat: true; onTriggered: root.flushUsage() }

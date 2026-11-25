@@ -67,9 +67,16 @@ def meta_of(cache: Path) -> dict:
 
 
 def _write(path: Path, data: bytes) -> None:
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_bytes(data)
-    os.replace(tmp, path)
+    # A copy of this process's own: the page fetches and indexes the
+    # calendars side by side, and with one shared `.tmp` the second rename
+    # found it gone ("It could not be reached: FileNotFoundError",
+    # 2026-11-25, as lifespan.py's clock).
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    try:
+        tmp.write_bytes(data)
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def refresh(url: str, cache: Path, now: float | None = None, max_age: int = MAX_AGE) -> str:
