@@ -52,6 +52,7 @@ def main() -> int:
 
     keys(tmp)
     sounds(tmp)
+    session_end_heard(tmp)
 
     from PySide6.QtGui import QGuiApplication
     app = QGuiApplication(sys.argv[:1])
@@ -647,9 +648,139 @@ def tray(app, tmp):
     (state / "proposals.json").write_text(json.dumps({"items": []}), encoding="utf-8")
     loop_until(app, lambda: host.property("agentLine") == "1 reply waiting", 5.0)
     check(host.property("agentLine") == "1 reply waiting", "…and follows the file as it changes")
+    session_end(app, host)
     check(not [w for w in warnings if "Main.qml" in w], f"no warning from Main.qml ({[w for w in warnings if 'Main.qml' in w][:2]})")
     del roots
     engine.deleteLater()
+
+
+def session_end(app, host):
+    """Windows ending the session while words wait in the page's save timer:
+    what is done when it asks (longhand_host.save_at_session_end) puts them
+    on the disk before it returns. That Windows' asking reaches it is
+    session_end_heard's."""
+    import longhand_host
+    from PySide6.QtCore import QObject
+    from PySide6.QtQml import QQmlExpression, qmlContext
+
+    page = host.findChild(QObject, "longhandPage")
+
+    def ev(expr):
+        got = QQmlExpression(qmlContext(page), page, expr).evaluate()
+        return got[0] if isinstance(got, tuple) else got
+
+    host.summon('{"shape":"alongside"}')
+    loop_until(app, lambda: ev("noteService.ready") is True and bool(ev("noteService.notePath")), 10.0)
+    check(ev("noteService.ready") is True, f"today's note is open in the page ({ev('noteService.notePath')!r})")
+    if ev("noteService.ready") is not True:
+        return
+    loop_until(app, lambda: not host.property("noteSaving"), 3.0)
+    _window, save = longhand_host.save_at_session_end(app, host)
+    note = pathlib.Path(ev("noteService.notePath"))
+    words = "typed a moment before the sign-out"
+    ev(f"editorItem.text = editorItem.text + '\\n{words}'")
+    # Nothing from here to the end of `save` lets the save timer run: what
+    # lands is the session's end saving it.
+    on_disk = note.read_text(encoding="utf-8") if note.exists() else ""
+    check(words not in on_disk, "the words are typed and not yet saved")
+    save()
+    on_disk = note.read_text(encoding="utf-8") if note.exists() else ""
+    check(words in on_disk, "at the session's end the page saves what was typed, before Windows is answered")
+    check(host.property("noteSaving") is False, "…the save landed, not still on its way")
+    check(ev("windowOpen") is True, "…and nothing is put away: the sign-out may yet be cancelled")
+    ev("windowOpen = false")
+    ev("close()")
+
+
+SESSION_END = r'''
+import ctypes, json, os, sys
+from ctypes import wintypes
+sys.path.insert(0, sys.argv[1])
+from PySide6.QtCore import Property, QObject, QTimer, Signal, Slot
+from PySide6.QtGui import QGuiApplication
+import longhand_host
+
+app = QGuiApplication(sys.argv[:1])
+app.setQuitOnLastWindowClosed(False)
+
+
+class Root(QObject):
+    """Main.qml as the end of the session sees it: a save that takes a while."""
+    changed = Signal()
+
+    def __init__(self):
+        super().__init__()
+        self.saving, self.asked = False, 0
+
+    @Slot()
+    def saveNow(self):
+        self.asked += 1
+        self.saving = True
+        QTimer.singleShot(200, self.landed)
+
+    @Slot()
+    def landed(self):
+        self.saving = False
+
+    noteSaving = Property(bool, lambda self: self.saving, notify=changed)
+
+
+root = Root()
+held = longhand_host.save_at_session_end(app, root)
+said = {}
+user32 = ctypes.windll.user32
+user32.SendMessageW.argtypes = (wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM)
+user32.SendMessageW.restype = ctypes.c_ssize_t
+
+
+def ask():
+    mine, pid = [], os.getpid()
+    each = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+
+    def found(hwnd, _):
+        owner = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
+        if owner.value == pid:
+            mine.append(hwnd)
+        return True
+    user32.EnumWindows(each(found), 0)
+    said["visible"] = [h for h in mine if user32.IsWindowVisible(h)]
+    answers = [user32.SendMessageW(h, 0x0011, 0, 0x80000000) for h in mine]   # WM_QUERYENDSESSION, ENDSESSION_LOGOFF
+    said["queried"] = {"asked": root.asked, "saving": root.saving, "letGo": all(answers)}
+    for h in mine:
+        user32.SendMessageW(h, 0x0016, 1, 0x80000000)                          # WM_ENDSESSION: it ends
+    said["ended"] = {"asked": root.asked, "saving": root.saving}
+
+
+QTimer.singleShot(100, ask)
+QTimer.singleShot(8000, app.quit)
+app.exec()
+print(json.dumps(said))
+'''
+
+
+def session_end_heard(tmp):
+    """WM_QUERYENDSESSION and WM_ENDSESSION, sent as Windows sends them to
+    every top-level window of a Longhand that sits in the tray with no window
+    of its own: the save is asked for and waited on, both times. Qt hears
+    them only through a native window of its own, which the offscreen
+    platform has none of, so this runs on Windows' own platform, in a process
+    of its own; nothing is shown."""
+    import subprocess
+    script = tmp / "session_end.py"
+    script.write_text(SESSION_END, encoding="utf-8")
+    env = dict(os.environ, QT_QPA_PLATFORM="windows")
+    r = subprocess.run([sys.executable, str(script), str(ROOT / "windows")], capture_output=True, text=True,
+                       env=env, timeout=60)
+    try:
+        said = json.loads(r.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        said = {}
+    check(said.get("queried") == {"asked": 1, "saving": False, "letGo": True},
+          f"asked whether the session may end, the page is told to save and the answer waits for it ({said.get('queried')}{r.stderr.strip()[-300:]})")
+    check(said.get("ended") == {"asked": 2, "saving": False},
+          f"…and told it ends, the same once more before Qt lets go ({said.get('ended')})")
+    check(said.get("visible") == [], f"the window Windows asks is never shown ({said.get('visible')})")
 
 
 if __name__ == "__main__":
