@@ -207,6 +207,20 @@ def guard_write(paths: Paths, target: Path) -> None:
             raise Fail(f"refusing to write under the notes: {target}")
 
 
+def replace_with(target: Path, text: str) -> None:
+    """`target` holds `text`, written whole beside it and renamed over it,
+    through a copy of this process's own: the page runs listings side by
+    side (two project pages, a week and its project), and with one shared
+    `.tmp` the second rename found it gone, or on Windows still held
+    (2026-11-25, as the clocks' in lifespan.py)."""
+    tmp = target.with_name(f"{target.name}.{os.getpid()}.tmp")
+    try:
+        tmp.write_text(text)
+        os.replace(tmp, target)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
 def write_atomic(paths: Paths, target: Path, text: str) -> None:
     guard_write(paths, target)
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -1705,9 +1719,7 @@ def record_cost(ledger: Path, at: str, stamp: str, trigger: str, block: str, res
         text = ledger.read_text()
         head, _, rest = text.partition("\n")
         if head + "\n" != LEDGER_HEAD:
-            tmp = ledger.with_name(ledger.name + ".tmp")
-            tmp.write_text(LEDGER_HEAD + rest)
-            os.replace(tmp, ledger)
+            replace_with(ledger, LEDGER_HEAD + rest)
     tk = result.get("tokens") or {}
     error = " ".join(str(result.get("error") or "").split())[:300]   # one line, no tabs
     with open(ledger, "a") as f:
@@ -2886,9 +2898,7 @@ def cmd_week(cfg: dict, args) -> int:
         # For the page: read-only in the state folder, as the project's page.
         PAGES.mkdir(parents=True, exist_ok=True)
         out = PAGES / f"{args.tag.lstrip('#').lower()}-week.md"
-        tmp = out.with_suffix(".tmp")
-        tmp.write_text(text + f"\n*To keep it in the vault, to edit or hand in: `longhand-agent week --tag {args.tag.lstrip('#').lower()} --write`.*\n")
-        os.replace(tmp, out)
+        replace_with(out, text + f"\n*To keep it in the vault, to edit or hand in: `longhand-agent week --tag {args.tag.lstrip('#').lower()} --write`.*\n")
         print(json.dumps({"path": str(out)}))
         return 0
     if not args.write:
@@ -2901,9 +2911,7 @@ def cmd_week(cfg: dict, args) -> int:
     if target.exists() and not args.force:
         raise Fail(f"{rel} is there already (yours to edit); --force writes it again")
     target.parent.mkdir(parents=True, exist_ok=True)
-    tmp = target.with_suffix(".tmp")
-    tmp.write_text(text)
-    os.replace(tmp, target)
+    replace_with(target, text)
     print(json.dumps({"path": str(target), "file": rel}))
     return 0
 
@@ -3004,9 +3012,7 @@ def cmd_project_page(cfg: dict, args) -> int:
     text, folder = project_page(cfg, args.tag, dt.datetime.now())
     PAGES.mkdir(parents=True, exist_ok=True)
     out = PAGES / f"{args.tag.lstrip('#').lower()}.md"
-    tmp = out.with_suffix(".tmp")
-    tmp.write_text(text)
-    os.replace(tmp, out)
+    replace_with(out, text)
     print(json.dumps({"path": str(out), "folder": folder}))
     return 0
 
@@ -6887,9 +6893,7 @@ def cmd_export(cfg: dict, args) -> int:
     done.append({"path": str(out), "sha256": sha, "title": title, "note": str(note),
                  "at": dt.datetime.now().isoformat(timespec="seconds")})
     STATE_HOME.mkdir(parents=True, exist_ok=True)
-    tmp = EXPORTS.with_suffix(".tmp")
-    tmp.write_text(json.dumps({"files": done}, ensure_ascii=False, indent=1))
-    tmp.replace(EXPORTS)
+    replace_with(EXPORTS, json.dumps({"files": done}, ensure_ascii=False, indent=1))
     print(json.dumps(report, ensure_ascii=False))
     return 0
 

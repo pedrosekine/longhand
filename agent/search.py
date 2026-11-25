@@ -143,8 +143,19 @@ def _pdf_pages(p: Path, cache: Path, budget: dict) -> list[str] | None:
         pages = []
     while pages and not pages[-1]:
         pages.pop()
-    cache.mkdir(parents=True, exist_ok=True)
-    f.write_text(json.dumps({"pages": pages}))
+    # Written whole, through a copy of this search's own, and renamed over:
+    # written in place, a search beside it (the page searches as the person
+    # types) read half a file, took it for none and read the PDF again; and
+    # a cache that could not be written is only a cache.
+    tmp = f.with_name(f"{f.name}.{os.getpid()}.tmp")
+    try:
+        cache.mkdir(parents=True, exist_ok=True)
+        tmp.write_text(json.dumps({"pages": pages}))
+        os.replace(tmp, f)
+    except OSError:
+        pass
+    finally:
+        tmp.unlink(missing_ok=True)
     return pages
 
 
