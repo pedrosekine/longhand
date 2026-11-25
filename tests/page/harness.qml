@@ -470,6 +470,8 @@ ShellRoot {
     function runnerRunning(): bool { return page.running }
     // The planner's process, still up or not.
     function planRunning(): bool { return page.planning }
+    // Today's note still being written (a save on its way, or changes not yet sent).
+    function noteSaving(): bool { return page.noteService.saving || page.noteService.pending }
     function daySend(text: string): void { page.sendDay(text) }
     function dayKey(key: int, mods: int): bool { return page.dayKey({ key: key, text: "", modifiers: mods }) }
     function dayTurns(): string { return JSON.stringify(page.dayTurns.map(function (t) { return t.role + ": " + t.text })) }

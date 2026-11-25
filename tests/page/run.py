@@ -559,7 +559,10 @@ esac
             fixture = today_file.read_bytes() if (cur_stat is not None and cur_stat != self._after_call_stat) else None
             self.call("closeAll")
             if fixture is not None:
-                time.sleep(0.05)
+                # Put back once the page's last save has landed: on GitHub's
+                # Windows machine a save from the edits before landed after
+                # a fixed 50 ms, over the note put back (2026-11-25).
+                self.wait(lambda: self.call("noteSaving") == "false", 5)
                 today_file.write_bytes(fixture)
         else:
             self.call("closeAll")
