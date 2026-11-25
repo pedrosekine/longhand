@@ -94,7 +94,6 @@ Window {
       var s = root.screenNamed(root.area.screen)
       if (s) root.screen = s
       root.place()
-      root.openedAt = Date.now()
       root.show()
       // Windows 11's corners, and with them the shadow and hairline edge
       // its own flyouts have (windows/dwm.py): the card stands off what is
@@ -119,16 +118,22 @@ Window {
   // is not the active one for a moment after it is first shown.
   onActiveChanged: if (!root.active && root.open) leaving.restart(); else leaving.stop()
   // Nor the second click of a double click on its tray icon (2026-11-25,
-  // tested on the ThinkPad): that click makes the taskbar the active window
-  // just after the first opened this one, which then put itself away. Lost
-  // within a double click of opening, it takes the keys back instead.
-  property real openedAt: 0
+  // tested on the ThinkPad): that click makes the taskbar the active
+  // window just after the first opened this one, which then put itself
+  // away. The tray says so (windows/Main.qml, on its DoubleClick), and for
+  // a moment a loss takes the keys back instead. Only then: another window
+  // clicked a moment after opening still puts it away.
+  property real keepUntil: 0
+  function keepThroughLoss() {
+    root.keepUntil = Date.now() + 600
+    if (root.open && !root.active) { root.raise(); root.requestActivate() }
+  }
   Timer {
     id: leaving
     interval: 120
     onTriggered: {
       if (root.active || !root.open) return
-      if (Date.now() - root.openedAt < Qt.styleHints.mouseDoubleClickInterval + 200) { root.raise(); root.requestActivate() }
+      if (Date.now() < root.keepUntil) { root.raise(); root.requestActivate() }
       else root.close()
     }
   }
