@@ -3371,7 +3371,10 @@ def checks() -> int:
         p.call("keysKey", KEY_RETURN, 0)
         check("Enter again" in p.call("keysNote") and not ours.exists(), "Enter on it says what it will write, and writes nothing")
         p.call("keysKey", KEY_RETURN, 0)
-        check(p.wait(lambda: hk()["owned"]), "…Enter again: the page keeps them")
+        # The adopt waits behind the sheet's read of the keys (hyprNext),
+        # and writes, backs up and reloads: with three suites at once here
+        # the two took 13 s (2026-11-25). Waited for longer.
+        check(p.wait(lambda: hk()["owned"], 10), "…Enter again: the page keeps them")
         b = (p.hypr / "bindings.lua").read_text()
         check(b.count("hypr.longhand") == 1 and '-- o.bind("SUPER + ALT + P", "Pomo toggle"' in b and b.startswith('o.bind("SUPER + SHIFT + T"'),
               "…bindings.lua loads longhand.lua, the six commented out, the student's own line kept")
