@@ -153,7 +153,7 @@ def diagnose() -> tuple[list[tuple[str, str, str]], bool]:
         label = f"model route ({program})"
         if found:
             rows.append(("ok", label, found + (f" for {model}" if model else "")))
-            rows += _route_ready(program)
+            rows += _route_ready(program, cfg or {})
         else:
             named = f"\"{cfg_key}\" in config.json ({custom})" if custom else f"{program} on PATH"
             rows.append(("warn", label, f"{named} not found (needed for {key} {model or 'opencode'})"))
@@ -184,13 +184,24 @@ def diagnose() -> tuple[list[tuple[str, str, str]], bool]:
     return rows, ok
 
 
-def _route_ready(program: str) -> list[tuple[str, str, str]]:
+def _route_ready(program: str, cfg: dict) -> list[tuple[str, str, str]]:
     """Whether a route whose program is there can run, as far as can be
     told without calling a model: opencode needs Longhand's agents where it
     reads them (`$XDG_CONFIG_HOME/opencode/agent`, on Windows too: opencode
     2.3 reads ~/.config there, not %APPDATA%), or every run fails "Agent not
     found"; Antigravity needs its sign-in, which on Windows it keeps in the
-    Credential Manager, whatever home Longhand gives it."""
+    Credential Manager, whatever home Longhand gives it; Codex needs a
+    sign-in made for Longhand's own Codex folder (`CODEX_HOME`, the state
+    folder's `codex/` unless the config names `codexHome`), not the
+    person's ~/.codex, or the agent refuses every run before starting it."""
+    if program == "codex":
+        state = pathlib.Path(os.environ.get("XDG_STATE_HOME") or pathlib.Path.home() / ".local" / "state")
+        home = pathlib.Path(os.path.expanduser(str(cfg.get("codexHome") or state / "longhand" / "codex")))
+        if not (home / "auth.json").is_file():
+            # The line as the person's shell takes it, as the agent says it.
+            login = f"$env:CODEX_HOME='{home}'; codex login" if WINDOWS else f"CODEX_HOME={home} codex login"
+            return [("warn", "codex sign-in", f"none for Longhand in {home} — run `{login}` once")]
+        return [("ok", "codex sign-in", str(home))]
     if program == "opencode":
         agents = pathlib.Path(os.environ.get("XDG_CONFIG_HOME") or pathlib.Path.home() / ".config") / "opencode" / "agent"
         missing = [n for n in OPENCODE_AGENTS if not (agents / f"{n}.md").is_file()]

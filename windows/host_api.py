@@ -189,12 +189,13 @@ class Host(QObject):
         where a popup by the clock may be put (shim/qs/Ui/KeyboardPanel.qml).
         Windows 11 has a clock on every screen's taskbar; the one by the
         person's hand is the one meant, as the bar's popup opens on the
-        monitor that has the focus."""
+        monitor that has the focus. With the screen's name, for the popup
+        to be put on that screen before it is placed in it."""
         screen = screen_here()
         if screen is None:
-            return {"x": 0, "y": 0, "width": 0, "height": 0}
+            return {"x": 0, "y": 0, "width": 0, "height": 0, "screen": ""}
         g = screen.availableGeometry()
-        return {"x": g.x(), "y": g.y(), "width": g.width(), "height": g.height()}
+        return {"x": g.x(), "y": g.y(), "width": g.width(), "height": g.height(), "screen": screen.name()}
 
     @Slot(result=str)
     def screenHere(self):
@@ -206,9 +207,11 @@ class Host(QObject):
 
     @Slot(str, result="QVariant")
     def savedPlace(self, name):
-        """Where a window was left, `{x, y, width, height}`, or null: kept in
-        the state folder across restarts (shim/Quickshell/FloatingWindow.qml),
-        and only while the place is still on a screen."""
+        """Where a window was left, `{x, y, width, height, screen}`, or null:
+        kept in the state folder across restarts
+        (shim/Quickshell/FloatingWindow.qml), and only while the place is
+        still on a screen. `screen` names the one most of its title bar is
+        on, for the window to be put there before it is placed."""
         import json
         try:
             g = json.loads(places_file().read_text(encoding="utf-8")).get(name)
@@ -218,9 +221,11 @@ class Host(QObject):
         from PySide6.QtCore import QRect
         from PySide6.QtGui import QGuiApplication
         title_bar = QRect(x, y, w, 40)             # the part a hand must be able to reach
-        if w < 200 or h < 150 or not any(s.availableGeometry().intersects(title_bar) for s in QGuiApplication.screens()):
+        shown = {s.name(): s.availableGeometry().intersected(title_bar) for s in QGuiApplication.screens()}
+        shown = {n: r.width() * r.height() for n, r in shown.items() if not r.isEmpty()}
+        if w < 200 or h < 150 or not shown:
             return None
-        return {"x": x, "y": y, "width": w, "height": h}
+        return {"x": x, "y": y, "width": w, "height": h, "screen": max(shown, key=shown.get)}
 
     @Slot(str, "QVariant")
     def keepPlace(self, name, g):

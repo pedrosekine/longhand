@@ -410,7 +410,11 @@ written, on Omarchy too. Every listing saves the boxes' clocks
 held: two writers failed 170 times in 300). That listing failed, and the
 page read its failure as no tasks at all. Each process writes a copy of
 its own now, and the documents' caches the same (`documents.py`);
-`tests/test_lifespan.py` runs three listings side by side.
+`tests/test_lifespan.py` runs three listings side by side. Later the same
+day the rest went the same way: the reader's acronyms, scan copies and
+moved talks, the agent's week and project pages, exports and ledger
+header; and the PDF search cache, which was written in place, is written
+whole and renamed.
 
 Not run here, and said so: the overlay (`--overlay`, as on Omarchy), a
 scanned paper's read (magick, pdftoppm, tesseract, qpdf), and the PDF an
@@ -439,6 +443,7 @@ export writes, where pandoc and xelatex are not on PATH (as
 | `os.replace` over a file another process is reading (always works on Linux) | `pyshim/longhand_replace.py`, loaded at start: Windows refuses it while the file is open, so it tries again for about three seconds; the host itself tries only briefly, so the window never freezes (the windows' places, the reader's files, the tray's pictures: a tray picture that still cannot be put in place leaves the icon showing what it showed, and the next change draws again). `longhand install`, in the host's process but with no window, tries the patient way over the Start menu's icon, which Explorer reads, and keeps the icon there if it never lets go |
 | `Qt.openUrlExternally("file://" + path)` with a path from `/` | `file_urls.py`: `file://C:/…` (and its unparseable spellings) opened as the file on that drive |
 | `"file://" + path` given to the page's own PDF reader and pictures | `Links.fileUrl` in `plugin-page/`: no host can reach a URL Qt fails to parse before it loads |
+| `open(..., "a")` as `O_APPEND`: a line appended whole while other processes append (the ledger, feedback, conversation, deadlines, proposals, check-ins, usage) | `pyshim/longhand_append.py`, loaded at start: Windows' own is a seek and a write, and six writers at once kept 1998 lines of 2400; opened for appending only (`FILE_APPEND_DATA`), the system puts each write at the end |
 | `fcntl.flock` | `pyshim/fcntl.py` |
 | a process group and SIGTERM, to stop a model's run | a job and a named event: `agent/winproc.py` |
 
@@ -508,6 +513,16 @@ export writes, where pandoc and xelatex are not on PATH (as
   Not yet seen with a German keyboard in hand: that Qt hands the sheet
   `=` for Win+Alt+Shift+0 there (the sheet writes the symbol, without its
   Shift) is Qt's keymap, read but not watched.
+- On two screens scaled differently (a laptop at 125%, a monitor at 150%),
+  Windows shifts a window moved onto the other screen as the scale changes
+  under it: the overlay landed 282 px off (2026-11-24). Each of the three
+  windows is put on its screen first and placed again 60 ms after it is
+  shown: the overlay (`PanelWindow`), the page's window restored where it
+  was left (`FloatingWindow`; `savedPlace` names the screen its title bar
+  is on), and the popups by the clock (`KeyboardPanel`; `workArea` names
+  its screen). The overlay was seen right on both screens; the other two
+  are checked in `tests/test_windows_shell.py` with the shift made by
+  hand, and on one screen for real, not yet on the two (2026-11-25).
 - Do Not Disturb is read from Windows' Focus assist profile (the shell's
   own toggle publishes it; `play_sound.silenced`), an undocumented state
   that Windows 11 still keeps: read as off on 2026-11-24, not yet seen on.

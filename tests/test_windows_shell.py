@@ -58,6 +58,7 @@ def main() -> int:
     inside(app)
     palette_file(tmp)
     places_and_icon(tmp)
+    placed_again(app)
     notify_through_longhand(app)
     tray(app, tmp)
     print(f"\n{failures} failure(s)")
@@ -488,8 +489,13 @@ def places_and_icon(tmp):
     import host_api
     host = host_api.Host()
     host.keepPlace("Page — today's note", {"x": 10, "y": 20, "width": 700, "height": 800})
-    check(host.savedPlace("Page — today's note") == {"x": 10, "y": 20, "width": 700, "height": 800},
+    kept = host.savedPlace("Page — today's note") or {}
+    check({k: kept.get(k) for k in ("x", "y", "width", "height")} == {"x": 10, "y": 20, "width": 700, "height": 800},
           "where the page's window was left is kept in the state folder, and given back")
+    from PySide6.QtGui import QGuiApplication
+    check(kept.get("screen") in [s.name() for s in QGuiApplication.screens()],
+          f"…with the screen it is on, for the window to be put there first ({kept.get('screen')!r})")
+    check(host.workArea().get("screen") == host.screenHere(), "the room by the clock names its screen")
     host.keepPlace("gone", {"x": 90000, "y": 90000, "width": 700, "height": 800})
     check(host.savedPlace("gone") is None, "a place no screen has any more is not given back")
     check(host.savedPlace("never") is None, "a window never placed has no place")
@@ -537,6 +543,59 @@ def places_and_icon(tmp):
           "a tray picture that cannot be put in place: the timer and the seal keep the ones they show")
     check(not list(tray_dir.glob("*.tmp")), "…and no temporary file is left in the tray's folder")
     check(host.trayGlyph("timer", "24", "accent", *colours) not in ("", t), "…and the next minute draws again")
+
+
+def placed_again(app):
+    """The page's window and a popup by the clock, put on their screen and
+    placed again a moment after they are shown: moved onto a screen scaled
+    otherwise, Windows shifts a window as the scale changes under it
+    (2026-11-24, the overlay 282 px off on a monitor at 150% beside a
+    laptop at 125%). Here the shift is made by hand, just after showing."""
+    import host_api
+    from PySide6.QtCore import QUrl
+    from PySide6.QtQml import QQmlComponent, QQmlEngine
+
+    host = host_api.Host()
+    host.keepPlace("placed again", {"x": 30, "y": 40, "width": 420, "height": 320})
+    engine = QQmlEngine()
+    engine.addImportPath(str(ROOT / "windows" / "shim"))
+    component = QQmlComponent(engine)
+    component.setData(b"""
+import QtQuick
+import Quickshell
+import qs.Ui
+Item {
+  property var page: FloatingWindow { title: "placed again"; implicitWidth: 420; implicitHeight: 320 }
+  property var popup: KeyboardPanel { contentWidth: 220; contentHeight: 160 }
+}
+""", QUrl.fromLocalFile(str(ROOT / "tests" / "placed_again.qml")))
+    holder = component.create()
+    check(holder is not None, f"the page's window and a popup load ({[e.toString() for e in component.errors()][:2]})")
+    if holder is None:
+        return
+    win, popup = holder.property("page"), holder.property("popup")
+
+    win.setVisible(True)
+    kept = host.savedPlace("placed again")
+    check(win.screen().name() == kept["screen"], f"the page's window is put on the screen it was left on ({win.screen().name()!r})")
+    win.setX(win.x() + 282)                        # as Windows shifts it
+    loop_until(app, lambda: win.x() == 30, 1.0)
+    got = [win.x(), win.y(), win.width(), win.height()]
+    check(got == [30, 40, 420, 320], f"…and placed again where it was left, after the shift ({got})")
+
+    popup.setProperty("open", True)
+    area = host.workArea()
+    check(popup.screen().name() == area["screen"], f"the popup is put on the pointer's screen ({popup.screen().name()!r})")
+    popup.setX(popup.x() - 282)
+    margin = popup.property("margin")
+    corner = lambda: [popup.x() + popup.width(), popup.y() + popup.height()]  # noqa: E731
+    want = [area["x"] + area["width"] - margin, area["y"] + area["height"] - margin]
+    loop_until(app, lambda: corner() == want, 1.0)
+    check(corner() == want, f"…and placed again in the corner by the clock, after the shift ({corner()} for {want})")
+    popup.setProperty("open", False)
+    win.setVisible(False)
+    del holder, win, popup
+    engine.deleteLater()
 
 
 # ------------------------------------------------------------ the tray
