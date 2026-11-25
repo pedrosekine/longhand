@@ -3947,8 +3947,9 @@ def checks() -> int:
         line = p.line_of("therapy appointment")
         check(json.loads(p.call("rowKinds"))[line] == "task", "a box in a private block is a box")
         p.call("cursor", 1)
+        p.wait(lambda: "therapy" in p.note(), 5)            # on disk first, then a moment for a binding
         time.sleep(1.2)
-        check("^d" not in [l for l in p.note().split("\n") if "therapy" in l][0],
+        check("^d" not in ([l for l in p.note().split("\n") if "therapy" in l] or ["^d (not saved)"])[0],
               f"…left with a date at its end, it is not bound ({[l for l in p.note().split(chr(10)) if 'therapy' in l]})")
         p.call("cursor", p.offset_of_line(line) + 8)
         p.call("askNow")
