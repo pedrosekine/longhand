@@ -185,6 +185,20 @@ own, so the key reaches the sheet (Hyprland's submap, here). A key must
 hold Win, and one Windows or another program has is refused, saying so.
 The agent's manual says these keys, as Windows writes them.
 
+A symbol is a character, not a place on a US keyboard: Windows is given the
+key that types it on the keyboard layout in use (`VkKeyScanExW`), as
+Hyprland reads a keysym through XKB. On a German keyboard `Win+Alt+=` is
+Win+Alt+Shift+0 and `Win+Alt+\` is Win+AltGr+ß (AltGr is Ctrl+Alt to
+Windows); on a French one `\` is AltGr+8, on a British one the key by the
+left Shift. A symbol that needs Shift or AltGr is kept with them, since those
+are the keys a person presses to type it with Win and Alt held, and the keys
+the sheet hears; the sheet and the tray menu still say the symbol. Letters,
+digits and F-keys are the same keys on every layout. A symbol the layout has
+not got at all falls back to the US keyboard's key, and one only behind a
+Kana shift is refused. The layout is the window in front's, asked every
+second: switched to another, the keys are taken again where it types them
+(only when that makes any of them another key).
+
 What the agent's extras call, and some tests: `gitleaks` (without it the
 agent shares no passage: it cannot check one for secrets), poppler's
 `pdftotext` (papers), and `node` (two tests compare the JS with the Python).
@@ -484,6 +498,16 @@ export writes, where pandoc and xelatex are not on PATH (as
   for it: maximized stays maximized (`compositor.come_forward`, which the
   page's raise and the host both use; before, it came back at its old
   size). Seen on the screen and in `tests/test_windows_shell.py`.
+- The six keys on other keyboard layouts (2026-11-25): until then a symbol
+  was a US keyboard's key, so on a German, Portuguese, British or French
+  keyboard `Win+Alt+=` and `Win+Alt+\` were other keys than the ones
+  printed. Now they are asked of the layout in use (above). Tested with
+  what `VkKeyScanExW` answers on those layouts, written into
+  `tests/test_windows_shell.py`, and against this machine's own (US):
+  loading another layout to try it would touch the person's list of them.
+  Not yet seen with a German keyboard in hand: that Qt hands the sheet
+  `=` for Win+Alt+Shift+0 there (the sheet writes the symbol, without its
+  Shift) is Qt's keymap, read but not watched.
 - Do Not Disturb is read from Windows' Focus assist profile (the shell's
   own toggle publishes it; `play_sound.silenced`), an undocumented state
   that Windows 11 still keeps: read as off on 2026-11-24, not yet seen on.

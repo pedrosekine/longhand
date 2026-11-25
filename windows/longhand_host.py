@@ -341,6 +341,16 @@ def main() -> int:
             watcher.fileChanged.connect(lambda _p: rekey.start())
             reread()
 
+            # A symbol is the key that types it on the layout typed in
+            # (Win+Alt+= is Win+Alt+Shift+0 on a German keyboard), and that
+            # can be switched in any window: WM_INPUTLANGCHANGE only reaches
+            # Longhand's own, so the layout in front is asked every second
+            # (a few calls into Windows, nothing more when it is the same).
+            relayout = QTimer()
+            relayout.setInterval(1000)
+            relayout.timeout.connect(lambda: compositor.listening() or keys.follow_layout())
+            relayout.start()
+
     if args.check and args.popups:
         import popup_check
         popup_check.run(app, engine, box, args, warnings)

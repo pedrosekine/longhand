@@ -28,6 +28,10 @@ other five has moves, as in hyprkeys.py.
 Keys travel to and from the page as Shortcuts.js writes them,
 "Alt+Super+=" — Super for Win.
 
+A key is kept as its character, and Windows is given the key that types it
+on the keyboard layout in use (`parse`), as Hyprland reads a keysym through
+XKB's: "=" is not the same key on a German keyboard as on a US one.
+
 What is shared with hotkeys.py (which needs Qt) lives here, so the agent's
 manual can read the keys with nothing but Python.
 """
@@ -48,11 +52,24 @@ DOES = {aid: does for aid, does, _cmd, _key in hyprkeys.ACTIONS}
 ORDER = [a[0] for a in hyprkeys.ACTIONS]
 
 MODS = {"alt": 0x1, "ctrl": 0x2, "control": 0x2, "shift": 0x4, "win": 0x8, "super": 0x8, "meta": 0x8}
-NAMED = {"=": 0xBB, "equal": 0xBB, "plus": 0xBB, "-": 0xBD, "minus": 0xBD, "\\": 0xDC, "backslash": 0xDC,
-         ",": 0xBC, "comma": 0xBC, ".": 0xBE, "period": 0xBE, "/": 0xBF, "slash": 0xBF, ";": 0xBA, "semicolon": 0xBA,
-         "'": 0xDE, "[": 0xDB, "]": 0xDD, "`": 0xC0, "space": 0x20, "enter": 0x0D, "return": 0x0D, "tab": 0x09,
-         "home": 0x24, "end": 0x23, "pgup": 0x21, "pgdn": 0x22, "left": 0x25, "up": 0x26, "right": 0x27, "down": 0x28,
-         "ins": 0x2D, "del": 0x2E}
+# Keys that are no character: the same key on every layout.
+NAMED = {"space": 0x20, "enter": 0x0D, "return": 0x0D, "tab": 0x09, "home": 0x24, "end": 0x23, "pgup": 0x21,
+         "pgdn": 0x22, "left": 0x25, "up": 0x26, "right": 0x27, "down": 0x28, "ins": 0x2D, "del": 0x2E}
+# A symbol's word, as a key may be written by hand ("Win+Alt+equal").
+CHARS = {"equal": "=", "plus": "+", "minus": "-", "backslash": "\\", "comma": ",", "period": ".", "slash": "/",
+         "semicolon": ";"}
+# A symbol is a key of the keyboard's layout, not of its own: "=" is the key
+# right of 0 on a US keyboard, Shift+0 on a German one, and AltGr+ß types a
+# German "\" where a US keyboard has a key of its own. So a symbol is asked
+# of the layout being typed in (`scan`), and this, the US layout's, is only
+# for a symbol that layout has not got at all, or where there is no Windows
+# to ask: (modifiers it needs, virtual key).
+US = {"=": (0, 0xBB), "+": (0x4, 0xBB), "-": (0, 0xBD), "_": (0x4, 0xBD), "\\": (0, 0xDC), "|": (0x4, 0xDC),
+      ",": (0, 0xBC), "<": (0x4, 0xBC), ".": (0, 0xBE), ">": (0x4, 0xBE), "/": (0, 0xBF), "?": (0x4, 0xBF),
+      ";": (0, 0xBA), ":": (0x4, 0xBA), "'": (0, 0xDE), '"': (0x4, 0xDE), "[": (0, 0xDB), "{": (0x4, 0xDB),
+      "]": (0, 0xDD), "}": (0x4, 0xDD), "`": (0, 0xC0), "~": (0x4, 0xC0), "!": (0x4, 0x31), "@": (0x4, 0x32),
+      "#": (0x4, 0x33), "$": (0x4, 0x34), "%": (0x4, 0x35), "^": (0x4, 0x36), "&": (0x4, 0x37), "*": (0x4, 0x38),
+      "(": (0x4, 0x39), ")": (0x4, 0x30)}
 # Windows' words for a key → the sheet's (Shortcuts.js).
 SHEET_NAME = {"equal": "=", "plus": "Plus", "minus": "-", "backslash": "\\", "comma": ",", "period": ".",
               "slash": "/", "semicolon": ";", "space": "Space", "enter": "Enter", "return": "Enter", "tab": "Tab",
@@ -100,38 +117,123 @@ def words(key: str) -> list[str]:
     return [p.strip() for p in key.split("+") if p.strip()]
 
 
-def parse(key: str):
-    """"Win+Alt+=" as (modifiers, virtual key), or None when it is no key
-    Windows could keep for us."""
+_user32 = None
+
+
+def user32():
+    global _user32
+    if _user32 is None:
+        import ctypes
+        from ctypes import wintypes
+        _user32 = ctypes.WinDLL("user32", use_last_error=True)
+        _user32.GetForegroundWindow.restype = wintypes.HWND
+        _user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.c_void_p]
+        _user32.GetWindowThreadProcessId.restype = wintypes.DWORD
+        _user32.GetKeyboardLayout.argtypes = [wintypes.DWORD]
+        _user32.GetKeyboardLayout.restype = wintypes.HKL
+        _user32.VkKeyScanExW.argtypes = [wintypes.WCHAR, wintypes.HKL]
+        _user32.VkKeyScanExW.restype = ctypes.c_short
+    return _user32
+
+
+def layout() -> int:
+    """The keyboard layout a key pressed now is read in: the one of the
+    window in front (Windows may keep a layout per window), else this
+    program's; 0 where there is no Windows to ask."""
+    if os.name != "nt":
+        return 0
+    u = user32()
+    front = u.GetForegroundWindow()
+    thread = u.GetWindowThreadProcessId(front, None) if front else 0
+    return (u.GetKeyboardLayout(thread) if thread else 0) or u.GetKeyboardLayout(0) or 0
+
+
+def vk_key_scan(ch: str, hkl: int) -> int:
+    """Windows' VkKeyScanExW: the key that types `ch` on the layout `hkl`,
+    its shift state in the high byte (1 Shift, 2 Ctrl, 4 Alt, so 6 is
+    AltGr), -1 when the layout has no such key. The tests put a layout of
+    their own here."""
+    if os.name != "nt":
+        return -1
+    return user32().VkKeyScanExW(ch, hkl)
+
+
+def char_key(ch: str, hkl: int | None = None):
+    """The key that types `ch` on the layout, as (modifiers it needs,
+    virtual key); the US layout's when this layout has no such key, and
+    None when neither has, or it needs a shift no hot key can hold.
+
+    A symbol that needs Shift or AltGr is kept with them: the person types
+    "=" on a German keyboard as Shift+0, and Windows says AltGr is Ctrl+Alt,
+    so Win+Alt+= is Win+Alt+Shift+0 there and Win+Alt+\\ Win+Ctrl+Alt+ß,
+    the very keys pressed to type the symbol with Win and Alt held (and the
+    keys the sheet heard, when it was the sheet that wrote them)."""
+    got = vk_key_scan(ch, layout() if hkl is None else hkl)
+    if got == -1 or got & 0xFF == 0xFF:
+        return US.get(ch)
+    state = (got >> 8) & 0xFF
+    if state & ~0x7:
+        return None                     # Kana, or a layout's own shift
+    return (0x4 if state & 1 else 0) | (0x2 if state & 2 else 0) | (0x1 if state & 4 else 0), got & 0xFF
+
+
+def parse(key: str, hkl: int | None = None):
+    """"Win+Alt+=" as (modifiers, virtual key) on the keyboard layout `hkl`
+    (the one typed in now when None), or None when it is no key Windows
+    could keep for us.
+
+    A letter A–Z and a digit are the keys Windows names after them on every
+    layout (VK_A…, VK_0…), as Qt reads them with Ctrl or Alt held. A symbol
+    is what the layout types it with, and carries no Shift of its own, as
+    the sheet writes one ("Win+Alt+?", not "Win+Alt+Shift+/")."""
     parts = words(key)
     if not parts:
         return None
-    mods, last = 0, parts[-1].lower()
+    mods, last = 0, parts[-1]
     for p in parts[:-1]:
         if p.lower() not in MODS:
             return None
         mods |= MODS[p.lower()]
     if not mods & 0x8:
         return None                     # a key must hold Win
-    if last in NAMED:
-        return mods, NAMED[last]
-    if len(last) == 1 and (last.isascii() and last.isalnum()):
-        return mods, ord(last.upper())
-    if last.startswith("f") and last[1:].isdigit() and 1 <= int(last[1:]) <= 24:
-        return mods, 0x70 + int(last[1:]) - 1
-    return None
+    low = last.lower()
+    if low in NAMED:
+        return mods, NAMED[low]
+    if low.startswith("f") and low[1:].isdigit() and 1 <= int(low[1:]) <= 24:
+        return mods, 0x70 + int(low[1:]) - 1
+    ch = CHARS.get(low, last)
+    if len(ch) != 1:
+        return None
+    if ch.isascii() and ch.isalnum():
+        return mods, ord(ch.upper())
+    if ch.upper() == ch.lower():
+        mods &= ~0x4                    # a symbol's Shift is the layout's to say
+    else:
+        ch = ch.lower()                 # ß, é: the letter's key, Shift as written
+    got = char_key(ch, hkl)
+    return (mods | got[0], got[1]) if got else None
 
 
 def shown(key: str) -> str:
     """A key as a menu says it: Win, Ctrl, Alt, Shift, then the key."""
-    got = parse(key)
-    if not got:
+    if not parse(key):
         return ""
     last = words(key)[-1]
     last = "+" if last == "plus" else last
-    mods = got[0]
+    mods = 0                            # as written: a German "=" is said "=", not "Shift+0"
+    for p in words(key)[:-1]:
+        mods |= MODS[p.lower()]
+    if is_symbol(last):
+        mods &= ~0x4
     return "+".join([n for bit, n in ((0x8, "Win"), (0x2, "Ctrl"), (0x1, "Alt"), (0x4, "Shift")) if mods & bit]
-                    + [last.upper() if len(last) == 1 else last.capitalize()])
+                    + [upper(last) if len(last) == 1 else last.capitalize()])
+
+
+def upper(ch: str) -> str:
+    """A letter's capital, as the sheet writes one; ß has none of one letter
+    ("SS"), and stays ß."""
+    up = ch.upper()
+    return up if len(up) == 1 else ch
 
 
 def is_symbol(name: str) -> bool:
@@ -149,7 +251,7 @@ def to_sheet(key: str) -> str:
     if low in SHEET_NAME:
         name = SHEET_NAME[low]
     elif len(last) == 1:
-        name = last.upper()
+        name = upper(last)
     else:
         name = last.upper()              # F1…F24
     shift = bool(mods & 0x4) and not is_symbol(name)
@@ -168,8 +270,8 @@ def from_sheet(key: str) -> tuple[str, str]:
         return "", "a key from anywhere holds Win, so it never takes a key an app needs"
     out = "+".join(["Win"] + [m for m in ("Ctrl", "Alt", "Shift") if m in mods] + [WIN_NAME.get(name, name)])
     if not parse(out):
-        return "", (f"Windows cannot keep {name} as a key from anywhere — pick a letter, a digit, an F-key "
-                    "or one of = - \\ / , . ; ' ` [ ]")
+        return "", (f"Windows cannot keep {name} as a key from anywhere: no key of this keyboard types it "
+                    "— pick a letter, a digit, an F-key or a symbol your keyboard has")
     return out, ""
 
 
@@ -232,19 +334,25 @@ def set_keys(aid: str, new: list[str], add: bool = False) -> dict:
             return state(error=why, key=k)
         asked.append(w)
     keys = wanted()
-    ours = {to_sheet(k) for ks in keys.values() for k in ks}
+    hkl = layout()
+
+    def held(k):
+        # The key Windows would hold for it: Win+Alt+\ and Win+Ctrl+Alt+\
+        # are both Win+AltGr+ß on a German keyboard, one key.
+        return parse(k, hkl) or to_sheet(k)
+    ours = {held(k) for ks in keys.values() for k in ks}
     for w in asked:
-        if to_sheet(w) not in ours and not free(w):
+        if held(w) not in ours and not free(w):
             return state(error=f"{shown(w)} is taken by Windows or another program — pick another, Esc keeps the old one",
                          key=to_sheet(w))
     moved_from = []
     for w in asked:
         for o in ORDER:
-            if o != aid and to_sheet(w) in [to_sheet(k) for k in keys[o]]:
-                keys[o] = [k for k in keys[o] if to_sheet(k) != to_sheet(w)]
+            if o != aid and held(w) in [held(k) for k in keys[o]]:
+                keys[o] = [k for k in keys[o] if held(k) != held(w)]
                 moved_from.append(DOES[o])
     if add:
-        keys[aid] = [k for k in keys[aid] if to_sheet(k) not in {to_sheet(w) for w in asked}] + asked
+        keys[aid] = [k for k in keys[aid] if held(k) not in {held(w) for w in asked}] + asked
     else:
         keys[aid] = asked
     write(keys)

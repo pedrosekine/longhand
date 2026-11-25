@@ -83,7 +83,10 @@ def keys(tmp):
               f"{written} is {sheet} to the sheet, and the same key back ({back or why})")
     check(winkeys.from_sheet("Ctrl+Alt+K")[0] == "" and "Win" in winkeys.from_sheet("Ctrl+Alt+K")[1],
           "a key without Win is refused, and why is said")
-    check(winkeys.from_sheet("Alt+Super+?")[0] == "", "a key Windows cannot keep is refused")
+    real = winkeys.parse("Win+Alt+=", winkeys.layout())
+    scan = winkeys.vk_key_scan("=", winkeys.layout())
+    check(real and scan not in (-1,) and real[1] == scan & 0xFF,
+          f"= is asked of this machine's own layout, through Windows ({real}, {scan:#x})")
 
     # Moving: the file says only what differs, and a key another of the six
     # had moves from it.
@@ -122,6 +125,111 @@ def keys(tmp):
     k = manual.keys(tmp / "config")
     check(k.get("sys:page") == ["Win+Alt+="] and k.get("sys:pomoToggle") == ["Win+Alt+P"],
           f"the agent's manual says Windows' keys, Win first ({k.get('sys:page')})")
+    layouts()
+
+
+# What VkKeyScanExW answers on each layout (the shift state in the high
+# byte: 1 Shift, 6 AltGr), written down here: loading another layout into
+# Windows would touch the person's own list of them. Each is the real
+# layout's, for the keys asked.
+US, INTL, DE, FR, UK = 0x04090409, 0xF0010409, 0x04070407, 0x040C040C, 0x08090809
+SCANS = {
+    US: {"=": 0x0BB, "+": 0x1BB, "\\": 0x0DC, "?": 0x1BF, "/": 0x0BF},
+    INTL: {"=": 0x0BB, "+": 0x1BB, "\\": 0x0DC},          # US-International
+    DE: {"=": 0x130, "+": 0x0BB, "\\": 0x6DB, "ß": 0x0DB, "?": 0x1DB, "/": 0x137, "ü": 0x0BA, "#": 0x0BF,
+         "¥": 0x841},                      # (not German: a key behind a Kana shift)
+    FR: {"=": 0x0BB, "\\": 0x638, "é": 0x032, ";": 0x0BE},
+    UK: {"=": 0x0BB, "\\": 0x0E2, "#": 0x0DE},
+}
+ALT, CTRL, SHIFT, WIN = 0x1, 0x2, 0x4, 0x8
+
+
+def layouts():
+    """A symbol is the key that types it on the layout in use, not a US
+    keyboard's; the sheet's words for a key stay its characters."""
+    import winkeys
+    import hotkeys
+
+    now = [US]
+    saved = winkeys.vk_key_scan, winkeys.layout, hotkeys.layout, winkeys.free
+    winkeys.vk_key_scan = lambda ch, hkl: SCANS.get(hkl, {}).get(ch, -1)
+    winkeys.layout = hotkeys.layout = lambda: now[0]
+    winkeys.free = lambda key: True
+    try:
+        p = winkeys.parse
+        check(p("Win+Alt+=", US) == (ALT | WIN, 0xBB) and p("Win+Alt+\\", US) == (ALT | WIN, 0xDC),
+              "on a US keyboard the keys are the ones they always were")
+        check(p("Win+Alt+=", DE) == (ALT | SHIFT | WIN, 0x30),
+              f"on a German one Win+Alt+= is Win+Alt+Shift+0, where = is typed ({p('Win+Alt+=', DE)})")
+        check(p("Win+Alt+\\", DE) == (CTRL | ALT | WIN, 0xDB),
+              "…and Win+Alt+\\ is AltGr+ß with Win, AltGr being Ctrl+Alt to Windows")
+        check(p("Win+Alt+\\", FR) == (CTRL | ALT | WIN, 0x38) and p("Win+Alt+\\", UK) == (ALT | WIN, 0xE2),
+              "…AltGr+8 on a French one, and the key by the left Shift on a British one")
+        check(p("Win+Alt+Shift+=", DE) == p("Win+Alt+=", DE) and p("Win+Alt+Plus", DE) == (ALT | WIN, 0xBB)
+              and p("Win+Alt+Plus", US) == (ALT | SHIFT | WIN, 0xBB),
+              "a symbol carries no Shift of its own: the layout says whether it needs one")
+        check(p("Win+Alt+?", US) == (ALT | SHIFT | WIN, 0xBF) and p("Win+Alt+?", DE) == (ALT | SHIFT | WIN, 0xDB),
+              "? is kept with the Shift that types it, as the sheet heard it pressed")
+        check(p("Win+Alt+P", DE) == (ALT | WIN, 0x50) and p("Win+Alt+5", FR) == (ALT | WIN, 0x35)
+              and p("Win+F9", DE) == (WIN, 0x78),
+              "letters, digits and F-keys are the same keys on every layout (VK_A…, VK_0…)")
+        check(p("Win+Alt+ß", DE) == (ALT | WIN, 0xDB) and p("Win+Alt+é", FR) == (ALT | WIN, 0x32)
+              and p("Win+Alt+ü", DE) == (ALT | WIN, 0xBA),
+              "a letter a US keyboard has not got is the key that types it here")
+        check(p("Win+Alt+`", DE) == (ALT | WIN, 0xC0),
+              "a symbol this layout has not got is the US keyboard's, rather than no key at all")
+        check(p("Win+Alt+Ω", DE) is None and p("Win+Alt+¥", DE) is None,
+              "a character no keyboard here types, or one behind a shift no hot key holds, is no key")
+        check(p("Win+Alt+=") == (ALT | WIN, 0xBB), "without a layout named, the one typed in now")
+
+        now[0] = DE
+        check(winkeys.to_sheet("Win+Alt+ß") == "Alt+Super+ß" and winkeys.from_sheet("Alt+Super+ß") == ("Win+Alt+ß", ""),
+              f"ß goes to the sheet and back as ß, not SS ({winkeys.to_sheet('Win+Alt+ß')})")
+        check(winkeys.to_sheet("Win+Alt+=") == "Alt+Super+=" and winkeys.shown("Win+Alt+=") == "Win+Alt+="
+              and winkeys.shown("Win+Alt+ß") == "Win+Alt+ß",
+              f"the sheet and the menu say the symbol, not the keys typing it takes ({winkeys.shown('Win+Alt+=')})")
+        back, why = winkeys.from_sheet("Alt+Super+Ω")
+        check(back == "" and "no key of this keyboard" in why, f"a key Windows cannot keep is refused, and why is said ({why})")
+        st = winkeys.set_keys("pomoSkip", ["Ctrl+Alt+Super+\\"])
+        by = {a["id"]: a["keys"] for a in st["actions"]}
+        check(by["pomoSkip"] == ["Ctrl+Alt+Super+\\"] and by["alongside"] == [] and "Page alongside" in st["note"],
+              f"Win+Ctrl+Alt+\\ is Win+Alt+\\ on a German keyboard, so it moves from the action that had it ({st['note']})")
+        winkeys.keys_file().unlink(missing_ok=True)
+
+        # The keys taken again when the layout makes them other keys.
+        class User32:
+            def __init__(self):
+                self.held = {}
+
+            def RegisterHotKey(self, _w, n, mods, vk):
+                self.held[n] = (mods & ~winkeys.NOREPEAT, vk)
+                return 1
+
+            def UnregisterHotKey(self, _w, n):
+                self.held.pop(n, None)
+                return 1
+
+        now[0] = US
+        keys = hotkeys.Keys(lambda action: None)
+        keys.user32 = User32()
+        told = []
+        keys.on_register = lambda: told.append(1)
+        keys.register()
+        check((ALT | WIN, 0xBB) in keys.user32.held.values() and not keys.problems, "the six are taken on a US layout")
+        check(not keys.follow_layout() and len(told) == 1, "…and not again while it stays")
+        now[0] = INTL
+        check(not keys.follow_layout() and len(told) == 1, "a layout that makes them the same keys changes nothing")
+        now[0] = DE
+        check(keys.follow_layout() and len(told) == 2 and (ALT | SHIFT | WIN, 0x30) in keys.user32.held.values()
+              and (ALT | WIN, 0xBB) not in keys.user32.held.values(),
+              "switched to German, they are taken again where = and \\ are typed there")
+        keys.release()
+        now[0] = US
+        check(not keys.follow_layout() and not keys.user32.held and len(told) == 2,
+              "while they are let go (the sheet listening), a new layout takes nothing back")
+    finally:
+        winkeys.vk_key_scan, winkeys.layout, hotkeys.layout, winkeys.free = saved
+        winkeys.keys_file().unlink(missing_ok=True)
 
 
 # ------------------------------------------------------------ hyprctl
