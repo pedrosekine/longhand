@@ -7424,6 +7424,7 @@ Item {
   property bool quiet: false        // the page is writing (binding, catching up): not the student
   property var declined: ({})       // raw lines whose date stays words (Backspace, Ctrl+D, Ctrl+Z)
   property var autoBound: null      // { id, raw, made }: the line the page just bound as it was left
+  property var unmade: []           // deadlines the page made for a line and took back (Ctrl+Z, the line gone)
   property int lastLine: -1
   property bool reconcilePending: false
   property var pendingAccept: null  // { hash, index }: an agent proposal accepted, its line to bind
@@ -7587,7 +7588,7 @@ Item {
     var i = svc.noteDate === rec.stem ? Bound.tabBound(editor.rows, rec) : -1
     var r = editor.rows[i]
     if (!r) {
-      if (made) dl.remove(id)
+      if (made) root.unmake(id)
       root.decline(rec.raw)
       return
     }
@@ -7600,6 +7601,21 @@ Item {
     root.autoBound = { id: id, raw: rec.raw, made: made }
     dl.set(id, ["--link", Bound.link(rec.stem, id)])
     root.used("bound")
+  }
+
+  // A deadline the page made for a line, taken back: removed from the
+  // store, and remembered, because a check already running can bring it
+  // back. It reads the open note from disk, where the line may still carry
+  // the tag until the undo's save lands, and the store after the removal:
+  // a tag with no deadline behind it is one made on another machine, and
+  // the check adopts it; the next check finds its line gone and cancels it
+  // (2026-11-25, the live page test on GitHub's Windows machine: "Ctrl+Z:
+  // the words are back and the deadline it made is gone", the deadline
+  // left cancelled). The page knows better: what it took back it removes
+  // again (checkDone).
+  function unmake(id) {
+    if (root.unmade.indexOf(id) < 0) root.unmade = root.unmade.concat([id]).slice(-20)
+    dl.remove(id)
   }
 
   // What changed among bound lines with the last edit. A line gone, back,
@@ -7616,7 +7632,7 @@ Item {
       // (The text, not editor.rows: they catch up after this signal.)
       if (ab && ab.id === e.gone[i] && editor.text.split("\n").indexOf(ab.raw) >= 0) {
         root.autoBound = null
-        if (ab.made) dl.remove(ab.id)
+        if (ab.made) root.unmake(ab.id)
         else dl.set(ab.id, ["--link", ""])
         root.decline(ab.raw)
         root.used("bound", "undone")
@@ -8087,6 +8103,15 @@ Item {
       root.origins = out.origins || ({})
       root.dueDates = out.dates || ({})
       root.sayChecked(out)
+      // A deadline the page took back, adopted again from a tag still on
+      // disk (unmake): removed again, before any other check can start —
+      // unless the note in the page holds its tag again, which is then
+      // the person's to keep.
+      var adopted = out.adopted || []
+      for (var a = 0; a < adopted.length; a++) {
+        var aid = adopted[a].id
+        if (root.unmade.indexOf(aid) >= 0 && root.bound[String(aid)] === undefined) dl.remove(aid)
+      }
     }
     // The store as the check left it, then the open note in line with it
     // (reconcile runs when the store's items arrive).
