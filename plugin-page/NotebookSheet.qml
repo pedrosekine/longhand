@@ -213,6 +213,7 @@ BorderSurface {
         spacing: page.sp(8)
 
         TextField {
+          FieldMenu { page: notebookSheet.page; field: parent }
           id: notebookField
           visible: page.notebookCorrecting
           width: parent.width

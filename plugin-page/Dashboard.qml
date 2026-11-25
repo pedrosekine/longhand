@@ -1271,10 +1271,13 @@ BorderSurface {
             MouseArea {
               anchors.fill: parent
               enabled: !dashRow.isHead
-              acceptedButtons: Qt.LeftButton
+              // The right button: the row's menu, what its keys do (Page.dashMenu).
+              acceptedButtons: Qt.LeftButton | Qt.RightButton
               hoverEnabled: true
               cursorShape: dashRow.acts ? Qt.PointingHandCursor : Qt.ArrowCursor
-              onClicked: {
+              onPressed: function (mouse) { if (mouse.button === Qt.RightButton) page.dashMenu(index, parent, mouse.x, mouse.y) }
+              onClicked: function (mouse) {
+                if (mouse.button !== Qt.LeftButton) return
                 dashKeys.forceActiveFocus()
                 page.taskFocus = index
                 // A raised row only comes under the keys: dismissing it is
@@ -1397,6 +1400,7 @@ BorderSurface {
         }
 
         TextField {
+          FieldMenu { page: dash.page; field: parent }
           id: dashWhenField
           width: Math.min(page.dashFieldKind === "rename" ? page.sp(460) : page.sp(220),
                           Math.max(page.sp(120), dashWhenRow.width - dashWhenLabel.implicitWidth - dashWhenRow.spacing

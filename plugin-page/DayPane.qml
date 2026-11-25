@@ -18,6 +18,7 @@ BorderSurface {
   required property Item page
   readonly property var sheet: page.sheetItem
   property alias dayFieldRef: dayField
+  property alias mentionListRef: dayMentionList
   // Where the pane stands (the live suite reads it): how far it is
   // scrolled, where today's rule is, the room under today, the header.
   function viewState() {
@@ -1071,6 +1072,8 @@ BorderSurface {
           hoverEnabled: true
           cursorShape: Qt.PointingHandCursor
           onClicked: page.stopAgent("day")
+          // What a click does, and its key (the second pass: it said nothing).
+          Tip { host: dayPane.page; shown: parent.containsMouse; act: "marginBack"; text: page.tip("Stop it: your words back in the box", "marginBack") }
         }
         text: (page.runnerPhase !== "" ? page.runnerPhase : "thinking") + (elapsed >= 2 ? " · " + elapsed + "s" : "")
         color: dayStopArea.containsMouse && page.handOn ? page.accent : page.faint
@@ -1131,6 +1134,7 @@ BorderSurface {
 
     // `@`: what to point at (MentionList.qml, the same in every box).
     MentionList {
+      id: dayMentionList
       page: dayPane.page
       width: dayBox.width
       shown: !!page.dayMention && !page.dayMention.margin

@@ -173,6 +173,7 @@ FocusScope {
 
     TextArea.flickable: TextArea {
       id: area
+      FieldMenu { page: box.page; field: area; pasteFn: box._paste }
       focus: true
       wrapMode: TextArea.Wrap
       textFormat: TextEdit.RichText

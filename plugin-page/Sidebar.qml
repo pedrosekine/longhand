@@ -32,6 +32,7 @@ BorderSurface {
   readonly property string todayKey: { svc.today; return Days.key(new Date()) }
   property alias sidebarKeysRef: sidebarKeys
   property alias projectFieldRef: projectField
+  property alias projectAskRef: projectAsk   // a press outside it closes it (Page.pressedAt)
   property alias filesFilterRef: filesPane.filterFieldRef
   property alias filesPaneRef: filesPane
 
@@ -755,11 +756,13 @@ BorderSurface {
         }
       }
       Column {
+        id: projectAsk
         visible: page.addingProject
         width: calendar.width
         spacing: page.sp(2)
         readonly property var made: Tags.fromField(projectField.text, page.projects)
         TextField {
+          FieldMenu { page: sidebar.page; field: parent }
           id: projectField
           width: parent.width
           placeholderText: "Master Thesis #thesis"

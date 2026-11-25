@@ -42,6 +42,7 @@ Item {
   // function (event) -> bool; true when the page consumed the key.
   property var keyFilter: null
   property var chatKey: null    // (event, hasOwnSelection) → taken: the chat's selection's keys
+  property var firstKey: null   // (event) → taken: before anything else (the page's open menu)
   // Drawn while the mouse is on a checkbox: the page's hint, naming the
   // key that does the same (an Item; the editor knows nothing of tooltips).
   property Component boxTip: null
@@ -49,6 +50,10 @@ Item {
   // page's hint, saying where it goes, given the link as `link`.
   property Component linkTip: null
   property var hoverLink: null    // { i, link } under the mouse
+  // A deadline's date pill under the mouse (its line), and its hint (an
+  // Item from the page, as boxTip): lit and named as the dashboard's are.
+  property int pillHover: -1
+  property Component pillTip: null
   // What shows of the note (the page's Flickable): a drag past its edge keeps selecting.
   property Item viewport: null
   // Drawn by the box on the cursor's line: the page's key for it while
@@ -1580,6 +1585,7 @@ Item {
   }
 
   function key(event, item) {
+    if (ed.firstKey && ed.firstKey(event)) { event.accepted = true; return }
     var f = item.field
     var i = item.index
     var fresh = ed.freshCue
@@ -2249,14 +2255,15 @@ Item {
           height: dueText.implicitHeight + Math.round(ed.textSize * 0.2)
           radius: ed.cornerRadius
           color: "transparent"
+          readonly property bool lit: ed.pillHover === row.index && row.deadline > 0 && ed.handOn
           border.width: row.deadline > 0 || row.pending || row.binding ? 1 : 0
-          border.color: row.pending || row.binding ? ed.accent : late ? ed.urgent : ed.faint
+          border.color: row.pending || row.binding || lit ? ed.accent : late ? ed.urgent : ed.faint
           Text {
             id: dueText
             anchors.centerIn: parent
             textFormat: Text.PlainText
             text: row.pending ? row.cueLabel : row.dueLabel
-            color: row.pending || row.binding ? ed.accent : due.late ? ed.urgent : ed.dim
+            color: row.pending || row.binding || due.lit ? ed.accent : due.late ? ed.urgent : ed.dim
             font.family: ed.fontFamily
             font.styleName: ed.fontStyle
             font.pixelSize: Math.round(ed.textSize * 0.78)
@@ -2272,6 +2279,7 @@ Item {
             cursorShape: Qt.PointingHandCursor
             onClicked: ed.datePillClicked(row.index)
           }
+          Loader { anchors.fill: parent; active: !!ed.pillTip && due.lit; sourceComponent: ed.pillTip }
         }
 
         // Under the words: search matches (faint, the current one
@@ -2477,6 +2485,7 @@ Item {
         ed.foldHot = hv.fold ? hv.i + (ed.isShown(hv.i) && ed.rowItem(hv.i).foldTop > 0 && mouse.y < ed.rowItem(hv.i).y + ed.rowItem(hv.i).foldTop ? "top" : "bottom") : ""
         var hl = !hv.box && !hv.fold ? ed.linkAtHit(hv) : null
         ed.linkHover = hv.pill || !!hl
+        ed.pillHover = hv.pill ? hv.i : -1
         if (!hl) ed.hoverLink = null
         else if (!ed.hoverLink || ed.hoverLink.i !== hv.i || ed.hoverLink.link.at !== hl.at) ed.hoverLink = { i: hv.i, link: hl }
         if (hv.box) ed.boxHover = hv.i
@@ -2484,28 +2493,35 @@ Item {
         return
       }
       if (pointer.downAt < 0) return
-      pointer.dragAt = Qt.point(mouse.x, mouse.y)
+      if (ed.viewport) pointer.viewAt = pointer.mapToItem(ed.viewport, mouse.x, mouse.y)
       pointer.dragTo(mouse.x, mouse.y)
     }
     // A drag held past the top or the bottom of what shows keeps the
     // selection growing that way, faster the further out (2026-11-25, the
-    // mouse pass: it grew only while the pointer moved).
-    property point dragAt: Qt.point(0, 0)
+    // mouse pass: it grew only while the pointer moved). Where the pointer
+    // is, in what shows (`viewAt`): it stays put while the lines scroll
+    // under it, so the selection runs on to the edge's line each tick. Kept
+    // in the lines' own coordinates, the scroll the cursor's line brought
+    // into view stopped it after one (the second pass, 2026-11-25).
+    property point viewAt: Qt.point(0, 0)
     readonly property real dragOut: {
       if (!pointer.pressed || pointer.downAt < 0 || !ed.viewport) return 0
-      var p = pointer.mapToItem(ed.viewport, pointer.dragAt.x, pointer.dragAt.y)
-      return p.y < 0 ? p.y : p.y > ed.viewport.height ? p.y - ed.viewport.height : 0
+      var y = pointer.viewAt.y
+      return y < 0 ? y : y > ed.viewport.height ? y - ed.viewport.height : 0
     }
     Timer {
       interval: 50
       repeat: true
       running: pointer.dragOut !== 0
       onTriggered: {
+        var v = ed.viewport
         var lines = 1 + Math.min(4, Math.floor(Math.abs(pointer.dragOut) / ed.textSize))
         var step = (pointer.dragOut < 0 ? -1 : 1) * lines * ed.textSize
-        var y = Math.max(0, Math.min(column.height - 1, pointer.dragAt.y + step))
-        pointer.dragAt = Qt.point(pointer.dragAt.x, y)
-        pointer.dragTo(pointer.dragAt.x, y)
+        var top = v.originY, bottom = Math.max(top, v.originY + v.contentHeight - v.height)
+        v.contentY = Math.max(top, Math.min(bottom, v.contentY + step))
+        // The line at the edge the pointer is past, as it now shows.
+        var at = v.mapToItem(pointer, pointer.viewAt.x, pointer.dragOut < 0 ? 1 : v.height - 1)
+        pointer.dragTo(at.x, Math.max(0, Math.min(column.height - 1, at.y)))
       }
     }
     function dragTo(x, y) {
@@ -2529,7 +2545,7 @@ Item {
       pointer.downAt = -1
       if (pointer.linkDown) { var d = pointer.linkDown; pointer.linkDown = null; ed.linkActivated(d.i, d.link) }
     }
-    onExited: { ed.linkHover = false; ed.hoverLink = null; ed.boxHover = -1; ed.foldHot = "" }
+    onExited: { ed.linkHover = false; ed.hoverLink = null; ed.pillHover = -1; ed.boxHover = -1; ed.foldHot = "" }
   }
 
   // Where the link under the mouse is, for its hint to sit on.

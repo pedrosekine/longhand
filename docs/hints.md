@@ -169,6 +169,10 @@ the chat box's fill, the helpful row, the acronym's underline and the
 PDF's tip (which now waits as every hint does, 500 ms cold, at once warm).
 In the timer's and deadlines' popups, hover moved the keys' place; it
 marks only what is under it now, and the keys' place has its own ring.
+They have a `handOn` of their own since the second pass (2026-11-25): a key
+puts their hover marks and button hints away until the pointer moves. A
+deadline with no line to open shows no hover fill (its ○ still does), and
+"waiting for a grade" lights as the rows do.
 
 A hint names its key the page's way, keycaps and all (`page.tip`), in the
 cards' and the PDF's last few that wrote it as words. A link in the note

@@ -38,6 +38,7 @@ Rectangle {
     spacing: page.sp(6)
 
     TextField {
+      FieldMenu { page: sw.page; field: parent }
       id: field
       width: parent.width
       placeholderText: "project, note, paper, view… or ? words to search all notes"

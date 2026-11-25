@@ -69,6 +69,7 @@ BorderSurface {
       }
 
       TextField {
+        FieldMenu { page: keysSheet.page; field: parent }
         id: keysField
         anchors.top: keysTitle.bottom
         anchors.topMargin: page.sp(10)
