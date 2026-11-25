@@ -142,8 +142,9 @@ either at once.
 Beside the seal stand the bar's other two widgets, an icon each, as they
 stand beside the page's glyph on Omarchy: the timer, saying the minutes
 left (in the accent while a focus runs, faint paused or not started; a
-click is its popup, the middle button starts or pauses it, its menu
-skips and resets), and the deadlines, saying how far off the next one is
+click is its popup, the middle button skips to the next phase as on the
+bar, its menu starts or pauses, skips and resets; a double click is a
+click, since Windows sends one before it), and the deadlines, saying how far off the next one is
 as the bar does (`4d`, `9h`, `!` once late, a tick when all are handed
 in; a click is their popup). Their pictures are drawn as they change
 (`host_api.tray_glyph`: an SVG, sharp at whatever size Windows asks).
@@ -159,6 +160,9 @@ hidden, cancelled or opened on its line in the note (`deadlines-popup.png`).
 Each opens as a small window in the corner by the clock, from the tray's
 menu (Timer…, and the line of the next deadline), the tray's middle button
 (the timer's), a global key, or `longhand timer` / `longhand deadlines`.
+In them, the mouse's hover marks what is under it and never moves the
+keys' place; a click on a deadline's ○ ticks it, one on its line opens
+that line, as on the dashboard (2026-11-25).
 The keys in them are the bar's: arrows or `h j k l`, Enter, Tab from one to
 the other, Esc to put it away; clicking another window puts it away too.
 What the shell gives a widget for its popup — `Panel`, `KeyboardPanel`,
