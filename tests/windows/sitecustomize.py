@@ -35,6 +35,8 @@ if os.name == "nt":
     import longhand_lf  # noqa: F401
     import longhand_replace
     longhand_replace.install()  # os.replace tries again while a reader holds the file
+    import longhand_append
+    longhand_append.install()   # a line appended whole while another process appends
     sys.path.pop(0)
     TWINS = {str(ROOT / "cli" / "pomo").lower(): ROOT / "cli" / "pomo.py"}
     _which = shutil.which

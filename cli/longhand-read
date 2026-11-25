@@ -88,6 +88,25 @@ def fail(msg: str) -> None:
     sys.exit(1)
 
 
+def own_tmp(path: Path) -> Path:
+    """The copy `path` is written to before it is renamed over it, this
+    process's own: the page reads side by side (two PDFs' acronyms, the
+    places of two moves), and with one shared `.tmp` the second rename
+    found it gone, or on Windows still held (2026-11-25, as the clocks'
+    in agent/lifespan.py)."""
+    return path.with_name(f"{path.name}.{os.getpid()}.tmp")
+
+
+def replace_with(path: Path, text: str) -> None:
+    """`path` holds `text`, written whole beside it and renamed over it."""
+    tmp = own_tmp(path)
+    try:
+        tmp.write_text(text)
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
 def load_config() -> dict:
     try:
         cfg = json.loads(CONFIG_PATH.read_text())
@@ -208,13 +227,14 @@ def cmd_ocr(cfg: dict, path: Path) -> None:
         text = work / "text.pdf"
         subprocess.run(["qpdf", "--empty", "--pages", *layers, "--", str(text)], capture_output=True, timeout=300, check=True)
         out.parent.mkdir(parents=True, exist_ok=True)
-        tmp = out.with_suffix(".tmp")
+        tmp = own_tmp(out)
         subprocess.run(["qpdf", str(path), "--overlay", str(text), "--", str(tmp)], capture_output=True, timeout=300, check=True)
         os.replace(tmp, out)
     except subprocess.CalledProcessError as e:
         fail(f"{e.cmd[0]} failed: {(e.stderr or b'').decode(errors='replace').strip()[:200]}")
     finally:
         shutil.rmtree(work, ignore_errors=True)
+        own_tmp(out).unlink(missing_ok=True)
 
 
 def own_words(pdf: Path) -> list[list[dict]]:
@@ -723,9 +743,7 @@ def cmd_acronyms(cfg: dict, rel: str, path: Path) -> dict:
     found = acronyms(words_of(path))
     try:
         cached.parent.mkdir(parents=True, exist_ok=True)
-        tmp = cached.with_suffix(".tmp")
-        tmp.write_text(json.dumps({"sig": sig, "found": found}, ensure_ascii=False))
-        os.replace(tmp, cached)
+        replace_with(cached, json.dumps({"sig": sig, "found": found}, ensure_ascii=False))
     except OSError:
         pass
     return {"pdf": rel, **found}
@@ -923,9 +941,7 @@ def move_talk(cfg: dict, old: str, new: str) -> bool:
     try:
         d = json.loads(src.read_text())
         d["path"] = new
-        tmp = dst.with_name(dst.name + ".tmp")
-        tmp.write_text(json.dumps(d, ensure_ascii=False, indent=1) + "\n")
-        os.replace(tmp, dst)
+        replace_with(dst, json.dumps(d, ensure_ascii=False, indent=1) + "\n")
         src.unlink()
         return True
     except (OSError, ValueError):
@@ -942,9 +958,7 @@ def carry(cfg: dict, old: str, new: str, path: Path) -> list[str]:
         p = json.loads(places.read_text())
         if old in p and new not in p:
             p[new] = p.pop(old)
-            tmp = places.with_name(places.name + ".tmp")
-            tmp.write_text(json.dumps(p) + "\n")
-            os.replace(tmp, places)
+            replace_with(places, json.dumps(p) + "\n")
             said.append("place")
     except (OSError, ValueError):
         pass
