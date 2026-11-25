@@ -2551,7 +2551,7 @@ Item {
     editMenu.openAt(editor, x, y, [
       { text: "Cut", key: "Ctrl+X", enabled: sel && !ro, run: function () { editor.editAct(Qt.Key_X) } },
       { text: "Copy", key: "Ctrl+C", enabled: sel, run: function () { editor.editAct(Qt.Key_C) } },
-      { text: "Paste", key: "Ctrl+V", enabled: !ro, run: function () { editor.editAct(Qt.Key_V) } },
+      { text: "Paste", key: "Ctrl+V", enabled: !ro && editor.pasteText() !== "", run: function () { editor.editAct(Qt.Key_V) } },
       { text: "Select more", key: "Ctrl+A", run: function () { editor.editAct(Qt.Key_A) } }
     ])
   }
@@ -3156,9 +3156,11 @@ Item {
   // too. Every key the page answers to is named in Shortcuts.js, where the
   // student can move it (the keys sheet, below); the ones read here are
   // its "any" place.
+  // The mouse's menu open: its keys first (EditMenu.key), for whatever runs
+  // its own keys before the page's.
+  function editMenuKey(event) { return editMenu.opened && editMenu.key(event) }
   function anywhereKey(event) {
-    // The mouse's menu open: its keys first (EditMenu.key).
-    if (editMenu.opened && editMenu.key(event)) return true
+    if (root.editMenuKey(event)) return true
     root.keysTook(event)   // every pane's keys come through here first
     if (Sc.hit(event, "zoomIn")) { root.zoomBy(1); return true }
     if (Sc.hit(event, "zoomOut")) { root.zoomBy(-1); return true }
@@ -11116,9 +11118,16 @@ Item {
         acceptedModifiers: Qt.ControlModifier
         property real travel: 0
         onWheel: function (ev) {
+          // Over a PDF's pages, the PDF's size; over a box above them (the
+          // switcher, the PDF's own find or note), the page's, as everywhere
+          // off the pages (the third pass: it sized the PDF under the box).
           if (root.pdfShown && pdfPane.visible) {
             var q = pdfPane.mapFromItem(parent, ev.x, ev.y)
-            if (q.x >= 0 && q.y >= 0 && q.x < pdfPane.width && q.y < pdfPane.height) { pdfPane.wheel(ev); return }
+            var sw = switcherBox.mapFromItem(parent, ev.x, ev.y)
+            var overSwitcher = switcherBox.visible && sw.x >= 0 && sw.y >= 0 && sw.x < switcherBox.width && sw.y < switcherBox.height
+            if (!overSwitcher && q.x >= 0 && q.y >= 0 && q.x < pdfPane.width && q.y < pdfPane.height && !pdfPane.overBox(q.x, q.y)) {
+              pdfPane.wheel(ev); return
+            }
           }
           var d = ev.angleDelta.y !== 0 ? ev.angleDelta.y : ev.pixelDelta.y * 4
           if ((d > 0) !== (zoomWheel.travel > 0)) zoomWheel.travel = 0
