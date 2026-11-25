@@ -119,7 +119,20 @@ jobs:
       # The page as it runs on Omarchy, every check of it, over the host
       # that stands in for Quickshell. A tree from before --host qt has
       # nothing to run here.
+      # What the page said and every process it started (PAGE_LOG,
+      # LONGHAND_HOST_TRACE) are kept, and handed back when it fails: a
+      # check that fails only here can then be read, not guessed at.
       - name: The page, live, over the Windows host
         if: steps.host.outputs.here == 'true' && matrix.part == 'page' && hashFiles('tests/page/qt_host.py') != ''
         shell: pwsh
+        env:
+          PAGE_LOG: ${{ runner.temp }}\page.log
+          LONGHAND_HOST_TRACE: "1"
         run: .venv\Scripts\python -X utf8 -u tests\page\run.py --host qt
+      - name: What the page said, when it failed
+        if: failure() && matrix.part == 'page'
+        uses: actions/upload-artifact@v4
+        with:
+          name: page-log
+          path: ${{ runner.temp }}/page.log
+          if-no-files-found: ignore
