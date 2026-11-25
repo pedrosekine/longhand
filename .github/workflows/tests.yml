@@ -88,8 +88,9 @@ jobs:
       # pwsh goes on past a native command that fails, so each one is checked.
       # Chocolatey's feed answers 504 now and then, and choco then passes over
       # the package it could not find and still exits 0, leaving the suite to
-      # fail later on papers with no text. So it is tried again, and the step
-      # fails here, by name, if gitleaks or pdftotext is still missing.
+      # fail later on papers with no text. So it is tried again, then taken
+      # from the tools' own releases, and the step fails here, by name, if
+      # gitleaks or poppler's pdftotext is still missing.
       - name: Longhand's Python and the tools the suite calls
         if: steps.host.outputs.here == 'true'
         shell: pwsh
@@ -98,32 +99,50 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           .venv\Scripts\python -m pip install --quiet -e windows
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          $tools = 'gitleaks', 'pdftotext'
+          # What the suite needs: gitleaks, and poppler's own pdftotext (a
+          # pdftotext of another make reads papers otherwise, and the paper
+          # tests fail on its text).
+          function Missing {
+            $m = @()
+            if (-not (Get-Command gitleaks -ErrorAction SilentlyContinue)) { $m += 'gitleaks' }
+            $pt = if (Get-Command pdftotext -ErrorAction SilentlyContinue) { (& pdftotext -v 2>&1 | Out-String) } else { '' }
+            if ($pt -notmatch '(?i)poppler') { $m += 'poppler' }
+            return $m
+          }
           foreach ($try in 1..3) {
             choco install gitleaks poppler --no-progress -y
-            $missing = $tools | Where-Object { -not (Get-Command $_ -ErrorAction SilentlyContinue) }
+            $missing = Missing
             if (-not $missing) { break }
-            if ($try -eq 3) {
-              # gitleaks has a release of its own on GitHub, the same pinned
-              # version: taken from there when Chocolatey's feed is down
-              # (2026-11-25: 503 and 504 on every try, three runs running).
-              if ($missing -contains 'gitleaks') {
-                $v = '8.30.1'
-                $dir = Join-Path $env:RUNNER_TEMP 'gitleaks'
-                New-Item -ItemType Directory -Force -Path $dir | Out-Null
-                $zip = Join-Path $dir 'gitleaks.zip'
-                Invoke-WebRequest -Uri "https://github.com/gitleaks/gitleaks/releases/download/v$v/gitleaks_${v}_windows_x64.zip" -OutFile $zip
-                Expand-Archive -Path $zip -DestinationPath $dir -Force
-                $env:Path = "$dir;$env:Path"
-                Add-Content -Path $env:GITHUB_PATH -Value $dir
-                $missing = $tools | Where-Object { -not (Get-Command $_ -ErrorAction SilentlyContinue) }
-                if (-not $missing) { Write-Output "::warning::gitleaks $v taken from its GitHub release (Chocolatey's feed did not answer)"; break }
-              }
-              Write-Output "::error::Chocolatey left these out after 3 tries: $($missing -join ', ')"
-              exit 1
+            if ($try -lt 3) {
+              Write-Output "::warning::Not there after try $try ($($missing -join ', ')): trying again"
+              Start-Sleep -Seconds (30 * $try)
             }
-            Write-Output "::warning::Not there after try $try ($($missing -join ', ')): trying again"
-            Start-Sleep -Seconds (30 * $try)
+          }
+          # Each has a release of its own on GitHub, at the version Chocolatey
+          # pins: taken from there when its feed is down (2026-11-25: 503 and
+          # 504 on every try, three runs running).
+          function FromRelease($name, $url) {
+            $dir = Join-Path $env:RUNNER_TEMP $name
+            New-Item -ItemType Directory -Force -Path $dir | Out-Null
+            $zip = Join-Path $dir "$name.zip"
+            Invoke-WebRequest -Uri $url -OutFile $zip
+            Expand-Archive -Path $zip -DestinationPath $dir -Force
+            $exe = Get-ChildItem -Path $dir -Recurse -Filter "$(if ($name -eq 'poppler') { 'pdftotext' } else { $name }).exe" | Select-Object -First 1
+            $bin = $exe.DirectoryName
+            $env:Path = "$bin;$env:Path"
+            Add-Content -Path $env:GITHUB_PATH -Value $bin
+            Write-Output "::warning::$name taken from its GitHub release (Chocolatey's feed did not answer)"
+          }
+          if ($missing -contains 'gitleaks') {
+            FromRelease 'gitleaks' 'https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_windows_x64.zip'
+          }
+          if ($missing -contains 'poppler') {
+            FromRelease 'poppler' 'https://github.com/oschwartz10612/poppler-windows/releases/download/v26.09.0-0/Release-26.09.0-0.zip'
+          }
+          $missing = Missing
+          if ($missing) {
+            Write-Output "::error::Still missing after Chocolatey and the releases: $($missing -join ', ')"
+            exit 1
           }
           # Both are there: choco's own code (3010 asks for a reboot) is not the step's.
           $global:LASTEXITCODE = 0
