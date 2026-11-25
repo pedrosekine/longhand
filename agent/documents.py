@@ -544,9 +544,21 @@ def load_cache(path: Path) -> dict:
 
 def save_cache(path: Path, data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False))
-    os.replace(tmp, path)
+    _replace_with(path, json.dumps(data, ensure_ascii=False))
+
+
+def _replace_with(path: Path, text: str) -> None:
+    """`path` holds `text`, written whole beside it and renamed over it.
+    The copy is this process's own: `projects` and `proposals` (and the
+    page's other listings) run side by side and each saves the caches; with
+    one shared `.tmp` the second rename found it gone and that listing
+    failed (2026-11-25, lifespan.py's clock the same)."""
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    try:
+        tmp.write_text(text)
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 # ------------------------------------------------------------------ reading
@@ -581,9 +593,7 @@ def pages(pdf: Path, cache_dir: Path) -> list[str]:
     while out and not out[-1]:
         out.pop()
     cache_dir.mkdir(parents=True, exist_ok=True)
-    tmp = cached.with_name(cached.name + ".tmp")
-    tmp.write_text(json.dumps({"name": pdf.name, "pages": out}, ensure_ascii=False))
-    os.replace(tmp, cached)
+    _replace_with(cached, json.dumps({"name": pdf.name, "pages": out}, ensure_ascii=False))
     return out
 
 
