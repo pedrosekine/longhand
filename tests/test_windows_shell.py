@@ -9,6 +9,9 @@
   notification through the running Longhand (play_sound.py, notify.py);
 - a window's place kept across restarts, the tray's seal in the theme's
   colours (host_api.py);
+- the page's title bar in the page's paper, a popup's Windows 11 corners
+  (windows/dwm.py), and a key Windows would not give Longhand said in the
+  keys sheet and the tray;
 - the tray saying what the bar's page glyph says: replies waiting, and what
   the agent proposes (windows/Main.qml).
 
@@ -53,6 +56,7 @@ def main() -> int:
     keys(tmp)
     sounds(tmp)
     session_end_heard(tmp)
+    frames_taken(tmp)
 
     from PySide6.QtGui import QGuiApplication
     app = QGuiApplication(sys.argv[:1])
@@ -60,6 +64,7 @@ def main() -> int:
     palette_file(tmp)
     places_and_icon(tmp)
     placed_again(app)
+    frames(app)
     quiet_text(app)
     notify_through_longhand(app)
     tray(app, tmp)
@@ -124,11 +129,44 @@ def keys(tmp):
         check(pathlib.Path(args[0]).name == "winkeys.py" and args[1:] == ["set", "page", "Alt+Super+F9"],
               f"the sheet's hyprkeys.py ({path[:4]}…) is answered by winkeys.py")
 
+    refused(winkeys)
+
     import manual
     k = manual.keys(tmp / "config")
     check(k.get("sys:page") == ["Win+Alt+="] and k.get("sys:pomoToggle") == ["Win+Alt+P"],
           f"the agent's manual says Windows' keys, Win first ({k.get('sys:page')})")
     layouts()
+
+
+def refused(winkeys):
+    """A key Windows would not give the running Longhand (another program
+    holds it) is said where a person sees it: the host writes it down each
+    time it takes the keys, and the keys sheet, opened, says it. Before,
+    it went to stderr, which a Longhand started from the Start menu prints
+    to nowhere: the key simply did nothing."""
+    import contextlib
+    import io
+
+    def opened():
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = winkeys.main(["state"])
+        return code, json.loads(out.getvalue())
+
+    code, st = opened()
+    check(code == 0 and "error" not in st, f"with every key had, opening the sheet says nothing of it ({st.get('error')})")
+    winkeys.keep_problems({"page": "Win+Alt+= is taken by Windows or another program"})
+    code, st = opened()
+    check(code == 0 and st.get("error", "").startswith("Win+Alt+= is taken by Windows or another program, so “Page (today's note)” has no key"),
+          f"one key refused: the sheet says which, and what is left without it ({st.get('error')!r})")
+    check([a["keys"] for a in st["actions"]][0] == ["Alt+Super+="], "…and still lists the key the person chose")
+    winkeys.keep_problems({"pomoSkip": "Win+Alt+N is taken by Windows or another program",
+                           "alongside": "Win+Alt+\\ is taken by Windows or another program"})
+    code, st = opened()
+    check(st.get("error", "").startswith("2 of these keys do nothing") and st["error"].index("Page alongside") < st["error"].index("Pomo skip"),
+          f"several: counted and named, in the sheet's order ({st.get('error')!r})")
+    winkeys.keep_problems({})
+    check(not winkeys.problems_file().exists() and "error" not in opened()[1], "none refused: the file goes, and the sheet says nothing")
 
 
 # What VkKeyScanExW answers on each layout (the shift state in the high
@@ -640,6 +678,99 @@ Item {
     engine.deleteLater()
 
 
+# ------------------------------------------------------------ frames
+
+def frames(app):
+    """The page's window keeps Windows' title bar, painted the page's paper
+    and words as the paper changes (the private paper sinks it too), and a
+    popup by the clock asks for Windows 11's corners as it opens
+    (windows/dwm.py). Offscreen there is no frame to paint: what was asked
+    is what is checked here; frames_taken has Windows take it."""
+    import dwm
+    import host_api
+    from PySide6.QtCore import QUrl
+    from PySide6.QtQml import QQmlComponent, QQmlEngine
+
+    check(dwm.colorref("#f38064") == 0x6480F3 and dwm.colorref("#ff202020") == 0x202020,
+          "a colour is Windows' COLORREF, blue first, QML's alpha dropped")
+    check(dwm.is_dark("#202020") and not dwm.is_dark("#f9f9f9") and not dwm.is_dark("#e6e0d0") and dwm.is_dark("#1a1b26"),
+          "dark and light paper are told apart, for the caption buttons")
+    check(dwm.native(None) == 0 and not dwm.paint_title_bar(0, "#202020", "#f3f3f3") and not dwm.round_corners(0),
+          "with no window Windows knows, nothing is asked of it")
+
+    host_api.FRAMES.clear()
+    engine = QQmlEngine()
+    engine.addImportPath(str(ROOT / "windows" / "shim"))
+    component = QQmlComponent(engine)
+    component.setData(b"""
+import QtQuick
+import Quickshell
+import qs.Ui
+Item {
+  property var page: FloatingWindow { title: "framed"; color: "#202020"; implicitWidth: 400; implicitHeight: 300 }
+  property var popup: KeyboardPanel { contentWidth: 220; contentHeight: 160 }
+}
+""", QUrl.fromLocalFile(str(ROOT / "tests" / "frames.qml")))
+    holder = component.create()
+    check(holder is not None, f"the page's window and a popup load ({[e.toString() for e in component.errors()][:2]})")
+    if holder is None:
+        return
+    win, popup = holder.property("page"), holder.property("popup")
+    check("framed" not in host_api.FRAMES, "a window not shown asks nothing of its frame (asking would make it)")
+    win.setVisible(True)
+    app.processEvents()
+    got = host_api.FRAMES.get("framed", {})
+    check(got.get("ground") == "#202020" and got.get("text") in ("#f3f3f3", "#1b1b1b") and got.get("took") is False,
+          f"shown, the title bar is asked for in the page's paper and words (offscreen, not taken: {got})")
+    win.setProperty("color", "#191919")
+    app.processEvents()
+    check(host_api.FRAMES["framed"]["ground"] == "#191919", f"…and again as the paper sinks ({host_api.FRAMES['framed']})")
+    popup.setProperty("open", True)
+    app.processEvents()
+    check(host_api.FRAMES.get("longhand.popup", {}).get("rounded") is True, f"a popup opened asks for Windows' corners ({host_api.FRAMES})")
+    popup.setProperty("open", False)
+    win.setVisible(False)
+    del holder, win, popup
+    engine.deleteLater()
+
+
+FRAMES_TAKEN = '''
+import json, sys
+sys.path.insert(0, sys.argv[1])
+import dwm
+from PySide6.QtGui import QGuiApplication, QWindow
+app = QGuiApplication(sys.argv[:1])
+w = QWindow()
+w.create()                                   # a window Windows knows, never shown
+hwnd = int(w.winId())
+print(json.dumps({"native": dwm.native(w), "painted": dwm.paint_title_bar(hwnd, "#202020", "#f3f3f3"),
+                  "light": dwm.paint_title_bar(hwnd, "#f9f9f9", "#1b1b1b"), "rounded": dwm.round_corners(hwnd)}))
+'''
+
+
+def frames_taken(tmp):
+    """The same asked of Windows itself, on its own platform, in a process
+    of its own (the offscreen platform has no native windows); nothing is
+    shown. Title-bar colours and corners are Windows 11's (build 22000):
+    older Windows refuses them and the window keeps its look."""
+    import subprocess
+    script = tmp / "frames_taken.py"
+    script.write_text(FRAMES_TAKEN, encoding="utf-8")
+    r = subprocess.run([sys.executable, str(script), str(ROOT / "windows")], capture_output=True, text=True,
+                       env=dict(os.environ, QT_QPA_PLATFORM="windows"), timeout=60)
+    try:
+        said = json.loads(r.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        said = {}
+    check(said.get("native") == 0, f"a window not shown gives no handle to paint ({said}{r.stderr.strip()[-300:]})")
+    if sys.getwindowsversion().build < 22000:
+        print(f"skip: Windows build {sys.getwindowsversion().build} has no title-bar colours or corners")
+        return
+    check(said.get("painted") is True and said.get("light") is True,
+          f"Windows takes the title bar's paper, words and buttons, dark and light ({said})")
+    check(said.get("rounded") is True, f"…and a popup's corners ({said})")
+
+
 # ------------------------------------------------------------ quiet text
 
 def quiet_text(app):
@@ -743,6 +874,15 @@ def tray(app, tmp):
     (state / "proposals.json").write_text(json.dumps({"items": []}), encoding="utf-8")
     loop_until(app, lambda: host.property("agentLine") == "1 reply waiting", 5.0)
     check(host.property("agentLine") == "1 reply waiting", "…and follows the file as it changes")
+    host_api.BRIDGE.problems = {"page": "Win+Alt+= is taken by Windows or another program"}
+    host_api.BRIDGE.keysChanged.emit()
+    app.processEvents()
+    check(host.property("keyTrouble") == "Win+Alt+= is taken by Windows or another program — Ctrl+/ in the page moves it",
+          f"the tray's menu says a key Windows would not give Longhand ({host.property('keyTrouble')!r})")
+    host_api.BRIDGE.problems = {}
+    host_api.BRIDGE.keysChanged.emit()
+    app.processEvents()
+    check(host.property("keyTrouble") == "", "…and nothing once every key is had")
     session_end(app, host)
     check(not [w for w in warnings if "Main.qml" in w], f"no warning from Main.qml ({[w for w in warnings if 'Main.qml' in w][:2]})")
     del roots

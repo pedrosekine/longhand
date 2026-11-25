@@ -87,6 +87,49 @@ def keys_file() -> Path:
     return Path(base) / "longhand" / "windows-keys.json"
 
 
+def problems_file() -> Path:
+    """Which keys the running Longhand could not take, and why: written by
+    the host each time it takes the keys (longhand_host.py), read here for
+    the sheet. State, not config: it says what this machine's Windows did."""
+    base = os.environ.get("XDG_STATE_HOME") or str(Path.home() / ".local" / "state")
+    return Path(base) / "longhand" / "windows-keys-problems.json"
+
+
+def keep_problems(why: dict[str, str]) -> None:
+    """The host's word on the keys it was refused ({action: why}); none,
+    and the file goes."""
+    path = problems_file()
+    try:
+        if not why:
+            path.unlink(missing_ok=True)
+            return
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+        tmp.write_text(json.dumps(why, indent=2) + "\n", encoding="utf-8")
+        os.replace(tmp, path)
+    except OSError:
+        pass                        # said again the next time the keys are taken
+
+
+def problems() -> dict[str, str]:
+    try:
+        d = json.loads(problems_file().read_text(encoding="utf-8"))
+        return {a: str(w) for a, w in d.items() if a in DEFAULTS} if isinstance(d, dict) else {}
+    except (OSError, ValueError, AttributeError):
+        return {}
+
+
+def refused(why: dict[str, str]) -> str:
+    """The sheet's line for keys Windows would not give Longhand: on Windows
+    a key another program holds is simply not had, and the person would
+    otherwise learn it only by pressing it and seeing nothing happen."""
+    acts = sorted(why, key=ORDER.index)
+    if len(acts) == 1:
+        return f"{why[acts[0]]}, so “{DOES[acts[0]]}” has no key — Enter on its row picks another"
+    return (f"{len(acts)} of these keys do nothing, Windows would not give them to Longhand "
+            f"(“{'”, “'.join(DOES[a] for a in acts)}”) — Enter on a row picks another")
+
+
 def listed(v) -> list[str]:
     """A value of windows-keys.json as a list of keys: "" is none."""
     if isinstance(v, list):
@@ -363,6 +406,13 @@ def set_keys(aid: str, new: list[str], add: bool = False) -> dict:
 def main(argv: list[str]) -> int:
     if not argv or argv[0] in ("state", "migrate"):
         out = state()
+        # Opening the sheet asks this: what the running Longhand was refused
+        # is said there (as an error, the one word the sheet shows for a
+        # state), and is no failure of this command.
+        why = problems()
+        if why:
+            print(json.dumps(dict(out, error=refused(why))))
+            return 0
     elif argv[0] == "adopt":
         out = state("Longhand keeps these keys already")
     elif argv[0] == "set" and len(argv) >= 2:

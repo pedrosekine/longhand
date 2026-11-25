@@ -145,7 +145,17 @@ Item {
     return k === "" ? "" : "\t" + k
   }
 
-  readonly property string timerLine: pomo.phase === "idle" ? ""
+  // A key Windows would not give Longhand (another program holds it): said
+  // in the menu and in the keys sheet (winkeys.py), since what the host
+  // prints reaches no one when Longhand was started from the Start menu.
+  readonly property string keyTrouble: {
+    host.keysRead
+    var why = hostBridge.keyProblems().split("\n").filter(function (s) { return s !== "" })
+    return why.length === 0 ? ""
+      : why[0] + (why.length > 1 ? " (and " + (why.length - 1) + " more)" : "") + " — Ctrl+/ in the page moves it"
+  }
+
+  readonly property string timerLine:pomo.phase === "idle" ? ""
     : pomo.expired ? pomo.phaseTitle
     : (pomo.phaseTitle + " " + pomo.fmt(pomo.remaining) + (pomo.live ? "" : pomo.ready ? " ready" : " paused"))
   readonly property string timerAction: pomo.phase === "idle" ? "Start focus"
@@ -210,6 +220,7 @@ Item {
       Platform.MenuItem { text: "Today's note" + host.key("alongside"); onTriggered: host.pinned() }
       Platform.MenuItem { text: host.agentLine; visible: host.agentLine !== ""; onTriggered: host.pinned() }
       Platform.MenuItem { text: "Over everything" + host.key("page"); onTriggered: host.toggle("{}") }
+      Platform.MenuItem { text: host.keyTrouble; visible: host.keyTrouble !== ""; onTriggered: host.pinned() }
       Platform.MenuSeparator {}
       Platform.MenuItem { text: host.timerAction + host.key("pomoToggle"); onTriggered: pomo.toggle() }
       Platform.MenuItem { text: "Skip to the next" + host.key("pomoSkip"); visible: pomo.phase !== "idle"; onTriggered: pomo.skip() }
