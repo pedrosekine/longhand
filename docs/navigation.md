@@ -291,7 +291,8 @@ it, besides the clicks above and the hover marks in [hints.md](hints.md):
 - **A right click on words** (`EditMenu.qml`): in the note, cut, copy,
   paste and "select more" (Ctrl+A's ladder); on a chat's words, copy,
   reply and select all. Each with its key beside it, so it teaches the keys
-  as the hints do; it never takes the keys, so the selection stays.
+  as the hints do; it never takes the keys, so the selection stays, and a
+  key puts it away.
 - **Words selected in a chat** copy with `Ctrl+C` (and reply with
   `Ctrl+R`) wherever the keys are: the note, the dashboard (where `Ctrl+R`
   stays its plan) and the sidebar too, as from a PDF since 2026-11-19.
@@ -315,14 +316,19 @@ it, besides the clicks above and the hover marks in [hints.md](hints.md):
 - **In a PDF**: Shift and the wheel move a page sized past the fit
   sideways; a click on a page brings the keys to it; find, go to page, the
   project question and the acronyms close on a click outside them (a
-  reading note with words in it waits for Enter or Esc). On Windows a
-  touchpad scrolls it at the note's speed (it went twice as fast).
+  reading note with words in it waits for Enter or Esc). A plain wheel
+  and the touchpad scroll its pages as Qt scrolls the note (its own fixed
+  steps went about 2.7 times as far on Windows, which sends a touchpad as
+  wheel steps; measured on the ThinkPad).
 - **A paper's marks** in the agent's pane: a click goes to the mark, as
   before; "chat" on the row (on the one selected and the one under the
   hand) asks about it, where a double click did after the click had
   already jumped.
 - **The tray on Windows**: a double click on the timer's or the deadlines'
-  icon opened the popup and closed it at once; a click alone counts now.
+  icon opened the popup and closed it at once; a click alone counts now,
+  and the popup takes the keys back when the double click's second click
+  hands them to the taskbar (it put itself away as if another window had
+  been clicked).
   The timer's middle button skips, as on Omarchy's bar.
 
 ## Not yet

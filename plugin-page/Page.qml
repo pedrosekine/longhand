@@ -3391,6 +3391,9 @@ Item {
         || k === Qt.Key_AltGr || k === Qt.Key_Super_L || k === Qt.Key_Super_R) return
     root.handOn = false
     root.tipWarm = false
+    // A key puts the mouse's menu away, as it does the hints: the keys
+    // went on typing while it stayed open (2026-11-25, on the ThinkPad).
+    if (editMenu.opened) editMenu.close()
   }
 
   // Hold Ctrl (2026-10-30, docs/hints.md F; the canvas's direction 5): Ctrl

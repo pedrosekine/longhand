@@ -55,6 +55,21 @@ Item {
       if (panel.children[i].labelText !== undefined && panel.children[i].text === undefined) return panel.children[i]
     return null
   }
+  // The popup's own window inside a widget (the shim's KeyboardPanel).
+  function popupWindow(panel) {
+    var d = panel.data
+    for (var i = 0; i < d.length; i++) if (d[i] && typeof d[i].keepThroughLoss === "function") return d[i]
+    return null
+  }
+  // A double click on a tray icon: its click opened the popup, and the
+  // second click hands the keys to the taskbar, which would put it away
+  // (KeyboardPanel's `leaving`). The popup keeps them; opened it stays.
+  function keepOpen(which) {
+    var panel = which === "timer" ? pomoPanel : deadlinePanel
+    if (!panel.opened) { host.popup(which); return }
+    var w = host.popupWindow(panel)
+    if (w) w.keepThroughLoss()
+  }
   readonly property var pomo: host.serviceOf(pomoPanel)
   readonly property var deadlines: host.serviceOf(deadlinePanel)
 
@@ -257,13 +272,14 @@ Item {
     visible: hostResident
     icon.source: host.glyph("timer", host.timerGlyph, host.timerRole) || Qt.resolvedUrl("../launcher/longhand.svg")
     tooltip: ("Longhand timer · " + (host.timerLine || "not started")).slice(0, 127)
-    // A click opens or closes its popup. Not on a double click too: Windows
-    // sends a click before it, so the popup opened and closed at once
-    // (2026-11-25, the mouse pass). The middle button skips to the next
+    // A click opens or closes its popup. A double click is that click and
+    // then a keep-open: Windows sends the click before it, and the second
+    // click's taskbar would put the popup away (keepOpen, 2026-11-25). The middle button skips to the next
     // phase, as on Omarchy's bar; pausing is the menu's first line, where
     // the bar has it on the right button (Windows keeps that for the menu).
     onActivated: function (reason) {
       if (reason === Platform.SystemTrayIcon.Trigger) host.popup("timer")
+      else if (reason === Platform.SystemTrayIcon.DoubleClick) host.keepOpen("timer")
       else if (reason === Platform.SystemTrayIcon.MiddleClick && pomo.phase !== "idle") pomo.skip()
     }
     menu: Platform.Menu {
@@ -289,6 +305,7 @@ Item {
     onActivated: function (reason) {
       // A click only: a double click sends a click first (see the timer's).
       if (reason === Platform.SystemTrayIcon.Trigger) host.popup("deadlines")
+      else if (reason === Platform.SystemTrayIcon.DoubleClick) host.keepOpen("deadlines")
     }
     menu: Platform.Menu {
       Platform.MenuItem { text: (deadlines.nextItem ? deadlines.tooltipText : "Deadlines") + "…" + host.key("deadlines"); onTriggered: host.popup("deadlines") }

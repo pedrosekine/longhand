@@ -117,7 +117,26 @@ Window {
   // Another window was clicked. Not while it is still coming up: a window
   // is not the active one for a moment after it is first shown.
   onActiveChanged: if (!root.active && root.open) leaving.restart(); else leaving.stop()
-  Timer { id: leaving; interval: 120; onTriggered: if (!root.active && root.open) root.close() }
+  // Nor the second click of a double click on its tray icon (2026-11-25,
+  // tested on the ThinkPad): that click makes the taskbar the active
+  // window just after the first opened this one, which then put itself
+  // away. The tray says so (windows/Main.qml, on its DoubleClick), and for
+  // a moment a loss takes the keys back instead. Only then: another window
+  // clicked a moment after opening still puts it away.
+  property real keepUntil: 0
+  function keepThroughLoss() {
+    root.keepUntil = Date.now() + 600
+    if (root.open && !root.active) { root.raise(); root.requestActivate() }
+  }
+  Timer {
+    id: leaving
+    interval: 120
+    onTriggered: {
+      if (root.active || !root.open) return
+      if (Date.now() < root.keepUntil) { root.raise(); root.requestActivate() }
+      else root.close()
+    }
+  }
 
   Rectangle {
     anchors.fill: parent
