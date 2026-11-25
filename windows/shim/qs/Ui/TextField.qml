@@ -27,7 +27,9 @@ Controls.TextField {
   color: foreground
   selectionColor: selectionTint
   selectedTextColor: foreground
-  placeholderTextColor: Qt.darker(foreground, 1.6)
+  // Toward the ground, not Qt.darker: on a light ground darker is louder,
+  // and the hint came out darker than the words typed over it.
+  placeholderTextColor: Style.mix(foreground, Commons.Color.background, 0.45)
 
   leftPadding: horizontalPadding + Border.left(_borderSpec)
   rightPadding: horizontalPadding + Border.right(_borderSpec)
