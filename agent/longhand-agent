@@ -3908,7 +3908,7 @@ def inbox_pass(cfg: dict, ledger: dict, at: str) -> int:
     level = planlib.autonomy(cfg)["file"]
     if not cfg.get("inbox") or level == "never":      # opt-in: config.json's "inbox"
         return n
-    inbox = Path(cfg["inbox"]).expanduser()
+    inbox = doclib.folder(cfg["inbox"])
     now = dt.datetime.now()
     courses = [{"code": c, "name": name, "tag": tag} for c, name, tag in course_codes(cfg, now.date()) if tag]
     if not courses:
@@ -4056,7 +4056,7 @@ def unfile(item: dict) -> str:
     if not filed.is_file():
         raise Fail(f"“{filed.name}” is no longer where it was filed")
     src = Path(str(item.get("src") or ""))
-    folder = src.parent if src.parent.is_dir() else Path.home() / "Downloads"
+    folder = src.parent if src.parent.is_dir() else doclib.downloads()
     dest, n = folder / src.name, 2
     while dest.exists():
         dest = folder / f"{src.stem} ({n}){src.suffix}"
@@ -5116,7 +5116,7 @@ def downloads_papers(cfg: dict) -> list[dict]:
         return []
     cache = doclib.load_cache(PAPERS_CACHE)
     try:
-        out = doclib.papers(Path(cfg["inbox"]).expanduser(), cache, dt.datetime.now(), Path(cfg["vault"]))
+        out = doclib.papers(doclib.folder(cfg["inbox"]), cache, dt.datetime.now(), Path(cfg["vault"]))
     except OSError:
         return []
     doclib.save_cache(PAPERS_CACHE, cache)
@@ -5270,7 +5270,7 @@ def day_file(cfg: dict, asks: list[dict], message: str, at: str) -> tuple[list[d
         return [], [f"{what(a)}: filing documents is set to never" for a in asks]
     if not cfg.get("inbox"):
         return [], [f"{what(a)}: no Downloads inbox is set in the config" for a in asks]
-    inbox = Path(cfg["inbox"]).expanduser()
+    inbox = doclib.folder(cfg["inbox"])
     names = {t: n for _, n, t in course_codes(cfg, dt.date.today()) if t}
     projects_dir = cfg.get("projectsDir", "projects")
     paths = Paths(cfg, dt.date.today())
@@ -6863,7 +6863,7 @@ def cmd_export(cfg: dict, args) -> int:
     look = args.look or opts.get("look") or "minimal"
     if look not in exportlib.LOOKS:
         raise Fail(f"--look is one of {', '.join(exportlib.LOOKS)}")
-    folder = Path(args.out or opts.get("dir") or "~/Downloads").expanduser()
+    folder = doclib.folder(args.out or opts.get("dir") or "~/Downloads")
     author = str(opts.get("author") or "").strip()
     when = exportlib.day_words(day) if day else ""
     meta = {"title": title, "author": author, "date": " · ".join(x for x in (course, when) if x)}
