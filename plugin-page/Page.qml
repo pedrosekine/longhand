@@ -1168,6 +1168,13 @@ Item {
   property var queued: []      // runner commands waiting, oldest first
   property bool running: false
   property string runningHash: ""
+  // The running run's answer is in: the turn it was asked for is written
+  // and drawn, and the run is only ending (its process still closing, for
+  // most of a second on Windows). It thinks no more, and Esc there is no
+  // stop: it closes, as it would a moment later (2026-11-25: Esc right as
+  // an answer landed stopped a run that had finished, and put the message
+  // back in the box under its own answer).
+  property bool runAnswered: false
   property string runnerPhase: ""
   property string talkPhase: ""
   property string planPhase: ""
@@ -1980,7 +1987,7 @@ Item {
   }
 
   readonly property string roomHash: root.noteRoom ? "note:" + root.roomRel : "day"
-  readonly property bool dayThinking: root.runningHash === root.roomHash
+  readonly property bool dayThinking: (root.runningHash === root.roomHash && !root.runAnswered)
     || root.queued.some(function (q) { return q.hash === root.roomHash })
   readonly property bool dayCanSend: root.noteRoom ? root.paneHeld !== "" || root.noteAskable : svc.isToday && root.agentDay && !root.beforeHorizon
   readonly property bool dayShown: root.dayOpen && !root.marginOpen && !root.talkOpen && !root.keysOpen && !root.settingsOpen
@@ -2064,7 +2071,7 @@ Item {
     var ids = where === "day" ? [root.roomHash] : [root.currentHash, root.currentRec]
     ids = ids.filter(function (x) { return x !== "" })
     var hit = function (h) { return String(h || "").split(",").some(function (x) { return ids.indexOf(x) >= 0 }) }
-    return (root.running && hit(root.runningHash)) || root.queued.some(function (q) { return hit(q.hash) })
+    return (root.running && !root.runAnswered && hit(root.runningHash)) || root.queued.some(function (q) { return hit(q.hash) })
   }
   function stopAgent(where) {
     if (!root.agentBusy(where)) return false
@@ -2165,6 +2172,7 @@ Item {
     for (var i = turns.length - 1; i >= 0; i--)
       if (turns[i].role === "student" && turns[i].text === p.text) {
         root.dayPending = null
+        if (root.running && root.runningHash === root.roomHash && turns[i + 1]) root.runAnswered = true
         root.openFromTurn(turns[i + 1])
         return
       }
@@ -2756,8 +2764,8 @@ Item {
   // This block is away: asked and not back. `runningHash` can name a whole
   // list submission.
   readonly property bool answering: root.currentHash !== ""
-    && (root.runningHash.split(",").indexOf(root.currentHash) >= 0
-        || root.runningHash.split(",").indexOf(root.currentRec) >= 0
+    && ((!root.runAnswered && (root.runningHash.split(",").indexOf(root.currentHash) >= 0
+                               || root.runningHash.split(",").indexOf(root.currentRec) >= 0))
         || root.sending.indexOf(root.currentHash) >= 0)
   // "read: The Seven Deadly Myths… (p. 1, 4)": what the agent read for the
   // reply under the cursor; nothing when it read nothing.
@@ -3808,6 +3816,7 @@ Item {
     root.queued = root.queued.slice(1)
     root.running = true
     root.runningHash = q.hash
+    root.runAnswered = false
     runner.command = q.cmd
     runner.running = true
   }
@@ -8416,7 +8425,7 @@ Item {
     var savedRefs = root.marginRefs.slice()
     margin.chatFieldRef.text = ""
     root.clearReplies("margin")
-    root.pendingChat = { hash: root.currentRec, text: msg, raw: raw, replies: savedReplies, savedRefs: savedRefs }
+    root.pendingChat = { hash: root.currentRec, mark: root.currentHash, text: msg, raw: raw, replies: savedReplies, savedRefs: savedRefs }
     root.requestChat(root.currentRec, msg, root.currentHash, root.takeMarginRefs())
   }
   // The chips a task's or a block's message carries besides its own
@@ -8457,6 +8466,14 @@ Item {
     for (var i = turns.length - 1; i >= 0; i--)
       if (turns[i].role === "student" && turns[i].text === p.text) {
         root.pendingChat = null
+        // Its answer with it: the run is only ending, and the block it was
+        // asked from (the run's own hash, `mark`) is no longer away.
+        var ran = root.runningHash.split(",")
+        if (root.running && turns[i + 1] && (ran.indexOf(p.hash) >= 0 || ran.indexOf(p.mark || "") >= 0)) {
+          root.runAnswered = true
+          root.sending = root.sending.filter(function (h) { return h !== p.mark && h !== p.hash })
+          root.scheduleRepaint()
+        }
         root.openFromTurn(turns[i + 1])
         return
       }
@@ -8564,6 +8581,7 @@ Item {
     // nothing to say. Silence is now only ever an answer, never a fault.
     onExited: function (code, status) {
       root.running = false
+      root.runAnswered = false
       root.runnerPhase = ""
       // The day's answer may have proposed: its cards are the dashboard's items.
       if (root.runningHash === "day") { Qt.callLater(root.refreshProposals); Qt.callLater(root.refreshTasks) }
