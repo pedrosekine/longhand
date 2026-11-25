@@ -118,7 +118,10 @@ the name the running Longhand gives itself to Windows, so the taskbar shows
 one button for both, and pinning it pins Longhand, not Python.
 
 Longhand stays by the clock once started: closing the page's window puts
-the page away, and Quit in the tray's menu ends it. One runs at a time; a
+the page away, and Quit in the tray's menu ends it, once the last save has
+landed. Signing out, restarting or shutting down does the same: asked by
+Windows whether the session may end, Longhand saves what is typed first
+(`save_at_session_end` in `longhand_host.py`). One runs at a time; a
 second `longhand` tells the first what was asked (`summon` and `toggle` take
 the payload `omarchy-shell shell summon longhand.page` takes, or a bare
 `alongside`).
