@@ -59,6 +59,7 @@ def main() -> int:
     palette_file(tmp)
     places_and_icon(tmp)
     placed_again(app)
+    quiet_text(app)
     notify_through_longhand(app)
     tray(app, tmp)
     print(f"\n{failures} failure(s)")
@@ -636,6 +637,60 @@ Item {
     win.setVisible(False)
     del holder, win, popup
     engine.deleteLater()
+
+
+# ------------------------------------------------------------ quiet text
+
+def quiet_text(app):
+    """A field's hint and a popup's section header are quieter than the words
+    around them, in Windows' light mode as in its dark one. Qt.darker quiets
+    only on a dark ground: on a light one (#1b1b1b on #f9f9f9) it came out
+    darker than the text it should sit under. And the popups loaded as they
+    are (plugin/, plugin-deadline/) and the page's chat field quiet theirs
+    the same way, never with Qt.darker."""
+    from PySide6.QtCore import QUrl
+    from PySide6.QtGui import QColor
+    from PySide6.QtQml import QQmlComponent, QQmlEngine
+
+    def lum(c):
+        def ch(x):
+            return x / 12.92 if x <= 0.03928 else ((x + 0.055) / 1.055) ** 2.4
+        c = QColor(c)
+        return 0.2126 * ch(c.redF()) + 0.7152 * ch(c.greenF()) + 0.0722 * ch(c.blueF())
+
+    engine = QQmlEngine()
+    engine.addImportPath(str(ROOT / "windows" / "shim"))
+    for mode, fg, bg in (("light", "#1b1b1b", "#f9f9f9"), ("dark", "#f3f3f3", "#202020")):
+        component = QQmlComponent(engine)
+        component.setData(f"""
+import QtQuick
+import qs.Commons as Commons
+import qs.Ui
+Item {{
+  Component.onCompleted: {{ Commons.Color.foreground = "{fg}"; Commons.Color.background = "{bg}" }}
+  property var field: TextField {{ placeholderText: "a hint" }}
+  property var header: PanelSectionHeader {{ text: "DEADLINES" }}
+}}
+""".encode(), QUrl.fromLocalFile(str(ROOT / "tests" / f"quiet_text_{mode}.qml")))
+        holder = component.create()
+        check(holder is not None, f"a field and a section header load ({[e.toString() for e in component.errors()][:2]})")
+        if holder is None:
+            return
+        app.processEvents()
+        field, header = holder.property("field"), holder.property("header")
+        lo, hi = sorted((lum(fg), lum(bg)))
+        for what, got in (("a field's hint", field.property("placeholderTextColor")), ("a section header", header.property("color"))):
+            text_gap = abs(lum(got) - lum(fg))
+            check(lo < lum(got) < hi and text_gap > 0.02,
+                  f"{mode} mode: {what} sits between the text and the ground ({QColor(got).name()} for {fg} on {bg})")
+        del holder, field, header
+    engine.deleteLater()
+
+    for rel in ("plugin/Panel.qml", "plugin-deadline/Panel.qml", "plugin-page/ChatField.qml",
+                "windows/shim/qs/Ui/TextField.qml", "windows/shim/qs/Ui/PanelSectionHeader.qml"):
+        src = (ROOT / rel).read_text(encoding="utf-8")
+        darkened = re.findall(r"Qt\.darker\([^,)]*foreground", src)
+        check(not darkened, f"{rel} quiets no text with Qt.darker ({darkened})")
 
 
 # ------------------------------------------------------------ the tray

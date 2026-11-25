@@ -37,6 +37,15 @@ QtObject {
 
   function selectionFillFor(foreground, accent, urgent) { return Commons.Util.alpha(foreground || Commons.Color.foreground, 0.35) }
 
+  // `a` taken a fraction `t` of the way to `b`: quiet text is the foreground
+  // moved toward its ground, which quiets it on a dark ground and a light one
+  // alike (Qt.darker only quiets it on a dark one).
+  function mix(a, b, t) {
+    if (typeof a === "string") a = Qt.color(a)
+    if (typeof b === "string") b = Qt.color(b)
+    return Qt.rgba(a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t, 1)
+  }
+
   function controlFill(focused, hot, foreground, accent) {
     if (focused) return focusFillFor(foreground, accent)
     if (hot) return hoverFillFor(foreground, accent)

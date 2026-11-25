@@ -3,6 +3,9 @@ import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
 import qs.Commons
+// Qt 6.12's QtQuick has a `Color` of its own that shadows the shell's
+// (2026-10-18): the shell's palette is named through the module.
+import qs.Commons as Commons
 import qs.Ui
 
 // Pomodoro bar widget: countdown label + progress popup (clock-style).
@@ -14,8 +17,15 @@ Panel {
   moduleName: "longhand.pomo"
   ipcTarget: "longhand.pomo"
 
-  readonly property color foreground: bar ? bar.foreground : Color.foreground
-  readonly property color dim: Qt.darker(foreground, 1.55)
+  readonly property color foreground: bar ? bar.foreground : Commons.Color.foreground
+  readonly property color background: Commons.Color.menu.background
+  function mix(a, b, t) { return Qt.rgba(a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t, 1) }
+  // Blend toward the background rather than Qt.darker, as the deadline
+  // popup does: on a light theme Qt.darker made the "quiet" text darker
+  // than the text it should sit under, and the empty track as black as
+  // the filled one, so the progress bar disappeared.
+  readonly property color dim: root.mix(foreground, background, 0.40)
+  readonly property color track: root.mix(foreground, background, 0.78)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
 
   // Open-panel underline hint: span the painted label ("○ --:--") instead of
@@ -332,7 +342,7 @@ Panel {
           width: parent.width
           implicitHeight: Style.space(6)
           radius: height / 2
-          color: Qt.darker(root.foreground, 3.2)
+          color: root.track
 
           Rectangle {
             width: track.width * svc.progress
