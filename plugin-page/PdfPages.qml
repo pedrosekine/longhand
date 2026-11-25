@@ -260,7 +260,8 @@ Item {
     onHeightChanged: pages.updateRange()
     onContentWidthChanged: Qt.callLater(pages.settleX)
     ScrollBar.vertical: ScrollMark { page: pages.page }
-    ScrollBar.horizontal: ScrollMark { page: pages.page }
+    // Only when the pages are sized past the fit: fitted, nothing moves sideways.
+    ScrollBar.horizontal: ScrollMark { page: pages.page; visible: pages.canSideways() }
 
     TouchScroll { flickable: flick }
 

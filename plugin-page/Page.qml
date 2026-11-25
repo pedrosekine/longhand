@@ -206,10 +206,16 @@ Item {
   // A dashboard row's line, its first link followed (Alt+Enter, as in the
   // note): a task that links its paper opens it where it was left (plan.md
   // item 15, step 3).
+  // The links in a dashboard row's line (its task's, or the line a
+  // deadline stands for).
+  function rowLinks(row) {
+    var t = !row ? null : row.task ? row.task : row.deadline ? root.taskOfAnchor(row.deadline.id) : null
+    return t && t.text ? Links.inLine(t.text).filter(function (l) { return l.url !== "" || l.target !== "" }) : []
+  }
   function followRowLink() {
     var row = root.taskRows[root.taskFocus]
     var t = !row ? null : row.task ? row.task : row.deadline ? root.taskOfAnchor(row.deadline.id) : null
-    var links = t && t.text ? Links.inLine(t.text).filter(function (l) { return l.url !== "" || l.target !== "" }) : []
+    var links = root.rowLinks(row)
     if (links.length === 0) { root.showHint("no link in its line"); return }
     var daily = svc.configured ? String(svc.config.daily.dir).replace(/^\/+|\/+$/g, "") : ""
     root.pdfFromTagNext = t.project || ""
@@ -2520,7 +2526,7 @@ Item {
       list = [act("dashOpen", "Go to its line", root.activateTask), act("dashDone", "Done (again: not done)", root.tickFocused),
               act("dashWhen", "Reschedule", root.startDashWhen), act("dashNoDate", "Take its date off", root.noDateFocused, !!(row.task && row.task.when)),
               act("dashPriority", "Change its priority", root.cyclePriorityFocused), act("dashRename", "Rename", root.startDashRename),
-              act("dashTalk", "Chat about it", root.talkFocused), act("dashFollow", "Follow its link", root.followRowLink),
+              act("dashTalk", "Chat about it", root.talkFocused), act("dashFollow", "Follow its link", root.followRowLink, root.rowLinks(row).length > 0),
               act("dashShelve", "Set it aside", root.shelveFocused), act("dashDrop", "Drop it", root.dropFocused)]
     } else if (k === "deadline") {
       list = [act("dashOpen", "Go to its line", root.activateTask), act("dashDone", "Done (again: not done)", root.tickFocused),

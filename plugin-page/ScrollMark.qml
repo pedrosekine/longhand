@@ -34,7 +34,9 @@ ScrollBar {
       height: bar.upright ? parent.height : thick
       radius: thick / 2
       color: bar.pressed ? bar.page.foreground : bar.page.faint
-      opacity: bar.size >= 1 ? 0 : bar.shown ? (bar.hovered || bar.pressed ? 0.7 : 0.45) : 0.18
+      // At rest only when there is clearly more: a fitted page a pixel or two
+      // wider than its view (a PDF's rounding) drew a line with nowhere to go.
+      opacity: bar.size >= 1 ? 0 : bar.shown ? (bar.hovered || bar.pressed ? 0.7 : 0.45) : bar.size < 0.98 ? 0.18 : 0
       Behavior on opacity { NumberAnimation { duration: 180 } }
       Behavior on width { NumberAnimation { duration: 120 } }
       Behavior on height { NumberAnimation { duration: 120 } }
