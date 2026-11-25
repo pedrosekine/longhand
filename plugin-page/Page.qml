@@ -2465,6 +2465,28 @@ Item {
     if (root.chatSelection && root.chatSelection !== edit) root.chatSelection.deselect()
     root.chatSelection = edit
   }
+  // A press anywhere in the page, at its place in the window: a box asking
+  // something ("when?", "name?", the dashboard's, the PDF's) closes when the
+  // press is outside it, as Esc does, the keys left where the click puts
+  // them (2026-11-25, the mouse pass). Only what was open at the press, and
+  // after the click is done, so a click that opens one does not close it.
+  signal pressedAt(point at)
+  onPressedAt: function (at) {
+    var out = function (item) {
+      if (!item || !item.visible) return true
+      var q = item.mapFromItem(null, at.x, at.y)
+      return q.x < 0 || q.y < 0 || q.x > item.width || q.y > item.height
+    }
+    var was = { when: root.whenFor && out(whenBox) ? root.whenFor : null,
+                name: root.newProject && out(nameBox) ? root.newProject : null,
+                dash: root.dashWhenFor && out(dash.dashWhenRowRef) ? root.dashWhenFor : null }
+    Qt.callLater(function () {
+      if (was.when && root.whenFor === was.when) root.whenFor = null
+      if (was.name && root.newProject === was.name) root.newProject = null
+      if (was.dash && root.dashWhenFor === was.dash) { root.dashWhenFor = null; root.dashWhenText = "" }
+    })
+  }
+
   // The mouse's menu on words, for the chats' turns (ChatTurn.qml).
   function editMenuAt(over, x, y, list) { editMenu.openAt(over, x, y, list) }
   function copyChatSelection(event, box) {
@@ -10751,12 +10773,6 @@ Item {
                 if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { root.submitWhen(); event.accepted = true }
                 else if (event.key === Qt.Key_Escape) { root.closeWhen(); event.accepted = true }
               }
-              // The keys gone elsewhere, a click back in the note or in a
-              // pane, leave it as Esc does, the switcher's way (2026-11-25,
-              // the mouse pass); they stay where they went.
-              onActiveFocusChanged: if (!activeFocus && root.whenFor) Qt.callLater(function () {
-                if (root.whenFor && !whenField.activeFocus && content.Window.active) root.whenFor = null
-              })
             }
             Text {
               readonly property var parsed: whenField.text.trim() !== "" ? Dates.read(whenField.text.trim(), new Date()) : null
@@ -10809,10 +10825,6 @@ Item {
                   if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { root.submitProjectName(); event.accepted = true }
                   else if (event.key === Qt.Key_Escape) { root.closeProjectName(); event.accepted = true }
                 }
-                // As the "when?" box: the keys gone elsewhere leave it as written.
-                onActiveFocusChanged: if (!activeFocus && root.newProject) Qt.callLater(function () {
-                  if (root.newProject && !nameField.activeFocus && content.Window.active) root.newProject = null
-                })
               }
             }
             Text {
@@ -11007,7 +11019,7 @@ Item {
       PointHandler {
         acceptedButtons: Qt.AllButtons
         acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-        onActiveChanged: if (active) { root.handMovedAt = Date.now(); root.handOn = true }
+        onActiveChanged: if (active) { root.handMovedAt = Date.now(); root.handOn = true; root.pressedAt(point.scenePosition) }
       }
       // Ctrl and the wheel: the page larger or smaller, as Ctrl+= and
       // Ctrl+- (2026-11-25, the mouse pass), wherever the pointer is. It

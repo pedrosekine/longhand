@@ -140,7 +140,7 @@ Item {
     tagField.text = ""
     tagField.forceActiveFocus()
   }
-  // `away`: the keys went elsewhere (keysLeft): none chosen, and they are
+  // `away`: a press went elsewhere (pressedAway): none chosen, and they are
   // left where they went; a question waiting is not opened in the chat
   // then, which would take them again (it stays a mark, Enter asks it).
   function chooseProject(tag, away) {
@@ -327,19 +327,35 @@ Item {
     pane.acroListing = false
     if (!away) keys.forceActiveFocus()
   }
-  // The keys gone from a popover that takes typing — a click on the pages,
-  // or in another pane — close it as Esc does, but leave the keys where
-  // they went (2026-11-25, the mouse pass; as the switcher closes). Later,
-  // so a hop inside it is not taken for leaving; never when the window
-  // itself lost them (another application), which gives them back.
-  function keysLeft() {
-    if (!pane.Window.active) return
-    if (pane.finding && !findField.activeFocus) pane.closeFind(true)
-    if (pane.jumpingPage && !gotoField.activeFocus) pane.closeGoto(true)
+  // A press outside a popover that takes typing — on the pages, in another
+  // pane — closes it as Esc does, but leaves the keys where the click puts
+  // them (2026-11-25, the mouse pass; the page's `pressedAt`). A press,
+  // not the keys leaving: the page moves them itself on its way (a note
+  // read, a jump), and that closed them under the keys. What was open at
+  // the press is closed after the click is done, so a click that opens one
+  // is not taken for leaving it.
+  function outsideOf(item, at) {
+    if (!item || !item.visible) return true
+    var q = item.mapFromItem(null, at.x, at.y)
+    return q.x < 0 || q.y < 0 || q.x > item.width || q.y > item.height
+  }
+  Connections {
+    target: pane.page
+    function onPressedAt(at) {
+      if (!pane.visible) return
+      var was = { find: pane.finding && pane.outsideOf(findBar, at), go: pane.jumpingPage && pane.outsideOf(gotoField, at),
+                  note: pane.noting && pane.outsideOf(noteBar, at), tag: pane.askingTag && pane.outsideOf(tagAsk, at),
+                  acro: pane.acroListing && pane.outsideOf(acroList, at) }
+      Qt.callLater(function () { pane.pressedAway(was) })
+    }
+  }
+  function pressedAway(was) {
+    if (was.find && pane.finding) pane.closeFind(true)
+    if (was.go && pane.jumpingPage) pane.closeGoto(true)
     // A note with words in it waits for Enter or Esc: a click away never loses them.
-    if (pane.noting && !noteField.activeFocus && noteField.text.trim() === "") pane.closeNote(true)
-    if (pane.askingTag && !tagField.activeFocus) pane.chooseProject("", true)
-    if (pane.acroListing && !acroField.activeFocus) pane.closeAcronyms(true)
+    if (was.note && pane.noting && noteField.text.trim() === "") pane.closeNote(true)
+    if (was.tag && pane.askingTag) pane.chooseProject("", true)
+    if (was.acro && pane.acroListing) pane.closeAcronyms(true)
   }
 
   // Words the agent quoted, shown where they are for a moment (never kept).
@@ -1304,7 +1320,6 @@ Item {
         font.pixelSize: page.fs(Style.font.bodySmall)
         foreground: page.foreground
         Keys.priority: Keys.BeforeItem
-        onActiveFocusChanged: if (!activeFocus) Qt.callLater(pane.keysLeft)
         Keys.onPressed: function (event) {
           if (page.anywhereKey(event)) { event.accepted = true; return }
           var seq = Sc.fromEvent(event)
@@ -1460,7 +1475,6 @@ Item {
           foreground: page.foreground
           Keys.priority: Keys.BeforeItem
           Keys.onPressed: function (event) { if (pane.findKey(event)) event.accepted = true }
-          onActiveFocusChanged: if (!activeFocus) Qt.callLater(pane.keysLeft)
           onTextChanged: if (pane.finding) findTimer.restart()
         }
         Text {
@@ -1588,7 +1602,6 @@ Item {
           else if (seq === "Down") { pane.acroFocus = Math.min(pane.acroChoices.length - 1, pane.acroFocus + 1); event.accepted = true }
         }
         onTextChanged: pane.acroFocus = 0
-        onActiveFocusChanged: if (!activeFocus) Qt.callLater(pane.keysLeft)
       }
       ListView {
         id: acroRows
@@ -1692,7 +1705,6 @@ Item {
           else if (seq === "Down") { pane.tagFocus = Math.min(pane.tagChoices.length - 1, pane.tagFocus + 1); event.accepted = true }
         }
         onTextChanged: pane.tagFocus = 0
-        onActiveFocusChanged: if (!activeFocus) Qt.callLater(pane.keysLeft)
       }
       Repeater {
         model: pane.tagChoices
@@ -1961,7 +1973,6 @@ Item {
     font.styleName: page.fontStyle
     font.pixelSize: page.fs(Style.font.bodySmall)
     foreground: page.foreground
-    onActiveFocusChanged: if (!activeFocus) Qt.callLater(pane.keysLeft)
     // The wheel over it stays in it, as over the panels (2026-11-25).
     MouseArea { anchors.fill: parent; z: -1; acceptedButtons: Qt.NoButton; onWheel: function (w) { w.accepted = true } }
     Keys.onPressed: function (event) {

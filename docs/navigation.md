@@ -307,12 +307,14 @@ it, besides the clicks above and the hover marks in [hints.md](hints.md):
 - **A click means one thing**: what the agent raised is dismissed by its
   own "dismiss" word or Enter, never by a click on the row.
 - **A box asking something** ("when?", "name?", the dashboard's) closes
-  when the keys leave it, as the switcher does; the keys stay where they went.
+  on a click outside it, as Esc does; the keys stay where the click put
+  them. A click, not the keys leaving: the page moves them itself on its
+  way, and that closed the box under the keys (Windows' CI caught it).
 - **Wider hit areas** on the header's words, the PDF's foot, the cards'
   accept, decline, undo and helpful, and the dashboard's pills.
 - **In a PDF**: Shift and the wheel move a page sized past the fit
   sideways; a click on a page brings the keys to it; find, go to page, the
-  project question and the acronyms close when the keys leave them (a
+  project question and the acronyms close on a click outside them (a
   reading note with words in it waits for Enter or Esc). On Windows a
   touchpad scrolls it at the note's speed (it went twice as fast).
 - **A paper's marks** in the agent's pane: a click goes to the mark, as

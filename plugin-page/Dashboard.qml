@@ -41,6 +41,7 @@ BorderSurface {
     function onDashQueryChanged() { if (searchChip.field.text !== page.dashQuery && !page.dashSearchPending) searchChip.field.text = page.dashQuery }
   }
   property alias dashWhenFieldRef: dashWhenField
+  property alias dashWhenRowRef: dashWhenRow   // a press outside it closes it (Page.pressedAt)
   property alias dashColumnRef: dashColumn    // the drawn rows, for the tests
   property alias orderRowRef: orderRow        // the three orders, for the tests
 
@@ -1414,11 +1415,6 @@ BorderSurface {
           Keys.onReturnPressed: function (event) { event.accepted = true; page.commitDashWhen() }
           Keys.onEnterPressed: function (event) { event.accepted = true; page.commitDashWhen() }
           Keys.onEscapePressed: function (event) { event.accepted = true; page.dashWhenFor = null; page.dashWhenText = "" }
-          // The keys gone elsewhere (a click on another row, in a pane)
-          // leave it as Esc does (2026-11-25, the mouse pass).
-          onActiveFocusChanged: if (!activeFocus && page.dashWhenFor) Qt.callLater(function () {
-            if (page.dashWhenFor && !dashWhenField.activeFocus && dash.Window.active) { page.dashWhenFor = null; page.dashWhenText = "" }
-          })
         }
 
         Text {
