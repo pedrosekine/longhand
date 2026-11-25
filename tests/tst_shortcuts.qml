@@ -239,7 +239,7 @@ TestCase {
     var r4 = Sc.rows("pomo", { owned: false, actions: hy })
     compare(r4[r4.length - 2].kind, "offer")
     compare(r4[r4.length - 1].kind, "fixed")
-    compare(r4[r4.length - 1].where, "Hyprland")
+    compare(r4[r4.length - 1].where, Sc.systemName)   // "Windows" there (2026-11-25)
     var r5 = Sc.rows("pomo", { owned: true, actions: [{ id: "pomoToggle", does: "Pomo toggle", keys: ["Alt+Super+K"], own: ["Alt+Super+P"] }] })
     compare(r5[r5.length - 1].kind, "hypr")
     compare(r5[r5.length - 1].id, "hypr:pomoToggle")
