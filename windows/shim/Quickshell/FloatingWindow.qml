@@ -31,21 +31,35 @@ Window {
     for (var i = 0; i < all.length; i++) if (all[i].name === name) return all[i]
     return null
   }
+  function place(g) {
+    x = g.x; y = g.y; width = g.width; height = g.height
+  }
   onVisibleChanged: {
     if (!visible || placed) return
     placed = true
-    var kept = Host.savedPlace(win.placeName)
-    if (kept) {
-      x = kept.x; y = kept.y; width = kept.width; height = kept.height
-      return
-    }
-    var s = win.screenNamed(Host.screenHere())
+    var g = Host.savedPlace(win.placeName)
+    var s = win.screenNamed(g ? g.screen : Host.screenHere())
     if (s) win.screen = s
-    var room = Host.workArea()              // that screen's, the taskbar left out
-    if (room.width <= 0) room = { x: Screen.virtualX, y: Screen.virtualY, width: Screen.desktopAvailableWidth, height: Screen.desktopAvailableHeight }
-    height = Math.min(win.implicitHeight, room.height - 80)
-    x = room.x + Math.max(0, Math.round((room.width - width) / 2))
-    y = room.y + Math.max(0, Math.round((room.height - height) / 2))
+    if (!g) {
+      var room = Host.workArea()            // the pointer's screen's, the taskbar left out
+      if (room.width <= 0) room = { x: Screen.virtualX, y: Screen.virtualY, width: Screen.desktopAvailableWidth, height: Screen.desktopAvailableHeight }
+      var h = Math.min(win.implicitHeight, room.height - 80)
+      g = { x: room.x + Math.max(0, Math.round((room.width - width) / 2)),
+            y: room.y + Math.max(0, Math.round((room.height - h) / 2)), width: width, height: h }
+    }
+    win.place(g)
+    // Put on a screen scaled otherwise than the one Windows first gave it,
+    // the window is shifted and resized as the scale changes under it, as
+    // the overlay was (PanelWindow.qml); placed again once it is there, it
+    // is where it was left.
+    rePlace.target = g
+    rePlace.restart()
+  }
+  Timer {
+    id: rePlace
+    property var target: null
+    interval: 60
+    onTriggered: if (win.visible && target) win.place(target)
   }
 
   // Kept a moment after it was last moved or sized, and when it is put away.
