@@ -1013,8 +1013,14 @@ def checks() -> int:
         p.call("ctrlD")
         check(p.call("pending", p.line_of("essay")) == "false", "Ctrl+D on a lit-up date keeps it as words")
         p.call("cursor", p.offset_of_line(p.line_of("next item")) + 2)
+        # The words on disk first (a save can take longer than a second on
+        # GitHub's Windows machine), then a moment for a binding that must
+        # not come.
+        p.wait(lambda: "essay by the 19th of Feb\n" in p.note(), 5)
         time.sleep(1)
-        check("essay by the 19th of Feb\n" in p.note() and len(p.store.read_text().splitlines()) == count, "…and leaving does not bind it")
+        check("essay by the 19th of Feb\n" in p.note() and len(p.store.read_text().splitlines()) == count,
+              f"…and leaving does not bind it ({[l for l in p.note().splitlines() if 'essay' in l]}, "
+              f"store {len(p.store.read_text().splitlines())} lines for {count})")
         p.call("cursor", p.offset_of_line(p.line_of("essay")) + 8)
         p.call("ctrlD")
         check(p.wait(lambda: "- [ ] essay 📅 " in p.note() and "^d" in p.note()), "Ctrl+D again makes it the deadline")
