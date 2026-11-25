@@ -8060,7 +8060,12 @@ Item {
   }
 
   function runCheck() {
-    if (!root.checkWanted || root.checking || !svc.ready || svc.saving || svc.pending || !root.dayNote) return
+    // Not while the page's own writes to the store are on their way: the
+    // check read the store before a deadline the page was removing (Ctrl+Z
+    // right after a binding) was gone, found its line gone, and cancelled
+    // it after the removal, bringing it back as cancelled (2026-11-25, on
+    // GitHub's Windows machine). It runs when they have landed (dl idle).
+    if (!root.checkWanted || root.checking || !svc.ready || svc.saving || svc.pending || !root.dayNote || dl.busy) return
     root.checkWanted = false
     root.checking = true
     checkGuard.restart()
@@ -8537,6 +8542,7 @@ Item {
       var waiting = root.afterWrites
       root.afterWrites = []
       for (var i = 0; i < waiting.length; i++) waiting[i]()
+      if (root.checkWanted) root.runCheck()
     }
   }
 

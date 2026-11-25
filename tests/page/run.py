@@ -1013,8 +1013,14 @@ def checks() -> int:
         p.call("ctrlD")
         check(p.call("pending", p.line_of("essay")) == "false", "Ctrl+D on a lit-up date keeps it as words")
         p.call("cursor", p.offset_of_line(p.line_of("next item")) + 2)
+        # The words on disk first (a save can take longer than a second on
+        # GitHub's Windows machine), then a moment for a binding that must
+        # not come.
+        p.wait(lambda: "essay by the 19th of Feb\n" in p.note(), 5)
         time.sleep(1)
-        check("essay by the 19th of Feb\n" in p.note() and len(p.store.read_text().splitlines()) == count, "…and leaving does not bind it")
+        check("essay by the 19th of Feb\n" in p.note() and len(p.store.read_text().splitlines()) == count,
+              f"…and leaving does not bind it ({[l for l in p.note().splitlines() if 'essay' in l]}, "
+              f"store {len(p.store.read_text().splitlines())} lines for {count})")
         p.call("cursor", p.offset_of_line(p.line_of("essay")) + 8)
         p.call("ctrlD")
         check(p.wait(lambda: "- [ ] essay 📅 " in p.note() and "^d" in p.note()), "Ctrl+D again makes it the deadline")
@@ -3371,7 +3377,10 @@ def checks() -> int:
         p.call("keysKey", KEY_RETURN, 0)
         check("Enter again" in p.call("keysNote") and not ours.exists(), "Enter on it says what it will write, and writes nothing")
         p.call("keysKey", KEY_RETURN, 0)
-        check(p.wait(lambda: hk()["owned"]), "…Enter again: the page keeps them")
+        # The adopt waits behind the sheet's read of the keys (hyprNext),
+        # and writes, backs up and reloads: with three suites at once here
+        # the two took 13 s (2026-11-25). Waited for longer.
+        check(p.wait(lambda: hk()["owned"], 10), "…Enter again: the page keeps them")
         b = (p.hypr / "bindings.lua").read_text()
         check(b.count("hypr.longhand") == 1 and '-- o.bind("SUPER + ALT + P", "Pomo toggle"' in b and b.startswith('o.bind("SUPER + SHIFT + T"'),
               "…bindings.lua loads longhand.lua, the six commented out, the student's own line kept")
@@ -3938,8 +3947,9 @@ def checks() -> int:
         line = p.line_of("therapy appointment")
         check(json.loads(p.call("rowKinds"))[line] == "task", "a box in a private block is a box")
         p.call("cursor", 1)
+        p.wait(lambda: "therapy" in p.note(), 5)            # on disk first, then a moment for a binding
         time.sleep(1.2)
-        check("^d" not in [l for l in p.note().split("\n") if "therapy" in l][0],
+        check("^d" not in ([l for l in p.note().split("\n") if "therapy" in l] or ["^d (not saved)"])[0],
               f"…left with a date at its end, it is not bound ({[l for l in p.note().split(chr(10)) if 'therapy' in l]})")
         p.call("cursor", p.offset_of_line(line) + 8)
         p.call("askNow")
