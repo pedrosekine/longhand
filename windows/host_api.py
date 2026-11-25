@@ -4,7 +4,7 @@ import os
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QProcess, Signal, Slot
+from PySide6.QtCore import QObject, Signal, Slot
 from PySide6.QtQml import QmlElement, QmlSingleton
 
 import qs_io
@@ -285,5 +285,4 @@ class Host(QObject):
             if argv[2] == "toggle":
                 BRIDGE.toggleRequested.emit(payload)
                 return
-        program, args = qs_io.resolve(argv)
-        QProcess.startDetached(program, args)
+        qs_io.start_detached(argv)

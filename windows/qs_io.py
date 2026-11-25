@@ -142,7 +142,7 @@ def resolve(argv: list[str]) -> tuple[str, list[str]]:
     if suffix in (".exe", ".com"):
         return str(path), rest
     if suffix in (".bat", ".cmd"):
-        return "cmd.exe", ["/c", str(path), *rest]
+        return str(path), rest          # through cmd.exe, as `prepare` writes its line
     try:
         with open(path, "rb") as f:
             first = f.readline(200).decode("utf-8", "replace")
@@ -153,6 +153,76 @@ def resolve(argv: list[str]) -> tuple[str, list[str]]:
     if first.startswith("#!") and GIT_BIN:
         return str(GIT_BIN / "bash.exe"), [str(path), *rest]
     return str(path), rest
+
+
+def _batch_word(word: str) -> str:
+    """One word of a batch file's command line, as cmd.exe reads it back.
+
+    cmd.exe reads `&|<>()^` as its own outside quotes, and `%NAME%` as a
+    variable even inside them; the program the batch file hands its `%*` to
+    reads `\\"` and `""` as a quote. So: in quotes, a quote doubled, the
+    backslashes before a quote (and before the closing one) doubled, and `%`
+    written as `%%cd:~,%`, which cmd.exe turns back into one `%` (Rust's
+    standard library quotes for batch files the same way)."""
+    if word and not any(c in word for c in ' \t"&|<>()^%!,;='):
+        return word
+    out, slashes = ['"'], 0
+    for c in word:
+        if c == "\\":
+            slashes += 1
+            continue
+        if c == '"':
+            out.append("\\" * (slashes * 2) + '""')
+        else:
+            out.append("\\" * slashes + ("%%cd:~,%" if c == "%" else c))
+        slashes = 0
+    out.append("\\" * (slashes * 2) + '"')
+    return "".join(out)
+
+
+def batch_line(program: str, args: list[str]) -> str:
+    """cmd.exe's arguments for running a batch file (.bat, .cmd) with
+    `args`, each arriving whole. Starting `cmd.exe /c path args` as separate
+    arguments did not: the quotes Qt put around a path with a space in it
+    were taken off by cmd.exe again, and `&` in an argument began a second
+    command. A line break cannot reach a batch file at all (cmd.exe ends the
+    command there and drops the rest): ValueError, rather than half of it."""
+    for a in args:
+        if any(c in a for c in "\r\n\0"):
+            raise ValueError(f"{Path(program).name} is a batch file, and cmd.exe cannot hand it an argument "
+                             "with a line break; point the config at the program it starts instead")
+    words = " ".join(_batch_word(w) for w in [program, *args])
+    return f'/e:ON /v:OFF /d /s /c "{words}"'
+
+
+def prepare(p: QProcess, program: str, args: list[str]) -> str:
+    """`program` and `args` (as `resolve` gives them) set on `p`, to be
+    started; a batch file through cmd.exe, with its line written here
+    (`batch_line`). Returns why it cannot start, or ""."""
+    if os.name == "nt" and Path(program).suffix.lower() in (".bat", ".cmd"):
+        try:
+            line = batch_line(program, args)
+        except ValueError as e:
+            return str(e)
+        p.setProgram(os.environ.get("COMSPEC") or "cmd.exe")
+        p.setArguments([])
+        p.setNativeArguments(line)
+        return ""
+    p.setProgram(program)
+    p.setArguments(args)
+    return ""
+
+
+def start_detached(argv: list[str]) -> bool:
+    """A command started and let go of, as `resolve` and `prepare` start it."""
+    program, args = resolve(argv)
+    p = QProcess()
+    why = prepare(p, program, args)
+    if why:
+        print("longhand-host: could not start", argv[:4], why, file=sys.stderr)
+        return False
+    got = p.startDetached()
+    return bool(got[0] if isinstance(got, tuple) else got)
 
 
 def child_environment(extra: dict | None = None) -> QProcessEnvironment:
@@ -445,7 +515,12 @@ class Process(QObject):
         p.errorOccurred.connect(lambda err: self._on_error(p, err))
         self._proc = p
         trace("start", self._command)
-        p.start(program, args)
+        why = prepare(p, program, args)
+        if why:
+            LOG.append("could not start: " + why)
+            QTimer.singleShot(0, lambda: self._on_error(p, QProcess.ProcessError.FailedToStart))
+            return
+        p.start()
 
     def _answer(self, inside):
         """A command the host answers itself: started, said, ended, as a
@@ -597,8 +672,7 @@ class Process(QObject):
     @Slot()
     def startDetached(self):
         if self._command:
-            program, args = resolve(self._command)
-            QProcess.startDetached(program, args)
+            start_detached(self._command)
 
 
 @QmlElement
