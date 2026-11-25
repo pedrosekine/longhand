@@ -18,7 +18,7 @@ Rectangle {
   x: Math.round((parent.width - width) / 2)
   y: page.sp(56)
   height: col.implicitHeight + page.sp(20)
-  radius: Style.cornerRadius
+  radius: page.overlayRadius
   color: page.background
   border.width: 1
   border.color: page.faint

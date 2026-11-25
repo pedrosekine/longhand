@@ -132,7 +132,7 @@ BorderSurface {
   y: besideDash ? (page.alongside ? 0 : page.sheetMargin) : sheet.y
   height: besideDash ? (page.alongside ? page.contentItem.height : page.contentItem.height - page.sheetMargin * 2) : sheet.height
   width: besideDash ? page.talkWidth : page.marginWidth
-  radius: page.alongside ? 0 : Style.cornerRadius
+  radius: page.alongside ? 0 : page.overlayRadius
   color: page.background
   borderSpec: page.alongside ? Border.none() : page.borderSpec
   padding: page.sp(22)
@@ -226,7 +226,7 @@ BorderSurface {
           readonly property int n: page.paper.count(modelData.f)
           width: chipText.implicitWidth + page.sp(14)
           height: chipText.implicitHeight + page.sp(6)
-          radius: height / 2
+          radius: Style.cornerRadius
           color: on ? Style.selectedFill : "transparent"
           border.width: 1
           border.color: on ? page.accent : page.faint

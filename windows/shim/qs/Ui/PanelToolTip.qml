@@ -21,7 +21,7 @@ ToolTip {
   background: BorderSurface {
     color: root.panelBackground
     borderSpec: root.panelBorderSpec
-    radius: Style.cornerRadius
+    radius: Style.overlayRadius
   }
 
   contentItem: Text {

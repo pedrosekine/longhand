@@ -784,6 +784,13 @@ ShellRoot {
                               order: page.dashOrder, chips: page.stripChips.map(function (c) { return c.label }),
                               shown: page.dashCourses.shown, total: page.dashCourses.total })
     }
+    // The orders drawn as the strip's cursor (filled): one at most, and
+    // none while the cursor is in the list.
+    function orderLit(): string {
+      var kids = page.dashItem.orderRowRef.children, lit = []
+      for (var i = 0; i < kids.length; i++) if (kids[i].cur === true) lit.push(kids[i].label)
+      return JSON.stringify(lit)
+    }
     function dashWhen(phrase: string): void { page.dashWhenText = phrase; page.commitDashWhen() }
     function dashWhenStart(): void { page.startDashWhen() }
     function dashWhenField(): string { var f = page.dashItem.dashWhenFieldRef; return JSON.stringify({ focus: f.focus, text: f.text }) }

@@ -38,7 +38,7 @@ BorderSurface {
   y: talk ? (page.alongside ? 0 : page.sheetMargin) : sheet.y
   height: talk ? (page.alongside ? page.contentItem.height : page.contentItem.height - page.sheetMargin * 2) : sheet.height
   width: talk ? page.talkWidth : page.marginWidth
-  radius: page.alongside ? 0 : Style.cornerRadius
+  radius: page.alongside ? 0 : page.overlayRadius
   color: page.background
   borderSpec: page.alongside ? Border.none() : page.borderSpec
   padding: page.sp(22)

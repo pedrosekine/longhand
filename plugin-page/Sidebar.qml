@@ -45,7 +45,7 @@ BorderSurface {
   y: sheet.y
   height: sheet.height
   width: page.sidebarWidth
-  radius: page.alongside ? 0 : Style.cornerRadius
+  radius: page.alongside ? 0 : page.overlayRadius
   // Each space has its own tint, so where you are is known before it is
   // read (docs/files.md): Time on the sheet's own ground, Files a breath of
   // the accent over it.

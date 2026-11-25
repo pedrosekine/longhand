@@ -41,6 +41,7 @@ BorderSurface {
   }
   property alias dashWhenFieldRef: dashWhenField
   property alias dashColumnRef: dashColumn    // the drawn rows, for the tests
+  property alias orderRowRef: orderRow        // the three orders, for the tests
 
   visible: page.dashOpen && !page.keysOpen && !page.settingsOpen
   x: page.wideX
@@ -49,7 +50,7 @@ BorderSurface {
   y: page.alongside ? 0 : page.sheetMargin
   width: page.dashWidth
   height: page.alongside ? content.height : content.height - page.sheetMargin * 2
-  radius: page.alongside ? 0 : Style.cornerRadius
+  radius: page.alongside ? 0 : page.overlayRadius
   color: page.background
   borderSpec: page.alongside ? Border.none() : page.borderSpec
   padding: page.sheetPadding
@@ -75,7 +76,10 @@ BorderSurface {
     property bool alert: false           // its words in the accent: something waits there
     property string tip: ""
     property var action: null            // a click does this, not what a chip picks
-    readonly property bool cur: page.stripAt === at && !page.stripOpen && keys
+    // `at` -1 is an order not shown, which is no stop of the strip: stripAt
+    // is -1 too whenever the cursor is in the list, and both unshown orders
+    // drew as the cursor.
+    readonly property bool cur: at >= 0 && page.stripAt === at && !page.stripOpen && keys
     property alias field: searchField
     onCurChanged: page.selected(chip, "center", cur)
     width: chipRow.implicitWidth + page.sp(16)

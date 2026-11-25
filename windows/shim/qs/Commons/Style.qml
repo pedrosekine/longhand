@@ -8,7 +8,14 @@ import qs.Commons as Commons
 QtObject {
   id: root
 
-  readonly property int cornerRadius: 8
+  // Windows 11's two radii (Fluent's ControlCornerRadius and
+  // OverlayCornerRadius): 4 for what sits in a surface — buttons, fields,
+  // chips, key caps, a row's fill, the gutter bar — and 8 for what floats
+  // over the others, as its windows and flyouts do. On Omarchy one radius,
+  // Hyprland's rounding, does both; 8 for both here made a 20 px tab a
+  // circle and a checkbox a ring.
+  readonly property int cornerRadius: 4
+  readonly property int overlayRadius: 8
   readonly property real effectiveSpacingScale: 1.0
   readonly property bool reduceMotion: false
 
