@@ -389,6 +389,15 @@ What was found:
   a dashboard row or a card before it had caught up with the last edit,
   which a Linux machine does before the next IPC call.
 
+Found after (2026-11-25): now and then the dashboard lacked a line just
+written, on Omarchy too. Every listing saves the boxes' clocks
+(`lifespan.py`), and the page runs several at once; each wrote one shared
+`silence.json.tmp` and renamed it, and the second found it gone (or, here,
+held: two writers failed 170 times in 300). That listing failed, and the
+page read its failure as no tasks at all. Each process writes a copy of
+its own now, and the documents' caches the same (`documents.py`);
+`tests/test_lifespan.py` runs three listings side by side.
+
 Not run here, and said so: the overlay (`--overlay`, as on Omarchy), a
 scanned paper's read (magick, pdftoppm, tesseract, qpdf), and the PDF an
 export writes, where pandoc and xelatex are not on PATH (as

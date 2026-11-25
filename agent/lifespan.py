@@ -62,9 +62,17 @@ def load(path: Path) -> dict | None:
 
 def save(path: Path, data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps(data, indent=1, ensure_ascii=False, sort_keys=True) + "\n")
-    os.replace(tmp, path)
+    # A copy of this process's own: every listing brings the clocks up to
+    # date (`apply`), and two at once (the dashboard's and the plan's, say)
+    # each wrote one shared `.tmp` and renamed it, and the second found it
+    # gone (2026-11-25: the dashboard's read failed, and a line just written
+    # was missing from it until something asked again).
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    try:
+        tmp.write_text(json.dumps(data, indent=1, ensure_ascii=False, sort_keys=True) + "\n")
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def apply(rows: list[dict], path: Path, today: dt.date | None = None) -> list[dict]:
@@ -126,7 +134,13 @@ def apply(rows: list[dict], path: Path, today: dt.date | None = None) -> list[di
 
     new = {"checked": today.isoformat(), "boxes": kept}
     if new != data:
-        save(path, new)
+        # The rows are what was asked for; a clock that could not be saved
+        # now (another listing replacing it this instant, on Windows) is
+        # saved by the next one.
+        try:
+            save(path, new)
+        except OSError:
+            pass
     return rows
 
 

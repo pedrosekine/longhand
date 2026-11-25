@@ -160,6 +160,15 @@ class Uni(http.server.BaseHTTPRequestHandler):
         pass
 
 
+WRITER = """import pathlib, sys
+sys.path.insert(0, sys.argv[1])
+import timetable
+for i in range(80):
+    timetable._write(pathlib.Path(sys.argv[2]), f"{sys.argv[3]} {i}".encode())
+print("done")
+"""
+
+
 def main() -> int:
     # Reading a feed.
     ev = timetable.parse(FIXED, local=VIENNA)
@@ -338,6 +347,19 @@ def main() -> int:
     check(pr["intsem"]["next"]["room"] == "Stale copy", "…and the sidebar goes back to the knowledge files")
 
     server.shutdown()
+
+    # Fetched and indexed side by side, as the page does: each copy is
+    # written whole and renamed, and two at once never fail (one shared
+    # `.tmp`: "It could not be reached: FileNotFoundError", 2026-11-25).
+    writer = tmp / "writer.py"
+    writer.write_text(WRITER)
+    same = tmp / "side-by-side.ics"
+    procs = [subprocess.Popen([sys.executable, str(writer), str(ROOT / "agent"), str(same), who], stdout=subprocess.PIPE,
+                              stderr=subprocess.PIPE, stdin=subprocess.DEVNULL, text=True) for who in ("a", "b")]
+    outs = [x.communicate(timeout=120) for x in procs]
+    bad = [e.strip().splitlines()[-1] for (o, e), x in zip(outs, procs) if x.returncode != 0 or "done" not in o]
+    check(not bad and not list(tmp.glob("side-by-side.ics.*")),
+          f"two copies written at once: neither fails, nothing left beside them ({bad[:1]})")
     print("PASS" if failures == 0 else f"{failures} FAILED")
     return 1 if failures else 0
 
