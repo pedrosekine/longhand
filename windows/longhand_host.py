@@ -135,6 +135,37 @@ def to_console() -> None:
         sys.stdout = sys.stderr = None
 
 
+def save_at_session_end(app, root):
+    """What is typed reaches the disk when Windows ends the session (sign-out,
+    restart, shutdown) with Longhand still running: the last words can sit in
+    the page's save timer (300 ms) or be on their way to the file, and once
+    Windows has asked, the process is gone within moments. Quitting from the
+    tray waits for the save (Main.qml, `leave`); this is the same for the end
+    of the session.
+
+    Windows asks each top-level window (WM_QUERYENDSESSION, then
+    WM_ENDSESSION); Qt answers through a window of its own and turns the two
+    into commitDataRequest and aboutToQuit. In the tray, with the page never
+    opened, Qt had no such window and heard nothing: one is made here,
+    hidden, never shown. Returned, to be held, with what is done when asked."""
+    import time
+    from PySide6.QtCore import QEventLoop, QMetaObject
+    from PySide6.QtGui import QWindow
+
+    def save(*_):
+        QMetaObject.invokeMethod(root, "saveNow")
+        until = time.monotonic() + 3.0          # Windows waits about five seconds before it asks the person
+        while root.property("noteSaving") and time.monotonic() < until:
+            app.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents, 50)
+
+    app.commitDataRequest.connect(save)
+    app.aboutToQuit.connect(save)
+    listener = QWindow()
+    listener.setTitle("")
+    listener.create()
+    return listener, save
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(prog="longhand", description="Longhand's page on Windows")
     ap.add_argument("command", nargs="?", choices=("summon", "toggle", "timer", "deadlines", "quit", "install", "uninstall"),
@@ -248,6 +279,7 @@ def main() -> int:
             args.check.write_text(json.dumps({"loaded": False, "warnings": warnings}, indent=2), encoding="utf-8")
         return 1
     roots = engine.rootObjects()               # held: let go of, PySide deletes the page with them
+    ending = save_at_session_end(app, roots[0]) if resident else None  # noqa: F841  (held: the window Windows asks)
 
     def come_forward() -> None:
         """The page's window to the front, out of the taskbar as it was put

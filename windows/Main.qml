@@ -97,6 +97,12 @@ Item {
   }
   Timer { interval: 1500; running: true; onTriggered: host.ready() }
 
+  // Windows ending the session (longhand_host.py, save_at_session_end): what
+  // is typed goes to the disk now, and the host waits while it is saving.
+  // Nothing is put away: the person may yet cancel the sign-out.
+  readonly property bool noteSaving: page.noteSaving
+  function saveNow() { page.flush() }
+
   // Leaving: the page puts away what it holds, the last save lands, then out.
   function leave() {
     page.windowOpen = false
