@@ -39,8 +39,8 @@ BorderSurface {
   visible: page.sidebarOpen && page.problem === ""
   // Against the window's left edge, as the right pane is against its
   // right, whatever is in the middle (the student, 2026-10-24: no dead
-  // strip outside a pane). The note moves only if it does not fit between
-  // them (page.sheetX).
+  // strip outside a pane). The note is centred in the room between them
+  // (page.sheetX, 2026-11-25).
   x: page.edge
   y: sheet.y
   height: sheet.height
