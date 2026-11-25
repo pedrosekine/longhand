@@ -364,6 +364,46 @@ def restart_when_finished(app):
 
     KEEP.append((p, out))
     restart_while_ending(app)
+    batch_files(app)
+
+
+def batch_files(app):
+    """A batch file (.bat, .cmd: what a config's `runner`, `check` or `read`
+    may name, as npm installs its programs) in a folder with a space in it,
+    its arguments each arriving whole, whatever cmd.exe makes of `&`, `%`,
+    `^`, `!` and quotes elsewhere. Started as `cmd.exe /c path args`, the
+    space cut the path in two and `&` began a second command. A line break
+    cannot reach a batch file: it is not started, rather than given half."""
+    import json as _json
+    import qs_io
+    folder = pathlib.Path(tempfile.mkdtemp(prefix="batch files ")) / "with space"
+    folder.mkdir()
+    bat = folder / "argv.cmd"
+    bat.write_text(f'@"{sys.executable}" -c "import sys, json; print(json.dumps(sys.argv[1:]))" %*\r\n', encoding="utf-8")
+    words = ["one", "two words", "a&b", "100%", "%PATH%", 'say "hi"', "x^y", "(paren)", "!bang!", "trail\\",
+             "c:\\dir with\\", "", "a;b,c=d", "<in>|out", "50% & more"]
+
+    def run(argv):
+        p = qs_io.Process()
+        out = qs_io.StdioCollector()
+        p._set_stdout(out)
+        ended = []
+        p.exited.connect(lambda code, status: ended.append(code))
+        p._set_command(argv)
+        p._set_running(True)
+        loop_until(app, lambda: ended and not p._get_running(), 20.0)
+        KEEP.append((p, out))
+        return (ended or [None])[0], out.property("text").strip()
+
+    code, said = run([str(bat), *words])
+    try:
+        got = _json.loads(said)
+    except ValueError:
+        got = said
+    check(code == 0 and got == words, f"a batch file in a folder with a space gets each argument whole ({code}, {got})")
+    code, said = run([str(bat), "first line\nsecond line"])
+    check(code == 127 and said == "", f"…and is not started with a line break in one ({code}, {said!r})")
+    check(any("line break" in line for line in qs_io.LOG), "…saying why")
 
 
 def restart_while_ending(app):
