@@ -1,6 +1,7 @@
 import Quickshell
 import Quickshell.Io
 import QtQuick
+import QtQuick.Controls as QC
 import qs.Commons
 import qs.Ui
 import "Links.js" as Links
@@ -305,6 +306,8 @@ Item {
 
   ListView {
     id: list
+    acceptedButtons: Qt.NoButton
+    QC.ScrollBar.vertical: ScrollMark { page: files.page }
     anchors.top: filterField.visible ? filterField.bottom : parent.top
     anchors.topMargin: filterField.visible ? page.sp(8) : 0
     anchors.bottom: parent.bottom
@@ -332,9 +335,11 @@ Item {
         anchors.fill: parent
         anchors.topMargin: row.modelData.head && row.index > 0 ? page.sp(10) : 0
         radius: Style.cornerRadius
-        color: row.lit ? Style.selectedFill : row.picked ? Qt.rgba(Style.selectedFill.r, Style.selectedFill.g, Style.selectedFill.b, 0.4) : "transparent"
+        color: row.lit ? Style.selectedFill : row.picked ? Qt.rgba(Style.selectedFill.r, Style.selectedFill.g, Style.selectedFill.b, 0.4)
+          : rowArea.containsMouse && page.handOn && !row.modelData.none ? Style.hoverFill : "transparent"
       }
       MouseArea {
+        id: rowArea
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: row.modelData.none ? Qt.ArrowCursor : Qt.PointingHandCursor

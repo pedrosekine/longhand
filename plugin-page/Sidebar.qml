@@ -2,6 +2,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import QtQuick
+import QtQuick.Controls as QC
 import Qt.labs.folderlistmodel
 import qs.Commons
 import qs.Ui
@@ -65,18 +66,18 @@ BorderSurface {
     }
   }
 
-  // Swiping between the spaces: two fingers sideways on the sidebar, or
-  // Ctrl and the wheel, one space per gesture.
+  // Swiping between the spaces: two fingers sideways on the sidebar, one
+  // space per gesture. Ctrl and the wheel did it too until 2026-11-25 (the
+  // mouse pass); that is the page's zoom now, everywhere (Page.qml).
   property real swipeTravel: 0
   property bool swiped: false
   Timer { id: swipeRest; interval: 280; onTriggered: { sidebar.swipeTravel = 0; sidebar.swiped = false } }
   WheelHandler {
     target: null
     onWheel: function (e) {
-      var ctrl = (e.modifiers & Qt.ControlModifier) !== 0
       var dx = e.pixelDelta.x !== 0 ? e.pixelDelta.x : e.angleDelta.x / 4
       var dy = e.pixelDelta.y !== 0 ? e.pixelDelta.y : e.angleDelta.y / 4
-      var d = ctrl && Math.abs(dy) > Math.abs(dx) ? -dy : (Math.abs(dx) > Math.abs(dy) ? -dx : 0)
+      var d = Math.abs(dx) > Math.abs(dy) ? -dx : 0
       if (d === 0) return
       swipeRest.restart()
       if (sidebar.swiped) return
@@ -110,6 +111,9 @@ BorderSurface {
     // The panes' keys are global (page.anywhereKey): Ctrl+[ closes the
     // sidebar from here, Alt+→ moves on and leaves it open.
     if (page.anywhereKey(event)) return true
+    // Words selected in an answer beside it: Ctrl+C copies them, Ctrl+R
+    // answers them, as from the note and the PDF (2026-11-25, the mouse pass).
+    if (page.chatSelectionKey(event, false)) return true
     // `?`: the keys, from any of its lists (the files' filter types it).
     if (Sc.hit(event, "keysHere")) { page.toggleKeys(); return true }
     if (page.sidebarSpace === "files") return filesPane.keyPressed(event)
@@ -307,6 +311,8 @@ BorderSurface {
 
   Flickable {
     id: timeFlick
+    acceptedButtons: Qt.NoButton
+    QC.ScrollBar.vertical: ScrollMark { page: sidebar.page }
     visible: page.sidebarSpace === "time" && !page.projectOpen
     transform: Translate { x: sidebar.spaceShift }
     anchors.top: parent.top
@@ -349,7 +355,7 @@ BorderSurface {
             anchors.margins: -page.sp(6)
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onClicked: page.moveCalendar(0, -1)
+            onClicked: { page.focusPane("left"); page.moveCalendar(0, -1) }
             Tip { host: page; shown: parent.containsMouse; text: page.tip("A month back", "calPrevMonth") }
           }
         }
@@ -378,7 +384,7 @@ BorderSurface {
             anchors.margins: -page.sp(6)
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onClicked: page.moveCalendar(0, 1)
+            onClicked: { page.focusPane("left"); page.moveCalendar(0, 1) }
             Tip { host: page; shown: parent.containsMouse; text: page.tip("A month on", "calNextMonth") }
           }
         }
@@ -530,7 +536,8 @@ BorderSurface {
           width: calendar.width
           height: dueRow.implicitHeight + page.sp(6)
           radius: Style.cornerRadius
-          color: page.dueFocus === index && sidebarKeys.activeFocus ? Style.selectedFill : dueArea.containsMouse && page.handOn ? Style.hoverFill : "transparent"
+          color: page.dueFocus === index && sidebarKeys.activeFocus ? Style.selectedFill
+            : (dueArea.containsMouse || dueTick.containsMouse) && page.handOn ? Style.hoverFill : "transparent"
           Text {
             id: dueRow
             anchors.left: parent.left
@@ -555,6 +562,36 @@ BorderSurface {
             cursorShape: Qt.PointingHandCursor
             onClicked: page.goToDeadline(modelData)
             Tip { host: page; shown: parent.containsMouse; text: page.tips([["Go to its line", "listOpen"], ["Done (again: not done)", "listDone"]]) }
+          }
+          // The ○ (or ✓) ticks it, as Ctrl+L on the row, as a box does in
+          // the note and on the dashboard (2026-11-25, the mouse pass: it
+          // looked like a box and only went to the line).
+          TextMetrics { id: tickInk; font: dueRow.font; text: "○ " }
+          MouseArea {
+            id: dueTick
+            x: dueRow.x - page.sp(4)
+            y: dueRow.y - page.sp(3)
+            width: tickInk.advanceWidth + page.sp(6)
+            height: tickInk.height + page.sp(6)
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: {
+              page.focusPane("left")
+              page.dueFocus = dueCell.index
+              if (dueCell.modelData.status === "open") page.tickSound()
+              page.tickDeadline(dueCell.modelData)
+            }
+            Rectangle {
+              anchors.centerIn: parent
+              width: Math.round(tickInk.height * 0.9)
+              height: width
+              radius: width / 2
+              color: "transparent"
+              border.width: 1
+              border.color: page.accent
+              visible: dueTick.containsMouse && page.handOn
+            }
+            Tip { host: page; shown: parent.containsMouse; text: page.tip("Done (again: not done)", "listDone"); act: "listDone" }
           }
         }
       }
@@ -989,6 +1026,8 @@ BorderSurface {
   // the margin on the right is the agent's (decided 2026-10-15).
   Flickable {
     id: projectFlick
+    acceptedButtons: Qt.NoButton
+    QC.ScrollBar.vertical: ScrollMark { page: sidebar.page }
     visible: page.sidebarSpace === "time" && page.projectOpen
     transform: Translate { x: sidebar.spaceShift }
     anchors.top: parent.top
@@ -1293,7 +1332,7 @@ BorderSurface {
             enabled: !!modelData.pick
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onClicked: { page.pickProjectRow(modelData.key); page.openInProject() }
+            onClicked: { page.focusPane("left"); page.pickProjectRow(modelData.key); page.openInProject() }
           }
         }
       }

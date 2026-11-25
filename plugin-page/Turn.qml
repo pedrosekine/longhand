@@ -121,7 +121,13 @@ Column {
       Item {
         id: echo
         visible: part.modelData.reply !== ""
-        readonly property bool hot: echoArea.containsMouse
+        // Lit, and its words lit in the answer above (`hoverQuote`), only
+        // while the hand is on the mouse (2026-11-25, the mouse pass).
+        readonly property bool hot: echoArea.containsMouse && page.handOn
+        onHotChanged: {
+          if (hot) page.hoverQuote = { pane: turn.pane, quote: part.modelData.passage }
+          else if (page.hoverQuote && page.hoverQuote.quote === part.modelData.passage) page.hoverQuote = null
+        }
         width: Math.min(part.width, echoRow.implicitWidth + page.sp(12))
         height: echoRow.implicitHeight + page.sp(4)
         Rectangle {
@@ -174,10 +180,6 @@ Column {
           anchors.fill: parent
           hoverEnabled: true
           cursorShape: Qt.PointingHandCursor
-          onContainsMouseChanged: {
-            if (containsMouse) page.hoverQuote = { pane: turn.pane, quote: part.modelData.passage }
-            else if (page.hoverQuote && page.hoverQuote.quote === part.modelData.passage) page.hoverQuote = null
-          }
           onClicked: page.showPassage(turn.pane, part.modelData.passage)
         }
         Tip {
@@ -353,7 +355,7 @@ Column {
       font.family: page.fontFamily
       font.styleName: page.fontStyle
       font.pixelSize: page.fs(Style.font.caption)
-      font.underline: backArea.containsMouse && !back
+      font.underline: backArea.containsMouse && page.handOn && !back
       MouseArea {
         id: backArea
         anchors.fill: parent

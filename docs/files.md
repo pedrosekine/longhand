@@ -92,9 +92,10 @@ the note or the dashboard. There are two:
 - `page.sidebarSpace` holds the space, and a fresh open sets it back to
   `time`.
 - `Ctrl+1` in the sidebar calls `switchSpace` (the shifted brackets did, until 2026-10-27). A
-  sideways swipe or Ctrl+wheel past a threshold does the same, once per
-  gesture (a `WheelHandler` on the sidebar; `TouchScroll` passes sideways
-  and Ctrl scrolls on).
+  sideways swipe past a threshold does the same, once per gesture (a
+  `WheelHandler` on the sidebar; `TouchScroll` passes sideways scrolls on).
+  Ctrl and the wheel did it too until 2026-11-25; that is the page's zoom
+  now, everywhere ([navigation.md](navigation.md), "The mouse").
 - The foot shows **time · files**, then **today**, **keys** and
   **settings**.
 - The space slides in from the side it was called from, and Files sits on

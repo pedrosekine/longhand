@@ -3353,7 +3353,10 @@ def checks() -> int:
         check(p.call("keysKey", KEY_2, ALT2) == "true" and panes()["center"] == "dash" and p.call("keysOpen") == "false",
               f"Ctrl+Alt+2 from the keys over the note: the dashboard ({panes()})")
         p.call("dashKey", KEY_ESC, 0)
-        check(panes()["pointer"] == "panes", "the pointer follows pane changes unless told otherwise")
+        # Off on Windows unless told otherwise (2026-11-25): it shows the
+        # pointer while the keys move, so a warp looked like a jump.
+        want_pointer = "off" if os.name == "nt" else "panes"
+        check(panes()["pointer"] == want_pointer, f"the pointer follows pane changes unless told otherwise ({want_pointer} here)")
         p.call("closePanes")
 
         # 12c. Hyprland's six: listed as Hyprland's until the page is let
@@ -4087,6 +4090,11 @@ def checks() -> int:
         # The pointer left where the test puts it: following the selection
         # it would move off the mark hovered.
         p.call("setPointer", "off")
+        # At 701 px the chat covers the paper (one pane at a time): the keys
+        # go back to the paper before the mouse rests on it, as below. It
+        # was hovered through the chat while the chat's rows took no hover
+        # (2026-11-25, the mouse pass: its rows light under the hand now).
+        p.call("pageKey", KEY_2, CTRL)
 
         def rest_on_mark(mid, tip=True):
             m = next(x for x in mk()["read"]["marks"] if x["id"] == mid)

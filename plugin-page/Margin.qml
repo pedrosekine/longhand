@@ -2,6 +2,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import QtQuick
+import QtQuick.Controls as QC
 import Qt.labs.folderlistmodel
 import qs.Commons
 import qs.Ui
@@ -94,6 +95,8 @@ BorderSurface {
 
   Flickable {
     id: marginFlick
+    acceptedButtons: Qt.NoButton
+    QC.ScrollBar.vertical: ScrollMark { page: margin.page }
     anchors.top: parent.top
     anchors.topMargin: margin.contentTopInset + page.sp(4) + (paneSplit.visible ? paneSplit.implicitHeight + page.sp(6) : 0)
     anchors.left: parent.left
@@ -423,12 +426,15 @@ BorderSurface {
                 font.styleName: page.fontStyle
                 font.pixelSize: page.fs(Style.font.caption)
                 font.underline: chosen
+                // Wider than its word; a click puts the keys in the pane
+                // (2026-11-25, the mouse pass).
                 MouseArea {
                   id: mRateArea
                   anchors.fill: parent
+                  anchors.margins: -page.sp(4)
                   hoverEnabled: true
                   cursorShape: Qt.PointingHandCursor
-                  onClicked: page.rateReply(modelData.value)
+                  onClicked: { page.focusPane("right"); page.rateReply(modelData.value) }
                   Tip { host: page; shown: parent.containsMouse; text: page.tip(chosen ? "Take it back" : "Say it was " + modelData.text, modelData.act) }
                 }
               }
@@ -467,7 +473,7 @@ BorderSurface {
         textFormat: Text.PlainText
         text: (thinking.phaseText !== "" ? thinking.phaseText : "thinking") + (thinking.elapsed >= 2 ? " · " + thinking.elapsed + "s" : "")
         property int elapsed: 0
-        color: page.dim
+        color: thinkStopArea.containsMouse && page.handOn ? page.accent : page.dim
         font.family: page.fontFamily
         font.styleName: page.fontStyle
         font.italic: true
@@ -483,7 +489,9 @@ BorderSurface {
           onTriggered: thinking.elapsed = Math.floor((Date.now() - thinking.since) / 1000)
         }
         MouseArea {
+          id: thinkStopArea
           anchors.fill: parent
+          hoverEnabled: true
           cursorShape: Qt.PointingHandCursor
           onClicked: page.stopAgent(margin.talk ? "talk" : "margin")
         }

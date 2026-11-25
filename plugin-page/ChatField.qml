@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls as QC
 import QtQuick.Controls
 import qs.Commons
 import qs.Ui
@@ -163,6 +164,9 @@ FocusScope {
 
   Flickable {
     id: flick
+    acceptedButtons: Qt.NoButton
+    QC.ScrollBar.vertical: ScrollMark { page: box.page }
+    TouchScroll { flickable: flick }
     anchors.fill: parent
     clip: true
     boundsBehavior: Flickable.StopAtBounds
@@ -211,7 +215,7 @@ FocusScope {
         font: area.font
       }
       background: BorderSurface {
-        color: Style.controlFill(area.activeFocus, area.hovered, page.foreground, page.accent)
+        color: Style.controlFill(area.activeFocus, area.hovered && page.handOn, page.foreground, page.accent)
         borderSpec: box.borderSpec
         radius: Style.cornerRadius
       }

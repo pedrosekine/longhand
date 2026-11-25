@@ -25,9 +25,14 @@ import qs.Ui
 //                           deadline is kept as history (nothing is deleted
 //                           outside the note, docs/tasks.md)
 // Up/Down pick a row, Left/Right a column, `d` `g` `x` are shortcuts for
-// done, grade, cancel (Ctrl+L is done too, the note's tick); `o` (or a click on the title) opens the page at the
-// note line as well. Mouse hover drives the same cursor so exactly one cell
-// is highlighted at a time.
+// done, grade, cancel (Ctrl+L is done too, the note's tick); `o` opens the
+// page at the note line as well.
+//
+// The mouse, as on the dashboard: a click on a row's ○ ticks it; a click on
+// the row or its title opens its line in the note, or, with no line to
+// open, only puts the keys' cursor there (a row click never ticks). Hover
+// never moves the keys' cursor (docs/hints.md): the pointer paints the faint
+// hover look, the keys' cell wears `KeyMark`, and the two never read alike.
 //
 // Enter used to mean *done* here while it meant *go to it* in the page,
 // which is one key doing two opposite things depending on which surface you
@@ -99,10 +104,15 @@ Panel {
     root.clampCursor()
   }
 
-  function hoverCursor(row, col) {
+  function pickCursor(row, col) {
     root.cursorActive = true
     root.cursorRow = row
     root.cursorCol = col
+  }
+
+  // A deadline a note line stands for: it has a line to open.
+  function hasLine(item) {
+    return !!item && /^\[\[[^\]#|]+#\^d\d+\]\]$/.test(item.link)
   }
 
   function selectedItem() {
@@ -117,7 +127,7 @@ Panel {
     // kept here so the key means one thing. A deadline no line stands for
     // has nothing to open, so it closes out instead.
     if (root.cursorCol === 0) {
-      if (/^\[\[[^\]#|]+#\^d\d+\]\]$/.test(item.link)) root.openLine(item)
+      if (root.hasLine(item)) root.openLine(item)
       else svc.toggleDone(item)
     }
     else if (root.cursorCol === 1) root.startGrade(item)
@@ -168,7 +178,7 @@ Panel {
 
   // To the note line that stands for a deadline: the page opens on it.
   function openLine(item) {
-    if (!item || !/^\[\[[^\]#|]+#\^d\d+\]\]$/.test(item.link)) return
+    if (!root.hasLine(item)) return
     Quickshell.execDetached(["omarchy-shell", "shell", "summon", "longhand.page", JSON.stringify({ goto: item.link })])
     root.close()
   }
@@ -179,7 +189,7 @@ Panel {
   }
 
   function startGrade(item) {
-    root.hoverCursor(root.shown.indexOf(item), 1)
+    root.pickCursor(root.shown.indexOf(item), 1)
     root.gradingId = item.id
   }
 
@@ -218,6 +228,18 @@ Panel {
   Connections {
     target: svc
     function onItemsChanged() { root.clampCursor() }
+  }
+
+  // The keys' mark: drawn under a control's own paint, so the control's
+  // hover fill (the pointer's) still shows over it, and the two read apart.
+  component KeyMark: Rectangle {
+    property color tint: root.foreground
+    anchors.fill: parent
+    z: -1
+    radius: Style.cornerRadius
+    color: Style.selectedFillFor(tint, Commons.Color.accent)
+    border.width: 1
+    border.color: Commons.Util.alpha(tint, 0.6)
   }
 
   implicitWidth: button.implicitWidth
@@ -334,12 +356,15 @@ Panel {
               }
             }
             readonly property bool grading: root.gradingId === modelData.id
+            readonly property bool hasLine: root.hasLine(modelData)
             readonly property color textColor: isDone ? root.dim : root.foreground
 
             width: column.width
             implicitHeight: rowContent.implicitHeight + Style.space(10)
-            hasCursor: root.cellHot(index, 0)
+            hasCursor: rowMouse.containsMouse && !root.cellHot(index, 0)
             foreground: root.foreground
+
+            KeyMark { visible: root.cellHot(row.index, 0) }
 
             // The glow a tick leaves for a moment.
             Rectangle {
@@ -350,12 +375,17 @@ Panel {
               opacity: 0
             }
 
+            // The row (and its title) opens its line; one with no line to
+            // open is only picked. Ticking is the mark's alone.
             MouseArea {
+              id: rowMouse
               anchors.fill: parent
               hoverEnabled: true
-              cursorShape: Qt.PointingHandCursor
-              onContainsMouseChanged: if (containsMouse) root.hoverCursor(row.index, 0)
-              onClicked: root.tickItem(row.modelData)
+              cursorShape: row.hasLine ? Qt.PointingHandCursor : Qt.ArrowCursor
+              onClicked: {
+                if (row.hasLine) root.openLine(row.modelData)
+                else root.pickCursor(row.index, 0)
+              }
             }
 
             ColumnLayout {
@@ -371,14 +401,26 @@ Panel {
                 Layout.fillWidth: true
                 spacing: Style.space(8)
 
-                // The mark on its own, so a tick can pop it.
+                // The mark on its own, so a tick can pop it. A click on it
+                // ticks (or unticks), as the dashboard's box does; its hit
+                // area reaches a little past the glyph.
                 Text {
                   id: markText
                   textFormat: Text.PlainText
                   text: row.isDone ? "✓" : "○"
-                  color: row.textColor
+                  color: markMouse.containsMouse ? root.foreground : row.textColor
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.body
+                  font.bold: markMouse.containsMouse
+
+                  MouseArea {
+                    id: markMouse
+                    anchors.fill: parent
+                    anchors.margins: -Style.space(5)
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.tickItem(row.modelData)
+                  }
                 }
 
                 Text {
@@ -390,7 +432,7 @@ Panel {
                   color: row.textColor
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.body
-                  font.underline: titleMouse.containsMouse && titleMouse.enabled
+                  font.underline: row.hasLine && rowMouse.containsMouse && !markMouse.containsMouse
 
                   // Struck through, drawn rather than the font's, so a tick
                   // can draw it left to right.
@@ -402,17 +444,6 @@ Panel {
                     height: Math.max(1, Math.round(titleText.font.pixelSize * 0.07))
                     width: Math.min(titleText.implicitWidth, titleText.width) * progress
                     color: root.dim
-                  }
-
-                  // A deadline a note line stands for: its title opens it.
-                  MouseArea {
-                    id: titleMouse
-                    anchors.fill: parent
-                    enabled: /#\^d\d+\]\]$/.test(row.modelData.link)
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onContainsMouseChanged: if (containsMouse) root.hoverCursor(row.index, 0)
-                    onClicked: root.openLine(row.modelData)
                   }
                 }
 
@@ -460,18 +491,11 @@ Panel {
                     foreground: row.textColor
                     horizontalPadding: Style.space(6)
                     verticalPadding: Style.space(1)
-                    hasCursor: root.cellHot(row.index, modelData.col)
-                    onHovered: function (h) {
-                      if (h) root.hoverCursor(row.index, modelData.col)
-                      // Leaving a chip for the row body hands the cursor
-                      // back to column 0; the row's own MouseArea stays
-                      // hovered throughout, so it would not re-fire.
-                      else if (root.cellHot(row.index, modelData.col)) root.cursorCol = 0
-                    }
                     onClicked: {
-                      root.hoverCursor(row.index, modelData.col)
+                      root.pickCursor(row.index, modelData.col)
                       root.activateCursor()
                     }
+                    KeyMark { tint: row.textColor; visible: root.cellHot(row.index, modelData.col) }
                   }
                 }
               }

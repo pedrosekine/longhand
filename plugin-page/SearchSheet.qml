@@ -1,5 +1,6 @@
 import Quickshell
 import QtQuick
+import QtQuick.Controls as QC
 import qs.Commons
 import qs.Ui
 
@@ -94,10 +95,12 @@ BorderSurface {
           anchors.leftMargin: -page.sp(10)
           anchors.rightMargin: -page.sp(10)
           radius: Style.cornerRadius
-          color: horizonRow.picked ? Style.selectedFill : "transparent"
+          color: horizonRow.picked ? Style.selectedFill : horizonArea.containsMouse && page.handOn ? Style.hoverFill : "transparent"
         }
         MouseArea {
+          id: horizonArea
           anchors.fill: parent
+          hoverEnabled: true
           cursorShape: Qt.PointingHandCursor
           onClicked: { page.searchFocus = -1; searchKeys.forceActiveFocus() }
         }
@@ -107,13 +110,39 @@ BorderSurface {
           anchors.verticalCenter: parent.verticalCenter
           width: parent.width
           spacing: page.sp(2)
-          Text {
-            textFormat: Text.PlainText
-            text: horizonRow.h ? "Daily notes from " + page.sayHorizon(horizonRow.h.horizon) + " on" : ""
-            color: page.foreground
-            font.family: page.fontFamily
-            font.styleName: page.fontStyle
-            font.pixelSize: page.fs(Style.font.body)
+          Row {
+            spacing: page.sp(10)
+            Text {
+              textFormat: Text.PlainText
+              text: horizonRow.h ? "Daily notes from " + page.sayHorizon(horizonRow.h.horizon) + " on" : ""
+              color: page.foreground
+              font.family: page.fontFamily
+              font.styleName: page.fontStyle
+              font.pixelSize: page.fs(Style.font.body)
+            }
+            // A month earlier or later by the mouse too, as ← and → on the
+            // row (2026-11-25, the mouse pass: only the keys moved it).
+            Repeater {
+              model: [{ glyph: "‹", months: -1, says: "A month earlier   ←" }, { glyph: "›", months: 1, says: "A month later   →" }]
+              Text {
+                required property var modelData
+                textFormat: Text.PlainText
+                text: modelData.glyph
+                color: stepArea.containsMouse && page.handOn ? page.accent : page.dim
+                font.family: page.fontFamily
+                font.styleName: page.fontStyle
+                font.pixelSize: page.fs(Style.font.body)
+                MouseArea {
+                  id: stepArea
+                  anchors.fill: parent
+                  anchors.margins: -page.sp(6)
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: { page.searchFocus = -1; searchKeys.forceActiveFocus(); page.moveHorizon(parent.modelData.months) }
+                  Tip { host: page; shown: parent.containsMouse; text: parent.parent.modelData.says }
+                }
+              }
+            }
           }
           Text {
             width: parent.width
@@ -133,6 +162,9 @@ BorderSurface {
 
       Flickable {
         id: searchFlick
+        acceptedButtons: Qt.NoButton
+        QC.ScrollBar.vertical: ScrollMark { page: searchSheet.page }
+        TouchScroll { flickable: searchFlick }
         anchors.top: horizonRow.visible ? horizonRow.bottom : searchIntro.bottom
         anchors.topMargin: page.sp(16)
         anchors.bottom: searchFoot.top
@@ -170,10 +202,12 @@ BorderSurface {
                 anchors.leftMargin: -page.sp(10)
                 anchors.rightMargin: -page.sp(10)
                 radius: Style.cornerRadius
-                color: folderRow.picked ? Style.selectedFill : "transparent"
+                color: folderRow.picked ? Style.selectedFill : folderArea.containsMouse && page.handOn ? Style.hoverFill : "transparent"
               }
               MouseArea {
+                id: folderArea
                 anchors.fill: parent
+                hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: { page.searchFocus = folderRow.index; page.toggleSearchFolder(folderRow.index); searchKeys.forceActiveFocus() }
               }

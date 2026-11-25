@@ -196,6 +196,22 @@ Item {
     // The button held down: words still being dragged over (passive, the
     // selection is the TextEdit's own).
     PointHandler { id: pressing; acceptedButtons: Qt.LeftButton }
+    // The right button: the edit menu on the words selected — copy them,
+    // reply to them — as their keys do (2026-11-25, the mouse pass).
+    MouseArea {
+      anchors.fill: parent
+      acceptedButtons: Qt.RightButton
+      onPressed: function (mouse) {
+        var has = said.selectedText !== ""
+        turn.page.used("edit-menu", "chat")
+        turn.page.editMenuAt(said, mouse.x, mouse.y, [
+          { text: "Copy", key: "Ctrl+C", enabled: has, run: function () { said.copy() } },
+          turn.answerable ? { text: "Reply to these words", key: turn.page.keyName("chatAnswer"), enabled: has,
+                              run: function () { turn.answerSelection() } } : null,
+          { text: "Select all", key: "", run: function () { said.selectAll() } }
+        ])
+      }
+    }
   }
 
   Column {

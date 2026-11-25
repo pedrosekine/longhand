@@ -22,7 +22,7 @@ Column {
       width: list.width
       height: mentionText.implicitHeight + page.sp(4)
       radius: Style.cornerRadius
-      color: page.dayMentionFocus === index ? Style.selectedFill : "transparent"
+      color: page.dayMentionFocus === index ? Style.selectedFill : mentionArea.containsMouse && page.handOn ? Style.hoverFill : "transparent"
       Text {
         id: mentionText
         anchors.left: parent.left
@@ -38,7 +38,9 @@ Column {
         font.pixelSize: page.fs(Style.font.bodySmall)
       }
       MouseArea {
+        id: mentionArea
         anchors.fill: parent
+        hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
         onClicked: { page.dayMentionFocus = index; page.pickDayMention(index); list.picked() }
       }

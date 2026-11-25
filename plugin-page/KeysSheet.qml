@@ -2,6 +2,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import QtQuick
+import QtQuick.Controls as QC
 import Qt.labs.folderlistmodel
 import qs.Commons
 import qs.Ui
@@ -88,6 +89,8 @@ BorderSurface {
 
       Flickable {
         id: keysFlick
+        acceptedButtons: Qt.NoButton
+        QC.ScrollBar.vertical: ScrollMark { page: keysSheet.page }
         anchors.top: keysField.bottom
         anchors.topMargin: page.sp(12)
         anchors.left: parent.left
@@ -153,7 +156,9 @@ BorderSurface {
                 radius: Style.cornerRadius
                 color: keyRow.hot ? Style.selectedFill : keyHover.hovered && page.handOn ? Style.hoverFill : "transparent"
               }
-              HoverHandler { id: keyHover; enabled: !keyRow.isHead }
+              // A key that cannot be moved looks it: no hand, no hover mark; a
+              // click on it still says why (2026-11-25, the mouse pass).
+              HoverHandler { id: keyHover; enabled: !keyRow.isHead && keyRow.modelData.kind !== "fixed" }
 
               Item {
                 id: keyInner
@@ -223,7 +228,7 @@ BorderSurface {
                 anchors.fill: parent
                 enabled: !keyRow.isHead
                 z: -1
-                cursorShape: Qt.PointingHandCursor
+                cursorShape: keyRow.modelData.kind === "fixed" ? Qt.ArrowCursor : Qt.PointingHandCursor
                 onClicked: {
                   page.keysFocus = keyRow.index
                   page.listenFor(keyRow.modelData, false)

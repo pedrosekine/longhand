@@ -13,8 +13,8 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 
 | | Keys | Works |
 |---|---|---|
-| Zoom in | `Ctrl+=` · `Ctrl++` | everywhere |
-| Zoom out | `Ctrl+-` · `Ctrl+_` | everywhere |
+| Zoom in (or Ctrl+wheel up) | `Ctrl+=` · `Ctrl++` | everywhere |
+| Zoom out (or Ctrl+wheel down) | `Ctrl+-` · `Ctrl+_` | everywhere |
 | Zoom back to 100% | `Ctrl+0` | everywhere |
 | Show these keys | `Ctrl+/` | everywhere |
 | Show these keys (where nothing is typed) | `?` | in the dashboard, in the sidebar's lists, in the files, in the calendar, in a PDF |

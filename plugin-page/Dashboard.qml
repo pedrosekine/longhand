@@ -2,6 +2,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import QtQuick
+import QtQuick.Controls as QC
 import QtQuick.Shapes
 import Qt.labs.folderlistmodel
 import qs.Commons
@@ -569,6 +570,8 @@ BorderSurface {
 
     Flickable {
       id: dashFlick
+      acceptedButtons: Qt.NoButton
+      QC.ScrollBar.vertical: ScrollMark { page: dash.page }
       anchors.top: strip.bottom
       anchors.topMargin: page.sp(10)
       anchors.left: parent.left
@@ -1020,7 +1023,7 @@ BorderSurface {
                   anchors.margins: -page.sp(6)
                   cursorShape: Qt.PointingHandCursor
                   hoverEnabled: true
-                  onClicked: { page.taskFocus = dashRow.index; page.tickFocused() }
+                  onClicked: { dashKeys.forceActiveFocus(); page.taskFocus = dashRow.index; page.tickFocused() }
                   Tip { host: page; shown: parent.containsMouse; text: page.tip("Done (again: not done)", "dashDone") }
                 }
               }
@@ -1047,16 +1050,22 @@ BorderSurface {
                 Repeater {
                   model: page.pillsFor(dashRow.modelData)
                   Rectangle {
+                    id: pill
                     required property var modelData
                     readonly property bool filled: modelData.tone === "do"
-                    readonly property color tint: modelData.tone === "late" ? page.urgent
+                    // A day's pill is the row's reschedule, as its key; the
+                    // raised row's "dismiss" dismisses it (2026-11-25, the
+                    // mouse pass). A time estimate is only read.
+                    readonly property bool acts: ["do", "due", "late", "act"].indexOf(modelData.tone) >= 0
+                    readonly property bool lit: pillArea.containsMouse && page.handOn
+                    readonly property color tint: lit ? page.accent : modelData.tone === "late" ? page.urgent
                       : modelData.tone === "done" ? page.faint : page.dim
                     width: pillText.implicitWidth + Math.round(page.textSize * 0.9)
                     height: pillText.implicitHeight + Math.round(page.textSize * 0.25)
                     radius: Style.cornerRadius
                     color: filled ? Style.selectedFill : "transparent"
                     border.width: filled ? 0 : 1
-                    border.color: modelData.tone === "late" ? page.urgent : page.faint
+                    border.color: lit ? page.accent : modelData.tone === "late" ? page.urgent : page.faint
                     Text {
                       id: pillText
                       anchors.centerIn: parent
@@ -1066,6 +1075,27 @@ BorderSurface {
                       font.family: page.fontFamily
                       font.styleName: page.fontStyle
                       font.pixelSize: Math.round(page.textSize * 0.78)
+                    }
+                    MouseArea {
+                      id: pillArea
+                      anchors.fill: parent
+                      anchors.margins: -page.sp(3)
+                      enabled: pill.acts
+                      hoverEnabled: true
+                      cursorShape: Qt.PointingHandCursor
+                      onClicked: {
+                        dashKeys.forceActiveFocus()
+                        page.taskFocus = dashRow.index
+                        if (pill.modelData.tone === "act") page.activateTask()
+                        else page.startDashWhen()
+                      }
+                      Tip {
+                        host: page
+                        shown: parent.containsMouse
+                        text: pill.modelData.tone === "act" ? page.tip("Dismiss it", "dashOpen")
+                          : dashRow.kind === "deadline" ? page.tip("The day to work on it", "dashWhen") : page.tip("Reschedule", "dashWhen")
+                        act: pill.modelData.tone === "act" ? "dashOpen" : "dashWhen"
+                      }
                     }
                   }
                 }
@@ -1243,7 +1273,13 @@ BorderSurface {
               acceptedButtons: Qt.LeftButton
               hoverEnabled: true
               cursorShape: dashRow.acts ? Qt.PointingHandCursor : Qt.ArrowCursor
-              onClicked: { page.taskFocus = index; page.activateTask() }
+              onClicked: {
+                dashKeys.forceActiveFocus()
+                page.taskFocus = index
+                // A raised row only comes under the keys: dismissing it is
+                // its own word, or Enter (2026-11-25, the mouse pass).
+                if (dashRow.kind !== "raised") page.activateTask()
+              }
               Tip {
                 host: page
                 readonly property string kind: dashRow.modelData.kind
@@ -1264,7 +1300,7 @@ BorderSurface {
                   : kind === "grading" ? page.tip("Show what waits for a grade", "dashOpen")
                   : kind === "band" ? page.tips([[dashRow.modelData.open ? "Fold it" : "Open it", "dashOpen"], ["Collapse every band", "dashFoldAll"],
                                                  ["Expand every band", "dashUnfoldAll"]])
-                  : page.tip("Dismiss it", "dashOpen")
+                  : page.tip("Dismiss it (or its own word, on the right)", "dashOpen")
               }
               z: -1
             }
@@ -1378,6 +1414,11 @@ BorderSurface {
           Keys.onReturnPressed: function (event) { event.accepted = true; page.commitDashWhen() }
           Keys.onEnterPressed: function (event) { event.accepted = true; page.commitDashWhen() }
           Keys.onEscapePressed: function (event) { event.accepted = true; page.dashWhenFor = null; page.dashWhenText = "" }
+          // The keys gone elsewhere (a click on another row, in a pane)
+          // leave it as Esc does (2026-11-25, the mouse pass).
+          onActiveFocusChanged: if (!activeFocus && page.dashWhenFor) Qt.callLater(function () {
+            if (page.dashWhenFor && !dashWhenField.activeFocus && dash.Window.active) { page.dashWhenFor = null; page.dashWhenText = "" }
+          })
         }
 
         Text {

@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls as QC
 import qs.Commons
 import qs.Ui
 
@@ -24,7 +25,9 @@ Rectangle {
   border.color: page.faint
 
   // A click outside the box is no click into it; inside, the keys stay in the field.
-  MouseArea { anchors.fill: parent; onClicked: field.forceActiveFocus() }
+  // The wheel over the box stays in it: at the list's end, or with no list
+  // to scroll, it scrolled the note underneath (2026-11-25, the mouse pass).
+  MouseArea { anchors.fill: parent; onClicked: field.forceActiveFocus(); onWheel: function (wheel) { wheel.accepted = true } }
 
   Column {
     id: col
@@ -53,6 +56,9 @@ Rectangle {
 
     Flickable {
       id: listFlick
+      acceptedButtons: Qt.NoButton
+      QC.ScrollBar.vertical: ScrollMark { page: sw.page }
+      TouchScroll { flickable: listFlick }
       width: col.width
       height: Math.min(listCol.implicitHeight, page.sp(360))
       contentWidth: width

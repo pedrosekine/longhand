@@ -41,9 +41,16 @@ Item {
 
   // function (event) -> bool; true when the page consumed the key.
   property var keyFilter: null
+  property var chatKey: null    // (event, hasOwnSelection) → taken: the chat's selection's keys
   // Drawn while the mouse is on a checkbox: the page's hint, naming the
   // key that does the same (an Item; the editor knows nothing of tooltips).
   property Component boxTip: null
+  // Drawn while the mouse is on a link (2026-11-25, the mouse pass): the
+  // page's hint, saying where it goes, given the link as `link`.
+  property Component linkTip: null
+  property var hoverLink: null    // { i, link } under the mouse
+  // What shows of the note (the page's Flickable): a drag past its edge keeps selecting.
+  property Item viewport: null
   // Drawn by the box on the cursor's line: the page's key for it while
   // Ctrl is held (an Item; the editor knows nothing of keys).
   property Component boxBadge: null
@@ -80,6 +87,11 @@ Item {
   signal boxTicked(int lineIndex, bool done)
   // A box clicked with the mouse (the page may name the key, docs/hints.md).
   signal boxClicked()
+  // A deadline's date pill clicked: the page asks for its new day, as Ctrl+D.
+  signal datePillClicked(int lineIndex)
+  // A right click on the lines (x, y in the editor's own coordinates): the
+  // page's edit menu, its acts done by `editAct` as their keys do them.
+  signal menuAsked(real x, real y)
 
   property string fontFamily: "sans-serif"
   property string fontStyle: ""        // the cut of the prose face (Page.qml)
@@ -800,6 +812,27 @@ Item {
   // items are one block each: a bullet went from its line to the whole
   // note in one press. The wider steps take whole lines, their marks too,
   // so what is copied or cut is whole markdown.
+  // An edit from the mouse's menu (2026-11-25, the mouse pass), done as
+  // its key does it on the cursor's line: Ctrl and `k` (C, X, V, A).
+  function editAct(k) {
+    var item = ed.rowItem(ed.focusedRow)
+    if (!item) return
+    ed.key({ key: k, modifiers: Qt.ControlModifier, text: "", isAutoRepeat: false, accepted: false }, item)
+  }
+  function hasSelection() {
+    var item = ed.rowItem(ed.focusedRow)
+    return ed.spanning || (!!item && item.field.selectedText !== "")
+  }
+  // The selection as text offsets, or null.
+  function selectedSpan() {
+    if (ed.spanning) return { a: ed.selStart, b: ed.selEnd }
+    var item = ed.rowItem(ed.focusedRow)
+    if (!item || item.field.selectedText === "") return null
+    var f = item.field
+    return { a: ed.absOf(item.index, Math.min(f.selectionStart, f.selectionEnd)),
+             b: ed.absOf(item.index, Math.max(f.selectionStart, f.selectionEnd)) }
+  }
+
   function selectAllStep(item) {
     var a = ed.cursorPosition, b = a
     if (ed.spanning) { a = ed.selStart; b = ed.selEnd }
@@ -1163,8 +1196,11 @@ Item {
     var pad = Math.round(ed.textSize * 0.25)
     var ly = y - item.y
     var box = r.kind === "task" && x >= b.x - pad && x <= b.x + b.width + pad && ly >= b.y - pad && ly <= b.y + b.height + pad
+    // A deadline's date pill takes its own click (its reschedule).
+    var pl = item.pill
+    var pill = r.deadline > 0 && pl.visible && !ed.readOnly && x >= pl.x - pad && x <= pl.x + pl.width + pad && ly >= pl.y - pad && ly <= pl.y + pl.height + pad
     var f = item.field
-    return { i: i, col: ed.restCol(i, f.positionAt(x - f.x, ly - f.y), 0), box: box }
+    return { i: i, col: ed.restCol(i, f.positionAt(x - f.x, ly - f.y), 0), box: box, pill: pill }
   }
 
   function updateCursorRect() {
@@ -1556,6 +1592,10 @@ Item {
 
     if (k === Qt.Key_Escape && !ctrl && !alt && (ed.spanning || !noSel)) { ed.letGo(item); event.accepted = true; return }
     if (ed.keyFilter && ed.keyFilter(event)) { event.accepted = true; return }
+    // Words dragged over in an agent's answer beside the note leave the
+    // keys here (2026-11-25, the mouse pass): Ctrl+C copies them unless the
+    // note has words of its own selected, and Ctrl+R answers them.
+    if (ed.chatKey && ed.chatKey(event, ed.spanning || !noSel)) { event.accepted = true; return }
     // Which keys do what comes from Shortcuts.js; the student can move them.
     var toStart = Sc.hit(event, "selectBlockStart")
     if (toStart || Sc.hit(event, "selectBlockEnd")) {
@@ -1736,6 +1776,7 @@ Item {
 
         property alias field: field
         property alias box: box
+        property alias pill: due
         readonly property string author: ed.authors[row.index] || ""
         readonly property bool listy: kind === "task" || kind === "bullet" || kind === "ordered"
         // A private callout is not drawn as a quote (B · Paper, 2026-10-27):
@@ -2039,15 +2080,6 @@ Item {
           }
         }
 
-        // A click beside the words (the indent, the space of a blank line)
-        // lands on this line; on a blank line it opens a line to write on.
-        MouseArea {
-          anchors.fill: parent
-          onClicked: function (mouse) {
-            ed.placeAt(row.index, row.blank ? 0 : field.positionAt(mouse.x - field.x, mouse.y - field.y))
-          }
-        }
-
         Repeater {
           model: row.bars
           Rectangle {
@@ -2229,6 +2261,17 @@ Item {
             font.styleName: ed.fontStyle
             font.pixelSize: Math.round(ed.textSize * 0.78)
           }
+          // A deadline's pill is its reschedule, as Ctrl+D on the line
+          // (2026-11-25, the mouse pass).
+          MouseArea {
+            id: dueArea
+            anchors.fill: parent
+            anchors.margins: -Math.round(ed.textSize * 0.2)
+            enabled: row.deadline > 0 && !row.pending && !ed.readOnly
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: ed.datePillClicked(row.index)
+          }
         }
 
         // Under the words: search matches (faint, the current one
@@ -2343,6 +2386,7 @@ Item {
     // hand on a checkbox (which takes the click), a text cursor elsewhere.
     cursorShape: ed.boxHover >= 0 || ed.linkHover || ed.foldHot !== "" ? Qt.PointingHandCursor : Qt.IBeamCursor
     hoverEnabled: true
+    acceptedButtons: Qt.LeftButton | Qt.RightButton
     // A press on a link follows it on release, unless it became a drag.
     property var linkDown: null
     preventStealing: true
@@ -2387,8 +2431,19 @@ Item {
 
     onPressed: function (mouse) {
       var h = ed.hitTest(mouse.x, mouse.y)
+      // The right button: the edit menu, on the selection if the click is
+      // in it, else on the cursor put where it was clicked.
+      if (mouse.button === Qt.RightButton) {
+        if (h.fold || h.box || h.pill) return
+        var at = ed.absOf(h.i, h.col)
+        var sel = ed.selectedSpan()
+        if (!sel || at < sel.a || at > sel.b) { ed.clearSelection(); ed.setCursor(at, true) }
+        var e = pointer.mapToItem(ed, mouse.x, mouse.y)
+        ed.menuAsked(e.x, e.y)
+        return
+      }
       if (h.fold) { ed.foldHot = ""; ed.focusTag = ""; ed.foldClicked(); return }
-      if (h.box) { mouse.accepted = false; return }
+      if (h.box || h.pill) { mouse.accepted = false; return }
       var pos = ed.absOf(h.i, h.col)
       var now = Date.now()
       var again = now - pointer.pressAt < Qt.styleHints.mouseDoubleClickInterval
@@ -2407,7 +2462,9 @@ Item {
       }
       pointer.downAt = pos
       if (pointer.clicks > 1) { pointer.linkDown = null; pointer.begin(h, pointer.clicks); return }
-      var link = ed.linkAtHit(h)
+      // Alt and a click: the cursor into the link, to edit it, instead of
+      // following it (2026-11-25, the mouse pass); the keys reach it so too.
+      var link = mouse.modifiers & Qt.AltModifier ? null : ed.linkAtHit(h)
       if (link) { pointer.linkDown = { i: h.i, link: link }; return }
       ed.clearSelection()
       ed.setCursor(pos, true)
@@ -2418,15 +2475,43 @@ Item {
         // decided here too: the box's own area no longer hears the hover.
         var hv = ed.hitTest(mouse.x, mouse.y)
         ed.foldHot = hv.fold ? hv.i + (ed.isShown(hv.i) && ed.rowItem(hv.i).foldTop > 0 && mouse.y < ed.rowItem(hv.i).y + ed.rowItem(hv.i).foldTop ? "top" : "bottom") : ""
-        ed.linkHover = !hv.box && !hv.fold && !!ed.linkAtHit(hv)
+        var hl = !hv.box && !hv.fold ? ed.linkAtHit(hv) : null
+        ed.linkHover = hv.pill || !!hl
+        if (!hl) ed.hoverLink = null
+        else if (!ed.hoverLink || ed.hoverLink.i !== hv.i || ed.hoverLink.link.at !== hl.at) ed.hoverLink = { i: hv.i, link: hl }
         if (hv.box) ed.boxHover = hv.i
         else if (ed.boxHover >= 0) ed.boxHover = -1
         return
       }
       if (pointer.downAt < 0) return
-      var h = ed.hitTest(mouse.x, mouse.y)
+      pointer.dragAt = Qt.point(mouse.x, mouse.y)
+      pointer.dragTo(mouse.x, mouse.y)
+    }
+    // A drag held past the top or the bottom of what shows keeps the
+    // selection growing that way, faster the further out (2026-11-25, the
+    // mouse pass: it grew only while the pointer moved).
+    property point dragAt: Qt.point(0, 0)
+    readonly property real dragOut: {
+      if (!pointer.pressed || pointer.downAt < 0 || !ed.viewport) return 0
+      var p = pointer.mapToItem(ed.viewport, pointer.dragAt.x, pointer.dragAt.y)
+      return p.y < 0 ? p.y : p.y > ed.viewport.height ? p.y - ed.viewport.height : 0
+    }
+    Timer {
+      interval: 50
+      repeat: true
+      running: pointer.dragOut !== 0
+      onTriggered: {
+        var lines = 1 + Math.min(4, Math.floor(Math.abs(pointer.dragOut) / ed.textSize))
+        var step = (pointer.dragOut < 0 ? -1 : 1) * lines * ed.textSize
+        var y = Math.max(0, Math.min(column.height - 1, pointer.dragAt.y + step))
+        pointer.dragAt = Qt.point(pointer.dragAt.x, y)
+        pointer.dragTo(pointer.dragAt.x, y)
+      }
+    }
+    function dragTo(x, y) {
+      var h = ed.hitTest(x, y)
       if (pointer.linkDown) {
-        if (Math.abs(mouse.x - pointer.pressPt.x) < 6 && Math.abs(mouse.y - pointer.pressPt.y) < 6) return
+        if (Math.abs(x - pointer.pressPt.x) < 6 && Math.abs(y - pointer.pressPt.y) < 6) return
         pointer.linkDown = null
       }
       if (pointer.unit > 1) {
@@ -2444,6 +2529,31 @@ Item {
       pointer.downAt = -1
       if (pointer.linkDown) { var d = pointer.linkDown; pointer.linkDown = null; ed.linkActivated(d.i, d.link) }
     }
-    onExited: { ed.linkHover = false; ed.boxHover = -1; ed.foldHot = "" }
+    onExited: { ed.linkHover = false; ed.hoverLink = null; ed.boxHover = -1; ed.foldHot = "" }
+  }
+
+  // Where the link under the mouse is, for its hint to sit on.
+  Item {
+    id: linkSpot
+    readonly property var at: {
+      var h = ed.hoverLink
+      if (!h || !ed.handOn || pointer.pressed) return null
+      var item = ed.rowItem(h.i)
+      if (!item || !item.visible) return null
+      var f = item.field
+      var a = f.positionToRectangle(h.link.at), b = f.positionToRectangle(h.link.end)
+      var p = f.mapToItem(ed, a.x, a.y)
+      return { x: p.x, y: p.y, w: Math.max(1, b.y === a.y ? b.x - a.x : f.width - a.x), h: a.height }
+    }
+    x: at ? at.x : 0
+    y: at ? at.y : 0
+    width: at ? at.w : 0
+    height: at ? at.h : 0
+    Loader {
+      anchors.fill: parent
+      readonly property var link: ed.hoverLink ? ed.hoverLink.link : null
+      active: !!ed.linkTip && !!linkSpot.at
+      sourceComponent: ed.linkTip
+    }
   }
 }

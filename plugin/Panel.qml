@@ -65,8 +65,11 @@ Panel {
   // Keyboard grid cursor. The panel is treated as a grid: row 0 is the
   // timer + action buttons, row 1 the presets (idle only), then scope and
   // auto-start. Arrows move the cursor (column preserved when moving
-  // vertically), Enter/Space activate the cell, and mouse hover drives the
-  // same state so exactly one highlight is on screen at any time.
+  // vertically), Enter/Space activate the cell. Hover never moves it, as in
+  // the page (docs/hints.md): the pointer paints the controls' own faint
+  // hover look, the keys' cell wears `KeyMark` (the selected fill and a
+  // ring, so it never reads as hover or as the chosen scope). A click is a
+  // deliberate act, so it does bring the keys' cursor to what was clicked.
   property bool cursorActive: false
   property int cursorRow: 0
   property int cursorCol: 0
@@ -106,7 +109,7 @@ Panel {
     root.clampCursor()
   }
 
-  function hoverCursor(row, col) {
+  function pickCursor(row, col) {
     root.cursorActive = true
     root.cursorRow = row
     root.cursorCol = col
@@ -135,6 +138,18 @@ Panel {
   Connections {
     target: svc
     function onPhaseChanged() { root.clampCursor() }
+  }
+
+  // The keys' mark: drawn under a control's own paint, so the control's
+  // hover fill (the pointer's) still shows over it, and the two read apart.
+  component KeyMark: Rectangle {
+    property color tint: root.foreground
+    anchors.fill: parent
+    z: -1
+    radius: Style.cornerRadius
+    color: Style.selectedFillFor(tint, Commons.Color.accent)
+    border.width: 1
+    border.color: Commons.Util.alpha(tint, 0.6)
   }
 
   onOpenedChanged: {
@@ -228,15 +243,20 @@ Panel {
           Layout.fillWidth: true
           Layout.alignment: Qt.AlignVCenter
           implicitHeight: idleTimer.implicitHeight + Style.space(8)
-          hasCursor: root.cellHot(0, 0)
+          hasCursor: timerMouse.containsMouse && !root.cellHot(0, 0)
           foreground: root.foreground
 
+          KeyMark { visible: root.cellHot(0, 0) }
+
           MouseArea {
+            id: timerMouse
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onContainsMouseChanged: if (containsMouse) root.hoverCursor(0, 0)
-            onClicked: if (svc.phase === "idle") idleTimer.focus = true; else svc.toggle()
+            onClicked: {
+              root.pickCursor(0, 0)
+              if (svc.phase === "idle") idleTimer.focus = true; else svc.toggle()
+            }
           }
 
           Text {
@@ -284,9 +304,8 @@ Panel {
             foreground: root.foreground
             iconText: svc.runStatus === "running" && !svc.expired ? "\uf04c" : "\uf04b"
             tooltipText: svc.expired ? "Start next phase" : svc.runStatus === "running" ? "Pause" : svc.ready ? "Start" : "Resume"
-            hasCursor: root.cellHot(0, 1)
-            onHovered: function (h) { if (h) root.hoverCursor(0, 1) }
-            onClicked: svc.toggle()
+            onClicked: { root.pickCursor(0, 1); svc.toggle() }
+            KeyMark { visible: root.cellHot(0, 1) }
           }
 
           PanelActionButton {
@@ -294,9 +313,8 @@ Panel {
             foreground: root.foreground
             iconText: "\uf051"
             tooltipText: "Skip to next phase"
-            hasCursor: root.cellHot(0, 2)
-            onHovered: function (h) { if (h) root.hoverCursor(0, 2) }
-            onClicked: svc.skip()
+            onClicked: { root.pickCursor(0, 2); svc.skip() }
+            KeyMark { visible: root.cellHot(0, 2) }
           }
 
           PanelActionButton {
@@ -304,9 +322,8 @@ Panel {
             foreground: root.foreground
             iconText: "\uf021"
             tooltipText: "Reset to idle"
-            hasCursor: root.cellHot(0, 3)
-            onHovered: function (h) { if (h) root.hoverCursor(0, 3) }
-            onClicked: svc.reset()
+            onClicked: { root.pickCursor(0, 3); svc.reset() }
+            KeyMark { visible: root.cellHot(0, 3) }
           }
         }
 
@@ -330,9 +347,11 @@ Panel {
               horizontalPadding: Style.spacing.controlPaddingX
               verticalPadding: Style.spacing.controlPaddingY + Style.space(2)
               bordered: true
-              hasCursor: root.cellHot(1, index)
-              onHovered: function (h) { if (h) root.hoverCursor(1, index) }
-              onClicked: modelData === "Up" ? svc.startCountup() : svc.startFocus(modelData)
+              onClicked: {
+                root.pickCursor(1, index)
+                if (modelData === "Up") svc.startCountup(); else svc.startFocus(modelData)
+              }
+              KeyMark { visible: root.cellHot(1, index) }
             }
           }
         }
@@ -393,9 +412,8 @@ Panel {
               verticalPadding: Style.spacing.controlPaddingY + Style.space(2)
               bordered: true
               active: root.scopeIndex === index
-              hasCursor: root.cellHot(root.scopeRow, index)
-              onHovered: function (h) { if (h) root.hoverCursor(root.scopeRow, index) }
-              onClicked: root.scopeIndex = index
+              onClicked: { root.pickCursor(root.scopeRow, index); root.scopeIndex = index }
+              KeyMark { visible: root.cellHot(root.scopeRow, index) }
             }
           }
         }
@@ -403,18 +421,20 @@ Panel {
         CursorSurface {
           id: autoRow
           objectName: "pomoAutoRow"
-          hasCursor: root.cellHot(root.autoRow, 0)
+          hasCursor: autoMouse.containsMouse && !root.cellHot(root.autoRow, 0)
           foreground: root.foreground
 
           width: parent.width
           implicitHeight: Math.max(autoLabel.implicitHeight, autoToggle.implicitHeight) + Style.space(10)
 
+          KeyMark { visible: root.cellHot(root.autoRow, 0) }
+
           MouseArea {
+            id: autoMouse
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onContainsMouseChanged: if (containsMouse) root.hoverCursor(root.autoRow, 0)
-            onClicked: svc.autostartToggle()
+            onClicked: { root.pickCursor(root.autoRow, 0); svc.autostartToggle() }
           }
 
           RowLayout {
@@ -440,8 +460,7 @@ Panel {
               checked: svc.autoStart
               foreground: root.foreground
               interactive: false
-              hasCursor: autoRow.hasCursor
-              onHovered: function (h) { if (h) root.hoverCursor(root.autoRow, 0) }
+              // The row owns the click and both marks (interactive: false).
               onToggled: svc.autostartToggle()
             }
           }

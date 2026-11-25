@@ -156,6 +156,27 @@ or the page closing puts them away, so a quick Ctrl+S never shows them.
 Office's KeyTips for placement, which-key for the wait. Keys are read from
 `Shortcuts.js`, so a moved key is the one shown.
 
+### D, kept everywhere — 2026-11-25, the mouse pass
+
+An outside review found the rule held in half the lists. Now every row a
+click acts on lights under the hand, gated on `handOn`, and nothing lights
+without it: the files, the `@` list in the day's box, the search sheet's
+horizon and folders, a paper's chips and marks, the PDF's find, acronym and
+project lists, the tucked pane's strip, "thinking … stop", the dashboard's
+date pills. The marks that lit with the hand away now wait for it: the
+reply's echo and the words it lights above, "put back", the reply pill's ×,
+the chat box's fill, the helpful row, the acronym's underline and the
+PDF's tip (which now waits as every hint does, 500 ms cold, at once warm).
+In the timer's and deadlines' popups, hover moved the keys' place; it
+marks only what is under it now, and the keys' place has its own ring.
+
+A hint names its key the page's way, keycaps and all (`page.tip`), in the
+cards' and the PDF's last few that wrote it as words. A link in the note
+says where it goes; a picked mark in the PDF gets a pill of its keys
+(chat · the other kind · note · remove), as a selection does; a right click
+on words gives a menu of their edits, each with its key
+([navigation.md](navigation.md), "The mouse").
+
 ### G. Hints that graduate
 
 Once a key has been used for an action some number of times, its hover
