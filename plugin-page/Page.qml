@@ -644,6 +644,12 @@ Item {
   readonly property color sunk: pal.sunk
   readonly property bool sheetSunk: svc.ready && !root.pdfShown && (svc.notePrivate || root.beforeHorizon)
   readonly property color sheetColor: root.sheetSunk ? root.sunk : root.background
+  // The corners of what floats over the page: the card in the overlay
+  // shape and its sheets, the switcher, a hover tip. A shell with a radius
+  // of its own for those (Windows: 8, its windows' and flyouts', against
+  // 4 for controls) says it as `overlayRadius`; omarchy-shell has one
+  // radius for both, Hyprland's rounding, and that stands.
+  readonly property int overlayRadius: Style.overlayRadius !== undefined ? Style.overlayRadius : Style.cornerRadius
   property var privatePaint: []         // [{ y, h }]: the private blocks, in editor coordinates
   function openPdf(rel) {
     if (rel === "") return
@@ -9545,7 +9551,7 @@ Item {
       // text reflowing every frame reads as shaking.
       Behavior on x { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
       height: root.alongside ? content.height : content.height - root.sheetMargin * 2
-      radius: root.alongside ? 0 : Style.cornerRadius
+      radius: root.alongside ? 0 : root.overlayRadius
       color: root.sheetColor
       Behavior on color { ColorAnimation { duration: 240 } }
       borderSpec: root.alongside ? Border.none() : root.borderSpec
@@ -10785,7 +10791,7 @@ Item {
         width: pane ? pane.width : 0
         height: pane ? pane.height : 0
         z: 50
-        radius: root.alongside ? 0 : Style.cornerRadius
+        radius: root.alongside ? 0 : root.overlayRadius
         color: "transparent"
         borderSpec: root.frameSpec
         Behavior on opacity {

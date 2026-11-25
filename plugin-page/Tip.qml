@@ -44,6 +44,7 @@ PanelToolTip {
 
   padding: host.sp(9)
   background: Rectangle {
+    radius: tip.host.overlayRadius
     color: tip.host.sunk
     border.width: 1
     border.color: tip.edge

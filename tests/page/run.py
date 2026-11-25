@@ -1901,6 +1901,11 @@ def checks() -> int:
               and json.loads(p.call("dashRows"))[0].get("tag"), f"O orders the list by course ({strip()})")
         p.call("dashType", "o")
         check(strip()["order"] == "date", "…then by date")
+        # The cursor in the list, no order is drawn as the cursor: the two not
+        # shown have no stop of their own (-1), which is what stripAt is in the
+        # list, and both were drawn filled (2026-11-25).
+        check(strip()["at"] == -1 and json.loads(p.call("orderLit")) == [],
+              f"in the list, no order is drawn as the cursor ({p.call('orderLit')}, {strip()})")
         # By date the bands fold: → on a folded one opens it, ← on a row
         # climbs to its band and ← again folds it; Shift and an arrow, all.
         def bands():

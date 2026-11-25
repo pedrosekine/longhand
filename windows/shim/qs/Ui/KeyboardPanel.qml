@@ -121,7 +121,7 @@ Window {
 
   Rectangle {
     anchors.fill: parent
-    radius: Style.cornerRadius
+    radius: Style.overlayRadius               // Windows rounds the window itself at 8 (dwm.py)
     color: Commons.Color.popups.background
     border.color: Border.color(root.borderSpec)
     border.width: Border.top(root.borderSpec)
