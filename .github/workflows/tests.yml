@@ -104,6 +104,21 @@ jobs:
             $missing = $tools | Where-Object { -not (Get-Command $_ -ErrorAction SilentlyContinue) }
             if (-not $missing) { break }
             if ($try -eq 3) {
+              # gitleaks has a release of its own on GitHub, the same pinned
+              # version: taken from there when Chocolatey's feed is down
+              # (2026-11-25: 503 and 504 on every try, three runs running).
+              if ($missing -contains 'gitleaks') {
+                $v = '8.30.1'
+                $dir = Join-Path $env:RUNNER_TEMP 'gitleaks'
+                New-Item -ItemType Directory -Force -Path $dir | Out-Null
+                $zip = Join-Path $dir 'gitleaks.zip'
+                Invoke-WebRequest -Uri "https://github.com/gitleaks/gitleaks/releases/download/v$v/gitleaks_${v}_windows_x64.zip" -OutFile $zip
+                Expand-Archive -Path $zip -DestinationPath $dir -Force
+                $env:Path = "$dir;$env:Path"
+                Add-Content -Path $env:GITHUB_PATH -Value $dir
+                $missing = $tools | Where-Object { -not (Get-Command $_ -ErrorAction SilentlyContinue) }
+                if (-not $missing) { Write-Output "::warning::gitleaks $v taken from its GitHub release (Chocolatey's feed did not answer)"; break }
+              }
               Write-Output "::error::Chocolatey left these out after 3 tries: $($missing -join ', ')"
               exit 1
             }
