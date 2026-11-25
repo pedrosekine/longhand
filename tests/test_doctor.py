@@ -1,8 +1,9 @@
 """Health check (`tools/doctor`): reports missing config/vault as failures and
 a healthy throwaway setup as ok; names the program each configured model
 route starts (Antigravity's is `agy`), and whether it can run: opencode's
-agents installed where it reads them, on Windows Antigravity's sign-in in
-the Credential Manager; on Omarchy the shell's plugins, on
+agents installed where it reads them, Codex's sign-in in Longhand's own
+Codex folder, on Windows Antigravity's sign-in in the Credential Manager;
+on Omarchy the shell's plugins, on
 Windows the Start menu entry and the session's start in their place.
 
 Run: python3 tests/test_doctor.py
@@ -131,6 +132,33 @@ def main() -> int:
     r9 = subprocess.run([sys.executable, str(DOCTOR)], env=base_env, capture_output=True, text=True)
     oc = [l for l in r9.stdout.splitlines() if "opencode agents" in l]
     check(bool(oc) and oc[0].startswith("ok"), f"…and installed, ok ({oc})")
+
+    # Codex's route needs a sign-in made for Longhand's own Codex folder
+    # (the state folder's codex/), not ~/.codex, or the agent refuses every
+    # run: named with the line that makes one.
+    codex_bin = tmp / ("codex.exe" if WINDOWS else "codex")
+    codex_bin.write_text("#!/bin/sh\n")
+    codex_bin.chmod(0o755)
+    cfg_path.write_text(json.dumps({"vault": str(vault), "daily": {"dir": "Daily"}, "agentDir": "agents/longhand",
+                                    "model": "codex/gpt-5", "codex": str(codex_bin)}))
+    home = state_dir / "longhand" / "codex"
+    r10 = subprocess.run([sys.executable, str(DOCTOR)], env=base_env, capture_output=True, text=True)
+    cx = [l for l in r10.stdout.splitlines() if "codex sign-in" in l]
+    check(bool(cx) and cx[0].startswith("WARN") and str(home) in cx[0] and "codex login" in cx[0]
+          and ("$env:CODEX_HOME" if WINDOWS else "CODEX_HOME=") in cx[0],
+          f"no Codex sign-in for Longhand is named, with the line that makes one ({cx})")
+    home.mkdir(parents=True)
+    (home / "auth.json").write_text("{}")
+    r11 = subprocess.run([sys.executable, str(DOCTOR)], env=base_env, capture_output=True, text=True)
+    cx = [l for l in r11.stdout.splitlines() if "codex sign-in" in l]
+    check(bool(cx) and cx[0].startswith("ok"), f"…and signed in, ok ({cx})")
+    # A folder the config names is the one asked about.
+    other = tmp / "codex-elsewhere"
+    cfg_path.write_text(json.dumps({"vault": str(vault), "daily": {"dir": "Daily"}, "agentDir": "agents/longhand",
+                                    "model": "codex/gpt-5", "codex": str(codex_bin), "codexHome": str(other)}))
+    r12 = subprocess.run([sys.executable, str(DOCTOR)], env=base_env, capture_output=True, text=True)
+    cx = [l for l in r12.stdout.splitlines() if "codex sign-in" in l]
+    check(bool(cx) and cx[0].startswith("WARN") and str(other) in cx[0], f"codexHome is the folder asked about ({cx})")
 
     if WINDOWS:
         lines = r3.stdout.splitlines()
