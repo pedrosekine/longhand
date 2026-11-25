@@ -60,6 +60,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unicodedata
 from pathlib import Path
 
@@ -229,11 +230,21 @@ def own_words(pdf: Path) -> list[list[dict]]:
             return c["pages"]
     except (OSError, ValueError):
         pass
-    try:
-        out = subprocess.run(["pdftotext", "-bbox-layout", str(pdf), "-"],
-                             capture_output=True, text=True, timeout=120).stdout
-    except (OSError, subprocess.TimeoutExpired) as e:
-        fail(f"pdftotext: {e}")
+    # A file just written can be held a moment (on Windows, by its writer or
+    # a scanner): pdftotext cannot open it and says nothing on stdout. Tried
+    # again, briefly; and what a failed read gave is never kept, or the PDF
+    # stayed "a scan, no words" until it changed (2026-11-25, on GitHub's
+    # Windows machine).
+    for wait in (0.2, 0.5, 1.0, None):
+        try:
+            r = subprocess.run(["pdftotext", "-bbox-layout", str(pdf), "-"],
+                               capture_output=True, text=True, timeout=120)
+        except (OSError, subprocess.TimeoutExpired) as e:
+            fail(f"pdftotext: {e}")
+        if r.returncode == 0 or wait is None:
+            break
+        time.sleep(wait)
+    out, read = r.stdout, r.returncode == 0
     pages: list[list[dict]] = []
     widths: list[float] = []
     line = 0
@@ -247,13 +258,16 @@ def own_words(pdf: Path) -> list[list[dict]]:
         elif pages:
             pages[-1].append({"t": html.unescape(m.group(6)), "x0": float(m.group(2)), "y0": float(m.group(3)),
                               "x1": float(m.group(4)), "y1": float(m.group(5)), "l": line})
-    try:
-        CACHE.mkdir(parents=True, exist_ok=True)
-        tmp = cached.with_suffix(".tmp")
-        tmp.write_text(json.dumps({"sig": sig, "pages": pages, "widths": widths}))
-        os.replace(tmp, cached)
-    except OSError:
-        pass
+    if read:
+        tmp = cached.with_name(f"{cached.stem}.{os.getpid()}.tmp")    # one of its own: two reads at once
+        try:
+            CACHE.mkdir(parents=True, exist_ok=True)
+            tmp.write_text(json.dumps({"sig": sig, "pages": pages, "widths": widths}))
+            os.replace(tmp, cached)
+        except OSError:
+            pass
+        finally:
+            tmp.unlink(missing_ok=True)
     WIDTHS[:] = widths
     return pages
 
