@@ -1,5 +1,6 @@
 import QtQuick
 import LonghandHost
+import qs.Commons as Commons
 
 // The pinned shape: an ordinary window, Snap's and the taskbar's to place.
 Window {
@@ -34,7 +35,21 @@ Window {
   function place(g) {
     x = g.x; y = g.y; width = g.width; height = g.height
   }
+  // Windows' title bar stays — Snap, the taskbar, a frame to drag and size
+  // by — painted the page's paper and words, so it reads as the top of the
+  // page and not as a second header over it; the private paper sinks it
+  // too (windows/dwm.py). Hyprland draws no title bar at all.
+  function paintTitleBar() {
+    if (win.visible) Host.paintTitleBar(win, String(win.color), String(Commons.Color.foreground))
+  }
+  onColorChanged: win.paintTitleBar()
+  Connections {
+    target: Commons.Color
+    function onForegroundChanged() { win.paintTitleBar() }
+  }
+
   onVisibleChanged: {
+    if (visible) win.paintTitleBar()
     if (!visible || placed) return
     placed = true
     var g = Host.savedPlace(win.placeName)

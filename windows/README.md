@@ -186,6 +186,12 @@ and takes at once (by hand too: `{"page": "Win+F9"}`, several as a list,
 `""` for none). While the sheet waits for a key, Longhand lets go of its
 own, so the key reaches the sheet (Hyprland's submap, here). A key must
 hold Win, and one Windows or another program has is refused, saying so.
+A key the running Longhand could not take when it started (another program
+held it first) does nothing when pressed; the keys sheet says so as it
+opens, naming what is left without a key, and so does a line in the tray's
+menu, where the console Longhand was started from would otherwise have been
+the only place it was said (`windows-keys-problems.json` in the state
+folder, written each time the keys are taken, gone when Longhand quits).
 The agent's manual says these keys, as Windows writes them.
 
 A symbol is a character, not a place on a US keyboard: Windows is given the
@@ -439,6 +445,8 @@ export writes, where pandoc and xelatex are not on PATH (as
 | `hyprctl eval` — raise the window, put the pointer, the keys sheet's submap | `compositor.py`, answered inside the host (`qs_io.INSIDE`): Qt's raise and activate, `QCursor.setPos`, the global keys let go |
 | a theme's `colors.toml` (red, yellow, green, blue…) | `palette.py`: Windows 11's colours for each role, light or dark, under that path where no theme is |
 | `notify-send`, `pw-play --volume=0.6`, `omarchy-shell notifications isDnd` | `notify.py` (the tray, else a toast), `play_sound.py` (scaled to 0.6, after 300 ms of silence for a sleeping sound chip to wake in, not under Do Not Disturb) |
+| Hyprland's frameless windows, rounded and shadowed by the theme | `dwm.py`: the page's window keeps Windows' title bar (Snap, the taskbar, a frame to drag and size by), painted the page's paper and words, its buttons dark or light to match, following the paper as it changes (the private paper too) so the bar reads as the top of the page; a popup by the clock asks for Windows 11's corners, which bring its flyouts' shadow and hairline edge with them. Windows 10 keeps its own look |
+| Qt Quick's text, as on Linux | the host has Qt draw text as Windows draws its own (`NativeTextRendering`: DirectWrite, fitted to the pixel grid), sharper at the 100–125% most Windows screens run at than Qt's distance fields; `LONGHAND_TEXT_RENDERING=qt` goes back |
 | a layer on the focused monitor; a window placed by Hyprland | `PanelWindow` on the screen the pointer is on; `FloatingWindow` where it was left (`windows.json` in the state folder) |
 | `~/.local/bin` links and shebangs | `.exe` launchers from `pyproject.toml`, through `longhand_launch.py` |
 | UTF-8 as the system's encoding | Python's UTF-8 mode, switched on by the host and the launchers |
@@ -548,5 +556,12 @@ export writes, where pandoc and xelatex are not on PATH (as
   150 MB.
 - Borders are flat: the gradient ring is a Hyprland theme's active border
   (its `hyprland.lua`), and Windows has none to give; the accent stands in,
-  as it does on Omarchy for a theme that names none. The title bar is dark
-  in dark mode by Qt's own doing (checked 2026-11-24).
+  as it does on Omarchy for a theme that names none. The title bar takes
+  the page's paper (`dwm.py`; seen on this laptop's screen 2026-11-25, dark
+  mode, and the popup's corners and shadow with it); light mode and a light
+  `colors.toml` under dark Windows are checked in the test (Windows takes
+  the colours and the buttons' shade) but not yet looked at. Drawing the
+  page's own header in the title bar's place, with Windows' buttons over
+  it, was weighed and left: the header's empty stretches would have to be
+  told from its controls to drag the window by, which only the page knows,
+  and Snap, resizing and the buttons are Windows' to keep working.

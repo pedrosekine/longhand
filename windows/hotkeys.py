@@ -35,7 +35,7 @@ from PySide6.QtCore import QAbstractNativeEventFilter
 # The keys themselves — their defaults, the file, how one is read — are
 # winkeys.py's, which the keys sheet moves them with and the agent's manual
 # reads them from.
-from winkeys import DEFAULTS, NOREPEAT, keys_file, layout, parse, shown, wanted, words  # noqa: F401
+from winkeys import DEFAULTS, NOREPEAT, keep_problems, keys_file, layout, parse, shown, wanted, words  # noqa: F401
 
 WM_HOTKEY = 0x0312
 

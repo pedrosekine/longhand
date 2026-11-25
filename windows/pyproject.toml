@@ -36,5 +36,5 @@ package-dir = { "" = "." }
 # Only an editable install works: the launchers run the scripts where the
 # repo has them (cli/, agent/, tools/), and the host loads plugin-page/ and
 # shim/ from beside this folder. Every module is named all the same.
-py-modules = ["compositor", "file_urls", "host_api", "hotkeys", "longhand_host", "longhand_launch", "notify",
+py-modules = ["compositor", "dwm", "file_urls", "host_api", "hotkeys", "longhand_host", "longhand_launch", "notify",
               "palette", "play_sound", "popup_check", "qs_io", "qs_wayland", "shortcuts", "spike_check", "winkeys"]

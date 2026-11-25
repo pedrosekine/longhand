@@ -228,6 +228,15 @@ def main() -> int:
     from PySide6.QtQuick import QQuickWindow
 
     QQuickWindow.setDefaultAlphaBuffer(True)
+    # Text as Windows draws its own (DirectWrite, fitted to the pixel grid)
+    # rather than Qt Quick's distance fields, which come out soft at the
+    # 100–125% most Windows screens run at: compared on this laptop's screen
+    # at 125% on 2026-11-25, the page's prose was the sharper for it. The
+    # page sizes its text rather than scaling it (a ticked box's mark pops
+    # in for a fifth of a second), and scaled text is where native text
+    # blurs. LONGHAND_TEXT_RENDERING=qt goes back to Qt's own.
+    if os.name == "nt" and os.environ.get("LONGHAND_TEXT_RENDERING", "").lower() != "qt":
+        QQuickWindow.setTextRenderType(QQuickWindow.TextRenderType.NativeTextRendering)
     app = QGuiApplication(sys.argv[:1])
     app.setApplicationName("Longhand")
     app.setQuitOnLastWindowClosed(False)       # the page put away is not Longhand gone
@@ -341,6 +350,10 @@ def main() -> int:
             def registered() -> None:
                 bridge.keys, bridge.problems = dict(keys.held), dict(keys.problems)
                 bridge.keysChanged.emit()
+                # Said where a person will see it — the keys sheet, the
+                # tray's menu — and not only here, which a Longhand started
+                # from the Start menu prints to nowhere.
+                hotkeys.keep_problems(keys.problems)
                 for why in keys.problems.values():
                     print("longhand: " + why, file=sys.stderr)
             keys.on_register = registered
@@ -395,6 +408,7 @@ def main() -> int:
     code = app.exec()
     if keys is not None:
         keys.release()
+        hotkeys.keep_problems({})              # no Longhand holding keys: none refused it
     if server is not None:
         server.close()
     if not args.check:

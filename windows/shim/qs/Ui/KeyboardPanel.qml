@@ -95,6 +95,10 @@ Window {
       if (s) root.screen = s
       root.place()
       root.show()
+      // Windows 11's corners, and with them the shadow and hairline edge
+      // its own flyouts have (windows/dwm.py): the card stands off what is
+      // behind it, as the clock's own flyout does beside it.
+      Host.roundCorners(root)
       rePlace.restart()
       root.raise()
       root.requestActivate()

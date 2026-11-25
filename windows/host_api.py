@@ -7,6 +7,7 @@ from pathlib import Path
 from PySide6.QtCore import QObject, Signal, Slot
 from PySide6.QtQml import QmlElement, QmlSingleton
 
+import dwm
 import qs_io
 from pyshim.longhand_replace import BRIEF, replace
 
@@ -168,6 +169,11 @@ def hexed(c: str) -> str:
 # the timer was).
 SHOWN: dict[str, str] = {}
 
+# What each window asked of its frame, by title, and whether Windows took it
+# (dwm.py): read by the tests, which on the offscreen platform have no frame
+# to look at.
+FRAMES: dict[str, dict] = {}
+
 
 @QmlElement
 @QmlSingleton
@@ -269,6 +275,21 @@ class Host(QObject):
         except Exception as e:  # noqa: BLE001 — the tray keeps its last picture
             print(f"longhand: a tray icon's picture: {e}", file=sys.stderr)
         return SHOWN.get(which, "")
+
+    @Slot(QObject, str, str)
+    def paintTitleBar(self, window, ground, text):
+        """The page's window's title bar in the page's paper and text, asked
+        each time the paper changes (shim/Quickshell/FloatingWindow.qml)."""
+        ground, text = hexed(ground), hexed(text)
+        took = dwm.paint_title_bar(dwm.native(window), ground, text)
+        FRAMES[window.title() or "window"] = {"ground": ground, "text": text, "took": took}
+
+    @Slot(QObject)
+    def roundCorners(self, window):
+        """A popup by the clock with Windows 11's corners, shadow and edge
+        (shim/qs/Ui/KeyboardPanel.qml), asked each time it opens."""
+        took = dwm.round_corners(dwm.native(window))
+        FRAMES[window.title() or "popup"] = {"rounded": True, "took": took}
 
     @Slot("QVariantList")
     def execDetached(self, command):
