@@ -1337,6 +1337,10 @@ def checks() -> int:
         p.call("sidebarProject", "Bikeability in Linz #bikes")
         check(p.wait(lambda: (pd / "bikes.md").exists()) and (pd / "bikes.md").read_text() == "# Bikeability in Linz\n\n- Tag: `#bikes`\n"
               and p.call("addingProject") == "false", "the sidebar's field makes one: its name, and its #tag")
+        # Made and read back before the next: its file is written before the
+        # runner ends, and one asked meanwhile is "still making the last one"
+        # (a slower end on Windows; 2026-11-25 on GitHub's machine).
+        p.wait(lambda: any(t.startswith("bikes|") for t in json.loads(p.call("projects"))), 10)
         p.call("sidebarProject", "#DTM")
         check(p.wait(lambda: p.call("hint") == "#DTM is a project already"), f"…never one that exists ({p.call('hint')!r})")
         for f in ("thesis.md", "bikes.md"):
