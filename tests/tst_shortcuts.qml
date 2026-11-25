@@ -26,6 +26,10 @@ TestCase {
     compare(Sc.fromEvent(ev(Qt.Key_Control, Qt.ControlModifier)), "")
     // A dead key is what it prints: US-International's backtick.
     compare(Sc.fromEvent(ev(Qt.Key_Dead_Grave, Qt.ControlModifier)), "Ctrl+`")
+    // A German keyboard's ß has no capital of one letter: it stays ß, not SS.
+    compare(Sc.fromEvent(ev(Qt.Key_ssharp, Qt.ControlModifier | Qt.AltModifier)), "Ctrl+Alt+ß")
+    compare(Sc.canonical("ctrl+ß"), "Ctrl+ß")
+    compare(Sc.fromEvent(ev(Qt.Key_Eacute, Qt.ControlModifier)), "Ctrl+É")
     verify(Sc.hit(ev(Qt.Key_Dead_Grave, Qt.ControlModifier), "code"))
     verify(Sc.hit(ev(Qt.Key_E, Qt.ControlModifier), "code"))
     // The panes, left to right, are the digits (2026-10-27); Ctrl+\ and its

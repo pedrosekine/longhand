@@ -19,6 +19,11 @@ sheet in the page (Ctrl+/) writes it (winkeys.py), and the running Longhand
 takes what is written at once. As with Hyprland's, a key must
 hold Win: one without could take a key an app needs. A key Windows or
 another program already has is not taken; `problems` says which.
+
+A symbol is the key that types it on the keyboard layout in use (winkeys.py,
+`parse`): Win+Alt+= is Win+Alt+Shift+0 on a German keyboard. Switching the
+layout can make it another key, so `follow_layout`, asked now and then,
+takes the keys again when it has.
 """
 from __future__ import annotations
 
@@ -30,7 +35,7 @@ from PySide6.QtCore import QAbstractNativeEventFilter
 # The keys themselves — their defaults, the file, how one is read — are
 # winkeys.py's, which the keys sheet moves them with and the agent's manual
 # reads them from.
-from winkeys import DEFAULTS, NAMED, NOREPEAT, keys_file, parse, shown, wanted, words  # noqa: F401
+from winkeys import DEFAULTS, NOREPEAT, keys_file, layout, parse, shown, wanted, words  # noqa: F401
 
 WM_HOTKEY = 0x0312
 
@@ -46,21 +51,29 @@ class Keys(QAbstractNativeEventFilter):
         self.held: dict[str, str] = {}          # action -> the key Windows keeps for it
         self.problems: dict[str, str] = {}      # action -> why it has none
         self.on_register = None                 # told each time the keys are taken again
+        self.layout = 0                         # the keyboard layout they were read in
+        self.read: list = []                    # and what Windows was asked for, in it
+        self.on = False                         # whether they are held (not let go for the sheet)
 
     def register(self) -> None:
         self.release()
+        self.layout = layout()
+        self.read = []
         n = 0x4C48
         for action, keys in wanted().items():
             for key in keys:
                 n += 1
-                got = parse(key)
+                got = parse(key, self.layout)
+                self.read.append(got)
                 if not got:
-                    self.problems[action] = f"{key!r} is not a key Windows can keep (it must hold Win)"
+                    self.problems[action] = (f"{key!r} is not a key Windows can keep: it must hold Win, "
+                                             "and be a key of this keyboard")
                 elif not self.user32.RegisterHotKey(None, n, got[0] | NOREPEAT, got[1]):
                     self.problems[action] = f"{shown(key)} is taken by Windows or another program"
                 else:
                     self.ids[n] = action
                     self.held.setdefault(action, shown(key))     # the menu says the first
+        self.on = True
         if self.on_register:
             self.on_register()
 
@@ -68,6 +81,20 @@ class Keys(QAbstractNativeEventFilter):
         for n in self.ids:
             self.user32.UnregisterHotKey(None, n)
         self.ids, self.held, self.problems = {}, {}, {}
+        self.on = False
+
+    def follow_layout(self) -> bool:
+        """The keys taken again if the layout typed in now makes any of them
+        another key than the one Windows holds (a US keyboard's = is not a
+        German one's); whether they were. Nothing while they are let go."""
+        now = layout()
+        if not self.on or now == self.layout:
+            return False
+        self.layout = now
+        if [parse(k, now) for ks in wanted().values() for k in ks] == self.read:
+            return False                # letters and F-keys: the same keys on every layout
+        self.register()
+        return True
 
     def nativeEventFilter(self, event_type, message):
         if bytes(event_type) == b"windows_generic_MSG":

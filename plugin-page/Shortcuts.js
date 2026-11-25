@@ -446,6 +446,13 @@ var dead = { 0x01001250: "`", 0x01001251: "'", 0x01001252: "^", 0x01001253: "~",
 var lone = { 0x01000020: 1, 0x01000021: 1, 0x01000022: 1, 0x01000023: 1, 0x01000024: 1, 0x01000025: 1,
   0x01000053: 1, 0x01000054: 1, 0x01000055: 1, 0x01000056: 1, 0x01000057: 1, 0x01001103: 1, 0x01ffffff: 1 }
 
+// A letter's capital, as keys are written; ß has none of one letter ("SS"),
+// and stays ß, so a German keyboard's ß key is a key like any other.
+function upper(ch) {
+  var up = ch.toUpperCase()
+  return up.length === 1 ? up : ch
+}
+
 function isSymbol(name) {
   return name === "Plus" || (name.length === 1 && name.toUpperCase() === name.toLowerCase())
 }
@@ -466,7 +473,7 @@ function fromEvent(event) {
   else if (named[k] !== undefined) name = named[k]
   else if (dead[k] !== undefined) name = dead[k]
   else if (k >= 0x01000030 && k <= 0x01000047) name = "F" + (k - 0x01000030 + 1)
-  else if (k > 0x20 && k < 0x01000000) name = String.fromCharCode(k).toUpperCase()
+  else if (k > 0x20 && k < 0x01000000) name = upper(String.fromCharCode(k))
   else return ""
   return compose(!!(m & CTRL), !!(m & ALT), shift, !!(m & META), name)
 }
@@ -489,7 +496,7 @@ function canonical(s) {
   }
   var last = parts[parts.length - 1].trim()
   var name
-  if (last.length === 1) name = last.toUpperCase()
+  if (last.length === 1) name = upper(last)
   else if (aliases[last.toLowerCase()] !== undefined) name = aliases[last.toLowerCase()]
   else if (/^f([1-9]|1[0-9]|2[0-4])$/i.test(last)) name = last.toUpperCase()
   else return ""
