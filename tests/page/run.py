@@ -222,14 +222,35 @@ def run(cmdline):
     c = subprocess.Popen(cmdline)
     child.append(c)
     return c.wait()
-with open(calls, "a", encoding="utf-8", newline="\\n") as f:
-    f.write(f"{time.time():.6f} start {cmd} {arg3}\\n")
+# One line of the log, whole. Runners start side by side and append at
+# once; a file opened for appending is a seek and a write on Windows, and
+# one runner's line overwrote another's ("start plan" lost, 2026-11-25).
+# Opened for appending only (FILE_APPEND_DATA), Windows appends a write
+# whole, as O_APPEND does on Linux.
+def log(line):
+    data = line.encode("utf-8")
+    if os.name != "nt":
+        with open(calls, "ab") as f:
+            f.write(data)
+        return
+    import ctypes
+    from ctypes import wintypes
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    k32.CreateFileW.restype = wintypes.HANDLE
+    k32.CreateFileW.argtypes = (wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p,
+                                wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE)
+    h = k32.CreateFileW(calls, 0x0004, 0x7, None, 4, 0x80, None)   # append only, shared, open always
+    try:
+        done = wintypes.DWORD()
+        k32.WriteFile(wintypes.HANDLE(h), data, len(data), ctypes.byref(done), None)
+    finally:
+        k32.CloseHandle(wintypes.HANDLE(h))
+log(f"{time.time():.6f} start {cmd} {arg3}\\n")
 if cmd == "projects":
     if os.path.exists(os.path.join(stub, "slow-fetch")):
         time.sleep(2)
     rc = run([sys.executable, agent, *argv])
-    with open(calls, "a", encoding="utf-8", newline="\\n") as f:
-        f.write(f"{time.time():.6f} end {cmd}\\n")
+    log(f"{time.time():.6f} end {cmd}\\n")
     sys.exit(rc)
 LOCAL = {"accept", "projects", "project", "project-page", "sections", "next", "dated", "tasks", "box", "timetable",
          "plan", "proposals", "proposal", "talk", "thread", "rate", "notebook", "autonomy", "day", "search", "horizon",
