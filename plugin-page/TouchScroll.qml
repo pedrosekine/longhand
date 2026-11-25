@@ -36,7 +36,8 @@ MouseArea {
   onWheel: function (wheel) {
     if (wheel.pixelDelta.y === 0 && wheel.phase === Qt.NoScrollPhase) { wheel.accepted = false; return }
     // Sideways, or with Ctrl, is not scrolling: the sidebar's spaces swipe
-    // that way (docs/files.md), so it is passed on.
+    // sideways (docs/files.md), and Ctrl is the page's zoom, so both are
+    // passed on.
     if (Math.abs(wheel.pixelDelta.x) > Math.abs(wheel.pixelDelta.y) || (wheel.modifiers & Qt.ControlModifier)) { wheel.accepted = false; return }
     var now = Date.now()
     if (wheel.phase === Qt.ScrollBegin) ts.begin()

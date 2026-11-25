@@ -2,6 +2,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import QtQuick
+import QtQuick.Controls as QC
 import Qt.labs.folderlistmodel
 import qs.Commons
 import qs.Ui
@@ -98,6 +99,8 @@ BorderSurface {
 
       Flickable {
         id: settingsFlick
+        acceptedButtons: Qt.NoButton
+        QC.ScrollBar.vertical: ScrollMark { page: settingsSheet.page }
         anchors.top: settingsTitle.bottom
         anchors.topMargin: page.sp(24)
         anchors.bottom: settingsFoot.top

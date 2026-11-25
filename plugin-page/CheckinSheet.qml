@@ -1,5 +1,6 @@
 import Quickshell
 import QtQuick
+import QtQuick.Controls as QC
 import qs.Commons
 import qs.Ui
 
@@ -76,6 +77,8 @@ BorderSurface {
 
       Flickable {
         id: checkinFlick
+        acceptedButtons: Qt.NoButton
+        QC.ScrollBar.vertical: ScrollMark { page: checkinSheet.page }
         anchors.top: intro.bottom
         anchors.topMargin: page.sp(18)
         anchors.bottom: checkinFoot.top
@@ -129,6 +132,14 @@ BorderSurface {
               color: pairRow.picked ? Style.selectedFill : pairHover.hovered && page.handOn ? Style.hoverFill : "transparent"
             }
             HoverHandler { id: pairHover }
+            // A click on the row's words brings the keys to it, as its
+            // hover mark promises; a step's circle picks that step
+            // (2026-11-25, the mouse pass: the row lit and did nothing).
+            MouseArea {
+              anchors.fill: parent
+              z: -1
+              onClicked: { page.checkinFocus = pairRow.index; checkinKeys.forceActiveFocus() }
+            }
 
             Text {
               anchors.right: steps.left

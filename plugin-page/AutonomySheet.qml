@@ -1,5 +1,6 @@
 import Quickshell
 import QtQuick
+import QtQuick.Controls as QC
 import qs.Commons
 import qs.Ui
 
@@ -74,6 +75,8 @@ BorderSurface {
 
       Flickable {
         id: autonomyFlick
+        acceptedButtons: Qt.NoButton
+        QC.ScrollBar.vertical: ScrollMark { page: autonomySheet.page }
         anchors.top: autonomyIntro.bottom
         anchors.topMargin: page.sp(18)
         anchors.bottom: autonomyFoot.top

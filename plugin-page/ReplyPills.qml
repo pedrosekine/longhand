@@ -70,7 +70,7 @@ Flow {
           anchors.verticalCenter: parent.verticalCenter
           textFormat: Text.PlainText
           text: "×"
-          color: dropArea.containsMouse ? page.accent : page.faint
+          color: dropArea.containsMouse && page.handOn ? page.accent : page.faint
           font.family: page.fontFamily
           font.pixelSize: Math.round(page.textSize * 0.78)
           MouseArea {

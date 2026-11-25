@@ -1,0 +1,161 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+:root{
+  --bg:#2a2b26; --fg:#e6ddce; --what:#d6d8d6; --dim:#979893; --faint:#81827d;
+  --sel:#4d4e47; --rowsel:#393a33; --accent:#c68d73; --rule:#53534f; --tagc:#81827d;
+}
+*{box-sizing:border-box}
+body{margin:0;background:#1d1e1a;font-family:"Adwaita Sans","Inter",sans-serif;color:var(--fg);
+  display:flex;gap:28px;padding:22px;align-items:flex-start}
+.col{width:511px}
+.label{font-size:15px;color:#cfcabd;margin:0 0 4px 2px}
+.label b{color:#fff;font-weight:600}
+.sub{font-size:13px;color:#8d8b83;margin:0 0 12px 2px;height:54px;line-height:1.35}
+.pane{background:var(--bg);height:1640px;padding:20px 20px 0 20px;position:relative;
+  border-top:2px solid #b9a24a; overflow:hidden}
+.cap{font-size:15px;color:var(--dim);line-height:1.4}
+.faint{color:var(--faint)}
+.title{font-size:17.5px;color:var(--fg);margin:2px 0 2px}
+.link{font-size:15px;color:var(--dim);line-height:1.55}
+.link kbd{font:inherit;color:var(--dim)}
+.h{font-size:15px;color:#a1a699;margin:22px 0 6px;letter-spacing:.02em;display:flex;justify-content:space-between}
+.h .go{color:var(--dim);letter-spacing:0}
+.row{padding:5px 7px;border-radius:3px;margin:0 -7px 4px}
+.row.sel{background:var(--sel)}
+.row.soft{background:var(--rowsel)}
+.when{font-size:15px;color:#919491;line-height:1.35}
+.what{font-size:17px;color:var(--what);line-height:1.35}
+.under{font-size:15px;color:#98978c;line-height:1.35}
+.clip{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.clip2{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.q{color:var(--accent)}
+.tag{color:var(--tagc)}
+.fold{font-size:15px;color:#939693;margin:12px 0 4px 6px}
+.fold .n{color:var(--faint)}
+.foot{position:absolute;left:20px;right:20px;bottom:0;background:var(--bg)}
+.foot .keys{font-size:15px;color:#9c9d96;padding:14px 0 12px;border-bottom:1px solid var(--rule)}
+.tabs{display:flex;justify-content:space-between;font-size:17px;color:#898a85;padding:12px 0 8px}
+.tabs span.on{color:#e5e7df;text-decoration:underline;text-underline-offset:5px}
+.tabs2{display:flex;gap:26px;font-size:17px;color:#898a85;padding:0 0 16px}
+.tabs2 .on{color:#e5e7df}
+.nav{padding:6px 7px;margin:2px -7px 2px;border-radius:3px}
+.nav .what{font-size:16px}
+.nav .k{float:right;color:var(--dim);font-size:15px}
+.mark{outline:1.5px dashed #b9a24a;outline-offset:2px}
+.note{position:absolute;right:-4px;font-size:12px;color:#1d1e1a;background:#b9a24a;padding:1px 6px;border-radius:2px}
+</style></head><body>
+
+<!-- ================= NOW ================= -->
+<div class="col">
+<p class="label"><b>Now</b></p>
+<p class="sub">By day lists every dated section and reading day since the project began. P and W are two grey caption lines.</p>
+<div class="pane">
+  <div class="cap">← #thesis</div>
+  <div class="title">Master Thesis</div>
+  <div class="cap faint">6 sections · 1 open</div>
+  <div class="link">→ the project's page &nbsp;P</div>
+  <div class="link">→ this week &nbsp;W</div>
+
+  <div class="h">OPEN · 4</div>
+  <div class="row sel"><div class="what">○ Finish the Themenvorschlag <span class="tag">#thesis</span></div><div class="under">Sat 14 Nov</div></div>
+  <div class="row"><div class="what clip2"><span class="q">?</span> the Autonomous Nervous System (ANS), can be used to identify stress (Kyriakou, Resch, et al. 2019;…</div><div class="under">Moser et al. 2026 · p. 2</div></div>
+  <div class="row"><div class="what clip2"><span class="q">?</span> Stress in this context is defined as a reaction to a real or imaginary threat, where a typical”stress even…</div><div class="under">Moser et al. 2026 · p. 2</div></div>
+  <div class="row"><div class="what"><span class="q">?</span> To identify c</div><div class="under">Moser et al. 2026 · p. 4</div></div>
+
+  <div class="h">BY DAY</div>
+  <div class="row"><div class="when">Fri 20 Nov &nbsp;·&nbsp; read &nbsp;·&nbsp; 1 highlight</div><div class="what">Zeile et al. 2016</div><div class="under">Urban Emotions and Cycling Experience – enriching traffic planning for cyclists with human sensor data</div></div>
+  <div class="row"><div class="when">Thu 19 Nov &nbsp;·&nbsp; read &nbsp;·&nbsp; 4 highlights, 1 question</div><div class="what">Zeile et al. 2016</div></div>
+  <div class="row"><div class="when">Thu 19 Nov &nbsp;·&nbsp; read &nbsp;·&nbsp; 7 highlights</div><div class="what">Merk et al. 2021</div><div class="under">Subjektiven Verkehrsstress objektiv messen -- ein EmoCycling-Mixed-Methods-Ansatz</div></div>
+  <div class="row"><div class="when">Wed 18 Nov &nbsp;·&nbsp; read &nbsp;·&nbsp; 1 highlight, 4 questions</div><div class="what">Moser et al. 2026</div><div class="under">Identifying environmental stress factors in urban cycling using multimodal human sensing and machine learning</div></div>
+  <div class="row"><div class="when">Tue 17 Nov &nbsp;·&nbsp; read &nbsp;·&nbsp; 1 highlight, 2 questions</div><div class="what">Moser et al. 2026</div></div>
+  <div class="row"><div class="when">Mon 16 Nov &nbsp;·&nbsp; 3 done</div><div class="what clip2" style="font-size:16px">✓ Get in touch with Peter Balazs to ask the audio questions <span class="tag">#thesis</span> · ✓ Elisabeth Gsottbauer: ask whether REC is nee…</div></div>
+  <div class="row"><div class="when">Mon 16 Nov &nbsp;·&nbsp; read &nbsp;·&nbsp; 2 highlights, 3 questions</div><div class="what">Moser et al. 2026</div></div>
+  <div class="row"><div class="when">Sun 15 Nov &nbsp;·&nbsp; read &nbsp;·&nbsp; 8 highlights, 5 questions</div><div class="what">Moser et al. 2026</div></div>
+  <div class="row"><div class="when">Tue 10 Nov &nbsp;·&nbsp; 1 done</div><div class="what" style="font-size:16px">✓ Revise Themenvorschlag based on Bernd’s feedback <span class="tag">#thesis</span></div></div>
+  <div class="row soft"><div class="when">Thu 5 Nov</div><div class="what">Bernd Meeting <span class="tag">#thesis</span></div><div class="under clip2">Talk out loud can go more natural. · 30 as a cohort of riders</div></div>
+  <div class="row"><div class="when">Tue 3 Nov &nbsp;·&nbsp; 1 done</div><div class="what clip2" style="font-size:16px">✓ Confirm thesis scope and proposal revisions with Bernd following Martin’s feedback, followed by a revised Them…</div></div>
+  <div class="row"><div class="when">Wed 28 Oct &nbsp;·&nbsp; 1 done</div><div class="what">Meeting with Martin <span class="tag">#thesis</span></div><div class="under clip2">they have 7 E4 products, which is not legal anymore · Embrace plus, they have two of them right now and I can …</div></div>
+  <div class="fold">▸ &nbsp;Shelf · <span class="n">10 not begun</span></div>
+  <div class="fold">▸ &nbsp;Files · <span class="n">18</span></div>
+
+  <div class="foot">
+    <div class="keys">Enter open · p the project's page · w its week · ? every key</div>
+    <div class="tabs"><span><span class="on">time</span> &nbsp;&nbsp; files</span><span>dashboard</span></div>
+    <div class="tabs2"><span class="on">today</span><span>keys</span><span>settings</span></div>
+  </div>
+</div>
+</div>
+
+<!-- ================= A ================= -->
+<div class="col">
+<p class="label"><b>A</b> · This week, everything older folded <span style="color:#8d8b83;font-size:13px">&nbsp; dashed = what changed</span></p>
+<p class="sub">The smallest change. "By day" becomes the calendar week (the same days W covers), with W on its heading. Older days fold into one line that names the meetings in them.</p>
+<div class="pane">
+  <div class="cap">← #thesis</div>
+  <div class="title">Master Thesis</div>
+  <div class="cap faint">6 sections · 1 open</div>
+  <div class="link">→ the project's page &nbsp;P</div>
+
+  <div class="h">OPEN · 4</div>
+  <div class="row sel"><div class="what">○ Finish the Themenvorschlag <span class="tag">#thesis</span></div><div class="under">Sat 14 Nov</div></div>
+  <div class="row"><div class="what clip2"><span class="q">?</span> the Autonomous Nervous System (ANS), can be used to identify stress (Kyriakou, Resch, et al. 2019;…</div><div class="under">Moser et al. 2026 · p. 2</div></div>
+  <div class="row"><div class="what clip2"><span class="q">?</span> Stress in this context is defined as a reaction to a real or imaginary threat, where a typical”stress even…</div><div class="under">Moser et al. 2026 · p. 2</div></div>
+  <div class="row"><div class="what"><span class="q">?</span> To identify c</div><div class="under">Moser et al. 2026 · p. 4</div></div>
+
+  <div class="h mark"><span>THIS WEEK · 16–22 NOV</span><span class="go">→ the whole week &nbsp;W</span></div>
+  <div class="row"><div class="when">Fri 20 Nov &nbsp;·&nbsp; read &nbsp;·&nbsp; 1 highlight</div><div class="what">Zeile et al. 2016</div><div class="under">Urban Emotions and Cycling Experience – enriching traffic planning for cyclists with human sensor data</div></div>
+  <div class="row"><div class="when">Thu 19 Nov &nbsp;·&nbsp; read &nbsp;·&nbsp; 4 highlights, 1 question</div><div class="what">Zeile et al. 2016</div></div>
+  <div class="row"><div class="when">Thu 19 Nov &nbsp;·&nbsp; read &nbsp;·&nbsp; 7 highlights</div><div class="what">Merk et al. 2021</div><div class="under">Subjektiven Verkehrsstress objektiv messen -- ein EmoCycling-Mixed-Methods-Ansatz</div></div>
+  <div class="row"><div class="when">Wed 18 Nov &nbsp;·&nbsp; read &nbsp;·&nbsp; 1 highlight, 4 questions</div><div class="what">Moser et al. 2026</div><div class="under">Identifying environmental stress factors in urban cycling using multimodal human sensing and machine learning</div></div>
+  <div class="row"><div class="when">Tue 17 Nov &nbsp;·&nbsp; read &nbsp;·&nbsp; 1 highlight, 2 questions</div><div class="what">Moser et al. 2026</div></div>
+  <div class="row"><div class="when">Mon 16 Nov &nbsp;·&nbsp; 3 done</div><div class="what clip2" style="font-size:16px">✓ Get in touch with Peter Balazs to ask the audio questions <span class="tag">#thesis</span> · ✓ Elisabeth Gsottbauer: ask whether REC is nee…</div></div>
+  <div class="row"><div class="when">Mon 16 Nov &nbsp;·&nbsp; read &nbsp;·&nbsp; 2 highlights, 3 questions</div><div class="what">Moser et al. 2026</div></div>
+  <div class="fold mark">▸ &nbsp;Earlier · <span class="n">5 days · Bernd Meeting, Meeting with Martin</span></div>
+  <div class="fold">▸ &nbsp;Shelf · <span class="n">10 not begun</span></div>
+  <div class="fold">▸ &nbsp;Files · <span class="n">18</span></div>
+
+  <div class="foot">
+    <div class="keys">Enter open · p the project's page · w its week · ? every key</div>
+    <div class="tabs"><span><span class="on">time</span> &nbsp;&nbsp; files</span><span>dashboard</span></div>
+    <div class="tabs2"><span class="on">today</span><span>keys</span><span>settings</span></div>
+  </div>
+</div>
+</div>
+
+<!-- ================= B ================= -->
+<div class="col">
+<p class="label"><b>B</b> · A, plus one row per paper and the links as rows</p>
+<p class="sub">This week shows one row per paper, not one per day, and a finished-only day takes one line. P and W become rows the arrow keys reach, each with a line saying what is behind it.</p>
+<div class="pane">
+  <div class="cap">← #thesis</div>
+  <div class="title">Master Thesis</div>
+  <div class="cap faint">6 sections · 1 open</div>
+
+  <div class="h">OPEN · 4</div>
+  <div class="row sel"><div class="what">○ Finish the Themenvorschlag <span class="tag">#thesis</span></div><div class="under">Sat 14 Nov</div></div>
+  <div class="row"><div class="what clip2"><span class="q">?</span> the Autonomous Nervous System (ANS), can be used to identify stress (Kyriakou, Resch, et al. 2019;…</div><div class="under">Moser et al. 2026 · p. 2</div></div>
+  <div class="row"><div class="what clip2"><span class="q">?</span> Stress in this context is defined as a reaction to a real or imaginary threat, where a typical”stress even…</div><div class="under">Moser et al. 2026 · p. 2</div></div>
+  <div class="row"><div class="what"><span class="q">?</span> To identify c</div><div class="under">Moser et al. 2026 · p. 4</div></div>
+
+  <div class="h">THIS WEEK · 16–22 NOV</div>
+  <div class="row mark"><div class="when">Fri 20, Thu 19 &nbsp;·&nbsp; 5 highlights, 1 question</div><div class="what">Zeile et al. 2016</div><div class="under clip">Urban Emotions and Cycling Experience – enriching traffic…</div></div>
+  <div class="row"><div class="when">Thu 19 &nbsp;·&nbsp; 7 highlights</div><div class="what">Merk et al. 2021</div><div class="under clip">Subjektiven Verkehrsstress objektiv messen -- ein EmoCycling…</div></div>
+  <div class="row"><div class="when">Wed 18, Tue 17, Mon 16 &nbsp;·&nbsp; 4 highlights, 9 questions</div><div class="what">Moser et al. 2026</div><div class="under clip">Identifying environmental stress factors in urban cycling…</div></div>
+  <div class="row"><div class="what clip" style="font-size:16px"><span class="when">Mon 16 &nbsp;·&nbsp;</span> ✓ 3 done &nbsp;<span class="under">Peter Balazs, Elisabeth Gsottbauer, …</span></div></div>
+  <div class="nav mark"><span class="k">W</span><div class="what">→ The whole week</div><div class="under">3 papers read · 3 done · 3 questions to bring</div></div>
+
+  <div class="fold">▸ &nbsp;Earlier · <span class="n">5 days · Bernd Meeting, Meeting with Martin</span></div>
+  <div class="fold">▸ &nbsp;Shelf · <span class="n">10 not begun</span></div>
+  <div class="fold">▸ &nbsp;Files · <span class="n">18</span></div>
+  <div class="nav mark" style="margin-top:10px"><span class="k">P</span><div class="what">→ The project's page</div><div class="under">every section, paper and file in one scroll</div></div>
+
+  <div class="foot">
+    <div class="keys">Enter open · p the project's page · w its week · ? every key</div>
+    <div class="tabs"><span><span class="on">time</span> &nbsp;&nbsp; files</span><span>dashboard</span></div>
+    <div class="tabs2"><span class="on">today</span><span>keys</span><span>settings</span></div>
+  </div>
+</div>
+</div>
+
+</body></html>

@@ -1,5 +1,6 @@
 import Quickshell
 import QtQuick
+import QtQuick.Controls as QC
 import qs.Commons
 import qs.Ui
 
@@ -80,6 +81,9 @@ BorderSurface {
 
       ListView {
         id: notebookView
+        acceptedButtons: Qt.NoButton
+        QC.ScrollBar.vertical: ScrollMark { page: notebookSheet.page }
+        TouchScroll { flickable: notebookView }
         anchors.top: notebookIntro.bottom
         anchors.topMargin: page.sp(16)
         anchors.bottom: notebookFoot.top

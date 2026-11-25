@@ -31,6 +31,7 @@ Item {
   HoverHandler { id: rowHover; enabled: !row.picked }
   MouseArea {
     anchors.fill: parent
+    cursorShape: Qt.PointingHandCursor
     onClicked: { page.settingsFocus = page.settingsAt(row.kind); row.chosen() }
   }
 

@@ -257,9 +257,14 @@ Item {
     visible: hostResident
     icon.source: host.glyph("timer", host.timerGlyph, host.timerRole) || Qt.resolvedUrl("../launcher/longhand.svg")
     tooltip: ("Longhand timer · " + (host.timerLine || "not started")).slice(0, 127)
+    // A click opens or closes its popup. Not on a double click too: Windows
+    // sends a click before it, so the popup opened and closed at once
+    // (2026-11-25, the mouse pass). The middle button skips to the next
+    // phase, as on Omarchy's bar; pausing is the menu's first line, where
+    // the bar has it on the right button (Windows keeps that for the menu).
     onActivated: function (reason) {
-      if (reason === Platform.SystemTrayIcon.Trigger || reason === Platform.SystemTrayIcon.DoubleClick) host.popup("timer")
-      else if (reason === Platform.SystemTrayIcon.MiddleClick) pomo.toggle()
+      if (reason === Platform.SystemTrayIcon.Trigger) host.popup("timer")
+      else if (reason === Platform.SystemTrayIcon.MiddleClick && pomo.phase !== "idle") pomo.skip()
     }
     menu: Platform.Menu {
       Platform.MenuItem { text: host.timerAction + host.key("pomoToggle"); onTriggered: pomo.toggle() }
@@ -282,7 +287,8 @@ Item {
     icon.source: host.glyph("deadlines", host.deadlineGlyph, host.deadlineRole) || Qt.resolvedUrl("../launcher/longhand.svg")
     tooltip: ("Longhand deadlines · " + deadlines.tooltipText).slice(0, 127)
     onActivated: function (reason) {
-      if (reason === Platform.SystemTrayIcon.Trigger || reason === Platform.SystemTrayIcon.DoubleClick) host.popup("deadlines")
+      // A click only: a double click sends a click first (see the timer's).
+      if (reason === Platform.SystemTrayIcon.Trigger) host.popup("deadlines")
     }
     menu: Platform.Menu {
       Platform.MenuItem { text: (deadlines.nextItem ? deadlines.tooltipText : "Deadlines") + "…" + host.key("deadlines"); onTriggered: host.popup("deadlines") }

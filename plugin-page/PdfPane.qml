@@ -1,6 +1,7 @@
 import Quickshell
 import Quickshell.Io
 import QtQuick
+import QtQuick.Controls as QC
 import QtQuick.Pdf
 import qs.Commons
 import qs.Ui
@@ -67,7 +68,7 @@ Item {
   property alias noteRef: noteField
   property alias acroFieldRef: acroField
   // What the tip under the pointer says, for the harness.
-  readonly property string tipSays: acroTipBox.visible ? (acroTipAsked.visible ? acroTipAsked.text + " | " : "") + acroTipLine.text + " | " + acroTipMore.text : ""
+  readonly property string tipSays: acroTipBox.has ? (acroTipAsked.visible ? acroTipAsked.text + " | " : "") + acroTipLine.text + " | " + acroTipMore.text : ""
   property real zoom: 1                 // over the column's width
   property bool finding: false
   readonly property var view: loader.item ? loader.item.view : null
@@ -139,12 +140,16 @@ Item {
     tagField.text = ""
     tagField.forceActiveFocus()
   }
-  function chooseProject(tag) {
+  // `away`: a press went elsewhere (pressedAway): none chosen, and they are
+  // left where they went; a question waiting is not opened in the chat
+  // then, which would take them again (it stays a mark, Enter asks it).
+  function chooseProject(tag, away) {
     pane.askingTag = false
     pane.jumpingPage = false
     if (tag) { pane.readRun(["tag", "--tag", tag]); pane.tagSaid = "#" + tag; tagSaidTimer.restart(); page.used("pdf", "project") }
     var ask = pane.pendingAskMark
     pane.pendingAskMark = ""
+    if (away) return
     if (ask !== "") Qt.callLater(function () { page.paper.askAbout(ask) })
     else keys.forceActiveFocus()
   }
@@ -256,7 +261,8 @@ Item {
   }
   Timer {
     id: tipShowTimer
-    interval: 250
+    // As every hint waits (Tip.qml): warm, at once (2026-11-25, the mouse pass).
+    interval: page.tipWarm ? 0 : 500
     onTriggered: {
       pane.tipY = pane.view ? pane.view.flick.contentY : 0
       pane.tipOn = pane.tipHas()
@@ -317,9 +323,39 @@ Item {
     pane.closeAcronyms()
     if (c) pane.acroGo(c.short)
   }
-  function closeAcronyms() {
+  function closeAcronyms(away) {
     pane.acroListing = false
-    keys.forceActiveFocus()
+    if (!away) keys.forceActiveFocus()
+  }
+  // A press outside a popover that takes typing — on the pages, in another
+  // pane — closes it as Esc does, but leaves the keys where the click puts
+  // them (2026-11-25, the mouse pass; the page's `pressedAt`). A press,
+  // not the keys leaving: the page moves them itself on its way (a note
+  // read, a jump), and that closed them under the keys. What was open at
+  // the press is closed after the click is done, so a click that opens one
+  // is not taken for leaving it.
+  function outsideOf(item, at) {
+    if (!item || !item.visible) return true
+    var q = item.mapFromItem(null, at.x, at.y)
+    return q.x < 0 || q.y < 0 || q.x > item.width || q.y > item.height
+  }
+  Connections {
+    target: pane.page
+    function onPressedAt(at) {
+      if (!pane.visible) return
+      var was = { find: pane.finding && pane.outsideOf(findBar, at), go: pane.jumpingPage && pane.outsideOf(gotoField, at),
+                  note: pane.noting && pane.outsideOf(noteBar, at), tag: pane.askingTag && pane.outsideOf(tagAsk, at),
+                  acro: pane.acroListing && pane.outsideOf(acroList, at) }
+      Qt.callLater(function () { pane.pressedAway(was) })
+    }
+  }
+  function pressedAway(was) {
+    if (was.find && pane.finding) pane.closeFind(true)
+    if (was.go && pane.jumpingPage) pane.closeGoto(true)
+    // A note with words in it waits for Enter or Esc: a click away never loses them.
+    if (was.note && pane.noting && noteField.text.trim() === "") pane.closeNote(true)
+    if (was.tag && pane.askingTag) pane.chooseProject("", true)
+    if (was.acro && pane.acroListing) pane.closeAcronyms(true)
   }
 
   // Words the agent quoted, shown where they are for a moment (never kept).
@@ -541,13 +577,13 @@ Item {
   }
   // Esc: the view stays where it was found; the back key returns to where
   // the reading was, if it moved.
-  function closeFind() {
+  function closeFind(away) {
     var from = pane.findFrom, now = pane.here()
     pane.finding = false
     pane.clearFind()
     if (from && now && (from.page !== now.page || Math.abs(from.frac - now.frac) > 0.02)) pane.jumpBack = from
     pane.findFrom = null
-    keys.forceActiveFocus()
+    if (!away) keys.forceActiveFocus()
   }
   function runFind() {
     findTimer.stop()
@@ -744,8 +780,15 @@ Item {
       if (steps !== 0) pane.zoom = Math.max(0.3, Math.min(4, pane.zoom * Math.pow(1.1, steps)))
       return
     }
-    var dy = ev.pixelDelta.y !== 0 ? ev.pixelDelta.y * 2 : ev.angleDelta.y / 120 * page.sp(60)
-    var dx = ev.pixelDelta.x !== 0 ? ev.pixelDelta.x * 2 : ev.angleDelta.x / 120 * page.sp(60)
+    // The touchpad's travel times TouchScroll's gain: 2 on Omarchy (its
+    // 0.4 taken back), the travel itself on Windows (2026-11-25, the mouse
+    // pass: it was twice the note's speed there).
+    var gain = Qt.platform.os === "windows" ? 1 : 2
+    var dy = ev.pixelDelta.y !== 0 ? ev.pixelDelta.y * gain : ev.angleDelta.y / 120 * page.sp(60)
+    var dx = ev.pixelDelta.x !== 0 ? ev.pixelDelta.x * gain : ev.angleDelta.x / 120 * page.sp(60)
+    // Shift and the wheel: sideways, as a wide table in the note does
+    // (2026-11-25, the mouse pass), when it is sized up past the fit.
+    if ((ev.modifiers & Qt.ShiftModifier) && dx === 0 && pane.view.canSideways()) { dx = dy; dy = 0 }
     if (dy !== 0) pane.scrollBy(-dy)
     // Sideways only when it is sized up past the fit: fitted, the margins
     // beside the text are out of view on purpose.
@@ -862,9 +905,9 @@ Item {
     gotoField.selectAll()
     gotoField.forceActiveFocus()
   }
-  function closeGoto() {
+  function closeGoto(away) {
     pane.jumpingPage = false
-    keys.forceActiveFocus()
+    if (!away) keys.forceActiveFocus()
   }
   function commitGoto() {
     var n = parseInt(gotoField.text.trim(), 10)
@@ -935,15 +978,56 @@ Item {
     pane.tapAcro = ""
     pane.tapPick = undefined
     if (a !== "") { pane.acroGo(a); return }
-    if (p !== undefined) { pane.picked = p; keys.forceActiveFocus() }
+    if (p !== undefined) { pane.picked = p; pane.pickedByHand = p !== ""; keys.forceActiveFocus() }
   }
   // A click on the page away from every mark lets go of the mark picked,
   // as Esc does (2026-11-17: picked, it stayed until another was clicked).
-  // The marks under a click hear it themselves (tapAt).
+  // The marks under a click hear it themselves (tapAt). It brings the keys
+  // here too, as a click on a mark does (2026-11-25, the mouse pass: a
+  // click on the words left them in the sidebar, or in the find field).
   function tapAway(index, x, y, s) {
-    if (pane.picked === "" || pane.noting) return
+    if (pane.rel === "") return
     if (Marks.under(pane.read.marks || [], index, x, y, 1.5 / Math.max(0.01, s)).length > 0) return
-    pane.picked = ""
+    if (!pane.noting) pane.picked = ""
+    keys.forceActiveFocus()
+  }
+  // A mark picked by a click gets its pill (pickPill): what its keys do,
+  // to be clicked (2026-11-25, the mouse pass). Picked by the keys (a
+  // question chosen in the paper's list), the foot says them.
+  property bool pickedByHand: false
+  onPickedChanged: pane.pickedByHand = false
+  // The picked mark's first lines in the pane: { x, top, bottom }, or null.
+  readonly property var pickBox: {
+    var m = pane.pickedByHand ? pane.markById(pane.picked) : null
+    if (!m || !pane.view || !m.boxes || m.boxes.length === 0) return null
+    var b = m.boxes[0]
+    if (!b.rects || b.rects.length === 0) return null
+    var s = pane.view.renderScale, first = b.rects[0], last = b.rects[b.rects.length - 1]
+    var top = pane.view.pageTop(b.page)
+    return { x: pane.view.pageLeft(b.page) + (first[0] + first[2] / 2) * s,
+             top: top + first[1] * s, bottom: top + (last[1] + last[3]) * s }
+  }
+  // The pill's words, each what a key does on the mark picked, as the foot
+  // names them: chat, the other kind, note, remove.
+  readonly property var pickWords: {
+    var m = pane.markById(pane.picked)
+    if (!m) return []
+    var out = []
+    if (page.paper.askable) out.push({ word: "chat", act: "pdfGo", dot: "",
+      does: m.kind === "q" ? "Its question in the paper's chat" : "Talk about it in the paper's chat" })
+    out.push(m.kind === "q" ? { word: "highlight", act: "pdfMark", dot: "h", does: "Make it a highlight" }
+                            : { word: "question", act: "pdfQuestion", dot: "q", does: "Make it a question" })
+    out.push({ word: "note", act: "pdfNote", dot: "", does: m.note ? "Edit its note" : "A note under it" })
+    out.push({ word: "remove", act: "pdfRemove", dot: "", does: "Remove it, and its note" })
+    return out
+  }
+  // A word of the pill clicked: what its key does in `key`.
+  function pickDo(act) {
+    if (act === "pdfGo") pane.markGo(pane.picked)
+    else if (act === "pdfMark") pane.mark("h")
+    else if (act === "pdfQuestion") pane.mark("q")
+    else if (act === "pdfNote") pane.startNote()
+    else if (act === "pdfRemove") pane.remove()
   }
   function remove() {
     if (pane.picked === "") return false
@@ -970,6 +1054,11 @@ Item {
     pane.noting = true
     noteField.forceActiveFocus()
     noteField.selectAll()
+  }
+  // Esc in the note's field: nothing kept.
+  function closeNote(away) {
+    pane.noting = false
+    if (!away) keys.forceActiveFocus()
   }
   function saveNote() {
     if (pane.notingId !== "") pane.readRun(["note", "--id", pane.notingId, "--text", noteField.text])
@@ -1068,7 +1157,8 @@ Item {
             anchors.bottomMargin: -Math.max(1, sheet.s)
             height: Math.max(1, sheet.s * 0.7)
             color: spot.def && spot.def.defined ? page.accent : page.dim
-            opacity: spot.lit ? 0.9 : pane.acroListing ? 0.5 : 0
+            // Hovered only while the hand is on the mouse (docs/hints.md, D).
+            opacity: spot.lit && page.handOn ? 0.9 : pane.acroListing ? 0.5 : 0
           }
           HoverHandler {
             cursorShape: Qt.PointingHandCursor
@@ -1195,6 +1285,10 @@ Item {
     color: page.palette.background
     border.width: 1
     border.color: page.accent
+    // The wheel over it stays in it: a list at its end, or none, never
+    // scrolls the pages under it (2026-11-25, the mouse pass). A click on
+    // its edge or words too, which reached the page and took the keys.
+    MouseArea { anchors.fill: parent; z: -1; acceptedButtons: Qt.AllButtons; onWheel: function (w) { w.accepted = true } }
     Column {
       id: noteColumn
       x: page.sp(10)
@@ -1230,7 +1324,7 @@ Item {
           if (page.anywhereKey(event)) { event.accepted = true; return }
           var seq = Sc.fromEvent(event)
           if (seq === "Enter") { pane.saveNote(); event.accepted = true }
-          else if (seq === "Esc") { pane.noting = false; keys.forceActiveFocus(); event.accepted = true }
+          else if (seq === "Esc") { pane.closeNote(); event.accepted = true }
         }
       }
     }
@@ -1250,14 +1344,22 @@ Item {
     }
     readonly property bool here: !!(d !== null && pane.hoverAcro !== null && pane.hoverAcro.item
       && pane.acroIsDef(d.short, pane.hoverAcro.page, pane.hoverAcro.item.modelData.r))
-    visible: pane.tipOn && (d !== null || m !== null)
+    // Something to say; drawn only while the hand is on the mouse, as every
+    // hint (docs/hints.md, A), and warm with them: it opens and closes as
+    // one of the page's (2026-11-25, the mouse pass). Enter still acts on
+    // what is under the pointer, shown or not.
+    readonly property bool has: pane.tipOn && (d !== null || m !== null)
+    visible: has && page.handOn
+    property bool opened: false
+    onVisibleChanged: if (visible !== opened) { opened = visible; if (visible) page.tipOpened(); else page.tipClosed() }
+    Component.onDestruction: if (opened) page.tipClosed()
     z: 4
     width: Math.min(pane.width - page.sp(16), Math.max(acroTipLine.width, acroTipMore.implicitWidth,
                                                         acroTipAsked.visible ? acroTipAsked.width : 0) + page.sp(20))
     height: acroTipCol.implicitHeight + page.sp(14)
     x: Math.max(page.sp(8), Math.min(pane.width - width - page.sp(8), at.x - page.sp(10)))
     y: at.y + page.sp(6) + height > pane.height - foot.height ? at.y - (anchor ? anchor.height : 0) - height - page.sp(6) : at.y + page.sp(6)
-    radius: Style.cornerRadius
+    radius: page.overlayRadius
     color: page.sunk
     border.width: 1
     border.color: Qt.rgba(page.foreground.r, page.foreground.g, page.foreground.b, 0.16)
@@ -1326,6 +1428,10 @@ Item {
     color: page.palette.background
     border.width: 1
     border.color: page.accent
+    // The wheel over it stays in it: a list at its end, or none, never
+    // scrolls the pages under it (2026-11-25, the mouse pass). A click on
+    // its edge or words too, which reached the page and took the keys.
+    MouseArea { anchors.fill: parent; z: -1; acceptedButtons: Qt.AllButtons; onWheel: function (w) { w.accepted = true } }
     readonly property string count: findField.text.trim().length < 2 ? ""
       : pane.findBusy && pane.findFor !== findField.text.trim() ? "…"
       : pane.findTotal === 0 ? "none"
@@ -1385,6 +1491,9 @@ Item {
       }
       ListView {
         id: findRows
+        acceptedButtons: Qt.NoButton
+        QC.ScrollBar.vertical: ScrollMark { page: pane.page }
+        TouchScroll { flickable: findRows }
         visible: pane.findHits.length > 0
         width: parent.width
         height: visible ? Math.min(contentHeight, page.sp(200)) : 0
@@ -1398,7 +1507,9 @@ Item {
           width: findRows.width
           height: findRowText.implicitHeight + page.sp(4)
           radius: Style.cornerRadius
-          color: pane.findAt === index ? Style.selectedFill : "transparent"
+          // The mouse's faint fill only while the hand is on it, never over
+          // the keys' (docs/hints.md, D; 2026-11-25, the mouse pass).
+          color: pane.findAt === index ? Style.selectedFill : findRowArea.containsMouse && page.handOn ? Style.hoverFill : "transparent"
           Text {
             id: findRowText
             anchors.left: parent.left
@@ -1427,7 +1538,9 @@ Item {
             font.pixelSize: page.fs(Style.font.caption)
           }
           MouseArea {
+            id: findRowArea
             anchors.fill: parent
+            hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: { pane.findSaid = ""; pane.findShow(parent.index); findField.forceActiveFocus() }
           }
@@ -1451,6 +1564,10 @@ Item {
     color: page.palette.background
     border.width: 1
     border.color: page.accent
+    // The wheel over it stays in it: a list at its end, or none, never
+    // scrolls the pages under it (2026-11-25, the mouse pass). A click on
+    // its edge or words too, which reached the page and took the keys.
+    MouseArea { anchors.fill: parent; z: -1; acceptedButtons: Qt.AllButtons; onWheel: function (w) { w.accepted = true } }
     Column {
       id: acroColumn
       x: page.sp(10)
@@ -1488,6 +1605,9 @@ Item {
       }
       ListView {
         id: acroRows
+        acceptedButtons: Qt.NoButton
+        QC.ScrollBar.vertical: ScrollMark { page: pane.page }
+        TouchScroll { flickable: acroRows }
         width: parent.width
         height: Math.min(contentHeight, page.sp(300))
         clip: true
@@ -1500,7 +1620,7 @@ Item {
           width: acroRows.width
           height: acroRowText.implicitHeight + page.sp(4)
           radius: Style.cornerRadius
-          color: pane.acroFocus === index ? Style.selectedFill : "transparent"
+          color: pane.acroFocus === index ? Style.selectedFill : acroRowArea.containsMouse && page.handOn ? Style.hoverFill : "transparent"
           Text {
             id: acroRowText
             anchors.left: parent.left
@@ -1528,7 +1648,7 @@ Item {
             font.styleName: page.fontStyle
             font.pixelSize: page.fs(Style.font.caption)
           }
-          MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: { pane.closeAcronyms(); pane.acroGo(parent.modelData.short) } }
+          MouseArea { id: acroRowArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { pane.closeAcronyms(); pane.acroGo(parent.modelData.short) } }
         }
       }
     }
@@ -1547,6 +1667,10 @@ Item {
     color: page.palette.background
     border.width: 1
     border.color: page.accent
+    // The wheel over it stays in it: a list at its end, or none, never
+    // scrolls the pages under it (2026-11-25, the mouse pass). A click on
+    // its edge or words too, which reached the page and took the keys.
+    MouseArea { anchors.fill: parent; z: -1; acceptedButtons: Qt.AllButtons; onWheel: function (w) { w.accepted = true } }
     Column {
       id: tagColumn
       x: page.sp(10)
@@ -1590,7 +1714,7 @@ Item {
           width: tagColumn.width
           height: tagRowText.implicitHeight + page.sp(4)
           radius: Style.cornerRadius
-          color: pane.tagFocus === index ? Style.selectedFill : "transparent"
+          color: pane.tagFocus === index ? Style.selectedFill : tagRowArea.containsMouse && page.handOn ? Style.hoverFill : "transparent"
           Text {
             id: tagRowText
             anchors.left: parent.left
@@ -1603,7 +1727,7 @@ Item {
             font.styleName: page.fontStyle
             font.pixelSize: page.fs(Style.font.bodySmall)
           }
-          MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: pane.chooseProject(parent.modelData.tag) }
+          MouseArea { id: tagRowArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: pane.chooseProject(parent.modelData.tag) }
         }
       }
     }
@@ -1624,6 +1748,7 @@ Item {
         id: view
         anchors.fill: parent
         document: doc
+        page: pane.page
         live: pane.settled
         minScale: 0.3 * (pane.fitBase || 1)
         maxScale: 4 * (pane.fitBase || 1)
@@ -1747,6 +1872,94 @@ Item {
     }
   }
 
+  // A mark clicked: `chat · question · note · remove` by it, in the
+  // selection pill's look, each word doing what its key does on it
+  // (2026-11-25, the mouse pass). Not with words selected: their pill is
+  // the one shown, and `m`/`q` would mark them.
+  Rectangle {
+    id: pickPill
+    z: 60
+    visible: pane.ready && !!pane.pickBox && !pane.selBox && !pane.noting && !pane.finding && !pane.askingTag
+      && !pane.jumpingPage && !pane.acroListing
+      && pane.pickBox.bottom > 0 && pane.pickBox.top < pane.height - foot.height
+    width: pickPillRow.implicitWidth + page.sp(20)
+    height: pickPillRow.implicitHeight + page.sp(10)
+    radius: page.sp(7)
+    color: page.sunk
+    border.width: 1
+    border.color: Qt.rgba(page.foreground.r, page.foreground.g, page.foreground.b, 0.22)
+    x: pane.pickBox ? Math.round(Math.max(page.sp(8), Math.min(pane.width - width - page.sp(8), pane.pickBox.x - width / 2))) : 0
+    y: {
+      if (!pane.pickBox) return 0
+      var above = pane.pickBox.top - height - page.sp(10)
+      if (above >= page.sp(6)) return Math.round(above)
+      return Math.round(Math.min(pane.height - foot.height - height - page.sp(6), pane.pickBox.bottom + page.sp(10)))
+    }
+    // A click between its words is the pill's, not the page's (which would
+    // let go of the mark); the wheel goes on to the pages.
+    MouseArea { anchors.fill: parent; z: -1; acceptedButtons: Qt.AllButtons; onWheel: function (w) { w.accepted = false } }
+    Row {
+      id: pickPillRow
+      anchors.centerIn: parent
+      spacing: page.sp(10)
+      Repeater {
+        model: pane.pickWords
+        delegate: Row {
+          required property var modelData
+          required property int index
+          anchors.verticalCenter: parent.verticalCenter
+          spacing: page.sp(10)
+          Rectangle {
+            visible: index > 0
+            anchors.verticalCenter: parent.verticalCenter
+            width: 1
+            height: page.sp(12)
+            color: Qt.rgba(page.foreground.r, page.foreground.g, page.foreground.b, 0.16)
+          }
+          Item {
+            width: pickWordRow.implicitWidth
+            height: pickWordRow.implicitHeight
+            anchors.verticalCenter: parent.verticalCenter
+            Row {
+              id: pickWordRow
+              spacing: page.sp(5)
+              Rectangle {
+                visible: modelData.dot !== ""
+                anchors.verticalCenter: parent.verticalCenter
+                width: page.sp(7); height: width; radius: width / 2
+                color: modelData.dot === "q" ? page.palette.blue : page.palette.yellow
+              }
+              Text {
+                anchors.verticalCenter: parent.verticalCenter
+                textFormat: Text.PlainText
+                text: modelData.word
+                color: pickWordArea.containsMouse && page.handOn ? page.accent : page.foreground
+                font.family: page.fontFamily
+                font.styleName: page.fontStyle
+                font.pixelSize: page.fs(Style.font.caption)
+              }
+              KeyCaps {
+                anchors.verticalCenter: parent.verticalCenter
+                page: pane.page
+                key: page.keyName(modelData.act)
+                size: page.fs(Style.font.caption)
+              }
+            }
+            MouseArea {
+              id: pickWordArea
+              anchors.fill: parent
+              anchors.margins: -page.sp(4)
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: pane.pickDo(modelData.act)
+              Tip { host: pane.page; act: modelData.act; shown: parent.containsMouse; text: page.tip(modelData.does, modelData.act) }
+            }
+          }
+        }
+      }
+    }
+  }
+
   TextField {
     id: gotoField
     z: 55
@@ -1760,6 +1973,8 @@ Item {
     font.styleName: page.fontStyle
     font.pixelSize: page.fs(Style.font.bodySmall)
     foreground: page.foreground
+    // The wheel over it stays in it, as over the panels (2026-11-25).
+    MouseArea { anchors.fill: parent; z: -1; acceptedButtons: Qt.NoButton; onWheel: function (w) { w.accepted = true } }
     Keys.onPressed: function (event) {
       if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { pane.commitGoto(); event.accepted = true }
       else if (event.key === Qt.Key_Escape) { pane.closeGoto(); event.accepted = true }
@@ -1769,7 +1984,8 @@ Item {
   // Option A: Quiet split clickable footer — status & clickable page jump on
   // the left; subtle clickable toggles (`dark`, `fit`, `find`, `acronyms`,
   // `reading note`) on the right. Full-width status line takes over when
-  // reporting an error, OCR progress, or picked-mark actions.
+  // reporting an error, OCR progress, or picked-mark actions. Each word is
+  // clicked a little beyond its letters (2026-11-25, the mouse pass).
   Item {
     id: foot
     anchors.bottom: parent.bottom
@@ -1830,6 +2046,7 @@ Item {
         MouseArea {
           id: pageNumArea
           anchors.fill: parent
+          anchors.margins: -page.sp(4)
           hoverEnabled: true
           cursorShape: Qt.PointingHandCursor
           onClicked: pane.openGoto()
@@ -1863,6 +2080,7 @@ Item {
         MouseArea {
           id: ocrArea
           anchors.fill: parent
+          anchors.margins: -page.sp(4)
           hoverEnabled: true
           cursorShape: Qt.PointingHandCursor
           onClicked: pane.readScan()
@@ -1882,6 +2100,7 @@ Item {
         MouseArea {
           id: backJumpArea
           anchors.fill: parent
+          anchors.margins: -page.sp(4)
           hoverEnabled: true
           cursorShape: Qt.PointingHandCursor
           onClicked: pane.jumpReturn()
@@ -1908,6 +2127,7 @@ Item {
         MouseArea {
           id: darkArea
           anchors.fill: parent
+          anchors.margins: -page.sp(4)
           hoverEnabled: true
           cursorShape: Qt.PointingHandCursor
           onClicked: pane.toggleDark()
@@ -1925,6 +2145,7 @@ Item {
         MouseArea {
           id: fitArea
           anchors.fill: parent
+          anchors.margins: -page.sp(4)
           hoverEnabled: true
           cursorShape: Qt.PointingHandCursor
           onClicked: pane.fitToggle()
@@ -1942,6 +2163,7 @@ Item {
         MouseArea {
           id: findArea
           anchors.fill: parent
+          anchors.margins: -page.sp(4)
           hoverEnabled: true
           cursorShape: Qt.PointingHandCursor
           onClicked: pane.openFind()
@@ -1960,6 +2182,7 @@ Item {
         MouseArea {
           id: acroBtnArea
           anchors.fill: parent
+          anchors.margins: -page.sp(4)
           hoverEnabled: true
           cursorShape: Qt.PointingHandCursor
           onClicked: pane.openAcronyms()
@@ -1979,10 +2202,12 @@ Item {
         MouseArea {
           id: noteBtnArea
           anchors.fill: parent
+          anchors.margins: -page.sp(4)
           hoverEnabled: true
           cursorShape: Qt.PointingHandCursor
           onClicked: page.openFile(pane.read.note, false)
-          Tip { host: page; shown: parent.containsMouse; text: "Open this paper's reading note (" + page.keyName("linkBack") + " returns here)" }
+          // No key opens the reading note; the back key returns from it.
+          Tip { host: page; shown: parent.containsMouse; text: page.tips([["Open this paper's reading note", ""], ["Back here from it", "linkBack"]]) }
         }
       }
     }

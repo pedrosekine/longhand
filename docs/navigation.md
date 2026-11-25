@@ -72,7 +72,11 @@ reason.
   block's own conversation, without sending anything, as it did before the
   panes (brought back 2026-10-25: it was missed). Anywhere else, at the
   edge a hint says which key would open a pane there.
-- **A click** in a pane puts the keys there too.
+- **A click** in a pane puts the keys there too — on anything that acts in
+  it as well, since 2026-11-25 (the mouse pass): the calendar's arrows, a
+  project's fold, the dashboard's box and its bands, a PDF's page, a card's
+  accept or undo. A click on the sheet's margins puts them into whatever
+  the middle shows, never into a note hidden under a PDF or the export.
 - `Ctrl+T`, `Ctrl+J`, `Ctrl+Shift+B` and `Ctrl+{`/`Ctrl+}` went with the
   brackets on 2026-10-27: the digits and the two toggles say it all.
 
@@ -195,6 +199,8 @@ the note ↔ the dashboard, a day before or after, a file or a PDF opened.
 Going back lands where the cursor was. Opening or closing a side pane is not
 a step, and a move made of several (the dashboard closing to go to a line on
 another day) is one step, as it was before it began.
+The mouse's own back and forward buttons do the same (2026-11-25); in a
+PDF, back first returns from a jump inside it, as `Alt+←` does there.
 
 ## Checkpoints: coming back lands where you left
 
@@ -249,11 +255,75 @@ only while the page's window is the active one. It uses Hyprland
 (`hl.dsp.cursor.move`). Settings → The pointer (picked with ↑↓, changed with
 Enter or Space, since settings became a list on 2026-10-28) has
 *every selection*, *pane changes only* or *off*, kept as `pointer` in
-`settings.json`.
+`settings.json`. On Windows it is *off* unless set (2026-11-25): Windows
+shows the pointer while the keys move, where Hyprland hides it on a key, so
+a warp there looked like the pointer jumping on its own.
 
 Hover hints follow the hand the other way round (2026-10-30,
 [hints.md](hints.md)): a key puts them away until your hand moves the
 mouse, so a row the pointer is warped onto never opens its hint.
+
+A press counts as the hand too (2026-11-25): a click on a control the
+pointer already rested on, just after typing, moved nothing, so a pane the
+click changed to warped the pointer out from under the hand. And the
+moment after a warp, when the pointer's own motion is not taken for the
+hand, starts only when a warp is sent: with the window not the active one
+there is none, and the hand's real motion was ignored all the same.
+
+## The mouse (2026-11-25, the mouse pass)
+
+An outside review read the page as a Windows user would, and nearly all
+of it held on Omarchy too, since the panes are one code base. What came of
+it, besides the clicks above and the hover marks in [hints.md](hints.md):
+
+- **A drag never pans a list.** Qt's lists scroll under a mouse drag, as a
+  finger would on a phone, so a little jitter in a click scrolled instead
+  of clicking. Every list takes `acceptedButtons: Qt.NoButton`: the wheel,
+  the touchpad (`TouchScroll`, now on every list) and the bar scroll it.
+- **A bar at each list's edge** (`ScrollMark.qml`): how long the list is,
+  where you are, a handle to drag. Nothing at rest or when everything fits;
+  a thin line while the list moves; wider under the hand.
+- **Ctrl and the wheel is the zoom, everywhere**, as `Ctrl+=` and `Ctrl+-`;
+  a PDF sizes its own pages. It was three things: the PDF's zoom, the
+  sidebar's spaces (now the sideways swipe only) and a plain scroll.
+- **The wheel stays in a box over the page**: the switcher and the PDF's
+  boxes no longer scroll what is under them at the end of their list.
+- **A right click on words** (`EditMenu.qml`): in the note, cut, copy,
+  paste and "select more" (Ctrl+A's ladder); on a chat's words, copy,
+  reply and select all. Each with its key beside it, so it teaches the keys
+  as the hints do; it never takes the keys, so the selection stays.
+- **Words selected in a chat** copy with `Ctrl+C` (and reply with
+  `Ctrl+R`) wherever the keys are: the note, the dashboard (where `Ctrl+R`
+  stays its plan) and the sidebar too, as from a PDF since 2026-11-19.
+- **A drag past the note's edge** keeps selecting, faster the further out.
+- **A link in the note** says where it goes under the hand; Alt and a click
+  puts the cursor in it to edit it, where a click always followed it.
+- **What looked clickable is**: an answered block's bar in the note's
+  gutter opens its chat (as the dashboard's does); a deadline's date pill,
+  in the note and on the dashboard, asks for its new day (`Ctrl+D`, `D`);
+  the sidebar's ○ ticks a deadline; the search sheet's horizon has ‹ ›.
+- **What did not act no longer looks it**: a key that cannot be moved shows
+  no hand; a check-in row's words now bring the keys to it.
+- **A click means one thing**: what the agent raised is dismissed by its
+  own "dismiss" word or Enter, never by a click on the row.
+- **A box asking something** ("when?", "name?", the dashboard's) closes
+  on a click outside it, as Esc does; the keys stay where the click put
+  them. A click, not the keys leaving: the page moves them itself on its
+  way, and that closed the box under the keys (Windows' CI caught it).
+- **Wider hit areas** on the header's words, the PDF's foot, the cards'
+  accept, decline, undo and helpful, and the dashboard's pills.
+- **In a PDF**: Shift and the wheel move a page sized past the fit
+  sideways; a click on a page brings the keys to it; find, go to page, the
+  project question and the acronyms close on a click outside them (a
+  reading note with words in it waits for Enter or Esc). On Windows a
+  touchpad scrolls it at the note's speed (it went twice as fast).
+- **A paper's marks** in the agent's pane: a click goes to the mark, as
+  before; "chat" on the row (on the one selected and the one under the
+  hand) asks about it, where a double click did after the click had
+  already jumped.
+- **The tray on Windows**: a double click on the timer's or the deadlines'
+  icon opened the popup and closed it at once; a click alone counts now.
+  The timer's middle button skips, as on Omarchy's bar.
 
 ## Not yet
 

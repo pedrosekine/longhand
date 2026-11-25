@@ -2,6 +2,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import QtQuick
+import QtQuick.Controls as QC
 import QtQuick.Shapes
 import Qt.labs.folderlistmodel
 import qs.Commons
@@ -2464,6 +2465,30 @@ Item {
     if (root.chatSelection && root.chatSelection !== edit) root.chatSelection.deselect()
     root.chatSelection = edit
   }
+  // A press anywhere in the page, at its place in the window: a box asking
+  // something ("when?", "name?", the dashboard's, the PDF's) closes when the
+  // press is outside it, as Esc does, the keys left where the click puts
+  // them (2026-11-25, the mouse pass). Only what was open at the press, and
+  // after the click is done, so a click that opens one does not close it.
+  signal pressedAt(point at)
+  onPressedAt: function (at) {
+    var out = function (item) {
+      if (!item || !item.visible) return true
+      var q = item.mapFromItem(null, at.x, at.y)
+      return q.x < 0 || q.y < 0 || q.x > item.width || q.y > item.height
+    }
+    var was = { when: root.whenFor && out(whenBox) ? root.whenFor : null,
+                name: root.newProject && out(nameBox) ? root.newProject : null,
+                dash: root.dashWhenFor && out(dash.dashWhenRowRef) ? root.dashWhenFor : null }
+    Qt.callLater(function () {
+      if (was.when && root.whenFor === was.when) root.whenFor = null
+      if (was.name && root.newProject === was.name) root.newProject = null
+      if (was.dash && root.dashWhenFor === was.dash) { root.dashWhenFor = null; root.dashWhenText = "" }
+    })
+  }
+
+  // The mouse's menu on words, for the chats' turns (ChatTurn.qml).
+  function editMenuAt(over, x, y, list) { editMenu.openAt(over, x, y, list) }
   function copyChatSelection(event, box) {
     if (event.key !== Qt.Key_C || (event.modifiers & (Qt.ControlModifier | Qt.ShiftModifier | Qt.AltModifier)) !== Qt.ControlModifier) return false
     if (box && box.selectedText !== "") return false
@@ -3337,7 +3362,12 @@ Item {
   // while typing in the note, and only while the page's window is the
   // active one. `pointer` in settings.json: "panes" (the default), "every",
   // "off".
-  readonly property string pointerMode: ["panes", "every", "off"].indexOf(root.settingsData.pointer) >= 0 ? root.settingsData.pointer : "panes"
+  // Off by default on Windows (2026-11-25, the mouse pass): Windows shows
+  // the pointer while the keys move, where Hyprland hides it on a key
+  // (cursor:hide_on_key_press), so a warp there was seen as the pointer
+  // jumping by itself. Settings → The pointer still turns it on.
+  readonly property string pointerMode: ["panes", "every", "off"].indexOf(root.settingsData.pointer) >= 0 ? root.settingsData.pointer
+    : root.onWindows ? "off" : "panes"
   property var marks: ({})          // pane -> the item selected in it, as rows say (`selected`)
   property real handMovedAt: 0      // the student's own pointer, last moved
   property real warpedAt: 0
@@ -3527,6 +3557,11 @@ Item {
   function warpNow() {
     if (!root.showing || root.pointerMode === "off") return
     if (Date.now() - root.handMovedAt < 700) return
+    // The window not the active one: the compositor would not move the
+    // pointer, so its motion must not be taken for a warp's either — the
+    // hand's real motion was ignored for a moment after a warp that never
+    // happened (2026-11-25, the mouse pass).
+    if (!root.overlayOpen && !content.Window.active) return
     var t = root.pointerTarget()
     if (!t) return
     // Already there: nothing to move.
@@ -3859,7 +3894,7 @@ Item {
       if (!rec && !flying) continue
       var r = editor.blockRect(b.start, b.end)
       if (!r) continue
-      out.push({ hash: b.hash, y: r.y, h: r.h, sending: flying,
+      out.push({ hash: b.hash, line: b.start, y: r.y, h: r.h, sending: flying,
                  reply: !!rec && rec.state === "reply",
                  unread: !!rec && rec.state === "reply" && !rec.read })
     }
@@ -6623,6 +6658,10 @@ Item {
       if (lt && lt.est) out.push({ text: lt.est, tone: "est" })
       return out
     }
+    // What the agent raised is dismissed on purpose, by a word of its own
+    // or Enter, never by a click on the row that only meant to look
+    // (2026-11-25, the mouse pass).
+    if (row.kind === "raised") return [{ text: "dismiss", tone: "act" }]
     if (row.kind !== "task") return out
     var t = row.task
     if (t.done) return out
@@ -7000,6 +7039,9 @@ Item {
       if (k === Qt.Key_Return || k === Qt.Key_Enter) { root.commitDashWhen(); return true }
       return false
     }
+    // Words selected in an answer beside the dashboard: Ctrl+C copies them
+    // (2026-11-25, the mouse pass). Ctrl+R stays the dashboard's own plan.
+    if (root.copyChatSelection(e, null)) return true
     if (root.stripAt >= 0) return root.stripKey(e)
     if (Sc.hit(e, "dashBack")) { root.toggleDash(); return true }
     if (Sc.hit(e, "dashSearch")) { root.enterStrip(0); return true }
@@ -9557,9 +9599,12 @@ Item {
       borderSpec: root.alongside ? Border.none() : root.borderSpec
       padding: root.sheetPadding
 
+      // A click on the sheet's margins is the keys into the middle, into
+      // whatever shows there: the note sent them to the note even under a
+      // PDF or the export, where it is hidden (2026-11-25, the mouse pass).
       MouseArea {
         anchors.fill: parent
-        onClicked: editor.focusNote()
+        onClicked: root.focusCenter()
       }
 
       Item {
@@ -9644,6 +9689,9 @@ Item {
             MouseArea {
               id: dateArea
               anchors.fill: parent
+              // Wider than the word, so it is easy to hit (2026-11-25, the mouse pass).
+              anchors.topMargin: -root.sp(5); anchors.bottomMargin: -root.sp(5)
+              anchors.leftMargin: -root.sp(3); anchors.rightMargin: -root.sp(3)
               enabled: root.status === ""
               hoverEnabled: true
               cursorShape: Qt.PointingHandCursor
@@ -9689,6 +9737,9 @@ Item {
             MouseArea {
               id: todayArea
               anchors.fill: parent
+              // Wider than the word, so it is easy to hit (2026-11-25, the mouse pass).
+              anchors.topMargin: -root.sp(5); anchors.bottomMargin: -root.sp(5)
+              anchors.leftMargin: -root.sp(3); anchors.rightMargin: -root.sp(3)
               cursorShape: Qt.PointingHandCursor
               hoverEnabled: true
               onClicked: root.goToday()
@@ -9767,6 +9818,9 @@ Item {
               MouseArea {
                 id: pinArea
                 anchors.fill: parent
+                // Wider than the word, so it is easy to hit (2026-11-25, the mouse pass).
+                anchors.topMargin: -root.sp(5); anchors.bottomMargin: -root.sp(5)
+                anchors.leftMargin: -root.sp(3); anchors.rightMargin: -root.sp(3)
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: root.togglePin()
@@ -9821,6 +9875,9 @@ Item {
               MouseArea {
                 id: privateArea
                 anchors.fill: parent
+                // Wider than the word, so it is easy to hit (2026-11-25, the mouse pass).
+                anchors.topMargin: -root.sp(5); anchors.bottomMargin: -root.sp(5)
+                anchors.leftMargin: -root.sp(3); anchors.rightMargin: -root.sp(3)
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: { root.togglePrivate(); editor.focusNote() }
@@ -9866,6 +9923,9 @@ Item {
               MouseArea {
                 id: noteAskArea
                 anchors.fill: parent
+                // Wider than the word, so it is easy to hit (2026-11-25, the mouse pass).
+                anchors.topMargin: -root.sp(5); anchors.bottomMargin: -root.sp(5)
+                anchors.leftMargin: -root.sp(3); anchors.rightMargin: -root.sp(3)
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: root.noteRoom && root.dayShown ? root.closeDay() : root.openRoom("", true)
@@ -9909,6 +9969,9 @@ Item {
               MouseArea {
                 id: askArea
                 anchors.fill: parent
+                // Wider than the word, so it is easy to hit (2026-11-25, the mouse pass).
+                anchors.topMargin: -root.sp(5); anchors.bottomMargin: -root.sp(5)
+                anchors.leftMargin: -root.sp(3); anchors.rightMargin: -root.sp(3)
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: { root.sendCurrent(); editor.focusNote() }
@@ -10314,6 +10377,8 @@ Item {
         }
 
         Flickable {
+          acceptedButtons: Qt.NoButton
+          QC.ScrollBar.vertical: ScrollMark { page: root }
           id: flick
           visible: root.problem === "" && !root.pdfShown && !root.exportOpen
           anchors.top: dayBand.bottom
@@ -10381,6 +10446,32 @@ Item {
                                     duration: 1500; easing.type: Easing.InOutSine }
                 }
               }
+            }
+          }
+          // An answered block's bar opens its chat, as Ctrl+Enter in the
+          // block does and as the dashboard's bar does (2026-11-25, the
+          // mouse pass: it looked like the dashboard's and did nothing).
+          // Over the bars, wider than them, so the narrow mark is easy to hit.
+          Repeater {
+            model: root.paint
+            MouseArea {
+              id: barArea
+              required property var modelData
+              visible: modelData.reply
+              x: 0
+              y: modelData.y
+              width: root.sp(10)
+              height: modelData.h
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: {
+                var r = editor.rows[barArea.modelData.line]
+                if (!r) return
+                editor.setCursor(r.start + r.prefixLen, true)
+                root.sendCurrent()
+                root.mouseDid("ask")
+              }
+              Tip { host: root; shown: parent.containsMouse; text: root.tip("Its chat", "ask") }
             }
           }
 
@@ -10459,10 +10550,33 @@ Item {
             roomRow: whenBox.visible || mentionBox.visible || nameBox.visible ? root.lineIndexAt(root.newProject ? root.newProject.end : editor.cursorPosition) : -1
             roomHeight: (whenBox.visible ? whenBox.height : mentionBox.visible ? mentionBox.height : nameBox.visible ? nameBox.height : 0) + root.sp(12)
             boxTip: Component { Item { Tip { host: root; shown: true; text: root.tip("Tick or untick it", "checkbox") } } }
+            // A link's hint: where it goes, and how to edit it instead
+            // (2026-11-25, the mouse pass: a click always followed it).
+            linkTip: Component {
+              Item {
+                Tip {
+                  host: root
+                  shown: true
+                  text: {
+                    var l = parent && parent.parent ? parent.parent.link : null
+                    if (!l) return ""
+                    var to = l.url !== "" ? l.url : l.target !== "" ? l.target + (l.heading ? "#" + l.heading : "") : "#" + l.heading
+                    return root.tips([["Open " + to, "followLink"], ["Edit it: Alt+click", ""]])
+                  }
+                }
+              }
+            }
             boxBadge: Component { KeyBadge { host: root; act: "checkbox" } }
             handOn: root.handOn
             onBoxTicked: function (lineIndex, done) { if (done) root.tickSound() }
             onBoxClicked: root.mouseDid("checkbox")
+            onDatePillClicked: function (i) {
+              var r = editor.rows[i]
+              if (!r) return
+              editor.setCursor(r.start + r.prefixLen + r.body.length, true)
+              root.deadlineKey()
+              root.mouseDid("deadline")
+            }
             authors: root.shownAuthors
             x: root.gutter
             width: flick.width - root.gutter
@@ -10494,6 +10608,18 @@ Item {
             currentMark: root.matchIndex
             tabStop: 4 * root.sp(8)
             keyFilter: root.pageKey
+            chatKey: root.chatSelectionKey
+            viewport: flick
+            onMenuAsked: function (x, y) {
+              root.used("edit-menu", "note")
+              var sel = editor.hasSelection(), ro = editor.readOnly
+              editMenu.openAt(editor, x, y, [
+                { text: "Cut", key: "Ctrl+X", enabled: sel && !ro, run: function () { editor.editAct(Qt.Key_X) } },
+                { text: "Copy", key: "Ctrl+C", enabled: sel, run: function () { editor.editAct(Qt.Key_C) } },
+                { text: "Paste", key: "Ctrl+V", enabled: !ro, run: function () { editor.editAct(Qt.Key_V) } },
+                { text: "Select more", key: "Ctrl+A", run: function () { editor.editAct(Qt.Key_A) } }
+              ])
+            }
 
             onCursorRectChanged: flick.ensureVisible(cursorRect)
             // Which line the cursor is on is read once the edit is whole: the
@@ -10759,12 +10885,13 @@ Item {
           x: parent.width / 2 + implicitHeight / 2
           textFormat: Text.PlainText
           text: (parent.chat ? "THE CHAT" : root.paneKind === "paper" ? "THE PAPER" : "THE NOTE") + "  ·  " + root.keyName("paneFlip")
-          color: root.faint
+          color: stripArea.containsMouse && root.handOn ? root.accent : root.faint
           font.family: root.fontFamily
           font.styleName: root.fontStyle
           font.pixelSize: root.fs(Style.font.caption)
         }
-        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.flipPane() }
+        // Lit under the hand, as every word that acts (2026-11-25, the mouse pass).
+        MouseArea { id: stripArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.flipPane() }
       }
     }
 
@@ -10862,6 +10989,9 @@ Item {
       }
     }
 
+    // The mouse's menu on words: the note's and the chats' (EditMenu.qml).
+    EditMenu { id: editMenu; page: root }
+
     // The student's own hand on the mouse: the pointer is left alone while
     // it moves, and the hints come back (a warp's own motion is not the
     // hand, nor a row sliding under a still pointer, which only redelivers
@@ -10876,6 +11006,51 @@ Item {
         root.handMovedAt = Date.now()
         root.handOn = true
         root.ctrlLetGo()
+      }
+    }
+    // A press is the hand too (2026-11-25, the mouse pass): a click on a
+    // control the pointer already rested on, just after typing, moved
+    // nothing, so a pane the click changed to warped the pointer out from
+    // under the hand. Over everything and taking no press, so every click
+    // still reaches what it was on.
+    Item {
+      anchors.fill: parent
+      z: 10000
+      PointHandler {
+        acceptedButtons: Qt.AllButtons
+        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+        onActiveChanged: if (active) { root.handMovedAt = Date.now(); root.handOn = true; root.pressedAt(point.scenePosition) }
+      }
+      // Ctrl and the wheel: the page larger or smaller, as Ctrl+= and
+      // Ctrl+- (2026-11-25, the mouse pass), wherever the pointer is. It
+      // did three things: the PDF's zoom, the sidebar's spaces, and a plain
+      // scroll everywhere else. A PDF in the middle sizes its own pages
+      // (PdfPane's wheel), so this stands aside while one shows.
+      WheelHandler {
+        id: zoomWheel
+        target: null
+        enabled: !root.pdfShown
+        acceptedModifiers: Qt.ControlModifier
+        property real travel: 0
+        onWheel: function (ev) {
+          var d = ev.angleDelta.y !== 0 ? ev.angleDelta.y : ev.pixelDelta.y * 4
+          if ((d > 0) !== (zoomWheel.travel > 0)) zoomWheel.travel = 0
+          zoomWheel.travel += d
+          if (Math.abs(zoomWheel.travel) < 120) return
+          root.zoomBy(zoomWheel.travel > 0 ? 1 : -1)
+          zoomWheel.travel = 0
+        }
+      }
+      // The mouse's own back and forward buttons, as the keys' back and
+      // forward (2026-11-25, the mouse pass): in a PDF, back from a jump
+      // in it first, as its Alt+← does.
+      TapHandler {
+        acceptedButtons: Qt.BackButton | Qt.ForwardButton
+        gesturePolicy: TapHandler.WithinBounds
+        onTapped: function (point, button) {
+          if (button === Qt.BackButton && root.pdfShown && pdfPane.jumpBack) { pdfPane.jumpReturn(); return }
+          root.goBack(button === Qt.BackButton ? -1 : 1)
+        }
       }
     }
   }

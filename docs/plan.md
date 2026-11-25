@@ -1312,6 +1312,17 @@ this list, with *Open, in order* above. Each says why it waits.
 No work unless they bite; each says what would tell. The first four came
 from 2026-09/10 and still stand.
 
+- **The mouse pass** (built 2026-11-25, from an outside review of the
+  mouse on Windows, which held on Omarchy too: `docs/navigation.md`, "The
+  mouse"; `docs/hints.md`, "D, kept everywhere"). Lists no longer pan
+  under a drag and have a bar; Ctrl and the wheel zoom everywhere (no longer
+  the sidebar's spaces); a right click gives the words' edits; what looked
+  clickable is, what did not act no longer looks it; a press counts as the
+  hand for the pointer. What would tell: whether the bars are ever dragged
+  or only read, whether the edit menu is opened at all next to the keys
+  (`edit-menu` in the usage log), whether Ctrl+wheel's zoom is used or
+  only met by accident, and whether anyone missed the swipe-only spaces.
+
 - **Another paper pointed at from a paper's chat** (built 2026-11-19, the
   student, reading Merk 2021 and wanting to bring in Moser 2026: "@ a
   different paper so I can mention it to the agent"). `@` in a paper's or

@@ -184,12 +184,16 @@ Rectangle {
             font.weight: Font.Medium
             font.pixelSize: page.fs(Style.font.caption)
             font.underline: acceptArea.containsMouse && page.handOn
+            // Wider than its word, the links a gap apart; a click first
+            // does what one on the card does, so the keys come to it
+            // (2026-11-25, the mouse pass).
             MouseArea {
               id: acceptArea
               anchors.fill: parent
+              anchors.margins: -page.sp(4)
               hoverEnabled: true
               cursorShape: Qt.PointingHandCursor
-              onClicked: card.accepted()
+              onClicked: { card.focused(); card.accepted() }
               Tip { host: card.page; act: "marginAccept"; shown: parent.containsMouse; text: card.page.tip(card.told ? "Let it stand" : "Accept this proposal", "marginAccept") }
             }
           }
@@ -218,9 +222,10 @@ Rectangle {
             MouseArea {
               id: declineArea
               anchors.fill: parent
+              anchors.margins: -page.sp(4)
               hoverEnabled: true
               cursorShape: Qt.PointingHandCursor
-              onClicked: card.declinedClick()
+              onClicked: { card.focused(); card.declinedClick() }
               Tip { host: card.page; act: "marginDecline"; shown: parent.containsMouse; text: card.page.tip(card.told ? "Undo what it did" : "Decline this proposal", "marginDecline") }
             }
           }
@@ -249,10 +254,11 @@ Rectangle {
             MouseArea {
               id: undoArea
               anchors.fill: parent
+              anchors.margins: -page.sp(4)
               hoverEnabled: true
               cursorShape: Qt.PointingHandCursor
-              onClicked: card.undone()
-              Tip { host: card.page; shown: parent.containsMouse; text: "Undo this change (" + page.keyName("undo") + ")" }
+              onClicked: { card.focused(); card.undone() }
+              Tip { host: card.page; act: "undo"; shown: parent.containsMouse; text: card.page.tip("Undo this change", "undo") }
             }
           }
           KeyCaps {

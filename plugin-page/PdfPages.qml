@@ -25,6 +25,7 @@ import "PdfPlaces.js" as Places
 Item {
   id: pages
   required property PdfDocument document
+  required property Item page   // the page, for the scroll bars' ink
   // Pixels a point, as laid now (a pinch moves it frame by frame); the
   // pictures are drawn at `drawScale`, which follows once a pinch rests,
   // stretched meanwhile.
@@ -244,8 +245,8 @@ Item {
     onContentYChanged: pages.updateRange()
     onHeightChanged: pages.updateRange()
     onContentWidthChanged: Qt.callLater(pages.settleX)
-    ScrollBar.vertical: ScrollBar {}
-    ScrollBar.horizontal: ScrollBar {}
+    ScrollBar.vertical: ScrollMark { page: pages.page }
+    ScrollBar.horizontal: ScrollMark { page: pages.page }
 
     TouchScroll { flickable: flick }
 

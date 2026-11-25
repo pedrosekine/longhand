@@ -1,5 +1,6 @@
 import Quickshell
 import QtQuick
+import QtQuick.Controls as QC
 import qs.Commons
 import qs.Ui
 import "Shortcuts.js" as Sc
@@ -199,6 +200,8 @@ Item {
 
   Flickable {
     id: flick
+    acceptedButtons: Qt.NoButton
+    QC.ScrollBar.vertical: ScrollMark { page: sheet.page }
     anchors.top: fromLine.bottom
     anchors.topMargin: page.sp(18)
     anchors.left: parent.left

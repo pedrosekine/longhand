@@ -79,8 +79,8 @@ var groups = [
 // a key a text field types or uses. Everything else works in its place.
 // docs/navigation.md has the whole model.
 var actions = [
-  { id: "zoomIn", group: "page", places: ["any"], does: "Zoom in", keys: ["Ctrl+=", "Ctrl+Plus"] },
-  { id: "zoomOut", group: "page", places: ["any"], does: "Zoom out", keys: ["Ctrl+-", "Ctrl+_"] },
+  { id: "zoomIn", group: "page", places: ["any"], does: "Zoom in (or Ctrl+wheel up)", keys: ["Ctrl+=", "Ctrl+Plus"] },
+  { id: "zoomOut", group: "page", places: ["any"], does: "Zoom out (or Ctrl+wheel down)", keys: ["Ctrl+-", "Ctrl+_"] },
   { id: "zoomReset", group: "page", places: ["any"], does: "Zoom back to 100%", keys: ["Ctrl+0"] },
   { id: "keys", group: "page", places: ["any"], does: "Show these keys", keys: ["Ctrl+/"] },
   // `?` where nothing is typed, as Gmail, Todoist and GitHub have it.

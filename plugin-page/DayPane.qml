@@ -1,5 +1,6 @@
 import Quickshell
 import QtQuick
+import QtQuick.Controls as QC
 import qs.Commons
 import qs.Ui
 import "Shortcuts.js" as Sc
@@ -227,7 +228,9 @@ BorderSurface {
           width: chipText.implicitWidth + page.sp(14)
           height: chipText.implicitHeight + page.sp(6)
           radius: Style.cornerRadius
-          color: on ? Style.selectedFill : "transparent"
+          // Under the hand, the hover's fill, as other chips (2026-11-25, the
+          // mouse pass).
+          color: on ? Style.selectedFill : chipArea.containsMouse && page.handOn ? Style.hoverFill : "transparent"
           border.width: 1
           border.color: on ? page.accent : page.faint
           Text {
@@ -242,7 +245,9 @@ BorderSurface {
             font.pixelSize: page.fs(Style.font.caption)
           }
           MouseArea {
+            id: chipArea
             anchors.fill: parent
+            hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: { page.paper.filter = parent.modelData.f; page.paper.at = 0; paperKeys.forceActiveFocus() }
           }
@@ -258,7 +263,7 @@ BorderSurface {
       width: parent.width
       height: wholeColumn.implicitHeight + page.sp(8)
       radius: Style.cornerRadius
-      color: hot ? Style.selectedFill : "transparent"
+      color: hot ? Style.selectedFill : wholeArea.containsMouse && page.handOn ? Style.hoverFill : "transparent"
       border.width: 1
       border.color: hot ? page.accent : page.faint
       onHotChanged: page.selected(wholeRow, "right", hot)
@@ -289,7 +294,9 @@ BorderSurface {
         }
       }
       MouseArea {
+        id: wholeArea
         anchors.fill: parent
+        hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
         onClicked: { page.paper.pick(-1); page.paper.marks = []; page.paper.showChat() }
       }
@@ -297,6 +304,9 @@ BorderSurface {
 
     ListView {
       id: paperListView
+      acceptedButtons: Qt.NoButton
+      QC.ScrollBar.vertical: ScrollMark { page: dayPane.page }
+      TouchScroll { flickable: paperListView }
       width: parent.width
       height: parent.height - y - paperFoot.implicitHeight - page.sp(8)
       clip: true
@@ -316,13 +326,16 @@ BorderSurface {
         readonly property bool shown: page.pdfItem.picked === modelData.id
         readonly property bool kept: page.paper.kept.indexOf(modelData.id) >= 0
         readonly property string state_: page.paper.markState(modelData)
+        // Its "chat": on the lit row, and on the one under the hand.
+        readonly property bool offersChat: hot || shown || (markHover.hovered && page.handOn)
         width: paperListView.width
         height: markColumn.implicitHeight + page.sp(8)
         radius: Style.cornerRadius
-        color: hot || shown ? Style.selectedFill : "transparent"
+        color: hot || shown ? Style.selectedFill : markHover.hovered && page.handOn ? Style.hoverFill : "transparent"
         border.width: shown && !hot ? 1 : 0
         border.color: page.accent
         onHotChanged: page.selected(markRow, "right", hot)
+        HoverHandler { id: markHover }
         Rectangle {
           visible: markRow.kept
           width: 2
@@ -345,6 +358,10 @@ BorderSurface {
               color: markRow.modelData.kind === "q" ? page.palette.blue : page.palette.yellow
             }
             Text {
+              // Room kept for "chat" at the right whether it shows or not,
+              // so nothing moves when it does.
+              width: Math.min(implicitWidth, markColumn.width - page.sp(13) - markChat.width - page.sp(8))
+              elide: Text.ElideRight
               textFormat: Text.PlainText
               text: "p. " + markRow.modelData.page + (markRow.modelData.placed ? "" : " · not found on its page")
                 + (markRow.state_ === "waiting" ? " · waiting" : markRow.state_ === "answered" ? " · answered" : "")
@@ -400,9 +417,35 @@ BorderSurface {
           anchors.fill: parent
           cursorShape: Qt.PointingHandCursor
           // A click takes the keys to the mark in the PDF, to change or
-          // remove it there; a double click asks about it.
+          // remove it there. A double click asked about it until
+          // 2026-11-25 (the mouse pass), but its first click had already
+          // jumped: "chat" on the row asks instead.
           onClicked: page.paper.edit(markRow.index)
-          onDoubleClicked: { page.paper.attach(markRow.modelData.id); page.paper.showChat() }
+        }
+        Text {
+          id: markChat
+          anchors.top: parent.top
+          anchors.topMargin: page.sp(4)
+          anchors.right: parent.right
+          anchors.rightMargin: page.sp(8)
+          opacity: markRow.offersChat ? 1 : 0
+          textFormat: Text.PlainText
+          text: "chat"
+          color: markChatArea.containsMouse && page.handOn ? page.accent : page.dim
+          font.family: page.fontFamily
+          font.styleName: page.fontStyle
+          font.pixelSize: page.fs(Style.font.caption)
+          font.underline: markChatArea.containsMouse && page.handOn
+          MouseArea {
+            id: markChatArea
+            anchors.fill: parent
+            anchors.margins: -page.sp(4)
+            enabled: markRow.offersChat
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: { page.paper.attach(markRow.modelData.id); page.paper.showChat() }
+            Tip { host: dayPane.page; act: "paperOpen"; shown: parent.containsMouse; text: page.tip("Ask about this mark in the paper's chat", "paperOpen") }
+          }
         }
       }
     }
@@ -443,6 +486,8 @@ BorderSurface {
 
   Flickable {
     id: dayFlick
+    acceptedButtons: Qt.NoButton
+    QC.ScrollBar.vertical: ScrollMark { page: dayPane.page }
     visible: !dayPane.listing
     anchors.top: titleRow.bottom
     anchors.topMargin: page.sp(14)
@@ -811,12 +856,16 @@ BorderSurface {
                         font.weight: Font.Medium
                         font.pixelSize: page.fs(Style.font.caption)
                         font.underline: dayAccArea.containsMouse && page.handOn
+                        // Wider than its word, the links a gap apart; a
+                        // click puts the keys in the pane, as one on the
+                        // card does (2026-11-25, the mouse pass).
                         MouseArea {
                           id: dayAccArea
                           anchors.fill: parent
+                          anchors.margins: -page.sp(4)
                           hoverEnabled: true
                           cursorShape: Qt.PointingHandCursor
-                          onClicked: page.settleDayCardById(card.modelData.id, "accept")
+                          onClicked: { page.focusPane("right"); page.settleDayCardById(card.modelData.id, "accept") }
                           Tip { host: dayPane.page; act: "marginAccept"; shown: parent.containsMouse; text: page.tip(card.told ? "Let it stand" : "Accept this proposal", "marginAccept") }
                         }
                       }
@@ -844,9 +893,10 @@ BorderSurface {
                         MouseArea {
                           id: dayDecArea
                           anchors.fill: parent
+                          anchors.margins: -page.sp(4)
                           hoverEnabled: true
                           cursorShape: Qt.PointingHandCursor
-                          onClicked: page.settleDayCardById(card.modelData.id, "decline")
+                          onClicked: { page.focusPane("right"); page.settleDayCardById(card.modelData.id, "decline") }
                           Tip { host: dayPane.page; act: "marginDecline"; shown: parent.containsMouse; text: page.tip(card.told ? "Undo what it did" : "Decline this proposal", "marginDecline") }
                         }
                       }
@@ -874,10 +924,11 @@ BorderSurface {
                         MouseArea {
                           id: dayUndoArea
                           anchors.fill: parent
+                          anchors.margins: -page.sp(4)
                           hoverEnabled: true
                           cursorShape: Qt.PointingHandCursor
-                          onClicked: page.undoSettledCard(card.modelData.id)
-                          Tip { host: dayPane.page; shown: parent.containsMouse; text: "Undo this change (" + page.keyName("undo") + ")" }
+                          onClicked: { page.focusPane("right"); page.undoSettledCard(card.modelData.id) }
+                          Tip { host: dayPane.page; act: "undo"; shown: parent.containsMouse; text: page.tip("Undo this change", "undo") }
                         }
                       }
                       KeyCaps {
@@ -916,7 +967,7 @@ BorderSurface {
             readonly property bool last: turn.index === dayPane.lastAnswer
             readonly property bool rated: page.dayRatingOf(turn.index) !== ""
             visible: modelData.role === "agent" && !modelData.error && !!modelData.text
-            opacity: last || rated || turnHover.hovered ? 1 : 0
+            opacity: last || rated || turnHover.hovered && page.handOn ? 1 : 0
             topPadding: page.sp(4)
             spacing: page.sp(12)
             Repeater {
@@ -942,9 +993,11 @@ BorderSurface {
                   MouseArea {
                     id: rateArea
                     anchors.fill: parent
+                    anchors.margins: -page.sp(4)
+                    enabled: rateRow.opacity > 0
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: page.rateDay(turn.index, parent.parent.modelData.value)
+                    onClicked: { page.focusPane("right"); page.rateDay(turn.index, parent.parent.modelData.value) }
                   }
                 }
               }
@@ -1013,12 +1066,14 @@ BorderSurface {
           onTriggered: dayThinking.elapsed = Math.floor((Date.now() - dayThinking.since) / 1000)
         }
         MouseArea {
+          id: dayStopArea
           anchors.fill: parent
+          hoverEnabled: true
           cursorShape: Qt.PointingHandCursor
           onClicked: page.stopAgent("day")
         }
         text: (page.runnerPhase !== "" ? page.runnerPhase : "thinking") + (elapsed >= 2 ? " · " + elapsed + "s" : "")
-        color: page.faint
+        color: dayStopArea.containsMouse && page.handOn ? page.accent : page.faint
         font.family: page.fontFamily
         font.styleName: page.fontStyle
         font.pixelSize: page.fs(Style.font.bodySmall)
