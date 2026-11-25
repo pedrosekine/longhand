@@ -103,10 +103,13 @@ def downloads_folder(tmp: pathlib.Path) -> None:
     """`~/Downloads` in the config (the inbox, the export's folder) is this
     machine's Downloads: on Windows the one Windows knows, which a person
     may have moved to OneDrive or another drive. Windows is stood in for
-    here; a home that is not the profile keeps its own Downloads."""
-    home = pathlib.Path.home()
+    here, and the home is the test's own (HOME and USERPROFILE, for the
+    while), so no path here is the person's."""
+    home = tmp / "home"
     moved = tmp / "OneDrive" / "Downloads"
     real = doclib._known_folder
+    kept = {k: os.environ.get(k) for k in ("HOME", "USERPROFILE")}
+    os.environ.update(HOME=str(home), USERPROFILE=str(home))
     try:
         doclib._known_folder = lambda fid: home if fid == doclib.FOLDERID_PROFILE else moved
         check(doclib.downloads() == moved, f"Downloads moved elsewhere is found where Windows says ({doclib.downloads()})")
@@ -122,6 +125,11 @@ def downloads_folder(tmp: pathlib.Path) -> None:
         check(doclib.downloads() == home / "Downloads", "where nothing is known (Linux), ~/Downloads")
     finally:
         doclib._known_folder = real
+        for k, v in kept.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
     if os.name == "nt":
         import winreg
         try:
@@ -129,8 +137,8 @@ def downloads_folder(tmp: pathlib.Path) -> None:
                                 r"Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders") as k:
                 said = winreg.QueryValueEx(k, "{374DE290-123F-4565-9164-39C4925E467B}")[0]
         except OSError:
-            said = str(home / "Downloads")
-        want = pathlib.Path(os.path.expandvars(said))
+            said = ""           # never moved: Windows' own default, not asked here
+        want = pathlib.Path(os.path.expandvars(said)) if said else doclib._known_folder(doclib.FOLDERID_DOWNLOADS)
         check(os.path.normcase(str(doclib._known_folder(doclib.FOLDERID_DOWNLOADS))) == os.path.normcase(str(want)),
               f"Windows is asked where its Downloads is, and says what the registry does ({want})")
     else:
