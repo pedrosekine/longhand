@@ -484,6 +484,16 @@ export writes, where pandoc and xelatex are not on PATH (as
   for it: maximized stays maximized (`compositor.come_forward`, which the
   page's raise and the host both use; before, it came back at its old
   size). Seen on the screen and in `tests/test_windows_shell.py`.
+- On two screens scaled differently (a laptop at 125%, a monitor at 150%),
+  Windows shifts a window moved onto the other screen as the scale changes
+  under it: the overlay landed 282 px off (2026-11-24). Each of the three
+  windows is put on its screen first and placed again 60 ms after it is
+  shown: the overlay (`PanelWindow`), the page's window restored where it
+  was left (`FloatingWindow`; `savedPlace` names the screen its title bar
+  is on), and the popups by the clock (`KeyboardPanel`; `workArea` names
+  its screen). The overlay was seen right on both screens; the other two
+  are checked in `tests/test_windows_shell.py` with the shift made by
+  hand, and on one screen for real, not yet on the two (2026-11-25).
 - Do Not Disturb is read from Windows' Focus assist profile (the shell's
   own toggle publishes it; `play_sound.silenced`), an undocumented state
   that Windows 11 still keeps: read as off on 2026-11-24, not yet seen on.

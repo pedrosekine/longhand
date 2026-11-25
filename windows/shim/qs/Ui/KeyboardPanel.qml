@@ -67,6 +67,16 @@ Window {
     root.x = Math.round(root.area.x + root.area.width - root.width - root.margin)
     root.y = Math.round(root.area.y + root.area.height - root.height - root.margin)
   }
+  function screenNamed(name) {
+    var all = Qt.application.screens
+    for (var i = 0; i < all.length; i++) if (all[i].name === name) return all[i]
+    return null
+  }
+  // Opened on a screen scaled otherwise than the one it was last on, the
+  // window is shifted as the scale changes under it, as the overlay was
+  // (Quickshell/PanelWindow.qml): placed again once it is there, it is in
+  // the corner.
+  Timer { id: rePlace; interval: 60; onTriggered: if (root.visible) root.place() }
 
   transientParent: null
   // Never drawn (no title bar): the widget's name, for whoever lists windows.
@@ -81,8 +91,11 @@ Window {
   onOpenChanged: {
     if (root.open) {
       root.area = Host.workArea()
+      var s = root.screenNamed(root.area.screen)
+      if (s) root.screen = s
       root.place()
       root.show()
+      rePlace.restart()
       root.raise()
       root.requestActivate()
       // The keys to the widget's key catcher, unless the widget has already
