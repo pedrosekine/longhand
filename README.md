@@ -329,7 +329,7 @@ to it. The offscreen ones
 build a throwaway vault, state and config, and play Hyprland with
 `tests/fake_hyprctl.py`, so they never read or write yours. Some need node
 (the JS and Python halves of the block splitter and the checkbox grammar are
-compared), PyQt6 (`test_cursors`) or quickshell (`test_popup`).
+compared), PyQt6 or PySide6 (`test_cursors`) or quickshell (`test_popup`).
 `tests/page/run.py` drives the real page over IPC in a window titled "Page
 scratch", in a Hyprland of its own nested in yours and drawing on a headless
 output (`tests/desktop.py` → `Private`, which `tests/page/shots.py` uses

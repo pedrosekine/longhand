@@ -233,8 +233,14 @@ def main() -> int:
     r = timetable.refresh(url, cache, now=t0 + 9500)
     check(r == "failed: asks to sign in", f"a sign-in page where the calendar should be is named as one ({r})")
 
-    # The sidebar and the agent, through the runner.
-    today = dt.date.today()
+    # The sidebar and the agent, through the runner. Today as the agent sees
+    # it: it is started with TZ=Europe/Vienna (set above), which this Python,
+    # never told to read it again, does not follow, and from 23:00 to
+    # midnight UTC the two were a day apart ("no note for" tomorrow,
+    # 2026-11-24 on GitHub's Arch). Asked of a Python started the same way.
+    today = dt.date.fromisoformat(subprocess.run(
+        [sys.executable, "-c", "import datetime; print(datetime.date.today())"],
+        capture_output=True, text=True, env=os.environ, check=True).stdout.strip())
     Uni.body, Uni.etag = relative_feed(today).encode(), '"v3"'
     vault = tmp / "vault"
     (vault / "Daily").mkdir(parents=True)

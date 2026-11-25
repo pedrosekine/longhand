@@ -8,7 +8,9 @@ moves a real (offscreen) mouse, and reads the cursor the window was given:
 a text cursor over the words, a hand over a checkbox, and touchpad and wheel
 scrolling still working.
 
-Needs PyQt6 built against the system's Qt 6.
+Needs PyQt6 built against the system's Qt 6 (on Omarchy, where the page
+runs in Quickshell's Qt), or else PySide6 — the Qt of the Windows host,
+which `pip install -e windows` brings, so it runs there with nothing more.
 Run: QT_QPA_PLATFORM=offscreen python3 tests/test_cursors.py
 """
 import os
@@ -17,10 +19,16 @@ import sys
 import tempfile
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from PyQt6.QtCore import QObject, QPoint, QPointF, Qt, QUrl  # noqa: E402
-from PyQt6.QtGui import QGuiApplication, QWheelEvent  # noqa: E402
-from PyQt6.QtQuick import QQuickView  # noqa: E402
-from PyQt6.QtTest import QTest  # noqa: E402
+try:
+    from PyQt6.QtCore import QObject, QPoint, QPointF, Qt, QUrl  # noqa: E402
+    from PyQt6.QtGui import QGuiApplication, QWheelEvent  # noqa: E402
+    from PyQt6.QtQuick import QQuickView  # noqa: E402
+    from PyQt6.QtTest import QTest  # noqa: E402
+except ImportError:
+    from PySide6.QtCore import QObject, QPoint, QPointF, Qt, QUrl  # noqa: E402
+    from PySide6.QtGui import QGuiApplication, QWheelEvent  # noqa: E402
+    from PySide6.QtQuick import QQuickView  # noqa: E402
+    from PySide6.QtTest import QTest  # noqa: E402
 
 PAGE = pathlib.Path(__file__).resolve().parent.parent / "plugin-page"
 
