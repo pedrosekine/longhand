@@ -468,6 +468,8 @@ ShellRoot {
     function agentBusy(where: string): bool { return page.agentBusy(where) }
     // The runner's process, still up or not (a run answered may still be ending).
     function runnerRunning(): bool { return page.running }
+    // The planner's process, still up or not.
+    function planRunning(): bool { return page.planning }
     function daySend(text: string): void { page.sendDay(text) }
     function dayKey(key: int, mods: int): bool { return page.dayKey({ key: key, text: "", modifiers: mods }) }
     function dayTurns(): string { return JSON.stringify(page.dayTurns.map(function (t) { return t.role + ": " + t.text })) }

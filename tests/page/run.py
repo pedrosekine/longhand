@@ -2569,6 +2569,11 @@ def checks() -> int:
         # 12c'. the calendars and the first pass of the day (2026-10-18): what
         # reads the calendars waits for the fetch the same opening started.
         (p.stub / "slow-fetch").write_text("")
+        # A plan still running from before is the day's plan, and the
+        # opening asks for no other (runPlan): let it end first, or the
+        # opening's never starts and its start was in the log cleared here
+        # (slower on Windows, 2026-11-25).
+        p.wait(lambda: p.call("planRunning") == "false", 30)
         p.call("closeAll")
         p.calls.write_text("")
         (p.state / "longhand" / "plan.json").unlink(missing_ok=True)
