@@ -308,6 +308,7 @@ BorderSurface {
           onChosen: settingsSheet.focusActive()
           onFocused: function (it) { settingsSheet.ensureVisible(it) }
         TextField {
+          FieldMenu { page: settingsSheet.page; field: parent }
           id: settingsField
           width: fieldRow.width
           // Clicking or typing into the field picks its row so Enter adds it.

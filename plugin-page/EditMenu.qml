@@ -7,23 +7,30 @@ import qs.Commons
 // paste, select all, reply — each with its key beside it, so the menu
 // teaches the keys as the hints do. Drawn as a hint is (Tip.qml): the
 // darker paper, a faint edge. It never takes the keys, so the words keep
-// their selection and the keys stay where they were.
+// their selection and the keys stay where they were. While it is open the
+// page hands it its keys first (`key`): ↑↓ pick, Enter does, Esc closes it
+// and nothing else; any other key closes it and goes on (2026-11-25, the
+// second pass: Esc also cleared the selection under it).
 Popup {
   id: menu
   required property Item page
   // [{ text, key, enabled, run }]
   property var entries: []
+  property int current: -1          // the entry the keys are on, or none
   readonly property color edge: Qt.rgba(page.foreground.r, page.foreground.g, page.foreground.b, 0.16)
   readonly property int size: page.fs(Style.font.bodySmall)
 
   padding: page.sp(4)
   focus: false
-  closePolicy: Popup.CloseOnPressOutside | Popup.CloseOnPressOutsideParent | Popup.CloseOnReleaseOutside
+  // Not on a release outside: it opens on the press, at the pointer, and a
+  // release a pixel up or left of it closed it at once.
+  closePolicy: Popup.CloseOnPressOutside | Popup.CloseOnPressOutsideParent
   width: page.sp(210)
 
   // At (x, y) in `over`'s coordinates, kept inside the window.
   function openAt(over, x, y, list) {
     menu.entries = list.filter(function (e) { return e })
+    menu.current = -1
     if (menu.entries.length === 0) return
     menu.parent = over
     var win = over.Window.window
@@ -34,6 +41,28 @@ Popup {
     menu.x = x + Math.min(0, maxX - p.x)
     menu.y = y + Math.min(0, maxY - p.y)
     menu.open()
+  }
+
+  // A key while it is open: true when it was the menu's.
+  function key(event) {
+    var k = event.key
+    if (k === Qt.Key_Escape) { menu.close(); return true }
+    if (k === Qt.Key_Up || k === Qt.Key_Down) {
+      var n = menu.entries.length, i = menu.current
+      for (var step = 0; step < n; step++) {
+        i = k === Qt.Key_Down ? (i + 1 + n) % n : (i - 1 + n) % n
+        if (menu.entries[i].enabled !== false) { menu.current = i; break }
+      }
+      return true
+    }
+    if (k === Qt.Key_Return || k === Qt.Key_Enter) {
+      var e = menu.entries[menu.current]
+      if (!e || e.enabled === false) return true
+      menu.close()
+      if (e.run) e.run()
+      return true
+    }
+    return false
   }
 
   background: Rectangle {
@@ -49,11 +78,13 @@ Popup {
       Rectangle {
         id: entry
         required property var modelData
+        required property int index
         readonly property bool on: modelData.enabled !== false
         width: menu.width - menu.padding * 2
         height: menu.size + menu.page.sp(14)
         radius: Style.cornerRadius
-        color: on && entryArea.containsMouse ? Style.hoverFill : "transparent"
+        color: on && index === menu.current ? Style.selectedFill
+          : on && entryArea.containsMouse && menu.page.handOn ? Style.hoverFill : "transparent"
         Text {
           anchors.left: parent.left
           anchors.leftMargin: menu.page.sp(8)
@@ -65,16 +96,15 @@ Popup {
           font.styleName: menu.page.fontStyle
           font.pixelSize: menu.size
         }
-        Text {
+        // Its key as keycaps, as a hint draws it (Tip.qml).
+        KeyCaps {
           anchors.right: parent.right
           anchors.rightMargin: menu.page.sp(8)
           anchors.verticalCenter: parent.verticalCenter
-          textFormat: Text.PlainText
-          text: entry.modelData.key || ""
-          color: menu.page.faint
-          font.family: menu.page.fontFamily
-          font.styleName: menu.page.fontStyle
-          font.pixelSize: menu.size
+          page: menu.page
+          size: menu.size
+          key: entry.modelData.key || ""
+          opacity: entry.on ? 1 : 0.5
         }
         MouseArea {
           id: entryArea

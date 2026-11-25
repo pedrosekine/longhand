@@ -324,6 +324,25 @@ it, besides the clicks above and the hover marks in [hints.md](hints.md):
   before; "chat" on the row (on the one selected and the one under the
   hand) asks about it, where a double click did after the click had
   already jumped.
+- **The second pass** (2026-11-25, the same review read again, on Windows
+  and here):
+  - a drag held past the note's edge keeps selecting and scrolling while
+    the pointer rests there (it stopped after one step);
+  - the right-click menu is on every box typed in (`FieldMenu.qml`, Qt's
+    own menu put aside), on the blank page below a note's last line, and
+    on dashboard rows, where it lists what the row's keys do: rename,
+    priority, set aside, follow its link and the rest, each with its key;
+  - while that menu is open ↑↓ pick in it, Enter does, Esc closes it and
+    nothing else (Esc also cleared the selection under it); it no longer
+    closes on the release of the click that opened it;
+  - Ctrl and the wheel zoom the page beside a PDF too, the PDF over it;
+    Shift and the wheel on a PDF that fits does nothing (it jumped down);
+  - the scroll bars show a faint line at rest when there is more; the
+    note's sits in the sheet's margin, clear of the date pills;
+  - the `@` lists and the sidebar's "new project" close on a click outside,
+    as the other boxes asking something do;
+  - the note's date pill and its gutter bar light under the hand, the pill
+    names its key; a PDF mark shows the hand; "thinking" says Esc stops it.
 - **The tray on Windows**: a double click on the timer's or the deadlines'
   icon opened the popup and closed it at once; a click alone counts now,
   and the popup takes the keys back when the double click's second click

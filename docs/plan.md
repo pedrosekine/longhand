@@ -1322,6 +1322,10 @@ from 2026-09/10 and still stand.
   or only read, whether the edit menu is opened at all next to the keys
   (`edit-menu` in the usage log), whether Ctrl+wheel's zoom is used or
   only met by accident, and whether anyone missed the swipe-only spaces.
+  A second pass the same day (the review read again) put the menu on every
+  box and on dashboard rows, with keys of its own: what would tell is
+  whether a row's menu is opened for rename or priority (`edit-menu`
+  `dash`), and whether the scroll bars' line at rest reads as noise.
 
 - **Another paper pointed at from a paper's chat** (built 2026-11-19, the
   student, reading Merk 2021 and wanting to bring in Moser 2026: "@ a

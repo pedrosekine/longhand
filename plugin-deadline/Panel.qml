@@ -216,6 +216,7 @@ Panel {
   }
 
   onOpenedChanged: {
+    root.handOn = false
     root.cursorActive = false
     root.cursorRow = 0
     root.cursorCol = 0
@@ -240,6 +241,52 @@ Panel {
     color: Style.selectedFillFor(tint, Commons.Color.accent)
     border.width: 1
     border.color: Commons.Util.alpha(tint, 0.6)
+  }
+
+  // The hand on the mouse (docs/hints.md A and D), as in the page, which
+  // this popup is not part of: the pointer's marks show only while the
+  // hand moves it in here (more than 2 px), and any key that is not a
+  // modifier alone puts them away, so a row the keys reach under a still
+  // pointer is lit by the keys alone. Clicks act either way.
+  property bool handOn: false
+  property point handAt: Qt.point(-1, -1)
+  function keysTook(event) {
+    var k = event.key
+    if (k === Qt.Key_Control || k === Qt.Key_Shift || k === Qt.Key_Alt || k === Qt.Key_Meta
+        || k === Qt.Key_AltGr || k === Qt.Key_Super_L || k === Qt.Key_Super_R) return
+    root.handOn = false
+  }
+  function handMoved(p) {
+    var moved = Math.abs(p.x - root.handAt.x) + Math.abs(p.y - root.handAt.y) > 2
+    root.handAt = p
+    if (moved) root.handOn = true
+  }
+  // The shell's Button paints its own hover from a MouseArea of its own,
+  // with nothing to ask it by. Its hover is turned off, and one laid over
+  // it that takes no button (so every click still reaches the button)
+  // tells the button when the hand is on it, through `hasCursor`.
+  function quietOwnHover(control, keep) {
+    for (var i = 0; i < control.children.length; i++) {
+      var c = control.children[i]
+      if (c !== keep && c.containsMouse !== undefined && c.hoverEnabled !== undefined) c.hoverEnabled = false
+    }
+  }
+  component HandButton: Button {
+    id: handButton
+    hasCursor: handButtonArea.containsMouse && root.handOn
+    Component.onCompleted: root.quietOwnHover(handButton, handButtonArea)
+    MouseArea {
+      id: handButtonArea
+      anchors.fill: parent
+      hoverEnabled: true
+      acceptedButtons: Qt.NoButton
+      cursorShape: Qt.PointingHandCursor
+    }
+    PanelToolTip {
+      visible: handButton.tooltipText !== "" && handButtonArea.containsMouse && root.handOn
+      text: handButton.tooltipText
+      fontFamily: handButton.fontFamily
+    }
   }
 
   implicitWidth: button.implicitWidth
@@ -289,7 +336,10 @@ Panel {
       // Ctrl+L ticks, as it does in the note, the dashboard and the
       // sidebar's list; `d` stays beside it. The catcher reads keys by
       // their text, so the Ctrl key is read here, beside it, by its code.
+      // Every key passes here first (both this and the catcher's own
+      // handler run); the hand's marks go away with it.
       Keys.onPressed: function (event) {
+        root.keysTook(event)
         if (root.gradingId > 0) return
         if (event.key === Qt.Key_L && (event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.ShiftModifier | Qt.MetaModifier)) === Qt.ControlModifier) {
           root.toggleSelected()
@@ -301,6 +351,10 @@ Panel {
         else if (t === "g" || t === "G") root.gradeSelected()
         else if (t === "o" || t === "O") root.openLine(root.selectedItem())
         else if (t === "w" || t === "W") root.showWaiting = !root.showWaiting
+      }
+
+      HoverHandler {
+        onPointChanged: if (hovered) root.handMoved(point.scenePosition)
       }
 
       Column {
@@ -361,7 +415,10 @@ Panel {
 
             width: column.width
             implicitHeight: rowContent.implicitHeight + Style.space(10)
-            hasCursor: rowMouse.containsMouse && !root.cellHot(index, 0)
+            // Lit by the hand only where a click opens something: a row
+            // with no line to open shows the arrow, so no fill either (its
+            // ○ keeps a hover of its own).
+            hasCursor: rowMouse.containsMouse && root.handOn && row.hasLine && !root.cellHot(index, 0)
             foreground: root.foreground
 
             KeyMark { visible: root.cellHot(row.index, 0) }
@@ -408,10 +465,10 @@ Panel {
                   id: markText
                   textFormat: Text.PlainText
                   text: row.isDone ? "✓" : "○"
-                  color: markMouse.containsMouse ? root.foreground : row.textColor
+                  color: markMouse.containsMouse && root.handOn ? root.foreground : row.textColor
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.body
-                  font.bold: markMouse.containsMouse
+                  font.bold: markMouse.containsMouse && root.handOn
 
                   MouseArea {
                     id: markMouse
@@ -432,7 +489,7 @@ Panel {
                   color: row.textColor
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.body
-                  font.underline: row.hasLine && rowMouse.containsMouse && !markMouse.containsMouse
+                  font.underline: row.hasLine && rowMouse.containsMouse && root.handOn && !markMouse.containsMouse
 
                   // Struck through, drawn rather than the font's, so a tick
                   // can draw it left to right.
@@ -481,7 +538,7 @@ Panel {
                     { col: 3, label: "✕", tip: "Cancel (x)" }
                   ]
 
-                  Button {
+                  HandButton {
                     required property var modelData
 
                     text: modelData.label
@@ -524,6 +581,8 @@ Panel {
                   Keys.onReturnPressed: function (event) { event.accepted = true; root.finishGrade(row.modelData, text.trim()) }
                   Keys.onEnterPressed: function (event) { event.accepted = true; root.finishGrade(row.modelData, text.trim()) }
                   Keys.onEscapePressed: function (event) { event.accepted = true; root.cancelGrade() }
+                  // Typing here is the keys too: the hand's marks go.
+                  Keys.onPressed: function (event) { root.keysTook(event) }
                   onVisibleChanged: if (visible) Qt.callLater(function () { gradeField.forceActiveFocus(); gradeField.selectAll() })
                 }
               }
@@ -531,16 +590,35 @@ Panel {
           }
         }
 
-        // Done, not graded yet: folded until asked for.
-        Text {
+        // Done, not graded yet: folded until asked for. A click folds or
+        // unfolds it, so the hand lights it as it does a row.
+        CursorSurface {
           visible: root.waiting.length > 0
           width: parent.width
-          textFormat: Text.PlainText
-          text: (root.showWaiting ? "▾ " : "▸ ") + "waiting for a grade · " + root.waiting.length
-          color: root.dim
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-          MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.showWaiting = !root.showWaiting }
+          implicitHeight: waitingText.implicitHeight + Style.space(6)
+          hasCursor: waitingMouse.containsMouse && root.handOn
+          foreground: root.foreground
+
+          Text {
+            id: waitingText
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.leftMargin: Style.space(6)
+            anchors.rightMargin: Style.space(6)
+            anchors.verticalCenter: parent.verticalCenter
+            textFormat: Text.PlainText
+            text: (root.showWaiting ? "▾ " : "▸ ") + "waiting for a grade · " + root.waiting.length
+            color: root.dim
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+          }
+          MouseArea {
+            id: waitingMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: root.showWaiting = !root.showWaiting
+          }
         }
 
         Text {

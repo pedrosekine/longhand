@@ -76,6 +76,7 @@ Item {
 
   // The title: the section's upmost heading's words, to write over.
   TextField {
+    FieldMenu { page: sheet.page; field: parent }
     id: titleField
     anchors.top: head.bottom
     anchors.topMargin: page.sp(10)

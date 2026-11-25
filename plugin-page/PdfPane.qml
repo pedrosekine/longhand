@@ -789,8 +789,12 @@ Item {
     var dy = ev.pixelDelta.y !== 0 ? ev.pixelDelta.y * gain : ev.angleDelta.y / 120 * page.sp(60)
     var dx = ev.pixelDelta.x !== 0 ? ev.pixelDelta.x * gain : ev.angleDelta.x / 120 * page.sp(60)
     // Shift and the wheel: sideways, as a wide table in the note does
-    // (2026-11-25, the mouse pass), when it is sized up past the fit.
-    if ((ev.modifiers & Qt.ShiftModifier) && dx === 0 && pane.view.canSideways()) { dx = dy; dy = 0 }
+    // (2026-11-25, the mouse pass), when it is sized up past the fit; fitted,
+    // there is nowhere sideways to go, and it does nothing (it jumped down).
+    if (ev.modifiers & Qt.ShiftModifier) {
+      if (!pane.view.canSideways()) return
+      if (dx === 0) { dx = dy; dy = 0 }
+    }
     if (dy !== 0) pane.scrollBy(-dy)
     // Sideways only when it is sized up past the fit: fitted, the margins
     // beside the text are out of view on purpose.
@@ -1129,6 +1133,9 @@ Item {
           width: modelData.r[2] * sheet.s + 2 * pad
           height: modelData.r[3] * sheet.s
           HoverHandler {
+            // A click picks it (its pill): the hand says so, as over an
+            // acronym (the second pass).
+            cursorShape: Qt.PointingHandCursor
             onHoveredChanged: hovered ? pane.markHover(box.modelData.id, box, box.width * box.height) : pane.markLeave(box)
           }
           TapHandler {
@@ -1314,6 +1321,7 @@ Item {
         font.pixelSize: page.fs(Style.font.caption)
       }
       TextField {
+        FieldMenu { page: pane.page; field: parent }
         id: noteField
         width: parent.width
         placeholderText: "your note"
@@ -1466,6 +1474,7 @@ Item {
         width: parent.width
         height: findField.implicitHeight
         TextField {
+          FieldMenu { page: pane.page; field: parent }
           id: findField
           anchors.left: parent.left
           anchors.right: findCount.left
@@ -1587,6 +1596,7 @@ Item {
         font.pixelSize: page.fs(Style.font.caption)
       }
       TextField {
+        FieldMenu { page: pane.page; field: parent }
         id: acroField
         width: parent.width
         placeholderText: "an acronym, or words of what it stands for"
@@ -1690,6 +1700,7 @@ Item {
         font.pixelSize: page.fs(Style.font.caption)
       }
       TextField {
+        FieldMenu { page: pane.page; field: parent }
         id: tagField
         width: parent.width
         placeholderText: "a project's name or #tag"
@@ -1964,6 +1975,7 @@ Item {
   }
 
   TextField {
+    FieldMenu { page: pane.page; field: parent }
     id: gotoField
     z: 55
     visible: pane.jumpingPage

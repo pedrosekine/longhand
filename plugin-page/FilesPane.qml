@@ -283,6 +283,7 @@ Item {
   // ----------------------------------------------------------- drawn
 
   TextField {
+    FieldMenu { page: files.page; field: parent }
     id: filterField
     visible: activeFocus || text !== ""
     anchors.top: parent.top

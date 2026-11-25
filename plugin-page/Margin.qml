@@ -24,6 +24,7 @@ BorderSurface {
   required property Item page
   readonly property var sheet: page.sheetItem
   property alias chatFieldRef: chatField
+  property alias mentionListRef: marginMentionList
   readonly property bool busy: margin.talk ? page.talking || page.thinkHeld === "talk" : page.answering || page.thinkHeld === "margin"
   readonly property string thinkingText: thinking.text
   property alias marginKeysRef: marginKeys
@@ -212,9 +213,10 @@ BorderSurface {
                   MouseArea {
                     id: pinAccArea
                     anchors.fill: parent
+                    anchors.margins: -page.sp(4)   // wider than the word (the second pass)
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: page.acceptTalked()
+                    onClicked: { page.focusPane("right"); page.acceptTalked() }
                   }
                 }
                 KeyCaps { visible: pinned.hot; anchors.verticalCenter: parent.verticalCenter; page: margin.page; key: page.keyName("marginAccept"); size: page.fs(Style.font.caption) }
@@ -234,9 +236,10 @@ BorderSurface {
                   MouseArea {
                     id: pinDecArea
                     anchors.fill: parent
+                    anchors.margins: -page.sp(4)
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: page.declineTalked()
+                    onClicked: { page.focusPane("right"); page.declineTalked() }
                   }
                 }
                 KeyCaps { visible: pinned.hot; anchors.verticalCenter: parent.verticalCenter; page: margin.page; key: page.keyName("marginDecline"); size: page.fs(Style.font.caption) }
@@ -364,9 +367,10 @@ BorderSurface {
             MouseArea {
               id: rateArea
               anchors.fill: parent
+              anchors.margins: -page.sp(4)
               hoverEnabled: true
               cursorShape: Qt.PointingHandCursor
-              onClicked: page.rateReply(modelData.value)
+              onClicked: { page.focusPane("right"); page.rateReply(modelData.value) }
               Tip { host: page; shown: parent.containsMouse; text: page.tip(chosen ? "Take it back" : "Say it was " + modelData.text, modelData.act) }
             }
           }
@@ -494,6 +498,8 @@ BorderSurface {
           hoverEnabled: true
           cursorShape: Qt.PointingHandCursor
           onClicked: page.stopAgent(margin.talk ? "talk" : "margin")
+          // What a click does, and its key (the second pass: it said nothing).
+          Tip { host: margin.page; shown: parent.containsMouse; act: "marginBack"; text: page.tip("Stop it: your words back in the box", "marginBack") }
         }
         SequentialAnimation on opacity {
           running: thinking.visible
@@ -540,6 +546,7 @@ BorderSurface {
       anchors.bottomMargin: height > 0 ? page.sp(6) : 0
       spacing: page.sp(6)
       MentionList {
+        id: marginMentionList
         page: margin.page
         width: parent.width
         shown: chatField.visible && !!page.dayMention && page.dayMention.margin

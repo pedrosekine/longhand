@@ -206,10 +206,16 @@ Item {
   // A dashboard row's line, its first link followed (Alt+Enter, as in the
   // note): a task that links its paper opens it where it was left (plan.md
   // item 15, step 3).
+  // The links in a dashboard row's line (its task's, or the line a
+  // deadline stands for).
+  function rowLinks(row) {
+    var t = !row ? null : row.task ? row.task : row.deadline ? root.taskOfAnchor(row.deadline.id) : null
+    return t && t.text ? Links.inLine(t.text).filter(function (l) { return l.url !== "" || l.target !== "" }) : []
+  }
   function followRowLink() {
     var row = root.taskRows[root.taskFocus]
     var t = !row ? null : row.task ? row.task : row.deadline ? root.taskOfAnchor(row.deadline.id) : null
-    var links = t && t.text ? Links.inLine(t.text).filter(function (l) { return l.url !== "" || l.target !== "" }) : []
+    var links = root.rowLinks(row)
     if (links.length === 0) { root.showHint("no link in its line"); return }
     var daily = svc.configured ? String(svc.config.daily.dir).replace(/^\/+|\/+$/g, "") : ""
     root.pdfFromTagNext = t.project || ""
@@ -636,6 +642,7 @@ Item {
   // stays loaded under it, and Esc goes back to it.
   property string pdfRel: ""
   readonly property bool pdfShown: root.pdfRel !== ""
+  readonly property real barLane: root.sp(10)   // a scroll bar's width beside the note (ScrollMark)
 
   // How private looks (docs/files.md, B · Paper, chosen 2026-10-27): what
   // the agent may not see is sunk into a darker paper — a private block as
@@ -1202,6 +1209,7 @@ Item {
 
   // What is painted and what the margin shows.
   property var paint: []
+  property string barHover: ""   // the answered block whose gutter bar is under the hand
   property bool marginOpen: false
   property int marginFocus: -1   // -1 note; 0..n-1 proposal rows; n = chat field
   property bool dashOpen: false
@@ -2477,18 +2485,76 @@ Item {
       var q = item.mapFromItem(null, at.x, at.y)
       return q.x < 0 || q.y < 0 || q.x > item.width || q.y > item.height
     }
+    // The `@` lists too, outside the list and the box typed in, and the
+    // sidebar's "new project" (the second pass, 2026-11-25).
+    var dm = root.dayMention
+    var dmBox = dm ? (dm.margin ? margin.chatFieldRef : dayPane.dayFieldRef) : null
+    var dmList = dm ? (dm.margin ? margin.mentionListRef : dayPane.mentionListRef) : null
     var was = { when: root.whenFor && out(whenBox) ? root.whenFor : null,
                 name: root.newProject && out(nameBox) ? root.newProject : null,
-                dash: root.dashWhenFor && out(dash.dashWhenRowRef) ? root.dashWhenFor : null }
+                dash: root.dashWhenFor && out(dash.dashWhenRowRef) ? root.dashWhenFor : null,
+                mention: root.mention && out(mentionBox) && out(editor) ? root.mention : null,
+                dayMention: dm && out(dmBox) && out(dmList) ? dm : null,
+                project: root.addingProject && out(sidebar.projectAskRef) }
     Qt.callLater(function () {
       if (was.when && root.whenFor === was.when) root.whenFor = null
       if (was.name && root.newProject === was.name) root.newProject = null
       if (was.dash && root.dashWhenFor === was.dash) { root.dashWhenFor = null; root.dashWhenText = "" }
+      if (was.mention && root.mention === was.mention) root.mention = null
+      if (was.dayMention && root.dayMention === was.dayMention) root.dayMention = null
+      if (was.project && root.addingProject) root.addingProject = false
     })
   }
 
   // The mouse's menu on words, for the chats' turns (ChatTurn.qml).
   function editMenuAt(over, x, y, list) { editMenu.openAt(over, x, y, list) }
+  // A dashboard row's (2026-11-25, the second pass): what its keys do, so
+  // rename, priority, set aside and the rest, keys only until then, are a
+  // right click away too, each named with its key. The row comes under the
+  // keys first, as a click puts it there.
+  function dashMenu(index, over, x, y) {
+    var row = root.taskRows[index]
+    if (!row || row.kind === "head" || row.kind === "month") return
+    dash.dashKeysRef.forceActiveFocus()
+    root.taskFocus = index
+    root.used("edit-menu", "dash")
+    var act = function (id, text, fn, on) {
+      return { text: text, key: root.keyName(id), enabled: on !== false, run: function () { root.taskFocus = index; fn() } }
+    }
+    var k = row.kind, list = []
+    if (k === "task") {
+      list = [act("dashOpen", "Go to its line", root.activateTask), act("dashDone", "Done (again: not done)", root.tickFocused),
+              act("dashWhen", "Reschedule", root.startDashWhen), act("dashNoDate", "Take its date off", root.noDateFocused, !!(row.task && row.task.when)),
+              act("dashPriority", "Change its priority", root.cyclePriorityFocused), act("dashRename", "Rename", root.startDashRename),
+              act("dashTalk", "Chat about it", root.talkFocused), act("dashFollow", "Follow its link", root.followRowLink, root.rowLinks(row).length > 0),
+              act("dashShelve", "Set it aside", root.shelveFocused), act("dashDrop", "Drop it", root.dropFocused)]
+    } else if (k === "deadline") {
+      list = [act("dashOpen", "Go to its line", root.activateTask), act("dashDone", "Done (again: not done)", root.tickFocused),
+              act("dashWhen", "The day to work on it", root.startDashWhen), act("dashGrade", "Grade it", root.startDashGrade),
+              act("dashTalk", "Chat about it", root.talkFocused), act("dashDrop", "Cancel it", root.dropFocused)]
+    } else if (k === "proposal" || k === "question") {
+      list = [act("dashDone", k === "question" ? "Accept the recommended answer" : "Accept", root.tickFocused),
+              act("dashOpen", "Chat about it", root.activateTask), act("dashDrop", "Decline", root.dropFocused)]
+    } else if (k === "told") {
+      list = [act("dashDone", "Let it stand", root.tickFocused), act("dashOpen", "Chat about it", root.activateTask),
+              act("dashDrop", "Undo it", root.dropFocused)]
+    } else if (k === "raised") {
+      list = [act("dashOpen", "Dismiss it", root.activateTask)]
+    } else list = [act("dashOpen", k === "band" ? (row.open ? "Fold it" : "Open it") : "Show it", root.activateTask)]
+    editMenu.openAt(over, x, y, list)
+  }
+
+  // The note's, at (x, y) in the editor: its edits as their keys do them.
+  function noteMenu(x, y) {
+    root.used("edit-menu", "note")
+    var sel = editor.hasSelection(), ro = editor.readOnly
+    editMenu.openAt(editor, x, y, [
+      { text: "Cut", key: "Ctrl+X", enabled: sel && !ro, run: function () { editor.editAct(Qt.Key_X) } },
+      { text: "Copy", key: "Ctrl+C", enabled: sel, run: function () { editor.editAct(Qt.Key_C) } },
+      { text: "Paste", key: "Ctrl+V", enabled: !ro, run: function () { editor.editAct(Qt.Key_V) } },
+      { text: "Select more", key: "Ctrl+A", run: function () { editor.editAct(Qt.Key_A) } }
+    ])
+  }
   function copyChatSelection(event, box) {
     if (event.key !== Qt.Key_C || (event.modifiers & (Qt.ControlModifier | Qt.ShiftModifier | Qt.AltModifier)) !== Qt.ControlModifier) return false
     if (box && box.selectedText !== "") return false
@@ -3091,6 +3157,8 @@ Item {
   // student can move it (the keys sheet, below); the ones read here are
   // its "any" place.
   function anywhereKey(event) {
+    // The mouse's menu open: its keys first (EditMenu.key).
+    if (editMenu.opened && editMenu.key(event)) return true
     root.keysTook(event)   // every pane's keys come through here first
     if (Sc.hit(event, "zoomIn")) { root.zoomBy(1); return true }
     if (Sc.hit(event, "zoomOut")) { root.zoomBy(-1); return true }
@@ -10066,6 +10134,7 @@ Item {
           height: root.searchOpen ? searchField.implicitHeight : 0
 
           TextField {
+            FieldMenu { page: root; field: parent }
             id: searchField
             anchors.left: parent.left
             anchors.right: searchCount.left
@@ -10389,6 +10458,10 @@ Item {
           anchors.left: parent.left
           anchors.leftMargin: -root.gutter
           anchors.right: parent.right
+          // The scroll bar's lane, out in the sheet's margin: the note's
+          // words and its date pills keep their width, and the bar never
+          // takes a click meant for a pill at a line's end (2026-11-25).
+          anchors.rightMargin: -root.barLane
           anchors.bottom: parent.bottom
           clip: true
           contentWidth: width
@@ -10411,10 +10484,13 @@ Item {
             model: root.paint
             Item {
               required property var modelData
+              // Under the hand, an answered block's bar widens in the
+              // accent: it opens the chat (barArea below; the second pass).
+              readonly property bool lit: root.barHover === modelData.hash && root.handOn
               visible: modelData.reply || modelData.sending
               x: root.sp(2)
               y: modelData.y
-              width: root.sp(3)
+              width: root.sp(lit ? 5 : 3)
               height: modelData.h
               clip: true
 
@@ -10422,7 +10498,7 @@ Item {
                 anchors.fill: parent
                 radius: Style.cornerRadius
                 color: parent.modelData.sending ? root.dim
-                  : parent.modelData.unread ? root.accent : root.dim
+                  : parent.modelData.unread || parent.lit ? root.accent : root.dim
                 opacity: parent.modelData.sending ? 0.3 : 1
                 Behavior on color { ColorAnimation { duration: 240 } }
                 Behavior on opacity { NumberAnimation { duration: 240 } }
@@ -10467,6 +10543,7 @@ Item {
               height: modelData.h
               hoverEnabled: true
               cursorShape: Qt.PointingHandCursor
+              onContainsMouseChanged: root.barHover = containsMouse ? barArea.modelData.hash : (root.barHover === barArea.modelData.hash ? "" : root.barHover)
               onClicked: {
                 var r = editor.rows[barArea.modelData.line]
                 if (!r) return
@@ -10553,6 +10630,7 @@ Item {
             roomRow: whenBox.visible || mentionBox.visible || nameBox.visible ? root.lineIndexAt(root.newProject ? root.newProject.end : editor.cursorPosition) : -1
             roomHeight: (whenBox.visible ? whenBox.height : mentionBox.visible ? mentionBox.height : nameBox.visible ? nameBox.height : 0) + root.sp(12)
             boxTip: Component { Item { Tip { host: root; shown: true; text: root.tip("Tick or untick it", "checkbox") } } }
+            pillTip: Component { Item { Tip { host: root; shown: true; text: root.tip("Its new day", "deadline") } } }
             // A link's hint: where it goes, and how to edit it instead
             // (2026-11-25, the mouse pass: a click always followed it).
             linkTip: Component {
@@ -10582,7 +10660,7 @@ Item {
             }
             authors: root.shownAuthors
             x: root.gutter
-            width: flick.width - root.gutter
+            width: flick.width - root.gutter - root.barLane
             height: implicitHeight
             enabled: svc.ready
             fontFamily: root.fontFamily
@@ -10612,18 +10690,9 @@ Item {
             tabStop: 4 * root.sp(8)
             keyFilter: root.pageKey
             chatKey: root.chatSelectionKey
+            firstKey: function (e) { return editMenu.opened && editMenu.key(e) }
             viewport: flick
-            onMenuAsked: function (x, y) {
-              root.used("edit-menu", "note")
-              var sel = editor.hasSelection(), ro = editor.readOnly
-              editMenu.openAt(editor, x, y, [
-                { text: "Cut", key: "Ctrl+X", enabled: sel && !ro, run: function () { editor.editAct(Qt.Key_X) } },
-                { text: "Copy", key: "Ctrl+C", enabled: sel, run: function () { editor.editAct(Qt.Key_C) } },
-                { text: "Paste", key: "Ctrl+V", enabled: !ro, run: function () { editor.editAct(Qt.Key_V) } },
-                { text: "Select more", key: "Ctrl+A", run: function () { editor.editAct(Qt.Key_A) } }
-              ])
-            }
-
+            onMenuAsked: function (x, y) { root.noteMenu(x, y) }
             onCursorRectChanged: flick.ensureVisible(cursorRect)
             // Which line the cursor is on is read once the edit is whole: the
             // editor moves the cursor a moment before its text catches up, and
@@ -10665,7 +10734,16 @@ Item {
             y: editor.height
             width: flick.width
             height: Math.max(0, flick.contentHeight - editor.height)
-            onClicked: editor.setCursor(editor.length, true)
+            // The right button too: the note's menu, at the note's end (a
+            // short note's blank page took none, 2026-11-25).
+            acceptedButtons: Qt.LeftButton | Qt.RightButton
+            onPressed: function (mouse) {
+              if (mouse.button !== Qt.RightButton) return
+              if (!editor.hasSelection()) editor.setCursor(editor.length, true)
+              var at = mapToItem(editor, mouse.x, mouse.y)
+              root.noteMenu(at.x, at.y)
+            }
+            onClicked: function (mouse) { if (mouse.button === Qt.LeftButton) editor.setCursor(editor.length, true) }
           }
 
           // `@`: the projects, under the line, narrowing as you type. In
@@ -10764,6 +10842,7 @@ Item {
               font.pixelSize: root.fs(Style.font.bodySmall)
             }
             TextField {
+              FieldMenu { page: root; field: parent }
               id: whenField
               width: root.sp(220)
               placeholderText: root.whenFor && root.whenFor.id > 0 ? "empty: no deadline" : "fri 17:00 · in 3 days · 20 oct"
@@ -10816,6 +10895,7 @@ Item {
                 font.pixelSize: root.fs(Style.font.bodySmall)
               }
               TextField {
+                FieldMenu { page: root; field: parent }
                 id: nameField
                 width: root.sp(260)
                 placeholderText: root.newProject ? "empty: " + root.newProject.tag : ""
@@ -11027,15 +11107,19 @@ Item {
       // Ctrl and the wheel: the page larger or smaller, as Ctrl+= and
       // Ctrl+- (2026-11-25, the mouse pass), wherever the pointer is. It
       // did three things: the PDF's zoom, the sidebar's spaces, and a plain
-      // scroll everywhere else. A PDF in the middle sizes its own pages
-      // (PdfPane's wheel), so this stands aside while one shows.
+      // scroll everywhere else. Over a PDF it sizes the PDF's pages (its
+      // own wheel); beside one, the page still (the second pass: with a PDF
+      // open it did nothing over the panes).
       WheelHandler {
         id: zoomWheel
         target: null
-        enabled: !root.pdfShown
         acceptedModifiers: Qt.ControlModifier
         property real travel: 0
         onWheel: function (ev) {
+          if (root.pdfShown && pdfPane.visible) {
+            var q = pdfPane.mapFromItem(parent, ev.x, ev.y)
+            if (q.x >= 0 && q.y >= 0 && q.x < pdfPane.width && q.y < pdfPane.height) { pdfPane.wheel(ev); return }
+          }
           var d = ev.angleDelta.y !== 0 ? ev.angleDelta.y : ev.pixelDelta.y * 4
           if ((d > 0) !== (zoomWheel.travel > 0)) zoomWheel.travel = 0
           zoomWheel.travel += d

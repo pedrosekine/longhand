@@ -152,8 +152,72 @@ Panel {
     border.color: Commons.Util.alpha(tint, 0.6)
   }
 
+  // The hand on the mouse (docs/hints.md A and D), as in the page, which
+  // this popup is not part of: the pointer's marks show only while the
+  // hand moves it in here (more than 2 px), and any key that is not a
+  // modifier alone puts them away, so a cell the keys reach under a still
+  // pointer is lit by the keys alone. Clicks act either way.
+  property bool handOn: false
+  property point handAt: Qt.point(-1, -1)
+  function keysTook(event) {
+    var k = event.key
+    if (k === Qt.Key_Control || k === Qt.Key_Shift || k === Qt.Key_Alt || k === Qt.Key_Meta
+        || k === Qt.Key_AltGr || k === Qt.Key_Super_L || k === Qt.Key_Super_R) return
+    root.handOn = false
+  }
+  function handMoved(p) {
+    var moved = Math.abs(p.x - root.handAt.x) + Math.abs(p.y - root.handAt.y) > 2
+    root.handAt = p
+    if (moved) root.handOn = true
+  }
+  // The shell's buttons paint their own hover from a MouseArea of theirs,
+  // with nothing to ask it by. Its hover is turned off, and one laid over
+  // it that takes no button (so every click still reaches the button)
+  // tells the button when the hand is on it, through `hasCursor`.
+  function quietOwnHover(control, keep) {
+    for (var i = 0; i < control.children.length; i++) {
+      var c = control.children[i]
+      if (c !== keep && c.containsMouse !== undefined && c.hoverEnabled !== undefined) c.hoverEnabled = false
+    }
+  }
+  component HandButton: Button {
+    id: handButton
+    hasCursor: handButtonArea.containsMouse && root.handOn
+    Component.onCompleted: root.quietOwnHover(handButton, handButtonArea)
+    MouseArea {
+      id: handButtonArea
+      anchors.fill: parent
+      hoverEnabled: true
+      acceptedButtons: Qt.NoButton
+      cursorShape: Qt.PointingHandCursor
+    }
+    PanelToolTip {
+      visible: handButton.tooltipText !== "" && handButtonArea.containsMouse && root.handOn
+      text: handButton.tooltipText
+      fontFamily: handButton.fontFamily
+    }
+  }
+  component HandAction: PanelActionButton {
+    id: handAction
+    hasCursor: handActionArea.containsMouse && root.handOn
+    Component.onCompleted: root.quietOwnHover(handAction, handActionArea)
+    MouseArea {
+      id: handActionArea
+      anchors.fill: parent
+      hoverEnabled: true
+      acceptedButtons: Qt.NoButton
+      cursorShape: Qt.PointingHandCursor
+    }
+    PanelToolTip {
+      visible: handAction.tooltipText !== "" && handActionArea.containsMouse && root.handOn
+      text: handAction.tooltipText
+      fontFamily: handAction.fontFamily
+    }
+  }
+
   onOpenedChanged: {
     console.debug("pomo-debug opened", opened, "phase", svc.phase)
+    root.handOn = false
     if (opened) {
       root.cursorActive = false
       root.cursorRow = 0
@@ -228,6 +292,13 @@ Panel {
       onTabRequested: function (direction) {
         root.switchPanel(direction)
       }
+      // Every key passes here first (both handlers run), the hand's
+      // marks go away with it.
+      Keys.onPressed: function (event) { root.keysTook(event) }
+
+      HoverHandler {
+        onPointChanged: if (hovered) root.handMoved(point.scenePosition)
+      }
 
       Column {
         id: column
@@ -243,7 +314,7 @@ Panel {
           Layout.fillWidth: true
           Layout.alignment: Qt.AlignVCenter
           implicitHeight: idleTimer.implicitHeight + Style.space(8)
-          hasCursor: timerMouse.containsMouse && !root.cellHot(0, 0)
+          hasCursor: timerMouse.containsMouse && root.handOn && !root.cellHot(0, 0)
           foreground: root.foreground
 
           KeyMark { visible: root.cellHot(0, 0) }
@@ -271,7 +342,9 @@ Panel {
             font.family: root.fontFamily
             font.pixelSize: Style.font.display
 
+            // The digits stop here, before the key catcher hears them.
             Keys.onPressed: function (event) {
+              root.keysTook(event)
               if (event.key >= Qt.Key_0 && event.key <= Qt.Key_9) {
                 if (root.entryDigits.length < 5) root.entryDigits += (event.key - Qt.Key_0)
                 event.accepted = true
@@ -299,7 +372,7 @@ Panel {
           }
         }
 
-          PanelActionButton {
+          HandAction {
             Layout.alignment: Qt.AlignVCenter
             foreground: root.foreground
             iconText: svc.runStatus === "running" && !svc.expired ? "\uf04c" : "\uf04b"
@@ -308,7 +381,7 @@ Panel {
             KeyMark { visible: root.cellHot(0, 1) }
           }
 
-          PanelActionButton {
+          HandAction {
             Layout.alignment: Qt.AlignVCenter
             foreground: root.foreground
             iconText: "\uf051"
@@ -317,7 +390,7 @@ Panel {
             KeyMark { visible: root.cellHot(0, 2) }
           }
 
-          PanelActionButton {
+          HandAction {
             Layout.alignment: Qt.AlignVCenter
             foreground: root.foreground
             iconText: "\uf021"
@@ -335,7 +408,7 @@ Panel {
           Repeater {
             model: ["15", "25", "45", "Up"]
 
-            Button {
+            HandButton {
               required property string modelData
               required property int index
 
@@ -399,7 +472,7 @@ Panel {
           Repeater {
             model: ["Day", "Week", "Month"]
 
-            Button {
+            HandButton {
               required property string modelData
               required property int index
 
@@ -421,7 +494,7 @@ Panel {
         CursorSurface {
           id: autoRow
           objectName: "pomoAutoRow"
-          hasCursor: autoMouse.containsMouse && !root.cellHot(root.autoRow, 0)
+          hasCursor: autoMouse.containsMouse && root.handOn && !root.cellHot(root.autoRow, 0)
           foreground: root.foreground
 
           width: parent.width
