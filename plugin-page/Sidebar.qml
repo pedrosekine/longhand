@@ -933,11 +933,20 @@ BorderSurface {
       anchors.right: parent.right
       anchors.verticalCenter: parent.verticalCenter
       spacing: page.sp(4)
+      // The icons are a Nerd Font's, which the shell's face is on Omarchy.
+      // Windows has no Nerd Font (the shell's face there is Cascadia Mono,
+      // and the four came out as empty boxes), and has the same pictures in
+      // its own icon face (`win`), as the find box's magnifier does.
+      readonly property string winIcons: {
+        var f = Qt.fontFamilies()
+        return f.indexOf("Segoe Fluent Icons") >= 0 ? "Segoe Fluent Icons"
+          : f.indexOf("Segoe MDL2 Assets") >= 0 ? "Segoe MDL2 Assets" : ""
+      }
       Repeater {
-        model: [{ icon: "\udb80\udcf6", act: "today", tip: "Today's note" },
-                { icon: "\udb81\udd6e", act: "dashGo", tip: "The dashboard: every open task and deadline" },
-                { icon: "\udb80\udf0c", act: "keys", tip: "Every key the page answers to, and moving one" },
-                { icon: "\udb81\udc93", act: "settings", tip: "Settings: your calendars" }]
+        model: [{ icon: "\udb80\udcf6", win: "\ue8bf", act: "today", tip: "Today's note" },
+                { icon: "\udb81\udd6e", win: "\uf246", act: "dashGo", tip: "The dashboard: every open task and deadline" },
+                { icon: "\udb80\udf0c", win: "\ue765", act: "keys", tip: "Every key the page answers to, and moving one" },
+                { icon: "\udb81\udc93", win: "\ue713", act: "settings", tip: "Settings: your calendars" }]
         Rectangle {
           id: footButton
           required property var modelData
@@ -945,7 +954,9 @@ BorderSurface {
             : modelData.act === "dashGo" ? page.dashOpen
             : page.noteService.isToday && !page.dashOpen && !page.keysOpen && !page.settingsOpen
           width: height
-          height: footWord.implicitHeight + page.sp(8)
+          // As tall as a side of the switch beside it, so the one that is
+          // open is filled the same as the space that is.
+          height: spaceSwitch.height - page.sp(4)
           radius: Style.cornerRadius
           color: open ? Style.selectedFill : footArea.containsMouse && page.handOn ? Style.hoverFill : "transparent"
           Behavior on color { ColorAnimation { duration: 180 } }
@@ -953,9 +964,9 @@ BorderSurface {
             id: footWord
             anchors.centerIn: parent
             textFormat: Text.PlainText
-            text: modelData.icon
+            text: footButtons.winIcons !== "" ? modelData.win : modelData.icon
             color: footArea.containsMouse && page.handOn ? page.accent : footButton.open ? page.foreground : page.dim
-            font.family: Style.font.family
+            font.family: footButtons.winIcons !== "" ? footButtons.winIcons : Style.font.family
             font.pixelSize: Math.round(page.fs(Style.font.bodySmall) * 1.15)
             Behavior on color { ColorAnimation { duration: 180 } }
           }

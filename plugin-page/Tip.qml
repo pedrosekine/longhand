@@ -90,34 +90,13 @@ PanelToolTip {
     }
   }
 
+  // The key's caps, drawn as everywhere else (KeyCaps.qml).
   Component {
     id: caps
-    Row {
-      spacing: tip.host.sp(3)
-      Repeater {
-        model: parent.parent.cell.caps
-        Rectangle {
-          required property string modelData
-          width: Math.max(capText.implicitWidth + tip.host.sp(10), height)
-          height: capText.implicitHeight + tip.host.sp(3)
-          radius: Style.cornerRadius
-          color: tip.host.sheetColor
-          border.width: 1
-          border.color: tip.edge
-          // The cap's lip: a second edge along its foot.
-          Rectangle { anchors.bottom: parent.bottom; anchors.left: parent.left; anchors.right: parent.right; anchors.margins: 1; height: 1; color: tip.edge }
-          Text {
-            id: capText
-            anchors.centerIn: parent
-            textFormat: Text.PlainText
-            text: parent.modelData
-            color: tip.host.dim
-            font.family: tip.host.fontFamily
-            font.styleName: tip.host.fontStyle
-            font.pixelSize: Math.round(tip.size * 0.9)
-          }
-        }
-      }
+    KeyCaps {
+      page: tip.host
+      size: tip.size
+      parts: parent && parent.cell ? parent.cell.caps : []
     }
   }
 
