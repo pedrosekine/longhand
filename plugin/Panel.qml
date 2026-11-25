@@ -165,7 +165,12 @@ Panel {
         || k === Qt.Key_AltGr || k === Qt.Key_Super_L || k === Qt.Key_Super_R) return
     root.handOn = false
   }
+  // The first place heard after it opens is only where the pointer is,
+  // not a move: a popup opened by a key under a still pointer lit what was
+  // under it (its last place was from before; the third pass, 2026-11-25).
+  property bool handSeeded: false
   function handMoved(p) {
+    if (!root.handSeeded) { root.handAt = p; root.handSeeded = true; return }
     var moved = Math.abs(p.x - root.handAt.x) + Math.abs(p.y - root.handAt.y) > 2
     root.handAt = p
     if (moved) root.handOn = true
@@ -174,16 +179,23 @@ Panel {
   // with nothing to ask it by. Its hover is turned off, and one laid over
   // it that takes no button (so every click still reaches the button)
   // tells the button when the hand is on it, through `hasCursor`.
-  function quietOwnHover(control, keep) {
+  function quietOwnHover(control, keep, keepTip) {
     for (var i = 0; i < control.children.length; i++) {
       var c = control.children[i]
       if (c !== keep && c.containsMouse !== undefined && c.hoverEnabled !== undefined) c.hoverEnabled = false
+    }
+    // Its own hint too: a long press still set its area's containsMouse,
+    // and the shell's hint came up beside ours (the third pass).
+    for (var j = 0; j < control.data.length; j++) {
+      var d = control.data[j]
+      if (d && d !== keepTip && d.delay !== undefined && d.text !== undefined && d.visible !== undefined)
+        d.visible = Qt.binding(function () { return false })
     }
   }
   component HandButton: Button {
     id: handButton
     hasCursor: handButtonArea.containsMouse && root.handOn
-    Component.onCompleted: root.quietOwnHover(handButton, handButtonArea)
+    Component.onCompleted: root.quietOwnHover(handButton, handButtonArea, handButtonTip)
     MouseArea {
       id: handButtonArea
       anchors.fill: parent
@@ -192,6 +204,7 @@ Panel {
       cursorShape: Qt.PointingHandCursor
     }
     PanelToolTip {
+      id: handButtonTip
       visible: handButton.tooltipText !== "" && handButtonArea.containsMouse && root.handOn
       text: handButton.tooltipText
       fontFamily: handButton.fontFamily
@@ -200,7 +213,7 @@ Panel {
   component HandAction: PanelActionButton {
     id: handAction
     hasCursor: handActionArea.containsMouse && root.handOn
-    Component.onCompleted: root.quietOwnHover(handAction, handActionArea)
+    Component.onCompleted: root.quietOwnHover(handAction, handActionArea, handActionTip)
     MouseArea {
       id: handActionArea
       anchors.fill: parent
@@ -209,6 +222,7 @@ Panel {
       cursorShape: Qt.PointingHandCursor
     }
     PanelToolTip {
+      id: handActionTip
       visible: handAction.tooltipText !== "" && handActionArea.containsMouse && root.handOn
       text: handAction.tooltipText
       fontFamily: handAction.fontFamily
@@ -218,6 +232,7 @@ Panel {
   onOpenedChanged: {
     console.debug("pomo-debug opened", opened, "phase", svc.phase)
     root.handOn = false
+    root.handSeeded = false
     if (opened) {
       root.cursorActive = false
       root.cursorRow = 0

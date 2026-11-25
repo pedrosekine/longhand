@@ -343,6 +343,18 @@ it, besides the clicks above and the hover marks in [hints.md](hints.md):
     as the other boxes asking something do;
   - the note's date pill and its gutter bar light under the hand, the pill
     names its key; a PDF mark shows the hand; "thinking" says Esc stops it.
+- **The third pass** (2026-11-25, the review once more):
+  - the right-click menu is as wide as its widest entry (long dashboard
+    labels ran under their keys), and a long label is cut with "…";
+  - its keys come first in the chat boxes too (the day's and the margin's
+    ran theirs first, so Esc cancelled a reply under the open menu);
+  - the dashboard's ⌕ box has the menu too; a box typed in lights under
+    the hand only, as every hover mark (it lit while the keys typed);
+  - Ctrl and the wheel over the switcher or a PDF's own box zoom the page,
+    not the PDF under it; Paste in the note's menu is dimmed when there is
+    nothing to paste; the first rating says ✓ as the follow-up's does;
+  - the popups no longer light what is under a still pointer when a key
+    opens them, and a long press on a button shows one hint, not two.
 - **The tray on Windows**: a double click on the timer's or the deadlines'
   icon opened the popup and closed it at once; a click alone counts now,
   and the popup takes the keys back when the double click's second click

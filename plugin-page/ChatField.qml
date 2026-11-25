@@ -191,6 +191,10 @@ FocusScope {
       topPadding: Style.spacing.inputPaddingY + Border.top(box.borderSpec) + (box.replying ? replyBar.height + page.sp(6) : 0)
       bottomPadding: Style.spacing.inputPaddingY + Border.bottom(box.borderSpec)
       Keys.onPressed: function (event) {
+        // The mouse's menu open over the box: its keys before the box's own
+        // (the day's and the margin's run theirs before the page's, and Esc
+        // cancelled a reply under the menu; the third pass, 2026-11-25).
+        if (box.page.editMenuKey(event)) { event.accepted = true; return }
         box.keyPressed(event)
         if (!event.accepted && box._backspace(event)) event.accepted = true
         if (!event.accepted && event.matches(StandardKey.Paste) && !area.readOnly) { box._paste(); event.accepted = true }

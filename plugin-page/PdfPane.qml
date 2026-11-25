@@ -334,6 +334,18 @@ Item {
   // read, a jump), and that closed them under the keys. What was open at
   // the press is closed after the click is done, so a click that opens one
   // is not taken for leaving it.
+  // (x, y) in the pane over one of its boxes that shows (find, go to page,
+  // note, project question, acronyms): not the pages.
+  function overBox(x, y) {
+    var boxes = [findBar, gotoField, noteBar, tagAsk, acroList]
+    for (var i = 0; i < boxes.length; i++) {
+      var b = boxes[i]
+      if (!b || !b.visible) continue
+      var q = b.mapFromItem(pane, x, y)
+      if (q.x >= 0 && q.y >= 0 && q.x < b.width && q.y < b.height) return true
+    }
+    return false
+  }
   function outsideOf(item, at) {
     if (!item || !item.visible) return true
     var q = item.mapFromItem(null, at.x, at.y)

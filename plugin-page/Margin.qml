@@ -358,7 +358,7 @@ BorderSurface {
             required property var modelData
             readonly property bool chosen: page.ratingOf(page.currentRec) === modelData.value
             textFormat: Text.PlainText
-            text: modelData.text
+            text: (chosen ? "✓ " : "") + modelData.text   // as the follow-up's rating below says it
             color: rateArea.containsMouse && page.handOn ? page.accent : chosen ? page.foreground : page.faint
             font.family: page.fontFamily
             font.styleName: page.fontStyle

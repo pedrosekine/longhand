@@ -21,7 +21,13 @@ MouseArea {
     var qts = fm.field.ContextMenu.menu
     if (qts !== null) fm.field.ContextMenu.menu = null
   }
-  Component.onCompleted: Qt.callLater(fm.shutQts)
+  // The box's own hover look (its edge, its fill) only while the hand is
+  // on the mouse, as every hover mark on the page (docs/hints.md, D; the
+  // third pass: a box under a still pointer lit while the keys typed).
+  Component.onCompleted: {
+    Qt.callLater(fm.shutQts)
+    if (fm.field && fm.field.hoverEnabled !== undefined) fm.field.hoverEnabled = Qt.binding(function () { return fm.page.handOn })
+  }
 
   onPressed: function (mouse) {
     fm.shutQts()

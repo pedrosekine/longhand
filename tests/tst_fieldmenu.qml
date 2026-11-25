@@ -15,6 +15,7 @@ Item {
     id: stubPage
     property var asked: null
     property string usedAs: ""
+    property bool handOn: true
     function used(what, how) { stubPage.usedAs = what + ":" + how }
     function editMenuAt(over, x, y, list) { stubPage.asked = { over: over, list: list } }
   }
@@ -44,6 +45,15 @@ Item {
       verify(entry("Copy").enabled, "words selected: copy offered")
       verify(entry("Cut").enabled)
       verify(f.ContextMenu.menu === null, "Qt's own menu stays shut")
+    }
+
+    function test_the_box_lights_only_under_the_hand() {
+      stubPage.handOn = true
+      wait(20)
+      verify(f.hoverEnabled, "the hand on the mouse: the box's hover look may show")
+      stubPage.handOn = false
+      verify(!f.hoverEnabled, "the keys typing: no hover look under a still pointer")
+      stubPage.handOn = true
     }
 
     function test_its_edits_run_on_the_box() {

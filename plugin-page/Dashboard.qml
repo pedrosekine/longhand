@@ -135,7 +135,7 @@ BorderSurface {
         onActiveFocusChanged: if (activeFocus && page.stripAt !== chip.at) page.stripAt = chip.at
         // The strip's own keys first (Esc, ↓, Enter, → past the last
         // letter, the page's global keys); the rest are the line's.
-        Keys.onPressed: function (event) { if (page.dashSearchKey(event, searchField)) event.accepted = true }
+        Keys.onPressed: function (event) { if (page.editMenuKey(event) || page.dashSearchKey(event, searchField)) event.accepted = true }
       }
       Text {
         visible: chip.count !== ""
@@ -148,6 +148,9 @@ BorderSurface {
         font.pixelSize: page.fs(Style.font.caption)
       }
     }
+    // The page's menu on ⌕ too, over the whole chip (the box itself is
+    // only as wide as its words; the third pass, 2026-11-25).
+    FieldMenu { page: dash.page; field: searchField; enabled: chip.search }
     MouseArea {
       anchors.fill: parent
       // On ⌕ the pointer reaches the words, to place the caret and select.

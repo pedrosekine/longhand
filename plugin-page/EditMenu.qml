@@ -25,10 +25,14 @@ Popup {
   // Not on a release outside: it opens on the press, at the pointer, and a
   // release a pixel up or left of it closed it at once.
   closePolicy: Popup.CloseOnPressOutside | Popup.CloseOnPressOutsideParent
-  width: page.sp(210)
+  // As wide as its widest entry, words and keycaps (the third pass: a long
+  // label from a dashboard row ran under its key at a fixed 210).
+  property real widest: 0
+  width: Math.max(page.sp(210), menu.widest + menu.padding * 2)
 
   // At (x, y) in `over`'s coordinates, kept inside the window.
   function openAt(over, x, y, list) {
+    menu.widest = 0
     menu.entries = list.filter(function (e) { return e })
     menu.current = -1
     if (menu.entries.length === 0) return
@@ -80,15 +84,21 @@ Popup {
         required property var modelData
         required property int index
         readonly property bool on: modelData.enabled !== false
+        readonly property real natural: label.implicitWidth + caps.implicitWidth + menu.page.sp(8) * 2 + menu.page.sp(24)
+        onNaturalChanged: menu.widest = Math.max(menu.widest, natural)
+        Component.onCompleted: menu.widest = Math.max(menu.widest, natural)
         width: menu.width - menu.padding * 2
         height: menu.size + menu.page.sp(14)
         radius: Style.cornerRadius
         color: on && index === menu.current ? Style.selectedFill
           : on && entryArea.containsMouse && menu.page.handOn ? Style.hoverFill : "transparent"
         Text {
+          id: label
           anchors.left: parent.left
           anchors.leftMargin: menu.page.sp(8)
           anchors.verticalCenter: parent.verticalCenter
+          width: Math.min(implicitWidth, caps.x - x - menu.page.sp(12))
+          elide: Text.ElideRight
           textFormat: Text.PlainText
           text: entry.modelData.text
           color: entry.on ? menu.page.foreground : menu.page.faint
@@ -98,6 +108,7 @@ Popup {
         }
         // Its key as keycaps, as a hint draws it (Tip.qml).
         KeyCaps {
+          id: caps
           anchors.right: parent.right
           anchors.rightMargin: menu.page.sp(8)
           anchors.verticalCenter: parent.verticalCenter
