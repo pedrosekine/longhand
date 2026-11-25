@@ -270,7 +270,9 @@ ShellRoot {
       var sel = p.selected()
       return JSON.stringify({ read: p.read, picked: p.picked, lastMade: p.lastMade, error: p.readError, noting: p.noting,
         dressed: p.view ? p.view.drawn().length : 0, drawn: drawn, selected: sel ? sel.text : "", markable: p.markable,
-        dragPans: p.view ? p.view.flick.interactive : null })
+        // Panned by a drag only if it is interactive and takes the left button
+        // (it scrolls by the wheel itself since 2026-11-25, its buttons none).
+        dragPans: p.view ? p.view.flick.interactive && (p.view.flick.acceptedButtons & Qt.LeftButton) !== 0 : null })
     }
     // A mouse wheel turned on the PDF: how far down it is after.
     function pdfWheel(dy: int): real {

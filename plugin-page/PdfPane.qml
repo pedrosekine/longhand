@@ -768,8 +768,10 @@ Item {
   }
 
   // A mouse drag selects words; it never moves the pages (PdfPages.qml).
-  // The touchpad scrolls it as it does the note (TouchScroll, with its
-  // glide), a mouse wheel through `wheel` below.
+  // The touchpad and a plain wheel scroll it as they do the note: the
+  // pages' own Flickable, with TouchScroll's glide (2026-11-25). Ctrl and
+  // Shift with the wheel come here (PdfPages.modifiedWheel); so does a
+  // wheel over the pane where the pages are not.
   function wheel(ev) {
     var t = pane.view ? pane.view.flick : null
     if (!t) { ev.accepted = false; return }
@@ -1761,6 +1763,7 @@ Item {
         darkEffect: darkPage
         overlay: marksLayer
         onLinkTapped: function (link) { pane.followLink(link) }
+        onModifiedWheel: function (ev) { pane.wheel(ev) }
       }
     }
   }

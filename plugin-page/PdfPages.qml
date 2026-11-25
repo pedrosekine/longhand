@@ -233,11 +233,25 @@ Item {
     }
   }
 
+  // A plain wheel scrolls the pages as Qt scrolls the note (2026-11-25,
+  // checked on the ThinkPad: Windows sends a touchpad as wheel steps, and
+  // the pane's own fixed steps went about 2.7 times as far as the note's).
+  // A mouse drag still never moves them (`acceptedButtons`): it selects.
+  // Ctrl and Shift with the wheel are the pane's (`modifiedWheel`: its
+  // size, sideways), taken over the pages before the Flickable sees them.
+  signal modifiedWheel(var ev)
+  Item {
+    anchors.fill: flick
+    z: 1
+    WheelHandler { target: null; acceptedModifiers: Qt.ControlModifier; onWheel: function (ev) { pages.modifiedWheel(ev) } }
+    WheelHandler { target: null; acceptedModifiers: Qt.ShiftModifier; onWheel: function (ev) { pages.modifiedWheel(ev) } }
+  }
+
   Flickable {
     id: flick
     anchors.fill: parent
     clip: true
-    interactive: false
+    acceptedButtons: Qt.NoButton
     boundsBehavior: Flickable.StopAtBounds
     contentWidth: Math.max(width, pages.maxWidth * pages.renderScale)
     contentHeight: pages.total
