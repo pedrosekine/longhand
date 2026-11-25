@@ -446,12 +446,12 @@ Item {
   // there and not in the window (found by run.py --overlay, 2026-10-25).
   readonly property int sheetFor: root.measure + 2 * root.sheetPadding
     + (root.alongside ? 0 : Math.ceil(Border.left(root.borderSpec) + Border.right(root.borderSpec)))
-  // Where the note sits: one rule for both shapes and both sides
-  // (Layout.js, 2026-10-24) — centred, and a pane opening at the window's
-  // edge does not move it while there is room for both. Until then the window
-  // recentred the note in the room the sidebar left (so the sidebar pushed
-  // it and the right pane did not), and on the overlay the right pane
-  // shrank instead. Stepping aside slides (`sheet`'s x).
+  // Where the note sits: one rule for both shapes, both sides and every
+  // view in the middle (Layout.js, 2026-11-25). The note is centred in the
+  // room the panes leave, as the dashboard and the lists already were. From
+  // 2026-10-24 it was centred in the window instead, so with the agent's
+  // pane open it sat beside the chat with an empty strip on its other side.
+  // A pane opening slides it (`sheet`'s x).
   readonly property int sheetMargin: root.sp(28)
   // The focus frame's border: Hyprland's active border as the theme gives
   // it, at the width of Hyprland's (2 px, or the shell's spacing).
@@ -9546,10 +9546,10 @@ Item {
       x: root.sheetX
       y: root.alongside ? 0 : root.sheetMargin
       width: root.sheetWidth
-      // Stepping aside for a pane slides, with the panes beside it (their
-      // x follows this one), quickly. The width snaps:
-      // text reflowing every frame reads as shaking.
-      Behavior on x { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+      // Recentring for a pane slides, quickly. The width snaps: text
+      // reflowing every frame reads as shaking. While the pane's edge is
+      // dragged the note follows the hand directly, with no lag behind it.
+      Behavior on x { enabled: root.paneLive <= 0; NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
       height: root.alongside ? content.height : content.height - root.sheetMargin * 2
       radius: root.alongside ? 0 : root.overlayRadius
       color: root.sheetColor

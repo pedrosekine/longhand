@@ -1,10 +1,11 @@
 // Layout — where the note sits beside the panes (docs/navigation.md).
 //
-// One rule for both shapes and both sides (2026-10-24): the panes stand
-// against the window's edges, the note is centred in the window, and a
-// pane opening does not move it while there is room for both. Only when
-// there is not does the note step aside, as far as it has to, and it
-// narrows last.
+// One rule for everything in the middle (2026-11-25): the panes stand
+// against the window's edges, and the note, a paper, the dashboard and the
+// lists are centred in the room the panes leave between them. A pane
+// opening slides the note by half its width, so the margins either side of
+// the note stay even. Only when the room is narrower than the note does the
+// note narrow.
 .pragma library
 
 // `width`: the window's; `want`: the note's own width (the measure and its
@@ -12,9 +13,9 @@
 // room a pane at that edge takes (its width and the gap), 0 when none.
 // Returns { x, width }.
 function note(width, want, edge, left, right) {
-  var w = Math.max(0, Math.min(want, width - 2 * edge - left - right))
-  var x = Math.max(edge + left, Math.min(Math.round((width - w) / 2), width - edge - right - w))
-  return { x: x, width: w }
+  var room = Math.max(0, width - 2 * edge - left - right)
+  var w = Math.min(want, room)
+  return { x: edge + left + Math.round((room - w) / 2), width: w }
 }
 
 // Whether both side panes fit simultaneously while keeping the note at least

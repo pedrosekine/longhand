@@ -3,30 +3,35 @@ import QtTest
 import "../plugin-page/Layout.js" as Layout
 
 // Where the note sits beside the panes (docs/navigation.md): one rule for
-// both sides, and the note moves only when it has to.
+// both sides, the note centred in the room the panes leave.
 // Run: QT_QPA_PLATFORM=offscreen /usr/lib/qt6/bin/qmltestrunner -input tests/tst_layout.qml
 TestCase {
   name: "Layout"
 
   // A wide window: 1900 across, a 740 note, panes of 254 and 318.
-  function test_room_for_both_moves_nothing() {
+  function test_centred_in_the_room_the_panes_leave() {
     var alone = Layout.note(1900, 740, 0, 0, 0)
     compare(alone.x, 580)
-    compare(Layout.note(1900, 740, 0, 254, 0).x, alone.x)     // the sidebar opens
-    compare(Layout.note(1900, 740, 0, 0, 318).x, alone.x)     // the right pane opens
-    compare(Layout.note(1900, 740, 0, 254, 318).x, alone.x)   // both
+    compare(Layout.note(1900, 740, 0, 254, 0).x, 707)         // the sidebar opens: 254 + (1646 - 740) / 2
+    compare(Layout.note(1900, 740, 0, 0, 318).x, 421)         // the right pane opens: (1582 - 740) / 2
+    compare(Layout.note(1900, 740, 0, 254, 318).x, 548)       // both: 254 + (1328 - 740) / 2
     compare(Layout.note(1900, 740, 0, 254, 318).width, 740)
   }
 
-  function test_steps_aside_as_far_as_it_has_to() {
-    // 1300 across: centred at 280, the sidebar needs 300, the right pane
-    // needs the note to end by 1300 - 340 = 960.
-    compare(Layout.note(1300, 740, 0, 0, 0).x, 280)
-    compare(Layout.note(1300, 740, 0, 300, 0).x, 300)
-    compare(Layout.note(1300, 740, 0, 0, 340).x, 220)
-    // The same distance either way: the rule has no favourite side.
-    compare(280 - Layout.note(1300, 740, 0, 0, 340).x, 60)
-    compare(Layout.note(1300, 740, 0, 340, 0).x - 280, 60)
+  function test_even_margins_either_side() {
+    // Whatever is open, the room left of the note and the room right of it
+    // are the same (to the pixel a rounding gives).
+    var cases = [[1900, 0, 0, 0], [1900, 0, 254, 0], [1900, 0, 0, 458], [1440, 28, 254, 318], [1300, 0, 300, 340]]
+    for (var i = 0; i < cases.length; i++) {
+      var c = cases[i], n = Layout.note(c[0], 740, c[1], c[2], c[3])
+      var before = n.x - c[1] - c[2]
+      var after = c[0] - c[1] - c[3] - (n.x + n.width)
+      verify(Math.abs(before - after) <= 1, JSON.stringify(c) + ": " + before + " vs " + after)
+    }
+    // A pane moves the note by half its room, the same distance either way.
+    var mid = Layout.note(1300, 740, 0, 0, 0).x
+    compare(mid - Layout.note(1300, 740, 0, 0, 340).x, 170)
+    compare(Layout.note(1300, 740, 0, 340, 0).x - mid, 170)
   }
 
   function test_narrows_last() {

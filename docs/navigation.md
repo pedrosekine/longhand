@@ -106,22 +106,37 @@ typed in a paper's chat could close it.
 
 ## Where the panes sit
 
-One rule for both sides and both shapes (`plugin-page/Layout.js`, 2026-10-24):
-the side panes stand **against the window's edges**, the sidebar at the left
-and the agent's pane at the right, like an app's sidebars, so there is no dead
-strip outside them. The overlay keeps its usual margin from the screen's
-edge. The note stays centred in the window, and a pane opening **does not
-move it** as long as the note fits between the panes. Only when it does not
-does the note step aside, as far as it has to (a slide, at the focus frame's
-pace), and it narrows last. Beside the dashboard, keys or settings, which are
-lists and take the room they are given, the list slides over for the sidebar.
+One rule for both sides, both shapes and everything that can stand in the
+middle (`plugin-page/Layout.js`, 2026-11-25): the side panes stand
+**against the window's edges**, the sidebar at the left and the agent's pane
+at the right, like an app's sidebars, so there is no dead strip outside
+them. The overlay keeps its usual margin from the screen's edge. What is in
+the middle is **centred in the room the panes leave** between them:
+
+- **the note and a paper:** their own width (the measure, or a paper's
+  wider column), centred in that room. A pane opening slides them by half
+  its width (at the focus frame's pace), so the space either side of the
+  note stays even. Only a room narrower than the note narrows it. While the
+  agent's pane's edge is dragged, the note follows it without the slide;
+- **the dashboard:** takes the room after the sidebar and, while a talk or
+  the day's chat is beside it, after that pane too. Its list is centred in
+  what is left;
+- **keys and settings:** take the room after the sidebar (the agent's pane is
+  hidden while they are open), their column centred in it.
+
 In the window shape, a hairline marks each pane's inner edge.
 
-Before 2026-10-24 the window recentred the note in the room the sidebar left,
-so the sidebar pushed the note and the right pane did not, and the overlay
-shrank the right pane instead. For a few hours after that the panes hugged the
-note's edges, which left dead space between each pane and the window's edge
-on a wide screen.
+Before 2026-11-25 the note was centred in the **window** and did not move
+when a pane opened while it still fitted (2026-10-24). The dashboard and the
+lists were already centred in the room, so the note was the one thing that
+did not follow the rule. With the agent's pane open on a wide screen, the
+note sat close against the chat with a wide empty strip on its other side.
+It looked off-centre, and the eye had to cross the empty strip to read
+(the student, 2026-11-25). Before 2026-10-24 the window recentred the note
+in the room the sidebar left, so the sidebar pushed the note and the right
+pane did not, and the overlay shrank the right pane instead. For a few hours
+after that the panes hugged the note's edges, which left dead space between
+each pane and the window's edge on a wide screen.
 
 ### The agent's pane, sized by hand (2026-11-22)
 
