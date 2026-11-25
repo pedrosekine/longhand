@@ -72,7 +72,7 @@ class PageFrozen(Exception):
 # What the runner writes when the student talks to a block: both turns, the
 # way `longhand-agent chat` records them. Enough for the page to settle the
 # message it was holding and draw the answer.
-CHAT_STUB = """import datetime, json, pathlib, sys
+CHAT_STUB = """import datetime, json, os, pathlib, sys, time
 
 at = datetime.datetime.now().isoformat(timespec="seconds")   # as the runner does: the one conversation orders by it
 daily, args = pathlib.Path(sys.argv[1]), sys.argv[2:]
@@ -91,6 +91,10 @@ rec["read"] = False
 rec.setdefault("reply", "")
 path.parent.mkdir(parents=True, exist_ok=True)
 path.write_text(json.dumps(state))
+# With `linger` in the stub's folder, the run goes on a moment after its
+# answer is written, as a run's process closing does (longer on Windows).
+if os.path.exists(os.path.join(os.environ.get("STUB_DIR", ""), "linger")):
+    time.sleep(2.5)
 """
 
 # The planner's model, for the page's own tests: it answers only once a
@@ -218,14 +222,35 @@ def run(cmdline):
     c = subprocess.Popen(cmdline)
     child.append(c)
     return c.wait()
-with open(calls, "a", encoding="utf-8", newline="\\n") as f:
-    f.write(f"{time.time():.6f} start {cmd} {arg3}\\n")
+# One line of the log, whole. Runners start side by side and append at
+# once; a file opened for appending is a seek and a write on Windows, and
+# one runner's line overwrote another's ("start plan" lost, 2026-11-25).
+# Opened for appending only (FILE_APPEND_DATA), Windows appends a write
+# whole, as O_APPEND does on Linux.
+def log(line):
+    data = line.encode("utf-8")
+    if os.name != "nt":
+        with open(calls, "ab") as f:
+            f.write(data)
+        return
+    import ctypes
+    from ctypes import wintypes
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    k32.CreateFileW.restype = wintypes.HANDLE
+    k32.CreateFileW.argtypes = (wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p,
+                                wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE)
+    h = k32.CreateFileW(calls, 0x0004, 0x7, None, 4, 0x80, None)   # append only, shared, open always
+    try:
+        done = wintypes.DWORD()
+        k32.WriteFile(wintypes.HANDLE(h), data, len(data), ctypes.byref(done), None)
+    finally:
+        k32.CloseHandle(wintypes.HANDLE(h))
+log(f"{time.time():.6f} start {cmd} {arg3}\\n")
 if cmd == "projects":
     if os.path.exists(os.path.join(stub, "slow-fetch")):
         time.sleep(2)
     rc = run([sys.executable, agent, *argv])
-    with open(calls, "a", encoding="utf-8", newline="\\n") as f:
-        f.write(f"{time.time():.6f} end {cmd}\\n")
+    log(f"{time.time():.6f} end {cmd}\\n")
     sys.exit(rc)
 LOCAL = {"accept", "projects", "project", "project-page", "sections", "next", "dated", "tasks", "box", "timetable",
          "plan", "proposals", "proposal", "talk", "thread", "rate", "notebook", "autonomy", "day", "search", "horizon",
@@ -534,7 +559,10 @@ esac
             fixture = today_file.read_bytes() if (cur_stat is not None and cur_stat != self._after_call_stat) else None
             self.call("closeAll")
             if fixture is not None:
-                time.sleep(0.05)
+                # Put back once the page's last save has landed: on GitHub's
+                # Windows machine a save from the edits before landed after
+                # a fixed 50 ms, over the note put back (2026-11-25).
+                self.wait(lambda: self.call("noteSaving") == "false", 5)
                 today_file.write_bytes(fixture)
         else:
             self.call("closeAll")
@@ -1309,6 +1337,10 @@ def checks() -> int:
         p.call("sidebarProject", "Bikeability in Linz #bikes")
         check(p.wait(lambda: (pd / "bikes.md").exists()) and (pd / "bikes.md").read_text() == "# Bikeability in Linz\n\n- Tag: `#bikes`\n"
               and p.call("addingProject") == "false", "the sidebar's field makes one: its name, and its #tag")
+        # Made and read back before the next: its file is written before the
+        # runner ends, and one asked meanwhile is "still making the last one"
+        # (a slower end on Windows; 2026-11-25 on GitHub's machine).
+        p.wait(lambda: any(t.startswith("bikes|") for t in json.loads(p.call("projects"))), 10)
         p.call("sidebarProject", "#DTM")
         check(p.wait(lambda: p.call("hint") == "#DTM is a project already"), f"…never one that exists ({p.call('hint')!r})")
         for f in ("thesis.md", "bikes.md"):
@@ -1474,6 +1506,23 @@ def checks() -> int:
               and not json.loads(p.call("stopShown"))["square"],
               f"a click on the square stops it too, the words back in the box, the square gone ({p.call('chatBoxText')!r})")
         p.call("chatBoxClear")
+        # Answered while its run is still ending (its process closing, most
+        # of a second on Windows; here the stub lingers): the thinking stops
+        # with the answer, and Esc in the box stops nothing (2026-11-25: it
+        # stopped the finished run and put the message back in the box).
+        (p.stub / "linger").write_text("")
+        p.call("sendChat", "and once more?")
+        check(p.wait(lambda: "agent: stub answer to: and once more?" in p.call("chat"), 10)
+              and p.call("answering") == "false" and not json.loads(p.call("stopShown"))["square"],
+              f"answered while its run still ends: no more thinking, no stop square ({p.call('answering')}, {p.call('stopShown')})")
+        hint, ending = p.call("hint"), p.call("runnerRunning")
+        p.call("chatBoxKey", 0x01000000)
+        check(ending == "true" and p.call("hint") == hint and p.call("chatBoxText") == ""
+              and "agent: stub answer to: and once more?" in p.call("chat"),
+              f"…and Esc there, the run still ending ({ending}), stops nothing: the answer stays, the box empty "
+              f"({p.call('hint')!r}, {p.call('chatBoxText')!r})")
+        (p.stub / "linger").unlink()
+        p.wait(lambda: p.call("runnerRunning") == "false", 6)    # the lingering run ends
 
         before = len(list((p.state / "longhand" / "payloads").glob("*"))) \
             if (p.state / "longhand" / "payloads").is_dir() else 0
@@ -2548,6 +2597,11 @@ def checks() -> int:
         # 12c'. the calendars and the first pass of the day (2026-10-18): what
         # reads the calendars waits for the fetch the same opening started.
         (p.stub / "slow-fetch").write_text("")
+        # A plan still running from before is the day's plan, and the
+        # opening asks for no other (runPlan): let it end first, or the
+        # opening's never starts and its start was in the log cleared here
+        # (slower on Windows, 2026-11-25).
+        p.wait(lambda: p.call("planRunning") == "false", 30)
         p.call("closeAll")
         p.calls.write_text("")
         (p.state / "longhand" / "plan.json").unlink(missing_ok=True)
