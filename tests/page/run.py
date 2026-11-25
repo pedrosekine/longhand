@@ -171,7 +171,7 @@ BINDINGS = """o.bind("SUPER + SHIFT + T", "Todoist", { webapp = "https://app.tod
 o.bind("SUPER + ALT + P", "Pomo toggle", "pomo toggle")
 o.bind("SUPER + ALT + N", "Pomo skip", "pomo skip")
 o.bind("SUPER + ALT + O", "Pomo popup", "omarchy-shell longhand.pomo toggle")
-o.bind("SUPER + ALT + D", "Deadlines popup", "omarchy-shell longhand.deadline toggle")
+o.bind("SUPER + ALT + U", "Deadlines popup", "omarchy-shell longhand.deadline toggle")
 o.bind("SUPER + ALT + equal", "Page (today's note)", "omarchy-shell shell toggle longhand.page '{}'")
 o.bind("SUPER + ALT + backslash", "Page alongside", "omarchy-shell shell summon longhand.page '{\\"shape\\":\\"alongside\\"}'")
 """
@@ -3033,11 +3033,11 @@ def checks() -> int:
         # The project's page (plan.md item 5): P gathers the project into one
         # note outside the vault, opened read-only.
         dash_was = p.call("dashOpen")
-        p.call("sideKey", 0x50, 0)                          # P
+        p.call("sideKey", 0x50, 0x08000000)                 # Alt+P (bare P finds a project since 2026-11-25)
         fl = lambda: json.loads(p.call("files"))
         check(p.wait(lambda: fl()["filePath"].replace("\\", "/").endswith("/longhand/pages/dtm.md") and fl()["readOnly"]
                      and "Working files" in p.call("text") and "DTM handout" in p.call("text"), 20),
-              f"P inside a project opens its page, read-only, its documents on it ({fl()}, {p.call('text')[:300]!r})")
+              f"Alt+P inside a project opens its page, read-only, its documents on it ({fl()}, {p.call('text')[:300]!r})")
         check(fl()["filePath"].startswith(str(p.state)), "…written in the state folder, not the vault")
         if p.call("dashOpen") != dash_was:
             p.call("dash")

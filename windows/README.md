@@ -180,7 +180,7 @@ From anywhere, as Hyprland's keys with Win for Super (`hotkeys.py`):
 | `Win+Alt+P` | the timer: start, pause, resume |
 | `Win+Alt+N` | the timer: on to the next phase |
 | `Win+Alt+O` | the timer's popup |
-| `Win+Alt+D` | the deadlines' popup |
+| `Win+Alt+U` | the deadlines' popup (D is Windows' own clock) |
 
 They move in the page's keys sheet (`Ctrl+/`), as Hyprland's do on Omarchy:
 Enter on one, then the new key. The sheet asks `hyprkeys.py`; here

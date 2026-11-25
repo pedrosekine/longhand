@@ -79,6 +79,53 @@ TestCase {
     verify(Sc.hit(ev(Qt.Key_Y, Qt.ControlModifier), "redo"))
   }
 
+  // The keyboard pass (2026-11-25): one rule for the same act in every
+  // place it is done.
+  function test_the_same_act_has_the_same_keys() {
+    // The Menu key is a key, not a modifier alone; Shift+F10 beside it.
+    compare(Sc.fromEvent(ev(Qt.Key_Menu)), "Menu")
+    verify(Sc.hit(ev(Qt.Key_Menu), "menu"))
+    verify(Sc.hit(ev(Qt.Key_F10, Qt.ShiftModifier), "menu"))
+    compare(Sc.canonical("menu"), "Menu")
+    // Ctrl+S answers.
+    verify(Sc.hit(ev(Qt.Key_S, Qt.ControlModifier), "save"))
+    // Find: F3 and the arrows, the note's and a PDF's.
+    verify(Sc.hit(ev(Qt.Key_F3), "findNext"))
+    verify(Sc.hit(ev(Qt.Key_F3, Qt.ShiftModifier), "findPrev"))
+    verify(Sc.hit(ev(Qt.Key_Down), "findNext"))
+    verify(Sc.hit(ev(Qt.Key_Up), "findPrev"))
+    // F2 renames and Backspace removes wherever they do one of them.
+    var renames = ["dashRename", "settingsRename", "notebookCorrect"]
+    for (var i = 0; i < renames.length; i++) verify(Sc.keysOf(renames[i]).indexOf("F2") >= 0, renames[i])
+    var drops = ["dashDrop", "settingsForget", "notebookForget", "marginDecline", "pdfRemove"]
+    for (var j = 0; j < drops.length; j++) {
+      verify(Sc.keysOf(drops[j]).indexOf("Del") >= 0, drops[j] + " Del")
+      verify(Sc.keysOf(drops[j]).indexOf("Backspace") >= 0, drops[j] + " Backspace")
+    }
+    // Space ticks on a row, as on the dashboard; Ctrl+L as in the note.
+    verify(Sc.hit(ev(Qt.Key_Space), "listDone"))
+    verify(Sc.hit(ev(Qt.Key_L, Qt.ControlModifier), "listDone"))
+    // A bare letter in the sidebar finds a project: P and W are Alt's only.
+    verify(!Sc.hit(ev(Qt.Key_P), "listPage"))
+    verify(Sc.hit(ev(Qt.Key_P, Qt.AltModifier), "listPage"))
+    verify(!Sc.hit(ev(Qt.Key_W), "listWeek"))
+    // `?` in every list that is not typed in.
+    var lists = ["dash", "lists", "files", "calendar", "pdf", "paper", "export", "margin", "settings", "notebook", "autonomy", "folders", "checkin"]
+    for (var k = 0; k < lists.length; k++) verify(Sc.byId.keysHere.places.indexOf(lists[k]) >= 0, "? in " + lists[k])
+    // Every place an action names is a place the sheet can say.
+    for (var a = 0; a < Sc.actions.length; a++)
+      for (var p = 0; p < Sc.actions[a].places.length; p++)
+        verify(Sc.places[Sc.actions[a].places[p]] !== undefined, Sc.actions[a].id + ": " + Sc.actions[a].places[p])
+  }
+
+  // The six keys from outside are said in the system's words.
+  function test_the_system_is_named() {
+    var rows = Sc.rows("", { owned: true, actions: [{ id: "page", does: "Page", keys: ["Alt+Super+="], own: ["Alt+Super+="] }] })
+    var page = rows.filter(function (r) { return r.id === "hypr:page" })[0]
+    compare(page.where, Sc.systemName)
+    compare(Sc.systemName, Qt.platform.os === "windows" ? "Windows" : "Hyprland")
+  }
+
   // No two actions that can be pressed in the same place share a key.
   function test_no_default_collides() {
     for (var i = 0; i < Sc.actions.length; i++) {

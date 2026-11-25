@@ -17,7 +17,7 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | Zoom out (or Ctrl+wheel down) | `Ctrl+-` · `Ctrl+_` | everywhere |
 | Zoom back to 100% | `Ctrl+0` | everywhere |
 | Show these keys | `Ctrl+/` | everywhere |
-| Show these keys (where nothing is typed) | `?` | in the dashboard, in the sidebar's lists, in the files, in the calendar, in a PDF |
+| Show these keys (where nothing is typed) | `?` | in the dashboard, in the sidebar's lists, in the files, in the calendar, in a PDF, in a paper's marks (the agent's pane, beside a PDF), in the export, in the margin, in settings, in what the agent knows, in what the agent may do, in the folders the agent may search, in the check-in |
 | Settings (calendars, sound) | `Ctrl+,` | everywhere |
 | Quick switcher: projects, notes, papers and views (? searches all notes) | `Ctrl+O` | everywhere |
 | Search across all notes (opens the switcher with ?) | `Ctrl+Shift+O` | everywhere |
@@ -35,12 +35,15 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | The agent's pane narrower, about 100 px | `Alt+Shift+→` | everywhere |
 | Flip between overlay and window | `F11` · `Ctrl+Alt+P` | everywhere |
 | Copy the path of what you are on (in a note, with the line), to give to an agent | `Ctrl+Shift+C` | everywhere |
+| Save now, and say so (the page also saves as you write) | `Ctrl+S` | everywhere |
+| The menu a right-click opens, at the cursor or on the row | `Shift+F10` · `Menu` | in the note, in the dashboard |
 | Close the overlay | `Esc` | in the note |
 | Make the whole note private (the agent sees nothing) | `Ctrl+Shift+P` | in the note |
 | Make the block private, or the blocks selected (again: not private) | `Ctrl+P` | in the note |
 | Export as a PDF: the section you are in, or the blocks selected | `Ctrl+Shift+E` | in the note |
 | Only this project's part of the day: the section you are in (again: the whole day) | `Ctrl+Shift+F` | in the note |
 | The tasks this day is for, written on any day: show or fold the list | `Ctrl+Shift+T` | in the note |
+| In every list: ↑↓ or j k a row, Home and End the first and last, ? these keys | `↑` · `↓` · `j` · `k` · `Home` · `End` · `?` | |
 
 ## Writing
 
@@ -72,7 +75,7 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | Home: today's note, the keys in it (the side panes stay open) | `Ctrl+H` · `Alt+Home` | everywhere |
 | The day before, with a note | `Alt+[` · `Ctrl+PgUp` | in the note, in the dashboard |
 | The day after, with a note (and then today) | `Alt+]` · `Ctrl+PgDn` | in the note, in the dashboard |
-| Find in the note (in find: select the words) | `Ctrl+F` | in the note, in find |
+| Find in the note (in find: select the words) | `Ctrl+F` | in the note, in find (the note's, or a PDF's) |
 | Follow the link the cursor is in | `Alt+Enter` | in the note |
 | Back: where the middle was before (a link, a day, the dashboard, a file) | `Ctrl+[` · `Ctrl+Alt+←` | everywhere |
 | On again, after going back | `Ctrl+]` · `Ctrl+Alt+→` | everywhere |
@@ -102,11 +105,11 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 
 | | Keys | Works |
 |---|---|---|
-| Next match | `Enter` | in find |
-| Previous match | `Shift+Enter` | in find |
-| Go to the match and close find | `Ctrl+Enter` | in find |
-| Close find, on the match | `Esc` | in find |
-| Close find, back where you were | `Shift+Esc` | in find |
+| Next match | `Enter` · `↓` · `F3` | in find (the note's, or a PDF's) |
+| Previous match | `Shift+Enter` · `↑` · `Shift+F3` | in find (the note's, or a PDF's) |
+| Go to the match and close find | `Ctrl+Enter` | in find (the note's, or a PDF's) |
+| Close find, on the match | `Esc` | in find (the note's, or a PDF's) |
+| Close find, back where you were | `Shift+Esc` | in find (the note's, or a PDF's) |
 
 ## The switcher
 
@@ -187,11 +190,11 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | The first row under the calendar | `Home` | in the sidebar's lists |
 | The last project | `End` | in the sidebar's lists |
 | Open it (a deadline: go to its line) | `Enter` | in the sidebar's lists |
-| A deadline: done (again: not done) | `Ctrl+L` | in the sidebar's lists |
+| A deadline: done (again: not done) | `Space` · `Ctrl+L` | in the sidebar's lists |
 | Into a project's notes | `→` | in the sidebar's lists |
 | A project: a new section for it in today's note (# Name #tag) | `Shift+Enter` | in the sidebar's lists |
-| The project's page: its papers, files, notes and deadlines in one scroll (on a project, or inside one) | `Alt+P` · `p` | in the sidebar's lists |
-| The project's week: what was done, written and read, what is coming, what to ask (on a project, or inside one) | `Alt+W` · `w` | in the sidebar's lists |
+| The project's page: its papers, files, notes and deadlines in one scroll (on a project, or inside one) | `Alt+P` | in the sidebar's lists |
+| The project's week: what was done, written and read, what is coming, what to ask (on a project, or inside one) | `Alt+W` | in the sidebar's lists |
 | A project: put its #tag at the cursor | `Ctrl+Enter` | in the sidebar's lists |
 | Skip to the next list (after the projects: the calendar) | `Tab` | in the sidebar's lists |
 | Skip to the list before (before the first: the calendar) | `Shift+Tab` | in the sidebar's lists |
@@ -273,11 +276,11 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | Previous proposal (from an empty box: into the proposals, or the other chats' lines) | `↑` | in the margin, in the chat's box |
 | Next proposal, then the box | `↓` | in the margin |
 | Do what the proposal says | `Enter` · `Space` | in the margin |
-| Decline what you are talking about (a question: set it aside; a thing done: undo it) | `Del` | in the margin |
+| Decline what you are talking about (a question: set it aside; a thing done: undo it) | `Del` · `Backspace` | in the margin |
 | The reply was helpful (again: take it back) | `+` · `=` | in the margin |
 | The reply was not helpful (again: take it back) | `-` | in the margin |
 | Send what you wrote | `Enter` | in the chat's box |
-| Reply to the words selected in the agent's answer (several, each attached) | `Ctrl+R` | in the chat's box, in a PDF, in a paper's marks (the agent's pane, beside a PDF) |
+| Reply to the words selected in the agent's answer (several, each attached) | `Ctrl+R` | in the chat's box, in a PDF, in a paper's marks (the agent's pane, beside a PDF), in the note, in the sidebar's lists |
 | While the agent answers: stop it, your words back in the box; else back out: to the day's chat if it is open, else close the pane | `Esc` | in the margin, in the chat's box |
 
 ## Settings
@@ -286,11 +289,11 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 |---|---|---|
 | What the agent sees of the picked calendar: its classes, or everything | `Ctrl+Shift+A` | in settings |
 | Fetch the picked calendar now | `Ctrl+R` | in settings |
-| Rename the picked calendar | `Ctrl+E` | in settings |
-| Remove the picked calendar (it asks first) | `Del` | in settings |
+| Rename the picked calendar | `Ctrl+E` · `F2` | in settings |
+| Remove the picked calendar (it asks first) | `Del` · `Backspace` | in settings |
 | Change the picked setting, or open it (a calendar: fetch it now) | `Enter` · `Space` | in settings |
-| Correct the picked note in your words (Enter too) | `Ctrl+E` | in what the agent knows |
-| Forget the picked note, or take a correction back (it asks first) | `Del` | in what the agent knows |
+| Correct the picked note in your words (Enter too) | `Ctrl+E` · `F2` | in what the agent knows |
+| Forget the picked note, or take a correction back (it asks first) | `Del` · `Backspace` | in what the agent knows |
 
 ## Typing (the text field's own, not changeable)
 
@@ -301,6 +304,7 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | New line in what you write | `Shift+Enter` | |
 | Nest or un-nest the line (or every line selected) | `Tab` · `Shift+Tab` | |
 | Move; by word with Ctrl | `←` · `→` · `↑` · `↓` · `Ctrl+←` · `Ctrl+→` | |
+| A screen up or down; with Shift, selecting | `PgUp` · `PgDn` | |
 | Select, across lines too; by word with Ctrl | `Shift+←` · `Shift+→` · `Shift+↑` · `Shift+↓` | |
 | Select the line; again: its item, list, block, section, a step wider each time, up to the note | `Ctrl+A` | |
 | Select all | `Ctrl+A` | |
@@ -315,7 +319,7 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 |---|---|---|
 | Page (today's note) | `Alt+Super+=` | everywhere (Hyprland) |
 | Page alongside | `Alt+Super+\` | everywhere (Hyprland) |
-| Deadlines popup | `Alt+Super+D` | everywhere (Hyprland) |
+| Deadlines popup | `Alt+Super+U` | everywhere (Hyprland) |
 | Pomo popup | `Alt+Super+O` | everywhere (Hyprland) |
 | Pomo toggle | `Alt+Super+P` | everywhere (Hyprland) |
 | Pomo skip | `Alt+Super+N` | everywhere (Hyprland) |

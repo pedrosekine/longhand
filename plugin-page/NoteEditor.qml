@@ -1136,16 +1136,19 @@ Item {
       ed.setCursor(at, true)
       return true
     }
-    if (ctrl && k === Qt.Key_C) { ed.copyText(ed.text.slice(ed.selStart, ed.selEnd)); return true }
-    if (ctrl && k === Qt.Key_X) {
+    // Ctrl alone with them: Ctrl+Shift+C is the path's, Ctrl+Alt the
+    // AltGr of a Windows keyboard (2026-11-25).
+    var only = ctrl && !alt && !shift
+    if (only && k === Qt.Key_C) { ed.copyText(ed.text.slice(ed.selStart, ed.selEnd)); return true }
+    if (only && k === Qt.Key_X) {
       ed.copyText(ed.text.slice(ed.selStart, ed.selEnd))
       ed.cutting = true
       ed.removeSpan()
       ed.cutting = false
       return true
     }
-    if (ctrl && k === Qt.Key_A) { ed.selectAllStep(ed.rowItem(ed.focusedRow)); return true }
-    if (ctrl && k === Qt.Key_V) {
+    if (only && k === Qt.Key_A) { ed.selectAllStep(ed.rowItem(ed.focusedRow)); return true }
+    if (only && k === Qt.Key_V) {
       var pasted = ed.pasteText().replace(/\r/g, "")
       if (pasted !== "" && !ed.readOnly) {
         var pa = ed.selStart, pb = ed.selEnd
@@ -1165,7 +1168,8 @@ Item {
     }
     if (k === Qt.Key_Tab && !ctrl && !alt) { ed.indentSpan(false); return true }
     if (k === Qt.Key_Backtab) { ed.indentSpan(true); return true }
-    if (event.text !== "" && !ctrl && !alt && event.text.charCodeAt(0) >= 32) {
+    // AltGr on Windows arrives as Ctrl+Alt with its letter (2026-11-25).
+    if (event.text !== "" && (!ctrl && !alt || ctrl && alt) && event.text.charCodeAt(0) >= 32) {
       var a = ed.selStart, b = ed.selEnd
       ed.snapshot(true)
       ed.clearSelection()
@@ -1498,6 +1502,37 @@ Item {
   function atFirstLine(f) { return f.cursorRectangle.y <= f.positionToRectangle(0).y + 1 }
   function atLastLine(f) { return f.cursorRectangle.y >= f.positionToRectangle(f.length).y - 1 }
 
+  // PgUp / PgDn (2026-11-25, the keyboard pass): a screen up or down, the
+  // view and the cursor together, as every editor has them; with Shift,
+  // selecting. The note is a column of one-line fields, so no field could
+  // do it, and the keys did nothing. Past the first or last line: the
+  // note's start or end, as Ctrl+Home and Ctrl+End.
+  function pageStep(dir, select, item) {
+    var view = ed.viewport
+    var h = Math.max(ed.textSize * 3, (view ? view.height : ed.height) - ed.textSize * 2)
+    var f = item.field
+    var c = f.cursorRectangle
+    var at = f.mapToItem(ed, c.x, c.y + c.height / 2)
+    var y = at.y + dir * h
+    column.forceLayout()
+    var pos
+    if (y < 0) pos = ed.shown !== null ? ed.runAround(ed.cursorPosition).a : 0
+    else if (y >= column.height) pos = ed.shown !== null ? ed.runAround(ed.cursorPosition).b : ed.text.length
+    else {
+      var spot = ed.hitTest(at.x, y)
+      pos = ed.absOf(spot.i, spot.col)
+    }
+    if (view) view.contentY = Math.max(0, Math.min(view.contentHeight - view.height, view.contentY + dir * h))
+    if (select) {
+      var anchor = ed.spanning ? ed.selAnchor : ed.nativeAnchor(item)
+      if (pos === anchor) { ed.clearSelection(); ed.setCursor(pos, true) }
+      else ed.selectSpan(anchor, pos)
+    } else {
+      if (ed.spanning) ed.clearSelection()
+      ed.setCursor(pos, true)
+    }
+  }
+
   // Up / Down past the edge of a field: the neighbouring line, at the same
   // horizontal place.
   function moveVertical(item, dir) {
@@ -1615,6 +1650,11 @@ Item {
       event.accepted = true
       return
     }
+    if ((k === Qt.Key_PageUp || k === Qt.Key_PageDown) && !ctrl && !alt) {
+      ed.pageStep(k === Qt.Key_PageUp ? -1 : 1, !!shift, item)
+      event.accepted = true
+      return
+    }
     if (ed.spanning) {
       if (ed.spanKey(event)) { event.accepted = true; return }
     }
@@ -1637,7 +1677,7 @@ Item {
         return
       }
     }
-    if (ctrl && k === Qt.Key_A) { ed.selectAllStep(item); event.accepted = true; return }
+    if (ctrl && !alt && !shift && k === Qt.Key_A) { ed.selectAllStep(item); event.accepted = true; return }
     // Copy, cut and paste are the note's, not the field's: rich rows hold
     // 1px hidden spans and drawn arrows (`→>`) that must stay plain markdown
     // on the clipboard, and cutting inside emphasis collapses orphan markers.
@@ -1681,7 +1721,9 @@ Item {
       ed.cueDismissed(ed.rows[i].raw)
     } else if (k === Qt.Key_Backspace && noSel && f.cursorPosition === 0) {
       ed.backspaceAtStart(i)
-    } else if (k === Qt.Key_Delete && noSel && f.cursorPosition === f.length && !ctrl) {
+    } else if (k === Qt.Key_Delete && noSel && f.cursorPosition === f.length) {
+      // Ctrl+Del too, as Ctrl+Backspace at a line's start joins it to the
+      // one before (2026-11-25: it did nothing).
       ed.deleteAtEnd(i)
     } else if (k === Qt.Key_Up && !ctrl && !alt && !shift && ed.atFirstLine(f)) {
       ed.moveVertical(item, -1)

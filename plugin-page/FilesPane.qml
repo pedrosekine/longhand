@@ -271,6 +271,9 @@ Item {
   function keyPressed(event) {
     if (Sc.hit(event, "filesUp")) files.move(-1)
     else if (Sc.hit(event, "filesDown")) files.move(1)
+    // The ends, as in every list (2026-11-25).
+    else if (Sc.fromEvent(event) === "Home") files.move(-files.shown.length)
+    else if (Sc.fromEvent(event) === "End") files.move(files.shown.length)
     else if (Sc.hit(event, "filesOpen")) files.act(files.pick)
     else if (Sc.hit(event, "filesInto")) files.into()
     else if (Sc.hit(event, "filesOut")) files.out()

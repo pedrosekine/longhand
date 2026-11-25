@@ -22,6 +22,8 @@
 // On Windows the host stands in for the shell and Hyprland (windows/):
 // what the sheet says of the system is said in Windows' words there.
 var onWindows = typeof Qt !== "undefined" && Qt.platform.os === "windows"
+// What keeps the six keys that reach the page from outside it, by name.
+var systemName = onWindows ? "Windows" : "Hyprland"
 
 // Where an action works. "any" is everywhere in the page; the typing ones
 // are where a bare letter has to stay a letter.
@@ -30,7 +32,7 @@ var places = {
   note: "in the note",
   mention: "while @ or # lists tags, or @ blocks, tasks, notes and papers in the day's box",
   cue: "while a box's date lights up as it is typed",
-  search: "in find",
+  search: "in find (the note's, or a PDF's)",
   switcher: "in the switcher (Ctrl+O)",
   dash: "in the dashboard",
   strip: "on the dashboard's course strip",
@@ -44,7 +46,9 @@ var places = {
   chat: "in the chat's box",
   settings: "in settings",
   notebook: "in what the agent knows",
-  autonomy: "in what the agent may do"
+  autonomy: "in what the agent may do",
+  folders: "in the folders the agent may search",
+  checkin: "in the check-in"
 }
 // Settings is not one of them since it became a list (2026-10-28): its
 // field types only while its own row is picked, and the list's keys wait
@@ -83,8 +87,10 @@ var actions = [
   { id: "zoomOut", group: "page", places: ["any"], does: "Zoom out (or Ctrl+wheel down)", keys: ["Ctrl+-", "Ctrl+_"] },
   { id: "zoomReset", group: "page", places: ["any"], does: "Zoom back to 100%", keys: ["Ctrl+0"] },
   { id: "keys", group: "page", places: ["any"], does: "Show these keys", keys: ["Ctrl+/"] },
-  // `?` where nothing is typed, as Gmail, Todoist and GitHub have it.
-  { id: "keysHere", group: "page", places: ["dash", "lists", "files", "calendar", "pdf"], does: "Show these keys (where nothing is typed)", keys: ["?"] },
+  // `?` where nothing is typed, as Gmail, Todoist and GitHub have it: in
+  // every list of the page since 2026-11-25 (the keyboard pass), not only
+  // the first five.
+  { id: "keysHere", group: "page", places: ["dash", "lists", "files", "calendar", "pdf", "paper", "export", "margin", "settings", "notebook", "autonomy", "folders", "checkin"], does: "Show these keys (where nothing is typed)", keys: ["?"] },
   { id: "settings", group: "page", places: ["any"], does: "Settings (calendars, sound)", keys: ["Ctrl+,"] },
   // The three panes, left to right, are the digits (2026-10-27, docs/
   // keys-proposal.md; the brackets were theirs from 2026-10-23, and need
@@ -129,6 +135,13 @@ var actions = [
   // Where you are, as a path to hand to an agent outside the page
   // (2026-11-03, Where.js): Ctrl+C's Shift, as terminals copy with it.
   { id: "copyPath", group: "page", places: ["any"], does: "Copy the path of what you are on (in a note, with the line), to give to an agent", keys: ["Ctrl+Shift+C"] },
+  // The page saves as you write; Ctrl+S, which every hand presses anyway,
+  // saves at once and says so (2026-11-25, the keyboard pass), instead of
+  // doing nothing.
+  { id: "save", group: "page", places: ["any"], does: "Save now, and say so (the page also saves as you write)", keys: ["Ctrl+S"] },
+  // The mouse's menu from the keys, where every Windows and GTK program
+  // has it (2026-11-25): on the note's cursor, or the dashboard's row.
+  { id: "menu", group: "page", places: ["note", "dash"], does: "The menu a right-click opens, at the cursor or on the row", keys: ["Shift+F10", "Menu"] },
   { id: "close", group: "page", places: ["note"], does: "Close the overlay", keys: ["Esc"] },
   { id: "private", group: "page", places: ["note"], does: "Make the whole note private (the agent sees nothing)", keys: ["Ctrl+Shift+P"] },
   { id: "privateBlock", group: "page", places: ["note"], does: "Make the block private, or the blocks selected (again: not private)", keys: ["Ctrl+P"] },
@@ -215,8 +228,10 @@ var actions = [
   { id: "mentionClose", group: "mention", places: ["mention"], does: "Close the list", keys: ["Esc"] },
 
 
-  { id: "findNext", group: "find", places: ["search"], does: "Next match", keys: ["Enter"] },
-  { id: "findPrev", group: "find", places: ["search"], does: "Previous match", keys: ["Shift+Enter"] },
+  // F3 as in every Windows program, and the arrows as a PDF's find had
+  // them: one find, the note's and a PDF's (2026-11-25).
+  { id: "findNext", group: "find", places: ["search"], does: "Next match", keys: ["Enter", "Down", "F3"] },
+  { id: "findPrev", group: "find", places: ["search"], does: "Previous match", keys: ["Shift+Enter", "Up", "Shift+F3"] },
   { id: "findGo", group: "find", places: ["search"], does: "Go to the match and close find", keys: ["Ctrl+Enter"] },
   // Esc leaves you on the match, as in every browser and editor; going
   // back to where the search began is its own key.
@@ -247,14 +262,16 @@ var actions = [
   { id: "dashPlan", group: "dash", places: ["dash"], does: "Ask the agent to plan now", keys: ["Ctrl+R"] },
   { id: "settingsShare", group: "settings", places: ["settings"], does: "What the agent sees of the picked calendar: its classes, or everything", keys: ["Ctrl+Shift+A"] },
   { id: "settingsFetch", group: "settings", places: ["settings"], does: "Fetch the picked calendar now", keys: ["Ctrl+R"] },
-  { id: "settingsRename", group: "settings", places: ["settings"], does: "Rename the picked calendar", keys: ["Ctrl+E"] },
-  { id: "settingsForget", group: "settings", places: ["settings"], does: "Remove the picked calendar (it asks first)", keys: ["Del"] },
+  // F2 renames and Backspace removes wherever something can be renamed or
+  // removed, as on the dashboard (2026-11-25, the keyboard pass).
+  { id: "settingsRename", group: "settings", places: ["settings"], does: "Rename the picked calendar", keys: ["Ctrl+E", "F2"] },
+  { id: "settingsForget", group: "settings", places: ["settings"], does: "Remove the picked calendar (it asks first)", keys: ["Del", "Backspace"] },
   // Settings is a list (2026-10-28): ↑↓ walk every setting, these change
   // the picked one; the sound, the pointer and the agent's three sheets had
   // a Ctrl letter each until then.
   { id: "settingsChange", group: "settings", places: ["settings"], does: "Change the picked setting, or open it (a calendar: fetch it now)", keys: ["Enter", "Space"] },
-  { id: "notebookCorrect", group: "settings", places: ["notebook"], does: "Correct the picked note in your words (Enter too)", keys: ["Ctrl+E"] },
-  { id: "notebookForget", group: "settings", places: ["notebook"], does: "Forget the picked note, or take a correction back (it asks first)", keys: ["Del"] },
+  { id: "notebookCorrect", group: "settings", places: ["notebook"], does: "Correct the picked note in your words (Enter too)", keys: ["Ctrl+E", "F2"] },
+  { id: "notebookForget", group: "settings", places: ["notebook"], does: "Forget the picked note, or take a correction back (it asks first)", keys: ["Del", "Backspace"] },
   // The note's key for talking about a block, on a row (2026-10-20; Alt+→
   // until 2026-10-23, now the panes'): the agent summoned to think the
   // task through.
@@ -309,12 +326,15 @@ var actions = [
   { id: "listLast", group: "lists", places: ["lists"], does: "The last project", keys: ["End"] },
   { id: "listOpen", group: "lists", places: ["lists"], does: "Open it (a deadline: go to its line)", keys: ["Enter"] },
   // The note's tick, on a deadline of the day (2026-10-17).
-  { id: "listDone", group: "lists", places: ["lists"], does: "A deadline: done (again: not done)", keys: ["Ctrl+L"] },
+  // Space too since 2026-11-25, the dashboard's own key for it.
+  { id: "listDone", group: "lists", places: ["lists"], does: "A deadline: done (again: not done)", keys: ["Space", "Ctrl+L"] },
   { id: "listInto", group: "lists", places: ["lists"], does: "Into a project's notes", keys: ["Right"] },
   { id: "listClass", group: "lists", places: ["lists"], does: "A project: a new section for it in today's note (# Name #tag)", keys: ["Shift+Enter"] },
-  { id: "listPage", group: "lists", places: ["lists"], does: "The project's page: its papers, files, notes and deadlines in one scroll (on a project, or inside one)", keys: ["Alt+P", "P"] },
+  // Alt only (2026-11-25): a bare letter in the sidebar finds a project,
+  // so P and W worked inside a project and not on one.
+  { id: "listPage", group: "lists", places: ["lists"], does: "The project's page: its papers, files, notes and deadlines in one scroll (on a project, or inside one)", keys: ["Alt+P"] },
   // The week (2026-11-17): the supervisor's update and the research diary.
-  { id: "listWeek", group: "lists", places: ["lists"], does: "The project's week: what was done, written and read, what is coming, what to ask (on a project, or inside one)", keys: ["Alt+W", "W"] },
+  { id: "listWeek", group: "lists", places: ["lists"], does: "The project's week: what was done, written and read, what is coming, what to ask (on a project, or inside one)", keys: ["Alt+W"] },
   // `#` went to reaching a project by its letters (2026-11-17), as the
   // switcher's "#th"; the tag is the T of "puts the tag".
   { id: "listTag", group: "lists", places: ["lists"], does: "A project: put its #tag at the cursor", keys: ["Ctrl+Enter"] },
@@ -382,11 +402,13 @@ var actions = [
   { id: "marginUp", group: "margin", places: ["margin", "chat"], does: "Previous proposal (from an empty box: into the proposals, or the other chats' lines)", keys: ["Up"] },
   { id: "marginDown", group: "margin", places: ["margin"], does: "Next proposal, then the box", keys: ["Down"] },
   { id: "marginAccept", group: "margin", places: ["margin"], does: "Do what the proposal says", keys: ["Enter", "Space"] },
-  { id: "marginDecline", group: "margin", places: ["margin"], does: "Decline what you are talking about (a question: set it aside; a thing done: undo it)", keys: ["Del"] },
+  { id: "marginDecline", group: "margin", places: ["margin"], does: "Decline what you are talking about (a question: set it aside; a thing done: undo it)", keys: ["Del", "Backspace"] },
   { id: "marginHelpful", group: "margin", places: ["margin"], does: "The reply was helpful (again: take it back)", keys: ["Plus", "="] },
   { id: "marginNotHelpful", group: "margin", places: ["margin"], does: "The reply was not helpful (again: take it back)", keys: ["-"] },
   { id: "chatSend", group: "margin", places: ["chat"], does: "Send what you wrote", keys: ["Enter"] },
-  { id: "chatAnswer", group: "margin", places: ["chat", "pdf", "paper"], does: "Reply to the words selected in the agent's answer (several, each attached)", keys: ["Ctrl+R"] },
+  // Words selected in an answer keep the keys where they were: the note,
+  // the sidebar's lists, the PDF (Page.qml, chatSelectionKey).
+  { id: "chatAnswer", group: "margin", places: ["chat", "pdf", "paper", "note", "lists"], does: "Reply to the words selected in the agent's answer (several, each attached)", keys: ["Ctrl+R"] },
   // Esc backs out one level: a block's or a task's conversation to the
   // day's, when that is open (the pane's home); else the pane closes and
   // the keys go back where they were.
@@ -406,7 +428,10 @@ var fixed = [
     keys: ["Left", "Right", "Ctrl+Left", "Ctrl+Right", "Home", "End"] },
   // Up and down are the note's lines; a one-line box lends them out (the
   // conversation box's ↑ goes to the proposals). Reserved, not shown twice.
-  { group: "typing", places: ["note"], does: "Move a line or a screen", show: [], keys: ["Up", "Down", "PgUp", "PgDn"] },
+  { group: "typing", places: ["note"], does: "Move a line", show: [], keys: ["Up", "Down"] },
+  // The note is a column of lines, not one field, so a screen at a time is
+  // the editor's own (NoteEditor.pageStep, 2026-11-25).
+  { group: "typing", places: ["note"], does: "A screen up or down; with Shift, selecting", show: ["PgUp", "PgDn"], keys: ["PgUp", "PgDn", "Shift+PgUp", "Shift+PgDn"] },
   { group: "typing", places: ["note", "search", "chat", "switcher"], does: "Select, across lines too; by word with Ctrl", show: ["Shift+Left", "Shift+Right", "Shift+Up", "Shift+Down"],
     keys: ["Shift+Left", "Shift+Right", "Shift+Up", "Shift+Down", "Ctrl+Shift+Left", "Ctrl+Shift+Right", "Shift+Home", "Shift+End", "Ctrl+Shift+Home", "Ctrl+Shift+End"] },
   // In the note Ctrl+A climbs (NoteEditor.selectAllStep); the one-line boxes
@@ -418,7 +443,12 @@ var fixed = [
   { group: "typing", places: ["note", "search", "chat", "switcher"], does: "Copy, cut, paste", show: ["Ctrl+C", "Ctrl+X", "Ctrl+V"], keys: ["Ctrl+C", "Ctrl+X", "Ctrl+V"] },
   { group: "typing", places: ["note", "search", "chat", "switcher", "strip"], does: "Delete a letter; a word with Ctrl", show: ["Backspace", "Del", "Ctrl+Backspace"],
     keys: ["Backspace", "Del", "Ctrl+Backspace", "Ctrl+Del"] },
-  { group: "typing", places: [], does: "In a box that asks \"when?\": confirm, or leave it", show: ["Enter", "Esc"], keys: [] }
+  { group: "typing", places: [], does: "In a box that asks \"when?\": confirm, or leave it", show: ["Enter", "Esc"], keys: [] },
+  // Every list in the page answers to the same few keys (2026-11-25, the
+  // keyboard pass): the dashboard, the files, a paper's marks, the export,
+  // settings and its sheets. The sidebar's lists keep ↑↓ only, since a
+  // letter there finds a project.
+  { group: "page", places: [], does: "In every list: ↑↓ or j k a row, Home and End the first and last, ? these keys", show: ["Up", "Down", "J", "K", "Home", "End", "?"], keys: [] }
 ]
 
 // ------------------------------------------------------------ keys
@@ -429,22 +459,23 @@ var named = {
   0x01000000: "Esc", 0x01000001: "Tab", 0x01000003: "Backspace", 0x01000004: "Enter", 0x01000005: "Enter",
   0x01000006: "Ins", 0x01000007: "Del", 0x01000010: "Home", 0x01000011: "End",
   0x01000012: "Left", 0x01000013: "Up", 0x01000014: "Right", 0x01000015: "Down",
-  0x01000016: "PgUp", 0x01000017: "PgDn", 0x20: "Space", 0x2b: "Plus"
+  0x01000016: "PgUp", 0x01000017: "PgDn", 0x01000055: "Menu", 0x20: "Space", 0x2b: "Plus"
 }
 // What a hand-written keys.json may say, beyond the canonical names.
 var aliases = {
   escape: "Esc", "return": "Enter", backtab: "Tab", "delete": "Del", insert: "Ins",
   pageup: "PgUp", pagedown: "PgDn", pgdown: "PgDn", up: "Up", down: "Down", left: "Left", right: "Right",
   esc: "Esc", enter: "Enter", tab: "Tab", backspace: "Backspace", del: "Del", ins: "Ins",
-  home: "Home", end: "End", pgup: "PgUp", pgdn: "PgDn", space: "Space", plus: "Plus"
+  home: "Home", end: "End", pgup: "PgUp", pgdn: "PgDn", space: "Space", plus: "Plus", menu: "Menu"
 }
 // A dead key (US-International's ` ' ~ ^ ", most European layouts' ^ and
 // ´) is the character it prints: with Ctrl held it composes nothing, and
 // Ctrl+` has to be Ctrl+` on every keyboard that has a backtick.
 var dead = { 0x01001250: "`", 0x01001251: "'", 0x01001252: "^", 0x01001253: "~", 0x01001257: "\"" }
 // A modifier on its own is not a key yet.
+// (Not the Menu key, 0x01000055: it opens the mouse's menu.)
 var lone = { 0x01000020: 1, 0x01000021: 1, 0x01000022: 1, 0x01000023: 1, 0x01000024: 1, 0x01000025: 1,
-  0x01000053: 1, 0x01000054: 1, 0x01000055: 1, 0x01000056: 1, 0x01000057: 1, 0x01001103: 1, 0x01ffffff: 1 }
+  0x01000053: 1, 0x01000054: 1, 0x01000056: 1, 0x01000057: 1, 0x01001103: 1, 0x01ffffff: 1 }
 
 // A letter's capital, as keys are written; ß has none of one letter ("SS"),
 // and stays ß, so a German keyboard's ß key is a key like any other.
@@ -719,12 +750,12 @@ function rows(filter, outside) {
         if (!keep(os[o].does + " " + groups[g].title, os[o].keys)) continue
         shown.push({ kind: outside.owned ? "hypr" : "fixed", id: "hypr:" + os[o].id, does: os[o].does,
                      keys: os[o].keys.map(show), raw: os[o].keys, own: os[o].own,
-                     changed: outside.owned && !same(os[o].keys, os[o].own), where: "Hyprland" })
+                     changed: outside.owned && !same(os[o].keys, os[o].own), where: systemName })
       }
       // Until the student lets the page keep them, they are listed as
       // Hyprland's, under the one row that offers to.
       if (!outside.owned && shown.length > 0)
-        items.push({ kind: "offer", id: "hypr:adopt", does: "Let the page keep these keys, to move them here", keys: [], changed: false, where: "Hyprland" })
+        items.push({ kind: "offer", id: "hypr:adopt", does: "Let the page keep these keys, to move them here", keys: [], changed: false, where: systemName })
       items = items.concat(shown)
     }
     if (items.length === 0) continue

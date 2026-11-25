@@ -10,7 +10,7 @@ with Win for Super:
     pomoToggle   Win+Alt+P     the timer: start, pause, resume
     pomoSkip     Win+Alt+N     the timer: on to the next phase
     pomoPopup    Win+Alt+O     the timer's popup, by the clock
-    deadlines    Win+Alt+D     the deadlines' popup
+    deadlines    Win+Alt+U     the deadlines' popup
 
 A key is written as the page writes one ("Alt+Win+=", any order, Super for
 Win). `<config>/longhand/windows-keys.json` moves them — {"page": "Win+F9"},

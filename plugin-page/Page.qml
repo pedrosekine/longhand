@@ -916,6 +916,9 @@ Item {
     var n = root.exportRows.length
     if (Sc.hit(event, "exportDown")) root.exportFocus = Math.max(0, Math.min(n - 1, root.exportFocus + 1))
     else if (Sc.hit(event, "exportUp")) root.exportFocus = Math.max(0, root.exportFocus - 1)
+    else if (Sc.fromEvent(event) === "Home") root.exportFocus = 0
+    else if (Sc.fromEvent(event) === "End") root.exportFocus = Math.max(0, n - 1)
+    else if (Sc.hit(event, "keysHere")) root.toggleKeys()
     else if (Sc.hit(event, "exportPick")) root.exportToggle(root.exportFocus)
     else if (Sc.hit(event, "exportPrevSection")) root.exportSection(-1)
     else if (Sc.hit(event, "exportNextSection")) root.exportSection(1)
@@ -2544,6 +2547,28 @@ Item {
     editMenu.openAt(over, x, y, list)
   }
 
+  // The menu from the keys (Shift+F10 or the Menu key, 2026-11-25): the
+  // same one, on the cursor or under the row, its first entry picked so
+  // Enter does it at once.
+  function menuKey() {
+    if (root.centerView === "dash") {
+      var kids = dash.dashColumnRef.children
+      for (var i = 0; i < kids.length; i++) {
+        var row = kids[i]
+        if (row.index === undefined || row.index !== root.taskFocus) continue
+        root.dashMenu(root.taskFocus, row, root.sp(24), row.height)
+        break
+      }
+    } else if (root.centerView === "note") {
+      var c = editor.cursorRect
+      root.noteMenu(c.x + c.width, c.y + c.height)
+    }
+    if (editMenu.opened) {
+      for (var e = 0; e < editMenu.entries.length; e++)
+        if (editMenu.entries[e].enabled !== false) { editMenu.current = e; break }
+    }
+  }
+
   // The note's, at (x, y) in the editor: its edits as their keys do them.
   function noteMenu(x, y) {
     root.used("edit-menu", "note")
@@ -2565,6 +2590,7 @@ Item {
   }
 
   function dayKey(event) {
+    root.keysSeen(event)
     if (root.copyChatSelection(event, dayPane.dayFieldRef)) return true
     if (root.answerSelected(event)) return true
     if (Sc.hit(event, "dayHelpful")) { root.rateDay(-1, "up"); return true }
@@ -3184,6 +3210,7 @@ Item {
     if (Sc.hit(event, "today")) { root.goToday(); return true }
     if (Sc.hit(event, "pin")) { root.togglePin(); return true }
     if (Sc.hit(event, "copyPath")) { root.copyPath(); return true }
+    if (Sc.hit(event, "save")) { root.saveNow(); return true }
     if (Sc.hit(event, "switcher")) { root.toggleSwitcher(); return true }
     if (Sc.hit(event, "findAll")) { root.openSwitcher("? "); return true }
     if (Sc.hit(event, "projectKey")) { root.projectByKey(event); return true }
@@ -3213,6 +3240,15 @@ Item {
     var before = whole.substring(0, whole.length - body.length)
     return editor.spanning ? Where.at(svc.notePath, before, body, editor.selStart, editor.selEnd)
       : Where.at(svc.notePath, before, body, editor.cursorPosition)
+  }
+
+  // Ctrl+S: what is written is on disk already, or is now; said either way.
+  function saveNow() {
+    var dirty = saveTimer.running
+    root.flush()
+    root.showHint(!svc.ready || root.centerView !== "note" ? "nothing to save here: Longhand saves as you write"
+      : dirty ? "saved" : "already saved: Longhand saves as you write")
+    root.used("save", dirty ? "dirty" : "clean")
   }
 
   function copyPath() {
@@ -3466,6 +3502,12 @@ Item {
     if (editMenu.opened) editMenu.close()
   }
 
+  // For a pane whose own keys come before the page's (the note's lists,
+  // the chats, a PDF's back): the hand's marks and Ctrl's keys go as the
+  // key comes, not only when it reaches anywhereKey (2026-11-25). The
+  // mouse's menu, open, still hears its keys first there.
+  function keysSeen(event) { if (!editMenu.opened) root.keysTook(event) }
+
   // Hold Ctrl (2026-10-30, docs/hints.md F; the canvas's direction 5): Ctrl
   // held alone for a moment puts its keys on the things they act on
   // (KeyBadge.qml), and the rest in a strip at the foot of the middle. Any
@@ -3496,7 +3538,7 @@ Item {
     var rest = v === "note" ? [["pane2", "dashboard"], ["bold", "bold"], ["italic", "italic"], ["link", "link"], ["deadline", "a date"], ["privateBlock", "private"], ["find", "find"], ["undo", "undo"]]
       : v === "dash" ? [["pane2", "note"], ["dashPlan", "plan now"], ["dashUndo", "undo"]]
       : []
-    return rest.concat([["switcher", "a project"], ["linkBack", "back"], ["keys", "every key"]])
+    return rest.concat([["switcher", "find anything"], ["linkBack", "back"], ["keys", "every key"]])
       .map(function (a) { return { key: root.ctrlKey(a[0]), words: a[1] } })
       .filter(function (a) { return a.key !== "" })
   }
@@ -3738,8 +3780,13 @@ Item {
   // Ctrl+P: the same sheet, the other shape. Pinning the overlay opens
   // the window and closes the overlay; unpinning the window does the
   // reverse.
+  // The keys stay in the pane they were in (2026-11-25, the keyboard
+  // pass): F11 from the dashboard, a PDF or the sidebar sent them to the
+  // note, hidden or not.
+  property string pinFrom: "center"
   function togglePin() {
     root.used("pin", root.overlayOpen ? "to-window" : "to-overlay")
+    root.pinFrom = root.here
     root.flush()
     if (root.overlayOpen) {
       root.windowOpen = true
@@ -3748,7 +3795,12 @@ Item {
       root.windowOpen = false
       root.overlayOpen = true
     }
-    Qt.callLater(editor.focusNote)
+    Qt.callLater(root.focusPinned)
+  }
+  function focusPinned() {
+    var p = root.pinFrom
+    root.pinFrom = "center"
+    if (!root.focusPane(p)) root.focusCenter()
   }
 
   // Disk → editor. Guarded so the resulting textChanged does not look like
@@ -4138,6 +4190,7 @@ Item {
     if (root.mentionKey(event)) return true
     if (root.anywhereKey(event)) return true
     if (Sc.hit(event, "cueAccept") && root.acceptCue()) return true
+    if (Sc.hit(event, "menu")) { root.menuKey(); return true }
     if (Sc.hit(event, "close")) {
       if (editor.focusTag !== "") root.unfocus()
       else if (!root.alongside) root.dismiss()
@@ -4374,6 +4427,20 @@ Item {
     root.settingsNote = ""
   }
 
+  // The keys every list shares (2026-11-25, the keyboard pass; the fixed
+  // row "In every list" in Shortcuts.js): ↑↓ and j k a row, Home and End
+  // the first and last. The row the key goes to, kept between `first` and
+  // `last`; -2 when it is none of them. `step(at, dir)` walks past rows
+  // that are not picked (a heading), when a list has them.
+  function listStep(seq, at, first, last, step) {
+    var by = step || function (i, d) { return Math.max(first, Math.min(last, i + d)) }
+    if (seq === "Up" || seq === "K") return by(at, -1)
+    if (seq === "Down" || seq === "J") return by(at, 1)
+    if (seq === "Home") return step ? step(first - 1, 1) : first
+    if (seq === "End") return step ? step(last + 1, -1) : last
+    return -2
+  }
+
   function settingsKey(event) {
     if (root.anywhereKey(event)) return true
     var seq = Sc.fromEvent(event)
@@ -4394,8 +4461,13 @@ Item {
     }
     var last = root.calendarCount + root.settingsKinds.length - 1
     var kind = root.settingsPicked()
-    if (seq === "Up" || (kind !== "field" && seq === "k")) { root.settingsFocus = Math.max(0, root.settingsFocus - 1); return true }
-    if (seq === "Down" || (kind !== "field" && seq === "j")) { root.settingsFocus = Math.min(last, root.settingsFocus + 1); return true }
+    // The field's row types: only the arrows leave it (the letters, Home
+    // and End are its own). The `k` and `j` here never matched: a key is
+    // written as its capital (2026-11-25).
+    var to = kind === "field" ? (seq === "Up" || seq === "Down" ? root.listStep(seq, root.settingsFocus, 0, last) : -2)
+      : root.listStep(seq, root.settingsFocus, 0, last)
+    if (to !== -2) { root.settingsFocus = to; return true }
+    if (kind !== "field" && Sc.hit(event, "keysHere")) { root.toggleKeys(); return true }
     if (kind === "field") {
       if (seq === "Enter") { root.addCalendar(settingsSheet.settingsFieldRef.text); return true }
       return false
@@ -4465,8 +4537,9 @@ Item {
     var seq = Sc.fromEvent(event)
     var f = root.checkinFocus, n = root.checkinAnswers.length
     if (seq === "Esc") { root.closeCheckin(); return true }
-    if (seq === "Up") { root.checkinFocus = Math.max(0, f - 1); return true }
-    if (seq === "Down") { root.checkinFocus = Math.min(n - 1, f + 1); return true }
+    var to = root.listStep(seq, f, 0, n - 1)
+    if (to !== -2) { root.checkinFocus = to; return true }
+    if (Sc.hit(event, "keysHere")) { root.toggleKeys(); return true }
     if (seq === "Left" || seq === "Right") {
       var cur = root.checkinAnswers[f] || 4
       root.setCheckin(f, Math.max(1, Math.min(7, cur + (seq === "Left" ? -1 : 1))), false)
@@ -4474,7 +4547,7 @@ Item {
     }
     if (/^[1-7]$/.test(seq)) { root.setCheckin(f, parseInt(seq, 10), true); return true }
     if (seq === "Enter") { root.keepCheckin(); return true }
-    if (seq === "Del") { root.skipCheckin(); return true }
+    if (seq === "Del" || seq === "Backspace") { root.skipCheckin(); return true }
     return false
   }
   function keepCheckin() {
@@ -4556,8 +4629,9 @@ Item {
     var seq = Sc.fromEvent(event)
     var n = root.autonomyData ? root.autonomyData.kinds.length : 0
     if (seq === "Esc") { root.closeNotebook(); return true }
-    if (seq === "Up") { root.autonomyFocus = Math.max(0, root.autonomyFocus - 1); return true }
-    if (seq === "Down") { root.autonomyFocus = Math.max(0, Math.min(n - 1, root.autonomyFocus + 1)); return true }
+    var to = root.listStep(seq, root.autonomyFocus, 0, Math.max(0, n - 1))
+    if (to !== -2) { root.autonomyFocus = to; return true }
+    if (Sc.hit(event, "keysHere")) { root.toggleKeys(); return true }
     if (seq === "Left") { root.stepAutonomy(-1); return true }
     if (seq === "Right" || seq === "Space" || seq === "Enter") { root.stepAutonomy(1); return true }
     return false
@@ -4648,8 +4722,9 @@ Item {
     var n = root.searchData ? root.searchData.folders.length : 0
     if (seq === "Esc") { root.closeNotebook(); return true }
     // Row -1 is the horizon, above the folders.
-    if (seq === "Up") { root.searchFocus = Math.max(-1, root.searchFocus - 1); return true }
-    if (seq === "Down") { root.searchFocus = Math.max(-1, Math.min(n - 1, root.searchFocus + 1)); return true }
+    var to = root.listStep(seq, root.searchFocus, -1, n - 1)
+    if (to !== -2) { root.searchFocus = to; return true }
+    if (Sc.hit(event, "keysHere")) { root.toggleKeys(); return true }
     if (root.searchFocus < 0) {
       if (seq === "Left" || seq === "Right") { root.moveHorizon(seq === "Left" ? -1 : 1); return true }
       if (seq === "Shift+Left" || seq === "Shift+Right") { root.moveHorizon(seq === "Shift+Left" ? -12 : 12); return true }
@@ -4925,8 +5000,9 @@ Item {
       if (seq === "Esc") return true
     }
     if (seq === "Esc") { root.closeNotebook(); return true }
-    if (seq === "Up") { root.notebookFocus = root.nextNotebookRow(root.notebookFocus, -1); return true }
-    if (seq === "Down") { root.notebookFocus = root.nextNotebookRow(root.notebookFocus, 1); return true }
+    var to = root.listStep(seq, root.notebookFocus, 0, root.notebookList.length - 1, root.nextNotebookRow)
+    if (to !== -2) { root.notebookFocus = to; return true }
+    if (Sc.hit(event, "keysHere")) { root.toggleKeys(); return true }
     if (seq === "Enter" || Sc.hit(event, "notebookCorrect")) { root.startCorrect(); return true }
     if (Sc.hit(event, "notebookForget")) { root.askForgetNote(); return true }
     return false
@@ -5195,8 +5271,9 @@ Item {
     if (row.kind === "offer") { root.offerAdopt(); return }
     root.keysAdopt = false
     if (row.kind === "fixed") {
-      root.keysNote = row.where === "Hyprland"
-        ? "Hyprland's key, not the page's: the row above lets the page keep it, or change it in your Hyprland bindings (~/.config/hypr/bindings.lua)"
+      root.keysNote = row.where === Sc.systemName
+        ? (Sc.onWindows ? "Windows' key, not the page's: the row above lets the page keep it"
+           : "Hyprland's key, not the page's: the row above lets the page keep it, or change it in your Hyprland bindings (~/.config/hypr/bindings.lua)")
         : "The text field's own key: it stays, so writing works the same everywhere"
       return
     }
@@ -5712,7 +5789,7 @@ Item {
   // as Shift- and Ctrl-click; p and w to Alt+P and Alt+W; j k to the
   // arrows; the calendar's t to Home).
   function sideFindStart(event) {
-    if (event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier)) return false
+    if (!root.typing(event)) return false
     var ch = event.text || ""
     if (ch.length !== 1 || !/[A-Za-z0-9\u00C0-\u024F_\-\/]/.test(ch)) return false
     root.sideTyping = true
@@ -5721,7 +5798,7 @@ Item {
     return true
   }
   function sideTypeKey(event) {
-    var mods = event.modifiers & (Qt.ControlModifier | Qt.AltModifier)
+    var mods = !root.typing(event)
     var ch = event.text || ""
     var on = root.projects[root.projFocus]
     var at = on ? root.sideMatchTags.indexOf(on.tag) : -1
@@ -7116,6 +7193,7 @@ Item {
     // (2026-11-25, the mouse pass). Ctrl+R stays the dashboard's own plan.
     if (root.copyChatSelection(e, null)) return true
     if (root.stripAt >= 0) return root.stripKey(e)
+    if (Sc.hit(e, "menu")) { root.menuKey(); return true }
     if (Sc.hit(e, "dashBack")) { root.toggleDash(); return true }
     if (Sc.hit(e, "dashSearch")) { root.enterStrip(0); return true }
     if (Sc.hit(e, "dashCheckin")) { root.openCheckin(true); return true }
@@ -7223,9 +7301,19 @@ Item {
   }
   // What a key types into ⌕: a printable character with no Ctrl or Alt.
   function typedChar(e) {
-    if (e.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier)) return ""
+    if (!root.typing(e)) return ""
     var t = e.text || ""
     return t.length === 1 && t >= " " ? t : ""
+  }
+  // A key that types (2026-11-25): no Ctrl, Alt or Super — or Ctrl and Alt
+  // together with a letter to show, which is AltGr on a Windows keyboard
+  // (@, \, [, { on a German one; measured on the ThinkPad). The page's
+  // own Ctrl+Alt keys (Ctrl+Alt+P) are read before anything types.
+  function typing(e) {
+    var m = e.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier)
+    if (m === 0) return true
+    var t = e.text || ""
+    return m === (Qt.ControlModifier | Qt.AltModifier) && t.length === 1 && t >= " "
   }
   // ⌕'s line of text (Dashboard.qml, 2026-11-13): what it holds is shown
   // at once, and the list narrowed to it a moment later, so the frame with
@@ -9562,7 +9650,7 @@ Item {
     implicitHeight: Style.space(900)
     minimumSize: Qt.size(Style.space(360), Style.space(300))
     onVisibleChanged: {
-      if (visible) Qt.callLater(editor.focusNote)
+      if (visible) Qt.callLater(root.focusPinned)
       else if (root.windowOpen) {
         // Closed from the compositor.
         root.flush()
@@ -9604,7 +9692,10 @@ Item {
       return !f || f === content || f === content.parent
     }
     Window.onActiveChanged: Qt.callLater(function () {
-      if (content.Window.active && content.keysNowhere()) root.focusCenter()
+      // Ctrl's release goes to the window that took the keys (Ctrl+Esc,
+      // a click elsewhere): its keys shown would stay on screen.
+      if (!content.Window.active) root.ctrlLetGo()
+      else if (content.keysNowhere()) root.focusCenter()
     })
     Keys.onPressed: function (event) {
       if (!content.keysNowhere()) return
@@ -10186,6 +10277,9 @@ Item {
           anchors.right: parent.right
           height: problemCol.implicitHeight
           onVisibleChanged: if (visible && root.showing) Qt.callLater(problemCard.forceActiveFocus)
+          // The page's own keys work here too (2026-11-25): settings, the
+          // keys, the zoom, the window's shape.
+          Keys.onPressed: function (event) { if (root.anywhereKey(event)) event.accepted = true }
           Keys.onEscapePressed: if (root.overlayOpen) root.dismiss()
           Column {
             id: problemCol
@@ -10692,7 +10786,11 @@ Item {
             tabStop: 4 * root.sp(8)
             keyFilter: root.pageKey
             chatKey: root.chatSelectionKey
-            firstKey: function (e) { return editMenu.opened && editMenu.key(e) }
+            firstKey: function (e) {
+              if (editMenu.opened && editMenu.key(e)) return true
+              root.keysSeen(e)
+              return false
+            }
             viewport: flick
             onMenuAsked: function (x, y) { root.noteMenu(x, y) }
             onCursorRectChanged: flick.ensureVisible(cursorRect)

@@ -77,6 +77,7 @@ BorderSurface {
     id: marginKeys
     anchors.fill: parent
     Keys.onPressed: function (event) {
+      page.keysSeen(event)
       if (page.copyChatSelection(event, null)) { event.accepted = true; return }
       if (page.anywhereKey(event)) { event.accepted = true; return }
       if (margin.talk) { if (page.talkKey(event)) event.accepted = true; return }
@@ -87,6 +88,7 @@ BorderSurface {
       else if (Sc.hit(event, "marginAccept")) page.acceptProposal(page.marginFocus)
       else if (Sc.hit(event, "marginDecline")) page.declineProposal(page.marginFocus)
       else if (Sc.hit(event, "undo")) { if (!page.undoLastCard()) return }
+      else if (Sc.hit(event, "keysHere")) page.toggleKeys()
       else if (Sc.hit(event, "marginHelpful")) page.rateReply("up")
       else if (Sc.hit(event, "marginNotHelpful")) page.rateReply("down")
       else return
@@ -609,6 +611,7 @@ BorderSurface {
       onMentionGone: function (key) { page.marginRefs = page.marginRefs.filter(function (r) { return page.refKey(r) !== key }) }
       onCursorPositionChanged: Qt.callLater(page.updateMarginMention)
       onKeyPressed: function (event) {
+        page.keysSeen(event)
         if (page.copyChatSelection(event, chatField)) { event.accepted = true; return }
         if (page.marginMentionKey(event)) { event.accepted = true; return }
         if (page.answerSelected(event)) { event.accepted = true; return }
