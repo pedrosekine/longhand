@@ -173,7 +173,7 @@ FocusScope {
       wrapMode: TextArea.Wrap
       textFormat: TextEdit.RichText
       color: box._drawn ? "transparent" : page.foreground
-      placeholderTextColor: Qt.darker(page.foreground, 1.6)
+      placeholderTextColor: page.faint
       selectionColor: page.palette.selection
       selectedTextColor: box._drawn ? "transparent" : page.foreground
       font.family: page.fontFamily

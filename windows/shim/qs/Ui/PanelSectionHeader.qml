@@ -12,7 +12,9 @@ Text {
   property real fontSize: Style.font.caption
 
   textFormat: Text.PlainText
-  color: Qt.darker(foreground, 1.4)
+  // Toward the popup's ground, not Qt.darker, which on a light ground made
+  // the header darker than the rows under it.
+  color: Style.mix(foreground, Commons.Color.menu.background, 0.30)
   font.family: fontFamily
   font.pixelSize: fontSize
   font.bold: true
