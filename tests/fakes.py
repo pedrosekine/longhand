@@ -14,7 +14,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 BINDINGS = """o.bind("SUPER + ALT + P", "Pomo toggle", "pomo toggle")
 o.bind("SUPER + ALT + N", "Pomo skip", "pomo skip")
 o.bind("SUPER + ALT + O", "Pomo popup", "omarchy-shell longhand.pomo toggle")
-o.bind("SUPER + ALT + D", "Deadlines popup", "omarchy-shell longhand.deadline toggle")
+o.bind("SUPER + ALT + U", "Deadlines popup", "omarchy-shell longhand.deadline toggle")
 o.bind("SUPER + ALT + equal", "Page (today's note)", "omarchy-shell shell toggle longhand.page '{}'")
 o.bind("SUPER + ALT + backslash", "Page alongside", "omarchy-shell shell summon longhand.page '{\\"shape\\":\\"alongside\\"}'")
 """

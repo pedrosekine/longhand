@@ -570,12 +570,13 @@ Item {
     page.used("pdf", "find")
   }
   // The find field's keys; the rest are typed.
+  // The note's find keys (2026-11-25): one find, moved in one place.
   function findKey(event) {
     if (page.anywhereKey(event)) return true
     var seq = Sc.fromEvent(event)
-    if (seq === "Enter" || seq === "Down") pane.findGo(1)
-    else if (seq === "Shift+Enter" || seq === "Up") pane.findGo(-1)
-    else if (seq === "Esc") pane.closeFind()
+    if (Sc.hit(event, "findNext")) pane.findGo(1)
+    else if (Sc.hit(event, "findPrev")) pane.findGo(-1)
+    else if (Sc.hit(event, "findClose") || Sc.hit(event, "findBack") || Sc.hit(event, "findGo")) pane.closeFind()
     else if (Sc.hit(event, "pdfFind") && seq !== "/") findField.selectAll()
     else if (seq === "PgDn") pane.turn(1)
     else if (seq === "PgUp") pane.turn(-1)
@@ -1243,6 +1244,7 @@ Item {
   }
 
   function key(event) {
+    page.keysSeen(event)
     // Back from a definition gone to, before the page's own back.
     if (pane.jumpBack && Sc.hit(event, "linkBack")) { pane.jumpReturn(); return true }
     if (page.anywhereKey(event)) return true
@@ -2003,6 +2005,8 @@ Item {
     // The wheel over it stays in it, as over the panels (2026-11-25).
     MouseArea { anchors.fill: parent; z: -1; acceptedButtons: Qt.NoButton; onWheel: function (w) { w.accepted = true } }
     Keys.onPressed: function (event) {
+      // The page's own keys first, as in every box (2026-11-25).
+      if (page.anywhereKey(event)) { event.accepted = true; return }
       if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { pane.commitGoto(); event.accepted = true }
       else if (event.key === Qt.Key_Escape) { pane.closeGoto(); event.accepted = true }
     }

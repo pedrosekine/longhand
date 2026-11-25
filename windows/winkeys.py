@@ -46,8 +46,10 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "plugin-page"))
 import hyprkeys  # noqa: E402  (the actions' ids and words, one list for both)
 
+# Win+Alt+D is Windows 11's own (its clock's calendar), so the deadlines
+# are U, "due", on both systems since 2026-11-25 (hyprkeys.ACTIONS).
 DEFAULTS = {"page": "Win+Alt+=", "alongside": "Win+Alt+\\", "pomoToggle": "Win+Alt+P", "pomoSkip": "Win+Alt+N",
-            "pomoPopup": "Win+Alt+O", "deadlines": "Win+Alt+D"}
+            "pomoPopup": "Win+Alt+O", "deadlines": "Win+Alt+U"}
 DOES = {aid: does for aid, does, _cmd, _key in hyprkeys.ACTIONS}
 ORDER = [a[0] for a in hyprkeys.ACTIONS]
 

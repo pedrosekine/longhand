@@ -553,6 +553,20 @@ Panel {
             }
           }
         }
+
+        // Its keys, said as the deadlines popup says its own (2026-11-25,
+        // the keyboard pass): the digits and Tab were found by no one.
+        Text {
+          width: parent.width
+          textFormat: Text.PlainText
+          wrapMode: Text.WordWrap
+          text: svc.phase === "idle"
+            ? "↑↓ ←→ move · Enter picks · on the time: type minutes, Enter · Tab the deadlines · Esc"
+            : "↑↓ ←→ move · Enter picks · Tab the deadlines · Esc"
+          color: root.dim
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+        }
       }
     }
   }

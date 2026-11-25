@@ -254,8 +254,11 @@ BorderSurface {
           textFormat: Text.PlainText
           wrapMode: Text.WordWrap
           text: page.keysNote !== "" ? page.keysNote
-            : (page.keyRows[page.keysFocus] && page.keyRows[page.keysFocus].where !== "" && page.keyRows[page.keysFocus].where !== "Hyprland"
-              ? "works " + page.keyRows[page.keysFocus].where : "")
+            : (page.keyRows[page.keysFocus] && page.keyRows[page.keysFocus].where !== ""
+              // The six from outside work anywhere in the system, the page
+              // closed too (2026-11-25: on Windows the footer said nothing).
+              ? (page.keyRows[page.keysFocus].where === Sc.systemName ? "works anywhere in " + Sc.systemName + ", the page closed too"
+                 : "works " + page.keyRows[page.keysFocus].where) : "")
           color: page.keysNote !== "" ? page.accent : page.dim
           font.family: page.fontFamily
           font.styleName: page.fontStyle

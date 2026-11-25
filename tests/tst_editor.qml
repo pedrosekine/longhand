@@ -29,6 +29,8 @@ Item {
   }
 
   SignalSpy { id: kept; target: ed; signalName: "cueDismissed" }
+  // What shows of a long note: the page's Flickable, 200 px tall.
+  Flickable { id: shown; x: 595; width: 5; height: 200; contentHeight: ed.height }
 
   TestCase {
     name: "NoteEditor"
@@ -1777,6 +1779,62 @@ after")
       compare(ed.text, "\n\nbeta\ngamma")
       ed.undo()
       compare(ed.text, "\nalpha\nbeta\ngamma")
+    }
+
+    // The keyboard pass (2026-11-25): PgUp and PgDn did nothing in the
+    // note, a column of one-line fields none of which could page.
+    function test_page_down_and_up_move_a_screen() {
+      var lines = []
+      for (var i = 0; i < 80; i++) lines.push("line " + i)
+      ed.viewport = shown
+      shown.contentY = 0
+      start("\n" + lines.join("\n"), 1)
+      var row0 = ed.focusedRow
+      keyClick(Qt.Key_PageDown)
+      var row1 = ed.focusedRow
+      verify(row1 > row0 + 3 && row1 < row0 + 15, "a screen down, not the end: row " + row1)
+      verify(shown.contentY > 0, "the view went with it")
+      keyClick(Qt.Key_PageUp)
+      verify(Math.abs(ed.focusedRow - row0) <= 1, "back a screen: row " + ed.focusedRow)
+      keyClick(Qt.Key_PageUp)
+      compare(ed.cursorPosition, 0, "before the first screen: the note's start")
+      for (var j = 0; j < 20; j++) keyClick(Qt.Key_PageDown)
+      compare(ed.cursorPosition, ed.text.length, "past the last screen: the note's end")
+      ed.viewport = null
+    }
+
+    function test_shift_page_down_selects() {
+      var lines = []
+      for (var i = 0; i < 80; i++) lines.push("line " + i)
+      ed.viewport = shown
+      shown.contentY = 0
+      start("\n" + lines.join("\n"), 1)
+      keyClick(Qt.Key_PageDown, Qt.ShiftModifier)
+      verify(ed.spanning, "a selection across lines")
+      compare(ed.selStart, 1)
+      keyClick(Qt.Key_PageDown, Qt.ShiftModifier)
+      verify(ed.selEnd > ed.rows[10].start, "it grows by another screen")
+      keyClick(Qt.Key_PageDown)
+      verify(!ed.spanning, "PgDn alone lets it go")
+      ed.viewport = null
+    }
+
+    // Ctrl+Del at a line's end joins the next line, as Ctrl+Backspace at
+    // a line's start joins the one before (it did nothing).
+    function test_ctrl_delete_at_the_end_joins_the_next_line() {
+      start("\none\ntwo", 4)
+      keyClick(Qt.Key_Delete, Qt.ControlModifier)
+      compare(ed.text, "\nonetwo")
+    }
+
+    // Ctrl+A climbs only with Ctrl alone: Ctrl+Alt+A is AltGr on a
+    // Windows keyboard, and Ctrl+Shift+A is not select-all anywhere.
+    function test_ctrl_a_climbs_only_alone() {
+      start("\nalpha beta\ngamma", 3)
+      keyClick(Qt.Key_A, Qt.ControlModifier | Qt.ShiftModifier)
+      verify(!ed.hasSelection(), "Ctrl+Shift+A selects nothing")
+      keyClick(Qt.Key_A, Qt.ControlModifier)
+      verify(ed.hasSelection(), "Ctrl+A does")
     }
   }
 }

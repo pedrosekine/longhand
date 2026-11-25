@@ -120,6 +120,17 @@ Panel {
     return root.shown[root.cursorRow] || null
   }
 
+  // Space ticks on a row, as on the dashboard's (2026-11-25, the keyboard
+  // pass); Enter goes to its line. The shell's catcher sends both as
+  // "activate", Enter after "return", so which one came is kept here.
+  property bool viaReturn: false
+  function spaceOrReturn() {
+    var ret = root.viaReturn
+    root.viaReturn = false
+    if (!ret && root.cursorCol === 0) root.toggleSelected()
+    else root.activateCursor()
+  }
+
   function activateCursor() {
     var item = root.selectedItem()
     if (!item) return
@@ -344,11 +355,12 @@ Panel {
       blocked: root.gradingId > 0
       onCloseRequested: root.close()
       onMoveRequested: function (dx, dy) { root.moveCursor(dx, dy) }
-      onActivateRequested: root.activateCursor()
+      onReturnRequested: root.viaReturn = true
+      onActivateRequested: root.spaceOrReturn()
       onDeleteRequested: root.removeSelected()
       onTabRequested: function (direction) { root.switchPanel(direction) }
       // Ctrl+L ticks, as it does in the note, the dashboard and the
-      // sidebar's list; `d` stays beside it. The catcher reads keys by
+      // sidebar's list; `e` as on the dashboard, and `d` stays beside it. The catcher reads keys by
       // their text, so the Ctrl key is read here, beside it, by its code.
       // Every key passes here first (both this and the catcher's own
       // handler run); the hand's marks go away with it.
@@ -361,7 +373,7 @@ Panel {
         }
       }
       onTextKey: function (t) {
-        if (t === "d" || t === "D") root.toggleSelected()
+        if (t === "d" || t === "D" || t === "e" || t === "E") root.toggleSelected()
         else if (t === "g" || t === "G") root.gradeSelected()
         else if (t === "o" || t === "O") root.openLine(root.selectedItem())
         else if (t === "w" || t === "W") root.showWaiting = !root.showWaiting
@@ -652,7 +664,7 @@ Panel {
           wrapMode: Text.WordWrap
           text: root.gradingId > 0
             ? "Enter saves the grade · Esc cancels"
-            : "↑↓ ←→ move · Enter act · d or Ctrl+L done · g grade · o open its line · x cancel" + (root.waiting.length > 0 ? " · w waiting" : "")
+            : "↑↓ ←→ move · Enter its line · Space or Ctrl+L done · g grade · x cancel · Tab the timer" + (root.waiting.length > 0 ? " · w waiting" : "")
           color: root.faint
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption

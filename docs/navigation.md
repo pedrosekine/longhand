@@ -362,12 +362,91 @@ it, besides the clicks above and the hover marks in [hints.md](hints.md):
   been clicked).
   The timer's middle button skips, as on Omarchy's bar.
 
+## The same act, the same keys (2026-11-25, the keyboard pass)
+
+An outside review of the keys, asked from the Windows side, found few keys
+that were hard to learn. Most of what it found was the same act taking
+different keys in different places, or a key the page names that did
+nothing. The rule since:
+
+- **Every list** answers to ↑↓ and `j` `k` for a row, `Home` and `End` for
+  the first and last, and `?` for the keys (`Shortcuts.js`, the fixed row
+  "In every list"; `Page.listStep`). That means the dashboard, the files, a
+  paper's marks, the export, settings and its four sheets, and the margin's
+  cards. The sidebar's lists keep ↑↓ only, because there a letter finds a
+  project. So the project's page and week are `Alt+P` and `Alt+W` on a
+  project and inside one. Bare `p` and `w` worked only inside one.
+- **The acts on a row:** `F2` renames wherever `Ctrl+E` does. `Del` and
+  `Backspace` both remove or cancel. `Space` ticks a deadline on the
+  dashboard, in the sidebar's list and in the deadlines popup. In the popup
+  `Enter` goes to its line, as everywhere in the page; before, it took both
+  keys. `Ctrl+L` ticks everywhere, as in the note.
+- **One find:** `Enter`, `↓` or `F3` for the next match, and `Shift+Enter`,
+  `↑` or `Shift+F3` for the one before, in the note's find and a PDF's. A
+  PDF's find read its keys itself, so a key moved in the sheet did not
+  reach it.
+- **Keys Windows and GTK programs share:** `PgUp`/`PgDn` move a screen in
+  the note, and with Shift they select. The note is a column of one-line
+  fields, so no field could do it, and the keys did nothing. `Ctrl+Del` at
+  a line's end joins the next line, as `Ctrl+Backspace` at its start joins
+  the one before. `Ctrl+S` saves at once and says so; it used to do
+  nothing, and every hand presses it. `Shift+F10` or the Menu key opens
+  the right-click menu at the cursor or on the dashboard's row.
+- **Global keys reach every box,** including the PDF's "go to page" and the
+  card shown when the page cannot start. `F11` leaves the keys in the pane
+  they were in; it used to send them to the note, even a hidden one. `Ctrl`
+  held while the window loses the keyboard puts its keys away. Before, the
+  release went to the other window and the keys stayed on screen.
+- **Each popup says its keys** in a line at its foot, the timer's as the
+  deadlines' does. They follow the shell's grammar (Enter and Space act,
+  `x` cancels, Tab goes to the other popup), since on Omarchy the popups
+  are the shell's, not the page's. They are not in the keys sheet.
+
+### Omarchy and Windows
+
+The page's keys are the same on both, written once in `Shortcuts.js`.
+These differences remain:
+
+- **The system key** is `Super` on Omarchy and `Win` on Windows. The six
+  keys that reach the page from anywhere are `Super+Alt+…` and
+  `Win+Alt+…`: the same letters, kept by Hyprland on one and by the host
+  (`windows/winkeys.py`) on the other. The keys sheet names the system
+  each belongs to.
+- **AltGr.** Windows sends AltGr as `Ctrl+Alt`, where Linux has a key of
+  its own for it. Measured on the ThinkPad with a German layout
+  (2026-11-25): AltGr+Q arrives as `Ctrl+Alt` with `@`, and a real `Ctrl`
+  held with it cannot be told apart. So the page counts `Ctrl+Alt` with a
+  character as typing (`Page.typing`). Before, `@ \ [ {` typed over a
+  selection of several lines, into the sidebar's find or into a paper's
+  marks were lost. Qt's `windows:altgr` option does not help: it reports
+  AltGr apart, but drops the Ctrl held with it. Two keys therefore cannot
+  be pressed on Windows with such a layout:
+  - `Ctrl+\` and `Ctrl+|`, the side panes' toggles. `Ctrl+1` and `Ctrl+3`
+    open a side pane and go there, and `Esc` closes it.
+  - `Ctrl+Alt+2`, the dashboard. Windows types `²` for it. `Ctrl+2` from
+    the note flips to the dashboard.
+
+  Either can be moved in the keys sheet. On Omarchy, AltGr is a key of
+  its own, and both work.
+- **The deadlines popup** is `Super+Alt+U` and `Win+Alt+U` since
+  2026-11-25. Windows 11 keeps `Win+Alt+D` for its clock and never hands
+  it over, so `D` was dead on every fresh Windows install. `U` is free on
+  both systems, and sits beside the timer's `O` and `P`.
+- **The pointer** follows the keys on Omarchy, and Hyprland hides it while
+  you type. Windows shows it while the keys move, so there it stays put
+  unless Settings → The pointer says otherwise.
+
 ## Not yet
 
 - Several sheets still read raw keys that cannot be moved in the keys sheet
   (Esc/Enter/arrows in keys, settings, the notebook, the agent's permissions
   and the search folders; Enter/Esc in the "when?" and name boxes).
-  They behave by the Esc rule above but are not listed per place.
+  They behave by the Esc rule above and by "In every list", which the keys
+  sheet shows, but are not listed per place.
+- The popups' keys are the shell's and cannot be moved.
+- In the note, `Home` and `End` go to the start and end of a wrapped line's
+  row as it is drawn. With a selection across lines they go to the line's
+  start and end.
 - The test window never has the keyboard, but the page's own focus is real
   in it, so `tests/page/run.py` checks which panes open and close and where
   the keys land (`here`: Alt+←/→, the bracket keys, a sheet giving the keys

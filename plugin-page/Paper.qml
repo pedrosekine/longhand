@@ -159,6 +159,12 @@ Item {
     if (Sc.hit(event, "paperAskWaiting")) { pp.askWaiting(); return true }
     if (Sc.hit(event, "paperUp")) { pp.pick(pp.at - 1); return true }
     if (Sc.hit(event, "paperDown")) { pp.pick(pp.at + 1); return true }
+    // The ends, and `?`, as in every list (2026-11-25): `?` was typed
+    // into the paper's chat.
+    var seq = Sc.fromEvent(event)
+    if (seq === "Home") { pp.pick(pp.rows.length > 0 ? 0 : -1); return true }
+    if (seq === "End") { pp.pick(pp.rows.length - 1); return true }
+    if (Sc.hit(event, "keysHere")) { page.toggleKeys(); return true }
     if (Sc.hit(event, "paperKeep")) {
       var row = pp.rows[pp.at]
       if (!row) return true
@@ -182,7 +188,7 @@ Item {
       page.closeDay(); return true
     }
     // Typing in the list goes to the box, as a dashboard row's chat does.
-    if (event.text && event.text.length === 1 && event.text >= " " && !(event.modifiers & (Qt.ControlModifier | Qt.AltModifier))) {
+    if (event.text && event.text.length === 1 && event.text >= " " && page.typing(event)) {
       pp.showChat()
       Qt.callLater(function () { page.dayPaneItem.dayFieldRef.insert(page.dayPaneItem.dayFieldRef.cursorPosition, event.text) })
       return true

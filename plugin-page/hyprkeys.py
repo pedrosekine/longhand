@@ -48,11 +48,14 @@ import sys
 import time
 
 # id, what the sheet says (also the bind's description, which is how a bind
-# is recognised in `hyprctl binds`), the command, its own key.
+# is recognised in `hyprctl binds`), the command, its own key. The same
+# letters as on Windows (windows/winkeys.py): the deadlines left D on
+# 2026-11-25, which Windows 11 keeps for its clock, for U ("due"), beside
+# the timer's O and P.
 ACTIONS = [
     ("page", "Page (today's note)", "omarchy-shell shell toggle longhand.page '{}'", "SUPER + ALT + equal"),
     ("alongside", "Page alongside", "omarchy-shell shell summon longhand.page '{\"shape\":\"alongside\"}'", "SUPER + ALT + backslash"),
-    ("deadlines", "Deadlines popup", "omarchy-shell longhand.deadline toggle", "SUPER + ALT + D"),
+    ("deadlines", "Deadlines popup", "omarchy-shell longhand.deadline toggle", "SUPER + ALT + U"),
     ("pomoPopup", "Pomo popup", "omarchy-shell longhand.pomo toggle", "SUPER + ALT + O"),
     ("pomoToggle", "Pomo toggle", "pomo toggle", "SUPER + ALT + P"),
     ("pomoSkip", "Pomo skip", "pomo skip", "SUPER + ALT + N"),
