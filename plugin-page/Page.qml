@@ -4322,7 +4322,11 @@ Item {
   readonly property bool checkinDue: !!root.checkinData && root.checkinData.due
   readonly property var checkinWeeks: root.checkinData ? root.checkinData.weeks.slice().reverse() : []
   function loadCheckin() {
-    if (checkinProc.running) return
+    // A read still running began before what is asked for now (a week
+    // kept while the sheet's first read was still on its way): read
+    // again when it ends, or its old "due" would stand.
+    if (checkinProc.running) { checkinProc.again = true; return }
+    checkinProc.again = false
     checkinProc.command = [svc.runner, "checkin"]
     checkinProc.running = true
   }
@@ -9188,9 +9192,11 @@ Item {
 
   Process {
     id: checkinProc
+    property bool again: false
     stdout: StdioCollector {
       onStreamFinished: { try { root.checkinData = JSON.parse(text) } catch (e) {} }
     }
+    onExited: function (code, status) { if (checkinProc.again) Qt.callLater(root.loadCheckin) }
   }
 
   Process {
