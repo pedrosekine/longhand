@@ -1635,3 +1635,28 @@ only the window and the panels around it differ.
   "Done today" is no longer counted: the day's ticked boxes stand struck
   through in TODAY. `Dashboard.qml`, `Page.qml` (`dashStatus`,
   `dashAgent`), `Next.js` (`courses` gives `asks`).
+- **2026-11-26: the header's right side, one rule.** It read "pin private
+  chat | ● agent ●" and broke the rule the mouse and keyboard passes had
+  set: the key badges under its words were cut off by the row's clip and
+  never showed; a click on "chat" sent the keys back to the note while the
+  chat opened (Ctrl+Enter left them in its box); a click on an empty line
+  said nothing; the lock beside "private" was not part of the word; a note
+  made private left its block's chat open, where a message was cleared and
+  never sent; two grey dots stood either side of "agent", one of them the
+  save dot with no tip and no click; and when the row was too narrow the
+  rightmost things, the save dot first, were cut off. Now: a word is a thing
+  to click, faint at rest, the accent under the hand, the foreground while
+  what it turns on is on ("pin" pinned, "private" private, "chat" while the
+  block's chat is open, a second click closing it), and a click does what
+  its key does, keys included. The agent's status shows only while it has
+  one, after a hairline: "thinking", or "a reply" in the accent, which
+  opens the reply as its gutter bar does. The save dot has its tip and
+  saves on a click (Ctrl+S), and shows only where a note can be written,
+  unless something is wrong. What has no room goes in one order, measured
+  rather than guessed (the shape, then the chat) and never the privacy
+  word, a status or the dot. Also: "before the horizon" says the horizon's
+  date on hover, a private PDF shows its lock, the note's chat names
+  Ctrl+Shift+Enter only where that key opens it (a note from Files), and
+  pinning keeps the keys or settings sheet open and raises the window.
+  `Page.qml` (`headerRight`, `chatClicked`, `openUnread`, `togglePrivate`,
+  `togglePin`).

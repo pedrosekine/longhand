@@ -1026,12 +1026,22 @@ Item {
   // note's frontmatter, which is what the runner reads; taking it off puts
   // the day back as it was.
   function togglePrivate() {
-    if (!svc.ready || !root.dayNote) return
+    if (!svc.ready) return
+    // Said, not silently refused (2026-11-26, the header pass): the header
+    // offers no "private" where the key would change nothing true.
+    if (!root.dayNote) { root.showHint("a note from Files is private already: the agent sees it only in its chat"); return }
     var on = !svc.notePrivate
     svc.setPrivate(on)
     root.flush()
+    // The block's chat cannot send once the note is private: it closes,
+    // its words kept in its box.
+    if (on && root.marginOpen) { root.backToNote(); if (root.here === "right") editor.focusNote() }
     root.used("private", on ? "on" : "off")
-    root.showHint(on ? "private — the agent sees nothing in this note" : "the agent can be asked about this note again")
+    // Before the horizon the rule holds either way, and the hint says so
+    // rather than promise what the agent will not do.
+    root.showHint(root.beforeHorizon ? (on ? "private — and before the horizon, the agent sees nothing of it either way"
+                                          : "not private, but before the horizon: the agent still sees nothing")
+      : on ? "private — the agent sees nothing in this note" : "the agent can be asked about this note again")
   }
   // Ctrl+P: the block the cursor is in — or every block a selection spans —
   // made private, wrapped in a `> [!private]` callout; on a private block,
@@ -3752,13 +3762,19 @@ Item {
   // What the shell calls to hide the page: the overlay goes, the window
   // (if open) stays and gets the sheet back.
   function close() {
-    if (root.keysOpen) root.toggleKeys()
-    if (root.settingsOpen) root.toggleSettings()
+    // Pinned, the sheet is the same sheet in the other shape: the keys or
+    // settings open in it stay open, and the keys stay where they were
+    // (togglePin puts them back). On Windows the shell's hide calls this
+    // again, so the pin is read here, not only in dismiss.
+    if (!root.pinning) {
+      if (root.keysOpen) root.toggleKeys()
+      if (root.settingsOpen) root.toggleSettings()
+    }
     root.leftLine(root.lastLine)
     root.flush()
     pdfPane.keep()
     root.overlayOpen = false
-    if (root.windowOpen) Qt.callLater(editor.focusNote)
+    if (root.windowOpen && !root.pinning) Qt.callLater(editor.focusNote)
   }
 
   function dismiss() {
@@ -3786,13 +3802,20 @@ Item {
   // pass): F11 from the dashboard, a PDF or the sidebar sent them to the
   // note, hidden or not.
   property string pinFrom: "center"
+  property bool pinning: false
   function togglePin() {
     root.used("pin", root.overlayOpen ? "to-window" : "to-overlay")
     root.pinFrom = root.here
     root.flush()
     if (root.overlayOpen) {
       root.windowOpen = true
+      root.pinning = true
       root.dismiss()
+      root.pinning = false
+      // The window takes the keys, on Hyprland and on Windows alike — also
+      // when it was open already, behind the overlay or on another
+      // workspace.
+      Qt.callLater(root.raiseWindow)
     } else {
       root.windowOpen = false
       root.overlayOpen = true
@@ -3855,7 +3878,8 @@ Item {
   // and you do (2026-10-27: a block without a sign used to be refused, while
   // Alt+→ opened the same chat). One answered already is not asked again.
   function sendCurrent() {
-    if (root.currentHash === "" || !root.dayNote) return
+    if (!root.dayNote) return
+    if (root.currentHash === "") { root.showHint("no block under the cursor"); return }
     if (!root.agentOn) { root.showHint("private: the agent sees nothing of this note"); return }
     if (root.blockPrivate(root.currentHash)) { root.showHint("private: the agent sees nothing of this block"); return }
     if (Queue.answered(root.currentRecord)) { root.openBlockChat("reopen"); return }
@@ -3890,6 +3914,34 @@ Item {
     if (root.marginWidth <= 0) { root.showHint("the window is too narrow for the chat"); return }
     root.used(how === "reopen" ? "reopen" : "chat", how)
     root.diveIn(true)
+  }
+
+  // The header's "chat" (2026-11-26, the header pass): what Ctrl+Enter
+  // does, the keys left where it leaves them — in the chat's box when the
+  // chat opens, in the note when the block was sent and the agent answers
+  // first. Lit while the chat is open, it closes it, as Esc there does.
+  function chatClicked() {
+    if (root.marginOpen) {
+      root.backToNote()
+      editor.focusNote()
+      return
+    }
+    root.sendCurrent()
+    if (!root.marginOpen) editor.focusNote()
+  }
+
+  // The header's "a reply": the first block whose answer is unread, its
+  // chat opened as a click on its gutter bar opens it.
+  function openUnread() {
+    var p = root.paint
+    for (var i = 0; i < p.length; i++) {
+      if (!p[i].unread) continue
+      var r = editor.rows[p[i].line]
+      if (!r) return
+      editor.setCursor(r.start + r.prefixLen, true)
+      root.sendCurrent()
+      return
+    }
   }
 
   function blockPrivate(hash) {
@@ -8661,6 +8713,8 @@ Item {
     var raw = String(margin.chatFieldRef.text || "")
     var msg = root.composed("margin", raw)
     if (msg === "" || root.currentHash === "") return
+    // Not sent, and not cleared: a private note's chat would wait forever.
+    if (!root.agentOn) { root.showHint("private: the agent sees nothing of this note"); return }
     var savedReplies = root.marginReplies.slice()
     var savedRefs = root.marginRefs.slice()
     margin.chatFieldRef.text = ""
@@ -9975,16 +10029,48 @@ Item {
             }
           }
 
+          // The header's right side (2026-11-26, the header pass): one rule
+          // for all of it, on Omarchy and on Windows alike.
+          // - A word is a thing to click: faint at rest, the accent under the
+          //   hand, the foreground while what it turns on is on. A click does
+          //   what its key does, and the keys land where the key leaves them.
+          // - A status shows only while it says something (the agent
+          //   thinking, a reply waiting), after a hairline; the saved dot is
+          //   the one quiet thing always there while a note can be written.
+          // - What has no room goes, in one order: the shape, then the chat.
+          //   The privacy word, a status and the saved dot never go. Nothing
+          //   is cut off, so the key badges under the words show.
           Row {
             id: headerRight
+            objectName: "headerRight"   // read by tests/page (headerWords)
             readonly property real room: Math.max(0, parent.width - (seal.x + seal.width) - root.sp(16))
+            // The note's own words: not while a PDF or the export stands
+            // in the middle, where a click would reach the hidden note.
+            readonly property bool noteHere: !root.pdfShown && !root.exportOpen
+            readonly property real gap: root.sp(10)
+            // Measured, not guessed: whatever the face, the zoom or the scale.
+            readonly property real kept: (zoomWord.visible ? zoomWord.implicitWidth + gap : 0)
+              + (horizonMark.visible ? horizonMark.implicitWidth + gap : 0)
+              + (privateWord.visible ? privateWord.implicitWidth + gap : 0)
+              + (pdfPrivate.visible ? pdfPrivate.implicitWidth + gap : 0)
+              + (agentStatus.visible ? agentStatus.implicitWidth + 1 + 2 * gap : 0)
+              + (savedDot.visible ? savedDot.width : 0)
+            readonly property bool chatWanted: root.agentOn && noteHere
+            readonly property bool chatFits: chatWanted && kept + chatWord.implicitWidth + gap <= room
+            readonly property bool askWanted: root.noteAskable && noteHere
+            // The note's chat says its full words while the pin still fits
+            // beside them; else the short ones; else it goes.
+            readonly property bool askFull: askWanted && kept + noteAskFull.width + pinWord.implicitWidth + 2 * gap <= room
+            readonly property bool askFits: askWanted && (askFull || kept + noteAskShort.width + gap <= room)
+            readonly property real asked: chatFits ? chatWord.implicitWidth + gap
+              : askFits ? (askFull ? noteAskFull.width : noteAskShort.width) + gap : 0
+            readonly property bool pinFits: kept + asked + pinWord.implicitWidth + gap <= room
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            width: Math.min(implicitWidth, room)
-            clip: true
-            spacing: root.sp(10)
+            spacing: gap
 
             Text {
+              id: zoomWord
               visible: zoomHint.running
               anchors.verticalCenter: parent.verticalCenter
               textFormat: Text.PlainText
@@ -9995,9 +10081,11 @@ Item {
               font.pixelSize: root.fs(Style.font.bodySmall)
             }
 
-            // The pin: which shape you are in. Ctrl+P or a click flips it.
+            // The pin: which shape you are in, lit while pinned as a window.
+            // F11 or a click flips it.
             Text {
-              visible: headerRight.room >= root.sp(140)
+              id: pinWord
+              visible: headerRight.pinFits
               anchors.verticalCenter: parent.verticalCenter
               textFormat: Text.PlainText
               text: "pin"
@@ -10026,54 +10114,88 @@ Item {
               }
             }
 
+            // A day before the horizon says so where "private" would be: a
+            // grey lock, since it is the rule and not a choice. Its tip
+            // says which day the horizon is, and where it is moved.
+            // An Item round a Row, its hover beside the Row and not in it: a
+            // child sized from the Row it is laid out in polishes forever.
+            Item {
+              id: horizonMark
+              visible: root.dayNote && root.beforeHorizon && headerRight.noteHere
+              anchors.verticalCenter: parent.verticalCenter
+              implicitWidth: horizonRow.implicitWidth
+              implicitHeight: horizonRow.implicitHeight
+              Row {
+                id: horizonRow
+                spacing: root.sp(6)
+                LockMark { anchors.verticalCenter: parent.verticalCenter; width: root.sp(10); color: root.dim }
+                Text {
+                  textFormat: Text.PlainText
+                  text: "before the horizon"
+                  color: root.dim
+                  font.family: root.fontFamily
+                  font.styleName: root.fontStyle
+                  font.pixelSize: root.fs(Style.font.bodySmall)
+                }
+              }
+              MouseArea {
+                anchors.fill: parent
+                hoverEnabled: true
+                acceptedButtons: Qt.NoButton
+                Tip {
+                  host: root
+                  shown: parent.containsMouse
+                  text: root.tips([["The agent sees daily notes from " + root.sayHorizon(root.horizonData ? root.horizonData.horizon : "") + " on", ""],
+                                   ["Settings, what the agent may search, moves it", "settings"]])
+                }
+              }
+            }
+
             // Private: the one place that says whether the agent can see
             // this note, and the one control that changes it. Always in
             // sight, because a guarantee you cannot see is not one
-            // (2026-10-15). When it is on, "ask" and the agent mark are not
-            // dimmed but gone — there is nothing to offer.
-            // A day before the horizon says so where "private" would be: a
-            // grey lock, since it is the rule and not a choice.
-            Row {
-              visible: root.dayNote && root.beforeHorizon && !root.pdfShown
+            // (2026-10-15). When it is on, the block's chat and the agent's
+            // status are not dimmed but gone — there is nothing to offer.
+            // The lock and the word are one thing to hover and click.
+            Item {
+              id: privateWord
+              visible: root.agentDay && !root.beforeHorizon && headerRight.noteHere
               anchors.verticalCenter: parent.verticalCenter
-              spacing: root.sp(6)
-              LockMark { anchors.verticalCenter: parent.verticalCenter; width: root.sp(10); color: root.dim }
-              Text {
-                textFormat: Text.PlainText
-                text: "before the horizon"
-                color: root.dim
-                font.family: root.fontFamily
-                font.styleName: root.fontStyle
-                font.pixelSize: root.fs(Style.font.bodySmall)
-              }
-            }
-            LockMark {
-              visible: svc.notePrivate && root.agentDay && !root.beforeHorizon && !root.pdfShown
-              anchors.verticalCenter: parent.verticalCenter
-              width: root.sp(10)
-              color: root.magenta
-            }
-            Text {
-              visible: root.agentDay && !root.beforeHorizon && !root.pdfShown
-              anchors.verticalCenter: parent.verticalCenter
-              textFormat: Text.PlainText
-              text: "private"
-              color: privateArea.containsMouse && root.handOn ? root.accent : svc.notePrivate ? root.foreground : root.faint
-              font.family: root.fontFamily
-              font.styleName: root.fontStyle
-              font.pixelSize: root.fs(Style.font.bodySmall)
-              Behavior on color { ColorAnimation { duration: 240 } }
-              KeyBadge {
-                host: root
-                act: "private"
-                anchors.top: parent.bottom
-                anchors.topMargin: root.sp(6) + height + root.sp(4)
-                anchors.horizontalCenter: parent.horizontalCenter
+              implicitWidth: privateRow.implicitWidth
+              implicitHeight: privateRow.implicitHeight
+              Row {
+                id: privateRow
+                spacing: root.sp(6)
+                LockMark {
+                  visible: svc.notePrivate
+                  anchors.verticalCenter: parent.verticalCenter
+                  width: root.sp(10)
+                  color: root.magenta
+                }
+                Text {
+                  id: privateText
+                  anchors.verticalCenter: parent.verticalCenter
+                  textFormat: Text.PlainText
+                  text: "private"
+                  color: privateArea.containsMouse && root.handOn ? root.accent : svc.notePrivate ? root.foreground : root.faint
+                  font.family: root.fontFamily
+                  font.styleName: root.fontStyle
+                  font.pixelSize: root.fs(Style.font.bodySmall)
+                  Behavior on color { ColorAnimation { duration: 240 } }
+                  // A row below the pin's, so the two never touch.
+                  KeyBadge {
+                    host: root
+                    act: "private"
+                    anchors.top: parent.bottom
+                    anchors.topMargin: root.sp(6) + height + root.sp(4)
+                    anchors.horizontalCenter: parent.horizontalCenter
+                  }
+                }
               }
               MouseArea {
                 id: privateArea
                 anchors.fill: parent
-                // Wider than the word, so it is easy to hit (2026-11-25, the mouse pass).
+                // Wider than the words, so it is easy to hit (2026-11-25, the mouse pass).
                 anchors.topMargin: -root.sp(5); anchors.bottomMargin: -root.sp(5)
                 anchors.leftMargin: -root.sp(3); anchors.rightMargin: -root.sp(3)
                 hoverEnabled: true
@@ -10088,32 +10210,61 @@ Item {
               }
             }
 
+            // A private PDF says so, as a private note does; it is the
+            // PDF's own mark, not a switch here.
+            Item {
+              id: pdfPrivate
+              visible: root.pdfShown && !root.exportOpen && !!pdfPane.read && !!pdfPane.read.private
+              anchors.verticalCenter: parent.verticalCenter
+              implicitWidth: pdfPrivateRow.implicitWidth
+              implicitHeight: pdfPrivateRow.implicitHeight
+              Row {
+                id: pdfPrivateRow
+                spacing: root.sp(6)
+                LockMark { anchors.verticalCenter: parent.verticalCenter; width: root.sp(10); color: root.magenta }
+                Text {
+                  textFormat: Text.PlainText
+                  text: "private"
+                  color: root.dim
+                  font.family: root.fontFamily
+                  font.styleName: root.fontStyle
+                  font.pixelSize: root.fs(Style.font.bodySmall)
+                }
+              }
+              MouseArea {
+                anchors.fill: parent
+                hoverEnabled: true
+                acceptedButtons: Qt.NoButton
+                Tip { host: root; shown: parent.containsMouse; text: root.tip("Private: this PDF is never given to the agent", "") }
+              }
+            }
+
             // Ask about this note (docs/files.md): for what the agent does
             // not otherwise see — a file, a day before the horizon, a day
             // marked private. Asking is the consent; the note's own
             // conversation opens beside it, and the word says one exists.
             Text {
               id: noteAsk
-              // Hidden where even the short word has no room (a sheet squeezed
-              // between both panes): the pane's key and the seal still open it.
-              visible: root.noteAskable && !root.pdfShown && headerRight.parent.width / 2 - root.sp(120) >= root.sp(60)
+              visible: headerRight.askFits
               anchors.verticalCenter: parent.verticalCenter
               textFormat: Text.PlainText
-              // Its full words while the right half of the header has room
-              // for them beside the pin; else the short ones.
               readonly property string full: root.noteTalkTurns > 0 ? "this note's chat · " + Math.ceil(root.noteTalkTurns / 2) : "chat about this note"
+              readonly property string short: root.noteTalkTurns > 0 ? "chat · " + Math.ceil(root.noteTalkTurns / 2) : "chat"
               TextMetrics { id: noteAskFull; font: noteAsk.font; text: noteAsk.full }
-              // (A day before the horizon has its own words beside it.)
-              text: headerRight.parent.width / 2 - root.sp(120) - (root.beforeHorizon ? root.sp(140) : 0) >= noteAskFull.width ? full
-                : root.noteTalkTurns > 0 ? "chat · " + Math.ceil(root.noteTalkTurns / 2) : "chat"
+              TextMetrics { id: noteAskShort; font: noteAsk.font; text: noteAsk.short }
+              text: headerRight.askFull ? full : short
               color: noteAskArea.containsMouse && root.handOn ? root.accent : root.noteRoom && root.dayShown ? root.foreground : root.faint
               font.family: root.fontFamily
               font.styleName: root.fontStyle
               font.pixelSize: root.fs(Style.font.bodySmall)
               Behavior on color { ColorAnimation { duration: 240 } }
+              // Ctrl+Shift+Enter opens this chat in a note from Files only:
+              // on a day it opens the day's. A key it does not have is not
+              // named on it.
               KeyBadge {
                 host: root
                 act: "dayChat"
+                place: !root.dayNote
                 anchors.top: parent.bottom
                 anchors.topMargin: root.sp(6)
                 anchors.horizontalCenter: parent.horizontalCenter
@@ -10129,41 +10280,34 @@ Item {
                 onClicked: root.noteRoom && root.dayShown ? root.closeDay() : root.openRoom("", true)
                 Tip {
                   host: root
-                  act: "dayChat"
+                  act: root.dayNote ? "" : "dayChat"
                   shown: parent.containsMouse
-                  text: root.tip(root.noteTalkTurns > 0 ? "This note's chat" : "Chat about this note: chatting shares it, for this chat only", "dayChat")
+                  text: root.tip(root.noteTalkTurns > 0 ? "This note's chat" : "Chat about this note: chatting shares it, for this chat only", root.dayNote ? "" : "dayChat")
                 }
               }
             }
 
-            // Ask: the agent's visible way in, and the reason the "send to
-            // agent?" prompt could go (2026-10-15). It sends the block the
-            // cursor is in — the same path as Ctrl+Enter — and sits in the
-            // header, outside the canvas, so nothing marks the student's
-            // own words. Dim when this block carries a sign for the agent,
-            // faint when it does not; a click then says why in one line.
+            // This block's chat: the agent's visible way in, sending the
+            // block the cursor is in — the same path as Ctrl+Enter — from
+            // the header, outside the canvas, so nothing marks the
+            // student's own words. Dim when this block carries a sign for
+            // the agent, faint when it does not; lit while its chat is open,
+            // and a click then closes it. Its key is named at the cursor,
+            // where Ctrl held already says "chat about this block".
             Text {
-              visible: svc.header !== "" && root.agentOn && !root.pdfShown && headerRight.room >= root.sp(95)
+              id: chatWord
+              visible: headerRight.chatFits
               anchors.verticalCenter: parent.verticalCenter
               textFormat: Text.PlainText
-              // One word, whatever the chat holds (2026-10-27: it was "ask",
-              // then "reply" once answered, and a word that changes says the
-              // key under it changes too). It opens this block's chat; a block
-              // with a sign is sent first, and one answered is not asked again.
+              // One word, whatever the chat holds (2026-10-27).
               text: "chat"
               color: askArea.containsMouse && root.handOn ? root.accent
+                : root.marginOpen ? root.foreground
                 : (root.currentTrigger !== "" || Queue.answered(root.currentRecord) ? root.dim : root.faint)
               font.family: root.fontFamily
               font.styleName: root.fontStyle
               font.pixelSize: root.fs(Style.font.bodySmall)
               Behavior on color { ColorAnimation { duration: 240 } }
-              KeyBadge {
-                host: root
-                act: "ask"
-                anchors.top: parent.bottom
-                anchors.topMargin: root.sp(6) + height + root.sp(4)
-                anchors.horizontalCenter: parent.horizontalCenter
-              }
               MouseArea {
                 id: askArea
                 anchors.fill: parent
@@ -10172,80 +10316,98 @@ Item {
                 anchors.leftMargin: -root.sp(3); anchors.rightMargin: -root.sp(3)
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onClicked: { root.sendCurrent(); editor.focusNote() }
+                // Read on the press: by the click, the chat it closes is gone.
+                property bool closing: false
+                onPressed: closing = root.marginOpen
+                onClicked: root.chatClicked()
                 Tip {
                   host: root
-                  act: "ask"
+                  act: askArea.closing ? "" : "ask"
                   shown: parent.containsMouse
-                  text: root.tip(Queue.answered(root.currentRecord) ? "This block's chat"
-                    : root.currentTrigger !== "" ? "Chat about this block: the agent answers first" : "Chat about this block", "ask")
+                  // Asked only under the hand: whether the block is private
+                  // is read from the whole note.
+                  text: !parent.containsMouse ? ""
+                    : root.marginOpen ? root.tip("Close this block's chat", "marginBack")
+                    : root.currentHash === "" ? root.tip("Chat about the block the cursor is in", "ask")
+                    : root.blockPrivate(root.currentHash) ? root.tip("Private: the agent sees nothing of this block", "privateBlock")
+                    : root.tip(Queue.answered(root.currentRecord) ? "This block's chat"
+                      : root.currentTrigger !== "" ? "Chat about this block: the agent answers first" : "Chat about this block", "ask")
                 }
               }
             }
 
-            // Quiet hairline separating clickable header actions from passive
-            // status indicators (agent + saved dot).
+            // A hairline between the words to click and the agent's status.
             Rectangle {
-              visible: agentStatus.visible
+              visible: agentStatus.visible && (pinWord.visible || privateWord.visible || horizonMark.visible || noteAsk.visible || chatWord.visible)
               anchors.verticalCenter: parent.verticalCenter
               width: 1
               height: root.sp(10)
               color: Util.alpha(root.foreground, 0.18)
             }
 
-            // The agent mark: status-only (non-clickable), paired with a small
-            // indicator dot so it reads clearly as status rather than a button.
-            Item {
+            // The agent's status, while it has one: thinking (the
+            // foreground), or a reply waiting in this note (the accent — a
+            // click opens it, as the block's gutter bar does). At rest it is
+            // not shown: "chat" already says the agent can be asked.
+            Text {
               id: agentStatus
-              visible: svc.header !== "" && root.agentOn && !root.pdfShown && (headerRight.room >= root.sp(175) || root.working || root.replyWaiting)
+              visible: headerRight.noteHere && (root.replyWaiting || root.working)
               anchors.verticalCenter: parent.verticalCenter
-              width: agentStatusRow.implicitWidth
-              height: agentStatusRow.implicitHeight
-              Row {
-                id: agentStatusRow
-                spacing: root.sp(5)
-                Rectangle {
-                  anchors.verticalCenter: parent.verticalCenter
-                  width: root.sp(5)
-                  height: width
-                  radius: width / 2
-                  color: root.replyWaiting ? root.accent : (root.working ? root.foreground : Util.alpha(root.faint, 0.6))
-                  Behavior on color { ColorAnimation { duration: 240 } }
-                }
-                Text {
-                  anchors.verticalCenter: parent.verticalCenter
-                  textFormat: Text.PlainText
-                  text: "agent"
-                  color: root.replyWaiting ? root.accent : (root.working ? root.foreground : root.faint)
-                  font.family: root.fontFamily
-                  font.styleName: root.fontStyle
-                  font.pixelSize: root.fs(Style.font.bodySmall)
-                  Behavior on color { ColorAnimation { duration: 240 } }
-                }
-              }
+              textFormat: Text.PlainText
+              text: root.replyWaiting ? "a reply" : "thinking"
+              color: root.replyWaiting ? root.accent : root.foreground
+              font.family: root.fontFamily
+              font.styleName: root.fontStyle
+              font.pixelSize: root.fs(Style.font.bodySmall)
+              Behavior on color { ColorAnimation { duration: 240 } }
               MouseArea {
                 anchors.fill: parent
+                anchors.topMargin: -root.sp(5); anchors.bottomMargin: -root.sp(5)
+                anchors.leftMargin: -root.sp(3); anchors.rightMargin: -root.sp(3)
                 hoverEnabled: true
-                acceptedButtons: Qt.NoButton
+                cursorShape: root.replyWaiting ? Qt.PointingHandCursor : Qt.ArrowCursor
+                onClicked: if (root.replyWaiting) root.openUnread()
                 Tip {
                   host: root
                   shown: parent.containsMouse
-                  text: root.tips([[root.replyWaiting ? "A reply is waiting in this note" : root.working ? "The agent is thinking" : "The agent reads what you ask it", ""],
-                                   ["This block's chat", "ask"], ["The agent's pane", "pane3"]])
+                  text: root.replyWaiting ? root.tips([["A reply is waiting in this note: open it", ""], ["The agent's pane", "pane3"]])
+                    : root.tips([["The agent is thinking; Esc in its chat stops it", ""], ["The agent's pane", "pane3"]])
                 }
               }
             }
 
             // Saved / unsaved: a dot that brightens while a write is
             // pending and settles once it landed; urgent while a write
-            // that never said it landed is being written again.
+            // that never said it landed is being written again, or when
+            // the note cannot be written. Only where a note can be
+            // written — or something is wrong, which always shows. A click
+            // saves now, as Ctrl+S does.
             Rectangle {
+              id: savedDot
+              readonly property bool urgent: root.problem !== "" || svc.stalled
+              visible: urgent || (svc.ready && headerRight.noteHere && !svc.readOnly)
               anchors.verticalCenter: parent.verticalCenter
               width: root.sp(6)
               height: width
               radius: width / 2
-              color: root.problem !== "" || svc.stalled ? root.urgent : (svc.pending || svc.saving ? root.foreground : root.faint)
+              color: urgent ? root.urgent : (savedArea.containsMouse && root.handOn ? root.accent : svc.pending || svc.saving ? root.foreground : root.faint)
               Behavior on color { ColorAnimation { duration: 180 } }
+              MouseArea {
+                id: savedArea
+                anchors.fill: parent
+                anchors.margins: -root.sp(6)
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.saveNow()
+                Tip {
+                  host: root
+                  act: "save"
+                  shown: parent.containsMouse
+                  text: root.tip(root.problem !== "" ? root.problem
+                    : svc.stalled ? "Not saved yet: writing it again"
+                    : svc.pending || svc.saving ? "Saving" : "Saved", "save")
+                }
+              }
             }
           }
         }

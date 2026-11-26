@@ -125,6 +125,38 @@ ShellRoot {
     // Privacy: the note the agent may not see.
     function togglePrivate(): void { page.togglePrivate() }
     function isPrivate(): bool { return page.noteService.notePrivate }
+    // The header's right side as it reads (2026-11-26, the header pass):
+    // each shown thing left to right, a word as its words, the hairline
+    // "|", the saved dot "●".
+    function headerWords(): string {
+      var find = function (it) {
+        if (!it) return null
+        if (it.objectName === "headerRight") return it
+        var kids = it.children || []
+        for (var i = 0; i < kids.length; i++) { var f = find(kids[i]); if (f) return f }
+        return null
+      }
+      var row = find(page.contentItem || page)
+      if (!row) for (var w = 0; w < page.data.length && !row; w++) row = find(page.data[w])
+      if (!row) return "[]"
+      var words = []
+      var said = function (it) {
+        if (typeof it.text === "string") return it.text
+        var t = []
+        for (var k = 0; k < it.children.length; k++) if (it.children[k].visible) { var w = said(it.children[k]); if (w !== "") t.push(w) }
+        return t.join(" ")
+      }
+      for (var i = 0; i < row.children.length; i++) {
+        var c = row.children[i]
+        if (!c.visible) continue
+        if (typeof c.text === "string" || c.children.length > 0) { var x = said(c); if (x !== "") { words.push(x); continue } }
+        if (c.width <= 1.5) words.push("|")
+        else if (c.radius > 0) words.push("●")
+      }
+      return JSON.stringify(words)
+    }
+    function chatClick(): void { page.chatClicked() }
+    function chatHasKeys(): bool { return page.marginItem.chatFieldRef.activeFocus }
     function agentOn(): bool { return page.agentOn }
     // `@` calling a project
     function mention(): string { return JSON.stringify(page.mention ? page.mention.items.map(function (p) { return (p.make ? "+" : "") + p.tag }) : null) }

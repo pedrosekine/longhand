@@ -1257,12 +1257,33 @@ def checks() -> int:
         (p.daily / f"{TODAY}.md").write_text(header(TODAY) + "Dear diary.\n")
         p.open_fresh()
         check(p.call("isPrivate") == "false" and p.call("agentOn") == "true", "a note starts open to the agent")
+        # The header's right side (2026-11-26, the header pass): the words
+        # to click, then the saved dot; the agent's status only while it
+        # has one.
+        hw = lambda: json.loads(p.call("headerWords"))
+        check(p.wait(lambda: hw()[-4:] == ["pin", "private", "chat", "●"] or hw()[-6:-2] == ["pin", "private", "chat", "|"]),
+              f"the header reads pin, private, chat, the saved dot ({hw()})")
+        # "chat" clicked does what Ctrl+Enter does: the block's chat opens
+        # and the keys are in its box, not back in the note.
+        p.call("cursorEnd")
+        p.call("chatClick")
+        check(p.wait(lambda: json.loads(p.call("panel"))["margin"] is True and p.call("chatHasKeys") == "true"),
+              f"a click on chat opens the block's chat, the keys in its box ({p.call('panel')}, {p.call('chatHasKeys')})")
+        p.call("chatClick")
+        check(p.wait(lambda: json.loads(p.call("panel"))["margin"] is False), "…and, lit, a click closes it")
+        # Made private with the block's chat open, the chat closes: it could
+        # not send.
+        p.call("chatClick")
+        p.wait(lambda: json.loads(p.call("panel"))["margin"] is True)
         p.call("togglePrivate")
         check(p.wait(lambda: p.call("isPrivate") == "true"), "the header's word marks the note private")
         check(p.wait(lambda: p.note().startswith("---\nagent: false\n---\n")),
               f"…by writing the line the runner reads ({p.note()[:40]!r})")
         check("Dear diary." in p.note() and "|agent]]" in p.note(), "…leaving the note and its link line alone")
         check(p.call("agentOn") == "false", "…and the page stops offering the agent at all")
+        check(p.wait(lambda: json.loads(p.call("panel"))["margin"] is False), "…and the block's chat open on it closes")
+        check(p.wait(lambda: "private" in " ".join(hw()) and any(w in ("chat", "chat about this note") for w in hw())),
+              f"…the header offers the note's chat in place of the block's ({hw()})")
         # The plan and the briefs are passes of their own, started when the
         # page opened; one may still be writing its payload a second later
         # (on Windows, where the agent is slower to start, it was): not an

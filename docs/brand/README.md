@@ -81,7 +81,9 @@ is the door to the **day conversation** in the right pane (`docs/agent.md`):
 the place where the person and Longhand's agent talk — identity, still,
 "a person and an agent writing in one hand". It opens and closes it,
 nothing else, and never carries a badge, even when the morning's
-observation waits there; the header's "agent" word says that. The sidebar's
+observation waits there. (The header's "agent" word was meant to say
+that; it never did, and since 2026-11-26 the header says only that a
+block's reply waits, "a reply".) The sidebar's
 door is the date, at the left, so a click lands on the side where the thing
 appears.
 
