@@ -32,7 +32,8 @@ check(m.taken(m.WM_SYSKEYDOWN, m.VK_F10, False) is None, "F10 alone stays Window
 check(m.taken(m.WM_KEYDOWN, 0x5D, True) is None, "the Menu key (VK_APPS) stays as it comes, a key of its own")
 check(m.taken(m.WM_KEYDOWN, 0x41, True) is None, "Shift+A is no business of this")
 check(m.taken(0x0102, m.VK_F10, True) is None, "a character message is left alone")
-check(m.install(object()) is None or sys.platform == "win32", "off Windows nothing is installed")
+if sys.platform != "win32":
+    check(m.install(object()) is None, "off Windows nothing is installed")
 
 print("PASS" if failures == 0 else f"{failures} FAILED")
 sys.exit(1 if failures else 0)
