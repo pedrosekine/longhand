@@ -11,6 +11,7 @@ three pictures are kept beside the name given: -timer, -running, -deadlines.
 """
 from __future__ import annotations
 
+import datetime
 import json
 import subprocess
 import time
@@ -122,7 +123,10 @@ def run(app, engine, box, args, warnings):
     def seed():
         step("widgets loaded", timerLabel=ev("pomo.labelText"), deadlineLabel=ev("deadlines.labelText"))
         added = [pomo_cli("deadline", "add", "Essay draft", "--project", "stats", "tomorrow", "17:00"),
-                 pomo_cli("deadline", "add", "Lab report", "next", "friday", "09:00")]
+                 # A week on, written as a date: "next friday" was tomorrow
+                 # morning on a Thursday, before the essay, and the cursor
+                 # sat on the other row (2026-11-26, Windows CI).
+                 pomo_cli("deadline", "add", "Lab report", (datetime.date.today() + datetime.timedelta(days=8)).isoformat(), "09:00")]
         step("two deadlines added", exits=[r.returncode for r in added], said=[(r.stdout + r.stderr).strip()[-120:] for r in added])
         wait(lambda: ev("deadlines.items.length") == 2, open_timer, "the store's two deadlines in the service")
 
