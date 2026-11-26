@@ -501,6 +501,19 @@ esac
         out = r.stdout
         return out[:-1] if out.endswith("\n") else out   # only IPC's own newline: a note may start with one
 
+    def settled(self, read, still=0.4):
+        """True when `read()` gives the same answer, not empty, over `still`
+        seconds: something animating or being laid out has come to rest."""
+        first = read()
+        if not first:
+            return False
+        end = time.time() + still
+        while time.time() < end:
+            time.sleep(0.1)
+            if read() != first:
+                return False
+        return True
+
     def wait(self, cond, timeout=6.0):
         # Process creation on Windows is slower than Linux fork(), so give
         # conditions a little more headroom without changing Linux timeouts.
@@ -2055,6 +2068,14 @@ def checks() -> int:
         time.sleep(1.0)
         check(p.wait(settled_open) and (time.sleep(1.0) or settled_open()),
               f"…and stays open once the check has read the note ({p.deadline(eid)}, {p.call('checkState')}, {p.note()[-70:]!r})")
+        # Ctrl+L twice at once, before the store has written the first: a
+        # tick and its undo, never two ticks (2026-11-26: the second read
+        # the list as it was, open, and ticked again; Windows CI caught it).
+        p.call("dueKey", 0, KEY_L, CTRL)
+        p.call("dueKey", 0, KEY_L, CTRL)
+        time.sleep(1.0)
+        check(p.wait(settled_open) and (time.sleep(1.0) or settled_open()),
+              f"Ctrl+L twice at once: ticked and unticked, open again ({p.deadline(eid)}, {p.note()[-70:]!r})")
         p.call("sidebar")
         p.call("dash")
 
@@ -2111,7 +2132,11 @@ def checks() -> int:
                      and "goes quiet" not in row("a fading thought").get("where", "")),
               "r keeps it: back, its clock started again")
         # Two boxes put aside in a row, faster than the first is written:
-        # both are (the second was lost, 2026-10-25).
+        # both are (the second was lost, 2026-10-25). The list read once it
+        # has stopped moving after `r` (2026-11-26: read while it moved, the
+        # rows were not where the keys went, on Windows CI).
+        row("an old aside")
+        row("a fading thought")
         rows_now = json.loads(p.call("dashRows"))
         i1, i2 = (next(n for n, r in enumerate(rows_now) if r.get("text") == w) for w in ("a fading thought", "an old aside"))
         p.call("dashFocus", i1)
@@ -3759,20 +3784,26 @@ def checks() -> int:
         p.call("sideKey", KEY_ESC, 0)                       # out of the project, onto its row
         p.call("sidebar")
         p.call("sidebar")
-        check(p.wait(lambda: walk()["list"] == "proj" and walk()["order"][walk()["at"]] == last),
+        check(p.wait(lambda: (lambda w: w["list"] == "proj" and w["order"][w["at"]] == last)(walk())),
               f"the sidebar opened again comes back to the row it was left on ({walk()})")
         used_file = p.state / "longhand" / "projects-used.json"
         check(p.wait(lambda: used_file.exists() and last in json.loads(used_file.read_text())),
               "…its use kept, for the order (the most used first)")
         p.call("sideType", "#zzz")
-        check(walk()["typing"] and walk()["order"][walk()["at"]] == last, f"letters nothing has keep the row ({walk()})")
+        # One reading of the walk, waited on: the order may still be turning
+        # over to the use just kept, and three readings could each see a
+        # different one (2026-11-26).
+        def kept_row():
+            w = walk()
+            return w["typing"] and w["order"][w["at"]] == last
+        check(p.wait(kept_row), f"letters nothing has keep the row ({walk()})")
         p.call("sideKey", KEY_ESC, 0)
         check(not walk()["typing"] and walk()["list"] == "proj", f"…Esc stops typing, where it was ({walk()})")
         # Letters alone, with no `#` (2026-11-22): from the calendar too.
         p.call("sideKey", KEY_ESC, 0)
         first = walk()["order"][0]
         p.call("sideType", first[:2])
-        check(walk()["typing"] and walk()["list"] == "proj" and walk()["order"][walk()["at"]] == first,
+        check(p.wait(lambda: (lambda w: w["typing"] and w["list"] == "proj" and w["order"][w["at"]] == first)(walk())),
               f"letters alone find the project, from the calendar ({walk()})")
         p.call("sideKey", KEY_ESC, 0)
         p.call("sideKey", KEY_ESC, 0)
@@ -3997,6 +4028,9 @@ def checks() -> int:
         check(mk()["dragPans"] is False, "a mouse drag on it selects, never moves the pages")
         p.call("keysToSidebar")
         check(p.wait(lambda: pd()["here"] == "left"), f"(the keys in the sidebar, as after opening it from the Files tree: {pd()['here']})")
+        # The sidebar's opening slides the paper and may refit it: drag once
+        # it holds still (a slow machine dragged across a moving page).
+        check(p.wait(lambda: p.settled(lambda: p.call("pdfGeom", "0"))), f"(the paper holds still: {p.call('pdfGeom', '0')})")
         check(p.call("pdfDrag", "0", "73", "69", "200", "69") == "true" and p.wait(lambda: mk()["selected"] != ""),
               f"a mouse dragged across words selects them ({mk()})")
         check(p.wait(lambda: pd()["here"] == "center"), f"…bring the keys to it, so m reaches them ({pd()['here']})")

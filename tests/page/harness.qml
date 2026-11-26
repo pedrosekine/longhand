@@ -404,6 +404,15 @@ ShellRoot {
       pointer.mouseRelease(paper, x1 * s, y1 * s, Qt.LeftButton)
       return true
     }
+    // Where a PDF page is and at what size, to wait until it holds still:
+    // the sidebar opening slides the middle and refits the paper, and a
+    // drag made meanwhile lands somewhere else (2026-11-26, Windows CI).
+    function pdfGeom(pageIndex: int): string {
+      var p = page.pdfItem, paper = p.view.sheet(pageIndex)
+      if (!paper) return ""
+      var at = paper.mapToItem(null, 0, 0)
+      return [p.view.renderScale.toFixed(4), Math.round(at.x), Math.round(at.y), Math.round(paper.width)].join(" ")
+    }
     function keysToSidebar(): void { if (!page.sidebarOpen) page.toggleSidebar(); page.sidebarSpace = "time"; page.focusSidebar() }
     // Acronyms (plan.md item 18): what the paper's are, the one hovered and
     // its tip, the back key's place, the list.

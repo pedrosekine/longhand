@@ -21,11 +21,23 @@ Item {
   readonly property string filePath: (Quickshell.env("XDG_STATE_HOME")
     || Quickshell.env("HOME") + "/.local/state") + "/longhand/deadlines.tsv"
 
+  // A tick asked for and not yet written: id → the status it asked for.
+  // It is the list's at once, so a second Ctrl+L or Space right after the
+  // first unticks rather than ticking again from a list the store has not
+  // caught up with yet (2026-11-26: a slow machine, and a quick hand,
+  // ticked twice; Windows CI caught it). The store's own word replaces it
+  // once the command is through.
+  property var pending: ({})
+
   // The columns are the CLI's (Store.js).
   function parse(raw) {
     var out = Store.parse(raw)
     var map = {}
-    for (var i = 0; i < out.length; i++) map[out[i].id] = out[i]
+    for (var i = 0; i < out.length; i++) {
+      var want = root.pending[out[i].id]
+      if (want !== undefined && out[i].status !== want) out[i] = root.withStatus(out[i], want)
+      map[out[i].id] = out[i]
+    }
     root.items = out
     root.byId = map
     root.loaded = true
@@ -114,8 +126,34 @@ Item {
   }
 
   function set(id, args, done) { root.run(["set", String(id)].concat(args), done) }
-  function markDone(id) { root.run(["done", String(id)]) }
-  function reopen(id) { root.run(["reopen", String(id)]) }
+  function withStatus(d, status) {
+    var c = {}
+    for (var k in d) c[k] = d[k]
+    c.status = status
+    return c
+  }
+  function ask(id, status, args) {
+    var p = {}
+    for (var k in root.pending) p[k] = root.pending[k]
+    p[id] = status
+    root.pending = p
+    var d = root.byId[id]
+    if (d && d.status !== status) {
+      var c = root.withStatus(d, status), map = {}
+      for (var m in root.byId) map[m] = root.byId[m]
+      map[id] = c
+      root.byId = map
+      root.items = root.items.map(function (x) { return x.id === id ? c : x })
+    }
+    root.run(args, function () {
+      if (root.pending[id] !== status) return       // asked again meanwhile
+      var q = {}
+      for (var k2 in root.pending) if (String(k2) !== String(id)) q[k2] = root.pending[k2]
+      root.pending = q
+    })
+  }
+  function markDone(id) { root.ask(id, "done", ["done", String(id)]) }
+  function reopen(id) { root.ask(id, "open", ["reopen", String(id)]) }
   function remove(id) { root.run(["rm", String(id)]) }
   function hide(id) { root.run(["hide", String(id)]) }
   function cancel(id) { root.run(["cancel", String(id)]) }
