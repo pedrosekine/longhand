@@ -391,7 +391,9 @@ nothing. The rule since:
   a line's end joins the next line, as `Ctrl+Backspace` at its start joins
   the one before. `Ctrl+S` saves at once and says so; it used to do
   nothing, and every hand presses it. `Shift+F10` or the Menu key opens
-  the right-click menu at the cursor or on the dashboard's row.
+  the right-click menu at the cursor or on the dashboard's row. Windows sends Shift+F10 as its "context menu"
+  message, without the key press, so its host gives the page the key back
+  (`windows/menukey.py`, found on the ThinkPad 2026-11-26).
 - **Global keys reach every box,** including the PDF's "go to page" and the
   card shown when the page cannot start. `F11` leaves the keys in the pane
   they were in; it used to send them to the note, even a hidden one. `Ctrl`

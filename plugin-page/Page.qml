@@ -3246,8 +3246,9 @@ Item {
   function saveNow() {
     var dirty = saveTimer.running
     root.flush()
-    root.showHint(!svc.ready || root.centerView !== "note" ? "nothing to save here: Longhand saves as you write"
-      : dirty ? "saved" : "already saved: Longhand saves as you write")
+    // Short: a hint is one line (2026-11-26, on the ThinkPad the longer
+    // words were cut off).
+    root.showHint(!svc.ready || root.centerView !== "note" ? "saved as you write" : dirty ? "saved" : "already saved")
     root.used("save", dirty ? "dirty" : "clean")
   }
 

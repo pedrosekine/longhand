@@ -255,6 +255,8 @@ def main() -> int:
         import compositor
         qs_io.INSIDE["hyprctl"] = compositor.hyprctl     # what the page asks Hyprland, answered here
     file_handler = file_urls.install()          # held: the page's file:// links, by drive  # noqa: F841
+    import menukey
+    menu_key = menukey.install(app)             # held: Shift+F10 as the key it is  # noqa: F841
     bridge = host_api.BRIDGE
     icon = REPO / "launcher" / "longhand.svg"
     if icon.is_file():
