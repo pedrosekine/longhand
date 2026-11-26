@@ -91,7 +91,7 @@ Item {
   // The columns are the CLI's (Store.js, which tools/install-plugins puts
   // beside this file). Hidden and cancelled ones are not the list's.
   function applyText(raw) {
-    var out = Store.parse(raw).filter(function (d) { return d.status !== "hidden" && d.status !== "cancelled" })
+    var out = Store.parse(raw).map(root.asAsked).filter(function (d) { return d.status !== "hidden" && d.status !== "cancelled" })
     // Open ones first (they are what the list is for), then done ones fade
     // out at the bottom. Same order as `pomo deadline list`.
     out.sort(function (a, b) {
@@ -107,18 +107,60 @@ Item {
 
   // Fire-and-forget CLI actions; the FileView picks up the result. One
   // action at a time: the file is rewritten whole, so two in flight would
-  // race each other.
-  function run(args) {
-    if (actionProc.running) return
-    actionProc.command = ["pomo", "deadline"].concat(args)
+  // race each other. The ones asked meanwhile wait their turn (2026-11-26:
+  // they were dropped, so Space twice quickly ticked and never unticked).
+  property var queue: []            // [{ args, id, status }]
+  property var job: null
+  function run(args, id, status) {
+    root.queue = root.queue.concat([{ args: args, id: id, status: status }])
+    root.next()
+  }
+  function next() {
+    if (actionProc.running || root.queue.length === 0) return
+    root.job = root.queue[0]
+    root.queue = root.queue.slice(1)
+    actionProc.command = ["pomo", "deadline"].concat(root.job.args)
     actionProc.running = true
+  }
+  // A command through: its tick is the store's own word now, unless the
+  // same one was asked for again meanwhile.
+  function jobDone() {
+    var j = root.job
+    root.job = null
+    if (j && j.status !== undefined && root.pending[j.id] === j.status) {
+      var q = {}
+      for (var k in root.pending) if (String(k) !== String(j.id)) q[k] = root.pending[k]
+      root.pending = q
+    }
+    root.next()
+  }
+
+  // A tick asked for and not yet written (id → status) is the list's at
+  // once, so a second press acts on what the first made, as in the page
+  // (Deadlines.qml, `pending`).
+  property var pending: ({})
+  function asAsked(d) {
+    var want = root.pending[d.id]
+    if (want === undefined || d.status === want) return d
+    var c = {}
+    for (var k in d) c[k] = d[k]
+    c.status = want
+    return c
+  }
+  function ask(id, status, args) {
+    var p = {}
+    for (var k in root.pending) p[k] = root.pending[k]
+    p[id] = status
+    root.pending = p
+    root.items = root.items.map(root.asAsked)
+    root.run(args, id, status)
   }
 
   // Nothing is deleted from here: cancelling marks the line `[-]` and keeps
   // the deadline as history (docs/tasks.md).
   function cancel(id) { run(["cancel", String(id)]) }
-  function markDone(id) { run(["done", String(id)]) }
-  function reopen(id) { run(["reopen", String(id)]) }
+  function markDone(id) { root.ask(id, "done", ["done", String(id)]) }
+  function reopen(id) { root.ask(id, "open", ["reopen", String(id)]) }
   function hide(id) { run(["hide", String(id)]) }
   function grade(id, text) { run(["grade", String(id), String(text)]) }
 
@@ -154,7 +196,7 @@ Item {
   Process {
     id: actionProc
     running: false
-    onExited: root.check()
+    onExited: { root.check(); root.jobDone() }
   }
 
   Process {

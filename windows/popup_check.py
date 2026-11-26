@@ -181,13 +181,20 @@ def run(app, engine, box, args, warnings):
         w = popup("longhand.deadline")
         first = ev("deadlinePanel.shown[0].title")
         key(w, Qt.Key.Key_D, "d")
-        done = 'deadlines.items.filter(function (i) { return i.status === "done" }).length'
-        wait(lambda: ev(done) == 1, lambda: ticked(first), "the deadline under the cursor ticked", 15.0)
+        # The store's file, not the popup's list: the list shows a tick at
+        # once, before it is written (2026-11-26, plugin-deadline/Service.qml).
+        wait(lambda: store_done() == 1, lambda: ticked(first), "the deadline under the cursor ticked, in the store", 15.0)
+
+    def store_lines():
+        store = box["state"] / "longhand" / "deadlines.tsv"
+        return store.read_text(encoding="utf-8").splitlines() if store.exists() else []
+
+    def store_done():
+        return sum("\tdone\t" in l or l.rstrip().endswith("\tdone") for l in store_lines())
 
     def ticked(first):
-        store = box["state"] / "longhand" / "deadlines.tsv"
-        lines = store.read_text(encoding="utf-8").splitlines() if store.exists() else []
-        step("deadline ticked", title=first, doneInStore=sum("\tdone\t" in l or l.rstrip().endswith("\tdone") for l in lines),
+        lines = store_lines()
+        step("deadline ticked", title=first, doneInStore=store_done(),
              storeLines=len(lines), label=ev("deadlines.labelText"))
         QTimer.singleShot(900, lambda: (picture(popup("longhand.deadline"), "deadlines"), put_away()))
 
