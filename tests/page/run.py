@@ -438,7 +438,10 @@ esac
                 [sys.executable, str(ROOT / "tests" / "page" / "qt_host.py"), str(self.shell), "701", "850"],
                 env=self.env, stdout=log, stderr=log)
             port_file = self.shell / ".qt-ipc-port"
-            end = time.time() + 15
+            # A ceiling, not a wait: on Windows the suite starts this beside
+            # 84 other files on two cores, and Qt and the page took more than
+            # 15 s to load once (2026-11-26). A host that starts is not slowed.
+            end = time.time() + (45 if os.name == "nt" else 15)
             while time.time() < end and not port_file.is_file():
                 if self.proc.poll() is not None:
                     raise PageFrozen(f"qt_host exited early ({self.proc.returncode})")
