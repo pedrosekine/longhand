@@ -522,7 +522,9 @@ esac
             try:
                 if cond():
                     return True
-            except (ValueError, KeyError, IndexError, TypeError, json.JSONDecodeError):   # TypeError: not asked yet (null)
+            # TypeError: not asked yet (null); FileNotFoundError: a file the
+            # page has not written yet (2026-11-26, Windows CI).
+            except (ValueError, KeyError, IndexError, TypeError, json.JSONDecodeError, FileNotFoundError):
                 pass
             time.sleep(0.15)
         return False

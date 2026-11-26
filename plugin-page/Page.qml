@@ -983,7 +983,8 @@ Item {
   }
 
   function loadHorizon() {
-    if (horizonProc.running || !svc.configured) return
+    if (!svc.configured) return
+    if (horizonProc.running) { horizonProc.again = true; return }   // read again once it ends: what changed meanwhile counts
     horizonProc.command = [svc.runner, "horizon"]
     horizonProc.running = true
   }
@@ -4493,7 +4494,8 @@ Item {
   readonly property var autonomyLevels: ["ask", "do", "never"]
 
   function loadAutonomy() {
-    if (autonomyProc.running || !svc.configured) return
+    if (!svc.configured) return
+    if (autonomyProc.running) { autonomyProc.again = true; return }   // read again once it ends: what changed meanwhile counts
     autonomyProc.command = [svc.runner, "autonomy"]
     autonomyProc.running = true
   }
@@ -4509,7 +4511,7 @@ Item {
   readonly property bool checkinDue: !!root.checkinData && root.checkinData.due
   readonly property var checkinWeeks: root.checkinData ? root.checkinData.weeks.slice().reverse() : []
   function loadCheckin() {
-    if (checkinProc.running) return
+    if (checkinProc.running) { checkinProc.again = true; return }   // read again once it ends: what changed meanwhile counts
     checkinProc.command = [svc.runner, "checkin"]
     checkinProc.running = true
   }
@@ -4680,7 +4682,8 @@ Item {
   property int searchFocus: 0
 
   function loadSearchFolders() {
-    if (searchFoldersProc.running || !svc.configured) return
+    if (!svc.configured) return
+    if (searchFoldersProc.running) { searchFoldersProc.again = true; return }   // read again once it ends: what changed meanwhile counts
     searchFoldersProc.command = [svc.runner, "search", "--folders"]
     searchFoldersProc.running = true
   }
@@ -4894,7 +4897,7 @@ Item {
   }
 
   function loadNotebook() {
-    if (notebookProc.running) return
+    if (notebookProc.running) { notebookProc.again = true; return }   // read again once it ends: what changed meanwhile counts
     notebookProc.command = [svc.runner, "notebook"]
     notebookProc.running = true
   }
@@ -4947,12 +4950,20 @@ Item {
     Qt.callLater(function () { notebookSheet.notebookFieldRef.forceActiveFocus(); notebookSheet.notebookFieldRef.selectAll() })
   }
 
+  // One at a time, in the order asked: a second forget or correction while
+  // the first was written was dropped (2026-11-26, Windows CI).
   function notebookAct(args, note, event) {
-    if (notebookActProc.running) return
-    root.notebookPendingNote = note
-    notebookActProc.command = [svc.runner, "notebook"].concat(args)
-    notebookActProc.running = true
+    notebookActProc.queue = notebookActProc.queue.concat([{ args: args, note: note }])
     root.used("notebook", event)
+    root.nextNotebookAct()
+  }
+  function nextNotebookAct() {
+    if (notebookActProc.running || notebookActProc.queue.length === 0) return
+    var j = notebookActProc.queue[0]
+    notebookActProc.queue = notebookActProc.queue.slice(1)
+    root.notebookPendingNote = j.note
+    notebookActProc.command = [svc.runner, "notebook"].concat(j.args)
+    notebookActProc.running = true
   }
   property string notebookPendingNote: ""
 
@@ -9253,18 +9264,34 @@ Item {
   }
   Process {
     id: horizonProc
+    // Asked while it ran (2026-11-26: a setting changed during a read was
+    // never read, on a slow machine): once more when it ends.
+    property bool again: false
+    onExited: if (horizonProc.again) { horizonProc.again = false; Qt.callLater(function () { horizonProc.running = true }) }
     stdout: StdioCollector { onStreamFinished: { try { root.horizonData = JSON.parse(text) } catch (e) {} } }
   }
   Process {
     id: searchFoldersProc
+    // Asked while it ran (2026-11-26: a setting changed during a read was
+    // never read, on a slow machine): once more when it ends.
+    property bool again: false
+    onExited: if (searchFoldersProc.again) { searchFoldersProc.again = false; Qt.callLater(function () { searchFoldersProc.running = true }) }
     stdout: StdioCollector { onStreamFinished: { try { root.searchData = JSON.parse(text) } catch (e) {} } }
   }
   Process {
     id: autonomyProc
+    // Asked while it ran (2026-11-26: a setting changed during a read was
+    // never read, on a slow machine): once more when it ends.
+    property bool again: false
+    onExited: if (autonomyProc.again) { autonomyProc.again = false; Qt.callLater(function () { autonomyProc.running = true }) }
     stdout: StdioCollector { onStreamFinished: { try { root.autonomyData = JSON.parse(text) } catch (e) {} } }
   }
   Process {
     id: notebookProc
+    // Asked while it ran (2026-11-26: a setting changed during a read was
+    // never read, on a slow machine): once more when it ends.
+    property bool again: false
+    onExited: if (notebookProc.again) { notebookProc.again = false; Qt.callLater(function () { notebookProc.running = true }) }
     stdout: StdioCollector {
       onStreamFinished: {
         try { root.notebookData = JSON.parse(text) } catch (e) { root.notebookNote = "the runner did not answer" }
@@ -9278,6 +9305,8 @@ Item {
   }
   Process {
     id: notebookActProc
+    property var queue: []
+    onExited: Qt.callLater(root.nextNotebookAct)
     stdout: StdioCollector {
       onStreamFinished: {
         if (text.trim() !== "") root.notebookNote = root.notebookPendingNote
@@ -9398,6 +9427,10 @@ Item {
 
   Process {
     id: checkinProc
+    // Asked while it ran (2026-11-26: a setting changed during a read was
+    // never read, on a slow machine): once more when it ends.
+    property bool again: false
+    onExited: if (checkinProc.again) { checkinProc.again = false; Qt.callLater(function () { checkinProc.running = true }) }
     stdout: StdioCollector {
       onStreamFinished: { try { root.checkinData = JSON.parse(text) } catch (e) {} }
     }
