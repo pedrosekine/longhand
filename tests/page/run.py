@@ -438,7 +438,10 @@ esac
                 [sys.executable, str(ROOT / "tests" / "page" / "qt_host.py"), str(self.shell), "701", "850"],
                 env=self.env, stdout=log, stderr=log)
             port_file = self.shell / ".qt-ipc-port"
-            end = time.time() + 15
+            # A ceiling, not a wait: on Windows the suite starts this beside
+            # 84 other files on two cores, and Qt and the page took more than
+            # 15 s to load once (2026-11-26). A host that starts is not slowed.
+            end = time.time() + (45 if os.name == "nt" else 15)
             while time.time() < end and not port_file.is_file():
                 if self.proc.poll() is not None:
                     raise PageFrozen(f"qt_host exited early ({self.proc.returncode})")
@@ -501,6 +504,19 @@ esac
         out = r.stdout
         return out[:-1] if out.endswith("\n") else out   # only IPC's own newline: a note may start with one
 
+    def settled(self, read, still=0.4):
+        """True when `read()` gives the same answer, not empty, over `still`
+        seconds: something animating or being laid out has come to rest."""
+        first = read()
+        if not first:
+            return False
+        end = time.time() + still
+        while time.time() < end:
+            time.sleep(0.1)
+            if read() != first:
+                return False
+        return True
+
     def wait(self, cond, timeout=6.0):
         # Process creation on Windows is slower than Linux fork(), so give
         # conditions a little more headroom without changing Linux timeouts.
@@ -509,7 +525,9 @@ esac
             try:
                 if cond():
                     return True
-            except (ValueError, KeyError, IndexError, TypeError, json.JSONDecodeError):   # TypeError: not asked yet (null)
+            # TypeError: not asked yet (null); FileNotFoundError: a file the
+            # page has not written yet (2026-11-26, Windows CI).
+            except (ValueError, KeyError, IndexError, TypeError, json.JSONDecodeError, FileNotFoundError):
                 pass
             time.sleep(0.15)
         return False
@@ -2055,6 +2073,14 @@ def checks() -> int:
         time.sleep(1.0)
         check(p.wait(settled_open) and (time.sleep(1.0) or settled_open()),
               f"…and stays open once the check has read the note ({p.deadline(eid)}, {p.call('checkState')}, {p.note()[-70:]!r})")
+        # Ctrl+L twice at once, before the store has written the first: a
+        # tick and its undo, never two ticks (2026-11-26: the second read
+        # the list as it was, open, and ticked again; Windows CI caught it).
+        p.call("dueKey", 0, KEY_L, CTRL)
+        p.call("dueKey", 0, KEY_L, CTRL)
+        time.sleep(1.0)
+        check(p.wait(settled_open) and (time.sleep(1.0) or settled_open()),
+              f"Ctrl+L twice at once: ticked and unticked, open again ({p.deadline(eid)}, {p.note()[-70:]!r})")
         p.call("sidebar")
         p.call("dash")
 
@@ -2111,7 +2137,11 @@ def checks() -> int:
                      and "goes quiet" not in row("a fading thought").get("where", "")),
               "r keeps it: back, its clock started again")
         # Two boxes put aside in a row, faster than the first is written:
-        # both are (the second was lost, 2026-10-25).
+        # both are (the second was lost, 2026-10-25). The list read once it
+        # has stopped moving after `r` (2026-11-26: read while it moved, the
+        # rows were not where the keys went, on Windows CI).
+        row("an old aside")
+        row("a fading thought")
         rows_now = json.loads(p.call("dashRows"))
         i1, i2 = (next(n for n, r in enumerate(rows_now) if r.get("text") == w) for w in ("a fading thought", "an old aside"))
         p.call("dashFocus", i1)
@@ -2562,9 +2592,11 @@ def checks() -> int:
         p.call("settingsSave", f"http://127.0.0.1:{uni.server_port}/locked.ics?token=SECRET")
         check(p.wait(lambda: len(cals()) == 2 and json.loads(p.call("settingsLines"))[4].startswith("Not working yet"), timeout=10),
               f"a second calendar, landing on a sign-in page, says it is not working ({p.call('settingsLines')})")
-        lines = json.loads(p.call("settingsLines"))
-        check("sign-in page" in lines[4] and lines[1].startswith("Working"),
-              f"…why, in words, while the first still works ({lines})")
+        # Waited on as one reading: "Not working yet" comes before its
+        # reason does (2026-11-26, Windows CI read between the two).
+        said = lambda: json.loads(p.call("settingsLines"))  # noqa: E731
+        check(p.wait(lambda: (lambda l: "sign-in page" in l[4] and l[1].startswith("Working"))(said())),
+              f"…why, in words, while the first still works ({said()})")
         check(p.call("settingsKey", KEY_BACKSPACE, CTRL | SHIFT) == "false", "Ctrl+Shift+Backspace is no longer a key in settings")
         check(p.call("settingsPicked") == "calendar" and p.call("settingsKey", KEY_DELETE, 0) == "true"
               and p.call("settingsAsking") == "1" and len(cals()) == 2,
@@ -3759,20 +3791,26 @@ def checks() -> int:
         p.call("sideKey", KEY_ESC, 0)                       # out of the project, onto its row
         p.call("sidebar")
         p.call("sidebar")
-        check(p.wait(lambda: walk()["list"] == "proj" and walk()["order"][walk()["at"]] == last),
+        check(p.wait(lambda: (lambda w: w["list"] == "proj" and w["order"][w["at"]] == last)(walk())),
               f"the sidebar opened again comes back to the row it was left on ({walk()})")
         used_file = p.state / "longhand" / "projects-used.json"
         check(p.wait(lambda: used_file.exists() and last in json.loads(used_file.read_text())),
               "…its use kept, for the order (the most used first)")
         p.call("sideType", "#zzz")
-        check(walk()["typing"] and walk()["order"][walk()["at"]] == last, f"letters nothing has keep the row ({walk()})")
+        # One reading of the walk, waited on: the order may still be turning
+        # over to the use just kept, and three readings could each see a
+        # different one (2026-11-26).
+        def kept_row():
+            w = walk()
+            return w["typing"] and w["order"][w["at"]] == last
+        check(p.wait(kept_row), f"letters nothing has keep the row ({walk()})")
         p.call("sideKey", KEY_ESC, 0)
         check(not walk()["typing"] and walk()["list"] == "proj", f"…Esc stops typing, where it was ({walk()})")
         # Letters alone, with no `#` (2026-11-22): from the calendar too.
         p.call("sideKey", KEY_ESC, 0)
         first = walk()["order"][0]
         p.call("sideType", first[:2])
-        check(walk()["typing"] and walk()["list"] == "proj" and walk()["order"][walk()["at"]] == first,
+        check(p.wait(lambda: (lambda w: w["typing"] and w["list"] == "proj" and w["order"][w["at"]] == first)(walk())),
               f"letters alone find the project, from the calendar ({walk()})")
         p.call("sideKey", KEY_ESC, 0)
         p.call("sideKey", KEY_ESC, 0)
@@ -3997,6 +4035,9 @@ def checks() -> int:
         check(mk()["dragPans"] is False, "a mouse drag on it selects, never moves the pages")
         p.call("keysToSidebar")
         check(p.wait(lambda: pd()["here"] == "left"), f"(the keys in the sidebar, as after opening it from the Files tree: {pd()['here']})")
+        # The sidebar's opening slides the paper and may refit it: drag once
+        # it holds still (a slow machine dragged across a moving page).
+        check(p.wait(lambda: p.settled(lambda: p.call("pdfGeom", "0"))), f"(the paper holds still: {p.call('pdfGeom', '0')})")
         check(p.call("pdfDrag", "0", "73", "69", "200", "69") == "true" and p.wait(lambda: mk()["selected"] != ""),
               f"a mouse dragged across words selects them ({mk()})")
         check(p.wait(lambda: pd()["here"] == "center"), f"…bring the keys to it, so m reaches them ({pd()['here']})")
