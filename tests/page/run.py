@@ -2587,9 +2587,11 @@ def checks() -> int:
         p.call("settingsSave", f"http://127.0.0.1:{uni.server_port}/locked.ics?token=SECRET")
         check(p.wait(lambda: len(cals()) == 2 and json.loads(p.call("settingsLines"))[4].startswith("Not working yet"), timeout=10),
               f"a second calendar, landing on a sign-in page, says it is not working ({p.call('settingsLines')})")
-        lines = json.loads(p.call("settingsLines"))
-        check("sign-in page" in lines[4] and lines[1].startswith("Working"),
-              f"…why, in words, while the first still works ({lines})")
+        # Waited on as one reading: "Not working yet" comes before its
+        # reason does (2026-11-26, Windows CI read between the two).
+        said = lambda: json.loads(p.call("settingsLines"))  # noqa: E731
+        check(p.wait(lambda: (lambda l: "sign-in page" in l[4] and l[1].startswith("Working"))(said())),
+              f"…why, in words, while the first still works ({said()})")
         check(p.call("settingsKey", KEY_BACKSPACE, CTRL | SHIFT) == "false", "Ctrl+Shift+Backspace is no longer a key in settings")
         check(p.call("settingsPicked") == "calendar" and p.call("settingsKey", KEY_DELETE, 0) == "true"
               and p.call("settingsAsking") == "1" and len(cals()) == 2,
