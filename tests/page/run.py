@@ -4141,6 +4141,15 @@ def checks() -> int:
         check(p.wait(lambda: mk()["read"]["marks"] == [] and mk()["drawn"] == 0 and m1["id"] not in reading.read_text()
                      and "the method, in one line" not in reading.read_text()),
               f"x removes it, with its note, from the page and the note ({mk()})")
+        # u brings it back (2026-11-27): its name, its note, where it was.
+        p.call("pdfKey", 0x55, 0)                           # u
+        check(p.wait(lambda: [m["id"] for m in mk()["read"]["marks"]] == [m1["id"]] and mk()["drawn"] > 0
+                     and mk()["read"]["marks"][0]["note"] == "the method, in one line"
+                     and "the method, in one line" in reading.read_text()),
+              f"u brings the mark removed back, with its name and note ({mk()})")
+        p.call("pdfPick", m1["id"])
+        p.call("pdfKey", 0x58, 0)                           # x, again
+        p.wait(lambda: mk()["read"]["marks"] == [])
         # The paper's room (plan.md item 15, step 2): beside the PDF, one
         # chat for the paper and its marks as a list. A question marked opens
         # the chat with it attached, nothing sent until Enter; Esc turns the
@@ -4758,6 +4767,15 @@ def checks() -> int:
         p.call("pdfKey", KEY_LBRACKET, CTRL)
         check(p.wait(lambda: fd()["page"] == 0 and (fd()["here"] or {}).get("frac", 1) < 0.05 and fd()["back"] is None),
               f"Ctrl+[: back to where the reading was ({fd()})")
+        # Shift+Esc: closed, back where the reading was, at once (2026-11-27).
+        p.call("pdfKey", 0x46, CTRL)                        # Ctrl+F
+        p.call("pdfFind", "bridge")
+        p.wait(lambda: fd()["total"] == 2 and fd()["at"] == 0)
+        p.call("pdfFindKey", KEY_RETURN, 0)
+        p.wait(lambda: fd()["at"] == 1 and fd()["page"] == 1)
+        p.call("pdfFindKey", KEY_ESC, SHIFT)
+        check(p.wait(lambda: not fd()["finding"] and fd()["page"] == 0 and fd()["back"] is None),
+              f"Shift+Esc: the bar goes, back where the reading was, no way back kept ({fd()})")
         p.call("pdfKey", KEY_END, 0)
         check(p.wait(lambda: fd()["page"] == 2), f"the page said follows the view, not Qt's last jump ({fd()})")
         p.call("pdfKey", 0x01000016, 0)                     # PgUp

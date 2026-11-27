@@ -47,6 +47,11 @@ Item {
         for (var k = 0; k < t[i].marks.length; k++) out[t[i].marks[k]] = true
     return out
   }
+  // The paper's answers so far: the agent's turns that came back.
+  readonly property int answers: {
+    var t = pp.shown && page.noteTalk && page.noteTalk.turns ? page.noteTalk.turns : []
+    return t.filter(function (x) { return x.role === "agent" && !x.error && !!x.text }).length
+  }
   function markState(m) {
     if (m.kind !== "q") return m.note ? "note" : ""
     return pp.answered[m.id] ? "answered" : "waiting"
@@ -70,7 +75,8 @@ Item {
   function markById(id) { return page.pdfItem.markById(id) }
   function head(id) {
     var m = page.pdfItem.markById(id)
-    if (!m) return id
+    // Removed since (its chat still says it): said so, not by its bare name.
+    if (!m) return "a mark since removed"
     return "p. " + m.page + " “" + (m.text.length > 48 ? m.text.slice(0, 48) + "…" : m.text) + "”"
   }
   function attach(id) {

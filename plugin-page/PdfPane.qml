@@ -103,7 +103,18 @@ Item {
   // chat, 2026-11-19): { page, words }, null when none.
   property var flashAfter: null
   onFlashAfterChanged: if (flashAfter) Qt.callLater(pane.showPending)
+  // A page to go to once the PDF is open (a link's #page=12, a citation of
+  // the agent's): { page (from 0), y (points down it) }, null when none.
+  // Arriving, it is put there at once (arrive); already open, glided to,
+  // the back key returning.
+  property var pageAfter: null
+  onPageAfterChanged: if (pageAfter) Qt.callLater(pane.showPending)
   function showPending() {
+    if (pane.pageAfter && pane.settled) {
+      var g = pane.pageAfter
+      pane.pageAfter = null
+      pane.jumpAway("link", Math.max(0, Math.min(pane.pages - 1, g.page)), g.y || 0)
+    }
     if (pane.flashAfter && pane.settled) {
       var w = pane.flashAfter
       pane.flashAfter = null
@@ -117,10 +128,20 @@ Item {
   property string picked: ""            // a mark clicked
   property string lastMade: ""          // the last mark made while it is open
   property string readError: ""
+  // Said in the foot a moment, then the foot is back (2026-11-27: an error
+  // stayed, over the page number and every word of the foot, until another
+  // PDF was opened).
+  Timer { id: readErrorTimer; interval: 6000; onTriggered: pane.readError = "" }
+  onReadErrorChanged: if (readError !== "") readErrorTimer.restart(); else readErrorTimer.stop()
+  // Not an error, said the same way: "removed · u brings it back".
+  property string footSaid: ""
+  Timer { id: footSaidTimer; interval: 6000; onTriggered: pane.footSaid = "" }
+  function say(t) { pane.footSaid = t; footSaidTimer.restart() }
+  // The mark last removed, to bring back (`u`): { id, kind, page, text,
+  // note, day }; null when none. One deep, for this paper only.
+  property var removed: null
   property bool noting: false
   property string notingId: ""
-  property bool awaitingMark: false
-  property bool askAfter: false
   // The project asked for on a paper's first mark: the projects, narrowing
   // as a name or tag is typed.
   property bool askingTag: false
@@ -160,7 +181,18 @@ Item {
   property bool tipOn: false           // a tip shown (a moment after the pointer stops)
   property bool acroListing: false      // `a`: the list open, every acronym underlined
   property int acroFocus: 0
-  property var jumpBack: null           // where a jump to a definition left from
+  property bool acroLoaded: false       // read for this paper (none found is read too)
+  // Where each jump left from, the last on top: a definition gone to, a
+  // link followed, a page typed, a quote of the agent's, a mark chosen in
+  // the paper's list, a place found (2026-11-27: one deep, and kept only by
+  // the first three, so the back key after checking a quote closed the
+  // PDF instead of returning to where it was read).
+  property var jumpBacks: []
+  readonly property var jumpBack: pane.jumpBacks.length ? pane.jumpBacks[pane.jumpBacks.length - 1] : null
+  // The last jump kept: its kind and where it lands, so steps of one kind
+  // in a row (the paper's marks one after another) keep one way back.
+  property string jumpKind: ""
+  property real jumpLanding: -1
   readonly property var acroChoices: {
     var q = acroField.text.trim().toLowerCase()
     return pane.acro.list.filter(function (x) {
@@ -179,6 +211,7 @@ Item {
     ;(o.acronyms || []).forEach(function (x) { by[x.short] = { short: x.short, long: x.long, page: x.page, rects: x.rects, defined: true }; list.push(by[x.short]) })
     ;(o.undefined || []).forEach(function (x) { by[x.short] = { short: x.short, long: "", page: x.page, count: x.count, defined: false }; list.push(by[x.short]) })
     pane.acro = { byShort: by, list: list, spots: o.spots || {} }
+    pane.acroLoaded = true
   }
   function esc(t) { return String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") }
   // A place found, as a row: a few words before it, it, the words after.
@@ -216,6 +249,14 @@ Item {
     return best
   }
   readonly property string hoverMark: pane.hoverMarkAt ? pane.hoverMarkAt.id : ""
+  // A mark's size, all its lines: as a click weighs it (PdfMarks.pick), so
+  // the one hovered is the one a click there picks (2026-11-27: hovered by
+  // one line's rectangle, a question's short last line beat the highlight
+  // the click picked).
+  function markArea(id) {
+    var m = pane.markById(id)
+    return m ? Marks.area(m) : Infinity
+  }
   function markHover(id, item, area) {
     pane.markHovers = pane.markHovers.filter(function (h) { return h.item !== item }).concat([{ id: id, item: item, area: area }])
     pane.tipWait()
@@ -293,23 +334,26 @@ Item {
     pane.tipOn = false
     if (!d.defined) { page.paper.askAcronym(a); return }
     var box = { page: d.page - 1, rects: d.rects }
-    pane.jumpBack = pane.here()
     pane.flashMissed = ""
     pane.flashBoxes = [box]
-    pane.goToBox(box)
+    pane.goToBox(box, "acronym")
     flashTimer.restart()
     keys.forceActiveFocus()
     page.used("pdf", "acronym")
   }
+  // The back key: to where the last jump left from.
   function jumpReturn() {
-    var p = pane.jumpBack
-    pane.jumpBack = null
-    if (!p || !pane.view || !loader.item) return
+    var n = pane.jumpBacks.length
+    if (n === 0 || !pane.view || !loader.item) return
+    var p = pane.jumpBacks[n - 1]
+    pane.jumpBacks = pane.jumpBacks.slice(0, n - 1)
     var h = loader.item.doc.pagePointSize(p.page).height
     pane.jumpTo(p.page, p.frac * h)
     page.used("pdf", "acronym-back")
   }
   function openAcronyms() {
+    // Still being read (a large paper, just opened): said so, not "none".
+    if (!pane.acroLoaded) { pane.say("still reading the paper's acronyms…"); return }
     if (pane.acro.list.length === 0) { pane.readError = "no acronyms found in this paper"; return }
     pane.acroListing = true
     pane.acroFocus = 0
@@ -390,11 +434,16 @@ Item {
     pane.jumpingPage = false
     pane.pendingAskMark = ""
     pane.picked = ""; pane.lastMade = ""; pane.readError = ""; pane.noting = false; noteField.text = ""
+    pane.footSaid = ""; pane.removed = null
     pane.readQueue = []
-    pane.acro = ({ byShort: {}, list: [], spots: {} })
-    pane.hoverAcro = null; pane.tipOn = false; pane.markHovers = []; pane.acroListing = false; pane.jumpBack = null
+    pane.acro = ({ byShort: {}, list: [], spots: {} }); pane.acroLoaded = false
+    pane.hoverAcro = null; pane.tipOn = false; pane.markHovers = []; pane.acroListing = false
+    pane.jumpBacks = []; pane.jumpKind = ""; pane.jumpLanding = -1
+    // A scan being read is this paper's only: another's says nothing of it
+    // (2026-11-27: its "reading the scan…" stayed on every PDF opened after).
+    pane.ocrProgress = ocrProc.running && ocrProc.forRel === pane.rel ? ocrProc.last : null
     if (pane.rel !== "" && !Links.isAbs(pane.rel)) pane.readRun(["state"])
-    if (pane.rel !== "") pane.readRun(["acronyms"])
+    if (pane.rel !== "") pane.readRun(["acronyms"], { acro: true })
     Qt.callLater(pane.arrive)
   }
 
@@ -408,17 +457,34 @@ Item {
     var at = pane.view.placeAt(f.contentY + (down || 0) * f.height)
     if (!at) return null
     at.zoom = pane.zoom
+    if (pane.wholePage) at.whole = true
     return at
   }
   // A page down or up (PgDn, Space, PgUp): as far down the next page as
-  // the view's top is down this one.
+  // the view's top is down this one, when a page fits in the view. A page
+  // taller than the view (fitted by its text on a laptop, or sized up) goes
+  // a view at a time, a few lines kept (2026-11-27: Space from a page's
+  // top went to the next page's, and the foot of every page went unread).
   function turn(d) {
     var at = pane.here()
     if (!at || !pane.view) return
+    var f = pane.view.flick
+    if (loader.item.doc.pagePointSize(at.page).height * pane.view.renderScale > f.height * 1.02) {
+      pane.jumpKind = ""
+      pane.view.glideTo(f.contentY + d * f.height * 0.88)
+      return
+    }
     var to = Math.max(0, Math.min(pane.pages - 1, at.page + d))
     if (to === at.page) return
     var h = loader.item.doc.pagePointSize(to).height
     pane.jumpTo(to, at.frac * h)
+  }
+  // Sideways, when sized up past the fit (or on a page wider than the
+  // paper's others): ←/→ as Shift and the wheel do.
+  function pan(dx) {
+    if (!pane.view || !pane.view.canSideways()) return
+    var f = pane.view.flick
+    f.contentX = pane.view.clampX(f.contentX + dx)
   }
   // Note where this PDF is, now; Page.qml asks before it opens another or
   // closes this one, and a pause in scrolling asks too.
@@ -438,10 +504,17 @@ Item {
     if (pane.settled || !pane.ready || !loader.item
         || decodeURIComponent(String(loader.item.doc.source)) !== decodeURIComponent(pane.url())) return
     var p = Places.get(pane.places, pane.rel, pane.pages)
-    if (p) pane.zoom = p.zoom
+    if (p) { pane.zoom = p.zoom; pane.wholePage = !!p.whole }
     Qt.callLater(function () {
       pane.fit()
-      if (p && pane.view) {
+      // Opened for a page (a link's #page=12, a citation): put there at
+      // once, not where it was left and then glided from (2026-11-27: the
+      // page was dropped, the PDF not being read yet).
+      var go = pane.pageAfter
+      pane.pageAfter = null
+      if (go && pane.view) {
+        pane.view.place(Math.max(0, Math.min(pane.pages - 1, go.page)), go.y || 0)
+      } else if (p && pane.view) {
         var h = loader.item.doc.pagePointSize(p.page).height
         pane.view.place(p.page, p.frac * h)
         pane.resumed = p
@@ -469,14 +542,30 @@ Item {
   // page 16).
   function jumpTo(index, y) {
     if (!pane.ready || !pane.view) return
+    pane.jumpKind = ""
     pane.view.jumpTo(index, y)
+  }
+  // A jump the back key returns from: where it left is kept first. Jumps
+  // of one kind in a row, the view still where the last put it (the
+  // paper's marks stepped through, acronym after acronym), keep one way
+  // back: to where they began.
+  function jumpAway(kind, index, y) {
+    if (!pane.ready || !pane.view) return
+    var still = pane.jumpKind === kind && pane.jumpBacks.length > 0
+      && (pane.view.gliding || Math.abs(pane.view.flick.contentY - pane.jumpLanding) < 4)
+    // Already there: nowhere to come back from.
+    var there = Math.abs(pane.view.flick.contentY - pane.view.placeOf(index, y)) < 4
+    var from = pane.here()
+    if (from && !still && !there) pane.jumpBacks = pane.jumpBacks.slice(-49).concat([from])
+    pane.view.jumpTo(index, y)
+    pane.jumpKind = kind
+    pane.jumpLanding = pane.view.placeOf(index, y)
   }
   // A link inside the PDF: glided to, as any jump, and the back key
   // returns (a reference followed to the bibliography, then back).
   function followLink(link) {
     if (link.page < 0) { Qt.openUrlExternally(link.url); return }
-    pane.jumpBack = pane.here()
-    pane.jumpTo(link.page, Math.max(0, (link.location.y >= 0 ? link.location.y : 0) - 30))
+    pane.jumpAway("link", link.page, Math.max(0, (link.location.y >= 0 ? link.location.y : 0) - 30))
     keys.forceActiveFocus()
     page.used("pdf", "link")
   }
@@ -493,7 +582,24 @@ Item {
   // What the fit makes before the zoom: a pinch is taken back as the zoom
   // over it, so the next fit keeps it.
   property real fitBase: 0
-  function fit() {
+  // Where the next size is taken about, in the view's pixels, and whether
+  // the pictures wait for it to rest: { x, y, live }; null for the view's
+  // top, the pages centred (a fit).
+  property var zoomAbout: null
+  // Sized about a point (2026-11-27: every size kept the view's top, so a
+  // figure low in the view, sized up with Ctrl and the wheel, slid out of
+  // it): the pointer's for the wheel, the view's middle for + and -.
+  function zoomTo(z, x, y, live) {
+    z = Math.max(0.3, Math.min(4, z))
+    if (Math.abs(z - pane.zoom) < 1e-4) return
+    pane.zoomAbout = { x: x, y: y, live: !!live }
+    pane.zoom = z
+  }
+  function zoomStep(r) {
+    var f = pane.view ? pane.view.flick : null
+    pane.zoomTo(pane.zoom * r, f ? f.width / 2 : -1, f ? f.height / 2 : 0)
+  }
+  function fit(live) {
     if (!pane.view || !pane.ready) return
     var w = Math.max(100, pane.width)
     if (pane.span) {
@@ -501,12 +607,20 @@ Item {
       var reach = Math.max(mid - pane.span.x0, pane.span.x1 - mid) + pane.spanPad
       pane.fitBase = (w / 2) / Math.max(1, reach)
     }
-    else pane.fitBase = w / Math.max(1, loader.item.doc.pagePointSize(0).width)
-    // The view's top kept where it is, the pages centred.
-    pane.view.setScale(pane.fitBase * pane.zoom, -1, 0)
+    // By the width most pages have: a landscape cover first is not the paper.
+    else pane.fitBase = w / Math.max(1, pane.view.usualWidth || loader.item.doc.pagePointSize(0).width)
+    var a = pane.zoomAbout
+    pane.zoomAbout = null
+    // The view's top kept where it is, the pages centred, unless sized about a point.
+    pane.view.setScale(pane.fitBase * pane.zoom, a ? a.x : -1, a ? a.y : 0, a ? a.live : live === true)
   }
-  onWidthChanged: Qt.callLater(pane.fit)
-  onZoomChanged: Qt.callLater(pane.fit)
+  // A pane's edge dragged: each step stretched, drawn sharp once it rests,
+  // as a pinch is (2026-11-27: every pixel of the drag drew every page in
+  // view again).
+  function fitLive() { pane.fit(true) }
+  onWidthChanged: Qt.callLater(pane.fitLive)
+  onZoomChanged: { Qt.callLater(pane.fit); if (pane.settled) keepTimer.restart() }
+  onWholePageChanged: if (pane.settled) keepTimer.restart()
   onSpanChanged: Qt.callLater(pane.fit)
   onReadyChanged: if (ready) { Qt.callLater(pane.fit); Qt.callLater(pane.arrive) }
 
@@ -515,9 +629,13 @@ Item {
   Connections {
     target: pane.settled && pane.view ? pane.view.flick : null
     function onContentYChanged() { keepTimer.restart(); pane.tipScrolled(); if (pane.view.selectedText !== "") pane.selectionRev++ }
+    // The selection's pill follows the words sideways too (2026-11-27).
+    function onContentXChanged() { if (pane.view.selectedText !== "") pane.selectionRev++ }
   }
   Connections {
     target: pane.view
+    // …and as the pages are sized.
+    function onRenderScaleChanged() { if (pane.view.selectedText !== "") pane.selectionRev++ }
     // Words selected on a page bring the keys here, wherever they were (a
     // PDF opened from the Files tree leaves them in the sidebar): `m` and
     // `q` must reach the words just selected.
@@ -576,7 +694,10 @@ Item {
     var seq = Sc.fromEvent(event)
     if (Sc.hit(event, "findNext")) pane.findGo(1)
     else if (Sc.hit(event, "findPrev")) pane.findGo(-1)
-    else if (Sc.hit(event, "findClose") || Sc.hit(event, "findBack") || Sc.hit(event, "findGo")) pane.closeFind()
+    // Shift+Esc: closed, back where the reading was, as its key says
+    // (2026-11-27: it stayed on the place found, as Esc does).
+    else if (Sc.hit(event, "findBack")) pane.closeFind(false, true)
+    else if (Sc.hit(event, "findClose") || Sc.hit(event, "findGo")) pane.closeFind()
     else if (Sc.hit(event, "pdfFind") && seq !== "/") findField.selectAll()
     else if (seq === "PgDn") pane.turn(1)
     else if (seq === "PgUp") pane.turn(-1)
@@ -590,11 +711,14 @@ Item {
   }
   // Esc: the view stays where it was found; the back key returns to where
   // the reading was, if it moved.
-  function closeFind(away) {
+  // `back`: to where the reading was instead (Shift+Esc).
+  function closeFind(away, back) {
     var from = pane.findFrom, now = pane.here()
     pane.finding = false
     pane.clearFind()
-    if (from && now && (from.page !== now.page || Math.abs(from.frac - now.frac) > 0.02)) pane.jumpBack = from
+    var moved = from && now && (from.page !== now.page || Math.abs(from.frac - now.frac) > 0.02)
+    if (moved && back && loader.item) pane.jumpTo(from.page, from.frac * loader.item.doc.pagePointSize(from.page).height)
+    else if (moved) { pane.jumpBacks = pane.jumpBacks.slice(-49).concat([from]); pane.jumpKind = "" }
     pane.findFrom = null
     if (!away) keys.forceActiveFocus()
   }
@@ -644,6 +768,9 @@ Item {
   }
   function findGo(d) {
     if (findTimer.running) { pane.runFind(); return }
+    // Words typed still being looked for: the places found are the last
+    // words', and Enter would step through them (2026-11-27).
+    if (searchProc.running && pane.findFor !== findField.text.trim()) return
     var n = pane.findHits.length
     if (n === 0) return
     var i = pane.findAt + d
@@ -663,6 +790,7 @@ Item {
   // view already (above the find bar): the pages move only when they must.
   function reveal(box) {
     if (!pane.view || !box || !box.rects || box.rects.length === 0) return
+    pane.revealX(box)
     var s = pane.view.renderScale, first = box.rects[0], last = box.rects[box.rects.length - 1]
     var top = pane.view.pageTop(box.page) + first[1] * s
     var foot = pane.view.pageTop(box.page) + (last[1] + last[3]) * s
@@ -670,6 +798,15 @@ Item {
     if (top >= page.sp(24) && foot <= bottom - page.sp(12)) return
     var room = (pane.finding ? findBar.y : pane.height) * 0.3
     pane.jumpTo(box.page, Math.max(0, first[1] - room / s))
+  }
+  // Sized up and moved sideways, a place in the other column is brought
+  // across too (2026-11-27: only up or down, and it stayed out of view).
+  function revealX(box) {
+    if (!pane.view || !pane.view.canSideways() || !box || !box.rects || box.rects.length === 0) return
+    var f = pane.view.flick, s = pane.view.renderScale, r = box.rects[0]
+    var left = pane.view.pageLeft(box.page) + r[0] * s, right = left + r[2] * s
+    if (left >= 0 && right <= f.width) return
+    f.contentX = pane.view.clampX(f.contentX + left - f.width * 0.15)
   }
   Process {
     id: searchProc
@@ -684,29 +821,43 @@ Item {
 
   // ---------------------------------------------------------- marks
 
-  // One longhand-read command at a time, in the order asked.
-  function readRun(args) {
+  // One longhand-read command at a time, in the order asked. Each a job:
+  // { cmd, mark (a mark made: its id is the one new), ask (a question: its
+  // chat opens), sel (the words it was made from), acro }. What a job is
+  // for goes with it (2026-11-27: kept on the pane, a mark made while the
+  // paper's state was still being read was taken for that state's, and
+  // its question's chat never opened).
+  function readRun(args, job) {
     if (pane.rel === "") return
-    pane.readQueue = pane.readQueue.concat([[pane.readPath, args[0], "--pdf", pane.rel].concat(args.slice(1))])
+    var j = { cmd: [pane.readPath, args[0], "--pdf", pane.rel].concat(args.slice(1)),
+              mark: !!(job && job.mark), ask: !!(job && job.ask), sel: job && job.sel ? job.sel : "", acro: !!(job && job.acro) }
+    pane.readQueue = pane.readQueue.concat([j])
     pane.readNext()
   }
   function readNext() {
     if (readProc.running || pane.readQueue.length === 0) return
-    readProc.command = pane.readQueue[0]
+    readProc.job = pane.readQueue[0]
+    readProc.command = readProc.job.cmd
     pane.readQueue = pane.readQueue.slice(1)
     readProc.running = true
   }
+  // A mark being made: its words stay selected, the pill gone, until it
+  // is drawn (2026-11-27: they were let go of at once, and for the moment
+  // longhand-read takes they looked unmarked).
+  readonly property bool marking: (readProc.running && !!readProc.job && readProc.job.mark)
+    || pane.readQueue.some(function (j) { return j.mark })
   function readDone(out) {
     var o = null
     try { o = JSON.parse(out) } catch (e) { o = null }
+    var job = readProc.job || {}
     if (!o || o.pdf !== pane.rel) return
     if (o.acronyms !== undefined) { pane.acroRead(o); return }
     if (o.found !== undefined && o.marks === undefined) { pane.flashDone(o); return }
-    if (pane.awaitingMark) {
+    if (job.mark) {
       var before = (pane.read.marks || []).map(function (m) { return m.id })
       var fresh = o.marks.filter(function (m) { return before.indexOf(m.id) < 0 })
       if (fresh.length === 1) pane.lastMade = fresh[0].id
-      pane.awaitingMark = false
+      if (job.sel !== "" && pane.view && pane.view.selectedText === job.sel) pane.clearSelection()
       // The paper's first mark: its project, guessed when plain, else
       // asked once (Esc leaves it with none; its note can name one later).
       var askedProj = false
@@ -718,11 +869,10 @@ Item {
       // A question marked: its chat opens with it attached, for the
       // question in words; nothing is sent until Enter (plan.md item 15).
       // Wait for the project picker when this first mark opened it.
-      if (fresh.length === 1 && fresh[0].kind === "q" && pane.askAfter) {
+      if (fresh.length === 1 && fresh[0].kind === "q" && job.ask) {
         if (askedProj) pane.pendingAskMark = fresh[0].id
         else Qt.callLater(function () { page.paper.askAbout(fresh[0].id) })
       }
-      pane.askAfter = false
     }
     if (pane.picked !== "" && !o.marks.some(function (m) { return m.id === pane.picked })) pane.picked = ""
     pane.read = o
@@ -740,7 +890,7 @@ Item {
   function flashDone(o) {
     if (!o.boxes || o.boxes.length === 0) { pane.flashMissed = "not found on that page"; flashTimer.restart(); return }
     pane.flashBoxes = o.boxes
-    pane.goToBox(o.boxes[0])
+    pane.goToBox(o.boxes[0], "quote")
     flashTimer.restart()
   }
   Timer { id: flashTimer; interval: 2600; onTriggered: { pane.flashBoxes = []; pane.flashMissed = "" } }
@@ -750,17 +900,19 @@ Item {
       if (pane.flashBoxes[b].page === index) out = out.concat(pane.flashBoxes[b].rects)
     return out
   }
-  // The view brought to a box's first line, a little above it.
-  function goToBox(box) {
+  // The view brought to a box's first line, a little above it; the back
+  // key returns, `kind` saying what took it there.
+  function goToBox(box, kind) {
     if (!pane.view || !box || !box.rects || box.rects.length === 0) return
-    pane.jumpTo(box.page, Math.max(0, box.rects[0][1] - 60))
+    pane.revealX(box)
+    pane.jumpAway(kind || "box", box.page, Math.max(0, box.rects[0][1] - 60))
   }
   // A mark chosen in the paper's list: shown and picked.
   function showMark(id) {
     var m = pane.markById(id)
     if (!m) return
     pane.picked = id
-    if (m.boxes && m.boxes.length) pane.goToBox(m.boxes[0])
+    if (m.boxes && m.boxes.length) pane.goToBox(m.boxes[0], "mark")
   }
 
   // The rectangles to draw on page `index` (from 0): { id, kind, r }.
@@ -785,14 +937,17 @@ Item {
   // pages' own Flickable, with TouchScroll's glide (2026-11-25). Ctrl and
   // Shift with the wheel come here (PdfPages.modifiedWheel); so does a
   // wheel over the pane where the pages are not.
-  function wheel(ev) {
+  // `at`: where the pointer is, in the view's pixels (the view's top-left
+  // is the pane's).
+  function wheel(ev, at) {
     var t = pane.view ? pane.view.flick : null
     if (!t) { ev.accepted = false; return }
     // Ctrl and the wheel: larger or smaller, as = and - (2026-11-19: it
-    // did nothing; only a pinch zoomed, Qt's own, and the next fit lost it).
+    // did nothing; only a pinch zoomed, Qt's own, and the next fit lost it),
+    // about the pointer, the pictures drawn again once it rests.
     if (ev.modifiers & Qt.ControlModifier) {
       var steps = ev.angleDelta.y !== 0 ? ev.angleDelta.y / 120 : ev.pixelDelta.y / 40
-      if (steps !== 0) pane.zoom = Math.max(0.3, Math.min(4, pane.zoom * Math.pow(1.1, steps)))
+      if (steps !== 0) pane.zoomTo(pane.zoom * Math.pow(1.1, steps), at ? at.x : t.width / 2, at ? at.y : t.height / 2, true)
       return
     }
     // The touchpad's travel times TouchScroll's gain: 2 on Omarchy (its
@@ -814,8 +969,9 @@ Item {
     if (dx !== 0 && pane.view.canSideways()) t.contentX = pane.view.clampX(t.contentX - dx)
   }
   WheelHandler {
+    id: paneWheel
     target: null
-    onWheel: function (ev) { pane.wheel(ev) }
+    onWheel: function (ev) { pane.wheel(ev, paneWheel.point.position) }
   }
 
   // Dark pages (plan.md item 15, step 4): `i` draws the paper's pages in
@@ -861,6 +1017,7 @@ Item {
   function readScan() {
     if (!pane.ocrable || ocrProc.running) return
     pane.ocrProgress = { page: 0, pages: pane.pages }
+    ocrProc.last = pane.ocrProgress
     ocrProc.forRel = pane.rel
     ocrProc.command = [pane.readPath, "ocr", "--pdf", pane.rel]
     ocrProc.running = true
@@ -869,14 +1026,25 @@ Item {
   Process {
     id: ocrProc
     property string forRel: ""
+    property var last: null              // how far it is, kept for its paper opened again
     stdout: SplitParser {
       onRead: function (line) {
         var o = null
         try { o = JSON.parse(line) } catch (e) { return }
+        if (!o.pdf && o.ocr && typeof o.ocr === "object") ocrProc.last = o.ocr
         if (ocrProc.forRel !== pane.rel) return
         // The state at the end has `ocr` too (the copy's path): it is told
-        // apart by `pdf`.
-        if (o.pdf === pane.rel) { pane.ocrProgress = null; pane.read = o; pane.readRun(["acronyms"]) }
+        // apart by `pdf`. The copy takes the scan's place: opened again
+        // where it is read (2026-11-27: it went back to page 1).
+        if (o.pdf === pane.rel) {
+          pane.keep()
+          pane.settled = false
+          pane.ocrProgress = null
+          pane.read = o
+          pane.readRun(["acronyms"], { acro: true })
+          // Read already (a small copy, at once) or on its way (onReadyChanged).
+          Qt.callLater(pane.arrive)
+        }
         else if (o.ocr && typeof o.ocr === "object") pane.ocrProgress = o.ocr
       }
     }
@@ -884,7 +1052,7 @@ Item {
       id: ocrErr
       onStreamFinished: { var t = ocrErr.text.trim(); if (t !== "") { pane.readError = t.replace(/^longhand-read:\s*/, ""); pane.ocrProgress = null } }
     }
-    onRunningChanged: if (!running && ocrProc.forRel === pane.rel) pane.ocrProgress = null
+    onRunningChanged: if (!running) { ocrProc.last = null; if (ocrProc.forRel === pane.rel) pane.ocrProgress = null }
   }
 
   // The words selected now: { page (from 0), text, y (points), holder }, or null.
@@ -896,7 +1064,9 @@ Item {
       var h = ds[i]
       if (h.selection.text === "" || h.selection.text !== pane.view.selectedText) continue
       var s = pane.view.renderScale || 1
-      return { page: h.index, text: h.selection.text, y: Math.min(h.selection.from.y, h.selection.to.y) / s, holder: h }
+      // Where it begins: the higher end (a drag up the page ends there).
+      var top = h.selection.from.y <= h.selection.to.y ? h.selection.from : h.selection.to
+      return { page: h.index, text: h.selection.text, y: top.y / s, x: top.x / s, holder: h }
     }
     return null
   }
@@ -931,7 +1101,7 @@ Item {
   function commitGoto() {
     var n = parseInt(gotoField.text.trim(), 10)
     pane.jumpingPage = false
-    if (!isNaN(n) && n >= 1 && n <= pane.pages) pane.jumpTo(n - 1, 0)
+    if (!isNaN(n) && n >= 1 && n <= pane.pages) pane.jumpAway("goto", n - 1, 0)
     keys.forceActiveFocus()
   }
   function fitToggle() {
@@ -941,20 +1111,24 @@ Item {
   function clearSelection() { if (pane.view) pane.view.clearSelection() }
 
   // Keep the words given as a mark (`h` or `q`).
-  function markText(pageIndex, text, y, kind) {
+  // `x`, with `y`: where it begins, so the same words in the other column
+  // are not taken for it (2026-11-27).
+  function markText(pageIndex, text, y, kind, x) {
     if (!pane.markable) { pane.readError = Links.isAbs(pane.rel) ? "only a PDF in the vault keeps marks" : "a scan, no words to mark: " + page.keyName("pdfOcr") + " reads it"; return false }
     var args = ["mark", "--page", String(pageIndex + 1), "--text", text, "--kind", kind]
     if (y !== undefined && y !== null && !isNaN(y)) args.push("--y", String(Math.round(y * 10) / 10))
-    pane.awaitingMark = true
-    pane.askAfter = kind === "q"
-    pane.readRun(args)
+    if (x !== undefined && x !== null && !isNaN(x)) args.push("--x", String(Math.round(x * 10) / 10))
+    pane.readRun(args, { mark: true, ask: kind === "q", sel: text })
     page.used("pdf", kind === "q" ? "question" : "highlight")
     return true
   }
   function mark(kind) {
     var sel = pane.selected()
     if (sel) {
-      if (pane.markText(sel.page, sel.text, sel.y, kind)) pane.clearSelection()
+      // Pressed again before it is drawn: one mark, not two.
+      var again = pane.marking && pane.readQueue.concat(readProc.running ? [readProc.job] : [])
+        .some(function (j) { return j && j.mark && j.sel === sel.text })
+      if (!again) pane.markText(sel.page, sel.text, sel.y, kind, sel.x)
       keys.forceActiveFocus()
       return true
     }
@@ -1037,7 +1211,7 @@ Item {
     out.push(m.kind === "q" ? { word: "highlight", act: "pdfMark", dot: "h", does: "Make it a highlight" }
                             : { word: "question", act: "pdfQuestion", dot: "q", does: "Make it a question" })
     out.push({ word: "note", act: "pdfNote", dot: "", does: m.note ? "Edit its note" : "A note under it" })
-    out.push({ word: "remove", act: "pdfRemove", dot: "", does: "Remove it, and its note" })
+    out.push({ word: "remove", act: "pdfRemove", dot: "", does: "Remove it, and its note (" + page.keyName("pdfUndo") + " brings them back)" })
     return out
   }
   // A word of the pill clicked: what its key does in `key`.
@@ -1048,25 +1222,57 @@ Item {
     else if (act === "pdfNote") pane.startNote()
     else if (act === "pdfRemove") pane.remove()
   }
+  // Removed at once, as before, and `u` brings it back, with its name and
+  // note (2026-11-27: a Backspace on a mark picked lost it and its note
+  // for good, and the paper's chat said it by its bare name after).
   function remove() {
-    if (pane.picked === "") return false
-    pane.readRun(["remove", "--id", pane.picked])
+    var m = pane.markById(pane.picked)
+    if (!m) return false
+    pane.removed = { id: m.id, kind: m.kind, page: m.page, text: m.text, note: m.note || "", day: m.day || "" }
+    pane.readRun(["remove", "--id", m.id])
     page.used("pdf", "remove")
     pane.picked = ""
+    pane.say("removed · " + page.keyName("pdfUndo") + " brings it back")
     return true
   }
-  // The mark a note goes under: the one picked, else the last made, else
-  // the first on the page in view.
+  function undoRemove() {
+    var r = pane.removed
+    if (!r) { pane.say("nothing removed to bring back"); return }
+    pane.removed = null
+    pane.footSaid = ""
+    var args = ["mark", "--page", String(r.page), "--text", r.text, "--kind", r.kind, "--id", r.id]
+    if (r.day !== "") args.push("--day", r.day)
+    if (r.note !== "") args.push("--note", r.note)
+    pane.readRun(args)
+    page.used("pdf", "remove-undone")
+  }
+  // The mark a note goes under: the one picked, else the last made when it
+  // is on the page in view, else the first there, else the last made
+  // (2026-11-27: the last made, twenty pages back, took it unseen).
   function noteTarget() {
     if (pane.markById(pane.picked)) return pane.picked
-    if (pane.markById(pane.lastMade)) return pane.lastMade
+    var onPage = function (m) { return m && m.placed && m.boxes.length && m.boxes[0].page === pane.current }
+    var last = pane.markById(pane.lastMade)
+    if (onPage(last)) return pane.lastMade
     var ms = pane.read.marks || []
-    for (var i = 0; i < ms.length; i++) if (ms[i].placed && ms[i].boxes.length && ms[i].boxes[0].page === pane.current) return ms[i].id
-    return ""
+    for (var i = 0; i < ms.length; i++) if (onPage(ms[i])) return ms[i].id
+    return last ? pane.lastMade : ""
   }
   function startNote() {
     var id = pane.noteTarget()
     if (id === "") { pane.readError = "no mark to write a note under"; return }
+    // A note of several lines (written in the reading note) is edited
+    // there: the field here is one line, and would run them together.
+    var m = pane.markById(id)
+    if ((m.note || "").indexOf("\n") >= 0 && pane.read.note) {
+      var note = pane.read.note
+      page.pendingLine = m.line || -1
+      page.openFile(note, false)
+      // Open already (no load to land after): at its line now.
+      if (page.noteService.filePath === note && page.noteService.ready) page.landOnLine()
+      page.showHint("a note of several lines: written in the reading note")
+      return
+    }
     pane.notingId = id
     pane.picked = id
     noteField.text = pane.markById(id).note || ""
@@ -1088,6 +1294,7 @@ Item {
 
   Process {
     id: readProc
+    property var job: null               // what it runs now, and what for (readRun)
     stdout: StdioCollector { id: readOut; onStreamFinished: pane.readDone(readOut.text) }
     stderr: StdioCollector {
       id: readErr
@@ -1096,7 +1303,11 @@ Item {
         if (t !== "") { pane.readError = t.replace(/^longhand-read:\s*/, ""); console.warn("longhand.page " + t) }
       }
     }
-    onRunningChanged: if (!running) Qt.callLater(pane.readNext)
+    onRunningChanged: if (!running) {
+      // The acronyms' read done, found or not: `a` says what it found.
+      if (readProc.job && readProc.job.acro && readProc.job.cmd[3] === pane.rel) pane.acroLoaded = true
+      Qt.callLater(pane.readNext)
+    }
   }
 
   // The layer over each page drawn: the marks on it.
@@ -1149,7 +1360,7 @@ Item {
             // A click picks it (its pill): the hand says so, as over an
             // acronym (the second pass).
             cursorShape: Qt.PointingHandCursor
-            onHoveredChanged: hovered ? pane.markHover(box.modelData.id, box, box.width * box.height) : pane.markLeave(box)
+            onHoveredChanged: hovered ? pane.markHover(box.modelData.id, box, pane.markArea(box.modelData.id)) : pane.markLeave(box)
           }
           TapHandler {
             acceptedDevices: PointerDevice.AllDevices
@@ -1168,6 +1379,9 @@ Item {
           required property var modelData
           readonly property var def: pane.acro.byShort[modelData.a] || null
           readonly property bool lit: pane.hoverAcro !== null && pane.hoverAcro.item === spot
+          // Where the paper spells it out: a click there goes nowhere (it
+          // flashed in place, and took the back key's place: 2026-11-27).
+          readonly property bool atDef: pane.acroIsDef(modelData.a, sheet.index, modelData.r)
           x: modelData.r[0] * sheet.s
           y: modelData.r[1] * sheet.s
           width: modelData.r[2] * sheet.s
@@ -1183,12 +1397,12 @@ Item {
             opacity: spot.lit && page.handOn ? 0.9 : pane.acroListing ? 0.5 : 0
           }
           HoverHandler {
-            cursorShape: Qt.PointingHandCursor
+            cursorShape: spot.atDef ? Qt.IBeamCursor : Qt.PointingHandCursor
             onHoveredChanged: hovered ? pane.acroHover(spot.modelData.a, spot, sheet.index) : pane.acroLeave(spot)
           }
           TapHandler {
             acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad | PointerDevice.Stylus
-            onTapped: pane.acroTap(spot.modelData.a)
+            onTapped: if (!spot.atDef) pane.acroTap(spot.modelData.a)
           }
         }
       }
@@ -1249,11 +1463,25 @@ Item {
     if (pane.jumpBack && Sc.hit(event, "linkBack")) { pane.jumpReturn(); return true }
     if (page.anywhereKey(event)) return true
     if (page.chatSelectionKey(event, !!(pane.view && pane.view.selectedText !== ""))) return true
+    // Ctrl+C: the words selected, as one line, a word a line broke joined
+    // again (2026-11-27: nothing was copied; the chat's key let it by).
+    if (pane.view && pane.view.selectedText !== "" && Sc.fromEvent(event) === "Ctrl+C") {
+      page.editorItem.copyText(pane.view.selectedText.replace(/[\ufffe\u00ad]\s*/g, "").replace(/\s+/g, " ").trim())
+      page.showHint("copied")
+      page.used("pdf", "copy")
+      return true
+    }
     if (Sc.hit(event, "pdfGo")) {
-      if (pane.hoverAcro) { pane.acroGo(pane.hoverAcro.a); return true }
+      // The keys' own mark first while the hand is off the mouse (one
+      // chosen in the paper's list): the pointer resting on an acronym
+      // minutes ago is not what Enter means then (2026-11-27).
+      if (pane.picked !== "" && !page.handOn) return pane.markGo(pane.picked)
+      // An acronym where the paper spells it out goes nowhere: the mark under it, if any.
+      if (pane.hoverAcro && !acroTipBox.here) { pane.acroGo(pane.hoverAcro.a); return true }
       if (pane.hoverMark !== "") return pane.markGo(pane.hoverMark)
       if (pane.picked !== "") return pane.markGo(pane.picked)
     }
+    if (Sc.hit(event, "pdfUndo")) { pane.undoRemove(); return true }
     if (Sc.hit(event, "pdfAcronyms")) { pane.openAcronyms(); return true }
     if (Sc.hit(event, "pdfMark")) return pane.mark("h")
     if (Sc.hit(event, "pdfQuestion")) return pane.mark("q")
@@ -1277,9 +1505,11 @@ Item {
     // used for them: from the foot of a page it would land on another's foot.
     else if (Sc.hit(event, "pdfFirst")) pane.jumpTo(0, 0)
     else if (Sc.hit(event, "pdfLast")) pane.jumpTo(Math.max(0, pane.pages - 1), 0)
+    else if (Sc.hit(event, "pdfLeft")) pane.pan(-step)
+    else if (Sc.hit(event, "pdfRight")) pane.pan(step)
     else if (Sc.hit(event, "pdfGoto")) pane.openGoto()
-    else if (Sc.hit(event, "pdfBigger")) pane.zoom = Math.min(4, pane.zoom * 1.2)
-    else if (Sc.hit(event, "pdfSmaller")) pane.zoom = Math.max(0.3, pane.zoom / 1.2)
+    else if (Sc.hit(event, "pdfBigger")) pane.zoomStep(1.2)
+    else if (Sc.hit(event, "pdfSmaller")) pane.zoomStep(1 / 1.2)
     else if (Sc.hit(event, "pdfFit")) pane.fitToggle()
     else if (Sc.hit(event, "pdfFind")) pane.openFind()
     else if (Sc.hit(event, "pdfOpen")) { page.used("pdf", "open-elsewhere"); Qt.openUrlExternally(pane.url()) }
@@ -1373,7 +1603,9 @@ Item {
     // one of the page's (2026-11-25, the mouse pass). Enter still acts on
     // what is under the pointer, shown or not.
     readonly property bool has: pane.tipOn && (d !== null || m !== null)
-    visible: has && page.handOn
+    // Not over words being selected, or selected with their pill up: the
+    // tip lay over the same passage (2026-11-27).
+    visible: has && page.handOn && !selectionPill.visible && !(pane.view && pane.view.selecting)
     property bool opened: false
     onVisibleChanged: if (visible !== opened) { opened = visible; if (visible) page.tipOpened(); else page.tipClosed() }
     Component.onDestruction: if (opened) page.tipClosed()
@@ -1603,7 +1835,8 @@ Item {
         width: parent.width
         textFormat: Text.PlainText
         wrapMode: Text.WordWrap
-        text: pane.acro.list.length + " acronyms, underlined on the pages · Enter goes to where it is spelled out · Esc"
+        text: pane.acro.list.length + (pane.acro.list.length === 1 ? " acronym" : " acronyms")
+          + ", underlined on the pages · Enter goes to where it is spelled out · Esc"
         color: page.dim
         font.family: page.fontFamily
         font.styleName: page.fontStyle
@@ -1625,9 +1858,20 @@ Item {
           if (seq === "Enter") { pane.acroPick(); event.accepted = true }
           else if (seq === "Esc") { pane.closeAcronyms(); event.accepted = true }
           else if (seq === "Up") { pane.acroFocus = Math.max(0, pane.acroFocus - 1); event.accepted = true }
-          else if (seq === "Down") { pane.acroFocus = Math.min(pane.acroChoices.length - 1, pane.acroFocus + 1); event.accepted = true }
+          else if (seq === "Down") { pane.acroFocus = Math.max(0, Math.min(pane.acroChoices.length - 1, pane.acroFocus + 1)); event.accepted = true }
         }
         onTextChanged: pane.acroFocus = 0
+      }
+      // Narrowed to none: said, not an empty box.
+      Text {
+        visible: pane.acroChoices.length === 0
+        width: parent.width
+        textFormat: Text.PlainText
+        text: "none of them starts with that, or stands for it"
+        color: page.faint
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.caption)
       }
       ListView {
         id: acroRows
@@ -1726,7 +1970,13 @@ Item {
         Keys.onPressed: function (event) {
           if (page.anywhereKey(event)) { event.accepted = true; return }
           var seq = Sc.fromEvent(event)
-          if (seq === "Enter") { var c = pane.tagChoices[pane.tagFocus]; pane.chooseProject(c ? c.tag : ""); event.accepted = true }
+          // Letters typed that match no project: kept open to be put
+          // right, not taken for none (2026-11-27); Esc is none.
+          if (seq === "Enter") {
+            var c = pane.tagChoices[pane.tagFocus]
+            if (c || tagField.text.trim() === "") pane.chooseProject(c ? c.tag : "")
+            event.accepted = true
+          }
           else if (seq === "Esc") { pane.chooseProject(""); event.accepted = true }
           else if (seq === "Up") { pane.tagFocus = Math.max(0, pane.tagFocus - 1); event.accepted = true }
           else if (seq === "Down") { pane.tagFocus = Math.min(pane.tagChoices.length - 1, pane.tagFocus + 1); event.accepted = true }
@@ -1785,10 +2035,17 @@ Item {
         // The paper under each page's picture (see-through around the
         // ink): the ground too, dark.
         paperColor: pane.dark ? pane.darkGround : "white"
+        // A page's edge against the pane, light or dark (2026-11-27: white
+        // paper on a light theme's white had none).
+        edgeColor: Qt.rgba(page.foreground.r, page.foreground.g, page.foreground.b, 0.12)
+        // The theme's selection, not Qt's own blue.
+        selectionColor: Qt.rgba(page.accent.r, page.accent.g, page.accent.b, 0.3)
+        // A text cursor where words can be selected; none over a scan.
+        textual: pane.read.text !== false
         darkEffect: darkPage
         overlay: marksLayer
         onLinkTapped: function (link) { pane.followLink(link) }
-        onModifiedWheel: function (ev) { pane.wheel(ev) }
+        onModifiedWheel: function (ev, at) { pane.wheel(ev, at) }
       }
     }
   }
@@ -1798,7 +2055,10 @@ Item {
   Rectangle {
     id: selectionPill
     z: 60
+    // Not while the words are still being dragged over (it hopped about
+    // over them), nor while they are being marked (2026-11-27).
     visible: pane.ready && pane.markable && !!pane.selBox && !pane.noting && !pane.finding && !pane.askingTag && !pane.jumpingPage
+      && !(pane.view && pane.view.selecting) && !pane.marking
       && pane.selBox.bottom > 0 && pane.selBox.top < pane.height - foot.height
     width: selPillRow.implicitWidth + page.sp(20)
     height: selPillRow.implicitHeight + page.sp(10)
@@ -1813,6 +2073,9 @@ Item {
       if (above >= page.sp(6)) return Math.round(above)
       return Math.round(Math.min(pane.height - foot.height - height - page.sp(6), pane.selBox.bottom + page.sp(10)))
     }
+    // A click between its words is the pill's, as on the mark's pill: it
+    // reached the page and let go of the words just selected (2026-11-27).
+    MouseArea { anchors.fill: parent; z: -1; acceptedButtons: Qt.AllButtons; onWheel: function (w) { w.accepted = false } }
     Row {
       id: selPillRow
       anchors.centerIn: parent
@@ -2024,7 +2287,7 @@ Item {
     anchors.right: parent.right
     height: Math.max(footStatus.implicitHeight, footRight.implicitHeight) + page.sp(2)
     readonly property int count: (pane.read.marks || []).length
-    readonly property bool fullStatus: pane.error !== "" || !pane.ready || pane.readError !== ""
+    readonly property bool fullStatus: pane.error !== "" || !pane.ready || pane.readError !== "" || pane.footSaid !== ""
       || pane.flashMissed !== "" || !!pane.ocrProgress || pane.picked !== ""
 
     Text {
@@ -2038,6 +2301,7 @@ Item {
       text: pane.error !== "" ? pane.error
         : !pane.ready ? "reading…"
         : pane.readError !== "" ? pane.readError
+        : pane.footSaid !== "" ? pane.footSaid
         : pane.flashMissed !== "" ? "those words are " + pane.flashMissed
         : pane.ocrProgress ? "page " + (pane.current + 1) + " of " + pane.pages + " · reading the scan, page " + Math.max(1, pane.ocrProgress.page) + " of " + (pane.ocrProgress.pages || pane.pages) + "…"
         : "page " + (pane.current + 1) + " / " + pane.pages + "   "
@@ -2166,10 +2430,14 @@ Item {
         }
       }
 
+      // The size it is at, as `dark` says it is dark (2026-11-27: always
+      // "fit", sized up or not): 140% sized, "whole page" fitted so.
       Text {
+        id: fitWord
+        readonly property bool sized: Math.abs(pane.zoom - 1) > 0.01
         textFormat: Text.PlainText
-        text: "fit"
-        color: fitArea.containsMouse && page.handOn ? page.accent : page.faint
+        text: sized ? Math.round(pane.zoom * 100) + "%" : pane.wholePage ? "whole page" : "fit"
+        color: fitArea.containsMouse && page.handOn ? page.accent : sized || pane.wholePage ? page.foreground : page.faint
         font.family: page.fontFamily
         font.styleName: page.fontStyle
         font.pixelSize: page.fs(Style.font.caption)
@@ -2180,7 +2448,8 @@ Item {
           hoverEnabled: true
           cursorShape: Qt.PointingHandCursor
           onClicked: pane.fitToggle()
-          Tip { host: page; act: "pdfFit"; shown: parent.containsMouse; text: page.tip("Fit to text or whole page", "pdfFit") }
+          Tip { host: page; act: "pdfFit"; shown: parent.containsMouse
+                text: page.tip(fitWord.sized ? "Fit again" : pane.wholePage ? "Fit by its text" : "Fit the whole page", "pdfFit") }
         }
       }
 

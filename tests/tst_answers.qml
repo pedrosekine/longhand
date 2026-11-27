@@ -23,7 +23,8 @@ TestCase {
     compare(a.student, 0)
     compare(a.agent, 1)
     compare(a.text, "It is the method's first step.")
-    compare(a.more, 2, "the conversation went on: two answers after it")
+    compare(a.more, 0, "the next message asks about another mark: none of what follows is about this one")
+    compare(Answers.forMark(turns, "h7").more, 1, "a message about no mark after it: the conversation went on")
   }
 
   function test_an_error_is_not_an_answer() {

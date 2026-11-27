@@ -10,8 +10,10 @@
 
 // The first exchange that answered mark `id`: { student, agent (turn
 // indexes), asked (the question's words, as typed), text (its part of the
-// answer), more (the agent's turns after it, a conversation that went on) },
-// or null when none has.
+// answer), more (the agent's answers after it, up to the next question about
+// a mark: the conversation that went on about it) }, or null when none has.
+// (2026-11-27: every answer after it in the paper counted, and the first
+// question asked seemed to have fourteen answers more.)
 function forMark(turns, id) {
   turns = turns || []
   for (var i = 0; i + 1 < turns.length; i++) {
@@ -19,7 +21,10 @@ function forMark(turns, id) {
     if (a.role !== "student" || !a.marks || a.marks.indexOf(id) < 0) continue
     if (b.role !== "agent" || b.error || !b.text) continue
     var more = 0
-    for (var k = i + 2; k < turns.length; k++) if (turns[k].role === "agent" && !turns[k].error) more++
+    for (var k = i + 2; k < turns.length; k++) {
+      if (turns[k].role === "student" && turns[k].marks && turns[k].marks.length > 0) break
+      if (turns[k].role === "agent" && !turns[k].error) more++
+    }
     return { student: i, agent: i + 1, asked: asked(a.text, id), text: part(b.text, id, a.marks), more: more }
   }
   return null
