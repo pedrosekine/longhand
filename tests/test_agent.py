@@ -405,10 +405,14 @@ def main() -> int:
 
         # 9. tasks: open checkboxes across days, today recent, old collapsed
         old = t.daily / f"{OLD_DAY}.md"
-        old.write_text("- [ ] ancient task\n- [x] done task\n")
+        old.write_text("- [ ] ancient task\n- [x] done task\n- [-] dropped long ago ❌ 2026-01-02\n"
+                       f"- [-] dropped today ❌ {dt.date.today().isoformat()}\n")
         r = t.agent("tasks")
         tasks = json.loads(r.stdout)
-        check([x["text"] for x in tasks] == ["draft the one-pager by friday", "ancient task"], f"tasks listed newest first: {tasks}")
+        check([x["text"].split(" ❌")[0] for x in tasks] == ["draft the one-pager by friday", "ancient task", "dropped today"],
+              f"tasks listed newest first, one dropped today with them until tomorrow: {tasks}")
+        check(tasks[2]["cancelled"] is True, "…and said to be cancelled")
+        old.write_text("- [ ] ancient task\n- [x] done task\n")
         check(tasks[0]["recent"] is True and tasks[1]["recent"] is False, "recent flag by age")
         check(tasks[0]["line"] == 7, "line index points at the checkbox line")
 

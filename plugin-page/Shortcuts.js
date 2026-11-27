@@ -246,9 +246,11 @@ var actions = [
   { id: "dashDown", group: "dash", places: ["dash"], does: "Move down", keys: ["Down", "J"] },
   { id: "dashFirst", group: "dash", places: ["dash"], does: "First row", keys: ["Home"] },
   { id: "dashLast", group: "dash", places: ["dash"], does: "Last row", keys: ["End"] },
+  { id: "dashPageUp", group: "dash", places: ["dash"], does: "A view of rows up", keys: ["PgUp"] },
+  { id: "dashPageDown", group: "dash", places: ["dash"], does: "A view of rows down", keys: ["PgDn"] },
   // By date, the bands fold (2026-11-03), as the files' folders do.
-  { id: "dashFold", group: "dash", places: ["dash"], does: "By date: up to the row's band; on a band, fold it", keys: ["Left", "H"] },
-  { id: "dashUnfold", group: "dash", places: ["dash"], does: "By date: open a folded band; on an open one, into it", keys: ["Right", "L"] },
+  { id: "dashFold", group: "dash", places: ["dash"], does: "Up to the row's band; on a band, fold it", keys: ["Left", "H"] },
+  { id: "dashUnfold", group: "dash", places: ["dash"], does: "Open a folded band; on an open one, into it", keys: ["Right", "L"] },
   { id: "dashFoldAll", group: "dash", places: ["dash"], does: "By date: collapse every band (the words above the list too)", keys: ["Shift+Left", "Shift+H"] },
   { id: "dashUnfoldAll", group: "dash", places: ["dash"], does: "By date: expand every band (the words above the list too)", keys: ["Shift+Right", "Shift+L"] },
   { id: "dashOpen", group: "dash", places: ["dash"], does: "Go to the line; on what the agent proposes, asks or did, its chat (the margin opens beside)", keys: ["Enter"] },
@@ -286,13 +288,13 @@ var actions = [
   // Its section found among its course's, the PDF named after it; the
   // deadline stays open — handing it in is the person's (plan.md item 13).
   { id: "dashExport", group: "dash", places: ["dash"], does: "Export its section as a PDF, named after it (it stays open)", keys: ["Ctrl+Shift+E"] },
-  { id: "dashUndo", group: "dash", places: ["dash"], does: "Take back the last tick, or a document just filed", keys: ["Ctrl+Z"] },
-  { id: "dashBack", group: "dash", places: ["dash"], does: "Back to the note", keys: ["Esc"] },
+  { id: "dashUndo", group: "dash", places: ["dash"], does: "Take back the last change made here (it says which)", keys: ["Ctrl+Z"] },
+  { id: "dashBack", group: "dash", places: ["dash"], does: "Clear the search; then back to the note", keys: ["Esc"] },
   // The course strip above the list (2026-11-03): ↑ from the first row
   // climbs onto it. Its ⌕ takes what is typed while the strip's cursor is
   // on it, as a box would; the rest of the strip is keys.
   { id: "dashCheckin", group: "dash", places: ["dash"], does: "How Longhand feels this week: the one-minute check-in", keys: ["F"] },
-  { id: "dashSearch", group: "dash", places: ["dash", "strip"], does: "Search the list: the strip's ⌕, typing (words, or a #tag)", keys: ["/"] },
+  { id: "dashSearch", group: "dash", places: ["dash", "strip"], does: "Search the list: the strip's ⌕, typing (words, or a #tag)", keys: ["/", "Ctrl+F"] },
   { id: "dashStrip", group: "dash", places: ["dash"], does: "The course strip, on the course picked", keys: ["#"] },
   { id: "dashCourse", group: "dash", places: ["dash", "strip"], does: "Only that course: the strip's first, second… (0: all)",
     keys: ["1", "2", "3", "4", "5", "6", "7", "8", "9"] },

@@ -21,6 +21,15 @@ TestCase {
     compare(Say.sayDate("", now), "")
   }
 
+  // A do-date gone by says when it was meant for; only what is owed is
+  // late (2026-11-27: "do 3 days late").
+  function test_a_do_date_never_late() {
+    compare(Say.sayDo("2026-10-13", now), "do today")
+    compare(Say.sayDo("2026-10-12", now), "do yesterday")
+    compare(Say.sayDo("2026-10-10", now), "do 3 days ago")
+    compare(Say.sayDo("2026-10-20", now), "do " + Qt.formatDate(new Date(2026, 9, 20), "ddd d MMM"))
+  }
+
   function test_age_and_life() {
     compare(Say.sayAge(0), "written today")
     compare(Say.sayAge(1), "written yesterday")

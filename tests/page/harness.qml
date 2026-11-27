@@ -875,6 +875,7 @@ ShellRoot {
       var f = page.dashItem.searchFieldRef
       return JSON.stringify({ focus: f.activeFocus, text: f.text, cursor: f.cursorPosition, query: page.dashQuery, pending: page.dashSearchPending })
     }
+    function dashQuerySet(s: string): void { page.dashQuery = s }
     function dashSearchInsert(s: string): void { var f = page.dashItem.searchFieldRef; f.insert(f.cursorPosition, s) }
     function dashSearchCursor(pos: int): void { page.dashItem.searchFieldRef.cursorPosition = pos }
     function dashSearchKey(key: int, mods: int): bool {
@@ -885,11 +886,11 @@ ShellRoot {
         return r.kind === "head" ? { kind: "head", text: r.text, tag: r.tag || "" }
           : r.kind === "month" ? { kind: "month", text: r.text }
           : r.kind === "band" ? { kind: "band", id: r.id, text: r.text, count: r.count, open: r.open }
-          : r.kind === "shelf" || r.kind === "grading" ? { kind: r.kind, count: r.count }
           : r.kind === "raised" ? { kind: "raised", text: r.item.text }
           : r.kind === "proposal" || r.kind === "told" ? { kind: r.kind, id: r.item.id, date: r.item.date, why: r.item.why,
                                       under: r.task ? Say.taskTitle(r.task) : "", file: r.item.kind === "file" ? r.item.name : "",
-                                      ask: r.item.kind, say: Say.sayAsk(r.item, !!r.task), fresh: page.isNewAsk(r.item) }
+                                      ask: r.item.kind, say: Say.sayAsk(r.item, !!r.nested), nested: !!r.nested,
+                                      fresh: page.isNewAsk(r.item) }
           : r.kind === "question" ? { kind: "question", id: r.item.id, text: r.item.question, recommended: r.item.recommended,
                                       fresh: page.isNewAsk(r.item) }
           : r.kind === "deadline" ? { kind: "deadline", text: r.deadline.title, due: r.deadline.due, status: r.deadline.status,
@@ -899,6 +900,7 @@ ShellRoot {
                                       chat: page.chatState(r), last: page.chatOf(r) ? page.chatOf(r).text : "" }
           : { kind: "task", text: Say.taskTitle(r.task), where: Say.taskWhere(r.task, undefined, page.projects),
               date: r.task.date, prio: r.task.priority, when: r.task.when, away: r.task.away || "", done: !!r.task.done,
+              cancelled: !!r.task.cancelled, pills: page.pillsFor(r).map(function (x) { return x.text }),
               priv: !!r.task["private"], chat: page.chatState(r), last: page.chatOf(r) ? page.chatOf(r).text : "" }
       }))
     }

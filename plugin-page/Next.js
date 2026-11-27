@@ -11,6 +11,8 @@
 //   lens, query, order       the course strip: the courses picked, the
 //                words typed, and the order ("ask", "course", "date")
 //   folds        by date, the bands folded or unfolded (`bandOpen`)
+//   weekStart    the first day of a week (0 Sunday … 6 Saturday), as the
+//                calendar has it; Monday when not given
 //   now          the moment it is asked, when not given
 .pragma library
 .import "Say.js" as Say
@@ -18,6 +20,16 @@
 function taskOfAnchor(tasks, id) {
   for (var i = 0; i < tasks.length; i++) if (tasks[i].anchor === id) return tasks[i]
   return null
+}
+
+// A box closed: ticked, or cancelled (`[-]`). Either stays until tomorrow,
+// as a deadline closed today does, so what was just decided can be seen
+// and taken back (docs/tasks.md); never in the way of what is open.
+function closed(t) { return !!t && (!!t.done || !!t.cancelled) }
+
+// Open first, then the closed, each kept in the order it came in.
+function openFirst(list) {
+  return list.filter(function (t) { return !closed(t) }).concat(list.filter(closed))
 }
 
 function taskOfKey(tasks, key) {
@@ -40,6 +52,9 @@ function taskOfKey(tasks, key) {
 //                  `s` (agent/lifespan.py) — never rewritten, back when
 //                  touched
 //   WAITING FOR A GRADE   folded: done deadlines with no grade yet
+//                  (these two are bands, folded and unfolded as a date's
+//                  are; until 2026-11-27 a row that opened once and
+//                  could not be shut again)
 //   FROM THE AGENT
 //
 // That is the order "what it asks" (`order`, "by kind" on the page);
@@ -92,8 +107,16 @@ function buckets(s, now) {
     else if (t.kind === "task") later.push(t)
     else notes.push(t)
   }
-  doing.sort(function (a, b) { return (a.when || a.due).localeCompare(b.when || b.due) })
+  // On a day, what is still open comes first; a box closed today stays
+  // under its own day, after it (until 2026-11-27 only deadlines did, and
+  // a box ticked a minute ago stood above the next one to do).
+  doing.sort(function (a, b) {
+    var ad = (a.when || a.due).split(" ")[0], bd = (b.when || b.due).split(" ")[0]
+    return ad.localeCompare(bd) || (closed(a) ? 1 : 0) - (closed(b) ? 1 : 0) || (a.when || a.due).localeCompare(b.when || b.due)
+  })
   later.sort(function (a, b) { return b.priority - a.priority || a.age - b.age })
+  later = openFirst(later)
+  notes = openFirst(notes)
   var grading = s.deadlines.filter(function (d) {
     return d.status === "done" && d.grade === "" && d.doneAt * 1000 < today.getTime()
   })
@@ -180,7 +203,7 @@ function byDate(b, s, now) {
   // What was closed today is today's, whatever day it was due; on a day,
   // what is still open comes first.
   var today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
-  function put(ms, row, closed) { dated.push({ ms: closed ? Math.max(ms, today) : ms, row: row, closed: closed }) }
+  function put(ms, row, shut) { dated.push({ ms: shut ? Math.max(ms, today) : ms, row: row, closed: shut }) }
   // A deadline goes on the day its line is to be worked on (⏳), when it
   // has one, and only else on the day it is due (📅): the day it is done
   // is the one the timeline is for (2026-11-15). Its row still says both.
@@ -190,19 +213,25 @@ function byDate(b, s, now) {
   }
   for (var i = 0; i < b.due.length; i++) put(dayOf(b.due[i]), { kind: "deadline", deadline: b.due[i] }, b.due[i].status !== "open")
   for (var w = 0; w < b.waiting.length; w++) put(b.waiting[w].due * 1000, { kind: "deadline", deadline: b.waiting[w] }, false)
-  for (var d = 0; d < b.doing.length; d++) put(Say.taskMs(b.doing[d]), { kind: "task", task: b.doing[d] }, !!b.doing[d].done)
+  for (var d = 0; d < b.doing.length; d++) put(Say.taskMs(b.doing[d]), { kind: "task", task: b.doing[d] }, closed(b.doing[d]))
+  // A box with no day closed today is today's too, not still "no day yet"
+  // (2026-11-27: ticked, it stayed struck through in a folded band, and
+  // was the "next" it said).
+  var rest = b.later.concat(b.notes)
+  for (var c = 0; c < rest.length; c++) if (closed(rest[c])) put(today, { kind: "task", task: rest[c] }, true)
+  rest = rest.filter(function (t) { return !closed(t) })
   dated.sort(function (x, y) {
     var dx = new Date(x.ms).setHours(0, 0, 0, 0), dy = new Date(y.ms).setHours(0, 0, 0, 0)
     return dx - dy || (x.closed ? 1 : 0) - (y.closed ? 1 : 0) || x.ms - y.ms
   })
-  var spans = bands(now), groups = []
+  var spans = bands(now, s.weekStart), groups = []
   // What was closed today waits in a band of its own after TODAY, folded
   // (2026-11-18, the UX evaluation's F4: four ticked rows at full size, one
   // "3 days late", stood between the open ones). There to be seen and
   // undone, never in the way of what is next.
-  var closed = { id: "done", text: "DONE TODAY", items: [] }
+  var doneBand = { id: "done", text: "DONE TODAY", items: [] }
   for (var k = 0; k < dated.length; k++) {
-    if (dated[k].closed) { closed.items.push(dated[k]); continue }
+    if (dated[k].closed) { doneBand.items.push(dated[k]); continue }
     var ms = dated[k].ms
     var at = 0
     while (at + 1 < spans.length && ms >= spans[at + 1].from) at++
@@ -216,26 +245,35 @@ function byDate(b, s, now) {
     }
     g.items.push(dated[k])
   }
-  var rest = b.later.concat(b.notes)
   if (rest.length > 0) groups.push({ id: "none", text: "NO DAY YET", items: rest.map(function (t) { return { row: { kind: "task", task: t } } }) })
   // Today is said even when nothing is due: the line that says so is the
   // answer to the first question the list is opened with.
-  if ((groups.length > 0 || closed.items.length > 0) && !groups.some(function (x) { return x.id === "today" }))
+  if ((groups.length > 0 || doneBand.items.length > 0) && !groups.some(function (x) { return x.id === "today" }))
     groups.splice(groups.length > 0 && groups[0].id === "late" ? 1 : 0, 0, { id: "today", text: "TODAY", items: [] })
-  if (closed.items.length > 0) {
+  if (doneBand.items.length > 0) {
     var ti = 0
     while (ti < groups.length && groups[ti].id !== "today") ti++
-    groups.splice(ti + 1, 0, closed)
+    groups.splice(ti + 1, 0, doneBand)
   }
-  var words = String(s.query || "").split(/\s+/).some(function (x) { return x !== "" && x.charAt(0) !== "#" })
+  // Words typed are looked for everywhere: every band open. A course
+  // picked opens them too when the bands open as they are show nothing of
+  // it (2026-11-27: #thesis 5 showed "TODAY · nothing due" over one folded
+  // band). A band opened so is `forced`: folding it would change nothing.
+  var parts = String(s.query || "").split(/\s+/)
+  var words = parts.some(function (x) { return x !== "" && x.charAt(0) !== "#" })
+  var picked = (s.lens || []).length > 0 || parts.some(function (x) { return x.length > 1 && x.charAt(0) === "#" })
+  var forced = words || (picked && !groups.some(function (g) {
+    return g.items.length > 0 && (g.id === "late" || bandOpen(s.folds, g.id))
+  }))
   var rows = []
   for (var n = 0; n < groups.length; n++) {
     var gr = groups[n]
-    var open = gr.id === "late" || words || bandOpen(s.folds, gr.id)
+    var open = gr.id === "late" || forced || bandOpen(s.folds, gr.id)
     var first = gr.items.length > 0 ? gr.items[0] : null
     // A band's next is a day to come; what has no day says none.
     var nextMs = first ? (first.ms !== undefined ? first.ms : Say.taskMs(first.row.task)) : 0
     rows.push({ kind: "band", id: gr.id, text: gr.text, count: gr.items.length, open: open, fixed: gr.id === "late",
+                forced: forced && gr.id !== "late",
                 next: first && gr.id !== "done" ? { title: first.row.kind === "deadline" ? first.row.deadline.title : Say.taskTitle(first.row.task),
                                 ms: nextMs > 0 ? nextMs : 0 } : null })
     if (open) for (var r = 0; r < gr.items.length; r++) rows.push(gr.items[r].row)
@@ -244,17 +282,20 @@ function byDate(b, s, now) {
 }
 
 // The bands of the timeline, nearest first, each from the moment it
-// starts: what is late, today, the rest of this week (Monday to Sunday),
-// next week, the rest of this month, and then a band for each month.
-function bands(now) {
+// starts: what is late, today, the rest of this week, next week, the rest
+// of this month, and then a band for each month. A week starts where the
+// calendar's does (`weekStart`, config.json; Monday when not given): until
+// 2026-11-27 it was Monday here whatever the calendar said.
+function bands(now, weekStart) {
   var y = now.getFullYear(), m = now.getMonth(), d = now.getDate()
   function at(days) { return new Date(y, m, d + days).getTime() }
-  var toMonday = 7 - (now.getDay() + 6) % 7
+  var first = weekStart === undefined || weekStart === null ? 1 : weekStart
+  var toWeek = 7 - (now.getDay() - first + 7) % 7
   var out = [{ id: "late", text: "LATE", from: -Infinity },
              { id: "today", text: "TODAY", from: at(0) },
              { id: "week", text: "THIS WEEK", from: at(1) },
-             { id: "next", text: "NEXT WEEK", from: at(toMonday) }]
-  var after = at(toMonday + 7), monthEnd = new Date(y, m + 1, 1).getTime()
+             { id: "next", text: "NEXT WEEK", from: at(toWeek) }]
+  var after = at(toWeek + 7), monthEnd = new Date(y, m + 1, 1).getTime()
   if (after < monthEnd) out.push({ id: "rest", text: "LATER IN " + Qt.formatDate(now, "MMMM").toUpperCase(), from: after })
   out.push({ id: "month", text: "", from: Math.max(after, monthEnd) })
   return out
@@ -270,24 +311,19 @@ function bandOpen(folds, id) {
   return ["late", "today", "week", "next"].indexOf(id) >= 0
 }
 
-// What is away and what is owed a grade, each folded into one row until
-// asked for: there to be found, never in the way. Then what the agent
-// raised.
+// What is away and what is owed a grade, each a band folded until asked
+// for: there to be found, never in the way. A band like the timeline's, in
+// every order, so it folds again the way it opened (←, Enter, a click);
+// `aside`, so folding and unfolding every band leaves them be. Then what
+// the agent raised.
 function folded(rows, b, s) {
-  if (b.shelf.length > 0) {
-    if (!s.showShelf) rows.push({ kind: "shelf", count: b.shelf.length })
-    else {
-      rows.push({ kind: "head", text: "SET ASIDE", tag: "" })
-      for (var sh = 0; sh < b.shelf.length; sh++) rows.push({ kind: "task", task: b.shelf[sh] })
-    }
+  function band(id, text, open, items, row) {
+    if (items.length === 0) return
+    rows.push({ kind: "band", id: id, text: text, count: items.length, open: !!open, fixed: false, aside: true, next: null })
+    if (open) for (var i = 0; i < items.length; i++) rows.push(row(items[i]))
   }
-  if (b.grading.length > 0) {
-    if (!s.showGrading) rows.push({ kind: "grading", count: b.grading.length })
-    else {
-      rows.push({ kind: "head", text: "WAITING FOR A GRADE", tag: "" })
-      for (var gr = 0; gr < b.grading.length; gr++) rows.push({ kind: "deadline", deadline: b.grading[gr] })
-    }
-  }
+  band("shelf", "SET ASIDE", s.showShelf, b.shelf, function (t) { return { kind: "task", task: t } })
+  band("grading", "WAITING FOR A GRADE", s.showGrading, b.grading, function (d) { return { kind: "deadline", deadline: d } })
   var raised = s.raised || []
   if (raised.length > 0) {
     rows.push({ kind: "head", text: "FROM THE AGENT", tag: "" })
@@ -407,7 +443,7 @@ function narrowed(s) {
 // What is open: deadlines not met, and boxes not set aside.
 function openOf(s) {
   var due = s.deadlines.filter(function (d) { return d.status === "open" })
-  var boxes = s.tasks.filter(function (t) { return !(t.anchor > 0) && !t.away && !t.done })
+  var boxes = s.tasks.filter(function (t) { return !(t.anchor > 0) && !t.away && !closed(t) })
   return { due: due, boxes: boxes }
 }
 
@@ -462,7 +498,7 @@ function withProposals(rows, props, tasks) {
     for (var m = 0; m < mine.length; m++) {
       if (used[mine[m].id]) continue
       used[mine[m].id] = true
-      out.push({ kind: Say.askKind(mine[m]), item: mine[m], task: t })
+      out.push({ kind: Say.askKind(mine[m]), item: mine[m], task: t, nested: true })
     }
   }
   // A document to file, or a deadline found in the writing — about no box
@@ -474,7 +510,7 @@ function withProposals(rows, props, tasks) {
     if (used[props[f].id] || (props[f].kind !== "file" && props[f].kind !== "deadline") || !props[f].project) continue
     for (var b = 0; b < out.length; b++) {
       if (out[b].kind !== "head" || out[b].tag !== "#" + props[f].project) continue
-      out.splice(b + 1, 0, { kind: Say.askKind(props[f]), item: props[f], task: null })
+      out.splice(b + 1, 0, { kind: Say.askKind(props[f]), item: props[f], task: null, nested: false })
       used[props[f].id] = true
       break
     }
@@ -483,8 +519,12 @@ function withProposals(rows, props, tasks) {
   if (rest.length === 0) return out
   var at = -1
   for (var h = 0; h < out.length; h++) if (out[h].kind === "head" && out[h].text === "FROM THE AGENT") at = h
+  // Away from its box (in a band folded, or not on the list), a row says
+  // which box it is about and is not set in under the row above it
+  // (`nested`): until 2026-11-27 it read "drop it?" under "from the agent",
+  // about nothing it named. Its box stays with it, for accepting.
   var extra = rest.map(function (x) {
-    return { kind: Say.askKind(x), item: x, task: taskOfKey(tasks, x.key) }
+    return { kind: Say.askKind(x), item: x, task: taskOfKey(tasks, x.key), nested: false }
   })
   if (at < 0) return out.concat([{ kind: "head", text: "FROM THE AGENT", tag: "" }]).concat(extra)
   return out.slice(0, at + 1).concat(extra).concat(out.slice(at + 1))

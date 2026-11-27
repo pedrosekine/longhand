@@ -1757,6 +1757,9 @@ def checks() -> int:
         def heads():
             return [r["text"] for r in json.loads(p.call("dashRows")) if r["kind"] == "head"]
 
+        def row_now(title):
+            return next((r for r in json.loads(p.call("dashRows")) if r.get("text") == title), {})
+
         def row(title, until=None):
             # The list is rebuilt whenever a line changes, so a row's index
             # is only good once it has stopped moving — and, after an edit,
@@ -1838,6 +1841,16 @@ def checks() -> int:
         check(p.call("dashType", "p") == "true", "p is taken")
         check(p.wait(lambda: "- [ ] loose thought ⏫" in p.call("text")),
               f"p gives it a priority, written as Obsidian reads it ({p.call('text')[-40:]!r})")
+        # Its priority is not its identity: the cursor stays on it as the
+        # row moves (2026-11-27: it fell to the next row, and the second p
+        # changed that one).
+        check(p.wait(lambda: p.call("focusedDashRow") == "task/loose thought" and row_now("loose thought").get("prio") == 2),
+              f"…and the cursor stays on it as it moves ({p.call('focusedDashRow')})")
+        check(p.call("dashKey", KEY_Z, CTRL) == "true" and p.wait(lambda: "- [ ] loose thought\n" in p.call("text")),
+              "Ctrl+Z takes a priority back")
+        check("priority" in p.call("hint"), f"…and says what it took back ({p.call('hint')!r})")
+        row("loose thought", lambda r: r["prio"] == 0)
+        p.call("dashType", "p")
         row("loose thought", lambda r: r["prio"] == 2)
         p.call("dashType", "p")
         check(p.wait(lambda: "- [ ] loose thought 🔽" in p.call("text")), "…and walks the three levels")
@@ -1849,10 +1862,18 @@ def checks() -> int:
         check(p.call("dashKey", KEY_DELETE, 0) == "true", "Delete drops it")
         gone = f"- [-] loose thought ❌ {dt.date.today().isoformat()}"
         check(p.wait(lambda: gone in p.call("text")), f"…cancelled, with the day it was dropped ({p.call('text')[-45:]!r})")
-        check(p.wait(lambda: not any(r.get("text") == "loose thought" for r in json.loads(p.call("dashRows")))),
-              "…and it leaves the dashboard, because dropping is an answer")
+        check(p.wait(lambda: row_now("loose thought").get("cancelled") is True and row_now("loose thought").get("pills") == []),
+              f"…and it stays until tomorrow, cancelled, as a deadline does ({row_now('loose thought')})")
+        check("Ctrl+Z" in p.call("hint"), f"…saying how it comes back ({p.call('hint')!r})")
         check(p.call("dashKey", KEY_Z, CTRL) == "true", "Ctrl+Z takes a drop back")
         check(p.wait(lambda: "- [ ] loose thought\n" in p.call("text")), "…with no mark left on the line")
+        check(p.wait(lambda: "took back" in p.call("hint")), f"…and says so ({p.call('hint')!r})")
+        # Esc backs out one step: the search first, then the dashboard.
+        p.call("dashQuerySet", "loose")
+        p.wait(lambda: json.loads(p.call("strip"))["query"] == "loose")
+        p.call("dashKey", KEY_ESC, 0)
+        check(p.wait(lambda: json.loads(p.call("strip"))["query"] == "") and p.call("dashOpen") == "true",
+              "Esc on the list clears the search first, the dashboard still open")
 
         # 12f. the course strip (2026-11-03): ↑ from the first row climbs
         # onto it; moving along it shows each course at once; Space adds
@@ -2153,14 +2174,22 @@ def checks() -> int:
             p.call("dash")
         check(p.wait(lambda: "goes quiet tomorrow" in row("a fading thought").get("where", "")),
               f"a box in its last day says so on its row ({row('a fading thought')})")
-        check(p.wait(lambda: any(r["kind"] == "shelf" for r in json.loads(p.call("dashRows")))
-                     and row("an old aside") == {}),
-              "a box whose silence ran out leaves the list, folded under one row")
-        shelf = next(n for n, r in enumerate(json.loads(p.call("dashRows"))) if r["kind"] == "shelf")
-        p.call("dashFocus", shelf)
+        def band(name):
+            return next(((n, r) for n, r in enumerate(json.loads(p.call("dashRows"))) if r["kind"] == "band" and r["id"] == name),
+                        (-1, {}))
+        check(p.wait(lambda: band("shelf")[1].get("open") is False and row("an old aside") == {}),
+              "a box whose silence ran out leaves the list, folded into a band")
+        p.call("dashFocus", band("shelf")[0])
         p.call("dashKey", KEY_RETURN, 0)
-        check(p.wait(lambda: "SET ASIDE" in heads() and "gone quiet" in row("an old aside").get("where", "")),
-              f"Enter unfolds it: there to be found ({heads()})")
+        check(p.wait(lambda: band("shelf")[1].get("open") is True and "gone quiet" in row("an old aside").get("where", "")),
+              f"Enter unfolds it: there to be found ({band('shelf')})")
+        p.call("dashFocus", band("shelf")[0])
+        p.call("dashKey", KEY_RETURN, 0)
+        check(p.wait(lambda: band("shelf")[1].get("open") is False and row("an old aside") == {}),
+              "…and folds it again (until 2026-11-27 it stayed open until the dashboard closed)")
+        p.call("dashFocus", band("shelf")[0])
+        p.call("dashKey", KEY_RETURN, 0)
+        p.wait(lambda: band("shelf")[1].get("open") is True)
         row("an old aside")
         check(p.call("dashKey", KEY_S, 0) == "true", "s is taken")
         check(p.wait(lambda: row("an old aside").get("away") == ""), "s on a box that is away brings it back")
@@ -2198,12 +2227,10 @@ def checks() -> int:
               f"a deadline in its last days before stepping aside counts them down ({row('Late essay')})")
         lab = int(re.search(r"#(\d+)", p.pomo("add", "Lab report", "2030-01-07")).group(1))
         p.pomo("done", str(lab), "--at", str(int(time.time()) - 2 * 86400))
-        check(p.wait(lambda: any(r["kind"] == "grading" for r in json.loads(p.call("dashRows")))),
-              "a done deadline with no grade waits, folded")
-        grading = next(n for n, r in enumerate(json.loads(p.call("dashRows"))) if r["kind"] == "grading")
-        p.call("dashFocus", grading)
+        check(p.wait(lambda: band("grading")[1].get("open") is False), "a done deadline with no grade waits, folded")
+        p.call("dashFocus", band("grading")[0])
         p.call("dashKey", KEY_RETURN, 0)
-        check(p.wait(lambda: "WAITING FOR A GRADE" in heads()), "…and unfolds")
+        check(p.wait(lambda: band("grading")[1].get("open") is True), "…and unfolds")
         row("Lab report")
         check(p.call("dashKey", KEY_G, 0) == "true", "g is taken")
         p.call("dashWhen", "7.5")
@@ -3037,7 +3064,14 @@ def checks() -> int:
               f"ledger: {[(x['id'], x['status']) for x in json.loads(ledger_file.read_text())['items']][-4:]})")
         check(json.loads(p.call("talk"))["settled"] == "declined", "…and the margin says so")
         p.call("dash")
-        check(not json.loads(p.call("talk"))["open"] and json.loads(p.call("talk"))["thread"] == "", "closing the dashboard closes the conversation")
+        kept = json.loads(p.call("talk"))["thread"]
+        check(not json.loads(p.call("talk"))["open"] and kept != "", "closing the dashboard puts its conversation away with it")
+        p.call("dash")
+        check(p.wait(lambda: json.loads(p.call("talk"))["open"] and json.loads(p.call("talk"))["thread"] == kept),
+              "…and opening it again brings the conversation back (docs/navigation.md: a task's belongs to the dashboard)")
+        p.call("talkKey", KEY_ESC, 0)
+        check(p.wait(lambda: json.loads(p.call("talk"))["thread"] == ""), "Esc in it closes it")
+        p.call("dash")
         p.call("dash")
         (p.stub / "talk-reply.json").unlink()
 
@@ -3074,7 +3108,7 @@ def checks() -> int:
         # Filed by a key pressed in passing (2026-11-18): Ctrl+Z on the
         # dashboard puts it back where it came from, and it is not offered
         # again.
-        check(json.loads(p.call("lastUndo")) == {"unfile": frow["id"]}, "…with Ctrl+Z ready to put it back")
+        check(json.loads(p.call("lastUndo")).get("unfile") == frow["id"], "…with Ctrl+Z ready to put it back")
         check(p.call("dashKey", 0x5a, CTRL) == "true"
               and p.wait(lambda: (inbox / "DTM_handout.pdf").is_file() and not filed.exists(), timeout=10),
               "Ctrl+Z puts the document back in the inbox")

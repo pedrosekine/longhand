@@ -44,6 +44,44 @@ BorderSurface {
   property alias dashWhenRowRef: dashWhenRow   // a press outside it closes it (Page.pressedAt)
   property alias dashColumnRef: dashColumn    // the drawn rows, for the tests
   property alias orderRowRef: orderRow        // the three orders, for the tests
+  property alias unfoldedRef: unfoldCard      // the strip unfolded: a press outside it folds it (Page.pressedAt)
+
+  // The cursor put on a row by the mouse: the list is not scrolled to it,
+  // since it is where the pointer is (revealFocused).
+  property bool mouseLed: false
+  function pointAt(i) {
+    if (page.taskFocus === i) return
+    dash.mouseLed = true
+    page.taskFocus = i
+  }
+  function revealFocused() { dashFlick.revealFocused() }
+  // Left of the rows, room for the chat key that stands beside the one
+  // selected, however long its key's name (a key bound to Ctrl+Enter
+  // stood clipped).
+  TextMetrics { id: talkInk; font.family: page.fontFamily; font.pixelSize: page.fs(Style.font.caption); text: page.keyName("dashTalk") }
+  readonly property int gutter: Math.max(page.sp(28), Math.ceil(talkInk.tightBoundingRect.width) + page.sp(24))
+  // The strip unfolded, scrolled to the row its cursor is on.
+  function showUnfolded(item) {
+    var y = item.mapToItem(unfoldCol, 0, 0).y
+    if (y < unfoldFlick.contentY) unfoldFlick.contentY = y
+    else if (y + item.height > unfoldFlick.contentY + unfoldFlick.height)
+      unfoldFlick.contentY = Math.min(unfoldFlick.contentHeight - unfoldFlick.height, y + item.height - unfoldFlick.height)
+  }
+  // PgUp / PgDn: a view's worth of rows at a time, onto a row that acts.
+  function pageStep(d) {
+    var from = dashFlick.rowItem(page.taskFocus)
+    if (!from) { page.moveTaskFocus(d); return }
+    var goal = from.y + d * Math.max(page.sp(40), dashFlick.height - page.sp(40))
+    var best = page.taskFocus
+    for (var i = page.taskFocus + d; i >= 0 && i < page.taskRows.length; i += d) {
+      if (!page.rowActs(page.taskRows[i])) continue
+      var it = dashFlick.rowItem(i)
+      if (!it) continue
+      best = i
+      if (d > 0 ? it.y >= goal : it.y <= goal) break
+    }
+    page.taskFocus = best
+  }
 
   visible: page.dashOpen && !page.keysOpen && !page.settingsOpen
   x: page.wideX
@@ -122,8 +160,10 @@ BorderSurface {
         visible: chip.search && (chip.cur || activeFocus || text !== "")
         enabled: chip.search
         anchors.verticalCenter: parent.verticalCenter
-        width: Math.max(1, contentWidth + (activeFocus ? cursorRectangle.width : 0))
-        clip: false
+        // As wide as its words, up to a measure: a long paste scrolls in it
+        // rather than pushing the chips off the row (2026-11-27).
+        width: Math.min(Math.round(page.measure * 0.5), Math.max(1, contentWidth + (activeFocus ? cursorRectangle.width : 0)))
+        clip: contentWidth > width
         color: chip.on ? page.accent : page.foreground
         selectionColor: page.palette.selection
         selectedTextColor: page.foreground
@@ -174,7 +214,7 @@ BorderSurface {
     property string next: ""
     signal clicked()
     readonly property bool cur: page.stripOpen && page.stripPick === pick && keys
-    onCurChanged: page.selected(urow, "center", cur)
+    onCurChanged: { page.selected(urow, "center", cur); if (cur) dash.showUnfolded(urow) }
     width: parent ? parent.width : 0
     height: ucol.implicitHeight + page.sp(8)
     color: cur ? Style.selectedFill : uHover.hovered && page.handOn ? Style.hoverFill : "transparent"
@@ -211,6 +251,10 @@ BorderSurface {
           id: uname
           anchors.left: udot.right
           anchors.leftMargin: page.sp(8)
+          // Its name and tag leave room for what it holds (2026-11-27: a
+          // long name ran under it).
+          width: Math.min(implicitWidth, Math.max(0, parent.width - x - utag.implicitWidth - uholds.implicitWidth - page.sp(24)))
+          elide: Text.ElideRight
           textFormat: Text.PlainText
           text: urow.name
           color: page.foreground
@@ -219,6 +263,7 @@ BorderSurface {
           font.pixelSize: page.fs(Style.font.body)
         }
         Text {
+          id: utag
           anchors.left: uname.right
           anchors.leftMargin: page.sp(8)
           anchors.baseline: uname.baseline
@@ -231,6 +276,7 @@ BorderSurface {
           font.pixelSize: page.fs(Style.font.caption)
         }
         Text {
+          id: uholds
           anchors.right: parent.right
           anchors.baseline: uname.baseline
           textFormat: Text.PlainText
@@ -282,6 +328,7 @@ BorderSurface {
       width: strip.width
       height: orderRow.height
       Text {
+        id: dashName
         x: page.sp(8)
         width: Math.max(0, (foldAllRow.visible ? foldAllRow.x : orderRow.x) - x - page.sp(16))
         anchors.verticalCenter: parent.verticalCenter
@@ -293,6 +340,13 @@ BorderSurface {
         font.styleName: page.fontStyle
         font.pixelSize: page.fs(Style.font.caption)
         font.letterSpacing: 0.8
+        // Why the agent could not plan, whole, when it is cut short.
+        MouseArea {
+          anchors.fill: parent
+          hoverEnabled: true
+          acceptedButtons: Qt.NoButton
+          Tip { host: page; shown: parent.containsMouse && dashName.truncated; text: page.dashStatus }
+        }
       }
       // By date: every band at once (2026-11-03). The word that would
       // change nothing is faint.
@@ -378,7 +432,9 @@ BorderSurface {
         course: "Each course, with what it holds inside" })
       anchors.top: dashTitle.bottom
       anchors.topMargin: page.sp(10)
-      width: Math.min(parent.width, Math.round(page.measure * 1.45))
+      // The list's column, gutters and all, so the title, the strip and the
+      // rows share one left edge in a narrow pane too (2026-11-27).
+      width: dashColumn.width
       x: Math.round((parent.width - width) / 2)
       height: stripCol.implicitHeight
 
@@ -402,6 +458,7 @@ BorderSurface {
               at: 0
               search: true
               label: "⌕"
+              tip: page.tip("Search the list: words, or a #tag", "dashSearch")
               // Lit by what is in the line, with the letter itself: by the
               // query it lit a frame later, when the list was narrowed.
               on: searchChip.field.text !== "" || page.dashQuery !== ""
@@ -413,6 +470,7 @@ BorderSurface {
               label: "All"
               count: String(page.dashCourses.total)
               on: page.dashLens.length === 0
+              tip: page.tip("Every course" + (page.dashQuery !== "" ? ", and the search cleared" : ""), "dashAll")
             }
             Repeater {
               // By the courses' tags, which typing does not change: the
@@ -428,6 +486,8 @@ BorderSurface {
                 label: modelData.label
                 count: String(modelData.count)
                 on: page.dashLens.indexOf(modelData.tag) >= 0
+                // Its whole name, and its digit (the mouse teaches the keys).
+                tip: (modelData.name || modelData.label) + (index < 9 ? "  ·  " + (index + 1) : "")
               }
             }
             // The agent's: what it asks of the courses shown, and what is
@@ -462,10 +522,21 @@ BorderSurface {
               + (page.dashQuery.trim() !== "" ? "  ·  “" + page.dashQuery.trim() + "”" : "")
               + (page.dashCourses.outside > 0 ? "  ·  " + page.dashCourses.outside + " from the agent outside it" : "")
               + "  ·  " + page.keyName("dashAll") + " shows all"
-          color: page.faint
+          color: narrowArea.containsMouse && page.handOn ? page.accent : page.faint
           font.family: page.fontFamily
           font.styleName: page.fontStyle
           font.pixelSize: page.fs(Style.font.caption)
+          // A click shows all, as 0 does.
+          MouseArea {
+            id: narrowArea
+            anchors.left: parent.left
+            width: Math.min(parent.width, parent.implicitWidth)
+            height: parent.height
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: { dashKeys.forceActiveFocus(); page.dashQuery = ""; page.setLens([]) }
+            Tip { host: page; shown: parent.containsMouse; text: page.tip("Show all", "dashAll") }
+          }
         }
 
         // Once a week, how Longhand feels (2026-11-18): said here, quietly,
@@ -492,17 +563,30 @@ BorderSurface {
           }
         }
 
+        // At most half the dashboard tall, its rows scrolled within, so a
+        // term of courses never crushes the list under it (2026-11-27).
         Rectangle {
+          id: unfoldCard
           visible: page.stripOpen
           width: parent.width
-          height: visible ? unfoldCol.implicitHeight + page.sp(12) : 0
+          height: visible ? Math.min(unfoldCol.implicitHeight + page.sp(12), Math.round(dash.height * 0.5)) : 0
           radius: Style.cornerRadius
           color: page.sunk
           border.width: 1
           border.color: page.faint
+          clip: true
+          Flickable {
+            id: unfoldFlick
+            anchors.fill: parent
+            anchors.topMargin: page.sp(6)
+            anchors.bottomMargin: page.sp(6)
+            contentWidth: width
+            contentHeight: unfoldCol.implicitHeight
+            boundsBehavior: Flickable.StopAtBounds
+            interactive: contentHeight > height
+            QC.ScrollBar.vertical: ScrollMark { page: dash.page }
           Column {
             id: unfoldCol
-            y: page.sp(6)
             width: parent.width
             spacing: 0
             Unfolded {
@@ -564,9 +648,11 @@ BorderSurface {
                 digit: page.keyName("dashOrder")
                 on: page.dashOrder === modelData
                 name: "by " + strip.orderWords[modelData]
-                onClicked: { dashKeys.forceActiveFocus(); page.dashOrder = modelData; page.savePageState() }
+                // Picked, and the strip folds: an order is one choice.
+                onClicked: { dashKeys.forceActiveFocus(); page.setOrder(modelData); page.stripOpen = false }
               }
             }
+          }
           }
         }
       }
@@ -589,16 +675,34 @@ BorderSurface {
 
       TouchScroll { flickable: dashFlick }
 
-      // Keep the focused row in view.
-      function revealFocused() {
+      // Keep the focused row in view, with a little of what is around it:
+      // a row and a half of room, and going up, the band or heading it is
+      // under, so the row is never read without what it belongs to
+      // (2026-11-27, as the editor pass gave the note). Not when the mouse
+      // put the cursor there: the row is where the pointer already is.
+      function rowItem(i) {
         var kids = dashColumn.children
-        for (var i = 0; i < kids.length; i++) {
-          var k = kids[i]
-          if (k.index === undefined || k.index !== page.taskFocus) continue
-          if (contentY > k.y) contentY = k.y
-          else if (contentY + height < k.y + k.height) contentY = k.y + k.height - height
-          return
+        for (var j = 0; j < kids.length; j++) if (kids[j].index !== undefined && kids[j].index === i) return kids[j]
+        return null
+      }
+      function revealFocused() {
+        if (dash.mouseLed) { dash.mouseLed = false; return }
+        var k = rowItem(page.taskFocus)
+        if (!k) return
+        var room = Math.round(page.fs(Style.font.body) * 1.35 * 1.5)
+        var top = k.y - room
+        // Its heading, when that is near enough to be shown with it.
+        for (var i = page.taskFocus - 1; i >= 0 && i >= page.taskFocus - 12; i--) {
+          var r = page.taskRows[i]
+          if (r.kind !== "head" && r.kind !== "band" && r.kind !== "month") continue
+          var h = rowItem(i)
+          if (h && k.y + k.height - h.y < height - room) top = Math.min(top, h.y)
+          break
         }
+        var bottom = k.y + k.height + room
+        var limit = Math.max(0, contentHeight - height)
+        if (contentY > top) contentY = Math.max(0, top)
+        else if (contentY + height < bottom) contentY = Math.min(limit, bottom - height)
       }
       Connections { target: page; function onTaskFocusChanged() { Qt.callLater(dashFlick.revealFocused) } }
 
@@ -609,16 +713,21 @@ BorderSurface {
         // the whole wall.
         // A gutter is kept on each side even in a narrow window, for the
         // chat key that stands left of the selected row (chatKey).
-        width: Math.min(parent.width - 2 * page.sp(28), Math.round(page.measure * 1.45))
+        width: Math.min(parent.width - 2 * dash.gutter, Math.round(page.measure * 1.45))
         x: Math.round((parent.width - width) / 2)
         spacing: 0
 
+        // Nothing to show, said as it is: still reading, or the list could
+        // not be read (it showed "nothing open" over both until 2026-11-27).
         Text {
           width: parent.width
-          visible: page.taskRows.length === 0
+          visible: page.taskRows.length === 0 || page.tasksError !== ""
+          wrapMode: Text.WordWrap
           textFormat: Text.PlainText
-          text: page.dashNarrowed ? "nothing matches  ·  " + page.keyName("dashAll") + " shows all" : "nothing open"
-          color: page.faint
+          text: page.tasksError !== "" ? "the list could not be read: " + page.tasksError + (page.taskRows.length > 0 ? "  ·  shown as last read" : "")
+            : !page.tasksRead ? "reading the notes…"
+            : page.dashNarrowed ? "nothing matches  ·  " + page.keyName("dashAll") + " shows all" : "nothing open"
+          color: page.tasksError !== "" ? page.urgent : page.faint
           font.family: page.fontFamily
           font.styleName: page.fontStyle
           font.pixelSize: page.fs(Style.font.bodySmall)
@@ -652,7 +761,7 @@ BorderSurface {
             readonly property string rowKey: page.rowKey(modelData)
             // Who made it (docs/agent.md): drawn in the box, as in the note.
             readonly property string author: page.rowAuthor(modelData)
-            readonly property bool done: (deadline ? deadline.status !== "open" : (!!task && task.done)) || !!page.doneNow[rowKey]
+            readonly property bool done: (deadline ? deadline.status !== "open" : (!!task && (task.done || !!task.cancelled))) || !!page.doneNow[rowKey]
             // Closed but not done (2026-11-15): drawn as the note draws
             // `[-]`, grey with a dash, never the green tick.
             readonly property bool cancelled: deadline ? deadline.status === "cancelled" : (!!task && !!task.cancelled)
@@ -674,7 +783,10 @@ BorderSurface {
                 NumberAnimation { target: tickGlow; property: "opacity"; to: 0; duration: 650; easing.type: Easing.OutQuad }
               }
             }
-            readonly property bool late: !!deadline && deadline.status === "open" && deadline.due * 1000 < Date.now()
+            // By the dashboard's minute (page.dashNow), so a row turns late
+            // as its hour passes, not when something else is drawn.
+            readonly property bool late: (!!deadline && deadline.status === "open" && deadline.due * 1000 < page.dashNow)
+                                         || (!!task && page.taskLate(task))
             // Lit only while the dashboard has the keys: one place is lit
             // at a time, in the pane the focus frame is around
             // (docs/navigation.md). The pointer follows it (page.selected).
@@ -686,16 +798,16 @@ BorderSurface {
             Component.onCompleted: if (hot) page.selected(dashRow, "center", true)
             // A click on it does something (activateTask): a hand, and a
             // faint fill while the mouse is over it (2026-10-19).
-            readonly property bool acts: ["task", "deadline", "shelf", "grading", "raised", "proposal", "question", "told"].indexOf(kind) >= 0
+            readonly property bool acts: ["task", "deadline", "raised", "proposal", "question", "told"].indexOf(kind) >= 0
                                          || (kind === "band" && modelData.count > 0 && !modelData.fixed)
             // Its chat, in brief: the gutter bar's state and the last thing
             // said, on every row that has one (page.chatState).
             readonly property var chat: page.chatOf(modelData)
             readonly property string chatState: page.chatState(modelData)
             // A chat can be opened on it: nothing on a private box, which
-            // offers nothing of the agent's.
-            readonly property bool chatCan: (kind === "task" || kind === "deadline" || asks)
-              && !(line && line.private)
+            // offers nothing of the agent's, nor on a deadline with no line
+            // yet, nor on a document to file (page.noChatWhy).
+            readonly property bool chatCan: (kind === "task" || kind === "deadline" || asks) && page.noChatWhy(modelData) === ""
             // The bar's colour, which its key shares: the accent while a
             // reply waits, dim once read, and for a row not talked about yet
             // a faint one, opaque so the bar and the key that grows from it
@@ -808,7 +920,7 @@ BorderSurface {
                 anchors.margins: -page.sp(4)
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onClicked: { page.taskFocus = dashRow.index; page.talkFocused() }
+                onClicked: { dash.pointAt(dashRow.index); page.talkFocused() }
                 Tip { host: page; shown: parent.containsMouse; text: page.tip("Chat about it", "dashTalk") }
               }
             }
@@ -831,7 +943,7 @@ BorderSurface {
               anchors.left: parent.left
               anchors.right: parent.right
               anchors.bottom: parent.bottom
-              anchors.leftMargin: page.sp(10) + (dashRow.asks && !!modelData.task ? Math.round(page.textSize * 0.72) + page.sp(10) : 0)
+              anchors.leftMargin: page.sp(10) + (dashRow.asks && !!modelData.nested ? Math.round(page.textSize * 0.72) + page.sp(10) : 0)
               anchors.rightMargin: page.sp(10)
               anchors.bottomMargin: page.sp(5)
               implicitHeight: texts.implicitHeight
@@ -845,6 +957,8 @@ BorderSurface {
                 visible: dashRow.kind === "head"
                 anchors.left: parent.left
                 y: 0
+                width: Math.min(implicitWidth, Math.max(0, parent.width - bandTag.implicitWidth - page.sp(8)))
+                elide: Text.ElideRight
                 textFormat: Text.PlainText
                 text: dashRow.kind === "head" ? modelData.text : ""
                 color: {
@@ -861,6 +975,7 @@ BorderSurface {
               }
 
               Text {
+                id: bandTag
                 visible: dashRow.kind === "head" && modelData.tag !== undefined && modelData.tag !== ""
                 anchors.left: bandText.right
                 anchors.leftMargin: page.sp(8)
@@ -1027,7 +1142,7 @@ BorderSurface {
                   anchors.margins: -page.sp(6)
                   cursorShape: Qt.PointingHandCursor
                   hoverEnabled: true
-                  onClicked: { dashKeys.forceActiveFocus(); page.taskFocus = dashRow.index; page.tickFocused() }
+                  onClicked: { dashKeys.forceActiveFocus(); dash.pointAt(dashRow.index); page.tickFocused() }
                   Tip { host: page; shown: parent.containsMouse; text: page.tip("Done (again: not done)", "dashDone") }
                 }
               }
@@ -1089,15 +1204,18 @@ BorderSurface {
                       cursorShape: Qt.PointingHandCursor
                       onClicked: {
                         dashKeys.forceActiveFocus()
-                        page.taskFocus = dashRow.index
+                        dash.pointAt(dashRow.index)
                         if (pill.modelData.tone === "act") page.activateTask()
                         else page.startDashWhen()
                       }
                       Tip {
                         host: page
                         shown: parent.containsMouse
+                        // Its date is where it was given, in the note; a click
+                        // gives the day to work on it, which is what it says.
                         text: pill.modelData.tone === "act" ? page.tip("Dismiss it", "dashOpen")
-                          : dashRow.kind === "deadline" ? page.tip("The day to work on it", "dashWhen") : page.tip("Reschedule", "dashWhen")
+                          : pill.modelData.tone === "do" ? page.tip("Another day to work on it", "dashWhen")
+                          : page.tip("A day to work on it (the date it is due stays)", "dashWhen")
                         act: pill.modelData.tone === "act" ? "dashOpen" : "dashWhen"
                       }
                     }
@@ -1119,7 +1237,7 @@ BorderSurface {
                 host: page
                 act: "dashRename"
                 words: "rename"
-                place: dashRow.hot && dashRow.kind === "task"
+                place: dashRow.hot && (dashRow.kind === "task" || (dashRow.kind === "deadline" && dashRow.deadline.status !== "cancelled"))
                 x: Math.min(texts.x + titleText.contentWidth + page.sp(10), pills.x - width - page.sp(10))
                 y: texts.y + Math.round((titleText.font.pixelSize * 1.3 - height) / 2)
               }
@@ -1127,7 +1245,7 @@ BorderSurface {
                 host: page
                 act: "dashWhen"
                 words: "when"
-                place: dashRow.hot && (dashRow.kind === "task" || dashRow.kind === "deadline")
+                place: dashRow.hot && !!dashRow.line && !dashRow.done
                 anchors.top: pills.bottom
                 anchors.topMargin: page.sp(4)
                 anchors.right: pills.right
@@ -1164,17 +1282,14 @@ BorderSurface {
                   elide: Text.ElideRight
                   maximumLineCount: 2
                   wrapMode: Text.WordWrap
-                  text: dashRow.kind === "proposal" || dashRow.kind === "told" ? Say.sayAsk(modelData.item, !!modelData.task)
+                  text: dashRow.kind === "proposal" || dashRow.kind === "told" ? Say.sayAsk(modelData.item, !!modelData.nested)
                     : dashRow.kind === "question" ? modelData.item.question
-                    : dashRow.kind === "shelf" ? "+" + modelData.count + " set aside · " + page.keyName("dashOpen") + " to show"
-                    : dashRow.kind === "grading" ? "+" + modelData.count + " waiting for a grade · " + page.keyName("dashOpen") + " to show"
                     : dashRow.kind === "raised"
                       ? (modelData.item.kind === "suggestion" ? "◇ " : "· ") + modelData.item.text
                     : dashRow.kind === "deadline" ? modelData.deadline.title
                     : dashRow.kind === "task" ? Say.taskTitle(modelData.task)
                     : " "
                   color: dashRow.isHead ? "transparent"
-                    : dashRow.kind === "shelf" || dashRow.kind === "grading" ? page.faint
                     : dashRow.task && dashRow.task.away ? page.dim
                     : dashRow.done ? page.dim
                     : dashRow.late ? page.urgent : page.foreground
@@ -1182,19 +1297,44 @@ BorderSurface {
                   font.family: page.fontFamily
                   font.styleName: page.fontStyle
                   font.pixelSize: page.fs(Style.font.body)
+                  // How wide each line is as laid out, for the strike: the
+                  // widths gathered as the lines come, kept once the last is.
+                  property var lineWidths: []
+                  property var laying: []
+                  onLineLaidOut: function (line) {
+                    if (line.number === 0) laying = []
+                    laying[line.number] = line.implicitWidth
+                    if (line.isLast) {
+                      var got = laying.slice()
+                      Qt.callLater(function () { if (String(got) !== String(titleText.lineWidths)) titleText.lineWidths = got })
+                    }
+                  }
 
                   // Struck through, drawn rather than the font's, so a
-                  // tick can draw it left to right (tickAnim).
-                  Rectangle {
+                  // tick can draw it left to right (tickAnim) — every line
+                  // of it, one after the other (2026-11-27: a title on two
+                  // lines was struck on its first alone).
+                  Item {
                     id: strike
                     // The row just ticked starts unstruck; its tick draws it.
                     property real progress: dashRow.done && page.justTicked !== dashRow.rowKey ? 1 : 0
                     visible: dashRow.boxed && progress > 0
-                    x: 0
-                    y: Math.round(inner.lineH / 2) - 1
-                    height: Math.max(1, Math.round(page.textSize * 0.07))
-                    width: Math.min(titleText.implicitWidth, titleText.width) * progress
-                    color: page.dim
+                    anchors.fill: parent
+                    readonly property int lines: Math.max(1, titleText.lineCount)
+                    Repeater {
+                      model: strike.lines
+                      Rectangle {
+                        required property int index
+                        readonly property real full: Math.min(titleText.width,
+                          titleText.lineWidths[index] !== undefined ? titleText.lineWidths[index] : titleText.contentWidth)
+                        readonly property real share: Math.max(0, Math.min(1, strike.progress * strike.lines - index))
+                        x: 0
+                        y: Math.round(titleText.height / strike.lines * (index + 0.5)) - 1
+                        height: Math.max(1, Math.round(page.textSize * 0.07))
+                        width: full * share
+                        color: page.dim
+                      }
+                    }
                   }
                 }
 
@@ -1282,7 +1422,7 @@ BorderSurface {
               onClicked: function (mouse) {
                 if (mouse.button !== Qt.LeftButton) return
                 dashKeys.forceActiveFocus()
-                page.taskFocus = index
+                dash.pointAt(index)
                 // A raised row only comes under the keys: dismissing it is
                 // its own word, or Enter (2026-11-25, the mouse pass).
                 if (dashRow.kind !== "raised") page.activateTask()
@@ -1290,21 +1430,24 @@ BorderSurface {
               Tip {
                 host: page
                 readonly property string kind: dashRow.modelData.kind
-                shown: parent.containsMouse && (kind === "task" || kind === "deadline" || kind === "shelf" || kind === "grading" || kind === "raised"
+                shown: parent.containsMouse && (kind === "task" || kind === "deadline" || kind === "raised"
                                                   || kind === "proposal" || kind === "question" || kind === "told" || (kind === "band" && dashRow.acts))
                 // The four a row is most used for, then the sheet for the rest
                 // (2026-10-30, the canvas's keycaps: ten lines hid the list).
                 text: kind === "task" ? page.tips([["Go to the line", "dashOpen"], ["Done", "dashDone"], ["Reschedule", "dashWhen"]]
                                                   .concat(dashRow.chatCan ? [["Chat about it", "dashTalk"]] : []).concat([["—"], ["Every key here", "keysHere"]]))
-                  : kind === "deadline" ? page.tips([["Go to its line", "dashOpen"], ["Done", "dashDone"], ["The day to work on it", "dashWhen"]]
+                  : kind === "deadline" ? page.tips([[dashRow.deadline && dashRow.deadline.link === "" ? "Write it into today's note" : "Go to its line", "dashOpen"],
+                                                     ["Done", "dashDone"]]
+                                                   .concat(dashRow.line ? [["The day to work on it", "dashWhen"]] : [])
                                                    .concat(dashRow.chatCan ? [["Chat about it", "dashTalk"]] : []).concat([["—"], ["Every key here", "keysHere"]]))
                   : kind === "told" ? page.tips([["Let it stand", "dashDone"], ["Undo it", "dashDrop"], ["Chat about it", "dashOpen"]])
                   : kind === "proposal" && dashRow.modelData.item.kind === "file"
                     ? page.tips([["File it: moved from Downloads into the course's documents", "dashDone"], ["Decline", "dashDrop"], ["Open it first", "dashOpen"]])
                   : kind === "proposal" ? page.tips([["Accept", "dashDone"], ["Decline", "dashDrop"], ["Chat about it", "dashOpen"]])
                   : kind === "question" ? page.tips([["Accept the recommended answer", "dashDone"], ["Chat about it: answer in your words, or ask back", "dashOpen"], ["Decline", "dashDrop"]])
-                  : kind === "shelf" ? page.tip("Show what is set aside", "dashOpen")
-                  : kind === "grading" ? page.tip("Show what waits for a grade", "dashOpen")
+                  : kind === "band" && dashRow.modelData.aside
+                    ? page.tip(dashRow.modelData.open ? "Fold it again" : dashRow.modelData.id === "shelf" ? "Show what is set aside" : "Show what waits for a grade", "dashOpen")
+                  : kind === "band" && dashRow.modelData.forced ? "Open while the list is narrowed · " + page.keyName("dashAll") + " shows all"
                   : kind === "band" ? page.tips([[dashRow.modelData.open ? "Fold it" : "Open it", "dashOpen"], ["Collapse every band", "dashFoldAll"],
                                                  ["Expand every band", "dashUnfoldAll"]])
                   : page.tip("Dismiss it (or its own word, on the right)", "dashOpen")
@@ -1388,9 +1531,13 @@ BorderSurface {
         visible: !!page.dashWhenFor
         spacing: page.sp(8)
 
+        // What the field is for, shortened to leave the field and what it
+        // reads room (2026-11-27: a long title pushed both off the edge).
         Text {
           id: dashWhenLabel
           anchors.verticalCenter: parent.verticalCenter
+          width: Math.min(implicitWidth, Math.round(dashWhenRow.width * 0.4))
+          elide: Text.ElideRight
           textFormat: Text.PlainText
           text: !page.dashWhenFor ? ""
             : page.dashFieldKind === "rename" ? "rename"
@@ -1406,7 +1553,7 @@ BorderSurface {
           FieldMenu { page: dash.page; field: parent }
           id: dashWhenField
           width: Math.min(page.dashFieldKind === "rename" ? page.sp(460) : page.sp(220),
-                          Math.max(page.sp(120), dashWhenRow.width - dashWhenLabel.implicitWidth - dashWhenRow.spacing
+                          Math.max(page.sp(120), dashWhenRow.width - dashWhenLabel.width - dashWhenRow.spacing
                                    - (dashWhenPreview.visible ? dashWhenPreview.implicitWidth + dashWhenRow.spacing : 0)))
           placeholderText: page.dashFieldKind === "rename" ? "its words"
             : page.dashFieldKind === "grade" ? "7.5, A-… · empty clears"
@@ -1428,11 +1575,14 @@ BorderSurface {
           id: dashWhenPreview
           readonly property var parsed: page.dashFieldKind === "when" && dashWhenField.text.trim() !== ""
             ? Dates.read(dashWhenField.text.trim(), new Date()) : null
-          visible: page.dashFieldKind === "when" && dashWhenField.text.trim() !== ""
+          // What Enter would write, or why it did not: the line under the
+          // list is the field's while it is open, so a hint there is unseen.
+          visible: page.dashWhenError !== "" || (page.dashFieldKind === "when" && dashWhenField.text.trim() !== "")
           anchors.verticalCenter: parent.verticalCenter
           textFormat: Text.PlainText
-          text: parsed ? "→ " + Qt.formatDate(new Date(parsed.ms), "ddd d MMM") : "not a date"
-          color: parsed ? page.dim : page.urgent
+          text: page.dashWhenError !== "" ? page.dashWhenError
+            : parsed ? "→ " + Qt.formatDate(new Date(parsed.ms), "ddd d MMM") : "not a date"
+          color: parsed && page.dashWhenError === "" ? page.dim : page.urgent
           font.family: page.fontFamily
           font.styleName: page.fontStyle
           font.pixelSize: page.fs(Style.font.bodySmall)
