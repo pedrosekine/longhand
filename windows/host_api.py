@@ -213,7 +213,7 @@ class Host(QObject):
 
     @Slot(str, result="QVariant")
     def savedPlace(self, name):
-        """Where a window was left, `{x, y, width, height, screen}`, or null:
+        """Where a window was left, `{x, y, width, height, screen, maximized}`, or null:
         kept in the state folder across restarts
         (shim/Quickshell/FloatingWindow.qml), and only while the place is
         still on a screen. `screen` names the one most of its title bar is
@@ -231,7 +231,8 @@ class Host(QObject):
         shown = {n: r.width() * r.height() for n, r in shown.items() if not r.isEmpty()}
         if w < 200 or h < 150 or not shown:
             return None
-        return {"x": x, "y": y, "width": w, "height": h, "screen": max(shown, key=shown.get)}
+        return {"x": x, "y": y, "width": w, "height": h, "screen": max(shown, key=shown.get),
+                "maximized": bool(g.get("maximized"))}
 
     @Slot(str, "QVariant")
     def keepPlace(self, name, g):
@@ -246,6 +247,13 @@ class Host(QObject):
             d[name] = {k: int(g[k]) for k in ("x", "y", "width", "height")}
         except (TypeError, KeyError, ValueError):
             return
+        # Maximized when it was put away: the place is the size it comes
+        # back to from there, and it opens maximized again.
+        try:
+            if g.get("maximized"):
+                d[name]["maximized"] = True
+        except AttributeError:
+            pass
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_name("." + path.name + ".tmp")
         tmp.write_text(json.dumps(d, indent=2) + "\n", encoding="utf-8")

@@ -42,7 +42,7 @@ BorderSurface {
   width: talk ? page.talkWidth : page.marginWidth
   radius: page.alongside ? 0 : page.overlayRadius
   color: page.background
-  borderSpec: page.alongside ? Border.none() : page.borderSpec
+  borderSpec: page.cardSpec
   padding: page.sp(22)
 
   // A click in the pane is the keys into it, as everywhere (docs/navigation.md).

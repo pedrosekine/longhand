@@ -29,18 +29,22 @@ import "Links.js" as Links
 import "ProjectView.js" as PV
 
 // The page: today's note as a blank sheet in the shell, with the agent in
-// the margin. Two shapes of the same sheet: the overlay (a layer over
-// everything, Esc leaves) and alongside (a normal Hyprland window you tile
-// next to slides or a PDF; Esc does nothing there). F11 pins the overlay
-// into a window and back; the pin mark in the header says which you are in.
+// the margin. Two shapes of the same sheet, not two equals: the overlay
+// is quick capture (a layer over everything, Esc leaves), the window is
+// where the work stays (a normal window you tile or Snap next to slides or
+// a PDF; Esc does nothing there). F11 or the overlay's "window" keeps the
+// sheet as a window; in the window F11 fills the screen and back, as it
+// does in every other program (2026-11-27, the shape pass).
 //
 // Where the keys are, and how they move between the sidebar, the middle and
 // the agent's pane, is docs/navigation.md (and "panes", below).
 //
-// The two live side by side. With the window open somewhere, SUPER+ALT+=
-// still brings the overlay up where you are; the sheet moves into it (one
-// sheet, one editor, nothing to keep in sync) and the window says where it
-// went. Esc or the same key again puts it back in the window. The shell's
+// The two live side by side. With the window open somewhere else (another
+// workspace, another monitor), SUPER+ALT+= still brings the overlay up
+// where you are; the sheet moves into it (one sheet, one editor, nothing
+// to keep in sync) and the window says where it went. Esc or the same key
+// again puts it back in the window. With the window in front, holding the
+// keys, the overlay does not come over it: the window stays. The shell's
 // toggle asks `opened`, so `opened` means the overlay, never the window.
 //
 // No file tree, no chrome. A themed sheet, the date, the text. Every keystroke
@@ -345,6 +349,10 @@ Item {
   readonly property bool opened: overlayOpen          // what the shell's toggle asks
   readonly property bool showing: overlayOpen || windowOpen
   readonly property bool alongside: !overlayOpen      // where the sheet is drawn
+  // The window in front, with the keys (read through the content's
+  // attached Window, as `content` does: Quickshell's FloatingWindow has no
+  // `active` of its own).
+  readonly property bool windowActive: windowOpen && !overlayOpen && content.Window.active
 
   readonly property color background: Commons.Color.menu.background
   // Text at the contrast the theme chose. It was softened a fifth of the way
@@ -361,7 +369,12 @@ Item {
   readonly property color faint: pal.faint
   readonly property color urgent: pal.redText
   readonly property color magenta: pal.magentaText   // private things' lock
-  readonly property var borderSpec: Border.surfaceSpec("menu", "border", border, Math.max(1, Style.space(2)))
+  // The overlay's cards (the sheet, the side panes, the lists): a quiet
+  // hairline, none in the window. The theme's border, on all three at once,
+  // left the focus frame (frameSpec) hard to tell from the rest; now only
+  // the pane with the keys is lit (2026-11-27, the shape pass).
+  readonly property var cardSpec: root.alongside ? Border.none()
+    : Border.flat(Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.16), 1)
   // The page's one face: the note, the chrome, the chat. The page drew in
   // the shell's monospace until 2026-10-15, then in iA Writer Quattro S, a
   // face for writing; since 2026-11-19 in a face for reading, Adwaita Sans
@@ -452,7 +465,7 @@ Item {
   // without it the overlay held 71½ characters, and a line of 72 wrapped
   // there and not in the window (found by run.py --overlay, 2026-10-25).
   readonly property int sheetFor: root.measure + 2 * root.sheetPadding
-    + (root.alongside ? 0 : Math.ceil(Border.left(root.borderSpec) + Border.right(root.borderSpec)))
+    + Math.ceil(Border.left(root.cardSpec) + Border.right(root.cardSpec))
   // Where the note sits: one rule for both shapes, both sides and every
   // view in the middle (Layout.js, 2026-11-25). The note is centred in the
   // room the panes leave, as the dashboard and the lists already were. From
@@ -509,7 +522,9 @@ Item {
   // its own two splits, beside a paper apart from beside a note
   // (pane-widths.json). Nothing changes place: only the edge moves.
   readonly property string paneKind: root.pdfShown ? "paper" : "note"
-  readonly property string paneScreen: String(Math.round(panel.screen ? panel.screen.width : content.width))
+  // The overlay keeps its own, apart from the window's: a split made over a
+  // whole screen does not suit a window tiled beside slides (2026-11-27).
+  readonly property string paneScreen: (root.alongside ? "" : "overlay ") + String(Math.round(panel.screen ? panel.screen.width : content.width))
   property var paneWidths: ({})         // screen width → kind → { at, reading, discussing }
   readonly property var paneSaved: {
     var s = root.paneWidths[root.paneScreen]
@@ -3089,6 +3104,13 @@ Item {
       if (root.windowOpen && !root.overlayOpen) root.raiseWindow()
       root.windowOpen = true
       if (root.overlayOpen) root.dismiss()
+    } else if (root.windowActive) {
+      // The window is in front with the keys: the overlay over it would
+      // show the same sheet a little larger and leave the window empty
+      // behind it ("on the overlay"). The window stays, and says what
+      // fills the screen instead.
+      root.showHint("already open here · " + root.keyName("pin") + " for full screen")
+      return
     } else {
       root.overlayOpen = true
     }
@@ -3681,6 +3703,20 @@ Item {
     return sheet
   }
 
+  // Whether a point of the overlay is within the span of its cards — the
+  // sidebar, the middle, the agent's pane — and not the screen around them.
+  function amongCards(x, y) {
+    var lo = Infinity, hi = -Infinity
+    var cards = [root.paneItem("left"), root.paneItem("center"), root.paneItem("right")]
+    for (var i = 0; i < cards.length; i++) {
+      var c = cards[i]
+      if (!c || !c.visible) continue
+      lo = Math.min(lo, c.x)
+      hi = Math.max(hi, c.x + c.width)
+    }
+    return x >= lo && x <= hi && y >= root.sheetMargin && y <= content.height - root.sheetMargin
+  }
+
   function warpNow() {
     if (!root.showing || root.pointerMode === "off") return
     if (Date.now() - root.handMovedAt < 700) return
@@ -3762,10 +3798,10 @@ Item {
   // What the shell calls to hide the page: the overlay goes, the window
   // (if open) stays and gets the sheet back.
   function close() {
-    // Pinned, the sheet is the same sheet in the other shape: the keys or
-    // settings open in it stay open, and the keys stay where they were
-    // (togglePin puts them back). On Windows the shell's hide calls this
-    // again, so the pin is read here, not only in dismiss.
+    // Kept as a window, the sheet is the same sheet in the other shape: the
+    // keys or settings open in it stay open, and the keys stay where they
+    // were (togglePin puts them back). On Windows the shell's hide calls
+    // this again, so `pinning` is read here, not only in dismiss.
     if (!root.pinning) {
       if (root.keysOpen) root.toggleKeys()
       if (root.settingsOpen) root.toggleSettings()
@@ -3795,32 +3831,43 @@ Item {
     else root.open("{}")
   }
 
-  // Ctrl+P: the same sheet, the other shape. Pinning the overlay opens
-  // the window and closes the overlay; unpinning the window does the
-  // reverse.
+  // F11, Ctrl+Alt+P, or the overlay's "window" (2026-11-27, the shape
+  // pass). On the overlay: the same sheet, kept as a window, and the
+  // overlay closes. In the window: the window fills the screen, and back —
+  // the compositor's own full screen (Hyprland's; Windows' through
+  // windows/compositor.py), so the tile, Snap, the taskbar and Alt+Tab keep
+  // it. Until then F11 in the window closed it and brought the overlay
+  // back, which lost the window's tile and its Snap, and the header's
+  // "pin" was lit in the window and dim over everything: the opposite of
+  // what pin means everywhere else. The id stays "pin", for the keys.json
+  // files that moved it.
   // The keys stay in the pane they were in (2026-11-25, the keyboard
   // pass): F11 from the dashboard, a PDF or the sidebar sent them to the
   // note, hidden or not.
   property string pinFrom: "center"
   property bool pinning: false
   function togglePin() {
-    root.used("pin", root.overlayOpen ? "to-window" : "to-overlay")
+    if (!root.overlayOpen) { root.fillScreen(); return }
+    root.used("pin", "to-window")
     root.pinFrom = root.here
     root.flush()
-    if (root.overlayOpen) {
-      root.windowOpen = true
-      root.pinning = true
-      root.dismiss()
-      root.pinning = false
-      // The window takes the keys, on Hyprland and on Windows alike — also
-      // when it was open already, behind the overlay or on another
-      // workspace.
-      Qt.callLater(root.raiseWindow)
-    } else {
-      root.windowOpen = false
-      root.overlayOpen = true
-    }
+    root.windowOpen = true
+    root.pinning = true
+    root.dismiss()
+    root.pinning = false
+    // The window takes the keys, on Hyprland and on Windows alike — also
+    // when it was open already, behind the overlay or on another
+    // workspace.
+    Qt.callLater(root.raiseWindow)
     Qt.callLater(root.focusPinned)
+  }
+  function fillScreen() {
+    if (!root.windowOpen) return
+    root.used("pin", "full-screen")
+    fullProc.running = false
+    fullProc.command = ["hyprctl", "eval",
+      'hl.dispatch(hl.dsp.window.fullscreen({ mode = "fullscreen", action = "toggle", window = "title:^' + root.windowTitle + '$" }))']
+    fullProc.running = true
   }
   function focusPinned() {
     var p = root.pinFrom
@@ -9658,6 +9705,7 @@ Item {
   }
   Process { id: submapProc }
   Process { id: raiseProc }
+  Process { id: fullProc }
   // The sheet stops waiting a little before Hyprland would leave the submap.
   Timer {
     id: hyprListenTimer
@@ -9734,7 +9782,10 @@ Item {
     title: root.windowTitle
     color: root.sheetColor
     Behavior on color { ColorAnimation { duration: 240 } }
-    implicitWidth: Style.space(680)
+    // Hyprland tiles it; Windows opens it at this size the first time,
+    // wide enough for the note and one pane beside it (2026-11-27: at 680
+    // the chat opened over a note at its floor).
+    implicitWidth: Style.space(root.onWindows ? 1100 : 680)
     implicitHeight: Style.space(900)
     minimumSize: Qt.size(Style.space(360), Style.space(300))
     onVisibleChanged: {
@@ -9798,11 +9849,16 @@ Item {
       color: root.scrim
     }
 
-    // A click outside the sheet: on the overlay it dismisses; in the window,
-    // beside the column, it goes back to writing.
+    // A click outside the sheet: on the overlay, outside the cards, it
+    // dismisses; between two cards, or in the window beside the column, it
+    // goes back to writing. Until 2026-11-27 a click a little short of the
+    // sidebar closed the whole overlay (the shape pass).
     MouseArea {
       anchors.fill: parent
-      onClicked: root.alongside ? root.focusCenter() : root.dismiss()
+      onClicked: function (mouse) {
+        if (root.alongside || root.amongCards(mouse.x, mouse.y)) root.focusCenter()
+        else root.dismiss()
+      }
     }
 
     // The dashboard. It takes the sheet's place rather than sitting beside
@@ -9848,7 +9904,7 @@ Item {
       radius: root.alongside ? 0 : root.overlayRadius
       color: root.sheetColor
       Behavior on color { ColorAnimation { duration: 240 } }
-      borderSpec: root.alongside ? Border.none() : root.borderSpec
+      borderSpec: root.cardSpec
       padding: root.sheetPadding
 
       // A click on the sheet's margins is the keys into the middle, into
@@ -10058,13 +10114,16 @@ Item {
             readonly property bool chatWanted: root.agentOn && noteHere
             readonly property bool chatFits: chatWanted && kept + chatWord.implicitWidth + gap <= room
             readonly property bool askWanted: root.noteAskable && noteHere
-            // The note's chat says its full words while the pin still fits
+            // "window", on the overlay only: in the window there is no other
+            // shape to go to (F11 fills the screen there).
+            readonly property real shapeWants: root.alongside ? 0 : pinWord.implicitWidth + gap
+            // The note's chat says its full words while "window" still fits
             // beside them; else the short ones; else it goes.
-            readonly property bool askFull: askWanted && kept + noteAskFull.width + pinWord.implicitWidth + 2 * gap <= room
+            readonly property bool askFull: askWanted && kept + noteAskFull.width + shapeWants + gap <= room
             readonly property bool askFits: askWanted && (askFull || kept + noteAskShort.width + gap <= room)
             readonly property real asked: chatFits ? chatWord.implicitWidth + gap
               : askFits ? (askFull ? noteAskFull.width : noteAskShort.width) + gap : 0
-            readonly property bool pinFits: kept + asked + pinWord.implicitWidth + gap <= room
+            readonly property bool pinFits: !root.alongside && kept + asked + pinWord.implicitWidth + gap <= room
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             spacing: gap
@@ -10081,15 +10140,18 @@ Item {
               font.pixelSize: root.fs(Style.font.bodySmall)
             }
 
-            // The pin: which shape you are in, lit while pinned as a window.
-            // F11 or a click flips it.
+            // On the overlay, "window": keep this sheet as a window beside
+            // your work (F11 or a click). Until 2026-11-27 it was "pin", lit
+            // in the window and dim on the overlay — the reverse of what pin
+            // means everywhere else, and gone from the header exactly when
+            // the window was tiled narrow (the shape pass).
             Text {
               id: pinWord
               visible: headerRight.pinFits
               anchors.verticalCenter: parent.verticalCenter
               textFormat: Text.PlainText
-              text: "pin"
-              color: pinArea.containsMouse && root.handOn ? root.accent : root.alongside ? root.foreground : root.faint
+              text: "window"
+              color: pinArea.containsMouse && root.handOn ? root.accent : root.faint
               font.family: root.fontFamily
               font.styleName: root.fontStyle
               font.pixelSize: root.fs(Style.font.bodySmall)
@@ -10110,7 +10172,7 @@ Item {
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: root.togglePin()
-                Tip { host: root; act: "pin"; shown: parent.containsMouse; text: root.tip(root.alongside ? "Back to the overlay" : "Pin it as a window beside your work", "pin") }
+                Tip { host: root; act: "pin"; shown: parent.containsMouse; text: root.tip("Keep it open as a window beside your work", "pin") }
               }
             }
 

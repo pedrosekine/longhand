@@ -1,11 +1,13 @@
 """What Hyprland does for the page, on Windows: `hyprctl eval`, answered by
 the host itself.
 
-The page asks Hyprland three things, each as a line of Lua (Page.qml):
+The page asks Hyprland four things, each as a line of Lua (Page.qml):
 
 - raise its window (`raiseWindow`): `hl.dsp.focus({ window = "title:^…$" })`
   — a goto from the deadlines' popup, the tray, a second `longhand`, when
   the window is already open behind another;
+- fill the screen with its window, and back (`fillScreen`, F11 in the
+  window): `hl.dsp.window.fullscreen({ … window = "title:^…$" })`;
 - put the pointer where the keys are (`warpNow`, Settings → The pointer):
   `hl.dsp.cursor.move(…)`, from a monitor's corner (the overlay) or the
   window's, only while the window is the active one;
@@ -13,7 +15,8 @@ The page asks Hyprland three things, each as a line of Lua (Page.qml):
   that binds nothing, so the key reaches the sheet instead of doing what it
   does (`hyprListen`), left by itself after 30 seconds.
 
-Here the window is raised and activated with Qt, the pointer is put with
+Here the window is raised and activated with Qt, put in and out of
+Windows' full screen with Qt (maximized under it, it comes back maximized), the pointer is put with
 Qt (Windows' SetCursorPos), and the submap is the host letting go of its
 keys (hotkeys.py) and taking them back. Nothing else Hyprland is asked is
 known here: it is answered as Hyprland answers what it cannot do, an error
@@ -44,6 +47,7 @@ def _give_back() -> None:
 _listening.timeout.connect(_give_back)
 
 FOCUS = re.compile(r'hl\.dsp\.focus\(\s*\{\s*window\s*=\s*"title:\^(.*?)\$"')
+FULLSCREEN = re.compile(r'hl\.dsp\.window\.fullscreen\(.*?window\s*=\s*"title:\^(.*?)\$"', re.S)
 WARP_MONITOR = re.compile(r'hl\.get_monitor\("([^"]*)"\).*?x\s*=\s*m\.position\.x\s*\+\s*(-?\d+)\s*,\s*y\s*=\s*m\.position\.y\s*\+\s*(-?\d+)', re.S)
 WARP_WINDOW = re.compile(r'hl\.get_window\("title:\^(.*?)\$"\).*?x\s*=\s*w\.at\.x\s*\+\s*(-?\d+)\s*,\s*y\s*=\s*w\.at\.y\s*\+\s*(-?\d+)', re.S)
 
@@ -83,6 +87,20 @@ def come_forward(w) -> bool:
     return True
 
 
+def fill_screen(w) -> bool:
+    """A window to full screen, or back from it to what it was: the
+    full-screen state is one flag among Qt's, so a maximized window keeps
+    its maximized one under it and comes back maximized, as F11 leaves a
+    browser on Windows."""
+    if w is None or not w.isVisible():
+        return False
+    states = w.windowStates()
+    w.setWindowStates(states ^ Qt.WindowState.WindowFullScreen)
+    if not states & Qt.WindowState.WindowFullScreen:
+        w.requestActivate()
+    return True
+
+
 def listen(on: bool) -> None:
     """The sheet waits for a key from anywhere: the host's keys let go, so it
     reaches the sheet; back when it stops waiting, or 30 seconds on."""
@@ -111,6 +129,10 @@ def eval_lua(lua: str) -> tuple[int, str, str]:
     m = FOCUS.search(lua)
     if m:
         come_forward(window(m.group(1)))
+        return 0, "ok", ""
+    m = FULLSCREEN.search(lua)
+    if m:
+        fill_screen(window(m.group(1)))
         return 0, "ok", ""
     m = WARP_MONITOR.search(lua)
     if m:

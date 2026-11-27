@@ -234,7 +234,7 @@ Item {
     menu: Platform.Menu {
       Platform.MenuItem { text: "Today's note" + host.key("alongside"); onTriggered: host.pinned() }
       Platform.MenuItem { text: host.agentLine; visible: host.agentLine !== ""; onTriggered: host.pinned() }
-      Platform.MenuItem { text: "Over everything" + host.key("page"); onTriggered: host.toggle("{}") }
+      Platform.MenuItem { text: "Quick overlay" + host.key("page"); onTriggered: host.toggle("{}") }
       Platform.MenuItem { text: host.keyTrouble; visible: host.keyTrouble !== ""; onTriggered: host.pinned() }
       Platform.MenuSeparator {}
       Platform.MenuItem { text: host.timerAction + host.key("pomoToggle"); onTriggered: pomo.toggle() }
