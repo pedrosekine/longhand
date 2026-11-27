@@ -243,9 +243,10 @@ dark, headings in the accent as Windows sets text in it
 
 `%USERPROFILE%\.config\longhand\config.json`, as `config.example.json`, with
 the vault written with `/` (`"C:/Users/you/your-vault"`). `font` and
-`codeFont` can stay empty: the page falls back to Windows' own faces
-(`Segoe UI Variable Text`, `Cascadia Mono`) when none of Omarchy's is
-installed. Then `longhand-agent install`, which puts the agent's
+`codeFont` can stay empty, and should, for the page to read as it does on
+Omarchy: it brings Adwaita Sans with it (`plugin-page/fonts`), and code is
+in Windows' `Cascadia Mono`. A `font` named there wins (`Segoe UI Variable
+Text` for Windows' own look, with no italic of its own). Then `longhand-agent install`, which puts the agent's
 four prompts in `~/.config/opencode/agent` and writes nothing into a vault
 that already has its folders.
 

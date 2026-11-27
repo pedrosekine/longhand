@@ -72,15 +72,20 @@ theme's own chroma, H2 that colour halfway to the text, H3 the prose, H4 the
 quiet grey — with highlights, selection and checkboxes from the theme's
 palette, greys only where they stay readable, and body text at the contrast
 the theme chose.
-`Ctrl+B` and `Ctrl+I` wrap the selection — or the word the cursor is in — in
+`Ctrl+B` and `Ctrl+I` wrap the selection — or the word the cursor is in,
+without its punctuation — in
 `**` and `*`, `` Ctrl+` `` in backticks, `Ctrl+Shift+S` in `~~`; the same keys
-take them off again. Emphasis is **drawn**: the markers go to nothing and
+take them off again, inside a longer phrase too (`**one** two **three**`),
+and over several lines they wrap each line's words. Emphasis is **drawn**: the markers go to nothing and
 the words carry the weight, nested ones too (`***both***`). They are still
 in the file exactly as written, so Obsidian reads the same markdown. A `*`
 with spaces around it is arithmetic and an underscore inside a word is part
 of the word; neither is markup. A pair is one thing to the cursor: it never
 stands inside one, arrows cross a whole pair in one press, and Backspace
-takes the letter past it rather than the marker. Delete what an emphasis
+takes the letter past it rather than the marker. What you type takes the
+emphasis of the letter on its left, as in Google Docs: before a bold word it
+is plain, after it bold; at a word's edge `Ctrl+B` (or `Ctrl+I`, …) steps out
+of the emphasis there, or into it, for what you type next. Delete what an emphasis
 holds and the pair goes with it, so you are never left looking at a `**` you
 did not type. The one pair you do see is the empty one the key writes when
 there is nothing to wrap — it stands waiting for the first letter, which
@@ -98,14 +103,17 @@ text); the conversations sit a little smaller, about 60 characters a line,
 with a paragraph's space between paragraphs, and a
 quote of the paper reads as prose with only its page in the accent. Fenced
 code and frontmatter keep a monospace, where columns mean something. `font`
-and `codeFont` in the config name other faces; without them the page takes
-the first it finds of Adwaita Sans, Inter, Noto Sans, iA Writer Quattro S,
+and `codeFont` in the config name other faces; without them the page reads
+in Adwaita Sans on every machine — the machine's own if it has it, else the
+copy the page brings (`plugin-page/fonts`) — and else the first it finds of
+Inter, Noto Sans, iA Writer Quattro S,
 then the shell's own. The page asks for the face's `Regular` cut by name:
 the iA Writer families declare the same weight for every style, so asking
 by weight hands back the Bold file. Size follows the
 shell's scale (your Omarchy font size); `Ctrl+=` / `Ctrl+-` / `Ctrl+0`
 zoom the whole page like a browser, remembered across restarts. `Ctrl+F`
-finds in the note as you type: Enter next, Shift+Enter previous,
+finds in the note as you type, in the words as drawn (`read chapter` finds
+`read **chapter**`), starting from the words selected: Enter next, Shift+Enter previous,
 `Ctrl+Enter` lands on the match selected and closes the search, Esc closes
 it with the cursor on the match (as browsers and editors do), Shift+Esc
 goes back to where you were. `Ctrl+1` (or `Ctrl+\`) shows a month calendar in a sidebar
@@ -189,7 +197,9 @@ the same way, and with a selection take the block above or below into it);
 `Ctrl+A` takes the line, then a step wider at each press — the list item,
 the list, the block, the section under each heading — up to the whole note;
 `Alt+Up/Down` move the line, or every line selected, up or
-down, as in VS Code;
+down, as in VS Code — a numbered list keeps counting, a line passes a quote
+whole, and a private line stays in its block (cut and paste moves it out);
+`Ctrl+L` over several lines makes them boxes, then ticks them all;
 `Ctrl+Enter` on an answered block opens its margin — proposals first (Enter
 accepts one and runs it through `pomo`), then the chat — and `Esc` comes back
 with the cursor where it was. Drop

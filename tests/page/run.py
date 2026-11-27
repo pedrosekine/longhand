@@ -767,6 +767,15 @@ def checks() -> int:
         p.wait(lambda: json.loads(p.call("state"))["ready"])
         check(p.wait(lambda: p.call("noteHasKeys") == "true", 3), "the first open: the keys are in the note once it is read")
 
+        # The page's face is Adwaita Sans on every machine: its own, from
+        # plugin-page/fonts, where none is installed (2026-11-27). Its bold
+        # and the title's named cut are wider than its regular: real cuts,
+        # found by weight and by name alike.
+        f = json.loads(p.call("face"))
+        check(f["family"] == "Adwaita Sans" and f["style"] == "", f"the page reads in Adwaita Sans, no cut pinned ({f})")
+        check(f["bold"] > f["regular"] and f["heading"] > f["regular"] and f["semi"] != f["regular"],
+              f"its bold, the title's and a heading's cuts are its own ({f})")
+
         # 1. a checkbox written with a date at its end lights up, and binds
         # when it is left — no question asked
         (p.daily / f"{TODAY}.md").write_text(header(TODAY) + "Plan for the week.\n")
@@ -1458,14 +1467,17 @@ def checks() -> int:
         check(flat["rich"] is False, "arithmetic is not emphasis")
         # Break the pair and the markers come back: that is how you edit them.
         # A marker is one thing to the cursor: it never stands inside one.
+        # Where it stands is right after the letter on its left, as in Google
+        # Docs (2026-11-27): before a bold word outside its stars, after the
+        # word inside them, so what is typed takes the left letter's look.
         at = p.offset_of_line(p.line_of("read **chapter**"))
-        for asked, rests, why in ((at + 6, at + 7, "between the opening stars"),
-                                  (at + 5, at + 7, "before them"),
+        for asked, rests, why in ((at + 6, at + 5, "between the opening stars"),
+                                  (at + 5, at + 5, "before them"),
                                   (at + 15, at + 14, "between the closing stars"),
                                   (at + 16, at + 14, "after them")):
             p.call("cursor", asked)
             got = int(p.call("cursorAt"))
-            check(got == rests, f"a cursor put {why} rests against the words ({got} vs {rests})")
+            check(got == rests, f"a cursor put {why} rests after the letter on its left ({got} vs {rests})")
 
         star = p.offset_of_line(p.line_of("read **chapter**")) + 15
         p.call("erase", star, star + 1)           # one star of the closing pair

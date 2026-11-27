@@ -5,3 +5,6 @@
 # scripts are run by a bash that reads "\r" as part of a word. Found by the
 # suite's first run on a Windows machine of GitHub's (tests/test_line_endings.py).
 * text=auto eol=lf
+
+# Fonts are bytes, never lines.
+*.ttf binary

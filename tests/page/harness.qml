@@ -29,7 +29,10 @@ ShellRoot {
       it.field.insert(it.field.cursorPosition, "<span style=\"white-space:pre-wrap\">" + h + "</span>")
     }
   }
-  Page { id: page; shell: fakeShell; windowTitle: "Page scratch" }
+  Page {
+    id: page; shell: fakeShell; windowTitle: "Page scratch"
+    TextMetrics { id: faceText; text: "Hamburgefonstiv" }    // face()'s
+  }
   // Real pointer events, delivered through the page's window as a mouse's
   // are (QtTest's), for what only a drag shows: a selection in a PDF.
   TestCase { id: pointer; name: "pointer"; when: false }
@@ -44,6 +47,18 @@ ShellRoot {
     // A line of the note holds the window's keys (whether or not the
     // window, told never to take focus, is the active one).
     function noteHasKeys(): bool { return page.editorItem.holdsFocus() }
+    // The page's face, and the cuts the machine has of it.
+    function face(): string {
+      var cut = function (style, weight) {
+        faceText.font.family = page.fontFamily
+        faceText.font.styleName = style
+        faceText.font.weight = weight
+        faceText.font.pixelSize = 40
+        return Math.round(faceText.advanceWidth * 10) / 10
+      }
+      return JSON.stringify({ family: page.fontFamily, style: page.fontStyle,
+                              regular: cut("", 400), bold: cut("", 700), heading: cut("Bold", 400), semi: cut("SemiBold", 600) })
+    }
     // The page photographs itself, whatever is in front of it on screen.
     function shot(path: string): void { page.contentItem.grabToImage(function (r) { r.saveToFile(path) }) }
     function insert(s: string): void { var e = page.editorItem; e.insert(e.cursorPosition, s) }

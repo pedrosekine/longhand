@@ -384,8 +384,30 @@ Item {
   // config names another; otherwise the first of these the machine has.
   // Fenced code and frontmatter keep a monospace, where columns mean
   // something — the editor already draws those rows apart.
+  //
+  // Adwaita Sans comes with the page (fonts/, 2026-11-27), so the page reads
+  // the same on every machine: Windows drew it in Segoe UI Variable, which
+  // has no italic of its own. A machine that has the face installed (GNOME,
+  // Omarchy) uses its own; the page's is loaded only where there is none.
+  // The page's are fixed cuts, made from GNOME's variable files
+  // (tools/font-cuts.py): Windows' font engine names a variable font's cuts
+  // "Text Bold" and the like, and a heading asking for "Bold" by name got
+  // the Regular.
+  //
+  // Loaded as the face is first asked for, before anything is laid out in
+  // it: loaded after, every text the page had drawn changed face under its
+  // own layout (binding loops in the fields' heights).
+  readonly property bool bundledFace: Qt.fontFamilies().indexOf("Adwaita Sans") < 0
+  function loadOwnFace() {
+    if (!root.bundledFace || Qt.fontFamilies().indexOf("Adwaita Sans") >= 0) return
+    var cuts = ["Regular", "Italic", "SemiBold", "SemiBoldItalic", "Bold", "BoldItalic"]
+    // A FontLoader reads a local file there and then; kept, as the page's.
+    for (var i = 0; i < cuts.length; i++)
+      Qt.createQmlObject("import QtQuick; FontLoader { source: \"" + Qt.resolvedUrl("fonts/AdwaitaSans-" + cuts[i] + ".ttf") + "\" }", root)
+  }
   readonly property var proseChoices: [svc.pageFont, "Adwaita Sans", "Inter", "Noto Sans", "Segoe UI Variable Text", "Segoe UI", "iA Writer Quattro S", Style.font.family]
   readonly property string fontFamily: {
+    root.loadOwnFace()
     var have = Qt.fontFamilies()
     for (var i = 0; i < root.proseChoices.length; i++)
       if (root.proseChoices[i] !== "" && have.indexOf(root.proseChoices[i]) >= 0) return root.proseChoices[i]
@@ -394,10 +416,11 @@ Item {
   // The cut of the prose face. The iA Writer families ship with every style
   // declaring the same weight, so asking for a normal weight hands back the
   // Bold file: the page came out uniformly heavy, and `**bold**` had nowhere
-  // heavier to go. Naming the style picks the real Regular. A family without
-  // one is unaffected — Qt falls back to weight as before (tested against
-  // DejaVu, JetBrains Mono and a family that does not exist).
-  readonly property string fontStyle: "Regular"
+  // heavier to go. Naming the style picks the real Regular. Only for them
+  // (2026-11-27): a face named "Regular" keeps to that one cut, so `*a*`
+  // and `**a**` in Adwaita Sans were the Regular slanted and thickened by
+  // Qt, not its own Italic and Bold (seen on Windows and on Linux).
+  readonly property string fontStyle: /^iA Writer/.test(root.fontFamily) ? "Regular" : ""
 
   readonly property string codeFamily: {
     var have = Qt.fontFamilies()
@@ -4255,12 +4278,14 @@ Item {
       root.askProjectName({ start: m.start, end: to, tag: pr.tag, heading: shift && m.atLineStart })
       return
     }
-    editor.remove(m.start, to)
+    // A step of its own (2026-11-27): Ctrl+Z gives back what was typed,
+    // `@wor`, not the line as it was before it.
+    editor.snapshot(true)
     if (shift && m.atLineStart) {
-      editor.insert(m.start, "# " + (pr.name || pr.tag) + " #" + pr.tag)
+      editor.replace(m.start, to, "# " + (pr.name || pr.tag) + " #" + pr.tag)
       root.used("mention", "class")
     } else {
-      editor.insert(m.start, "#" + pr.tag + " ")
+      editor.replace(m.start, to, "#" + pr.tag + " ")
       root.used(m.sign === "#" ? "tag-suggested" : "mention", "tag")
     }
   }
@@ -8033,6 +8058,16 @@ Item {
     root.openWhen(r.raw, 0, "")
   }
 
+  // A day to work on a box (⏳), asked under its line (2026-11-27): a click
+  // on the day drawn at its end, as the dashboard's `t` asks "do on?".
+  // Empty takes the day off. Never the words: only the ⏳ field changes.
+  function openDoOn(r) {
+    root.whenFor = { raw: r.raw, id: 0, doOn: true }
+    whenField.text = r.doDay
+    whenField.forceActiveFocus()
+    whenField.selectAll()
+  }
+
   function openWhen(raw, id, text) {
     root.whenFor = { raw: raw, id: id }
     whenField.text = text
@@ -8073,8 +8108,8 @@ Item {
     var name = nameField.text.replace(/\s+/g, " ").trim() || a.tag
     root.newProject = null
     var text = a.heading ? "# " + name + " #" + a.tag : "#" + a.tag + " "
-    editor.remove(a.start, a.end)
-    editor.insert(a.start, text)
+    editor.snapshot(true)
+    editor.replace(a.start, a.end, text)
     editor.setCursor(a.start + text.length, true)
     root.makeProject(name, a.tag)
     root.used("project", "note")
@@ -8113,6 +8148,17 @@ Item {
     var a = root.whenFor
     var text = whenField.text.trim()
     if (!a) { root.closeWhen(); return }
+    if (a.doOn) {
+      var on = root.rowByRaw(a.raw)
+      if (!on) { root.closeWhen(); return }
+      var read = text === "" ? null : Dates.read(text, new Date())
+      if (text !== "" && !read) { root.showHint("that date did not read: " + text); return }
+      root.closeWhen()
+      root.writeLine(on, Task.setField(on.raw, "⏳", read ? read.iso.split(" ")[0] : ""))
+      root.used("when", read ? "note" : "removed")
+      Qt.callLater(root.refreshTasks)
+      return
+    }
     if (a.id > 0) {
       var r = root.rowByDeadline(a.id)
       if (!r) { root.closeWhen(); return }
@@ -8582,6 +8628,7 @@ Item {
     var t = editor.text
     var lead = t.replace(/\s+$/, "") === "" ? (t.charAt(t.length - 1) === "\n" || t === "" ? "" : "\n")
       : (/\n\n$/.test(t) ? "" : (/\n$/.test(t) ? "\n" : "\n\n"))
+    editor.snapshot(true)
     editor.insert(t.length, lead + "# " + p.name + " #" + p.tag + "\n")
     editor.setCursor(editor.length, true)
   }
@@ -8594,6 +8641,7 @@ Item {
     root.showNote()
     var pos = editor.cursorPosition
     var before = pos > 0 ? editor.text.charAt(pos - 1) : "\n"
+    editor.snapshot(true)
     editor.insert(pos, (/\s/.test(before) ? "" : " ") + "#" + p.tag + " ")
   }
 
@@ -8694,34 +8742,54 @@ Item {
 
   // ------------------------------------------------------------ search
 
+  // Words selected in one line are what is looked for (2026-11-27), as the
+  // PDF's find already did.
   function openSearch() {
-    if (!root.searchOpen) { root.searchFrom = editor.cursorPosition; root.used("find") }
+    if (!root.searchOpen) {
+      root.searchFrom = editor.cursorPosition
+      root.used("find")
+      var sel = editor.selectedSpan()
+      var words = sel ? editor.text.slice(sel.a, sel.b) : ""
+      if (words.trim() !== "" && words.indexOf("\n") < 0) { root.searchFrom = sel.a; searchField.text = words }
+    }
     root.searchOpen = true
     searchField.forceActiveFocus()
     searchField.selectAll()
     root.runSearch()
   }
 
-  // Every case-insensitive occurrence in the rows' words. The current match
-  // starts as the first one at or after where the search began.
+  property int matchesFolded: 0     // matches in lines folded away (Focus.js), not stepped to
+
+  // Every case-insensitive occurrence in the words as drawn: emphasis
+  // markers and a link's hidden address are not in them, so "read chapter"
+  // finds `read **chapter 3**` (editor.drawnWords). The current match starts
+  // as the first one at or after where the search began. With one project's
+  // lines shown, those folded away are counted, not stepped to: a match
+  // there was scrolled to as a fold's seam, with nothing to see (2026-11-27).
   function runSearch() {
     var q = searchField.text.toLowerCase()
     var out = []
+    var folded = 0
     if (q !== "") {
       var rows = editor.rows
       for (var i = 0; i < rows.length; i++) {
         var r = rows[i]
         if (r.blank) continue
-        var body = r.body.toLowerCase()
+        var d = editor.drawnWords(i)
+        var body = (d ? d.text : r.body).toLowerCase()
         var base = r.start + r.prefixLen
-        for (var at = body.indexOf(q); at >= 0; at = body.indexOf(q, at + q.length))
-          out.push({ start: base + at, end: base + at + q.length })
+        for (var at = body.indexOf(q); at >= 0; at = body.indexOf(q, at + q.length)) {
+          if (!editor.isShown(i)) { folded++; continue }
+          out.push(d ? { start: base + d.at[at], end: base + d.at[at + q.length - 1] + 1 }
+                     : { start: base + at, end: base + at + q.length })
+        }
       }
     }
     var idx = -1
     for (var k = 0; k < out.length; k++) if (out[k].start >= root.searchFrom) { idx = k; break }
     if (idx < 0 && out.length > 0) idx = 0
     root.matches = out
+    root.matchesFolded = folded
     root.matchIndex = idx
     root.revealMatch()
   }
@@ -8750,6 +8818,7 @@ Item {
     var m = root.matches[root.matchIndex]
     root.searchOpen = false
     root.matches = []
+    root.matchesFolded = 0
     root.matchIndex = -1
     if (how === "select" && m) editor.select(m.start, m.end)
     else if (how === "stay" && m) editor.setCursor(m.start, true)
@@ -10490,7 +10559,7 @@ Item {
             anchors.left: parent.left
             anchors.right: searchCount.left
             anchors.rightMargin: root.sp(12)
-            placeholderText: "find in today's note"
+            placeholderText: svc.filePath !== "" ? "find in this file" : svc.isToday ? "find in today's note" : "find in this day's note"
             font.family: root.fontFamily
             font.styleName: root.fontStyle
             font.pixelSize: root.fs(Style.font.body)
@@ -10516,6 +10585,7 @@ Item {
             textFormat: Text.PlainText
             text: searchField.text === "" ? root.keyName("findNext") + " next · " + root.keyName("findPrev") + " back · " + root.keyName("findGo") + " go"
               : (root.matches.length === 0 ? "no match" : (root.matchIndex + 1) + " / " + root.matches.length)
+                + (root.matchesFolded > 0 ? " · " + root.matchesFolded + " in folded lines" : "")
             color: root.dim
             font.family: root.fontFamily
             font.styleName: root.fontStyle
@@ -10824,9 +10894,24 @@ Item {
 
           TouchScroll { flickable: flick }
 
-          function ensureVisible(r) {
-            if (contentY >= r.y) contentY = r.y
-            else if (contentY + height <= r.y + r.height) contentY = r.y + r.height - height
+          // `pad`: room kept above and below, so the line being written
+          // never sits on the clipped edge (2026-11-27). A rect taller than
+          // the view shows its top.
+          function ensureVisible(r, pad) {
+            pad = Math.min(pad || 0, height / 4)
+            var top = Math.max(0, r.y - pad), bottom = r.y + r.height + pad
+            if (contentY > top) contentY = top
+            else if (contentY + height < bottom) contentY = Math.max(0, Math.min(top, bottom - height))
+          }
+          // The cursor's line, and what the page opened under it (the `@`
+          // list, "when?", "name?"): their room grows below the line, which
+          // never moves the cursor, so it was clipped off at the bottom.
+          function keepCursor() {
+            var c = editor.cursorRect
+            var top = editor.roomRow >= 0 ? Math.min(c.y, editor.roomTop) : c.y
+            var r = editor.roomRow >= 0
+              ? Qt.rect(c.x, top, c.width, Math.max(c.y + c.height, editor.roomTop + editor.roomHeight) - top) : c
+            flick.ensureVisible(r, editor.mouseLed ? 0 : c.height * 1.5)
           }
 
           // Gutter marks: a block in flight, a light travelling down it
@@ -10984,7 +11069,7 @@ Item {
             roomRow: whenBox.visible || mentionBox.visible || nameBox.visible ? root.lineIndexAt(root.newProject ? root.newProject.end : editor.cursorPosition) : -1
             roomHeight: (whenBox.visible ? whenBox.height : mentionBox.visible ? mentionBox.height : nameBox.visible ? nameBox.height : 0) + root.sp(12)
             boxTip: Component { Item { Tip { host: root; shown: true; text: root.tip("Tick or untick it", "checkbox") } } }
-            pillTip: Component { Item { Tip { host: root; shown: true; text: root.tip("Its new day", "deadline") } } }
+            pillTip: Component { Item { Tip { host: root; shown: true; text: editor.pillDoOnly ? root.tip("Another day to do it", "") : root.tip("Its new day", "deadline") } } }
             // A link's hint: where it goes, and how to edit it instead
             // (2026-11-25, the mouse pass: a click always followed it).
             linkTip: Component {
@@ -10996,6 +11081,10 @@ Item {
                     var l = parent && parent.parent ? parent.parent.link : null
                     if (!l) return ""
                     var to = l.url !== "" ? l.url : l.target !== "" ? l.target + (l.heading ? "#" + l.heading : "") : "#" + l.heading
+                    // A note the vault does not have is drawn faint; the
+                    // hint says why, rather than offering to open it
+                    // (2026-11-27).
+                    if (!root.linkKnown(l)) return root.tips([["No note “" + l.target + "” in the vault", ""], ["Edit it: Alt+click", ""]])
                     return root.tips([["Open " + to, "followLink"], ["Edit it: Alt+click", ""]])
                   }
                 }
@@ -11009,6 +11098,7 @@ Item {
               var r = editor.rows[i]
               if (!r) return
               editor.setCursor(r.start + r.prefixLen + r.body.length, true)
+              if (r.deadline <= 0 && r.doDay !== "") { root.openDoOn(r); return }
               root.deadlineKey()
               root.mouseDid("deadline")
             }
@@ -11051,7 +11141,11 @@ Item {
             }
             viewport: flick
             onMenuAsked: function (x, y) { root.noteMenu(x, y) }
-            onCursorRectChanged: flick.ensureVisible(cursorRect)
+            onCursorRectChanged: flick.keepCursor()
+            onRoomHeightChanged: Qt.callLater(flick.keepCursor)
+            onRoomTopChanged: Qt.callLater(flick.keepCursor)
+            onDeclineCarried: function (was, now) { root.decline(now) }
+            onPrivateKept: root.showHint("a private line stays in its block · cut and paste moves it out")
             // Which line the cursor is on is read once the edit is whole: the
             // editor moves the cursor a moment before its text catches up, and
             // read then, a keystroke at a line's end looked like leaving it.
@@ -11095,13 +11189,32 @@ Item {
             // The right button too: the note's menu, at the note's end (a
             // short note's blank page took none, 2026-11-25).
             acceptedButtons: Qt.LeftButton | Qt.RightButton
+            // Pressed here and dragged up into the lines, it selects from
+            // the note's end, as a drag below a document's last line does
+            // (2026-11-27: it did nothing).
+            preventStealing: true
             onPressed: function (mouse) {
-              if (mouse.button !== Qt.RightButton) return
+              editor.mouseLed = true
+              if (mouse.button === Qt.LeftButton) {
+                editor.clearSelection()
+                editor.setCursor(editor.length, true)
+                return
+              }
               if (!editor.hasSelection()) editor.setCursor(editor.length, true)
               var at = mapToItem(editor, mouse.x, mouse.y)
               root.noteMenu(at.x, at.y)
             }
-            onClicked: function (mouse) { if (mouse.button === Qt.LeftButton) editor.setCursor(editor.length, true) }
+            onPositionChanged: function (mouse) {
+              if (!(pressedButtons & Qt.LeftButton)) return
+              var at = mapToItem(editor, mouse.x, mouse.y)
+              if (at.y >= editor.height) {
+                if (editor.spanning) { editor.clearSelection(); editor.setCursor(editor.length, true) }
+                return
+              }
+              var h = editor.hitTest(at.x, Math.max(0, at.y))
+              var pos = editor.absOf(h.i, h.col)
+              if (pos !== editor.length) editor.selectSpan(editor.length, pos)
+            }
           }
 
           // `@`: the projects, under the line, narrowing as you type. In
@@ -11193,7 +11306,7 @@ Item {
             Text {
               anchors.verticalCenter: parent.verticalCenter
               textFormat: Text.PlainText
-              text: "due?"
+              text: root.whenFor && root.whenFor.doOn ? "do on?" : "due?"
               color: root.dim
               font.family: root.fontFamily
               font.styleName: root.fontStyle
@@ -11203,7 +11316,7 @@ Item {
               FieldMenu { page: root; field: parent }
               id: whenField
               width: root.sp(220)
-              placeholderText: root.whenFor && root.whenFor.id > 0 ? "empty: no deadline" : "fri 17:00 · in 3 days · 20 oct"
+              placeholderText: root.whenFor && root.whenFor.doOn ? "empty: no day" : root.whenFor && root.whenFor.id > 0 ? "empty: no deadline" : "fri 17:00 · in 3 days · 20 oct"
               font.family: root.fontFamily
               font.styleName: root.fontStyle
               font.pixelSize: root.fs(Style.font.body)

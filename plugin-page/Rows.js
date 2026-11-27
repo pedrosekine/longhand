@@ -60,7 +60,7 @@ function make(kind, indent, marker, body) {
     kind: kind, indent: indent, marker: marker, body: body,
     prefixLen: indent.length + marker.length, level: levelOf(indent),
     checked: false, cancelled: false, ordinal: "", headingLevel: 0, callout: "",
-    suffix: "", marks: "", dateTail: "", deadline: 0, dueLabel: "", dueAt: 0, cueAt: -1, cueEnd: -1, cueLabel: "",
+    suffix: "", marks: "", dateTail: "", deadline: 0, dueLabel: "", dueAt: 0, doDay: "", cueAt: -1, cueEnd: -1, cueLabel: "",
     tableRow: -1, tableStart: -1, tableLen: 0,
     quoteLead: "", quoteDepth: 0, outerLevel: 0
   }
@@ -171,6 +171,7 @@ function liftTail(t) {
   // The day to work on it (⏳), shown whenever it differs from the due day
   // (including past days, matching the dashboard's "do yesterday").
   if (m[4] && !t.checked) {
+    t.doDay = m[4]
     var w = m[4].split("-")
     var on = new Date(+w[0], +w[1] - 1, +w[2], 23, 59)
     var due = t.dueAt ? new Date(t.dueAt) : null
@@ -342,6 +343,30 @@ function cells(line) {
     cur += c
   }
   out.push(cur.trim())
+  return out
+}
+
+// Where each of those cells is in the line, as [a, b) without the spaces
+// round it: what a click on a drawn cell lands in (2026-11-27).
+function cellSpans(line) {
+  line = String(line)
+  var a = 0, b = line.length
+  while (a < b && /\s/.test(line.charAt(a))) a++
+  while (b > a && /\s/.test(line.charAt(b - 1))) b--
+  if (line.charAt(a) === "|") a++
+  if (b > a && line.charAt(b - 1) === "|" && line.charAt(b - 2) !== "\\") b--
+  var out = [], from = a
+  var push = function (x, y) {
+    while (x < y && /\s/.test(line.charAt(x))) x++
+    while (y > x && /\s/.test(line.charAt(y - 1))) y--
+    out.push({ a: x, b: y })
+  }
+  for (var i = a; i < b; i++) {
+    var c = line.charAt(i)
+    if (c === "\\" && line.charAt(i + 1) === "|") { i++; continue }
+    if (c === "|") { push(from, i); from = i + 1 }
+  }
+  push(from, b)
   return out
 }
 
