@@ -53,6 +53,8 @@ Item {
   // A deadline's date pill under the mouse (its line), and its hint (an
   // Item from the page, as boxTip): lit and named as the dashboard's are.
   property int pillHover: -1
+  // The pill under the mouse is a day to work on it, not a deadline.
+  readonly property bool pillDoOnly: pillHover >= 0 && !!rows[pillHover] && rows[pillHover].deadline <= 0
   property Component pillTip: null
   // What shows of the note (the page's Flickable): a drag past its edge keeps selecting.
   property Item viewport: null
@@ -200,8 +202,11 @@ Item {
     if (!head || head.kind !== "table") return null
     var lines = []
     for (var i = start; i < start + head.tableLen; i++) lines.push(rows[i].raw)
-    var key = start + "\u0000" + Math.round(width) + "\u0000" + ed.textSize + "\u0000" + lines.join("\n")
-    if (ed.tableCache.key === key) return ed.tableCache.info
+    // One entry per table, by its first line (2026-11-27): with one entry
+    // for the whole note, two tables took turns throwing each other's out.
+    var key = Math.round(width) + "\u0000" + ed.textSize + "\u0000" + lines.join("\n")
+    var hit = ed.tableCache[start]
+    if (hit && hit.key === key) return hit.info
     var align = Rows.aligns(lines[1])
     var n = align.length
     var natural = []
@@ -226,8 +231,7 @@ Item {
     }
     var whole = widths.reduce(function (a, b) { return a + b }, 0) + ed.cellGap * (n - 1)
     var info = { align: align, widths: widths, width: whole, reach: Math.max(0, Math.ceil(whole - width)) }
-    ed.tableCache.key = key           // mutated, not reassigned: a cache tells no binding
-    ed.tableCache.info = info
+    ed.tableCache[start] = { key: key, info: info }   // mutated, not reassigned: a cache tells no binding
     return info
   }
   // Links: their colour, and whether the vault has what one points at
@@ -356,6 +360,47 @@ Item {
   property var undoStack: []
   property var redoStack: []
   property double lastSnapshot: 0
+  // The typing the newest undo step holds while it may still grow: "ins"
+  // or "del", where the cursor ended, and when the step began (snapshot).
+  property var undoRun: null
+
+  // Where Up and Down aim, in editor x, and the place the last one landed
+  // (2026-11-27): a run of them keeps to one column, so a short line or a
+  // heading on the way no longer pulls the cursor left for the rest of it.
+  // Any other move leaves the cursor somewhere else, and the aim with it.
+  property var goal: null
+
+  // The last move of the cursor was the mouse's: the page keeps it in
+  // view without the margin it keeps for the keys (a click near the bottom
+  // must not scroll the line away from under the pointer).
+  property bool mouseLed: false
+
+  // The minute, for what the clock changes: a deadline's pill turns late,
+  // and "today" becomes "yesterday" at midnight (Rows.doLabel), without
+  // waiting for the line to be written on.
+  property double now: Date.now()
+  property string today: new Date().toDateString()
+  Timer {
+    interval: 60000
+    running: true
+    repeat: true
+    onTriggered: {
+      var d = new Date()
+      ed.now = d.getTime()
+      if (d.toDateString() !== ed.today) {
+        ed.today = d.toDateString()
+        if (ed.rows.length > 0) ed.syncRows()
+      }
+    }
+  }
+
+  // A line's date the person kept as words, the line written on since:
+  // the page keeps it words under its new text too (`declined`).
+  signal declineCarried(string was, string now)
+  property var keptCue: null    // { raw, phrase }: the line being written and the date it keeps as words
+  // Alt+Up / Alt+Down stopped at a private block's edge: a line moved out
+  // of it, or the block's mark from its top, would be read by the agent.
+  signal privateKept()
 
   // ------------------------------------------------------------ the text
 
@@ -386,6 +431,11 @@ Item {
     ed.freshCue = -1
     ed.undoStack = []
     ed.redoStack = []
+    ed.undoRun = null
+    ed.goal = null
+    ed.escapeAt = -1
+    ed.keptCue = null
+    ed.tableCache = ({})
     ed.commit(t, t.length)
     ed.placeCursor(held)
     ed.loading = false
@@ -417,11 +467,74 @@ Item {
   }
   function remove(a, b) { ed.replace(a, b, "") }
 
+  // Several edits as one (2026-11-27): [{ a, b, s }], offsets into the text
+  // as it is, none overlapping. One commit, so the rows are derived and
+  // drawn once, where a replace each did it again per marker or per line.
+  function editsApplied(edits) {
+    var es = edits.slice().sort(function (x, y) { return y.a - x.a })
+    var t = ed.text
+    for (var e = 0; e < es.length; e++) t = t.slice(0, es[e].a) + es[e].s + t.slice(es[e].b)
+    return t
+  }
+  // Where offset p is once the edits are made. Something inserted exactly
+  // at p goes before it when `bias` > 0 (p moves on), after it otherwise.
+  function through(edits, p, bias) {
+    var d = 0
+    for (var e = 0; e < edits.length; e++) {
+      var x = edits[e]
+      if (x.b < p || (x.b === p && (x.a < p || bias > 0))) d += x.s.length - (x.b - x.a)
+      else if (x.a < p) d += x.a + x.s.length - p
+    }
+    return p + d
+  }
+  // The edits made, the cursor carried as `replace` carries it.
+  function applyEdits(edits) {
+    if (ed.readOnly || edits.length === 0) return
+    ed.commit(ed.editsApplied(edits), ed.through(edits, ed.cursorPosition, 1))
+    ed.placeCursor(false)
+  }
+
+  // Lines gone from a numbered list, or joined: the items after count on
+  // from the ones before (2026-11-27: deleting `2.` left `1.` and `3.`).
+  function renumberAt(pos) {
+    var i = Rows.rowAt(ed.rows, pos)
+    var near = []
+    for (var k = Math.max(0, i - 1); k <= Math.min(ed.rows.length - 1, i + 1); k++)
+      if (ed.rows[k].kind === "ordered") near.push(k)
+    if (near.length > 0) ed.relist(near, true)
+  }
+
+  // Which lines are private (Blocks.js, as the agent reads the note), by
+  // their words, counted.
+  function privateLines(text) {
+    var lines = text.split("\n"), out = {}
+    var bl = Blocks.split(text)
+    for (var x = 0; x < bl.length; x++) {
+      if (!bl[x].private) continue
+      for (var k = bl[x].start; k < bl[x].end; k++) out[lines[k]] = (out[lines[k]] || 0) + 1
+    }
+    return out
+  }
+  function privateLost(was, now) {
+    var p = ed.privateLines(was), q = ed.privateLines(now)
+    for (var l in p) if ((q[l] || 0) < p[l]) return true
+    return false
+  }
+
   // Emphasis: wrap the selection — or the word the cursor is in — in a
   // marker, and take it off again when it is already there. The markers are
   // written into the note as they are (`**`, `*`, `` ` ``, `~~`), because
   // the file stays plain markdown and Obsidian reads the same ones; the row
   // draws them to nothing and the words emphasised (Emph.js).
+  //
+  // Since 2026-11-27: the word under the cursor leaves its punctuation out
+  // (`world.` → `**world**.`); a link is taken whole; inside an emphasis of
+  // the same kind the key takes it off what it is on, splitting the phrase
+  // round it (`**one two three**`, Ctrl+B on "two": `**one** two
+  // **three**`), where it wrote a second pair inside the first; and over
+  // several lines each line's words are wrapped on their own, since an
+  // emphasis never crosses a line (the markers went before `- ` and `# `,
+  // and showed). All of it one edit and one undo step.
   function emphasise(marker) {
     if (ed.readOnly) return
     var t = ed.text
@@ -434,32 +547,129 @@ Item {
       a = sel.a; b = sel.b
       while (a < b && /\s/.test(t.charAt(a))) a++
       while (b > a && /\s/.test(t.charAt(b - 1))) b--
+      if (Rows.rowAt(ed.rows, a) !== Rows.rowAt(ed.rows, b)) { ed.emphasiseLines(marker, a, b); return }
     } else {
-      // The word under the cursor; `\s` stops at the line's edges too.
-      a = b = ed.cursorPosition
-      while (a > 0 && !/\s/.test(t.charAt(a - 1))) a--
-      while (b < t.length && !/\s/.test(t.charAt(b))) b++
+      // At a word's edge, not in it: nothing to wrap, and the key says what
+      // the next letters are — out of the emphasis that ends here, into the
+      // one that starts here (as Google Docs does), else a pair written to
+      // be typed into.
+      var er = ed.rows[Rows.rowAt(ed.rows, ed.cursorPosition)]
+      var ebase = er.start + er.prefixLen
+      var ecol = ed.cursorPosition - ebase
+      var inLink = er.body.indexOf("[") >= 0 && !!Links.at(Emph.linksIn(er.body), ecol)
+      if (!inLink && !ed.insideWord(er, ecol)) {
+        var to = Emph.stepFor(er.body, ecol, Emph.KIND[marker])
+        if (to >= 0) {
+          ed.clearSelection()
+          ed.escapeAt = ebase + to
+          ed.setCursor(ebase + to, true)
+          return
+        }
+        ed.snapshot(true)
+        ed.clearSelection()
+        ed.commit(t.slice(0, ed.cursorPosition) + marker + marker + t.slice(ed.cursorPosition), ed.cursorPosition + n)
+        ed.setCursor(ed.cursorPosition, true)
+        return
+      }
+      var w = ed.wordAtCursor()
+      a = w.a; b = w.b
     }
-    // A one-character marker must not be half of a two-character one: the
-    // `*` either side of `**bold**` belongs to the bold, so asking for
-    // italic there adds a pair rather than eating one.
-    var lone = function (i) { return n > 1 || (t.charAt(i - 1) !== marker && t.charAt(i + n) !== marker) }
+    var r = ed.rows[Rows.rowAt(ed.rows, a)]
+    var base = r.start + r.prefixLen
+    var ca = Math.max(a, base) - base, cb = Math.max(ca, Math.min(b, r.bodyEnd) - base)
+    var trimmed = Emph.trimRuns(r.body, ca, cb)
+    ca = trimmed.a; cb = trimmed.b
     ed.snapshot(true)
-    if (t.substring(a - n, a) === marker && t.substring(b, b + n) === marker && lone(a - n) && lone(b)) {
-      ed.remove(b, b + n)              // the far end first: the near offsets hold
-      ed.remove(a - n, a)
-      ed.selectSpan(a - n, b - n)
-    } else if (b - a >= 2 * n && t.substring(a, a + n) === marker && t.substring(b - n, b) === marker
-               && lone(a) && lone(b - n)) {
-      ed.remove(b - n, b)
-      ed.remove(a, a + n)
-      ed.selectSpan(a, b - 2 * n)
-    } else {
-      ed.insert(b, marker)
-      ed.insert(a, marker)
-      if (a === b) ed.setCursor(a + n, true)   // nothing to wrap: write the pair, stand inside it
-      else ed.selectSpan(a + n, b + n)
+    if (ca === cb) {
+      // Nothing to wrap: write the pair, stand inside it.
+      ed.clearSelection()
+      ed.commit(t.slice(0, base + ca) + marker + marker + t.slice(base + ca), base + ca + n)
+      ed.setCursor(base + ca + n, true)
+      return
     }
+    var edits = ed.emphasisEdits(r, ca, cb, marker)
+    var sa = ed.through(edits, base + ca, 1), sb = ed.through(edits, base + cb, -1)
+    ed.clearSelection()
+    ed.commit(ed.editsApplied(edits), sb)
+    ed.selectSpan(sa, sb)
+  }
+
+  // The word the cursor is in, for the emphasis keys: its punctuation and
+  // the markers already round it left out; in a link, the whole link.
+  function wordAtCursor() {
+    var r = ed.rows[Rows.rowAt(ed.rows, ed.cursorPosition)]
+    var base = r.start + r.prefixLen, body = r.body
+    var col = Math.max(0, Math.min(body.length, ed.cursorPosition - base))
+    var links = body.indexOf("[") >= 0 ? Emph.linksIn(body) : []
+    var l = links.length > 0 ? Links.at(links, col) : null
+    if (l) return { a: base + l.at, b: base + l.end }
+    var a = col, b = col
+    while (a > 0 && !/\s/.test(body.charAt(a - 1))) a--
+    while (b < body.length && !/\s/.test(body.charAt(b))) b++
+    var runs = Emph.hidden(body)
+    var edge = /[.,;:!?()\[\]{}"'“”‘’…]/
+    for (var guard = 0; guard < 8; guard++) {
+      var a0 = a, b0 = b
+      while (a < b && edge.test(body.charAt(a))) a++
+      while (b > a && edge.test(body.charAt(b - 1))) b--
+      for (var x = 0; x < runs.length; x++) {
+        if (runs[x].open && runs[x].a === a && runs[x].b <= b) a = runs[x].b
+        if (!runs[x].open && runs[x].b === b && runs[x].a >= a) b = runs[x].a
+      }
+      if (a === a0 && b === b0) break
+    }
+    return { a: base + a, b: base + b }
+  }
+
+  // The edits that put `marker` round [ca, cb) of row r's words, or take
+  // it off them when an emphasis of its kind already holds them: the
+  // phrase round them keeps its emphasis either side.
+  function emphasisEdits(r, ca, cb, marker) {
+    var base = r.start + r.prefixLen, body = r.body
+    var node = Emph.ofKind(body, ca, cb, Emph.KIND[marker])
+    if (!node) return [{ a: base + cb, b: base + cb, s: marker }, { a: base + ca, b: base + ca, s: marker }]
+    if (ca === node.at && cb === node.end) { ca = node.inner[0]; cb = node.inner[1] }
+    var w = Emph.widen(body, ca, cb, node.inner[0], node.inner[1])
+    var m = node.marker
+    var lcore = body.substring(node.inner[0], w.a).replace(/\s+$/, "")
+    var rcore = body.substring(w.b, node.inner[1]).replace(/^\s+/, "")
+    var out = []
+    if (rcore === "") out.push({ a: base + node.inner[1], b: base + node.end, s: "" })
+    else out.push({ a: base + node.inner[1] - rcore.length, b: base + node.inner[1] - rcore.length, s: m })
+    if (lcore === "") out.push({ a: base + node.at, b: base + node.inner[0], s: "" })
+    else out.push({ a: base + node.inner[0] + lcore.length, b: base + node.inner[0] + lcore.length, s: m })
+    return out
+  }
+
+  // Emphasis over several lines: each line's words on their own. When every
+  // line's already are, it comes off them all; otherwise it goes on the
+  // lines without it. Code, front matter and a table's dashes are passed.
+  function emphasiseLines(marker, a, b) {
+    var i = Rows.rowAt(ed.rows, a), j = Rows.rowAt(ed.rows, b)
+    var kind = Emph.KIND[marker]
+    var segs = []
+    for (var k = i; k <= j; k++) {
+      var r = ed.rows[k]
+      if (r.blank || !ed.isShown(k) || r.kind === "code" || r.kind === "front" || r.kind === "image"
+          || (r.kind === "table" && r.tableRow === 1)) continue
+      var base = r.start + r.prefixLen
+      var ca = Math.max(a, base) - base, cb = Math.min(b, r.bodyEnd) - base
+      while (ca < cb && /\s/.test(r.body.charAt(ca))) ca++
+      while (cb > ca && /\s/.test(r.body.charAt(cb - 1))) cb--
+      if (cb > ca) segs.push({ r: r, a: ca, b: cb, has: !!Emph.ofKind(r.body, ca, cb, kind) })
+    }
+    if (segs.length === 0) return
+    var all = segs.every(function (g) { return g.has })
+    var edits = []
+    for (var s = 0; s < segs.length; s++)
+      if (all || !segs[s].has) edits = edits.concat(ed.emphasisEdits(segs[s].r, segs[s].a, segs[s].b, marker))
+    var from = ed.spanning ? ed.selAnchor : a, to = ed.spanning ? ed.selCursor : b
+    var lo = ed.through(edits, Math.min(from, to), -1), hi = ed.through(edits, Math.max(from, to), 1)
+    ed.snapshot(true)
+    ed.clearSelection()
+    ed.commit(ed.editsApplied(edits), to >= from ? hi : lo)
+    if (to >= from) ed.selectSpan(lo, hi)
+    else ed.selectSpan(hi, lo)
   }
 
   // Ctrl+K: a link, the way Obsidian writes one. Words selected become its
@@ -486,6 +696,14 @@ Item {
   // selection touches — trades places with the line above or below, as in
   // VS Code; the cursor and the selection go with it. A bound line carries
   // its anchor along, so its deadline follows the words.
+  //
+  // Three things hold since 2026-11-27. Lines from outside a quote pass a
+  // quote whole instead of landing inside it, which cut it in two: a
+  // private block's lower half became a quote of its own, read by the
+  // agent. A private line never leaves its block this way, nor its mark its
+  // top (`privateKept`; cut and paste still move one out, on purpose). And
+  // the numbers of a list stay where they stand, so moving `3.` up makes it
+  // `2.` and the list still counts 1, 2, 3.
   function moveLines(dir) {
     if (ed.readOnly) return
     var t = ed.text
@@ -495,33 +713,59 @@ Item {
     var a = spanning ? ed.selStart : cur
     var b = spanning ? ed.selEnd : cur
     if (spanning && t.charAt(b - 1) === "\n") b--      // ending at a line's start does not take that line
-    var first = t.lastIndexOf("\n", a - 1) + 1
-    var end = t.indexOf("\n", b)
-    if (end < 0) end = t.length
-    var lines = t.slice(first, end)
-    // A line never trades places with one folded away (Focus.js).
-    if (ed.shown !== null) {
-      var ia = Rows.rowAt(ed.rows, first), ib = Rows.rowAt(ed.rows, end)
-      if (dir < 0 ? !ed.isShown(ia - 1) : !ed.isShown(ib + 1)) return
-    }
-    var out, shift
+    var lines = t.split("\n")
+    var ia = Rows.rowAt(ed.rows, a), ib = Rows.rowAt(ed.rows, b)
+    var quoted = function (k) { return /^>/.test(lines[k]) }
+    var moving = lines.slice(ia, ib + 1)
+    var allQuoted = moving.every(function (l) { return /^>/.test(l) })
+    // The lines passed over: the one beside them, or a whole quote.
+    var pa, pb
     if (dir < 0) {
-      if (first === 0) return
-      var prevStart = t.lastIndexOf("\n", first - 2) + 1
-      var prev = t.slice(prevStart, first - 1)
-      out = t.slice(0, prevStart) + lines + "\n" + prev + t.slice(end)
-      shift = -(prev.length + 1)
+      if (ia === 0) return
+      pa = pb = ia - 1
+      if (!allQuoted && quoted(pb)) while (pa > 0 && quoted(pa - 1)) pa--
     } else {
-      if (end >= t.length) return
-      var nextEnd = t.indexOf("\n", end + 1)
-      if (nextEnd < 0) nextEnd = t.length
-      var next = t.slice(end + 1, nextEnd)
-      out = t.slice(0, first) + next + "\n" + lines + t.slice(nextEnd)
-      shift = next.length + 1
+      if (ib >= lines.length - 1) return
+      pa = pb = ib + 1
+      if (!allQuoted && quoted(pa)) while (pb < lines.length - 1 && quoted(pb + 1)) pb++
+    }
+    // A line never trades places with one folded away (Focus.js).
+    for (var f = pa; f <= pb; f++) if (!ed.isShown(f)) return
+    var passed = lines.slice(pa, pb + 1)
+    var lo = Math.min(ia, pa), hi = Math.max(ib, pb)
+    var was = lines.slice(lo, hi + 1)
+    var moved = dir < 0 ? moving.concat(passed) : passed.concat(moving)
+    var num = /^([ \t]*)(\d+)([.)] )/
+    for (var k = 0; k < moved.length; k++) {
+      var o = num.exec(was[k]), n = num.exec(moved[k])
+      if (o && n && o[1] === n[1]) moved[k] = n[1] + o[2] + moved[k].substring(n[1].length + n[2].length)
+    }
+    var out = lines.slice(0, lo).concat(moved, lines.slice(hi + 1)).join("\n")
+    if (ed.privateLost(t, out)) { ed.privateKept(); return }
+    // The moving lines as they are now (their numbers may have changed),
+    // and where they start: an offset in them is carried there.
+    var own = dir < 0 ? moved.slice(0, moving.length) : moved.slice(passed.length)
+    var oldStart = ed.rows[ia].start
+    var newStart = ed.rows[lo].start + (dir < 0 ? 0 : passed.length === 0 ? 0 : moved.slice(0, passed.length).join("\n").length + 1)
+    var carry = function (p) {
+      var off = p - oldStart, at = newStart
+      for (var x = 0; x < moving.length; x++) {
+        if (off <= moving[x].length) {
+          var grow = own[x].length - moving[x].length
+          var head = (moving[x].match(/^[ \t]*\d+/) || [""])[0].length
+          if (grow !== 0 && off >= head && head > 0) off += grow
+          return at + Math.max(0, Math.min(own[x].length, off))
+        }
+        off -= moving[x].length + 1
+        at += own[x].length + 1
+      }
+      return at      // the start of the line after them
     }
     ed.snapshot(true)
-    ed.commit(out, cur + shift)
-    if (spanning) ed.selectSpan(anchor + shift, cur + shift)
+    var nc = carry(cur)
+    var na = spanning ? carry(anchor) : nc
+    ed.commit(out, nc)
+    if (spanning) ed.selectSpan(na, nc)
     else ed.placeCursor(true)
   }
 
@@ -570,10 +814,25 @@ Item {
   // Typing within a moment of the last edit joins its undo step; anything
   // structural (Enter, merging lines, ticking, a line the page writes
   // because it was asked to) is a step of its own.
-  function snapshot(force) {
+  //
+  // `run` says what the typing was (typed, emphKey): { kind: "ins" or
+  // "del", a, b: the span it touched, to: where the cursor ends, space:
+  // it starts with a space, fresh: a step of its own that typing after it
+  // may join }. Until 2026-11-27 a step joined anything within 900 ms of
+  // the last keystroke, so a fast writer's whole paragraph was one Ctrl+Z,
+  // and an edit on another line, or a word typed and taken back, went with
+  // the typing before it. Now a step also ends where the cursor jumped,
+  // where typing turns to deleting or back, and at a space once it has
+  // run for three seconds.
+  function snapshot(force, run) {
+    if (ed.readOnly) return
     var now = Date.now()
+    var u = ed.undoRun
     var join = !force && now - ed.lastSnapshot < 900
+    if (join && run) join = !!u && !run.fresh && u.kind === run.kind && (u.end === run.a || u.end === run.b)
+                             && !(run.space && now - u.since > 3000)
     ed.lastSnapshot = force ? 0 : now
+    ed.undoRun = force || !run ? null : { kind: run.kind, end: run.to, since: join && u ? u.since : now }
     if (join && ed.undoStack.length > 0) return
     var s = ed.undoStack.slice(Math.max(0, ed.undoStack.length - 299))
     s.push({ text: ed.text, cursor: ed.cursorPosition })
@@ -587,6 +846,7 @@ Item {
     ed.undoStack = ed.undoStack.slice(0, -1)
     ed.redoStack = ed.redoStack.concat([{ text: ed.text, cursor: ed.cursorPosition }])
     ed.lastSnapshot = 0
+    ed.undoRun = null
     ed.clearSelection()
     ed.commit(s.text, s.cursor)
     ed.placeCursor(true)
@@ -623,6 +883,7 @@ Item {
     ed.redoStack = ed.redoStack.slice(0, -1)
     ed.undoStack = ed.undoStack.concat([{ text: ed.text, cursor: ed.cursorPosition }])
     ed.lastSnapshot = 0
+    ed.undoRun = null
     ed.clearSelection()
     ed.commit(s.text, s.cursor)
     ed.placeCursor(true)
@@ -630,7 +891,7 @@ Item {
 
   // ------------------------------------------------------------ rows
 
-  readonly property var roles: ["kind", "body", "level", "checked", "cancelled", "ordinal", "headingLevel", "callout", "priv", "blank", "lead", "space", "deadline", "dueLabel", "dueAt", "raw", "cueAt", "cueEnd", "cueLabel", "tableRow", "tableStart", "tableLen", "quoteDepth", "outerLevel", "paperEnd", "paperAbove", "paperBelow", "extraBlank"]
+  readonly property var roles: ["kind", "body", "level", "checked", "cancelled", "ordinal", "headingLevel", "callout", "priv", "blank", "lead", "space", "deadline", "dueLabel", "dueAt", "doDay", "raw", "cueAt", "cueEnd", "cueLabel", "tableRow", "tableStart", "tableLen", "quoteDepth", "outerLevel", "paperEnd", "paperAbove", "paperBelow", "extraBlank"]
 
   function roleValues(r) {
     var o = {}
@@ -661,14 +922,24 @@ Item {
     if (ed.focusedRow >= next.length) ed.focusedRow = -1
     if (oldMid > newMid) rowModel.remove(a + newMid, oldMid - newMid)
     for (var k = oldMid; k < newMid; k++) rowModel.insert(a + k, ed.roleValues(next[a + k]))
+    // A row outside the lines that changed is compared with what it was
+    // (`prev`, which the model holds), not read back from the model, and
+    // redrawn only when something of it changed (2026-11-27). Until then
+    // every keystroke read every row back and drew it again — its emphasis
+    // parsed, its html made — so typing slowed as the note grew.
     for (var i = 0; i < next.length; i++) {
-      var cur = rowModel.get(i)
+      var mid = i >= a && i < a + newMid
+      var cur = mid ? rowModel.get(i) : prev[i < a ? i : i - newMid + oldMid]
+      var touched = false
       for (var r = 0; r < ed.roles.length; r++) {
         var role = ed.roles[r]
-        if (cur[role] !== next[i][role]) rowModel.setProperty(i, role, next[i][role])
+        if (cur[role] !== next[i][role]) { rowModel.setProperty(i, role, next[i][role]); touched = true }
       }
       // Typing `>` into an empty line leaves the body empty, as it was:
-      // the role does not change, but the field still shows the `>`.
+      // the role does not change, but the field still shows the `>`. A
+      // line that changed kind with the same words (a fence opened above
+      // it) is drawn again too.
+      if (!mid && !touched) continue
       var item = rep.itemAt(i)
       if (item) item.show()
     }
@@ -686,6 +957,34 @@ Item {
     return Emph.hidden(r.body)
   }
 
+  // Row i's words as they are drawn — the markers drawn to nothing and a
+  // link's hidden source left out — and the column of the body each drawn
+  // character is (2026-11-27, for find: "read chapter" found nothing in
+  // `read **chapter 3**`, and part of a link's hidden address was marked
+  // as a sliver nobody could read).
+  function drawnWords(i) {
+    var r = ed.rows[i]
+    var hide = ed.hiddenIn(i).slice()
+    var prose = r.kind !== "code" && r.kind !== "front" && r.kind !== "image"
+    if (prose && r.body.indexOf("[") >= 0) {
+      var item = ed.rowItem(i)
+      var reveal = item ? item.revealLink : -1
+      var ls = Emph.linksIn(r.body)
+      for (var k = 0; k < ls.length; k++) {
+        if (ls[k].at === reveal) continue
+        hide.push({ a: ls[k].at, b: ls[k].inner[0] }, { a: ls[k].inner[1], b: ls[k].end })
+      }
+    }
+    if (hide.length === 0) return null       // drawn as written
+    var text = "", at = []
+    for (var c = 0; c < r.body.length; c++) {
+      var gone = false
+      for (var h = 0; h < hide.length && !gone; h++) gone = c >= hide[h].a && c < hide[h].b
+      if (!gone) { text += r.body.charAt(c); at.push(c) }
+    }
+    return { text: text, at: at }
+  }
+
   // Its arrows (Emph.arrowsIn), each one character to the cursor.
   function arrowsIn(i) {
     var r = ed.rows[i]
@@ -696,8 +995,29 @@ Item {
   function restCol(i, col, dir) {
     var r = ed.rows[i]
     if (!r) return col
+    // The place Ctrl+B stepped to, out of an emphasis or into it, holds
+    // until the cursor moves on (Emph.forbidden).
+    if (ed.escapeAt >= 0 && r.start + r.prefixLen + col === ed.escapeAt) return col
     var stops = r.kind === "code" || r.kind === "front" ? [] : r.kind === "image" ? Emph.hidden(r.body) : Emph.stops(r.body)
     return Emph.validCol(stops, col, r.body.length, dir)
+  }
+  // Where Ctrl+B (or its kin) at a word's edge put the cursor: just past an
+  // emphasis's markers, or just inside them, so what is typed next is out of
+  // it or in it (Google Docs' way of turning bold off for the next letters).
+  // -1: none.
+  property int escapeAt: -1
+
+  // Whether column `col` of row r is inside a word, its drawn letters on
+  // both sides (the markers between them do not count).
+  function insideWord(r, col) {
+    var body = r.body, hid = Emph.hidden(body)
+    var hiddenAt = function (c) { for (var h = 0; h < hid.length; h++) if (c >= hid[h].a && c < hid[h].b) return true; return false }
+    var p = col - 1
+    while (p >= 0 && hiddenAt(p)) p--
+    var n = col
+    while (n < body.length && hiddenAt(n)) n++
+    var wordy = function (ch) { return ch !== "" && !/[\s.,;:!?()\[\]{}"'“”‘’…]/.test(ch) }
+    return p >= 0 && n < body.length && wordy(body.charAt(p)) && wordy(body.charAt(n))
   }
 
   // Inline code is drawn in the code face, so a change of face is a redraw.
@@ -960,14 +1280,19 @@ Item {
     // The cursor cannot stand in a line's hidden mark, so it is put where
     // the words start; the selection still starts at the line's start, so
     // what is copied or cut is the whole line, its mark too.
+    // Nor past a bold word's closing markers (Emph.forbidden): the cursor
+    // stands before them, the selection still takes them, so an emphasis
+    // selected to its end is selected whole. Never a bound line's date.
     var landed = ed.cursorPosition
-    ed.selCursor = pos < landed && Rows.rowAt(ed.rows, pos) === Rows.rowAt(ed.rows, landed) ? pos : landed
+    var lr = Rows.rowAt(ed.rows, landed)
+    ed.selCursor = Rows.rowAt(ed.rows, pos) === lr && (pos < landed || pos <= ed.rows[lr].bodyEnd) ? pos : landed
     var item = ed.rowItem(ed.focusedRow)
     if (item) item.field.deselect()
   }
 
   // Where a selection's moving end goes for a navigation key.
   function stepPos(pos, k, ctrl) {
+    ed.aimNext = -1
     if (ctrl && k === Qt.Key_Home) return ed.shown !== null ? ed.runAround(pos).a : 0
     if (ctrl && k === Qt.Key_End) return ed.shown !== null ? ed.runAround(pos).b : ed.text.length
     var i = Rows.rowAt(ed.rows, pos)
@@ -985,14 +1310,20 @@ Item {
     var item = ed.rowItem(i)
     var f = item.field
     var c = f.positionToRectangle(col)
+    // The column the run of Up and Down began at (`goal`).
+    var x = ed.aimX(item, pos)
+    ed.aimNext = x
     // A wrapped line first moves within itself.
-    if (dir > 0 && c.y < f.positionToRectangle(f.length).y - 1) return ed.absOf(i, ed.restCol(i, f.positionAt(c.x, c.y + c.height * 1.5), 0))
-    if (dir < 0 && c.y > f.positionToRectangle(0).y + 1) return ed.absOf(i, ed.restCol(i, f.positionAt(c.x, c.y - c.height * 0.5), 0))
+    if (dir > 0 && c.y < f.positionToRectangle(f.length).y - 1) return ed.absOf(i, ed.restCol(i, f.positionAt(x - f.x, c.y + c.height * 1.5), 0))
+    if (dir < 0 && c.y > f.positionToRectangle(0).y + 1) return ed.absOf(i, ed.restCol(i, f.positionAt(x - f.x, c.y - c.height * 0.5), 0))
     var j = ed.nextRow(i, dir)
-    if (j < 0) return dir < 0 ? ed.absOf(i, 0) : ed.absOf(i, r.body.length)
+    if (j < 0) { ed.aimNext = -1; return dir < 0 ? ed.absOf(i, 0) : ed.absOf(i, r.body.length) }
     var t = ed.rowItem(j).field
-    return ed.absOf(j, ed.restCol(j, t.positionAt(f.x + c.x - t.x, dir > 0 ? 1 : t.contentHeight - 1), 0))
+    return ed.absOf(j, ed.restCol(j, t.positionAt(x - t.x, dir > 0 ? 1 : t.contentHeight - 1), 0))
   }
+  // The x stepPos aimed at for Up or Down (-1: none), for the caller to
+  // keep as the goal once the selection has moved.
+  property real aimNext: -1
 
   // The field's own selection as text offsets: where it started, so a
   // selection that grows past the line keeps its anchor.
@@ -1028,17 +1359,79 @@ Item {
     var t = ed.pasteText().replace(/\r/g, "")
     if (t === "") return
     ed.snapshot(true)
-    ed.insert(pos, t)
+    ed.insert(pos, ed.pasteShape(pos, t))
     ed.placeCursor(true)
+  }
+
+  // What a paste puts at `pos`. Inside a quote or a callout, every line of
+  // it after the first carries the quote's marks, unless it has a quote of
+  // its own (2026-11-27). Pasted bare, a second line ended the quote there
+  // — and in a private block, every line below it became a quote of its
+  // own: private no more, and the agent's to read (Blocks.js). Enter and
+  // Backspace had been kept from splitting a private block; a paste was not.
+  function pasteShape(pos, t) {
+    if (t.indexOf("\n") < 0) return t
+    var r = ed.rows[Rows.rowAt(ed.rows, pos)]
+    var lead = !r ? "" : r.kind === "quote" ? r.indent + r.marker : r.kind === "calloutHead" ? r.indent + "> " : (r.quoteLead || "")
+    if (lead === "") return t
+    return t.split("\n").map(function (line, k) { return k === 0 || /^[ \t]*>/.test(line) ? line : lead + line }).join("\n")
   }
 
   function removeSpan() {
     if (ed.readOnly) return
     var a = ed.selStart, b = ed.selEnd
+    var lines = ed.text.slice(a, b).indexOf("\n") >= 0
     ed.snapshot(true)
     ed.clearSelection()
     ed.replace(a, b, "")
+    if (lines) ed.renumberAt(a)
     ed.placeCursor(true)
+  }
+
+  // Ctrl+L over lines (2026-11-27: it ticked only the line the cursor was
+  // on, and let go of the rest). Lines that are not boxes yet become boxes,
+  // and the boxes are left alone; when they are all boxes, the open ones
+  // are ticked, and when every one is ticked, they all open again. One
+  // step to undo, and the selection stays on them.
+  function toggleLines(a, b) {
+    if (ed.readOnly) return
+    var i = Rows.rowAt(ed.rows, a), j = Rows.rowAt(ed.rows, b)
+    if (j > i && b === ed.rows[j].start) j--
+    var make = [], boxes = []
+    for (var k = i; k <= j; k++) {
+      var r = ed.rows[k]
+      if (!ed.isShown(k) || r.blank) continue
+      if (r.kind === "task") boxes.push(k)
+      else if (r.kind === "bullet" || r.kind === "plain" || r.kind === "quote") make.push(k)
+    }
+    var edits = []
+    var today = Qt.formatDate(new Date(), "yyyy-MM-dd")
+    var ticked = -1
+    if (make.length > 0) {
+      for (var m = 0; m < make.length; m++) {
+        var p = ed.rows[make[m]]
+        var at = p.kind === "plain" ? p.start + p.indent.length : p.start + p.prefixLen
+        edits.push({ a: at, b: at, s: p.kind === "bullet" ? "[ ] " : "- [ ] " })
+      }
+    } else if (boxes.length > 0) {
+      var open = boxes.some(function (x) { return !ed.rows[x].checked })
+      for (var x = 0; x < boxes.length; x++) {
+        var q = ed.rows[boxes[x]]
+        if (open === q.checked) continue
+        var next = open ? Task.setField(Task.setState(q.raw, "x"), "✅", today)
+          : Task.setField(Task.setField(Task.setState(q.raw, " "), "✅", ""), "❌", "")
+        edits.push({ a: q.start, b: q.start + q.raw.length, s: next })
+        if (ticked < 0) ticked = boxes[x]
+      }
+    }
+    if (edits.length === 0) return
+    var from = ed.selAnchor, to = ed.selCursor
+    ed.snapshot(true)
+    var na = ed.through(edits, from, from <= to ? -1 : 1), nb = ed.through(edits, to, to < from ? -1 : 1)
+    ed.clearSelection()
+    ed.commit(ed.editsApplied(edits), nb)
+    ed.selectSpan(na, nb)
+    if (ticked >= 0) ed.boxTicked(ticked, open)
   }
 
   // A line's own indentation starts after its quote layers (Rows.js):
@@ -1051,16 +1444,19 @@ Item {
   function indentSpan(out) {
     var i = Rows.rowAt(ed.rows, ed.selStart)
     var j = Rows.rowAt(ed.rows, ed.selEnd)
+    if (ed.readOnly) return
     ed.snapshot(true)
     ed.clearSelection()
+    var edits = []
     for (var k = j; k >= i; k--) {
       var r = ed.rows[k]
       if (r.blank) continue
       var at = ed.innerAt(r), own = ed.innerIndent(r)
-      if (!out) ed.replace(at, at, "\t")
-      else if (own.charAt(0) === "\t") ed.replace(at, at + 1, "")
-      else if (own !== "") ed.replace(at, at + Math.min(2, own.length), "")
+      if (!out) edits.push({ a: at, b: at, s: "\t" })
+      else if (own.charAt(0) === "\t") edits.push({ a: at, b: at + 1, s: "" })
+      else if (own !== "") edits.push({ a: at, b: at + Math.min(2, own.length), s: "" })
     }
+    ed.applyEdits(edits)
     var moved = []
     for (var m = i; m <= j; m++) if (!ed.rows[m].blank) moved.push(m)
     ed.relist(moved)
@@ -1071,10 +1467,10 @@ Item {
   // `kept`: the lines stayed where they are, only the numbers count on.
   function relist(lines, kept) {
     var ch = Rows.relist(ed.rows, lines, kept)
-    for (var k = ch.length - 1; k >= 0; k--) {
-      var r = ed.rows[ch[k].line]
-      ed.replace(r.start + r.indent.length, r.start + r.prefixLen, ch[k].marker)
-    }
+    ed.applyEdits(ch.map(function (c) {
+      var r = ed.rows[c.line]
+      return { a: r.start + r.indent.length, b: r.start + r.prefixLen, s: c.marker }
+    }))
   }
 
   // Ctrl+Shift+Up / Down (2026-11-11): from the cursor, select to the
@@ -1125,8 +1521,10 @@ Item {
     if (nav && shift && !alt) {
       var anchor = ed.selAnchor
       var to = ed.stepPos(ed.selCursor, k, ctrl)
+      var aim = ed.aimNext
       if (to === anchor) { ed.clearSelection(); ed.setCursor(to, true) }
       else ed.selectSpan(anchor, to)
+      if (aim >= 0) ed.aimed(aim)
       return true
     }
     if (nav && !alt && !ctrl) {
@@ -1148,13 +1546,20 @@ Item {
       return true
     }
     if (only && k === Qt.Key_A) { ed.selectAllStep(ed.rowItem(ed.focusedRow)); return true }
+    if (Sc.hit(event, "checkbox")) { ed.toggleLines(ed.selStart, ed.selEnd); return true }
+    // An agent's file read: what would write keeps the selection, and
+    // writes nothing (2026-11-27: a letter typed let go of it).
+    var writes = k === Qt.Key_Backspace || k === Qt.Key_Delete || k === Qt.Key_Return || k === Qt.Key_Enter
+      || k === Qt.Key_Tab || k === Qt.Key_Backtab || (only && k === Qt.Key_V)
+      || (event.text !== "" && (!ctrl && !alt || ctrl && alt) && event.text.charCodeAt(0) >= 32)
+    if (ed.readOnly && writes) return true
     if (only && k === Qt.Key_V) {
       var pasted = ed.pasteText().replace(/\r/g, "")
       if (pasted !== "" && !ed.readOnly) {
         var pa = ed.selStart, pb = ed.selEnd
         ed.snapshot(true)
         ed.clearSelection()
-        ed.replace(pa, pb, pasted)
+        ed.replace(pa, pb, ed.pasteShape(pa, pasted))
         ed.placeCursor(true)
       }
       return true
@@ -1204,12 +1609,13 @@ Item {
     var b = item.box
     var pad = Math.round(ed.textSize * 0.25)
     var ly = y - item.y
-    var box = r.kind === "task" && x >= b.x - pad && x <= b.x + b.width + pad && ly >= b.y - pad && ly <= b.y + b.height + pad
+    var box = r.kind === "task" && !ed.readOnly && x >= b.x - pad && x <= b.x + b.width + pad && ly >= b.y - pad && ly <= b.y + b.height + pad
     // A deadline's date pill takes its own click (its reschedule).
     var pl = item.pill
-    var pill = r.deadline > 0 && pl.visible && !ed.readOnly && x >= pl.x - pad && x <= pl.x + pl.width + pad && ly >= pl.y - pad && ly <= pl.y + pl.height + pad
+    var pill = (r.deadline > 0 || r.doDay !== "") && pl.visible && !ed.readOnly && x >= pl.x - pad && x <= pl.x + pl.width + pad && ly >= pl.y - pad && ly <= pl.y + pl.height + pad
     var f = item.field
-    return { i: i, col: ed.restCol(i, f.positionAt(x - f.x, ly - f.y), 0), box: box, pill: pill }
+    var col = item.tableDrawn ? item.tableCol(x, ly) : f.positionAt(x - f.x, ly - f.y)
+    return { i: i, col: ed.restCol(i, col, 0), box: box, pill: pill }
   }
 
   function updateCursorRect() {
@@ -1239,6 +1645,7 @@ Item {
     var r = ed.rows[i]
     if (!r) return
     ed.clearSelection()
+    ed.escapeAt = -1          // typed where it stepped to: the letter holds the place now
     body = body.replace(/\r/g, "")
     // A list marker typed into an empty item, or at the start of its words,
     // takes the item's place: "2. " then "- " is a bullet, not "2. - ".
@@ -1247,7 +1654,7 @@ Item {
     var swap = (r.kind === "bullet" || r.kind === "ordered" || r.kind === "task") && lead !== null
       && col === lead[0].length && (body === lead[0] || r.suffix === "")
     var line = (swap ? r.indent : r.raw.substring(0, r.prefixLen)) + body + r.suffix
-    ed.snapshot(/\n/.test(body))
+    ed.snapshot(/\n/.test(body), ed.runOf(r, body))
     var lineEnd = r.start + r.raw.length
     var before = ed.rows.length
     ed.commit(ed.text.slice(0, r.start) + line + ed.text.slice(lineEnd), r.start + (swap ? r.indent.length : r.prefixLen) + col)
@@ -1255,10 +1662,40 @@ Item {
     // The line changed kind (markdown typed or broken) or a paste brought
     // new lines: the field's text moved, so put the cursor back.
     var now = ed.rows[i]
+    // A date kept as words stays words while the line is written on: a #tag
+    // after it, or a space, made it a new line to the page's `declined`, and
+    // the date lit up again and became a deadline as the line was left
+    // (2026-11-27). Only a different date lights up anew.
+    // (A line in between with no date at all, `fri #` on the way to
+    // `fri #thesis`, carries it on.)
+    var cueText = function (x) { return x.body.substring(x.cueAt, x.cueEnd >= 0 ? x.cueEnd : x.body.length).trim() }
+    var kept = ed.keptCue && ed.keptCue.raw === r.raw ? ed.keptCue.phrase
+      : ed.declined[r.raw] && r.cueAt >= 0 ? cueText(r) : ""
+    ed.keptCue = null
+    if (kept !== "" && now && now.raw !== r.raw && (now.cueAt < 0 || cueText(now) === kept)) {
+      if (!ed.declined[now.raw]) ed.declineCarried(r.raw, now.raw)
+      ed.keptCue = { raw: now.raw, phrase: kept }
+    }
     ed.typedRaw = now ? now.raw : ""
     ed.freshCue = r.cueAt < 0 && now && now.cueAt >= 0 ? i : -1
     if (ed.rows.length !== before || !now || now.body !== body) ed.placeCursor(true)
     else ed.updateCursorRect()
+  }
+
+  // What a keystroke did to row r's words (`body` as they are now), as
+  // snapshot's `run`: the one span that differs, in text offsets.
+  function runOf(r, body) {
+    var old = r.body
+    var p = 0
+    while (p < old.length && p < body.length && old.charAt(p) === body.charAt(p)) p++
+    var q = 0
+    while (q < old.length - p && q < body.length - p
+           && old.charAt(old.length - 1 - q) === body.charAt(body.length - 1 - q)) q++
+    var gone = old.length - p - q, added = body.length - p - q
+    var at = r.start + r.prefixLen + p
+    if (gone === 0) return { kind: "ins", a: at, b: at, to: at + added, space: /^\s/.test(body.charAt(p)) }
+    if (added === 0) return { kind: "del", a: at, b: at + gone, to: at }
+    return { kind: "ins", a: at, b: at + gone, to: at + added, fresh: true }   // typed over a selection
   }
 
   function fieldCursor(i, col) {
@@ -1284,6 +1721,9 @@ Item {
   }
 
   function returnKey(item, soft, noSnap) {
+    // An agent's file read: Enter writes nothing, and says no line was
+    // finished (2026-11-27: it pushed undo steps and told the page so).
+    if (ed.readOnly) return
     var i = item.index
     if (!noSnap) ed.snapshot(true)
     if (item.field.selectedText !== "") {
@@ -1380,6 +1820,7 @@ Item {
   // date goes with the box (and the page asks about the deadline). Joining
   // onto a bound line slips the words in before that line's date.
   function backspaceAtStart(i) {
+    if (ed.readOnly) return
     var r = ed.rows[i]
     // In a private block a line's `> ` is the block's, not the line's
     // (2026-11-13): taking it off split the block there, and every line
@@ -1420,6 +1861,7 @@ Item {
       } else {
         ed.remove(r.start - 1, r.start)
       }
+      ed.renumberAt(ed.cursorPosition)
     }
     ed.placeCursor(true)
   }
@@ -1427,6 +1869,7 @@ Item {
   // Delete at the end of a line pulls the next line's words up, without
   // its markdown.
   function deleteAtEnd(i) {
+    if (ed.readOnly) return
     if (i + 1 >= ed.rows.length || !ed.isShown(i + 1)) return
     var r = ed.rows[i]
     var n = ed.rows[i + 1]
@@ -1438,6 +1881,7 @@ Item {
     } else {
       ed.remove(r.start + r.raw.length, n.start + n.prefixLen)
     }
+    ed.renumberAt(ed.cursorPosition)
     ed.placeCursor(true)
   }
 
@@ -1450,6 +1894,7 @@ Item {
   }
 
   function indent(i, out) {
+    if (ed.readOnly) return
     var r = ed.rows[i]
     var listy = r.kind === "task" || r.kind === "bullet" || r.kind === "ordered"
     var was = ed.text
@@ -1513,13 +1958,14 @@ Item {
     var f = item.field
     var c = f.cursorRectangle
     var at = f.mapToItem(ed, c.x, c.y + c.height / 2)
+    var x = ed.aimX(item, ed.spanning ? ed.selCursor : ed.cursorPosition)
     var y = at.y + dir * h
     column.forceLayout()
     var pos
     if (y < 0) pos = ed.shown !== null ? ed.runAround(ed.cursorPosition).a : 0
     else if (y >= column.height) pos = ed.shown !== null ? ed.runAround(ed.cursorPosition).b : ed.text.length
     else {
-      var spot = ed.hitTest(at.x, y)
+      var spot = ed.hitTest(x, y)
       pos = ed.absOf(spot.i, spot.col)
     }
     if (view) view.contentY = Math.max(0, Math.min(view.contentHeight - view.height, view.contentY + dir * h))
@@ -1531,21 +1977,40 @@ Item {
       if (ed.spanning) ed.clearSelection()
       ed.setCursor(pos, true)
     }
+    ed.aimed(x)
   }
 
-  // Up / Down past the edge of a field: the neighbouring line, at the same
-  // horizontal place.
+  // The x Up and Down aim at from the cursor at `pos` (`goal`), else the
+  // cursor's own, in editor x.
+  function aimX(item, pos) {
+    var g = ed.goal
+    if (g && (g.pos === pos || g.sel === pos)) return g.x
+    var f = item.field
+    var c = f.positionToRectangle(Rows.columnIn(ed.rows[item.index], pos))
+    return f.x + c.x
+  }
+  function aimed(x) { ed.goal = { x: x, pos: ed.cursorPosition, sel: ed.selCursor } }
+
+  // Up / Down: the line above or below — within a wrapped line first, then
+  // the neighbouring line — at the column the run of them began at.
   function moveVertical(item, dir) {
+    var f = item.field
+    var x = ed.aimX(item, ed.cursorPosition)
+    var c = f.cursorRectangle
+    if (dir < 0 ? !ed.atFirstLine(f) : !ed.atLastLine(f)) {
+      ed.placeAt(item.index, f.positionAt(x - f.x, dir < 0 ? c.y - c.height * 0.5 : c.y + c.height * 1.5))
+      ed.aimed(x)
+      return
+    }
     var j = ed.nextRow(item.index, dir)
     if (j < 0) {
       ed.placeAt(item.index, dir < 0 ? 0 : ed.rows[item.index].body.length)
+      ed.goal = null
       return
     }
-    var x = item.field.x + item.field.cursorRectangle.x
-    var target = ed.rowItem(j)
-    var f = target.field
-    var col = f.positionAt(x - f.x, dir > 0 ? 1 : f.contentHeight - 1)
-    ed.placeAt(j, col)
+    var t = ed.rowItem(j).field
+    ed.placeAt(j, t.positionAt(x - t.x, dir > 0 ? 1 : t.contentHeight - 1))
+    ed.aimed(x)
   }
 
   // A pair of markers drawn to nothing is one thing to the cursor: it never
@@ -1559,26 +2024,41 @@ Item {
   // Backspace that should have taken a letter took a marker, and the
   // markdown came back (2026-10-15, the evening emphasis landed).
   // True when the key was used.
+  //
+  // Words with Ctrl (Ctrl+arrows, Ctrl+Backspace, Ctrl+Delete) come here on
+  // every line, emphasis or not (2026-11-27): a plain line left them to the
+  // field, whose idea of a word is Qt's, so bolding one word in a line
+  // moved where Ctrl+Left stopped on it. One rule now, Rows.wordStep.
   function emphKey(event, item) {
     var i = item.index
     var runs = ed.hiddenIn(i)
     var arrows = ed.arrowsIn(i)
-    if (runs.length === 0 && arrows.length === 0) return false
     var ctrl = event.modifiers & Qt.ControlModifier
     var shift = event.modifiers & Qt.ShiftModifier
     var alt = event.modifiers & Qt.AltModifier
+    var k = event.key
+    var wordKey = ctrl && (k === Qt.Key_Left || k === Qt.Key_Right || k === Qt.Key_Backspace || k === Qt.Key_Delete)
+    if (runs.length === 0 && arrows.length === 0 && !wordKey) return false
     if (alt) return false
     var f = item.field
     var r = ed.rows[i]
     var len = r.body.length
     var col = f.cursorPosition
     var sel = f.selectedText !== ""
-    var k = event.key
+
+    // Home / End on a line with markers: the line's (or the wrapped line's)
+    // edge, at its place: a bold last word's End is inside the bold.
+    if ((k === Qt.Key_Home || k === Qt.Key_End) && !ctrl && !shift && runs.length > 0) {
+      var c = f.cursorRectangle
+      var edgeCol = f.positionAt(k === Qt.Key_End ? f.width + 1000 : -1000, c.y + c.height / 2)
+      f.cursorPosition = ed.restCol(i, edgeCol, 0)
+      return true
+    }
 
     if ((k === Qt.Key_Left || k === Qt.Key_Right) && !(sel && !shift)) {
       var dir = k === Qt.Key_Right ? 1 : -1
       var to = ctrl ? Rows.wordStep(r.body, col, dir) : col + dir
-      if (to < 0 || to > len) return false          // the next line's business
+      if (to < 0 || to > len || (to === col && !shift)) return false          // the next line's business
       to = ed.restCol(i, to, dir)
       if (!shift) { f.cursorPosition = to; return true }
       var anchor = sel ? (col === f.selectionEnd ? f.selectionStart : f.selectionEnd) : col
@@ -1590,8 +2070,9 @@ Item {
     if (k === Qt.Key_Backspace || k === Qt.Key_Delete) {
       var a, b, x
       if (sel) {
-        a = Math.min(f.selectionStart, f.selectionEnd)
-        b = Math.max(f.selectionStart, f.selectionEnd)
+        var st = Emph.trimRuns(r.body, Math.min(f.selectionStart, f.selectionEnd), Math.max(f.selectionStart, f.selectionEnd))
+        a = st.a
+        b = st.b
       } else if (k === Qt.Key_Backspace) {
         b = col
         for (x = 0; x < runs.length; x++) if (b > runs[x].a && b <= runs[x].b) b = runs[x].a
@@ -1609,9 +2090,10 @@ Item {
         if (a > w.at && a < w.end) a = w.at
         if (b > w.at && b < w.end) b = w.end
       }
+      if (ed.readOnly) return false
       var span = Emph.collapse(r.body, a, b)
       var base = r.start + r.prefixLen
-      ed.snapshot(sel || ctrl)
+      ed.snapshot(sel || ctrl, { kind: "del", a: base + span.a, b: base + span.b, to: base + span.a })
       ed.replace(base + span.a, base + span.b, "")
       ed.placeCursor(true)
       return true
@@ -1630,6 +2112,9 @@ Item {
     var alt = event.modifiers & Qt.AltModifier
     var k = event.key
     var noSel = f.selectedText === ""
+    ed.mouseLed = false
+    if ((event.text === "" || ctrl || alt) && k !== Qt.Key_Shift && k !== Qt.Key_Control && k !== Qt.Key_Alt && k !== Qt.Key_Meta
+        && !Sc.hit(event, "bold") && !Sc.hit(event, "italic") && !Sc.hit(event, "code") && !Sc.hit(event, "strike")) ed.escapeAt = -1
 
     if (k === Qt.Key_Escape && !ctrl && !alt && (ed.spanning || !noSel)) { ed.letGo(item); event.accepted = true; return }
     if (ed.keyFilter && ed.keyFilter(event)) { event.accepted = true; return }
@@ -1672,7 +2157,9 @@ Item {
       if (edge) {
         var anchor = ed.nativeAnchor(item)
         var to = ed.stepPos(ed.cursorPosition, k, ctrl)
+        var aim = ed.aimNext
         if (to !== anchor) ed.selectSpan(anchor, to)
+        if (aim >= 0) ed.aimed(aim)
         event.accepted = true
         return
       }
@@ -1686,6 +2173,10 @@ Item {
         var rRow = ed.rows[i]
         var ca = Math.min(f.selectionStart, f.selectionEnd)
         var cb = Math.max(f.selectionStart, f.selectionEnd)
+        // Markers whose partner is outside the selection are left out: a
+        // drag from before a bold word into it is the word.
+        var ct = Emph.trimRuns(rRow.body, ca, cb)
+        ca = ct.a; cb = ct.b
         ed.copyText(rRow.body.slice(ca, cb))
         if (k === Qt.Key_X && !ed.readOnly) {
           var cSpan = Emph.collapse(rRow.body, ca, cb)
@@ -1706,7 +2197,7 @@ Item {
         var from = noSel ? ed.cursorPosition : ed.absOf(i, Math.min(f.selectionStart, f.selectionEnd))
         var to = noSel ? from : ed.absOf(i, Math.max(f.selectionStart, f.selectionEnd))
         ed.snapshot(true)
-        ed.replace(from, to, pasted)
+        ed.replace(from, to, ed.pasteShape(from, pasted))
         ed.placeCursor(true)
       }
       event.accepted = true
@@ -1725,10 +2216,9 @@ Item {
       // Ctrl+Del too, as Ctrl+Backspace at a line's start joins it to the
       // one before (2026-11-25: it did nothing).
       ed.deleteAtEnd(i)
-    } else if (k === Qt.Key_Up && !ctrl && !alt && !shift && ed.atFirstLine(f)) {
-      ed.moveVertical(item, -1)
-    } else if (k === Qt.Key_Down && !ctrl && !alt && !shift && ed.atLastLine(f)) {
-      ed.moveVertical(item, 1)
+    } else if ((k === Qt.Key_Up || k === Qt.Key_Down) && !ctrl && !alt && !shift) {
+      if (!noSel) f.deselect()
+      ed.moveVertical(item, k === Qt.Key_Up ? -1 : 1)
     } else if (k === Qt.Key_Left && !alt && !shift && noSel && f.cursorPosition === 0) {
       var p = ed.nextRow(i, -1)
       if (p >= 0) ed.placeAt(p, ed.rows[p].body.length)
@@ -1808,6 +2298,7 @@ Item {
         required property int deadline
         required property string dueLabel
         required property real dueAt
+        required property string doDay
         required property string raw
         required property int cueAt
         required property int cueEnd
@@ -1967,6 +2458,45 @@ Item {
         // How far this table is scrolled sideways, and how far it can be.
         readonly property real tableShiftNow: tableClip.shift
         readonly property real tableReach: tableClip.reach
+
+        // A point on the drawn table (row coordinates) as a column of the
+        // line's words: the cell it is in, the letter under it (2026-11-27).
+        // It was read off the hidden line as written, whose letters stand
+        // elsewhere, so a click opened the table with the cursor in another
+        // cell, and a link in a cell could not be followed.
+        function tableCol(x, y) {
+          if (!row.tinfo || row.tableRow === 1) return 0
+          var spans = Rows.cellSpans(row.raw)
+          var lead = ed.rows[row.index] ? ed.rows[row.index].prefixLen : 0
+          var cx = x - tableClip.x + tableClip.shift, left = 0
+          var n = row.tinfo.widths.length
+          for (var c = 0; c < n; c++) {
+            var w = row.tinfo.widths[c]
+            if (c === n - 1 || cx < left + w + ed.cellGap / 2) {
+              var sp = spans[c]
+              if (!sp) return row.body.length
+              var cell = cellRep.itemAt(c)
+              var k = cell ? cell.positionAt(cx - cell.x, y - cellRow.y) : 0
+              return Math.max(0, Math.min(row.body.length, sp.a + Math.max(0, Math.min(sp.b - sp.a, k)) - lead))
+            }
+            left += w + ed.cellGap
+          }
+          return 0
+        }
+        // Where column `col` of the words is drawn in the table, in row
+        // coordinates (null: not in a cell).
+        function cellRect(col) {
+          var spans = Rows.cellSpans(row.raw)
+          var p = col + (ed.rows[row.index] ? ed.rows[row.index].prefixLen : 0)
+          for (var c = 0; c < spans.length; c++) {
+            if (p < spans[c].a || p > spans[c].b) continue
+            var cell = cellRep.itemAt(c)
+            if (!cell) return null
+            var r = cell.positionToRectangle(p - spans[c].a)
+            return Qt.rect(tableClip.x + cellRow.x + cell.x + r.x, cellRow.y + cell.y + r.y, r.width, r.height)
+          }
+          return null
+        }
         property bool rendering: false
 
         // A drawn arrow is its glyph over its first character (Emph.js):
@@ -1988,8 +2518,8 @@ Item {
           field.textFormat = row.richText ? TextEdit.RichText : TextEdit.PlainText
           field.shown = want
           field.text = want
-          row.rendering = false
           if (field.cursorPosition !== col) field.cursorPosition = Math.max(0, Math.min(col, field.length))
+          row.rendering = false
         }
 
         onBodyChanged: row.show()
@@ -2032,15 +2562,21 @@ Item {
             y: row.gapTop + Math.round(ed.textSize * 0.25)
             spacing: ed.cellGap
             Repeater {
-              model: cellRow.visible ? row.tinfo.widths.length : 0
-              Text {
+              id: cellRep
+              model: cellRow.visible && row.tinfo ? row.tinfo.widths.length : 0
+              // A field that is never typed in, for its positions: where a
+              // click lands in the cell, and where a link's hint goes.
+              TextEdit {
                 required property int index
                 width: row.tinfo.widths[index]
-                wrapMode: Text.Wrap
-                textFormat: Text.RichText
+                wrapMode: TextEdit.Wrap
+                textFormat: TextEdit.RichText
+                readOnly: true
+                activeFocusOnPress: false
+                selectByMouse: false
                 text: Emph.html(row.tcells[index] || "", ed.codeFamily, { color: String(ed.linkColor), missing: String(ed.faint),
                                   source: String(ed.dim), reveal: -1, known: function (l) { return !ed.linkKnown || ed.linkKnown(l) } })
-                horizontalAlignment: row.tinfo.align[index] === "right" ? Text.AlignRight : row.tinfo.align[index] === "center" ? Text.AlignHCenter : Text.AlignLeft
+                horizontalAlignment: row.tinfo.align[index] === "right" ? TextEdit.AlignRight : row.tinfo.align[index] === "center" ? TextEdit.AlignHCenter : TextEdit.AlignLeft
                 color: ed.foreground
                 font.family: ed.fontFamily
                 font.styleName: row.tableRow === 0 ? "" : ed.fontStyle
@@ -2226,7 +2762,7 @@ Item {
             id: boxArea
             anchors.fill: parent
             anchors.margins: -Math.round(ed.textSize * 0.25)
-            enabled: box.visible
+            enabled: box.visible && !ed.readOnly
             cursorShape: Qt.PointingHandCursor
             // The click only: the hover is the lines' area's (`pointer`).
             Component.onDestruction: if (ed.boxHover === row.index) ed.boxHover = -1
@@ -2289,7 +2825,7 @@ Item {
         // the urgent colour. A date being written: the pill to be, accent.
         Rectangle {
           id: due
-          readonly property bool late: !row.checked && row.dueAt > 0 && row.dueAt < Date.now()
+          readonly property bool late: !row.checked && row.dueAt > 0 && row.dueAt < ed.now
           visible: row.dueLabel !== "" || row.pending
           anchors.right: parent.right
           y: row.gapTop + Math.round((row.firstLine - height) / 2)
@@ -2297,7 +2833,11 @@ Item {
           height: dueText.implicitHeight + Math.round(ed.textSize * 0.2)
           radius: ed.cornerRadius
           color: "transparent"
-          readonly property bool lit: ed.pillHover === row.index && row.deadline > 0 && ed.handOn
+          // A day to work on it (⏳) with no deadline answers the mouse
+          // too (2026-11-27): it reads as a date, and a click on it now asks
+          // "do on?", as a deadline's asks for its new day.
+          readonly property bool clickable: row.deadline > 0 || row.doDay !== ""
+          readonly property bool lit: ed.pillHover === row.index && clickable && ed.handOn
           border.width: row.deadline > 0 || row.pending || row.binding ? 1 : 0
           border.color: row.pending || row.binding || lit ? ed.accent : late ? ed.urgent : ed.faint
           Text {
@@ -2316,7 +2856,7 @@ Item {
             id: dueArea
             anchors.fill: parent
             anchors.margins: -Math.round(ed.textSize * 0.2)
-            enabled: row.deadline > 0 && !row.pending && !ed.readOnly
+            enabled: due.clickable && !row.pending && !ed.readOnly
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: ed.datePillClicked(row.index)
@@ -2382,17 +2922,20 @@ Item {
             : row.kind === "code" ? ed.codeColor : ed.foreground
           selectionColor: ed.selectionColor
           selectedTextColor: ed.foreground
-          font.family: row.kind === "code" || row.kind === "front" ? ed.codeFamily : ed.fontFamily
+          // A table being written shows as written, in the code face
+          // (2026-11-27): its pipes read as the table's marks, and its
+          // columns as columns where the rows are padded alike.
+          font.family: row.kind === "code" || row.kind === "front" || row.kind === "table" ? ed.codeFamily : ed.fontFamily
           font.pixelSize: row.kind === "heading"
             ? Math.round(ed.textSize * (row.headingLevel === 1 ? 1.7 : row.headingLevel === 2 ? 1.4 : row.headingLevel === 3 ? 1.15 : 1))
-            : (row.kind === "code" || row.kind === "front" || row.img ? Math.round(ed.textSize * 0.85) : ed.textSize)
+            : (row.kind === "code" || row.kind === "front" || row.kind === "table" || row.img ? Math.round(ed.textSize * 0.85) : ed.textSize)
           // Headings name their cut, as prose does (2026-11-19): asked for by
           // weight Bold — even beside the named cut — Qt took Adwaita Sans's
           // Bold and emboldened it again, and the title's counters closed up.
           // So the title's weight is left normal and its cut carries it; a
           // face without a cut of that name draws the title at its regular.
           font.styleName: row.kind === "heading" ? (row.headingLevel === 1 ? "Bold" : "SemiBold")
-            : row.kind === "code" || row.kind === "front" ? "" : ed.fontStyle
+            : row.kind === "code" || row.kind === "front" || row.kind === "table" ? "" : ed.fontStyle
           // Rank, in the three channels that have an order: size, weight and
           // the colour's distance from the prose (ThemeColors `headings`).
           // Only the title is Bold — below it the page is one weight, so H2
@@ -2406,7 +2949,13 @@ Item {
             var p = row.plain()
             if (p !== row.body) ed.typed(row.index, p, cursorPosition)
           }
-          onCursorPositionChanged: if (activeFocus && !ed.syncing) ed.fieldCursor(row.index, cursorPosition)
+          // Not while the row is being drawn again (`rendering`): the field's
+          // cursor moves as its text is replaced, and read back then it took
+          // the note's cursor with it. Alt+click on a link landed wherever
+          // the field's cursor had been, not on the letter clicked: the link
+          // opens to be edited (revealLink) the moment the cursor enters it,
+          // and that redraw wrote the old place back (2026-11-27).
+          onCursorPositionChanged: if (activeFocus && !ed.syncing && !row.rendering) ed.fieldCursor(row.index, cursorPosition)
           onCursorRectangleChanged: if (activeFocus) ed.updateCursorRect()
           onActiveFocusChanged: {
             if (activeFocus) {
@@ -2480,6 +3029,9 @@ Item {
     }
 
     onPressed: function (mouse) {
+      ed.mouseLed = true
+      ed.goal = null
+      ed.escapeAt = -1
       var h = ed.hitTest(mouse.x, mouse.y)
       // The right button: the edit menu, on the selection if the click is
       // in it, else on the cursor put where it was clicked.
@@ -2598,6 +3150,12 @@ Item {
       if (!h || !ed.handOn || pointer.pressed) return null
       var item = ed.rowItem(h.i)
       if (!item || !item.visible) return null
+      if (item.tableDrawn) {
+        var ca = item.cellRect(h.link.at), cb = item.cellRect(h.link.end)
+        if (!ca) return null
+        var q = item.mapToItem(ed, ca.x, ca.y)
+        return { x: q.x, y: q.y, w: Math.max(1, cb && cb.y === ca.y ? cb.x - ca.x : ca.width), h: ca.height }
+      }
       var f = item.field
       var a = f.positionToRectangle(h.link.at), b = f.positionToRectangle(h.link.end)
       var p = f.mapToItem(ed, a.x, a.y)

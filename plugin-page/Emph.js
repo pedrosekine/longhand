@@ -299,51 +299,113 @@ function hidden(s) {
 function stops(s) {
   var raw = /[*_`~]/.test(s) ? runsIn(parseWithLinks(s), []) : []
   var arrows = arrowsIn(s)
-  for (var i = 0; i < arrows.length; i++) raw.push({ a: arrows[i].at + 1, b: arrows[i].end, open: true })
+  for (var i = 0; i < arrows.length; i++) raw.push({ a: arrows[i].at, b: arrows[i].end, arrow: true })
   return merged(raw)
 }
 
+// Runs that touch and face the same way are one; an arrow is always its own
+// (two arrows side by side keep the place between them).
 function merged(raw) {
   raw.sort(function (x, y) { return x.a - y.a })
   var out = []
   for (var i = 0; i < raw.length; i++) {
     var last = out.length > 0 ? out[out.length - 1] : null
-    if (last && last.open === raw[i].open && last.b === raw[i].a) last.b = raw[i].b
-    else out.push({ a: raw[i].a, b: raw[i].b, open: raw[i].open })
+    if (last && !last.arrow && !raw[i].arrow && last.open === raw[i].open && last.b === raw[i].a) last.b = raw[i].b
+    else out.push({ a: raw[i].a, b: raw[i].b, open: raw[i].open, arrow: !!raw[i].arrow })
   }
   return out
 }
 
-// A marker run is one thing to the cursor: it rests at the run's inner
-// edge — against the words — and never inside it. The line's own two ends
-// are always a place to stand, so a line that begins or ends in emphasis
-// can still be written before and after.
+// Where the cursor may stand, as Google Docs has it (2026-11-27): between
+// two drawn characters there is one place, right after the one on the left,
+// so what is typed there takes that character's emphasis. Before a bold
+// word the place is outside its markers (typing is plain), after it inside
+// (typing goes on in bold); the same for italic, struck and code, and for
+// emphasis nested. A run of markers is never stood in: the place is its
+// start. Until then the cursor rested against the words on both sides, so
+// typing before a bold word was bold too, and a line beginning or ending in
+// emphasis had two places that looked one — an arrow press that seemed to
+// do nothing, and no telling which the next letter would be. Ctrl+B and
+// its kin step out of (or into) an emphasis at its edge (NoteEditor,
+// `escapeAt`). An arrow (`->`) is one thing: before it or after it.
 function forbidden(runs, col, len) {
-  if (col <= 0 || col >= len) return false
   for (var i = 0; i < runs.length; i++) {
     var r = runs[i]
-    if (r.open ? (col >= r.a && col < r.b) : (col > r.a && col <= r.b)) return true
+    if (r.arrow ? (col > r.a && col < r.b) : (col > r.a && col <= r.b)) return true
   }
   return false
 }
 
 // The column to rest at. With `dir` (+1 / -1) the cursor is travelling and
-// carries on that way, so a run costs one keypress rather than its length;
-// without it (a click, a jump) it lands on the run's inner edge.
+// carries on that way, so markers cost no keypress of their own; without
+// it (a click, a jump) it lands on the place the run stands for — a click
+// on an arrow's right half after the arrow.
 function validCol(runs, col, len, dir) {
   col = Math.max(0, Math.min(len, col))
   if (!forbidden(runs, col, len)) return col
-  if (!dir) {
-    for (var i = 0; i < runs.length; i++) {
-      var r = runs[i]
-      if (r.open && col >= r.a && col < r.b) return r.b
-      if (!r.open && col > r.a && col <= r.b) return r.a
-    }
-    return col
+  if (dir) {
+    var step = dir > 0 ? 1 : -1
+    var c = col
+    while (c > 0 && c < len && forbidden(runs, c, len)) c += step
+    if (!forbidden(runs, c, len)) return c
+    col = c                     // the line's end, inside a run: its place
   }
-  var step = dir > 0 ? 1 : -1
-  while (col > 0 && col < len && forbidden(runs, col, len)) col += step
-  return Math.max(0, Math.min(len, col))
+  for (var i = 0; i < runs.length; i++) {
+    var r = runs[i]
+    if (r.arrow && col > r.a && col < r.b) return r.b
+    if (!r.arrow && col > r.a && col <= r.b) return r.a
+  }
+  return col
+}
+
+// Where Ctrl+B (`kind`, "bold") takes a cursor standing at `col` that is
+// not inside a word: out of an emphasis of that kind whose words end here
+// (what is typed next is not bold), into one whose words start here, or
+// back where it stepped from. -1: none here.
+function stepFor(s, col, kind) {
+  var nodes = parseWithLinks(s)
+  var runs = runsIn(nodes, [])
+  // The markers right after the place: they stand for it.
+  var b = col
+  for (var moved = true; moved;) {
+    moved = false
+    for (var i = 0; i < runs.length; i++) if (runs[i].a === b && runs[i].b > b) { b = runs[i].b; moved = true }
+  }
+  var to = -1
+  var walk = function (list) {
+    for (var k = 0; k < list.length && to < 0; k++) {
+      var n = list[k]
+      if (!n.marker) continue
+      if (n.kind === kind) {
+        if (n.end === col) to = n.inner[1]                                   // stepped out: back in
+        else if (n.inner[0] === col && n.at < col) to = n.at                 // stepped in: back out
+        else if (n.inner[1] >= col && n.inner[1] <= b && n.inner[1] > n.inner[0]) to = n.end   // its end: out
+        else if (n.at >= col && n.at < b) to = n.inner[0]                    // its start: in
+      }
+      if (to < 0) walk(n.children)
+    }
+  }
+  walk(nodes)
+  return to
+}
+
+// [a, b) without the markers at its edges whose partners are outside it:
+// a selection that starts before a bold word's markers and ends inside its
+// words is the words.
+function trimRuns(s, a, b) {
+  var nodes = parseWithLinks(s)
+  var inside = function (list) {
+    for (var k = 0; k < list.length; k++) {
+      var n = list[k]
+      if (!n.marker) continue
+      if (n.at === a && n.end > b && n.inner[0] <= b) { a = n.inner[0]; return true }
+      if (n.end === b && n.at < a && n.inner[1] >= a) { b = n.inner[1]; return true }
+      if (inside(n.children)) return true
+    }
+    return false
+  }
+  for (var guard = 0; guard < 8 && a < b && inside(nodes); guard++) {}
+  return { a: a, b: b }
 }
 
 function nodeWithContent(nodes, a, b) {
@@ -365,6 +427,42 @@ function nodeHolding(nodes, a, b) {
     if (a >= n.inner[0] && b <= n.inner[1]) return nodeHolding(n.children, a, b) || n
   }
   return null
+}
+
+// The innermost emphasis of `kind` holding [a, b) — its words, or its words
+// with its markers exactly — or null (2026-11-27). For the keys that wrap:
+// inside a bold phrase Ctrl+B takes the bold off what it is on, where it
+// used to write a second pair inside the first, and the markdown broke.
+function ofKind(s, a, b, kind) {
+  var found = null
+  var walk = function (nodes) {
+    for (var i = 0; i < nodes.length; i++) {
+      var n = nodes[i]
+      if (!n.marker) continue
+      var inside = a >= n.inner[0] && b <= n.inner[1]
+      if (!inside && !(a === n.at && b === n.end)) continue
+      if (n.kind === kind) found = n
+      if (inside) walk(n.children)
+    }
+  }
+  walk(parseWithLinks(s))
+  return found
+}
+
+// [a, b) widened over the markers right against it, within [lo, hi): the
+// italic round a word goes with the word when the bold round both is
+// split, rather than staying behind as a stray `*`.
+function widen(s, a, b, lo, hi) {
+  var runs = runsIn(parseWithLinks(s), [])
+  for (var moved = true; moved;) {
+    moved = false
+    for (var i = 0; i < runs.length; i++) {
+      var r = runs[i]
+      if (r.open && r.b === a && r.a >= lo && r.a < a) { a = r.a; moved = true }
+      if (!r.open && r.a === b && r.b <= hi && r.b > b) { b = r.b; moved = true }
+    }
+  }
+  return { a: a, b: b }
 }
 
 // What a deletion of [a, b) should really take.

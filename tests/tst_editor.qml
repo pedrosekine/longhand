@@ -29,6 +29,9 @@ Item {
   }
 
   SignalSpy { id: kept; target: ed; signalName: "cueDismissed" }
+  SignalSpy { id: carried; target: ed; signalName: "declineCarried" }
+  SignalSpy { id: stayed; target: ed; signalName: "privateKept" }
+  SignalSpy { id: pillClicked; target: ed; signalName: "datePillClicked" }
   // What shows of a long note: the page's Flickable, 200 px tall.
   Flickable { id: shown; x: 595; width: 5; height: 200; contentHeight: ed.height }
 
@@ -379,7 +382,10 @@ after")
       start("\na **b** c", 1 + 1)           // after the "a"
       var seen = []
       for (var i = 0; i < 4; i++) { keyClick(Qt.Key_Right); seen.push(ed.cursorPosition) }
-      compare(JSON.stringify(seen), "[5,6,9,10]")   // 3,4 and 7,8 are markers
+      // One place between two letters, right after the left one (Google
+      // Docs' rule, 2026-11-27): after the space (before the markers), after
+      // the b (before its closing markers), after the next space, the end.
+      compare(JSON.stringify(seen), "[3,6,9,10]")
       for (var j = 0; j < 4; j++) keyClick(Qt.Key_Left)
       compare(ed.cursorPosition, 2)
     }
@@ -387,9 +393,11 @@ after")
     // Shift+Right out of the words selects the word, not half a marker, so
     // the key takes the emphasis off what it drew.
     function test_selecting_the_drawn_word_then_the_key_unwraps_it() {
-      start("\na **bold** c", 1 + 4)        // before the "b"
+      start("\na **bold** c", 1 + 4)        // before the "b": outside its markers now
       for (var i = 0; i < 4; i++) keyClick(Qt.Key_Right, Qt.ShiftModifier)
-      compare(focused().selectedText, "bold")
+      compare(focused().selectedText, "**bold", "the opening markers come with it; they are drawn as nothing")
+      keyClick(Qt.Key_C, Qt.ControlModifier)
+      compare(ed.pasteText(), "bold", "copied: the word, not a stray **")
       ed.emphasise("**")
       compare(ed.text, "\na bold c")
     }
@@ -1835,6 +1843,361 @@ after")
       verify(!ed.hasSelection(), "Ctrl+Shift+A selects nothing")
       keyClick(Qt.Key_A, Qt.ControlModifier)
       verify(ed.hasSelection(), "Ctrl+A does")
+    }
+
+    // ------------------------------------------------ the editor pass, 2026-11-27
+
+    // Lines pasted into a private block carry its `> `: bare, the second
+    // line ended the block, and every line below it was the agent's to read.
+    function test_a_paste_inside_a_private_block_stays_private() {
+      start("\n> [!private]\n> one\n> two\nafter")
+      ed.copyText("A\nB\n> C")
+      ed.setCursor(ed.text.indexOf("one") + 3, true)
+      keyClick(Qt.Key_V, Qt.ControlModifier)
+      compare(ed.text, "\n> [!private]\n> oneA\n> B\n> C\n> two\nafter")
+      for (var k = 1; k <= 5; k++) verify(ed.rows[k].priv, "line " + k + " is still private")
+      verify(!ed.rows[6].priv)
+    }
+
+    // A line from outside passes a private block whole; a private line, or
+    // the block's mark, never leaves it by Alt+Up / Alt+Down.
+    function test_alt_up_down_never_break_a_private_block() {
+      stayed.clear()
+      start("\nplain\n> [!private]\n> secret\nafter", 2)
+      keyClick(Qt.Key_Down, Qt.AltModifier)
+      compare(ed.text, "\n> [!private]\n> secret\nplain\nafter")
+      compare(ed.cursorPosition, ed.text.indexOf("plain") + 1)
+      ed.setCursor(ed.text.indexOf("secret") + 1, true)
+      keyClick(Qt.Key_Down, Qt.AltModifier)
+      compare(ed.text, "\n> [!private]\n> secret\nplain\nafter", "the private line stays")
+      ed.setCursor(ed.text.indexOf("secret") + 1, true)
+      keyClick(Qt.Key_Up, Qt.AltModifier)
+      compare(ed.text, "\n> [!private]\n> secret\nplain\nafter", "above the block's mark it would be out of it")
+      compare(stayed.count, 2)
+      ed.setCursor(ed.text.indexOf("plain") + 1, true)
+      keyClick(Qt.Key_Up, Qt.AltModifier)
+      compare(ed.text, "\nplain\n> [!private]\n> secret\nafter")
+    }
+
+    // Numbers stay where they stand: the list still counts 1, 2, 3.
+    function test_alt_up_keeps_a_list_numbered() {
+      start("\n1. a\n2. b\n3. c")
+      keyClick(Qt.Key_Up, Qt.AltModifier)
+      compare(ed.text, "\n1. a\n2. c\n3. b")
+      compare(ed.cursorPosition, "\n1. a\n2. c".length, "the cursor stays after the c")
+      keyClick(Qt.Key_Up, Qt.AltModifier)
+      compare(ed.text, "\n1. c\n2. a\n3. b")
+    }
+
+    function test_deleting_a_numbered_line_numbers_on() {
+      start("\n1. a\n2. b\n3. c", 1)
+      ed.selectSpan(ed.rows[2].start, ed.rows[3].start)
+      keyClick(Qt.Key_Backspace)
+      compare(ed.text, "\n1. a\n2. c")
+    }
+
+    // Ctrl+L over lines: every one a box, then every box ticked, then open.
+    function test_ctrl_l_over_lines() {
+      start("\none\ntwo\n- [ ] three", 1)
+      ed.selectSpan(1, ed.text.length)
+      keyClick(Qt.Key_L, Qt.ControlModifier)
+      compare(ed.text, "\n- [ ] one\n- [ ] two\n- [ ] three")
+      verify(ed.spanning, "the selection stays")
+      keyClick(Qt.Key_L, Qt.ControlModifier)
+      verify(ed.rows[1].checked && ed.rows[2].checked && ed.rows[3].checked, ed.text)
+      keyClick(Qt.Key_L, Qt.ControlModifier)
+      compare(ed.text, "\n- [ ] one\n- [ ] two\n- [ ] three")
+      keyClick(Qt.Key_Z, Qt.ControlModifier)
+      verify(ed.rows[1].checked && ed.rows[3].checked, "one undo each")
+    }
+
+    // An undo step ends where the cursor jumped, and where typing turns to
+    // deleting; a long run closes at a space.
+    function test_undo_steps_end_where_the_cursor_jumped() {
+      start("\none\ntwo", 4)
+      type("ab")
+      ed.setCursor(ed.text.length, true)
+      type("cd")
+      keyClick(Qt.Key_Z, Qt.ControlModifier)
+      compare(ed.text, "\noneab\ntwo")
+      keyClick(Qt.Key_Z, Qt.ControlModifier)
+      compare(ed.text, "\none\ntwo")
+    }
+
+    function test_typing_then_deleting_is_two_steps() {
+      start("\n", 1)
+      type("abc")
+      keyClick(Qt.Key_Backspace)
+      compare(ed.text, "\nab")
+      keyClick(Qt.Key_Z, Qt.ControlModifier)
+      compare(ed.text, "\nabc")
+      keyClick(Qt.Key_Z, Qt.ControlModifier)
+      compare(ed.text, "\n")
+    }
+
+    function test_a_long_run_of_typing_closes_at_a_space() {
+      start("\n", 1)
+      type("one")
+      ed.undoRun.since = ed.undoRun.since - 4000     // as if typed for four seconds
+      type(" two")
+      keyClick(Qt.Key_Z, Qt.ControlModifier)
+      compare(ed.text, "\none")
+      keyClick(Qt.Key_Z, Qt.ControlModifier)
+      compare(ed.text, "\n")
+    }
+
+    // Up and Down keep the column they began at past a short line.
+    function test_up_and_down_keep_their_column() {
+      start("\nthe first long line\nab\nthe third long line", 1 + 10)
+      keyClick(Qt.Key_Down)
+      compare(ed.focusedRow, 2)
+      keyClick(Qt.Key_Down)
+      compare(ed.focusedRow, 3)
+      compare(Rows.columnIn(ed.rows[3], ed.cursorPosition), 10)
+      keyClick(Qt.Key_Up)
+      keyClick(Qt.Key_Up)
+      compare(Rows.columnIn(ed.rows[1], ed.cursorPosition), 10)
+      keyClick(Qt.Key_Left)                             // another key: the aim starts again, at 9
+      keyClick(Qt.Key_Down)
+      keyClick(Qt.Key_Down)
+      compare(Rows.columnIn(ed.rows[3], ed.cursorPosition), 9)
+    }
+
+    // Ctrl and the arrows step a word the same way on every line.
+    function test_ctrl_arrows_step_words_alike() {
+      start("\nfoo.bar baz\n**x** foo.bar baz", 1)
+      keyClick(Qt.Key_Right, Qt.ControlModifier)
+      compare(Rows.columnIn(ed.rows[1], ed.cursorPosition), 4)
+      ed.setCursor(ed.rows[2].start + 6, true)
+      keyClick(Qt.Key_Right, Qt.ControlModifier)
+      compare(Rows.columnIn(ed.rows[2], ed.cursorPosition), 10)
+      start("\none\ntwo", 5)
+      keyClick(Qt.Key_Left, Qt.ControlModifier)
+      compare(ed.cursorPosition, 4, "at a line's start, to the end of the one before")
+      start("\none two", 8)
+      keyClick(Qt.Key_Backspace, Qt.ControlModifier)
+      compare(ed.text, "\none ")
+    }
+
+    function test_bold_leaves_a_words_punctuation_out() {
+      start("\nsay world. now", 7)
+      ed.emphasise("**")
+      compare(ed.text, "\nsay **world**. now")
+      ed.emphasise("**")
+      compare(ed.text, "\nsay world. now")
+    }
+
+    function test_bold_inside_a_bold_phrase_takes_it_off_there() {
+      start("\n**one two three**", 9)                 // in "two"
+      ed.emphasise("**")
+      compare(ed.text, "\n**one** two **three**")
+      start("\n***word***", 6)
+      ed.emphasise("**")
+      compare(ed.text, "\n*word*", "the italic inside stays")
+    }
+
+    function test_bold_over_lines_wraps_each_line() {
+      start("\n- a\n# b", 1)
+      ed.selectSpan(1, ed.text.length)
+      ed.emphasise("**")
+      compare(ed.text, "\n- **a**\n# **b**")
+      ed.emphasise("**")
+      compare(ed.text, "\n- a\n# b")
+      keyClick(Qt.Key_Z, Qt.ControlModifier)
+      compare(ed.text, "\n- **a**\n# **b**", "one undo step")
+    }
+
+    // A click on a drawn table lands in the cell under it.
+    function test_a_click_on_a_drawn_table_lands_in_its_cell() {
+      start("\n| h1 | h2 |\n|---|---|\n| one | two |\nafter")
+      var item = ed.rowItem(3)
+      tryVerify(function () { return item.tableDrawn && item.height > ed.textSize && item.cellRect(9) !== null && item.cellRect(9).x > item.cellRect(3).x })
+      var r = item.cellRect(9)                           // in "two"
+      var p = item.mapToItem(ed, r.x + 1, r.y + r.height / 2)
+      var h = ed.hitTest(p.x, p.y)
+      compare(h.i, 3)
+      verify(h.col >= 8 && h.col <= 11, "in the cell (" + h.col + ")")
+      mouseClick(ed, p.x, p.y)
+      tryCompare(ed, "focusedRow", 3)
+      var col = Rows.columnIn(ed.rows[3], ed.cursorPosition)
+      verify(col >= 8 && col <= 11, "the cursor in \"two\" (" + col + ")")
+    }
+
+    function test_two_tables_keep_a_cache_each() {
+      start("\n| a | b |\n|---|---|\n| 1 | 2 |\n\n| c | d |\n|---|---|\n| 3 | 4 |\nafter")
+      tryVerify(function () { return Object.keys(ed.tableCache).length === 2 })
+    }
+
+    // What find matches: the words as drawn, mapped back to the text.
+    function test_drawn_words_leave_the_markers_out() {
+      start("\nread **chapter 3** and [[note|the note]]", 1)
+      var d = ed.drawnWords(1)
+      compare(d.text, "read chapter 3 and the note")
+      compare(d.at[5], 7)
+      compare(ed.drawnWords(0), null)
+    }
+
+    // An agent's file read: Enter writes nothing and makes no undo step; a
+    // box is no hand to the mouse.
+    function test_read_only_keys_write_nothing() {
+      start("\n- [ ] one\ntwo")
+      var steps = ed.undoStack.length
+      ed.readOnly = true
+      keyClick(Qt.Key_Return)
+      keyClick(Qt.Key_Tab)
+      compare(ed.text, "\n- [ ] one\ntwo")
+      compare(ed.undoStack.length, steps)
+      var b = ed.rowItem(1).box
+      var p = b.mapToItem(ed, b.width / 2, b.height / 2)
+      verify(!ed.hitTest(p.x, p.y).box, "no box to tick")
+      ed.readOnly = false
+    }
+
+    // A date kept as words stays words while the line is written on: a tag
+    // typed after it, a letter at a time, is the same line to `declined`.
+    function test_a_date_kept_as_words_stays_words() {
+      carried.clear()
+      start("\n- [ ] essay by fri")
+      ed.declined = { "- [ ] essay by fri": true }
+      type(" #th")
+      verify(carried.count >= 1, "carried")
+      compare(carried.signalArguments[carried.count - 1][1], "- [ ] essay by fri #th")
+      ed.declined = ({})
+    }
+
+    // The clock: a deadline's pill turns late without the line changing.
+    function test_a_pill_turns_late_by_the_clock() {
+      start("\n- [ ] call 📅 2099-01-01 ^d3")
+      var pill = ed.rowItem(1).pill
+      verify(!pill.late)
+      ed.now = new Date(2099, 0, 2).getTime()
+      verify(pill.late)
+      ed.now = Date.now()
+    }
+
+    // Alt and a click put the cursor on the letter clicked in a link, to
+    // edit it: the redraw that opens the link wrote the field's old place
+    // back, and the cursor landed near the link's start whatever was clicked.
+    function test_alt_click_lands_on_the_letter_in_a_link() {
+      var t = "\nsee [the label](https://example.com/long/path) here"
+      start(t, 1)
+      var f = ed.rowItem(1).field
+      // Into the link and out again, then into it at other letters: the
+      // field's cursor stayed where the first visit left it.
+      var cols = [5, 9, 12, 7]
+      for (var k = 0; k < cols.length; k++) {
+        ed.setCursor(1, true)
+        wait(Qt.styleHints.mouseDoubleClickInterval + 50)
+        var r = f.positionToRectangle(cols[k])
+        var p = f.mapToItem(ed, r.x + 1, r.y + r.height / 2)
+        mouseClick(ed, p.x, p.y, Qt.LeftButton, Qt.AltModifier)
+        var got = ed.cursorPosition - ed.rows[1].start
+        verify(got === cols[k] || got === cols[k] + 1, "on the letter clicked (" + got + ", not " + cols[k] + ")")
+        verify(ed.rowItem(1).revealLink >= 0, "the link opened to be edited")
+      }
+    }
+
+    // A day to work on a box (⏳), with no deadline, is clicked like a
+    // deadline's pill: the page asks "do on?".
+    function test_a_do_day_answers_a_click() {
+      pillClicked.clear()
+      start("\n- [ ] read ⏳ 2099-01-05\nafter")
+      compare(ed.rows[1].doDay, "2099-01-05")
+      var pill = ed.rowItem(1).pill
+      tryVerify(function () { return pill.visible && pill.width > 0 })
+      var p = pill.mapToItem(ed, pill.width / 2, pill.height / 2)
+      verify(ed.hitTest(p.x, p.y).pill, "the day takes its own click")
+      mouseMove(ed, p.x, p.y)
+      verify(ed.pillDoOnly, "a day to do it, not a deadline")
+      mouseClick(pill, pill.width / 2, pill.height / 2)
+      compare(pillClicked.count, 1)
+      compare(pillClicked.signalArguments[0][0], 1)
+      start("\n- [x] read ⏳ 2099-01-05")
+      compare(ed.rows[1].doDay, "", "a ticked box has no day to do it")
+    }
+
+    // Google Docs' rule: what is typed takes the emphasis of the letter on
+    // its left. Before a bold word it is plain, after it bold.
+    function test_typing_takes_the_emphasis_on_its_left() {
+      start("\nhello **world** today", 1 + 6)            // after "hello "
+      compare(ed.cursorPosition, 1 + 6, "the place before a bold word is outside it")
+      type("x")
+      compare(ed.text, "\nhello x**world** today")
+      start("\nhello **world** today", 1 + 13)           // after "world"
+      type("s")
+      compare(ed.text, "\nhello **worlds** today")
+    }
+
+    // A line ending in bold has one place at its end, inside; End goes
+    // there, and Left from it moves (there was a second place that looked
+    // the same, and Left seemed to do nothing).
+    function test_a_line_ending_in_bold_has_one_place_at_its_end() {
+      start("\nhello **world**", 1)
+      keyClick(Qt.Key_End)
+      compare(ed.cursorPosition, 1 + 13, "End: inside the bold")
+      keyClick(Qt.Key_Left)
+      compare(ed.cursorPosition, 1 + 12, "Left moves a letter")
+      start("\n**world** today", 1 + 2)                  // just inside the markers, before the w
+      compare(ed.cursorPosition, 1, "a line's start before bold: one place, outside")
+    }
+
+    // At a bold word's end Ctrl+B steps out of it, so what is typed next is
+    // plain; again, back in. At its start, into it. Inside a word it still
+    // takes the word.
+    function test_ctrl_b_at_a_words_edge_steps_out_or_in() {
+      start("\nhello **world**", 1 + 13)
+      ed.emphasise("**")
+      compare(ed.text, "\nhello **world**", "nothing written")
+      compare(ed.cursorPosition, 1 + 15, "past the markers")
+      type("!")
+      compare(ed.text, "\nhello **world**!")
+      start("\nhello **world** today", 1 + 13)
+      ed.emphasise("**")
+      ed.emphasise("**")
+      compare(ed.cursorPosition, 1 + 13, "again: back in")
+      start("\nhello **world** today", 1 + 6)
+      ed.emphasise("**")
+      type("big ")
+      compare(ed.text, "\nhello **big world** today", "at its start: into it")
+      start("\nhello **world** today", 1 + 10)              // in "world"
+      ed.emphasise("**")
+      compare(ed.text, "\nhello world today", "inside the word: the word")
+      start("\nsay ", 5)
+      ed.emphasise("*")
+      type("this")
+      compare(ed.text, "\nsay *this*", "at a word's edge with no emphasis: a pair to type into")
+    }
+
+    // The same for italic, struck and code.
+    function test_the_rule_holds_for_every_kind() {
+      var kinds = [["*", "italic"], ["~~", "strike"], ["`", "code"]]
+      for (var k = 0; k < kinds.length; k++) {
+        var m = kinds[k][0]
+        var t = "\nhello " + m + "world" + m + " today"
+        start(t, 1 + 6)
+        type("x")
+        compare(ed.text, "\nhello x" + m + "world" + m + " today", kinds[k][1] + ": before, outside")
+        start(t, 1 + 6 + m.length + 5)
+        type("s")
+        compare(ed.text, "\nhello " + m + "worlds" + m + " today", kinds[k][1] + ": after, inside")
+      }
+    }
+
+    // A keystroke redraws its own line, not the others; a line that changes
+    // kind with the same words (a fence opened above it) is redrawn.
+    function test_typing_redraws_only_what_changed() {
+      start("\nfirst **bold**\nsecond")
+      var other = ed.rowItem(1).field
+      var was = other.shown
+      other.shown = "untouched"
+      type("!")
+      compare(other.shown, "untouched", "the line above was not drawn again")
+      other.shown = was
+      start("\n\n**x**", 1)
+      verify(ed.rowItem(2).field.textFormat === TextEdit.RichText)
+      type("```")
+      compare(ed.rows[2].kind, "code")
+      verify(ed.rowItem(2).field.textFormat === TextEdit.PlainText, "drawn as code now")
     }
   }
 }
