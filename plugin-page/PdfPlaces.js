@@ -8,8 +8,10 @@
 //
 // `page` counts from 0, `frac` is how far down that page the top of the view
 // is (0 its top, 1 its foot), `zoom` the size over the column's width, `at`
-// when it was left. A place by page and fraction holds at another window
-// width or size, where a distance in pixels would not.
+// when it was left; `whole: true` when it was fitted by the whole page,
+// not its text (`0`, 2026-11-27: it was fitted by its text again on every
+// opening). A place by page and fraction holds at another window width or
+// size, where a distance in pixels would not.
 .pragma library
 
 // The newest this many are kept; an older one is forgotten.
@@ -45,16 +47,18 @@ function pageAt(tops, y) {
 
 function round(x) { return Math.round(x * 1000) / 1000 }
 
-// The record with `path` left at `place` ({ page, frac, zoom }) at `now`,
-// the oldest past KEEP dropped. A new object: the old one is not changed.
-// A PDF left at its very top, at its own size, needs nothing kept: its
-// entry goes.
+// The record with `path` left at `place` ({ page, frac, zoom, whole }) at
+// `now`, the oldest past KEEP dropped. A new object: the old one is not
+// changed. A PDF left at its very top, at its own size and fit, needs
+// nothing kept: its entry goes.
 function put(places, path, place, now) {
   var out = {}
   for (var k in places) if (k !== path) out[k] = places[k]
   var zoom = isFinite(place.zoom) ? round(place.zoom) : 1
-  if (!(place.page === 0 && place.frac === 0 && zoom === 1))
+  if (!(place.page === 0 && place.frac === 0 && zoom === 1 && !place.whole)) {
     out[path] = { page: place.page, frac: place.frac, zoom: zoom, at: now }
+    if (place.whole) out[path].whole = true
+  }
   var keys = Object.keys(out)
   if (keys.length > KEEP) {
     keys.sort(function (a, b) { return (out[b].at || 0) - (out[a].at || 0) })
@@ -74,5 +78,7 @@ function get(places, path, pages) {
   if (page > pages - 1) { page = pages - 1; frac = 0 }
   if (!isFinite(frac)) frac = 0
   if (!isFinite(zoom) || zoom <= 0) zoom = 1
-  return { page: page, frac: Math.max(0, Math.min(1, frac)), zoom: Math.max(0.3, Math.min(4, zoom)) }
+  var out = { page: page, frac: Math.max(0, Math.min(1, frac)), zoom: Math.max(0.3, Math.min(4, zoom)) }
+  if (p.whole === true) out.whole = true
+  return out
 }

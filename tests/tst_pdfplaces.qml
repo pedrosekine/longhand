@@ -51,6 +51,14 @@ TestCase {
     compare(Places.get(r, "a.pdf", 2), { page: 0, frac: 0, zoom: 1.44 })
   }
 
+  function test_the_whole_page_fit_is_kept() {
+    // At the top at its own size, but fitted by the whole page: kept.
+    var r = Places.put({}, "a.pdf", { page: 0, frac: 0, zoom: 1, whole: true }, 100)
+    compare(Places.get(r, "a.pdf", 2), { page: 0, frac: 0, zoom: 1, whole: true })
+    r = Places.put(r, "a.pdf", { page: 0, frac: 0, zoom: 1 }, 200)
+    compare(Object.keys(r), [], "fitted by its text again: nothing to keep")
+  }
+
   function test_a_changed_pdf() {
     var r = { "a.pdf": { page: 8, frac: 0.6, zoom: 1, at: 1 } }
     compare(Places.get(r, "a.pdf", 4), { page: 3, frac: 0, zoom: 1 })   // fewer pages now: the last

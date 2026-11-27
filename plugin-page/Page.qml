@@ -242,6 +242,10 @@ Item {
     if (/\.pdf$/i.test(rel)) {
       root.remember()
       root.openPdf(rel)
+      // [[paper.pdf#page=12|p. 12]], as every mark in a reading note links
+      // its page: opened there (2026-11-27: the page was left out).
+      var pm = /^page=(\d+)$/.exec(l.heading)
+      if (pm) pdfPane.pageAfter = { page: parseInt(pm[1]) - 1, y: 0 }
       return
     }
     if (!/\.md$/i.test(rel)) { Qt.openUrlExternally(Links.fileUrl(svc.config.vault + "/" + rel)); return }
@@ -4933,7 +4937,9 @@ Item {
     }
     if (/\.pdf$/i.test(path)) {
       root.openPdf(path)
-      if (line > 0) Qt.callLater(function () { pdfPane.jumpTo(line - 1, 0) })
+      // Kept until it is open and fitted (2026-11-27: a PDF not open yet
+      // dropped the jump, its pages not read by the next moment).
+      if (line > 0) pdfPane.pageAfter = { page: line - 1, y: 0 }
       return
     }
     Qt.openUrlExternally(Links.fileUrl(svc.config.vault + "/" + path))

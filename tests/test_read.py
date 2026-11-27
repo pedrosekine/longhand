@@ -53,6 +53,91 @@ def pdf(path: pathlib.Path, pages: list[list[str]], lead: int = 14) -> None:
     path.write_bytes(bytes(out))
 
 
+def pdf_spots(path: pathlib.Path, pages: list[tuple[float, float, list[tuple[float, float, str]]]]) -> None:
+    """A PDF whose pages are each (width, height, [(x, y from the top, words)]):
+    two columns, a landscape page among portrait ones."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    kids = " ".join(f"{4 + 2 * i} 0 R" for i in range(len(pages)))
+    objs = [b"<< /Type /Catalog /Pages 2 0 R >>",
+            f"<< /Type /Pages /Kids [{kids}] /Count {len(pages)} >>".encode(),
+            b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"]
+    for i, (w, h, spots) in enumerate(pages):
+        body = " ".join(f"BT /F1 11 Tf {x} {h - y - 11} Td ({t}) Tj ET" for x, y, t in spots)
+        stream = body.encode("latin-1")
+        objs.append(f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {w} {h}] /Contents {5 + 2 * i} 0 R "
+                    "/Resources << /Font << /F1 3 0 R >> >> >>".encode())
+        objs.append(b"<< /Length %d >>\nstream\n" % len(stream) + stream + b"\nendstream")
+    out = bytearray(b"%PDF-1.4\n")
+    offs = []
+    for i, o in enumerate(objs, 1):
+        offs.append(len(out))
+        out += b"%d 0 obj\n" % i + o + b"\nendobj\n"
+    xref = len(out)
+    out += b"xref\n0 %d\n0000000000 65535 f \n" % (len(objs) + 1)
+    out += b"".join(b"%010d 00000 n \n" % o for o in offs)
+    out += b"trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % (len(objs) + 1, xref)
+    path.write_bytes(bytes(out))
+
+
+def pass_2026_11_27(vault: pathlib.Path, run) -> None:
+    """The PDF pass (2026-11-27): a mark brought back, a column told apart,
+    a quote before a mark, marks found as written, a landscape page."""
+    paper = "lit/Undo.pdf"
+    pdf(vault / paper, [["Retrieval practice works.", "Spacing helps too.", "Retrieval practice again."]])
+    s = run("mark", "--pdf", paper, "--page", "1", "--text", "Spacing helps", "--day", "2026-11-27")
+    s = run("note", "--pdf", paper, "--id", "h1", "--text", "first line\nsecond line")
+    gone = next(x for x in s["marks"] if x["id"] == "h1")
+    note = vault / s["note"]
+    line = note.read_text().split("\n")[gone["line"] - 1]
+    check(line.startswith(">") and "Spacing helps" in note.read_text().split("\n")[gone["line"] - 1 + (0 if "Spacing" in line else 1)],
+          f"state says the line a mark's block starts on, for its note to be opened there ({gone['line']}: {line!r})")
+    run("remove", "--pdf", paper, "--id", "h1")
+    s = run("mark", "--pdf", paper, "--page", "1", "--text", gone["text"], "--kind", "h", "--day", gone["day"],
+            "--id", "h1", "--note", gone["note"])
+    back = next((x for x in s["marks"] if x["id"] == "h1"), None)
+    check(back is not None and back["note"] == "first line\nsecond line" and back["placed"] and back["day"] == "2026-11-27",
+          f"a mark brought back keeps its name, day and note ({back})")
+    s = run("mark", "--pdf", paper, "--page", "1", "--text", "practice works", "--id", "h1")
+    check(sorted(x["id"] for x in s["marks"]) == ["h1", "h2"], "…a name already taken is not given twice")
+
+    # Two columns, the same words at the same height: the one by the selection.
+    cols = "lit/Columns.pdf"
+    pdf_spots(vault / cols, [(612, 792, [(72, 100, "we tested the bikes"), (330, 100, "we tested the bikes")])])
+    s = run("mark", "--pdf", cols, "--page", "1", "--text", "tested the bikes", "--y", "100", "--x", "350")
+    r = s["marks"][0]["boxes"][0]["rects"][0]
+    check(r[0] > 300, f"the same words in two columns: the one in the column selected ({r})")
+    s = run("mark", "--pdf", cols, "--page", "1", "--text", "tested the bikes", "--y", "100", "--x", "80")
+    r = next(x for x in s["marks"] if x["id"] == "h2")["boxes"][0]["rects"][0]
+    check(r[0] < 200, f"…and the left one by a selection there ({r})")
+
+    # A closing quote in the words before a mark: kept out, and an old line
+    # with one in it still read.
+    q = "lit/Quoted.pdf"
+    pdf_spots(vault / q, [(612, 792, [(72, 100, "the result held"), (72, 130, "he said stop\272 the result held")])])
+    s = run("mark", "--pdf", q, "--page", "1", "--text", "the result held", "--y", "130")
+    text = (vault / s["note"]).read_text()
+    check(s["marks"][0]["placed"] and "after “he said stop”" in text and "stop”” ^" not in text,
+          f"the words before a mark keep no quote of their own ({text.splitlines()[-1]!r})")
+    (vault / s["note"]).write_text(text.replace("after “he said stop”", "after “he said stop” ”"))
+    s = run("state", "--pdf", q)
+    check(len(s["marks"]) == 1 and s["marks"][0]["id"] == "h1", f"…and a line with one in it is still read ({s['marks']})")
+
+    # Words that are mostly marks: found as written.
+    code = "lit/Code.pdf"
+    pdf(vault / code, [["Written in C++ and C#, not c."]])
+    f = run("search", "--pdf", code, "--text", "c++")
+    check(f["total"] == 1 and f["hits"][0]["match"] == "C++", f"search: C++ is found as written ({f})")
+    check(run("search", "--pdf", code, "--text", "C#")["total"] == 1, "…and C#")
+
+    # A landscape page among portrait ones: the text is fitted by the others.
+    wide = "lit/Wide.pdf"
+    words = " ".join(["word"] * 8)
+    portrait = (612, 792, [(72, 100 + 14 * i, words) for i in range(10)])
+    pdf_spots(vault / wide, [portrait, (1000, 612, [(60, 100 + 14 * i, words + " " + words + " far right edge") for i in range(10)]), portrait])
+    sp = run("state", "--pdf", wide)["span"]
+    check(sp and sp["w"] == 612 and sp["x1"] < 612, f"…a landscape page's text never widens the portrait ones' span ({sp})")
+
+
 def main() -> int:
     tmp = pathlib.Path(tempfile.mkdtemp(prefix="longhand-read-"))
     vault = tmp / "vault"
@@ -342,6 +427,7 @@ def main() -> int:
     r = run("state", "--pdf", "lit/missing.pdf", ok=False)
     check(r.returncode != 0 and "no PDF" in r.stderr, "a PDF that is not there is refused")
 
+    pass_2026_11_27(vault, run)
     held(tmp, env, run)
     moves()
     print("PASS" if failures == 0 else f"{failures} FAILED")

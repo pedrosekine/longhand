@@ -250,7 +250,10 @@ BorderSurface {
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onClicked: { page.paper.filter = parent.modelData.f; page.paper.at = 0; paperKeys.forceActiveFocus() }
+            // As its key: the list from the paper as a whole (it was the
+            // first row, the PDF not shown it, and past the end of a list
+            // narrowed to none: 2026-11-27).
+            onClicked: { page.paper.filter = parent.modelData.f; page.paper.at = -1; paperKeys.forceActiveFocus() }
           }
         }
       }
@@ -287,7 +290,7 @@ BorderSurface {
           textFormat: Text.PlainText
           wrapMode: Text.WordWrap
           text: "ask about it as a whole: a summary, its main ideas, anything"
-            + (page.noteTalkTurns > 0 ? " · " + Math.floor(page.noteTalkTurns / 2) + (page.noteTalkTurns > 3 ? " answers" : " answer") + " so far" : "")
+            + (page.paper.answers > 0 ? " · " + page.paper.answers + (page.paper.answers === 1 ? " answer" : " answers") + " so far" : "")
           color: page.faint
           font.family: page.fontFamily
           font.styleName: page.fontStyle
@@ -317,6 +320,16 @@ BorderSurface {
       boundsBehavior: Flickable.StopAtBounds
       highlightFollowsCurrentItem: false
       onCurrentIndexChanged: positionViewAtIndex(currentIndex, ListView.Contain)
+      // A mark picked in the PDF: its row brought into view, lit (2026-11-27:
+      // lit, it could be twenty rows out of sight).
+      Connections {
+        target: page.pdfItem
+        function onPickedChanged() {
+          var id = page.pdfItem.picked, rows = page.paper.rows
+          for (var i = 0; id !== "" && i < rows.length; i++)
+            if (rows[i].id === id) { paperListView.positionViewAtIndex(i, ListView.Contain); return }
+        }
+      }
       delegate: Rectangle {
         id: markRow
         required property var modelData

@@ -219,8 +219,10 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 |---|---|---|
 | Scroll down | `↓` · `j` | in a PDF |
 | Scroll up | `↑` · `k` | in a PDF |
-| The next page | `PgDn` · `Space` | in a PDF |
-| The page before | `PgUp` · `Shift+Space` | in a PDF |
+| Sideways, when sized up past the fit (or on a page wider than the others) | `←` · `h` | in a PDF |
+| Sideways the other way | `→` · `l` | in a PDF |
+| The next page; a page taller than the view, a view at a time | `PgDn` · `Space` | in a PDF |
+| The page before (a view, on a tall page) | `PgUp` · `Shift+Space` | in a PDF |
 | The first page | `Home` | in a PDF |
 | The last page | `End` | in a PDF |
 | Jump to a page number | `g` | in a PDF |
@@ -235,6 +237,7 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | Mark the words selected as a question; on a mark clicked, make it one | `q` | in a PDF |
 | A note under the mark clicked, else the last one made | `n` | in a PDF |
 | Remove the mark clicked, and its note | `x` · `Del` · `Backspace` | in a PDF |
+| Bring back the mark just removed, with its note and name | `u` · `Ctrl+Z` | in a PDF |
 | The paper's acronyms: each underlined on the pages, and a list to find one by its letters or words | `a` | in a PDF |
 | On what is under the pointer (or the mark clicked): an acronym, to where the paper spells it out (back: the back key); a question, its answer in the paper's chat; else (a highlight, a question not asked) the paper's chat with it attached | `Enter` | in a PDF |
 | Let go of the mark clicked (a click on the page away from it does too) or the words selected; then close it, back to the note | `Esc` | in a PDF |

@@ -43,6 +43,12 @@ Item {
   property bool live: false
   property bool dark: false
   property color paperColor: "white"
+  // A hairline round each page, so its edge shows on a ground as light.
+  property color edgeColor: "transparent"
+  // The words selected, painted in the page's colour (the theme's).
+  property color selectionColor: style.selectionColor
+  // Words that can be selected: a text cursor over the pages (none over a scan).
+  property bool textual: true
   property Component darkEffect: null
   // A layer over each page drawn (the pane's marks): given `index`.
   property Component overlay: null
@@ -50,6 +56,10 @@ Item {
   readonly property real gap: 6
   readonly property alias flick: flick
   readonly property bool pinching: pinch.active
+  readonly property bool gliding: glide.running
+  // A drag over the words, under way: the pane keeps its pill and tips
+  // for when it is done.
+  property bool selecting: false
   signal selectionMade(string text)
   signal linkTapped(var link)
   signal pinched()
@@ -67,6 +77,17 @@ Item {
     for (var i = 0; i < pages.sizes.length; i++) m = Math.max(m, pages.sizes[i].width)
     return m
   }
+  // The width most pages have: a landscape table's page, or a cover, is
+  // not the paper's (2026-11-27).
+  readonly property real usualWidth: {
+    var n = {}, best = 0, bestN = 0
+    for (var i = 0; i < pages.sizes.length; i++) {
+      var w = Math.round(pages.sizes[i].width)
+      n[w] = (n[w] || 0) + 1
+      if (n[w] > bestN) { best = w; bestN = n[w] }
+    }
+    return best
+  }
   readonly property var heights: pages.sizes.map(function (z) { return z.height * pages.renderScale })
   readonly property var tops: Places.tops(pages.heights, pages.gap)
   readonly property real total: pages.tops.length ? pages.tops[pages.tops.length - 1] + pages.heights[pages.heights.length - 1] : 0
@@ -83,6 +104,8 @@ Item {
   onTopsChanged: pages.updateRange()
   // The page across the view's middle: the one being read.
   readonly property int currentPage: Math.max(0, Places.pageAt(pages.tops, flick.contentY + flick.height / 2))
+  // From a wide page to the others: centred again, unless sized up.
+  onCurrentPageChanged: Qt.callLater(pages.settleX)
 
   PdfStyle { id: style }
 
@@ -102,7 +125,15 @@ Item {
   function pageX(i) { return (flick.contentWidth - pages.sizes[i].width * pages.renderScale) / 2 }
   function clampY(y) { return Math.max(0, Math.min(Math.max(0, flick.contentHeight - flick.height), y)) }
   function clampX(x) { return Math.max(0, Math.min(Math.max(0, flick.contentWidth - flick.width), x)) }
-  function canSideways() { return pages.renderScale > pages.sidewaysScale && flick.contentWidth - flick.width > pages.slack }
+  // Sized up past the fit; or fitted, on a page wider than the paper's
+  // others (a landscape table), which is otherwise cut at both sides with
+  // no way to see them (2026-11-27).
+  function canSideways() {
+    if (flick.contentWidth - flick.width <= pages.slack) return false
+    if (pages.renderScale > pages.sidewaysScale) return true
+    var z = pages.sizes[pages.currentPage]
+    return !!z && z.width > pages.usualWidth * 1.05 && z.width * pages.renderScale - flick.width > pages.slack
+  }
   function centre() { flick.contentX = Math.max(0, (flick.contentWidth - flick.width) / 2) }
   // After a change of width: centred, unless it may be moved sideways.
   function settleX() {
@@ -141,6 +172,15 @@ Item {
   function scrollBy(dy) {
     pages.stop()
     flick.contentY = pages.clampY(flick.contentY + dy)
+  }
+  // A glide to `y` in the scroller's pixels (a view down, Space).
+  function glideTo(y) {
+    pages.stop()
+    var to = pages.clampY(y)
+    if (Math.abs(to - flick.contentY) < 1) return
+    glide.from = flick.contentY
+    glide.to = to
+    glide.start()
   }
   function stop() {
     glide.stop()
@@ -239,12 +279,14 @@ Item {
   // A mouse drag still never moves them (`acceptedButtons`): it selects.
   // Ctrl and Shift with the wheel are the pane's (`modifiedWheel`: its
   // size, sideways), taken over the pages before the Flickable sees them.
-  signal modifiedWheel(var ev)
+  // `at`: the pointer, in the view's pixels (Ctrl and the wheel size
+  // about it).
+  signal modifiedWheel(var ev, var at)
   Item {
     anchors.fill: flick
     z: 1
-    WheelHandler { target: null; acceptedModifiers: Qt.ControlModifier; onWheel: function (ev) { pages.modifiedWheel(ev) } }
-    WheelHandler { target: null; acceptedModifiers: Qt.ShiftModifier; onWheel: function (ev) { pages.modifiedWheel(ev) } }
+    WheelHandler { id: ctrlWheel; target: null; acceptedModifiers: Qt.ControlModifier; onWheel: function (ev) { pages.modifiedWheel(ev, ctrlWheel.point.position) } }
+    WheelHandler { id: shiftWheel; target: null; acceptedModifiers: Qt.ShiftModifier; onWheel: function (ev) { pages.modifiedWheel(ev, shiftWheel.point.position) } }
   }
 
   Flickable {
@@ -278,6 +320,8 @@ Item {
         width: pts.width * pages.renderScale
         height: pts.height * pages.renderScale
         color: pages.paperColor
+        // Behind the page (z below its own): one pixel showing round it.
+        Rectangle { z: -1; anchors.fill: parent; anchors.margins: -1; color: pages.edgeColor }
         Loader {
           id: load
           anchors.fill: parent
@@ -307,7 +351,7 @@ Item {
               anchors.fill: parent
               ShapePath {
                 strokeWidth: -1
-                fillColor: style.selectionColor
+                fillColor: pages.selectionColor
                 scale: Qt.size(pages.renderScale, pages.renderScale)
                 PathMultiline { paths: selection.geometry }
               }
@@ -319,8 +363,11 @@ Item {
               id: drag
               target: null
               acceptedDevices: PointerDevice.Mouse | PointerDevice.Stylus | PointerDevice.TouchPad
-              onActiveChanged: if (active) pages.clearSelection(sheet)
+              onActiveChanged: { pages.selecting = active; if (active) pages.clearSelection(sheet) }
             }
+            // Over the words, the text cursor: what a drag does here. A
+            // mark's or a link's hand is over it (theirs are above).
+            HoverHandler { cursorShape: pages.textual ? Qt.IBeamCursor : Qt.ArrowCursor }
             TapHandler {
               id: tap
               acceptedDevices: PointerDevice.Mouse | PointerDevice.Stylus | PointerDevice.TouchPad
@@ -356,7 +403,10 @@ Item {
             }
             // Let go of with its page: words selected on a page scrolled
             // far away are no longer selected.
-            Component.onDestruction: if (selection.text !== "" && pages.selectedText === selection.text) pages.selectedText = ""
+            Component.onDestruction: {
+              if (selection.text !== "" && pages.selectedText === selection.text) pages.selectedText = ""
+              if (drag.active) pages.selecting = false
+            }
           }
         }
       }
