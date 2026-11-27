@@ -1261,8 +1261,11 @@ def checks() -> int:
         # to click, then the saved dot; the agent's status only while it
         # has one.
         hw = lambda: json.loads(p.call("headerWords"))
-        check(p.wait(lambda: hw()[-4:] == ["pin", "private", "chat", "●"] or hw()[-6:-2] == ["pin", "private", "chat", "|"]),
-              f"the header reads pin, private, chat, the saved dot ({hw()})")
+        # In the window there is no other shape to offer: no "window", no
+        # "pin" (2026-11-27, the shape pass).
+        check(p.wait(lambda: hw()[-3:] == ["private", "chat", "●"] or hw()[-5:-2] == ["private", "chat", "|"]),
+              f"the header reads private, chat, the saved dot ({hw()})")
+        check("pin" not in hw() and "window" not in hw(), f"…and in the window, no word for the shape ({hw()})")
         # "chat" clicked does what Ctrl+Enter does: the block's chat opens
         # and the keys are in its box, not back in the note.
         p.call("cursorEnd")
@@ -3606,18 +3609,29 @@ def checks() -> int:
             p.call("pageKey", KEY_3, CTRL)
             check(p.wait(against, 2), f"…the panes inside its margin, the note between them ({p.call('sides')})")
             p.call("closePanes")
+            hw = lambda: json.loads(p.call("headerWords"))
+            check(p.wait(lambda: "window" in hw(), 2), f"the overlay's header offers \"window\" ({hw()})")
             check(p.call("pageKey", KEY_F11, 0) == "true" and p.wait(lambda: shape()["window"] and not shape()["overlay"], 3),
                   f"F11: from the overlay to the window ({shape()})")
+            # In the window F11 is full screen, the compositor's: the window
+            # stays a window and the overlay does not come back (2026-11-27).
             p.call("pageKey", KEY_F11, 0)
-            check(p.wait(lambda: shape()["overlay"] and not shape()["window"], 3), f"…F11 again: the overlay, the window closed ({shape()})")
+            time.sleep(0.5)
+            check(shape()["window"] and not shape()["overlay"], f"…F11 in the window: still the window, not the overlay ({shape()})")
+            p.call("pageKey", KEY_F11, 0)
+            time.sleep(0.5)
+            # The window in front with the keys: the overlay's key leaves it be.
+            if shape()["active"]:
+                p.call("summon", "{}")
+                time.sleep(0.3)
+                check(shape()["window"] and not shape()["overlay"],
+                      f"the overlay asked for over the window in front: the window stays ({shape()})")
+            p.call("closeAll")
+            p.call("summon", "{}")
+            check(p.wait(lambda: shape()["overlay"], 3), f"{{}} again: the overlay ({shape()})")
             p.call("summon", '{"shape":"alongside"}')
             check(p.wait(lambda: shape()["window"] and not shape()["overlay"], 3),
                   f"the window asked for takes the sheet back from the overlay ({shape()})")
-            p.call("summon", "{}")
-            p.wait(lambda: shape()["overlay"], 3)
-            check(p.call("pageKey", KEY_ESC, 0) == "true" and p.wait(lambda: not shape()["overlay"], 3),
-                  f"Esc in the note closes the overlay ({shape()})")
-            check(shape()["window"], "…and the window under it stays")
         else:
             print("skip the overlay: python3 tests/page/run.py --overlay")
 

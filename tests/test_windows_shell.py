@@ -334,6 +334,20 @@ def inside(app):
         loop_until(app, lambda: QGuiApplication_focus() is w, 2.0)
         check(w.windowStates() == before and QGuiApplication_focus() is w,
               f"the page's window, in the taskbar, comes back {label}, with the keys ({w.windowStates()})")
+    # F11 in the window (Page.qml fillScreen, 2026-11-27): Windows' full
+    # screen, and back to what it was — maximized under it, maximized again.
+    fill = 'hl.dispatch(hl.dsp.window.fullscreen({ mode = "fullscreen", action = "toggle", window = "title:^Page — today\'s note$" }))'
+    for before, label in ((WS.WindowNoState, "at its size"), (WS.WindowMaximized, "maximized")):
+        w.setWindowStates(before)
+        app.processEvents()
+        code, _out, _err = compositor.hyprctl(["eval", fill])
+        loop_until(app, lambda: bool(w.windowStates() & WS.WindowFullScreen), 1.0)
+        full = bool(w.windowStates() & WS.WindowFullScreen)
+        compositor.hyprctl(["eval", fill])
+        loop_until(app, lambda: w.windowStates() == before, 1.0)
+        check(code == 0 and full and w.windowStates() == before,
+              f"F11 in the page's window: full screen, and back {label} ({w.windowStates()})")
+    check(not compositor.fill_screen(None), "no such window: nothing to fill the screen with")
     w.setWindowStates(WS.WindowNoState)
     app.processEvents()
     check(not compositor.come_forward(None), "no such window: nothing to bring forward")
@@ -576,6 +590,11 @@ def places_and_icon(tmp):
     check(kept.get("screen") in [s.name() for s in QGuiApplication.screens()],
           f"…with the screen it is on, for the window to be put there first ({kept.get('screen')!r})")
     check(host.workArea().get("screen") == host.screenHere(), "the room by the clock names its screen")
+    check(kept.get("maximized") is False, "…not maximized, as it was left")
+    host.keepPlace("maxed", {"x": 10, "y": 20, "width": 700, "height": 800, "maximized": True})
+    maxed = host.savedPlace("maxed") or {}
+    check(maxed.get("maximized") is True and maxed.get("width") == 700,
+          f"left maximized: it opens maximized again, its own size kept to come back to ({maxed})")
     host.keepPlace("gone", {"x": 90000, "y": 90000, "width": 700, "height": 800})
     check(host.savedPlace("gone") is None, "a place no screen has any more is not given back")
     check(host.savedPlace("never") is None, "a window never placed has no place")

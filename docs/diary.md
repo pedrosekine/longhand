@@ -1660,3 +1660,24 @@ only the window and the panels around it differ.
   pinning keeps the keys or settings sheet open and raises the window.
   `Page.qml` (`headerRight`, `chatClicked`, `openUnread`, `togglePrivate`,
   `togglePin`).
+- **2026-11-27: the shape pass. The overlay is quick capture, the window is
+  where work stays.** "pin" meant the reverse of what it means everywhere
+  else: lit in the window and dim over everything, and clicked in the
+  window it closed the window and put up the overlay, which on Windows
+  left the taskbar and Alt+Tab. F11 did the same, so pressing it twice in
+  a tiled window lost the tile, and a Snap on Windows. The two shapes are
+  not equals, so they no longer flip both ways. On the overlay, the
+  header's word is "window" (F11, Ctrl+Alt+P): the sheet is kept as a
+  window. In the window there is no word, and F11 is full screen and back,
+  the compositor's (Hyprland's `window.fullscreen`; Windows' through
+  `windows/compositor.py`, maximized coming back maximized). The overlay
+  asked for while the window is in front with the keys leaves the window
+  be and says F11 fills the screen, instead of a larger copy over an
+  emptied window. On the overlay, a click between two cards goes back to
+  writing instead of closing everything, and the cards have a quiet
+  hairline, so the focus frame is the one lit edge. The agent's pane keeps
+  its widths for the overlay apart from the window's. On Windows the
+  window opens at 1100 px (the note and a pane fit), on the screen the
+  pointer is on when shown again from another, and maximized if it was
+  left so. `Page.qml` (`togglePin`, `fillScreen`, `amongCards`,
+  `cardSpec`, `open`), `FloatingWindow.qml`, `compositor.py`.

@@ -127,11 +127,13 @@ var actions = [
   { id: "paneFlip", group: "page", places: ["any"], does: "The agent's pane: reading (the middle wide) ↔ discussing (the chat wide); each remembers where you left it", keys: ["Alt+Z"] },
   { id: "paneWider", group: "page", places: ["any"], does: "The agent's pane wider, about 100 px (a drag on its edge too)", keys: ["Alt+Shift+Left"] },
   { id: "paneNarrower", group: "page", places: ["any"], does: "The agent's pane narrower, about 100 px", keys: ["Alt+Shift+Right"] },
-  // F11 is every app's full-screen key, and the overlay is the full-screen
-  // shape; Ctrl+Alt+P for keyboards whose F-row wants Fn. Ctrl+P was left
-  // free on 2026-10-16; since 2026-10-27 it makes a block private (the
-  // student's choice), Ctrl+Shift+P the whole note.
-  { id: "pin", group: "page", places: ["any"], does: "Flip between overlay and window", keys: ["F11", "Ctrl+Alt+P"] },
+  // F11 is every app's full-screen key: on the overlay it keeps the sheet
+  // as a window, in the window it fills the screen (2026-11-27, the shape
+  // pass; it flipped the window back into the overlay before). Ctrl+Alt+P
+  // for keyboards whose F-row wants Fn. Ctrl+P was left free on 2026-10-16;
+  // since 2026-10-27 it makes a block private (the student's choice),
+  // Ctrl+Shift+P the whole note. The id is still "pin", for keys.json.
+  { id: "pin", group: "page", places: ["any"], does: "On the overlay: keep it as a window. In the window: full screen and back", keys: ["F11", "Ctrl+Alt+P"] },
   // Where you are, as a path to hand to an agent outside the page
   // (2026-11-03, Where.js): Ctrl+C's Shift, as terminals copy with it.
   { id: "copyPath", group: "page", places: ["any"], does: "Copy the path of what you are on (in a note, with the line), to give to an agent", keys: ["Ctrl+Shift+C"] },

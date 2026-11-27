@@ -23,7 +23,7 @@ BorderSurface {
   height: page.alongside ? content.height : content.height - page.sheetMargin * 2
   radius: page.alongside ? 0 : page.overlayRadius
   color: page.background
-  borderSpec: page.alongside ? Border.none() : page.borderSpec
+  borderSpec: page.cardSpec
   padding: page.sheetPadding
 
   Item {

@@ -33,7 +33,7 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | The agent's pane: reading (the middle wide) ↔ discussing (the chat wide); each remembers where you left it | `Alt+Z` | everywhere |
 | The agent's pane wider, about 100 px (a drag on its edge too) | `Alt+Shift+←` | everywhere |
 | The agent's pane narrower, about 100 px | `Alt+Shift+→` | everywhere |
-| Flip between overlay and window | `F11` · `Ctrl+Alt+P` | everywhere |
+| On the overlay: keep it as a window. In the window: full screen and back | `F11` · `Ctrl+Alt+P` | everywhere |
 | Copy the path of what you are on (in a note, with the line), to give to an agent | `Ctrl+Shift+C` | everywhere |
 | Save now, and say so (the page also saves as you write) | `Ctrl+S` | everywhere |
 | The menu a right-click opens, at the cursor or on the row | `Shift+F10` · `Menu` | in the note, in the dashboard |

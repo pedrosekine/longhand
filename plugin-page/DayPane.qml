@@ -136,7 +136,7 @@ BorderSurface {
   width: besideDash ? page.talkWidth : page.marginWidth
   radius: page.alongside ? 0 : page.overlayRadius
   color: page.background
-  borderSpec: page.alongside ? Border.none() : page.borderSpec
+  borderSpec: page.cardSpec
   padding: page.sp(22)
 
   MouseArea { anchors.fill: parent; onClicked: page.dayKeysItem().forceActiveFocus() }

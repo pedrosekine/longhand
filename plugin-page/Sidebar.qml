@@ -53,7 +53,7 @@ BorderSurface {
   // the accent over it.
   color: page.sidebarSpace === "files" ? Qt.tint(page.background, Qt.rgba(page.accent.r, page.accent.g, page.accent.b, 0.06)) : page.background
   Behavior on color { ColorAnimation { duration: 240 } }
-  borderSpec: page.alongside ? Border.none() : page.borderSpec
+  borderSpec: page.cardSpec
   padding: page.sp(16)
 
   // A space slides in from the side it was called from, as Zen's do.
