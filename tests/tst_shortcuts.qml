@@ -260,5 +260,48 @@ TestCase {
     // Nothing global takes a key of the switcher's box or the lists'.
     verify(Sc.check("switcher", "Ctrl+O").ok)
     compare(Sc.check("projectKey", "Alt+7").taken, [])
+    // Moving projectKey moves all nine digits (1..9) together, and rejects
+    // non-digits so the handler's `key - Key_0` never breaks.
+    verify(!Sc.check("projectKey", "Ctrl+Shift+P").ok)
+    verify(!Sc.check("projectKey", "Ctrl+Alt+0").ok)
+    verify(Sc.check("projectKey", "Ctrl+Alt+5").ok)
+    var collide = Sc.check("projectKey", "Ctrl+5")
+    verify(collide.ok)
+    verify(collide.taken.indexOf("pane1") >= 0 && collide.taken.indexOf("pane2") >= 0)
+    Sc.assign("projectKey", "Ctrl+Alt+5")
+    verify(Sc.hit(ev(Qt.Key_7, Qt.ControlModifier | Qt.AltModifier), "projectKey"))
+    verify(!Sc.hit(ev(Qt.Key_7, Qt.AltModifier), "projectKey"))
+    var prow = Sc.rows("first second project").filter(function (r) { return r.id === "projectKey" })[0]
+    compare(prow.keys.join(","), "Ctrl+Alt+1…9")
+    compare(prow.own.join(","), "Alt+1…9")
+    verify(Sc.rows("ctrl+alt+7").some(function (r) { return r.id === "projectKey" }))
+    Sc.reset("projectKey")
+    compare(Sc.rows("first second project").filter(function (r) { return r.id === "projectKey" })[0].keys.join(","), "Alt+1…9")
+  }
+
+  function test_clear_count_and_search() {
+    Sc.assign("bold", "Ctrl+Shift+K")
+    Sc.clear("italic")
+    compare(Sc.keysOf("italic").length, 0)
+    verify(Sc.isChanged("italic"))
+    compare(Sc.countChanged(null), 2)
+    var outside = { owned: true, actions: [{ id: "pomoToggle", does: "Pomo toggle", keys: ["Alt+Super+K"], own: ["Alt+Super+P"] }] }
+    compare(Sc.countChanged(outside), 3)
+    compare(Sc.countChanged({ owned: false, actions: outside.actions }), 2)
+    // Multi-word, accent-insensitive, and state-word search.
+    verify(Sc.rows("sidebar close").some(function (r) { return r.id === "sidebar" }))
+    verify(Sc.rows("bóld").some(function (r) { return r.id === "bold" }))
+    var moved = Sc.rows("moved", outside)
+    verify(moved.some(function (r) { return r.id === "bold" }))
+    verify(moved.some(function (r) { return r.id === "italic" }))
+    verify(moved.some(function (r) { return r.id === "hypr:pomoToggle" }))
+    var bare = Sc.rows("no key", outside)
+    verify(bare.some(function (r) { return r.id === "italic" }))
+    verify(!bare.some(function (r) { return r.id === "bold" }))
+    // Mention and date-cue typing keeps cursor and deletion keys intact.
+    verify(!Sc.check("mentionDown", "Left").ok)
+    verify(!Sc.check("mentionDown", "Backspace").ok)
+    verify(!Sc.check("cueNext", "Right").ok)
+    verify(!Sc.check("cueNext", "Del").ok)
   }
 }

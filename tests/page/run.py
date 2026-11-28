@@ -3470,11 +3470,43 @@ def checks() -> int:
         p.call("keysKey", KEY_DELETE, 0)
         check(keys_of("bold") == ["Ctrl+B"], "Del gives bold its own key back")
         check(p.wait(lambda: json.loads(keysjson.read_text()) == {"italic": ["Ctrl+Shift+K"]}), "…and the file follows")
+        # Shift+Del clears a key to none; Ctrl+Z undoes it right back.
+        p.call("keysKey", KEY_DELETE, SHIFT)
+        check(keys_of("bold") == [], "Shift+Del clears a key to none")
+        p.call("keysKey", KEY_Z, CTRL)
+        check(keys_of("bold") == ["Ctrl+B"], "Ctrl+Z undoes the last key change")
+        # Del with the cursor inside the filter box edits the filter instead of resetting the row.
+        p.call("keysFieldSet", "italic", 2)
+        check(p.call("keysKey", KEY_DELETE, 0) == "false" and keys_of("italic") == ["Ctrl+Shift+K"],
+              "Del mid-filter leaves the row alone so the filter can forward-delete")
+        p.call("keysFieldSet", "italic", 6)
+        check(p.call("keysKey", KEY_DELETE, 0) == "true" and keys_of("italic") == ["Ctrl+I"],
+              "…at the filter's end, Del resets the row")
+        # Clear filter, test PgDn / End / Home and mouse click-to-select + fixed stops listening.
+        p.call("keysFieldSet", "", 0)
+        p.call("keysKey", 0x01000017, 0)   # PgDn
+        mid = json.loads(p.call("keysFocus"))
+        p.call("keysKey", 0x01000011, 0)   # End
+        end_row = json.loads(p.call("keysFocus"))
+        p.call("keysKey", 0x01000010, 0)   # Home
+        top_row = json.loads(p.call("keysFocus"))
+        check(mid["id"] != top_row["id"] and end_row["id"] != top_row["id"], "PgDn, End and Home move through the list")
+        all_rows = json.loads(p.call("keyRows"))
+        second_act = next(i for i, r in enumerate(all_rows) if r["kind"] == "action" and r["id"] != top_row["id"])
+        fixed_idx = next(i for i, r in enumerate(all_rows) if r["kind"] == "fixed")
+        p.call("keysClick", second_act, "false")
+        check(p.call("keysListening") == "false" and json.loads(p.call("keysFocus"))["id"] == all_rows[second_act]["id"],
+              "clicking an unselected row selects it without listening yet")
+        p.call("keysClick", second_act, "false")
+        check(p.call("keysListening") == "true", "…clicking the selected row again waits for the new key")
+        p.call("keysClick", fixed_idx, "false")
+        check(p.call("keysListening") == "false" and "text field" in p.call("keysNote"),
+              "…clicking a fixed row stops waiting and explains why it stays")
         p.call("keysKey", KEY_ESC, 0)
-        p.call("keysKey", KEY_ESC, 0)
-        check(p.call("keysOpen") == "false", "Esc clears the search, then closes the sheet")
+        check(p.call("keysOpen") == "false", "Esc closes the sheet when the filter is clear")
 
-        # Edited by hand, read again; the moved key works in the note.
+        # Edited by hand, read again; the moved key works in the note;
+        # deleting or breaking keys.json is handled live.
         keysjson.write_text(json.dumps({"bold": ["ctrl+shift+k"]}))
         check(p.wait(lambda: keys_of("bold") == ["Ctrl+Shift+K"]), "keys.json edited by hand is read again")
         (p.daily / f"{TODAY}.md").write_text(header(TODAY) + "a word here\n")
@@ -3485,6 +3517,12 @@ def checks() -> int:
         check(p.call("pageKey", KEY_K, CTRL | SHIFT) == "true", "…and Ctrl+Shift+K is bold")
         check(p.call("tip", "ask") == "does   Ctrl+Enter" and p.call("tip", "bold") == "does   Ctrl+Shift+K", "…and the hints say so")
         check(p.wait(lambda: "a **word** here" in p.call("text")), f"…on the word ({p.call('text')!r})")
+        keysjson.unlink()
+        check(p.wait(lambda: keys_of("bold") == ["Ctrl+B"]), "deleting keys.json restores every key live")
+        keysjson.write_text("{broken json")
+        p.call("keys")
+        check(p.wait(lambda: "could not be read" in p.call("keysNote")), "a broken keys.json says so in the sheet")
+        p.call("keys")
         keysjson.write_text("{}\n")
         check(p.wait(lambda: keys_of("bold") == ["Ctrl+B"]), "an empty keys.json is every key its own")
 
@@ -3561,6 +3599,7 @@ def checks() -> int:
               f"…from the sidebar with the dashboard up: the keys to it, nothing flipped ({panes()})")
         p.call("dashKey", 0x2f, CTRL)
         check(panes()["center"] == "keys", f"the keys sheet over the dashboard ({panes()})")
+        check(json.loads(p.call("keysFocus"))["group"] == "dash", "…opening from the dashboard lands on the dashboard's keys")
         check(p.call("keysKey", KEY_2, ALT2) == "true" and panes()["center"] == "dash" and p.call("keysOpen") == "false",
               f"…Ctrl+Alt+2 closes it, the dashboard back ({panes()})")
         check(p.call("dashKey", 0x5b, CTRL) == "true" and panes()["center"] == "note",
@@ -3579,7 +3618,7 @@ def checks() -> int:
         # keep them (Enter twice on the row that offers), then moved like
         # the rest — into hypr/longhand.lua, never a line the student wrote —
         # with Hyprland in a submap of the sheet's own while it waits.
-        META, ALT, KEY_F, KEY_L = 0x10000000, 0x08000000, 0x46, 0x4c
+        META, ALT, KEY_F, KEY_L, KEY_N = 0x10000000, 0x08000000, 0x46, 0x4c, 0x4e
         calls = p.hypr / "calls"
         ours = p.hypr / "longhand.lua"
 
@@ -3600,8 +3639,12 @@ def checks() -> int:
         p.call("keysFind", "pomo toggle")
         p.call("keysKey", KEY_RETURN, 0)
         check("Enter again" in p.call("keysNote") and not ours.exists(), "Enter on it says what it will write, and writes nothing")
+        p.call("keysKey", KEY_ESC, 0)
+        check(p.call("keysOpen") == "true" and p.call("keysNote") == "" and not ours.exists(),
+              "Esc cancels the adopt prompt without closing the sheet")
         p.call("keysKey", KEY_RETURN, 0)
-        # The adopt waits behind the sheet's read of the keys (hyprNext),
+        p.call("keysKey", KEY_RETURN, 0)
+        # The adopt waits behind the sheet's read of the keys (hyprQueue),
         # and writes, backs up and reloads: with three suites at once here
         # the two took 13 s (2026-11-25). Waited for longer.
         check(p.wait(lambda: hk()["owned"], 10), "…Enter again: the page keeps them")
@@ -3639,6 +3682,17 @@ def checks() -> int:
         p.call("keysKey", KEY_DELETE, 0)
         check(p.wait(lambda: hrow("pomoToggle") == ["Alt+Super+P"]), "Del gives the timer its own key back")
         check("hl.unbind" not in ours.read_text(), "…and Full width its own")
+        # Intra-group conflict: taking another of the six asks first, then Ctrl+Z restores both.
+        p.call("keysKey", KEY_RETURN, 0)
+        p.call("keysKey", KEY_N, ALT | META)
+        check("again" in p.call("keysNote") and hrow("pomoSkip") == ["Alt+Super+N"] and hrow("pomoToggle") == ["Alt+Super+P"],
+              "Super+Alt+N, Pomo skip's key: asked first, not stolen silently")
+        p.call("keysKey", KEY_N, ALT | META)
+        check(p.wait(lambda: hrow("pomoToggle") == ["Alt+Super+N"] and hrow("pomoSkip") == []),
+              "…and moved on the second press")
+        p.call("keysKey", KEY_Z, CTRL)
+        check(p.wait(lambda: hrow("pomoToggle") == ["Alt+Super+P"] and hrow("pomoSkip") == ["Alt+Super+N"], 6),
+              "Ctrl+Z undoes a Hyprland key move, restoring both actions")
         (p.hypr / "break").write_text("SUPER + ALT + L")
         before = ours.read_text()
         p.call("keysKey", KEY_RETURN, 0)

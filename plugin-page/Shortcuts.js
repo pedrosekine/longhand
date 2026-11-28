@@ -440,7 +440,7 @@ var fixed = [
   // sends, so a new line in a message is Shift+Enter.
   { group: "typing", places: ["chat"], does: "New line in what you write", show: ["Shift+Enter"], keys: ["Shift+Enter"] },
   { group: "typing", places: ["note"], does: "Nest or un-nest the line (or every line selected)", show: ["Tab", "Shift+Tab"], keys: ["Tab", "Shift+Tab"] },
-  { group: "typing", places: ["note", "search", "chat", "switcher"], does: "Move; by word with Ctrl", show: ["Left", "Right", "Up", "Down", "Ctrl+Left", "Ctrl+Right"],
+  { group: "typing", places: ["note", "search", "chat", "switcher", "mention", "cue"], does: "Move; by word with Ctrl", show: ["Left", "Right", "Up", "Down", "Ctrl+Left", "Ctrl+Right"],
     keys: ["Left", "Right", "Ctrl+Left", "Ctrl+Right", "Home", "End"] },
   // Up and down are the note's lines; a one-line box lends them out (the
   // conversation box's ↑ goes to the proposals). Reserved, not shown twice.
@@ -457,7 +457,7 @@ var fixed = [
   { group: "typing", places: ["search", "chat", "switcher"], does: "Select all", show: ["Ctrl+A"], keys: ["Ctrl+A"] },
   { group: "typing", places: ["note"], does: "Let go of a selection (Esc again: close the overlay)", show: ["Esc"], keys: [] },
   { group: "typing", places: ["note", "search", "chat", "switcher"], does: "Copy, cut, paste", show: ["Ctrl+C", "Ctrl+X", "Ctrl+V"], keys: ["Ctrl+C", "Ctrl+X", "Ctrl+V"] },
-  { group: "typing", places: ["note", "search", "chat", "switcher", "strip"], does: "Delete a letter; a word with Ctrl", show: ["Backspace", "Del", "Ctrl+Backspace"],
+  { group: "typing", places: ["note", "search", "chat", "switcher", "strip", "mention", "cue"], does: "Delete a letter; a word with Ctrl", show: ["Backspace", "Del", "Ctrl+Backspace"],
     keys: ["Backspace", "Del", "Ctrl+Backspace", "Ctrl+Del"] },
   { group: "typing", places: [], does: "In a box that asks \"when?\": confirm, or leave it", show: ["Enter", "Esc"], keys: [] },
   // Every list in the page answers to the same few keys (2026-11-25, the
@@ -659,6 +659,34 @@ function overlaps(pa, pb) {
   return false
 }
 
+// `projectKey` is a nine-key family (Alt+1…Alt+9): moving it moves all nine
+// digits together, and its key must end in a digit 1–9 so `projectByKey`
+// always knows which project was meant.
+function digitFamily(seq) {
+  var parts = seq.split("+")
+  var last = parts[parts.length - 1]
+  if (!/^[1-9]$/.test(last)) return null
+  var prefix = parts.slice(0, -1).join("+")
+  prefix = prefix ? prefix + "+" : ""
+  var out = []
+  for (var d = 1; d <= 9; d++) out.push(prefix + d)
+  return out
+}
+
+// Nine digits under one modifier ("Alt+1"…"Alt+9") draw as one pill
+// ("Alt+1…9") instead of nine that squeeze the row's words.
+function displayKeys(ks) {
+  if (ks.length === 9) {
+    var fam = digitFamily(ks[0])
+    if (fam && same(ks, fam)) return [show(ks[0]) + "…9"]
+  }
+  return ks.map(show)
+}
+
+function norm(s) {
+  return String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+}
+
 // Can `seq` go on action `id`? { ok, reason, taken: [ids already on it] }.
 // A letter, a digit or Space alone stays a letter where you type; the text
 // field's own keys stay its own. Another action on the same key in the
@@ -666,26 +694,35 @@ function overlaps(pa, pb) {
 function check(id, seq) {
   var act = byId[id]
   if (!act || seq === "") return { ok: false, reason: "", taken: [] }
-  var parts = seq.split("+")
-  var bare = parts.length === 1 || (parts.length === 2 && parts[0] === "Shift")
-  var printable = parts[parts.length - 1].length === 1 || parts[parts.length - 1] === "Space" || parts[parts.length - 1] === "Plus"
-  if (bare && printable) {
-    for (var i = 0; i < act.places.length; i++) {
-      var p = act.places[i]
-      if (p === "any" || typing[p])
-        return { ok: false, reason: show(seq) + " would be typed " + places[p] + " — add Ctrl or Alt", taken: [] }
-    }
-  }
-  for (var f = 0; f < fixed.length; f++) {
-    if (fixed[f].keys.indexOf(seq) < 0 || !overlaps(act.places, fixed[f].places)) continue
-    var where = fixed[f].places.filter(function (p) { return act.places.indexOf(p) >= 0 || act.places.indexOf("any") >= 0 })[0]
-    return { ok: false, reason: show(seq) + " is the text field's own " + places[where] + " (" + fixed[f].does.toLowerCase() + ")", taken: [] }
+  var seqs = [seq]
+  if (id === "projectKey") {
+    var fam = digitFamily(seq)
+    if (!fam) return { ok: false, reason: "project keys end in a digit 1–9 (Alt+1…9, Ctrl+Alt+1…9)", taken: [] }
+    seqs = fam
   }
   var taken = []
-  for (var a = 0; a < actions.length; a++) {
-    var o = actions[a]
-    if (o.id === id || !overlaps(act.places, o.places)) continue
-    if (keysOf(o.id).indexOf(seq) >= 0) taken.push(o.id)
+  for (var s = 0; s < seqs.length; s++) {
+    var cur = seqs[s]
+    var parts = cur.split("+")
+    var bare = parts.length === 1 || (parts.length === 2 && parts[0] === "Shift")
+    var printable = parts[parts.length - 1].length === 1 || parts[parts.length - 1] === "Space" || parts[parts.length - 1] === "Plus"
+    if (bare && printable) {
+      for (var i = 0; i < act.places.length; i++) {
+        var p = act.places[i]
+        if (p === "any" || typing[p])
+          return { ok: false, reason: show(cur) + " would be typed " + places[p] + " — add Ctrl or Alt", taken: [] }
+      }
+    }
+    for (var f = 0; f < fixed.length; f++) {
+      if (fixed[f].keys.indexOf(cur) < 0 || !overlaps(act.places, fixed[f].places)) continue
+      var where = fixed[f].places.filter(function (p) { return act.places.indexOf(p) >= 0 || act.places.indexOf("any") >= 0 })[0]
+      return { ok: false, reason: show(cur) + " is the text field's own " + places[where] + " (" + fixed[f].does.toLowerCase() + ")", taken: [] }
+    }
+    for (var a = 0; a < actions.length; a++) {
+      var o = actions[a]
+      if (o.id === id || !overlaps(act.places, o.places)) continue
+      if (keysOf(o.id).indexOf(cur) >= 0 && taken.indexOf(o.id) < 0) taken.push(o.id)
+    }
   }
   return { ok: true, reason: "", taken: taken }
 }
@@ -695,13 +732,32 @@ function check(id, seq) {
 function assign(id, seq, add) {
   var c = check(id, seq)
   if (!c.ok) return c
+  var seqs = id === "projectKey" ? digitFamily(seq) : [seq]
   for (var i = 0; i < c.taken.length; i++) {
-    var rest = keysOf(c.taken[i]).filter(function (k) { return k !== seq })
+    var rest = keysOf(c.taken[i]).filter(function (k) { return seqs.indexOf(k) < 0 })
     set(c.taken[i], rest)
   }
-  var ks = add ? keysOf(id).filter(function (k) { return k !== seq }).concat([seq]) : [seq]
+  var ks = add ? keysOf(id).filter(function (k) { return seqs.indexOf(k) < 0 }).concat(seqs) : seqs
   set(id, ks)
   return c
+}
+
+// Leave `id` with no key at all (saved in keys.json as []).
+function clear(id) {
+  if (!byId[id]) return
+  set(id, [])
+}
+
+// How many keys differ from their own, the page's and the system's together.
+function countChanged(outside) {
+  var n = Object.keys(changed).length
+  if (outside && outside.owned && outside.actions) {
+    for (var i = 0; i < outside.actions.length; i++) {
+      var a = outside.actions[i]
+      if (!same(a.keys || [], a.own || [])) n++
+    }
+  }
+  return n
 }
 
 // Keys a text field acts on by itself and the editor has taken over. Once
@@ -732,18 +788,34 @@ function does(id) { return byId[id] ? byId[id].does : id }
 
 // The sheet's rows, in group order: a heading, then the actions and the
 // fixed keys of that group. `filter` keeps the rows whose words or keys
-// hold it. `outside`: the keys that reach the page from Hyprland, as
-// hyprkeys.py's state says them ({ owned, actions: [{ id, does, keys,
-// own }] }); movable once the page keeps them (`owned`).
+// hold every word typed (accents aside). `outside`: the keys that reach the
+// page from Hyprland, as hyprkeys.py's state says them ({ owned, actions:
+// [{ id, does, keys, own }] }); movable once the page keeps them (`owned`).
 function rows(filter, outside) {
-  var want = String(filter || "").trim().toLowerCase()
-  var wantKey = want.indexOf("+") > 0 ? canonical(want) : ""   // "super+alt+k" finds Alt+Super+K
-  function keep(text, ks) {
-    if (want === "") return true
-    if (text.toLowerCase().indexOf(want) >= 0) return true
-    for (var i = 0; i < ks.length; i++)
-      if (show(ks[i]).toLowerCase().indexOf(want) >= 0 || ks[i].toLowerCase().indexOf(want) >= 0 || (wantKey !== "" && canonical(ks[i]) === wantKey)) return true
-    return false
+  var raw = String(filter || "").trim()
+  var words = raw === "" ? [] : norm(raw).split(/\s+/).filter(function (w) { return w !== "" })
+  var wantKey = raw.indexOf("+") > 0 ? canonical(raw) : ""   // "super+alt+k" finds Alt+Super+K
+  function keep(text, ks, extra) {
+    if (words.length === 0) return true
+    if (wantKey !== "") {
+      for (var k = 0; k < ks.length; k++) if (canonical(ks[k]) === wantKey) return true
+    }
+    var parts = [text, extra || ""]
+    var shown = displayKeys(ks)
+    for (var i = 0; i < ks.length; i++) { parts.push(ks[i]); parts.push(show(ks[i])) }
+    for (var j = 0; j < shown.length; j++) parts.push(shown[j])
+    var hay = norm(parts.join(" "))
+    for (var w = 0; w < words.length; w++) {
+      var word = words[w]
+      if (hay.indexOf(word) >= 0) continue
+      var wk = word.indexOf("+") > 0 ? canonical(word) : ""
+      var matched = false
+      if (wk !== "") {
+        for (var m = 0; m < ks.length; m++) if (canonical(ks[m]) === wk) { matched = true; break }
+      }
+      if (!matched) return false
+    }
+    return true
   }
   var out = []
   for (var g = 0; g < groups.length; g++) {
@@ -753,32 +825,37 @@ function rows(filter, outside) {
       var act = actions[a]
       if (act.group !== gid) continue
       var ks = keysOf(act.id)
-      if (!keep(act.does + " " + groups[g].title, ks)) continue
-      items.push({ kind: "action", id: act.id, does: act.does, keys: ks.map(show), changed: isChanged(act.id),
-                   where: act.places.map(function (p) { return places[p] }).join(", ") })
+      var where = act.places.map(function (p) { return places[p] }).join(", ")
+      var ch = isChanged(act.id)
+      var stateWords = (ch ? "moved changed" : "") + (ks.length === 0 ? " no key unbound" : "")
+      if (!keep(act.does + " " + groups[g].title + " " + where, ks, stateWords)) continue
+      items.push({ kind: "action", group: gid, id: act.id, does: act.does, keys: displayKeys(ks),
+                   own: displayKeys(act.keys), changed: ch, where: where })
     }
     for (var f = 0; f < fixed.length; f++) {
       var fx = fixed[f]
-      if (fx.group !== gid || fx.show.length === 0 || !keep(fx.does + " " + groups[g].title, fx.show)) continue
-      items.push({ kind: "fixed", id: "", does: fx.does, keys: fx.show.map(show), changed: false, where: "" })
+      if (fx.group !== gid || fx.show.length === 0 || !keep(fx.does + " " + groups[g].title, fx.show, "")) continue
+      items.push({ kind: "fixed", group: gid, id: "", does: fx.does, keys: fx.show.map(show), own: [], changed: false, where: "" })
     }
     if (gid === "system" && outside) {
       var os = outside.actions || []
       var shown = []
       for (var o = 0; o < os.length; o++) {
-        if (!keep(os[o].does + " " + groups[g].title, os[o].keys)) continue
-        shown.push({ kind: outside.owned ? "hypr" : "fixed", id: "hypr:" + os[o].id, does: os[o].does,
-                     keys: os[o].keys.map(show), raw: os[o].keys, own: os[o].own,
-                     changed: outside.owned && !same(os[o].keys, os[o].own), where: systemName })
+        var och = outside.owned && !same(os[o].keys, os[o].own)
+        var osWords = systemName + (och ? " moved changed" : "") + (os[o].keys.length === 0 ? " no key unbound" : "")
+        if (!keep(os[o].does + " " + groups[g].title, os[o].keys, osWords)) continue
+        shown.push({ kind: outside.owned ? "hypr" : "fixed", group: gid, id: "hypr:" + os[o].id, does: os[o].does,
+                     keys: os[o].keys.map(show), raw: os[o].keys, own: os[o].own, ownShown: os[o].own.map(show),
+                     changed: och, where: systemName })
       }
       // Until the student lets the page keep them, they are listed as
       // Hyprland's, under the one row that offers to.
       if (!outside.owned && shown.length > 0)
-        items.push({ kind: "offer", id: "hypr:adopt", does: "Let the page keep these keys, to move them here", keys: [], changed: false, where: systemName })
+        items.push({ kind: "offer", group: gid, id: "hypr:adopt", does: "Let the page keep these keys, to move them here", keys: [], own: [], changed: false, where: systemName })
       items = items.concat(shown)
     }
     if (items.length === 0) continue
-    out.push({ kind: "head", id: "", does: groups[g].title, keys: [], changed: false, where: "" })
+    out.push({ kind: "head", group: gid, id: "", does: groups[g].title, keys: [], own: [], changed: false, where: "" })
     out = out.concat(items)
   }
   return out

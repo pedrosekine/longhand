@@ -3229,9 +3229,12 @@ Item {
   property int keysVersion: 0
   property string keysFilter: ""
   property int keysFocus: -1
-  property var keysListen: null      // { id, add } while waiting for the new key
+  property var keysListen: null      // { id, add, hypr } while waiting for the new key
   property string keysTake: ""       // a key another action has, pressed once
   property string keysNote: ""       // what just happened, or why not
+  property string keysLoadError: ""  // keys.json read/parse error, if any
+  property bool keysHyprLoading: false
+  property var keysUndo: []          // [{ kind, snap | id, prev }] for Ctrl+Z in the sheet
 
   // Settings (Ctrl+, or "settings" at the sidebar's foot): what the page lets you
   // set without editing a file — the timetable's address, for now. Written
@@ -5021,19 +5024,48 @@ Item {
   // Over Settings it is drawn above them, as over the dashboard, and Esc
   // comes back to the setting it was asked from (2026-11-28, the settings
   // pass: ? closed Settings, and with them a check-in half answered).
+  function keysStartGroup() {
+    if (root.settingsOpen) return "settings"
+    if (root.here === "right") {
+      if (root.paper.room) return "paper"
+      return root.rightView === "day" ? "agent" : "margin"
+    }
+    if (root.here === "left") {
+      if (root.sidebarSpace === "files") return "files"
+      return (root.sideList !== "" || root.projectOpen) ? "lists" : "calendar"
+    }
+    if (root.dashOpen) return "dash"
+    if (root.exportOpen) return "export"
+    if (root.pdfShown) return "pdf"
+    if (root.searchOpen) return "find"
+    return "page"
+  }
+  function firstKeyInGroup(group) {
+    var rows = root.keyRows
+    for (var i = 0; i < rows.length; i++) if (rows[i].kind !== "head" && rows[i].group === group) return i
+    return root.nextKeyRow(-1, 1)
+  }
+
   function toggleKeys() {
     var was = root.here
+    var startGroup = root.keysOpen ? "" : root.keysStartGroup()
     if (!root.keysOpen) root.noteFrom("keys", was)
     root.keysOpen = !root.keysOpen
     root.stopListening()
-    root.keysNote = ""
+    root.keysAdopt = false
+    root.keysUndo = []
     if (root.keysOpen) {
       root.used("keys")
       keysSheet.keysFieldRef.text = ""
-      root.keysFocus = root.nextKeyRow(-1, 1)
+      root.keysFilter = ""
+      root.keysNote = root.keysLoadError
+      root.keysFocus = root.firstKeyInGroup(startGroup)
+      root.keysHyprLoading = root.hyprKeys === null
       root.hypr(["state"])
       Qt.callLater(keysSheet.keysFieldRef.forceActiveFocus)
     } else {
+      root.keysNote = ""
+      root.keysHyprLoading = false
       root.giveBack("keys", was, "center")
     }
   }
@@ -6104,6 +6136,76 @@ Item {
     return from >= 0 && from < rows.length ? from : -1
   }
 
+  function stepKeyRow(from, count) {
+    var d = count < 0 ? -1 : 1, n = Math.abs(count), at = from
+    for (var i = 0; i < n; i++) {
+      var next = root.nextKeyRow(at, d)
+      if (next === at || next < 0) break
+      at = next
+    }
+    return at
+  }
+
+  function lastKeyRow() {
+    var rows = root.keyRows
+    for (var i = rows.length - 1; i >= 0; i--) if (rows[i].kind !== "head") return i
+    return -1
+  }
+
+  function keysSnap() {
+    var s = Sc.save(), out = {}
+    for (var id in s) out[id] = s[id].slice()
+    return out
+  }
+
+  function pushKeysUndo(entry) { root.keysUndo = root.keysUndo.concat([entry]).slice(-30) }
+
+  // Keep the cursor on the same action across a redraw (saving, adopting,
+  // re-reading Hyprland/Windows keys), or the nearest row if a filter hid it.
+  function keepKeyRow(wantId, wasIndex) {
+    var rows = root.keyRows
+    if (wantId) {
+      for (var i = 0; i < rows.length; i++) if (rows[i].id === wantId) { root.keysFocus = i; return }
+    }
+    if (rows.length === 0) { root.keysFocus = -1; return }
+    var idx = Math.max(0, Math.min(wasIndex, rows.length - 1))
+    if (rows[idx].kind !== "head") { root.keysFocus = idx; return }
+    var down = root.nextKeyRow(idx, 1)
+    root.keysFocus = down !== idx ? down : root.nextKeyRow(idx, -1)
+  }
+
+  function moveKeyFocus(to) {
+    if (to === root.keysFocus) return
+    root.keysFocus = to
+    root.keysAdopt = false
+    root.keysNote = ""
+  }
+
+  // Click on an unselected movable row selects it (so Del resets it instead
+  // of binding Del); clicking it again, or Shift-clicking, waits for the key.
+  function selectKeyRow(index, row, shift) {
+    if (!row || row.kind === "head") return
+    var wasHot = root.keysFocus === index
+    root.keysFocus = index
+    if (row.kind === "offer" || row.kind === "fixed") {
+      root.listenFor(row, false)
+      return
+    }
+    if (wasHot || shift) {
+      if (root.keysListen && root.keysListen.id === row.id && root.keysListen.add === !!shift) return
+      root.listenFor(row, !!shift)
+      return
+    }
+    root.stopListening()
+    root.keysAdopt = false
+    root.keysNote = ""
+  }
+
+  function keysFieldAtEnd() {
+    var f = keysSheet.keysFieldRef
+    return f.selectionStart === f.selectionEnd && f.cursorPosition === f.text.length
+  }
+
   // Keys while the sheet has them. Its own keys are fixed: a sheet whose
   // way out could be moved could lock the student in.
   function keysKey(event) {
@@ -6117,25 +6219,35 @@ Item {
     }
     if (root.anywhereKey(event)) return true
     var row = root.keyRows[root.keysFocus]
+    var wasAdopt = root.keysAdopt
     if (seq !== "Enter") root.keysAdopt = false
     if (seq === "Esc") {
-      if (root.keysFilter !== "") {
+      if (wasAdopt) {
+        root.keysNote = ""
+      } else if (root.keysFilter !== "") {
         keysSheet.keysFieldRef.text = ""
         root.keysFilter = ""
+        root.keysNote = ""
         root.keysFocus = root.nextKeyRow(-1, 1)
       } else {
         root.toggleKeys()
       }
-    } else if (seq === "Up") root.keysFocus = root.nextKeyRow(root.keysFocus, -1)
-    else if (seq === "Down") root.keysFocus = root.nextKeyRow(root.keysFocus, 1)
+    } else if (seq === "Up") root.moveKeyFocus(root.nextKeyRow(root.keysFocus, -1))
+    else if (seq === "Down") root.moveKeyFocus(root.nextKeyRow(root.keysFocus, 1))
+    else if (seq === "PgUp") root.moveKeyFocus(root.stepKeyRow(root.keysFocus, -10))
+    else if (seq === "PgDn") root.moveKeyFocus(root.stepKeyRow(root.keysFocus, 10))
+    else if (seq === "Home" && keysSheet.keysFieldRef.text === "") root.moveKeyFocus(root.nextKeyRow(-1, 1))
+    else if (seq === "End" && keysSheet.keysFieldRef.text === "") root.moveKeyFocus(root.lastKeyRow())
     else if (seq === "Enter" || seq === "Shift+Enter") root.listenFor(row, seq === "Shift+Enter")
-    else if (seq === "Del") root.resetKey(row)
+    else if (seq === "Del" && root.keysFieldAtEnd()) root.resetKey(row)
+    else if (seq === "Shift+Del" && root.keysFieldAtEnd()) root.clearKey(row)
+    else if (seq === "Ctrl+Z" && root.keysUndo.length > 0 && (keysSheet.keysFieldRef.text === "" || !keysSheet.keysFieldRef.canUndo)) root.undoKey()
     else return false                               // typing: it finds
     return true
   }
 
   function listenFor(row, add) {
-    root.keysTake = ""
+    root.stopListening()
     if (!row || row.kind === "head") return
     if (row.kind === "offer") { root.offerAdopt(); return }
     root.keysAdopt = false
@@ -6163,45 +6275,71 @@ Item {
   // hyprkeys.py, beside this file, keeps the six in ~/.config/hypr/longhand.lua
   // and answers every call with its state. One call at a time.
   readonly property string hyprKeysPy: Links.fromFileUrl(Qt.resolvedUrl("hyprkeys.py").toString())
-  // A call asked while another runs is made when that one ends; a state
-  // read is not, since every call answers with the state (2026-11-24: the
-  // second Enter that lets the page keep the six came while the sheet was
-  // still reading them, and was lost, the note left at "…" — on Windows,
-  // where the read takes most of a second).
-  property var hyprNext: null
-  function hypr(args) {
+  // Calls asked while another runs wait in turn (state reads are dropped,
+  // since every call answers with the state).
+  property var hyprQueue: []
+  property var hyprBefore: null       // actions before a `set`, for Ctrl+Z
+  property bool hyprUndoing: false
+  function hypr(args, undoing) {
     if (hyprProc.running) {
-      if (args[0] !== "state") root.hyprNext = args
+      if (args[0] !== "state") root.hyprQueue = root.hyprQueue.concat([{ args: args, undoing: !!undoing }])
       return false
     }
     hyprProc.kind = args[0]
+    root.hyprUndoing = !!undoing
+    root.hyprBefore = args[0] === "set" && !undoing && root.hyprKeys && root.hyprKeys.actions
+      ? root.hyprKeys.actions.map(function (a) { return { id: a.id, keys: (a.keys || []).slice() } })
+      : null
     hyprProc.command = ["python3", root.hyprKeysPy].concat(args)
     hyprProc.running = true
     return true
   }
 
   function hyprDone(st) {
-    if (!st) return
+    root.keysHyprLoading = false
+    var kind = hyprProc.kind
+    var wasUndo = root.hyprUndoing
+    var before = root.hyprBefore
+    root.hyprUndoing = false
+    root.hyprBefore = null
+    var listening = !!root.keysListen && root.keysListen.hypr
+    if (!st) {
+      if (listening) root.stopListening()
+      root.keysNote = "could not reach " + Sc.systemName + "'s keys"
+      return
+    }
+    var cur = root.keyRows[root.keysFocus]
+    var wantId = kind === "adopt" && st.owned ? "hypr:page" : (cur ? cur.id : "")
+    var wasIdx = root.keysFocus
     root.hyprKeys = st
     root.keysVersion++
-    var listening = !!root.keysListen && root.keysListen.hypr
     if (st.asks && listening) {
       // The second press of the same key takes it.
       root.keysTake = st.asks.key
-      root.keysNote = Sc.show(st.asks.key) + " is Hyprland's “" + st.asks.does + "” — press it again to take it (it gets the key back when you move off it), Esc to leave it there"
+      root.keysNote = Sc.show(st.asks.key) + " is " + Sc.systemName + "'s “" + st.asks.does + "” — press it again to take it (it gets the key back when you move off it), Esc to leave it there"
     } else if (st.asks) {
-      root.keysNote = Sc.show(st.asks.key) + " is Hyprland's “" + st.asks.does + "” now — Enter, then press it twice to take it back"
+      root.keysNote = Sc.show(st.asks.key) + " is " + Sc.systemName + "'s “" + st.asks.does + "” now — Enter, then press it twice to take it back"
     } else if (st.error) {
       root.keysTake = ""
-      root.keysNote = st.error
-    } else if (hyprProc.kind !== "state") {
+      root.keysNote = !listening
+        ? String(st.error).replace(" — pick another, Esc keeps the old one", " — Enter picks another")
+        : st.error
+    } else if (kind !== "state") {
       if (listening) root.stopListening()
-      root.keysNote = st.note || ""
-      if (hyprProc.kind === "set") root.used("keys", "hypr")
+      if (kind === "set" && !wasUndo && before && st.actions) {
+        var diffs = []
+        for (var i = 0; i < before.length; i++) {
+          var after = st.actions.filter(function (a) { return a.id === before[i].id })[0]
+          if (after && JSON.stringify(before[i].keys) !== JSON.stringify(after.keys || []))
+            diffs.push({ id: before[i].id, keys: before[i].keys })
+        }
+        if (diffs.length > 0) root.pushKeysUndo({ kind: "hypr", sets: diffs })
+      }
+      if (!wasUndo) root.keysNote = st.note || ""
+      if (kind === "set") root.used("keys", "hypr")
     }
     if (root.keysListen && root.keysListen.hypr) root.hyprListen(true)   // a reload ends the submap
-    var at = root.keyRows[root.keysFocus]
-    if (!at || at.kind === "head") root.keysFocus = root.nextKeyRow(-1, 1)
+    root.keepKeyRow(wantId, wasIdx)
   }
 
   // Letting the page keep the six is asked once, in words, and done on a
@@ -6220,9 +6358,22 @@ Item {
   }
 
   function offerHyprKey(seq) {
-    if (hyprProc.running) return
     var l = root.keysListen
-    var args = ["set", l.id.slice(5)]
+    var aid = l.id.slice(5)
+    // Ask before taking a key from another of the six, as in-page keys do.
+    if (root.keysTake !== seq && root.hyprKeys && root.hyprKeys.actions) {
+      var taken = []
+      for (var i = 0; i < root.hyprKeys.actions.length; i++) {
+        var a = root.hyprKeys.actions[i]
+        if (a.id !== aid && (a.keys || []).indexOf(seq) >= 0) taken.push(a.does)
+      }
+      if (taken.length > 0) {
+        root.keysTake = seq
+        root.keysNote = Sc.show(seq) + " is “" + taken.join("”, “") + "” — press it again to move it here, Esc to leave it there"
+        return
+      }
+    }
+    var args = ["set", aid]
     if (l.add) args.push("--add")
     if (root.keysTake === seq) args.push("--take")
     root.keysNote = "…"
@@ -6257,7 +6408,9 @@ Item {
       root.keysNote = Sc.show(seq) + " is “" + root.doesList(c.taken) + "” — press it again to move it here, Esc to leave it there"
       return
     }
+    var prev = root.keysSnap()
     Sc.assign(id, seq, root.keysListen.add)
+    if (JSON.stringify(prev) !== JSON.stringify(Sc.save())) root.pushKeysUndo({ kind: "page", snap: prev })
     root.keysListen = null
     root.keysTake = ""
     var bare = c.taken.filter(function (t) { return Sc.keysOf(t).length === 0 })
@@ -6265,11 +6418,11 @@ Item {
       : Sc.show(seq) + " moved here from “" + root.doesList(c.taken) + "”"
         + (bare.length > 0 ? ", which has no key now (Del on it gives its own back)" : "")
     root.used("keys", "moved")
-    root.saveKeys()
+    root.saveKeys(id)
   }
 
   function resetKey(row) {
-    root.keysTake = ""
+    root.stopListening()
     if (row && row.kind === "hypr") {
       if (!row.changed) { root.keysNote = "“" + row.does + "” is on its own keys already"; return }
       root.keysNote = "…"
@@ -6278,16 +6431,55 @@ Item {
     }
     if (!row || row.kind !== "action") return
     if (!row.changed) { root.keysNote = "“" + row.does + "” is on its own keys already"; return }
+    var prev = root.keysSnap()
     var from = Sc.reset(row.id)
+    root.pushKeysUndo({ kind: "page", snap: prev })
     root.keysNote = from.length > 0 ? "taken back from “" + root.doesList(from) + "”" : ""
     root.used("keys", "reset")
-    root.saveKeys()
+    root.saveKeys(row.id)
   }
 
-  function saveKeys() {
+  function clearKey(row) {
+    root.stopListening()
+    if (!row) return
+    if (row.kind === "hypr") {
+      if (row.keys.length === 0) { root.keysNote = "“" + row.does + "” has no key already"; return }
+      root.keysNote = "…"
+      root.hypr(["set", row.id.slice(5)])
+      return
+    }
+    if (row.kind !== "action") return
+    if (row.keys.length === 0) { root.keysNote = "“" + row.does + "” has no key already"; return }
+    var prev = root.keysSnap()
+    Sc.clear(row.id)
+    root.pushKeysUndo({ kind: "page", snap: prev })
+    root.keysNote = "“" + row.does + "” has no key now (Del gives its own back)"
+    root.used("keys", "cleared")
+    root.saveKeys(row.id)
+  }
+
+  function undoKey() {
+    if (root.keysUndo.length === 0) return
+    root.stopListening()
+    var last = root.keysUndo[root.keysUndo.length - 1]
+    root.keysUndo = root.keysUndo.slice(0, -1)
+    if (last.kind === "page") {
+      Sc.load(last.snap)
+      root.keysNote = "undone"
+      root.saveKeys()
+    } else if (last.kind === "hypr") {
+      root.keysNote = "undone"
+      for (var i = 0; i < last.sets.length; i++)
+        root.hypr(["set", last.sets[i].id].concat(last.sets[i].keys), true)
+    }
+  }
+
+  function saveKeys(keepId) {
+    var cur = root.keyRows[root.keysFocus]
+    var wantId = keepId || (cur ? cur.id : "")
+    var wasIdx = root.keysFocus
     root.keysVersion++
-    var at = root.keyRows[root.keysFocus]
-    if (!at || at.kind === "head") root.keysFocus = root.nextKeyRow(-1, 1)
+    root.keepKeyRow(wantId, wasIdx)
     keysFile.setText(JSON.stringify(Sc.save(), null, 2) + "\n")
   }
 
@@ -10598,8 +10790,29 @@ Item {
     atomicWrites: true
     printErrors: false
     onLoaded: {
-      try { Sc.load(JSON.parse(text())) } catch (e) { console.warn("longhand.page keys.json: " + e) }
+      try {
+        Sc.load(JSON.parse(text()))
+        root.keysLoadError = ""
+      } catch (e) {
+        console.warn("longhand.page keys.json: " + e)
+        root.keysLoadError = "keys.json could not be read — fix or delete it"
+        if (root.keysOpen) root.keysNote = root.keysLoadError
+      }
       root.keysVersion++
+    }
+    onLoadFailed: function (err) {
+      if (err === FileViewError.FileNotFound) {
+        Sc.load({})
+        root.keysLoadError = ""
+        root.keysVersion++
+      } else {
+        root.keysLoadError = "could not read keys.json: " + FileViewError.toString(err)
+        if (root.keysOpen) root.keysNote = root.keysLoadError
+      }
+    }
+    onSaveFailed: function (err) {
+      root.keysNote = "could not write keys.json: " + FileViewError.toString(err)
+      root.showHint(root.keysNote)
     }
     onFileChanged: reload()
   }
@@ -11054,9 +11267,11 @@ Item {
         var st = null
         try { st = JSON.parse(text) } catch (e) { console.warn("longhand.page hyprkeys: " + text.trim()) }
         root.hyprDone(st)
-        var next = root.hyprNext
-        root.hyprNext = null
-        if (next) root.hypr(next)
+        if (root.hyprQueue.length > 0) {
+          var next = root.hyprQueue[0]
+          root.hyprQueue = root.hyprQueue.slice(1)
+          root.hypr(next.args, next.undoing)
+        }
       }
     }
     stderr: StdioCollector { onStreamFinished: if (text.trim() !== "") console.warn("longhand.page hyprkeys: " + text.trim()) }
@@ -11150,6 +11365,7 @@ Item {
       if (visible) Qt.callLater(root.focusPinned)
       else if (root.windowOpen) {
         // Closed from the compositor.
+        root.stopListening()
         root.flush()
         root.windowOpen = false
       }
@@ -11190,8 +11406,9 @@ Item {
     }
     Window.onActiveChanged: Qt.callLater(function () {
       // Ctrl's release goes to the window that took the keys (Ctrl+Esc,
-      // a click elsewhere): its keys shown would stay on screen.
-      if (!content.Window.active) root.ctrlLetGo()
+      // a click elsewhere): its keys shown would stay on screen; a wait for
+      // a Hyprland/Windows key must end too, so the submap/hotkeys never stay stuck.
+      if (!content.Window.active) { root.ctrlLetGo(); root.stopListening() }
       else if (content.keysNowhere()) root.focusCenter()
     })
     Keys.onPressed: function (event) {
