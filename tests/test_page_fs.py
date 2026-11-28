@@ -119,6 +119,24 @@ def main() -> int:
         indexed = sorted(l[cut:] for l in r.stdout.splitlines() if l)
         check(indexed == ["agents/longhand/reply.md", "human/Courses/note.md", "human/Courses/paper.PDF", "human/Courses/shot.png"],
               f"index prunes dot-dirs and dot-files and keeps notes + images ({indexed})")
+        # A linked folder is indexed and walked as what it points at, and a
+        # link back up is not followed round (2026-11-28, the switcher pass).
+        if hasattr(os, "symlink"):
+            try:
+                (tmp / "outside").mkdir(exist_ok=True)
+                (tmp / "outside" / "ext.md").write_text("x\n")
+                os.symlink(tmp / "outside", vault / "human" / "Linked")
+                os.symlink(vault / "human", vault / "human" / "Courses" / "up")
+            except OSError:
+                pass
+            else:
+                indexed = sorted(l[cut:] for l in run("index", vault.as_posix()).stdout.splitlines() if l)
+                check("human/Linked/ext.md" in indexed, f"a linked folder is indexed ({indexed})")
+                check(len(indexed) < 20, f"…a link back up is walked once ({len(indexed)} paths)")
+                walked = sorted(l[cut:] for l in run("walk", (vault / "human").as_posix()).stdout.splitlines() if l)
+                check(len(walked) < 20 and "human/Linked/ext.md" in walked, f"…and walked ({walked})")
+                (vault / "human" / "Linked").unlink()
+                (vault / "human" / "Courses" / "up").unlink()
 
         # 4. sizes
         gif = tmp / "a.gif"

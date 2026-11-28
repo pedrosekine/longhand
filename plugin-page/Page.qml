@@ -20,6 +20,7 @@ import "Task.js" as Task
 import "Authorship.js" as Authorship
 import "Threads.js" as Threads
 import "Tags.js" as Tags
+import "Switch.js" as Switch
 import "Where.js" as Where
 import "Shortcuts.js" as Sc
 import "Say.js" as Say
@@ -146,11 +147,22 @@ Item {
   // fresh open. One `find`, a few thousand short strings; dropped on close.
   property var vaultIndex: null
   property int vaultIndexVersion: 0
+  property double vaultIndexAt: 0     // when it was read (ms): the switcher reads it again when it is old
+  readonly property bool vaultIndexReading: indexProc.running
   property var missedNames: ({})      // names not found, each read again once
   Timer { id: reindexTimer; interval: 1200; onTriggered: { root.vaultIndex = null; root.needIndex() } }
   readonly property string pageFsPy: Links.fromFileUrl(Qt.resolvedUrl("page_fs.py").toString())
   function needIndex() {
     if (root.vaultIndex !== null || indexProc.running || !svc.configured) return
+    indexProc.command = ["python3", root.pageFsPy, "index", svc.config.vault]
+    indexProc.running = true
+  }
+  // The names again when those read are older than a few seconds: a note
+  // made or filed since the page opened is found by Ctrl+O. The old ones
+  // stand until the new are read, so nothing empties under the keys.
+  function freshIndex() {
+    if (root.vaultIndex === null) { root.needIndex(); return }
+    if (indexProc.running || !svc.configured || Date.now() - root.vaultIndexAt < 5000) return
     indexProc.command = ["python3", root.pageFsPy, "index", svc.config.vault]
     indexProc.running = true
   }
@@ -3579,7 +3591,7 @@ Item {
     if (Sc.hit(event, "copyPath")) { root.copyPath(); return true }
     if (Sc.hit(event, "save")) { root.saveNow(); return true }
     if (Sc.hit(event, "switcher")) { root.toggleSwitcher(); return true }
-    if (Sc.hit(event, "findAll")) { root.openSwitcher("? "); return true }
+    if (Sc.hit(event, "findAll")) { root.findAll(); return true }
     if (Sc.hit(event, "projectKey")) { root.projectByKey(event); return true }
     return false
   }
@@ -4159,6 +4171,7 @@ Item {
       if (root.keysOpen) root.toggleKeys()
       if (root.settingsOpen) root.toggleSettings()
     }
+    if (root.switcherOpen) root.switcherDone()
     root.leftLine(root.lastLine)
     root.flush()
     pdfPane.keep()
@@ -5355,12 +5368,23 @@ Item {
       if (row) { editor.setCursor(row.start, true); return }
       root.showHint("that block is no longer in this note as it was")
     }
+    if (root.pendingLine < 0) root.pendingWords = ""
     if (root.pendingLine < 0 || !svc.ready) return
     var i = Math.min(root.pendingLine - 1, editor.rows.length - 1)
     root.pendingLine = -1
+    var words = root.pendingWords
+    root.pendingWords = ""
     var r = editor.rows[Math.max(0, i)]
-    if (r) editor.setCursor(r.start, true)
+    if (!r) return
+    editor.setCursor(r.start, true)
+    // From the switcher's `? words`: the first of them selected in the
+    // line, so the eye lands on it, not somewhere in a long paragraph.
+    if (words === "") return
+    var end = editor.text.indexOf("\n", r.start)
+    var m = Switch.firstSpan(editor.text.slice(r.start, end < 0 ? editor.text.length : end), words)
+    if (m) editor.select(r.start + m.a, r.start + m.b)
   }
+  property string pendingWords: ""
 
   // Under an answer of the day's: what it searched for and read.
   function sayFetched(t) {
@@ -6303,9 +6327,12 @@ Item {
   function reachProject(pr, how) {
     if (!pr) return
     root.used("reach", how)
-    root.switcherOpen = false
+    // From the switcher, the way back is where the keys were before it
+    // (`here` is the middle while its field has them).
+    var from = root.switcherOpen ? root.switcherFrom : root.here
+    if (root.switcherOpen) root.switcherDone()
     root.sideTyping = false
-    if (!root.sidebarOpen) root.noteFrom("left")
+    if (!root.sidebarOpen) root.noteFrom("left", from)
     if (root.sidebarSpace !== "time") { root.spaceStep = -1; root.sidebarSpace = "time" }
     root.openProject(pr)
   }
@@ -6404,12 +6431,22 @@ Item {
   // (including private notes, local-only). Esc gives the keys back.
   property bool switcherOpen: false
   readonly property var switcherField: switcherBox.fieldRef
+  readonly property string switcherStatus: switcherBox.statusText   // what it says under the field (the tests read it)
   property string switcherText: ""
   property int switcherPick: 0
+  property string switcherPickKey: ""     // the row picked, by what it is: kept when rows arrive above it
   property string switcherFrom: "center"
   property var switcherFindHits: []
-  property bool switcherFinding: false
-  property string switcherFindQuery: ""
+  property string switcherHitsFor: ""     // the words switcherFindHits were found for
+  property int switcherFindTotal: 0       // lines that matched in all, the hits being the best of them
+  property bool switcherFinding: false    // a search for the words typed is waiting or running
+  property string switcherFindError: ""
+  property bool switcherGoWhenFound: false
+  readonly property bool switcherAsking: root.switcherText.trim().charAt(0) === "?"
+  readonly property string switcherWords: root.switcherAsking ? root.switcherText.trim().slice(1).trim() : ""
+  // The hits on screen were found for other words (typing goes on): Enter
+  // waits for these words' own.
+  readonly property bool switcherStale: root.switcherWords !== "" && root.switcherHitsFor !== root.switcherWords
 
   Timer {
     id: switcherFindTimer
@@ -6417,56 +6454,81 @@ Item {
     onTriggered: root.runSwitcherFind()
   }
 
+  // One search at a time (2026-11-28: typing fast stopped a run and read
+  // its empty answer as the new words', "no note holds…"). A run for words
+  // no longer typed is stopped, and the words typed are searched once it
+  // has ended (switcherFound).
   Process {
     id: switcherFindProc
-    property string query: ""
-    stdout: StdioCollector {
-      onStreamFinished: {
-        root.switcherFinding = false
-        var raw = root.switcherText.trim()
-        var want = raw.charAt(0) === "?" ? raw.slice(1).trim() : ""
-        if (switcherFindProc.query !== want) {
-          if (want !== "") root.runSwitcherFind()
-          return
-        }
-        try {
-          var parsed = JSON.parse(text)
-          root.switcherFindHits = (parsed.hits || []).map(function (h) {
-            return {
-              kind: "hit", tag: "", path: h.path, line: h.line, bodyLine: h.body_line || h.line, date: h.date || "",
-              heading: h.heading || "", text: h.text || "",
-              title: h.text || h.path,
-              sub: (h.date || root.fileName(h.path)) + (h.heading ? " · " + h.heading : "") + " · line " + h.line,
-              hint: h.date ? "day" : "note"
-            }
-          })
-        } catch (e) {
-          root.switcherFindHits = []
-        }
-      }
+    property string query: ""       // the words this run was started for
+    property bool stopped: false
+    stdout: StdioCollector { id: switcherFindOut }
+    stderr: StdioCollector { id: switcherFindErr }
+    onExited: function (code) {
+      var q = switcherFindProc.query
+      var stopped = switcherFindProc.stopped
+      switcherFindProc.stopped = false
+      Qt.callLater(function () { root.switcherFound(q, stopped, code, switcherFindOut.text, switcherFindErr.text) })
     }
-    onExited: function (code) { if (code !== 0) root.switcherFinding = false }
+  }
+
+  function switcherFound(q, stopped, code, out, err) {
+    if (!root.switcherOpen) { root.switcherFinding = false; return }
+    if (stopped || q !== root.switcherWords) {
+      if (root.switcherWords !== "" && root.switcherStale) root.runSwitcherFind()
+      else root.switcherFinding = false
+      return
+    }
+    root.switcherFinding = false
+    var parsed = null
+    try { parsed = JSON.parse(out) } catch (e) {}
+    root.switcherHitsFor = q
+    // A run that failed says so: it is not a search that found nothing.
+    if (code !== 0 || !parsed) {
+      var said = String(err || "").trim().split("\n").pop().replace(/^longhand-agent: /, "")
+      root.switcherFindError = said || (code !== 0 ? "the runner stopped (" + code + ")" : "the runner gave no answer")
+      root.switcherFindHits = []
+      root.switcherFindTotal = 0
+      root.switcherGoWhenFound = false
+      return
+    }
+    root.switcherFindError = ""
+    root.switcherFindHits = (parsed.hits || []).map(function (h) {
+      return {
+        kind: "hit", tag: "", path: h.path, line: h.line, bodyLine: h.body_line || h.line, date: h.date || "",
+        heading: h.heading || "", text: h.text || "",
+        title: h.text || h.path,
+        sub: (h.date || root.fileName(h.path)) + (h.heading ? " · " + h.heading : "") + " · line " + h.line,
+        hint: h.date ? "day" : "note"
+      }
+    })
+    root.switcherFindTotal = parsed.total !== undefined ? parsed.total : root.switcherFindHits.length
+    root.switcherPick = 0
+    root.switcherPickKey = ""
+    if (root.switcherGoWhenFound) {
+      root.switcherGoWhenFound = false
+      if (root.switcherFindHits.length > 0) root.switcherGo(false)
+    }
   }
 
   function runSwitcherFind() {
-    var raw = root.switcherText.trim()
-    if (!root.switcherOpen || raw.charAt(0) !== "?") {
-      root.switcherFindHits = []
-      root.switcherFinding = false
-      return
-    }
-    var q = raw.slice(1).trim()
+    switcherFindTimer.stop()
+    var q = root.switcherOpen ? root.switcherWords : ""
     if (q === "") {
       root.switcherFindHits = []
+      root.switcherHitsFor = ""
+      root.switcherFindError = ""
       root.switcherFinding = false
       return
     }
     if (switcherFindProc.running) {
-      if (switcherFindProc.query === q) return
-      switcherFindProc.signal(15)
+      if (switcherFindProc.query !== q && !switcherFindProc.stopped) { switcherFindProc.stopped = true; switcherFindProc.signal(15) }
+      root.switcherFinding = true
+      return
     }
+    if (!root.switcherStale && root.switcherFindError === "") { root.switcherFinding = false; return }   // found already
+    root.flush()   // what was typed a moment ago is in what is searched
     switcherFindProc.query = q
-    root.switcherFindQuery = q
     root.switcherFinding = true
     switcherFindProc.command = [svc.runner, "find", "--words", q, "--limit", "12"]
     switcherFindProc.running = true
@@ -6478,54 +6540,35 @@ Item {
       { kind: "view", id: "today", tag: "", title: "today's note", sub: "back to today", keywords: "today home daily note", hint: root.keyName("today") },
       { kind: "view", id: "settings", tag: "", title: "settings", sub: "calendars, autonomy, search, sound, the pointer", keywords: "settings preferences calendar autonomy sound pointer", hint: root.keyName("settings") },
       { kind: "view", id: "keys", tag: "", title: "keys", sub: "every key the page answers to, and moving one", keywords: "keys shortcuts bindings help", hint: root.keyName("keys") },
-      { kind: "view", id: "export", tag: "", title: "export as a PDF", sub: "this section, or what is selected", keywords: "export pdf print hand in", hint: root.keyName("exportPdf") },
+      { kind: "view", id: "export", tag: "", title: "export as a PDF", sub: "this section, or what is selected; on the dashboard, the deadline's", keywords: "export pdf print hand in", hint: root.keyName("exportPdf") },
       { kind: "view", id: "files", tag: "", title: "files", sub: "your notes and papers, as folders in the sidebar", keywords: "files folders vault sidebar", hint: root.keyName("pane1") },
       { kind: "view", id: "time", tag: "", title: "calendar and projects", sub: "the sidebar's time space", keywords: "calendar time sidebar projects", hint: root.keyName("pane1") },
-      { kind: "view", id: "agent", tag: "", title: "the agent", sub: "the day's conversation", keywords: "agent chat day conversation", hint: root.keyName("pane3") }
+      { kind: "view", id: "agent", tag: "", title: "the agent", sub: "the day's conversation (beside a note from Files, the note's)", keywords: "agent chat day conversation", hint: root.keyName("dayChat") || root.keyName("pane3") }
     ]
   }
 
+  // A paper's name and title as the rest of the page says them ("Moser et
+  // al. 2023"), where the agent's list of files has them.
+  readonly property var switcherNames: {
+    var out = {}
+    for (var i = 0; i < root.refFiles.length; i++) {
+      var f = root.refFiles[i]
+      if (f.kind === "paper" || /\.pdf$/i.test(f.rel)) out[f.rel] = { name: f.name || "", title: f.title || "" }
+    }
+    return out
+  }
   function switcherFileMatches(q) {
     var _v = root.vaultIndexVersion
     if (!root.vaultIndex || !root.vaultIndex.paths) return []
-    var low = q.toLowerCase()
-    var daily = svc.config && svc.config.daily ? String(svc.config.daily.dir || "").replace(/^\/+|\/+$/g, "") : ""
-    var agentRoot = svc.agentRoot
-    var scored = []
-    var paths = root.vaultIndex.paths
-    for (var i = 0; i < paths.length; i++) {
-      var rel = paths[i]
-      if (!/\.(md|pdf)$/i.test(rel)) continue
-      if (agentRoot !== "" && (rel === agentRoot || rel.indexOf(agentRoot + "/") === 0)) continue
-      var slash = rel.lastIndexOf("/")
-      var base = (slash >= 0 ? rel.slice(slash + 1) : rel)
-      var stem = base.replace(/\.(md|pdf)$/i, "")
-      var stemLow = stem.toLowerCase()
-      var relLow = rel.toLowerCase()
-      var score = 0
-      if (stemLow.indexOf(low) === 0) score = 3
-      else if (stemLow.indexOf(low) >= 0) score = 2
-      else if (relLow.indexOf(low) >= 0) score = 1
-      if (score === 0) continue
-      var isPdf = /\.pdf$/i.test(rel)
-      var isDaily = !isPdf && daily !== "" && rel.indexOf(daily + "/") === 0 && rel.slice(daily.length + 1).indexOf("/") < 0
-      var folder = slash > 0 ? rel.slice(0, slash) : ""
-      scored.push({
-        score: score,
-        rel: rel,
-        item: {
-          kind: "file", tag: "", path: rel, date: isDaily ? stem : "",
-          title: stem,
-          sub: isDaily ? "daily note" : (folder || rel),
-          hint: isPdf ? "pdf" : isDaily ? "day" : "note"
-        }
-      })
-    }
-    scored.sort(function (a, b) {
-      if (b.score !== a.score) return b.score - a.score
-      return b.rel.localeCompare(a.rel)
+    var fmt = svc.configured ? svc.dailyFormat() : ""
+    return Switch.files(root.vaultIndex.paths, q, {
+      daily: svc.config && svc.config.daily ? String(svc.config.daily.dir || "").replace(/^\/+|\/+$/g, "") : "",
+      agentRoot: svc.agentRoot,
+      names: root.switcherNames,
+      // A note in the daily folder is a day when its name is one (a README there is a note).
+      isDay: function (stem) { return fmt !== "" && !!Days.parse(stem, fmt) },
+      max: 6
     })
-    return scored.slice(0, 6).map(function (x) { return x.item })
   }
 
   readonly property var switcherMatches: {
@@ -6548,13 +6591,10 @@ Item {
     var out = []
     var projs = Tags.reach(root.projects, raw)
     for (var i = 0; i < projs.length && i < 6; i++) out.push(Object.assign({ kind: "project" }, projs[i]))
-    var low = raw.toLowerCase()
     var views = root.switcherViews()
     var vcount = 0
     for (var j = 0; j < views.length && vcount < 4; j++) {
-      if (views[j].title.toLowerCase().indexOf(low) >= 0 || views[j].keywords.indexOf(low) >= 0) {
-        out.push(views[j]); vcount++
-      }
+      if (Switch.viewMatches(views[j], raw)) { out.push(views[j]); vcount++ }
     }
     var files = root.switcherFileMatches(raw)
     for (var k = 0; k < files.length; k++) out.push(files[k])
@@ -6566,29 +6606,57 @@ Item {
     })
     return out
   }
+  function switcherKeyOf(it) {
+    return it ? [it.kind || "project", it.tag || it.id || it.path || "", it.line || "", it.query || ""].join("\u0001") : ""
+  }
+  onSwitcherPickChanged: root.switcherPickKey = root.switcherKeyOf(root.switcherMatches[root.switcherPick])
+  // Rows arriving while one is picked (the names read, the papers' names):
+  // the pick stays on what it was, not on the row now at its place.
+  onSwitcherMatchesChanged: {
+    var m = root.switcherMatches
+    if (root.switcherPickKey !== "") {
+      for (var i = 0; i < m.length; i++) {
+        if (root.switcherKeyOf(m[i]) === root.switcherPickKey) { if (i !== root.switcherPick) root.switcherPick = i; return }
+      }
+    }
+    if (root.switcherPick >= m.length) root.switcherPick = Math.max(0, m.length - 1)
+    root.switcherPickKey = root.switcherKeyOf(m[root.switcherPick])
+  }
 
   onSwitcherTextChanged: {
     root.switcherPick = 0
-    var raw = root.switcherText.trim()
-    if (root.switcherOpen && raw.charAt(0) === "?") {
-      if (raw.slice(1).trim() === "") { root.switcherFindHits = []; root.switcherFinding = false; switcherFindTimer.stop() }
-      else switcherFindTimer.restart()
+    root.switcherPickKey = ""
+    root.switcherFindError = ""
+    root.switcherGoWhenFound = false
+    if (root.switcherOpen && root.switcherWords !== "") {
+      // Searching from the first letter: never "no note holds…" before
+      // the words were looked for.
+      if (root.switcherStale) { root.switcherFinding = true; switcherFindTimer.restart() }
+      else { switcherFindTimer.stop(); root.switcherFinding = switcherFindProc.running && switcherFindProc.query === root.switcherWords && !switcherFindProc.stopped }
     } else {
       switcherFindTimer.stop()
       root.switcherFinding = false
+      if (root.switcherAsking) { root.switcherFindHits = []; root.switcherHitsFor = ""; root.switcherFindTotal = 0 }
     }
   }
 
   function openSwitcher(prefill) {
-    root.switcherFrom = root.here
+    // Open already (Ctrl+Shift+O over it): where the keys were stays the way back.
+    if (!root.switcherOpen) root.switcherFrom = root.here
     root.used("switcher")
     root.switcherFindHits = []
+    root.switcherHitsFor = ""
+    root.switcherFindTotal = 0
+    root.switcherFindError = ""
     root.switcherFinding = false
+    root.switcherGoWhenFound = false
     root.switcherText = prefill || ""
     root.switcherPick = 0
+    root.switcherPickKey = ""
     root.switcherOpen = true
     if (root.projectsListed.length === 0) root.refreshProjects()
-    root.needIndex()
+    if (root.refFiles.length === 0) root.loadRefFiles()   // papers by their names, as the sidebar shows them
+    root.freshIndex()
     switcherBox.fieldRef.text = prefill || ""
     switcherBox.fieldRef.cursorPosition = switcherBox.fieldRef.text.length
     switcherBox.fieldRef.forceActiveFocus()
@@ -6598,13 +6666,56 @@ Item {
     if (root.switcherOpen) { root.closeSwitcher(); return }
     root.openSwitcher("")
   }
-  function closeSwitcher() {
+  // Ctrl+Shift+O: the switcher on `?`. Over it on `?` already, it closes,
+  // as Ctrl+O does over its own; over other letters, they become the words.
+  function findAll() {
+    if (!root.switcherOpen) { root.openSwitcher("? "); return }
+    if (root.switcherAsking) { root.closeSwitcher(); return }
+    var w = root.switcherText.trim().replace(/^#/, "")
+    switcherBox.fieldRef.text = "? " + w
+    switcherBox.fieldRef.cursorPosition = switcherBox.fieldRef.text.length
+  }
+  // The switcher gone, however it goes (Esc, a pick, a click elsewhere, the
+  // page closing): no search left running or waiting for it.
+  function switcherDone() {
     switcherFindTimer.stop()
+    if (switcherFindProc.running && !switcherFindProc.stopped) { switcherFindProc.stopped = true; switcherFindProc.signal(15) }
     root.switcherFinding = false
+    root.switcherGoWhenFound = false
     root.switcherOpen = false
+  }
+  function closeSwitcher() {
+    root.switcherDone()
     if (!root.focusPane(root.switcherFrom)) root.focusCenter()
   }
+
+  // Where a note or a hit leads: a day as a day (the calendar's cursor
+  // with it), any other note as a file, a paper in the reader; to the line
+  // when there is one, the words lit. What was over the middle (the
+  // dashboard, keys, settings, a paper, the export) gives way to it, and
+  // a jump inside the note open is a step back too (Ctrl+[).
+  function switcherLand(item, line, words) {
+    if (root.exportOpen) { root.exportFromDash = false; root.closeExport() }
+    if (/\.pdf$/i.test(item.path || "")) { root.openPdf(item.path); return }
+    var same = svc.ready && (item.date ? item.date === svc.noteDate && root.dayNote : item.path === svc.filePath)
+    root.pendingLine = line
+    root.pendingWords = line > 0 ? (words || "") : ""
+    if (same && line > 0) root.remember()
+    if (item.date) {
+      var d = svc.configured ? Days.parse(item.date, svc.dailyFormat()) : null
+      if (d) root.calFocus = d.date
+      root.openNote(item.date)
+    } else root.openFile(item.path, false)
+    root.showNote()
+    if (same) root.landOnLine()
+  }
   function switcherGo(asPage) {
+    // Enter while the hits are for words typed before: these words' own, once found.
+    if (root.switcherAsking && root.switcherStale) {
+      root.switcherGoWhenFound = true
+      root.runSwitcherFind()
+      return
+    }
     var item = root.switcherMatches[root.switcherPick]
     if (!item) return
     if (item.kind === "project") {
@@ -6619,44 +6730,60 @@ Item {
       switcherBox.fieldRef.text = "? " + item.query
       switcherBox.fieldRef.cursorPosition = switcherBox.fieldRef.text.length
       switcherBox.fieldRef.forceActiveFocus()
-      root.runSwitcherFind()
+      root.runSwitcherFind()   // now, not after the typing pause too (it ran twice)
       return
     }
     if (item.kind === "view") {
       root.closeSwitcher()
+      // A view is opened, never closed: picked while it is open, the keys go to it.
       if (item.id === "dash") root.showDash()
       else if (item.id === "today") root.goToday()
-      else if (item.id === "settings") root.toggleSettings()
-      else if (item.id === "keys") root.toggleKeys()
-      else if (item.id === "export") root.openExport()
-      else if (item.id === "files") { root.sidebarSpace = "files"; if (!root.sidebarOpen) root.paneKey("left"); else root.focusPane("left") }
-      else if (item.id === "time") { root.sidebarSpace = "time"; if (!root.sidebarOpen) root.paneKey("left"); else root.focusPane("left") }
-      else if (item.id === "agent") root.paneKey("right")
+      else if (item.id === "settings") { if (!root.settingsOpen) root.toggleSettings(); else root.focusCenter() }
+      else if (item.id === "keys") { if (!root.keysOpen) root.toggleKeys(); else root.focusCenter() }
+      else if (item.id === "export") {
+        if (root.centerView === "dash") root.exportFocused()
+        else { root.showNote(); root.openExport() }
+      }
+      else if (item.id === "files" || item.id === "time") root.setSpace(item.id)
+      else if (item.id === "agent") root.openDay("")
       return
     }
     if (item.kind === "file") {
       root.closeSwitcher()
-      if (item.date) root.openNote(item.date)
-      else root.openFile(item.path, false)
+      root.switcherLand(item, -1, "")
       return
     }
     if (item.kind === "hit") {
+      var words = root.switcherWords
       root.closeSwitcher()
-      root.pendingLine = item.bodyLine || item.line || 1
-      if (item.date) {
-        if (item.date === svc.noteDate && svc.ready) { root.showNote(); root.landOnLine() }
-        else root.openNote(item.date)
-      } else {
-        if (item.path === svc.filePath && svc.ready) { root.showNote(); root.landOnLine() }
-        else root.openFile(item.path, false)
-      }
+      root.switcherLand(item, item.bodyLine || item.line || 1, words)
       return
     }
+  }
+  // Ctrl+Shift+C over the switcher: the path of the row picked (a hit's
+  // with its line), not of what is behind it.
+  function switcherCopyPath() {
+    var it = root.switcherMatches[root.switcherPick]
+    var vault = svc.config ? String(svc.config.vault || "").replace(/[\/\\]+$/, "") : ""
+    if (!it || !it.path || vault === "") return false
+    var p = vault + "/" + it.path + (it.kind === "hit" ? ":" + it.line : "")
+    editor.copyText(p)
+    root.showHint("copied " + p.replace(Quickshell.env("HOME") + "/", "~/"))
+    root.used("copy-path", "switcher")
+    return true
+  }
+  // Keys the switcher answers before the page's: those that would act on
+  // what is behind it.
+  function switcherFirst(event) {
+    if (Sc.hit(event, "copyPath")) return root.switcherCopyPath()
+    return false
   }
   function switcherKey(event) {
     var n = root.switcherMatches.length
     if (Sc.hit(event, "switchUp")) { if (n > 0) root.switcherPick = (root.switcherPick + n - 1) % n }
     else if (Sc.hit(event, "switchDown")) { if (n > 0) root.switcherPick = (root.switcherPick + 1) % n }
+    else if (Sc.hit(event, "switchScreenUp")) { if (n > 0) root.switcherPick = Math.max(0, root.switcherPick - switcherBox.screenRows()) }
+    else if (Sc.hit(event, "switchScreenDown")) { if (n > 0) root.switcherPick = Math.min(n - 1, root.switcherPick + switcherBox.screenRows()) }
     else if (Sc.hit(event, "switchGo")) root.switcherGo(false)
     else if (Sc.hit(event, "switchPage")) root.switcherGo(true)
     else if (Sc.hit(event, "switchClose")) root.closeSwitcher()
@@ -10185,9 +10312,10 @@ Item {
     id: indexProc
     stdout: StdioCollector {
       onStreamFinished: {
-        var cut = svc.config.vault.length + 1
+        var cut = String(svc.config.vault).replace(/[\/\\]+$/, "").length + 1   // a trailing slash in `vault` cut a letter off every path
         var paths = String(text).split("\n").filter(function (p) { return p !== "" }).map(function (p) { return p.slice(cut) })
         root.vaultIndex = Links.index(paths)
+        root.vaultIndexAt = Date.now()
         root.vaultIndexVersion++
         // A link that found nothing in the names read before: once more,
         // with the vault read again (a file added since the page opened).
@@ -10729,6 +10857,15 @@ Item {
     // The switcher (Ctrl+O): a project by its letters, over whatever the
     // middle shows. (Switcher.qml)
     Switcher { id: switcherBox; page: root }
+    // A press outside it lets the switcher go, as outside a menu: on empty
+    // chrome too, where nothing takes the keys from its field. The press
+    // goes on to what is under it.
+    MouseArea {
+      anchors.fill: parent
+      z: 89
+      visible: root.switcherOpen
+      onPressed: function (mouse) { mouse.accepted = false; root.closeSwitcher() }
+    }
 
     BorderSurface {
       id: sheet

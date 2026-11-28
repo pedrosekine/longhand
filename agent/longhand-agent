@@ -5611,14 +5611,15 @@ def cmd_find(cfg: dict, args) -> int:
     """User-only full-text vault search (for Ctrl+O ? <words>): searches all
     user notes including private ones, never sent to a model."""
     paths = Paths(cfg, dt.date.today())
-    hits = searchlib.find_mine(
+    hits, total = searchlib.find_mine_counted(
         paths.vault,
         args.words,
         daily_dir=(cfg.get("daily") or {}).get("dir", ""),
         agent_dir=cfg.get("agentDir", "agents/longhand"),
         limit=max(1, min(50, args.limit)),
+        is_day=lambda stem: stamp_date(cfg, stem) is not None,
     )
-    print(json.dumps({"words": args.words, "hits": hits}, ensure_ascii=False))
+    print(json.dumps({"words": args.words, "hits": hits, "total": total}, ensure_ascii=False))
     return 0
 
 

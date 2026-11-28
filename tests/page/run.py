@@ -259,7 +259,7 @@ if cmd == "projects":
     sys.exit(rc)
 LOCAL = {"accept", "projects", "project", "project-page", "sections", "next", "dated", "tasks", "box", "timetable",
          "plan", "proposals", "proposal", "talk", "thread", "rate", "notebook", "autonomy", "day", "search", "horizon",
-         "note", "export", "checkin", "conversation"}
+         "note", "export", "checkin", "conversation", "find"}
 if cmd in LOCAL:
     sys.exit(run([sys.executable, agent, *argv]))
 if cmd == "run":
@@ -366,7 +366,7 @@ if [ "$1" = projects ]; then
   exit $rc
 fi
 case "$1" in
-  accept|projects|project|project-page|sections|next|dated|tasks|box|timetable|plan|proposals|proposal|talk|thread|rate|notebook|autonomy|day|search|horizon|note|export|checkin|conversation) exec "{ROOT}/agent/longhand-agent" "$@" ;;
+  accept|projects|project|project-page|sections|next|dated|tasks|box|timetable|plan|proposals|proposal|talk|thread|rate|notebook|autonomy|day|search|horizon|note|export|checkin|conversation|find) exec "{ROOT}/agent/longhand-agent" "$@" ;;
   run) sleep 2; exit 0 ;;
   chat) sleep 2; exec python3 "{chatstub}" "{self.vault}/agents/longhand/daily" "$@" ;;
 esac
@@ -3953,6 +3953,68 @@ def checks() -> int:
               f"…Enter opens the project in the sidebar ({walk()}, {sw()})")
         p.call("sideKey", KEY_ESC, 0)
         p.call("sideKey", KEY_ESC, 0)
+        # The switcher pass (2026-11-28): `? words` typed fast is searched for
+        # the last words, never "no note holds" while it looks; a hit picked
+        # over Settings lands on its line, the words selected; a day picked
+        # over the dashboard shows; a view picked open stays open; Shift+Tab
+        # goes up; Ctrl+Shift+O over `?` closes, Esc back where the keys were.
+        swx = lambda: json.loads(p.call("switcherState"))
+        p.call("openDay", TODAY)
+        p.call("settings")
+        check(p.wait(lambda: p.call("settingsOpen") == "true"), "settings open, for the switcher over it")
+        p.call("pageKey", 0x4f, CTRL | SHIFT)
+        check(swx()["open"] and swx()["text"] == "? ", f"Ctrl+Shift+O opens the switcher on ? ({swx()})")
+        p.call("switcherType", "? yesterd")
+        p.call("switcherType", "? yesterday's wor")
+        check("no note holds" not in swx()["status"], f"…while it looks it never says nothing was found ({swx()['status']!r})")
+        check(p.wait(lambda: not swx()["finding"] and swx()["hitsFor"] == "yesterday's wor", 10),
+              f"…typed fast, the last words are the ones searched ({swx()})")
+        hit = next((i for i, r in enumerate(swx()["rows"]) if r["kind"] == "hit" and r["date"] == YDAY), -1)
+        check(hit >= 0 and swx()["error"] == "", f"…yesterday's note is found ({swx()})")
+        p.call("switcherPickAt", max(hit, 0))
+        p.call("switcherKey", KEY_RETURN, 0)
+        check(p.wait(lambda: "yesterday's words" in p.call("text") and p.call("settingsOpen") == "false" and panes()["here"] == "center"),
+              f"…Enter over Settings: Settings gives way, the note open with the keys ({panes()})")
+        check(p.wait(lambda: p.call("selection") == "yesterday's"), f"…the first of the words selected ({p.call('selection')!r})")
+        p.call("dash")
+        check(p.wait(lambda: p.call("dashOpen") == "true"), "the dashboard open, for the switcher over it")
+        p.call("pageKey", 0x4f, CTRL)
+        p.call("switcherType", TODAY)
+        today_row = next((i for i, r in enumerate(swx()["rows"]) if r["kind"] == "file" and r["date"] == TODAY), -1)
+        check(today_row >= 0, f"today's note is found by its name ({swx()['rows']})")
+        p.call("switcherPickAt", max(today_row, 0))
+        p.call("switcherKey", KEY_RETURN, 0)
+        check(p.wait(lambda: p.call("dashOpen") == "false" and panes()["center"] == "note" and panes()["here"] == "center"),
+              f"…picked over the dashboard, the day shows, with the keys ({panes()})")
+        p.call("settings")
+        p.wait(lambda: p.call("settingsOpen") == "true")
+        p.call("pageKey", 0x4f, CTRL)
+        p.call("switcherType", "settings")
+        view = next((i for i, r in enumerate(swx()["rows"]) if r["kind"] == "view" and r["id"] == "settings"), -1)
+        p.call("switcherPickAt", max(view, 0))
+        p.call("switcherKey", KEY_RETURN, 0)
+        check(view >= 0 and p.wait(lambda: not swx()["open"]) and p.call("settingsOpen") == "true",
+              f"\"settings\" picked with Settings open keeps it open ({swx()})")
+        p.call("settings")
+        p.wait(lambda: p.call("settingsOpen") == "false")
+        p.call("pageKey", 0x4f, CTRL)
+        p.call("switcherType", "e")
+        check(p.call("switcherKey", KEY_BACKTAB, SHIFT) == "true" and swx()["pick"] == len(swx()["rows"]) - 1 and swx()["open"],
+              f"Shift+Tab goes up (round to the last), the switcher stays ({swx()['pick']}, {len(swx()['rows'])})")
+        p.call("switcherKey", KEY_ESC, 0)
+        p.call("pageKey", KEY_1, CTRL)
+        check(panes()["here"] == "left", "Ctrl+1: in the sidebar, for the way back")
+        p.call("pageKey", 0x4f, CTRL)
+        p.call("switcherType", "#yest")
+        p.call("pageKey", 0x4f, CTRL | SHIFT)
+        check(swx()["open"] and swx()["text"] == "? yest" and swx()["from"] == "left",
+              f"Ctrl+Shift+O over letters makes them the words, the way back kept ({swx()})")
+        p.call("switcherType", "? ")
+        p.call("pageKey", 0x4f, CTRL | SHIFT)
+        check(not swx()["open"] and p.wait(lambda: panes()["here"] == "left"),
+              f"…over ? it closes, the keys back in the sidebar ({swx()}, {panes()})")
+        p.call("sideKey", KEY_ESC, 0)
+        p.call("openDay", TODAY)
         # (Not whether a line of the note has the keys: a note shorter than
         # the line the cursor was on drops them, 2026-10-25, a bug of its own.)
         y = dt.date.today() - dt.timedelta(days=1)

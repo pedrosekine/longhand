@@ -60,13 +60,27 @@ def cmd_list(args: list[str]) -> int:
     return 0
 
 
+def _walk(base: str):
+    """os.walk, a linked folder walked as what it points at (Files lists it
+    as a folder, so its filter and the switcher find what is in it), each
+    real folder once: a link back up is not followed round."""
+    seen = set()
+    for dirpath, dirs, files in os.walk(base, followlinks=True):
+        real = os.path.realpath(dirpath)
+        if real in seen:
+            dirs[:] = []
+            continue
+        seen.add(real)
+        yield dirpath, dirs, files
+
+
 def cmd_walk(args: list[str]) -> int:
     for root in args:
         if not os.path.isdir(root):
             continue
         base = os.path.normpath(root)
         prefix = root.replace("\\", "/").rstrip("/")
-        for dirpath, _dirs, files in os.walk(base):
+        for dirpath, _dirs, files in _walk(base):
             rel_dir = os.path.relpath(dirpath, base)
             rel_dir = "" if rel_dir == "." else rel_dir.replace("\\", "/")
             for name in files:
@@ -82,7 +96,7 @@ def cmd_index(args: list[str]) -> int:
     root = args[0]
     base = os.path.normpath(root)
     prefix = root.replace("\\", "/").rstrip("/")
-    for dirpath, dirs, files in os.walk(base):
+    for dirpath, dirs, files in _walk(base):
         dirs[:] = [d for d in dirs if not d.startswith(".")]
         rel_dir = os.path.relpath(dirpath, base)
         rel_dir = "" if rel_dir == "." else rel_dir.replace("\\", "/")

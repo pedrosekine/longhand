@@ -29,6 +29,7 @@ import os
 import re
 import subprocess
 import time
+import unicodedata
 from pathlib import Path
 
 import blocks as blocklib
@@ -294,17 +295,57 @@ def say_withheld(w: dict) -> str:
     return ", ".join(f"{n} {names.get(k, k)}" for k, n in sorted(w.items()) if n)
 
 
-def find_mine(vault: Path, words: str, daily_dir: str = "", agent_dir: str = "agents/longhand", limit: int = 12) -> list[dict]:
+# What a line of a note draws, for the user's own search (Ctrl+O ? words):
+# the marks of emphasis, a link's target and a block's id are not words,
+# and accents fold, as the switcher and the sidebar's find fold them
+# ("uber" finds "über", "read chapter" finds "read **chapter**").
+_EMPH = re.compile(r"(\*\*|__|~~|==|`)")
+_WIKI = re.compile(r"!?\[\[([^\]|#]*)(?:#[^\]|]*)?(?:\|([^\]]*))?\]\]")
+_MDLINK = re.compile(r"!?\[([^\]]*)\]\([^)]*\)")
+_BLOCK_ID = re.compile(r"\s\^[\w-]+\s*$")
+_LEAD = re.compile(r"^\s*(?:>\s*)*(?:#{1,6}\s+|(?:[-*+]|\d+[.)])\s+(?:\[.\]\s+)?)?")
+_HEADING = re.compile(r"^#{1,6}\s+(.*?)\s*#*\s*$")
+_FENCE = re.compile(r"^\s*(```|~~~)")
+
+
+def _fold(s: str) -> str:
+    return "".join(c for c in unicodedata.normalize("NFD", s) if not unicodedata.combining(c)).casefold()
+
+
+def drawn(line: str) -> str:
+    """A line as the page draws it: no emphasis marks, a link as its name,
+    no block id, no bullet, box or heading marks, one space between words."""
+    t = _WIKI.sub(lambda m: m.group(2) or m.group(1).rsplit("/", 1)[-1], line)
+    t = _MDLINK.sub(lambda m: m.group(1), t)
+    t = _BLOCK_ID.sub("", t)
+    t = _LEAD.sub("", t, count=1)
+    t = _EMPH.sub("", t)
+    return re.sub(r"\s+", " ", t).strip()
+
+
+def find_mine(vault: Path, words: str, daily_dir: str = "", agent_dir: str = "agents/longhand", limit: int = 12,
+              is_day=None) -> list[dict]:
+    """Full-text search across the student's own vault notes (find_mine_counted's hits)."""
+    return find_mine_counted(vault, words, daily_dir, agent_dir, limit, is_day)[0]
+
+
+def find_mine_counted(vault: Path, words: str, daily_dir: str = "", agent_dir: str = "agents/longhand", limit: int = 12,
+                      is_day=None) -> tuple[list[dict], int]:
     """Full-text search across the student's own vault notes — local only,
     never sent to a model, so private notes, private callouts and days before
-    the horizon are all included. Skips dot-folders and the agent's own dir."""
-    want = [t for t in re.findall(r"\S+", words.casefold()) if t]
+    the horizon are all included. Skips dot-folders and the agent's own dir.
+    Matches what a line draws, accents aside; a file gives its three best
+    lines, wherever they are in it. A note in the daily folder is a day only
+    when its name is one (`is_day`, the configured format). Returns the best
+    `limit` hits and how many lines matched in all."""
+    want = sorted(set(t for t in re.findall(r"\S+", _fold(words)) if t), key=lambda t: -len(t))
     if not want:
-        return []
-    phrase = " ".join(want)
+        return [], 0
+    phrase = " ".join(re.findall(r"\S+", _fold(words)))
     daily_norm = daily_dir.strip("/")
     agent_norm = agent_dir.strip("/")
     found = []
+    total = 0
     for root_dir, dirnames, filenames in os.walk(vault):
         rel_dir = Path(root_dir).relative_to(vault)
         rel_dir_s = "" if rel_dir == Path(".") else rel_dir.as_posix()
@@ -326,40 +367,54 @@ def find_mine(vault: Path, words: str, daily_dir: str = "", agent_dir: str = "ag
             except OSError:
                 continue
             lines = text.splitlines()
-            heading = ""
-            in_fm = bool(lines and lines[0].strip() == "---")
+            # The header: between a first `---` and the next. A `---` with
+            # none after it is a rule, not a header, and the note is read
+            # whole (it was skipped whole).
             body_start = 0
-            if in_fm:
+            if lines and lines[0].strip() == "---":
                 for k in range(1, len(lines)):
                     if lines[k].strip() == "---":
                         body_start = k + 1
                         break
             if body_start < len(lines) and re.match(r"^\[\[[^\]\n]*\|agent\]\]\s*$", lines[body_start]):
                 body_start += 1
-            best_file_hits = 0
-            for idx, raw in enumerate(lines, 1):
-                if in_fm:
-                    if idx > 1 and raw.strip() == "---":
-                        in_fm = False
+            in_daily = bool(daily_norm and rel.startswith(daily_norm + "/") and "/" not in rel[len(daily_norm) + 1:]
+                            and rel.endswith(".md"))
+            stem = rel[len(daily_norm) + 1:-3] if in_daily else ""
+            is_daily = in_daily and (is_day is None or bool(is_day(stem)))
+            stamp = stem if is_daily else ""
+            heading = ""
+            fence = False
+            mine = []
+            for idx in range(body_start + 1, len(lines) + 1):
+                raw = lines[idx - 1]
+                if _FENCE.match(raw):
+                    fence = not fence
                     continue
-                if raw.startswith("#"):
-                    heading = re.sub(r"^#+\s*", "", raw).strip()
-                low = raw.casefold()
-                matched = sum(1 for t in set(want) if t in low)
-                if matched < len(set(want)):
+                if not fence:
+                    h = _HEADING.match(raw)
+                    if h:
+                        heading = drawn(h.group(1))
+                shown = drawn(raw)
+                low = _fold(shown)
+                matched = sum(1 for t in want if t in low)
+                if matched < len(want):
                     continue
                 exact = 1 if phrase in low else 0
-                is_daily = bool(daily_norm and rel.startswith(daily_norm + "/") and "/" not in rel[len(daily_norm) + 1:] and rel.endswith(".md"))
-                stamp = rel[len(daily_norm) + 1:-3] if is_daily else ""
-                snippet = re.sub(r"\s+", " ", raw).strip()
+                snippet = shown
                 if len(snippet) > 160:
-                    pos = low.find(want[0])
+                    pos = shown.casefold().find(want[0])
+                    if pos < 0:
+                        pos = max(0, low.find(want[0]))
                     start = max(0, pos - 40)
                     snippet = ("…" if start > 0 else "") + snippet[start:start + 150].strip() + "…"
-                found.append((exact, matched, 1 if is_daily else 0, [-ord(c) for c in rel], -idx,
-                              {"path": rel, "line": idx, "body_line": max(1, idx - body_start), "date": stamp, "heading": heading, "text": snippet}))
-                best_file_hits += 1
-                if best_file_hits >= 3:
-                    break
-    found.sort(key=lambda x: (-x[0], -x[1], -x[2], x[3], -x[4]))
-    return [x[5] for x in found[:max(1, limit)]]
+                mine.append((exact, -idx, {"path": rel, "line": idx, "body_line": max(1, idx - body_start), "date": stamp,
+                                           "heading": heading, "text": snippet}))
+            total += len(mine)
+            # The file's three best lines: an exact phrase low in a note
+            # before loose words near its top.
+            mine.sort(key=lambda x: (-x[0], -x[1]))
+            for exact, neg_idx, hit in mine[:3]:
+                found.append((exact, 1 if is_daily else 0, [-ord(c) for c in rel], neg_idx, hit))
+    found.sort(key=lambda x: (-x[0], -x[1], x[2], -x[3]))
+    return [x[4] for x in found[:max(1, limit)]], total

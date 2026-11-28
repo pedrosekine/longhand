@@ -661,6 +661,20 @@ ShellRoot {
                               matches: page.switcherMatches.map(function (p) { return p.tag }) })
     }
     function switcherType(s: string): void { page.switcherField.text = s }
+    // The switcher pass (2026-11-28): its rows, what it says, its search.
+    function switcherState(): string {
+      return JSON.stringify({ open: page.switcherOpen, here: page.here, pick: page.switcherPick, text: page.switcherText,
+                              from: page.switcherFrom, status: page.switcherStatus, finding: page.switcherFinding,
+                              hitsFor: page.switcherHitsFor, error: page.switcherFindError, total: page.switcherFindTotal,
+                              rows: page.switcherMatches.map(function (m) {
+                                return { kind: m.kind || "project", id: m.id || "", tag: m.tag || "", path: m.path || "",
+                                         date: m.date || "", line: m.line || 0, title: m.title || "" } }) })
+    }
+    function switcherPickAt(i: int): void { page.switcherPick = i }
+    function selection(): string {
+      var e = page.editorItem, s = e.selected()
+      return s ? e.text.slice(s.a, s.b) : ""
+    }
     function switcherKey(key: int, mods: int): bool { return page.switcherKey({ key: key, text: "", modifiers: mods }) }
     function goFirstDue(): void { page.goToDeadline(page.focusDue[0]) }
     // The day's deadline list as the keyboard drives it: focus a row, a key.
