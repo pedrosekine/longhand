@@ -284,6 +284,46 @@ def private_boxes(tmp: pathlib.Path) -> None:
     check(theirs == ["out loud"], f"what the agent is given has none of them ({theirs})")
 
 
+def find_mine(tmp: pathlib.Path) -> None:
+    """The switcher's `? words` (2026-11-28, the switcher pass): what a line
+    draws, accents aside; a file's best lines wherever they are; a header
+    that never closes is a rule; a heading is a heading; a README in the
+    daily folder is no day; the count of every matching line."""
+    v = tmp / "find-vault"
+    (v / "human" / "Daily").mkdir(parents=True)
+    (v / "notes").mkdir(parents=True)
+    (v / "notes" / "long.md").write_text(
+        "read a chapter\nchapter to read\nread the chapter\nchapter later, then read\n\n" + "filler\n" * 30
+        + "## Plan\n- [ ] read **chapter** two ^d12\n")
+    (v / "notes" / "rule.md").write_text("---\nNo header here, a rule. Über alles.\n")
+    (v / "notes" / "code.md").write_text("# Real heading\n```\n# not a heading\n```\nfencedword here\n#tag fencedword again\n")
+    (v / "notes" / "links.md").write_text("see [[projects/thesis/Methods|the methods]] and [[Other note]] linkword\n")
+    (v / "notes" / "wide.md").write_text("\t\t\t- " + "x " * 120 + "needle " + "y " * 40 + "\n")
+    (v / "human" / "Daily" / "README.md").write_text("how dailies work: dailyword\n")
+    (v / "human" / "Daily" / "2026-11-02.md").write_text("dailyword on a day\n")
+    is_day = lambda s: len(s) == 10 and s[4] == "-"   # noqa: E731
+    got = search.find_mine(v, "read chapter", daily_dir="human/Daily", is_day=is_day)
+    longs = [h for h in got if h["path"] == "notes/long.md"]
+    check(len(longs) == 3 and longs[0]["line"] == 37 and "read chapter two" == longs[0]["text"],
+          f"an exact phrase low in a note comes first, drawn without its marks ({[(h['line'], h['text']) for h in longs]})")
+    check(longs[0]["heading"] == "Plan", f"…under its heading ({longs[0]['heading']!r})")
+    hits, total = search.find_mine_counted(v, "read chapter", daily_dir="human/Daily", is_day=is_day)
+    check(total == 5, f"every matching line is counted, not only those shown ({total})")
+    check([h["path"] for h in search.find_mine(v, "uber alles")] == ["notes/rule.md"],
+          "a `---` with no end is a rule: the note is searched, accents aside")
+    code = search.find_mine(v, "fencedword")
+    check({h["heading"] for h in code} == {"Real heading"},
+          f"a `#` in a code block or a #tag is no heading ({[h['heading'] for h in code]})")
+    links = search.find_mine(v, "the methods other note linkword")
+    check(len(links) == 1 and links[0]["text"] == "see the methods and Other note linkword",
+          f"a link is found and shown by its name ({links})")
+    wide = search.find_mine(v, "needle")
+    check(len(wide) == 1 and "needle" in wide[0]["text"], f"a long indented line keeps the word in its snippet ({wide})")
+    days = {h["path"]: h["date"] for h in search.find_mine(v, "dailyword", daily_dir="human/Daily", is_day=is_day)}
+    check(days == {"human/Daily/README.md": "", "human/Daily/2026-11-02.md": "2026-11-02"},
+          f"a note in the daily folder is a day only when its name is one ({days})")
+
+
 def main() -> int:
     tmp = pathlib.Path(tempfile.mkdtemp(prefix="search-test-"))
     units(tmp)
@@ -291,6 +331,7 @@ def main() -> int:
     horizon(tmp)
     guard(tmp)
     private_boxes(tmp)
+    find_mine(tmp)
     print("PASS" if failures == 0 else f"{failures} FAILED")
     return 1 if failures else 0
 

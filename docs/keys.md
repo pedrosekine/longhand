@@ -117,8 +117,10 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 
 | | Keys | Works |
 |---|---|---|
-| The match above | `↑` | in the switcher (Ctrl+O) |
+| The match above | `↑` · `Shift+Tab` | in the switcher (Ctrl+O) |
 | The match below | `↓` · `Tab` | in the switcher (Ctrl+O) |
+| A screenful of matches up | `PgUp` | in the switcher (Ctrl+O) |
+| A screenful of matches down | `PgDn` | in the switcher (Ctrl+O) |
 | Open the picked item | `Enter` | in the switcher (Ctrl+O) |
 | Open the project's page | `Shift+Enter` | in the switcher (Ctrl+O) |
 | Close it, back where you were | `Esc` | in the switcher (Ctrl+O) |

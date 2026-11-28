@@ -221,8 +221,10 @@ var actions = [
   { id: "chatPageUp", group: "agent", places: ["chat"], does: "In the agent's pane: a screen of the conversation up", keys: ["PgUp"] },
   { id: "chatPageDown", group: "agent", places: ["chat"], does: "In the agent's pane: a screen of the conversation down", keys: ["PgDn"] },
 
-  { id: "switchUp", group: "switcher", places: ["switcher"], does: "The match above", keys: ["Up"] },
+  { id: "switchUp", group: "switcher", places: ["switcher"], does: "The match above", keys: ["Up", "Shift+Tab"] },
   { id: "switchDown", group: "switcher", places: ["switcher"], does: "The match below", keys: ["Down", "Tab"] },
+  { id: "switchScreenUp", group: "switcher", places: ["switcher"], does: "A screenful of matches up", keys: ["PgUp"] },
+  { id: "switchScreenDown", group: "switcher", places: ["switcher"], does: "A screenful of matches down", keys: ["PgDn"] },
   { id: "switchGo", group: "switcher", places: ["switcher"], does: "Open the picked item", keys: ["Enter"] },
   { id: "switchPage", group: "switcher", places: ["switcher"], does: "Open the project's page", keys: ["Shift+Enter"] },
   { id: "switchClose", group: "switcher", places: ["switcher"], does: "Close it, back where you were", keys: ["Esc"] },

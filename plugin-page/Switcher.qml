@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls as QC
 import qs.Commons
 import qs.Ui
+import "Switch.js" as Switch
 
 // The switcher (Ctrl+O; docs/keys-proposal.md's "find anything", built for
 // projects first on 2026-11-17, plan.md item 19): "#th" Enter reaches
@@ -17,7 +18,9 @@ Rectangle {
   z: 90
   width: Math.min(page.sp(520), parent.width - page.sp(32))
   x: Math.round((parent.width - width) / 2)
-  y: page.sp(56)
+  // Nearer the top in a short window, and never past its foot (a high zoom
+  // or a short tile cut the list off).
+  y: Math.max(page.sp(8), Math.min(page.sp(56), Math.round(parent.height * 0.08)))
   height: col.implicitHeight + page.sp(20)
   radius: page.overlayRadius
   color: page.background
@@ -48,6 +51,7 @@ Rectangle {
       foreground: page.foreground
       onTextChanged: page.switcherText = text
       Keys.onPressed: function (event) {
+        if (page.switcherFirst(event)) { event.accepted = true; return }
         if (page.anywhereKey(event)) { event.accepted = true; return }
         if (page.switcherKey(event)) event.accepted = true
       }
@@ -61,7 +65,7 @@ Rectangle {
       QC.ScrollBar.vertical: ScrollMark { page: sw.page }
       TouchScroll { flickable: listFlick }
       width: col.width
-      height: Math.min(listCol.implicitHeight, page.sp(360))
+      height: Math.max(0, Math.min(listCol.implicitHeight, page.sp(360), sw.room))
       contentWidth: width
       contentHeight: listCol.implicitHeight
       clip: true
@@ -69,13 +73,11 @@ Rectangle {
       boundsBehavior: Flickable.StopAtBounds
       Connections {
         target: page
-        function onSwitcherPickChanged() {
-          var it = listRep.itemAt(page.switcherPick)
-          if (!it) return
-          if (it.y < listFlick.contentY) listFlick.contentY = it.y
-          else if (it.y + it.height > listFlick.contentY + listFlick.height)
-            listFlick.contentY = Math.max(0, it.y + it.height - listFlick.height)
-        }
+        function onSwitcherPickChanged() { sw.reveal() }
+        // Other words, other rows: from the top (a wheel or an earlier
+        // pick left the list scrolled down over the new ones).
+        function onSwitcherTextChanged() { listFlick.contentY = 0 }
+        function onSwitcherMatchesChanged() { Qt.callLater(sw.reveal) }
       }
       Column {
         id: listCol
@@ -99,6 +101,8 @@ Rectangle {
             readonly property string rightText: kind === "project"
               ? (matchRow.place >= 0 && matchRow.place < 9 ? "Alt+" + (matchRow.place + 1) : "")
               : (modelData.hint || "")
+            // A key on the right is a key; a file's kind (note, day, pdf) is not one.
+            readonly property bool rightIsKind: kind === "file" || kind === "hit"
             width: listCol.width
             height: matchCol.implicitHeight + page.sp(6)
             radius: Style.cornerRadius
@@ -110,11 +114,12 @@ Rectangle {
               anchors.leftMargin: page.sp(4)
               anchors.rightMargin: page.sp(8)
               anchors.verticalCenter: parent.verticalCenter
+              // What was matched, in bold.
               Text {
                 width: parent.width
-                textFormat: Text.PlainText
+                textFormat: matchRow.kind === "search" ? Text.PlainText : Text.StyledText
                 elide: Text.ElideRight
-                text: matchRow.mainText
+                text: matchRow.kind === "search" ? matchRow.mainText : Switch.marked(matchRow.mainText, sw.words)
                 color: matchRow.kind === "search" ? page.accent : page.foreground
                 font.family: page.fontFamily
                 font.styleName: page.fontStyle
@@ -140,6 +145,7 @@ Rectangle {
               anchors.verticalCenter: parent.verticalCenter
               textFormat: Text.PlainText
               text: matchRow.rightText
+              font.italic: matchRow.rightIsKind
               color: page.faint
               font.family: page.fontFamily
               font.styleName: page.fontStyle
@@ -152,44 +158,42 @@ Rectangle {
               cursorShape: Qt.PointingHandCursor
               onPressed: sw.clicking = true
               onReleased: sw.clicking = false
-              onClicked: { page.switcherPick = matchRow.index; page.switcherGo(false) }
+              onCanceled: sw.clicking = false   // dragged off the row: no click, and the field's focus counts again
+              // Shift+click is Shift+Enter: a project's page.
+              onClicked: function (mouse) { page.switcherPick = matchRow.index; page.switcherGo(!!(mouse.modifiers & Qt.ShiftModifier)) }
             }
           }
         }
       }
     }
 
+    // How the search stands: looking, failed, nothing, or the best of how
+    // many; the names still being read.
     Text {
+      id: status
       width: parent.width
-      visible: page.switcherMatches.length === 0
+      text: sw.statusText
+      visible: text !== ""
       textFormat: Text.PlainText
       wrapMode: Text.WordWrap
-      text: {
-        var raw = page.switcherText.trim()
-        if (raw.charAt(0) === "?") {
-          var q = raw.slice(1).trim()
-          if (q === "") return "type words to search across all your notes (including private)"
-          if (page.switcherFinding) return "searching all notes for “" + q + "”…"
-          return "no note holds “" + q + "”"
-        }
-        if (page.projects.length === 0 && raw === "") return "type a note, paper or view, or ? words to search all notes"
-        return "no match for “" + raw.replace(/^#/, "") + "”"
-      }
       color: page.faint
       font.family: page.fontFamily
       font.styleName: page.fontStyle
       font.pixelSize: page.fs(Style.font.caption)
     }
 
+    // The keys for what is picked: Shift+Enter only over a project, the one
+    // row it does something else for.
     Text {
+      id: foot
       width: parent.width
       topPadding: page.sp(2)
       textFormat: Text.PlainText
       wrapMode: Text.WordWrap
-      text: page.switcherText.trim().charAt(0) === "?"
+      text: page.switcherAsking
         ? page.keyName("switchUp") + page.keyName("switchDown") + " pick · " + page.keyName("switchGo") + " jump to line · " + page.keyName("switchClose") + " back"
         : page.keyName("switchUp") + page.keyName("switchDown") + " pick · " + page.keyName("switchGo") + " open · "
-          + page.keyName("switchPage") + " project page · ? search all notes · " + page.keyName("switchClose") + " back"
+          + (sw.pickedProject ? page.keyName("switchPage") + " project page · " : "") + "? search all notes · " + page.keyName("switchClose") + " back"
       color: page.faint
       font.family: page.fontFamily
       font.styleName: page.fontStyle
@@ -202,6 +206,45 @@ Rectangle {
   property bool clicking: false
   function letGo() {
     if (!page.switcherOpen || field.activeFocus) return
-    page.switcherOpen = false
+    page.switcherDone()
+  }
+
+  readonly property var picked: page.switcherMatches[page.switcherPick]
+  readonly property bool pickedProject: !!sw.picked && (sw.picked.kind || "project") === "project"
+  // The words to mark in the rows: `? words`, else what is typed (a `#` is the key, not a letter).
+  readonly property string words: page.switcherAsking ? page.switcherWords : page.switcherText.trim().replace(/^#/, "")
+  readonly property string statusText: {
+    var raw = page.switcherText.trim()
+    var n = page.switcherMatches.length
+    if (page.switcherAsking) {
+      var q = page.switcherWords
+      if (q === "") return "type words to search across all your notes (including private)"
+      if (page.switcherFindError !== "") return "the search did not run: " + page.switcherFindError
+      if (page.switcherFinding) return "searching all notes for “" + q + "”…"
+      if (n === 0) return "no note holds “" + q + "”"
+      if (page.switcherFindTotal > n) return "the best " + n + " of " + page.switcherFindTotal + " lines · more words narrow it"
+      return ""
+    }
+    if (n === 0) {
+      if (page.projects.length === 0 && raw === "") return "type a note, paper or view, or ? words to search all notes"
+      return "no match for “" + raw.replace(/^#/, "") + "”"
+    }
+    if (raw !== "" && raw.charAt(0) !== "#" && page.vaultIndex === null && page.vaultIndexReading) return "reading the names of your notes…"
+    return ""
+  }
+  // What the list may take of the window, below the field and above the keys.
+  readonly property real room: (parent ? parent.height : 0) - sw.y - page.sp(8) - page.sp(20) - field.height - foot.implicitHeight
+    - (status.visible ? status.implicitHeight + col.spacing : 0) - col.spacing * 2
+  function reveal() {
+    var it = listRep.itemAt(page.switcherPick)
+    if (!it) return
+    if (it.y < listFlick.contentY) listFlick.contentY = it.y
+    else if (it.y + it.height > listFlick.contentY + listFlick.height)
+      listFlick.contentY = Math.max(0, it.y + it.height - listFlick.height)
+  }
+  // PgUp / PgDn: a screenful of rows, one kept in sight from the last.
+  function screenRows() {
+    var it = listRep.itemAt(0)
+    return it ? Math.max(1, Math.floor(listFlick.height / (it.height + listCol.spacing)) - 1) : 5
   }
 }
