@@ -3,8 +3,8 @@ clock, take keys, and do what they do on Omarchy?
 
     python windows/longhand_host.py --sandbox DIR --check OUT.json --popups [--shot OUT.png]
 
-The timer's is opened, a length typed into it as on a microwave (2500 is
-25:00) and started; Tab goes over to the deadlines', where one of two
+The timer's is opened, a length typed into it in minutes (25 is 25:00)
+and started; Tab goes over to the deadlines', where one of two
 deadlines put into the sandbox's store is ticked with `d`; Esc puts it
 away. Keys go in as key events to the popup's own window. With --shot,
 three pictures are kept beside the name given: -timer, -running, -deadlines.
@@ -147,9 +147,9 @@ def run(app, engine, box, args, warnings):
              and abs((w.y() + w.height()) - (area.y() + area.height())) <= 40,
              autoRowWidth=round(auto_row.property("width"), 1) if auto_row is not None else 0,
              flags=int(w.flags()), entry=ev("pomoPanel.entryText()"), hasKeyboard=give_keyboard(w))
-        for ch in "2500":
+        for ch in "25":
             key(w, Qt.Key(ord(ch)), ch)
-        wait(lambda: ev("pomoPanel.entryDigits") == "2500", typed, "the length typed into the timer")
+        wait(lambda: ev("pomoPanel.entryDigits") == "25", typed, "the length typed into the timer")
 
     def typed():
         w = popup("longhand.pomo")

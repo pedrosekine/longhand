@@ -128,13 +128,17 @@ Window {
     root.keepUntil = Date.now() + 600
     if (root.open && !root.active) { root.raise(); root.requestActivate() }
   }
+  // When it last put itself away so: a click on its own tray icon does
+  // that on the press, and the host (windows/Main.qml, popup) does not open
+  // it again on the release.
+  property real lostAt: 0
   Timer {
     id: leaving
     interval: 120
     onTriggered: {
       if (root.active || !root.open) return
       if (Date.now() < root.keepUntil) { root.raise(); root.requestActivate() }
-      else root.close()
+      else { root.lostAt = Date.now(); root.close() }
     }
   }
 

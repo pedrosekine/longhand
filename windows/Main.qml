@@ -75,10 +75,16 @@ Item {
 
   // One popup at a time, as the bar has one open: the one asked for opens
   // (or, open already, closes), the other goes.
+  // A click on a tray icon whose popup is open: the press hands the keys to
+  // the taskbar, the popup puts itself away (KeyboardPanel's `leaving`), and
+  // the click that ends on release would open it again at once. A popup put
+  // away so, a moment before, stays away: the click was to close it.
   function popup(which) {
     var asked = which === "timer" ? pomoPanel : deadlinePanel
     var other = which === "timer" ? deadlinePanel : pomoPanel
     if (other.opened) other.close()
+    var w = host.popupWindow(asked)
+    if (!asked.opened && w && Date.now() - w.lostAt < 400) return
     asked.toggle()
   }
 
@@ -198,10 +204,11 @@ Item {
     onLoadFailed: host.asks = 0
     onFileChanged: reload()
   }
-  readonly property string agentLine: [
-    agent.unread > 0 ? agent.unread + (agent.unread === 1 ? " reply" : " replies") + " waiting" : "",
-    host.asks > 0 ? host.asks + " from the agent, in the dashboard" : ""
-  ].filter(function (s) { return s !== "" }).join(" · ")
+  readonly property string repliesLine: agent.unread > 0 ? agent.unread + (agent.unread === 1 ? " reply" : " replies") + " waiting" : ""
+  readonly property string asksLine: host.asks > 0 ? host.asks + " from the agent, in the dashboard" : ""
+  readonly property string agentLine: [host.repliesLine, host.asksLine].filter(function (s) { return s !== "" }).join(" · ")
+  // The page, on its dashboard: where what the agent asks is settled.
+  function dashboard() { host.summon(JSON.stringify({ shape: "alongside", view: "dashboard" })) }
 
   // A session ran out: `pomo expired`, which the timer's service runs, says
   // it as notify-send says it on Omarchy, and here that comes to the tray
@@ -233,7 +240,11 @@ Item {
 
     menu: Platform.Menu {
       Platform.MenuItem { text: "Today's note" + host.key("alongside"); onTriggered: host.pinned() }
-      Platform.MenuItem { text: host.agentLine; visible: host.agentLine !== ""; onTriggered: host.pinned() }
+      // Each where it is: a reply in the note, what the agent asks on the
+      // dashboard (one line for both opened the note, which said "in the
+      // dashboard").
+      Platform.MenuItem { text: host.repliesLine; visible: host.repliesLine !== ""; onTriggered: host.pinned() }
+      Platform.MenuItem { text: host.asksLine; visible: host.asksLine !== ""; onTriggered: host.dashboard() }
       Platform.MenuItem { text: "Quick overlay" + host.key("page"); onTriggered: host.toggle("{}") }
       Platform.MenuItem { text: host.keyTrouble; visible: host.keyTrouble !== ""; onTriggered: host.pinned() }
       Platform.MenuSeparator {}

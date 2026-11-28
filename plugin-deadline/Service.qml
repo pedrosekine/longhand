@@ -51,10 +51,11 @@ Item {
     return due - nowSec < nearSecs
   }
 
-  function unit(secs) { // largest whole unit: 4d / 3h / 25m
+  function unit(secs) { // largest whole unit: 4d / 3h / 25m, <1m under a minute ("0m" before)
     var a = Math.abs(secs)
     if (a >= 86400) return Math.floor(a / 86400) + "d"
     if (a >= 3600) return Math.floor(a / 3600) + "h"
+    if (a < 60) return "<1m"
     return Math.floor(a / 60) + "m"
   }
 
@@ -63,8 +64,12 @@ Item {
     return d < 0 ? unit(d) + " late" : "in " + unit(d)
   }
 
-  function fmtWhen(due) { // "Fri 11 Sep 17:00"
-    return Qt.formatDateTime(new Date(due * 1000), "ddd d MMM HH:mm")
+  // A deadline with no time is due at the day's end, which the store says
+  // as 23:59: shown without it, as the note and the dashboard show it
+  // (Bound.js), rather than as a time someone set.
+  function fmtWhen(due) { // "Fri 11 Sep 17:00", "Fri 11 Sep"
+    var d = new Date(due * 1000)
+    return Qt.formatDateTime(d, d.getHours() === 23 && d.getMinutes() === 59 ? "ddd d MMM" : "ddd d MMM HH:mm")
   }
 
   function fmtDay(ts) { // "11 Sep"
@@ -82,7 +87,7 @@ Item {
     ? nextItem.title + " — " + fmtWhen(nextItem.due) + " (" + fmtRel(nextItem.due) + ")"
     : (items.length > 0
       ? "All deadlines handed in"
-      : "No deadlines — pomo deadline add \"Essay draft\" friday")
+      : "No deadlines · a checkbox with a date in a Longhand note becomes one")
 
   function tick() {
     nowSec = Math.floor(Date.now() / 1000)
@@ -137,7 +142,9 @@ Item {
 
   // A tick asked for and not yet written (id → status) is the list's at
   // once, so a second press acts on what the first made, as in the page
-  // (Deadlines.qml, `pending`).
+  // (Deadlines.qml, `pending`). Done now, it is done today: with the old
+  // day (none, 0) it left the popup's list for "waiting for a grade" until
+  // the store said otherwise, and came back at the bottom (the bar pass).
   property var pending: ({})
   function asAsked(d) {
     var want = root.pending[d.id]
@@ -145,6 +152,7 @@ Item {
     var c = {}
     for (var k in d) c[k] = d[k]
     c.status = want
+    c.doneAt = want === "done" ? (d.doneAt > 0 ? d.doneAt : root.nowSec) : 0
     return c
   }
   function ask(id, status, args) {
@@ -160,8 +168,11 @@ Item {
   // the deadline as history (docs/tasks.md).
   function cancel(id) { run(["cancel", String(id)]) }
   function markDone(id) { root.ask(id, "done", ["done", String(id)]) }
+  // Done again on the day it was done before (an undo, `--at`).
+  function markDoneAt(id, at) { root.ask(id, "done", ["done", String(id)].concat(at > 0 ? ["--at", String(at)] : [])) }
   function reopen(id) { root.ask(id, "open", ["reopen", String(id)]) }
   function hide(id) { run(["hide", String(id)]) }
+  function unhide(id) { run(["unhide", String(id)]) }
   function grade(id, text) { run(["grade", String(id), String(text)]) }
 
   function toggleDone(item) {

@@ -10,7 +10,10 @@ import "Shortcuts.js" as Sc
 
 // The quick-add gesture for the mouse: a glyph that opens today's note. It
 // takes the accent colour when a reply is waiting that the student has not
-// looked at yet — the same signal as the mark in the page header.
+// looked at yet — the same signal as the mark in the page header. (It took
+// the urgent one until the bar pass, 2026-11-28: a reply waiting was as
+// loud as a deadline due today.) The right button opens the dashboard,
+// where what the agent proposes or asks is settled.
 BarWidget {
   id: root
   moduleName: "longhand.page"
@@ -37,11 +40,28 @@ BarWidget {
   }
 
   // The Hyprland key that opens the page from anywhere, for the tooltip:
-  // the mouse teaches the key. Read again on each hover, since the keys
-  // sheet can move it.
+  // the mouse teaches the key. Read again when the keys' files change,
+  // since the keys sheet can move it (it was read on every hover: a Python
+  // started each time the pointer crossed the glyph).
   property string pageKey: ""
+  readonly property string hyprDir: (Quickshell.env("XDG_CONFIG_HOME") || Quickshell.env("HOME") + "/.config") + "/hypr/"
+  function readKeys() { if (keyProc.running) keyAgain = true; else keyProc.running = true }
+  property bool keyAgain: false
+  Repeater {
+    model: ["longhand.lua", "bindings.lua"]
+    Item {
+      required property string modelData
+      FileView {
+        path: root.hyprDir + parent.modelData
+        watchChanges: true
+        printErrors: false
+        onFileChanged: root.readKeys()
+      }
+    }
+  }
   Process {
     id: keyProc
+    onExited: if (root.keyAgain) { root.keyAgain = false; running = true }
     command: ["python3", decodeURIComponent(Qt.resolvedUrl("hyprkeys.py").toString().replace(/^file:\/\//, "")), "state"]
     stdout: StdioCollector {
       onStreamFinished: {
@@ -59,17 +79,17 @@ BarWidget {
     anchors.fill: parent
     bar: root.bar
     text: "󰏫" + (root.asks > 0 ? " " + root.asks : "")
-    foreground: agent.unread > 0
-      ? (bar ? bar.urgent : Commons.Color.urgent)
+    foreground: agent.unread > 0 ? Commons.Color.accent
       : (bar ? bar.barForeground : Commons.Color.foreground)
     tooltipText: (agent.unread > 0
       ? "Today's note · " + agent.unread + (agent.unread === 1 ? " reply" : " replies") + " waiting"
       : "Today's note")
       + (root.asks > 0 ? " · " + root.asks + " from the agent, in the dashboard" : "")
       + (root.pageKey !== "" ? "   " + root.pageKey : "")
-    onTooltipHoveredChanged: if (tooltipHovered && !keyProc.running) keyProc.running = true
-    onPressed: {
-      if (root.bar) root.bar.run("omarchy-shell shell toggle longhand.page '{}'")
+      + "\nleft: today's note · right: the dashboard"
+    onPressed: function (b) {
+      if (b === Qt.RightButton) Quickshell.execDetached(["omarchy-shell", "shell", "summon", "longhand.page", JSON.stringify({ view: "dashboard" })])
+      else if (root.bar) root.bar.run("omarchy-shell shell toggle longhand.page '{}'")
       else Quickshell.execDetached(["omarchy-shell", "shell", "toggle", "longhand.page", "{}"])
     }
   }
