@@ -441,6 +441,36 @@ Item {
     ed.loading = false
   }
 
+  // A change made outside (Obsidian, the other machine) taken in as an
+  // edit (Outside.js, 2026-11-28): a step of its own, so Ctrl+Z takes it
+  // back and still reaches what was typed before it, and the cursor carried
+  // the way an edit carries it — `load` put it back at its count of
+  // characters, in another line when one was added above. Unlike `replace`
+  // it changes a read-only note too (the agent's, rewritten while open);
+  // as `load` does, it keeps the keys in a line, and a project's part of
+  // the day stays drawn (a cursor left in a folded line goes to the
+  // nearest drawn one).
+  function takeOutside(a, b, s) {
+    var held = ed.holdsFocus() || (ed.focusOwed && ed.keysUnclaimed())
+    ed.focusOwed = false
+    ed.snapshot(true)
+    ed.loading = true
+    ed.clearSelection()
+    pointer.clicks = 0
+    ed.typedRaw = ""
+    ed.freshCue = -1
+    ed.goal = null
+    ed.escapeAt = -1
+    ed.keptCue = null
+    ed.tableCache = ({})
+    var cur = ed.cursorPosition
+    if (cur >= b) cur += s.length - (b - a)
+    else if (cur > a) cur = a + s.length
+    ed.commit(ed.text.slice(0, a) + s + ed.text.slice(b), cur)
+    ed.placeCursor(held)
+    ed.loading = false
+  }
+
   // Programmatic edits, with the cursor carried along the way TextEdit
   // carries it: text inserted at or before the cursor pushes it forward.
   function replace(a, b, s) {

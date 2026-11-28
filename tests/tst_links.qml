@@ -41,6 +41,22 @@ Item {
       compare(Links.at(l, l[0].at + 3).target, "Session 1")
     }
 
+    // A heading reached as Obsidian reaches it (2026-11-28): markup aside,
+    // a section's #tag aside, and the nested form [[note#Part#Sub]].
+    function test_a_heading_a_link_names() {
+      var rows = Rows.derive("# Week 3 #essay\n## **Plan**\ntext\n# Later\n## Plan\n## Read [[Ong]] `ch. 2`")
+      var line = function (r) { return r ? rows.indexOf(r) : -1 }
+      compare(line(Links.headingRow(rows, "Plan")), 1, "the first heading that reads Plan, its stars aside")
+      compare(line(Links.headingRow(rows, "plan")), 1, "case aside")
+      compare(line(Links.headingRow(rows, "Week 3 essay")), 0, "a section's #tag, as Obsidian writes its link")
+      compare(line(Links.headingRow(rows, "Week 3 #essay")), 0, "…or as it is written")
+      compare(line(Links.headingRow(rows, "Later#Plan")), 4, "nested: the Plan under Later")
+      compare(line(Links.headingRow(rows, "Nowhere#Plan")), 1, "a part that is not there: the last part anywhere")
+      compare(line(Links.headingRow(rows, "Read Ong ch. 2")), 5, "a link's and code's marks aside")
+      compare(Links.headingRow(rows, "Missing"), null)
+      compare(Links.headingRow(rows, ""), null)
+    }
+
     function test_a_file_url() {
       compare(Links.isAbs("/home/me/a.md"), true, "a POSIX root path is absolute")
       compare(Links.isAbs("C:/Users/me/a.md"), true, "a Windows drive path with / is absolute")

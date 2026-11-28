@@ -42,7 +42,11 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | Make the block private, or the blocks selected (again: not private) | `Ctrl+P` | in the note |
 | Export as a PDF: the section you are in, or the blocks selected | `Ctrl+Shift+E` | in the note |
 | Only this project's part of the day: the section you are in (again: the whole day) | `Ctrl+Shift+F` | in the note |
-| The tasks this day is for, written on any day: show or fold the list | `Ctrl+Shift+T` | in the note |
+| The tasks this day is for, written on any day: open the list, the keys on it (again: fold it) | `Ctrl+Shift+T` | in the note, in the day's tasks (For today, above the note) |
+| The day's tasks: the one above | `↑` | in the day's tasks (For today, above the note) |
+| The day's tasks: the one below | `↓` | in the day's tasks (For today, above the note) |
+| The day's tasks: go to its line, on whatever day it was written | `Enter` | in the day's tasks (For today, above the note) |
+| The day's tasks: back to the note, the list left open (any other key is the note's too) | `Esc` | in the day's tasks (For today, above the note) |
 | In every list: ↑↓ or j k a row, Home and End the first and last, ? these keys | `↑` · `↓` · `j` · `k` · `Home` · `End` · `?` | |
 
 ## Writing

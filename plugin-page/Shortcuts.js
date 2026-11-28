@@ -48,7 +48,8 @@ var places = {
   notebook: "in what the agent knows",
   autonomy: "in what the agent may do",
   folders: "in the folders the agent may search",
-  checkin: "in the check-in"
+  checkin: "in the check-in",
+  daytasks: "in the day's tasks (For today, above the note)"
 }
 // Settings is not one of them since it became a list (2026-10-28): its
 // field types only while its own row is picked, and the list's keys wait
@@ -155,7 +156,11 @@ var actions = [
   { id: "focusSection", group: "page", places: ["note"], does: "Only this project's part of the day: the section you are in (again: the whole day)", keys: ["Ctrl+Shift+F"] },
   // The tasks this day is for, from every note (2026-11-14): T for
   // tasks, as Ctrl+T is all of them.
-  { id: "dayTasks", group: "page", places: ["note"], does: "The tasks this day is for, written on any day: show or fold the list", keys: ["Ctrl+Shift+T"] },
+  { id: "dayTasks", group: "page", places: ["note", "daytasks"], does: "The tasks this day is for, written on any day: open the list, the keys on it (again: fold it)", keys: ["Ctrl+Shift+T"] },
+  { id: "dayTaskUp", group: "page", places: ["daytasks"], does: "The day's tasks: the one above", keys: ["Up"] },
+  { id: "dayTaskDown", group: "page", places: ["daytasks"], does: "The day's tasks: the one below", keys: ["Down"] },
+  { id: "dayTaskGo", group: "page", places: ["daytasks"], does: "The day's tasks: go to its line, on whatever day it was written", keys: ["Enter"] },
+  { id: "dayTaskBack", group: "page", places: ["daytasks"], does: "The day's tasks: back to the note, the list left open (any other key is the note's too)", keys: ["Esc"] },
 
   { id: "bold", group: "write", places: ["note"], does: "Bold", keys: ["Ctrl+B"] },
   { id: "italic", group: "write", places: ["note"], does: "Italic", keys: ["Ctrl+I"] },
