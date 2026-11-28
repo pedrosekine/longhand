@@ -1051,7 +1051,7 @@ BorderSurface {
         Rectangle {
           id: footButton
           required property var modelData
-          readonly property bool open: modelData.act === "keys" ? page.keysOpen : modelData.act === "settings" ? page.settingsOpen
+          readonly property bool open: modelData.act === "keys" ? page.keysOpen : modelData.act === "settings" ? page.centerView === "settings"
             : modelData.act === "dashGo" ? page.dashOpen
             : page.noteService.isToday && !page.dashOpen && !page.keysOpen && !page.settingsOpen && !page.pdfShown && !page.exportOpen
           width: height

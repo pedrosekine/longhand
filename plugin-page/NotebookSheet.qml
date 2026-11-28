@@ -17,8 +17,10 @@ BorderSurface {
   property alias notebookKeysRef: notebookKeys
   property alias notebookFieldRef: notebookField
 
-  visible: page.settingsOpen && page.settingsView === "notebook"
+  visible: page.centerView === "settings" && page.settingsView === "notebook"
   x: page.wideX
+  // Making room for the sidebar slides, as Settings' main sheet does.
+  Behavior on x { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
   y: page.alongside ? 0 : page.sheetMargin
   width: page.wideWidth
   height: page.alongside ? content.height : content.height - page.sheetMargin * 2
@@ -35,7 +37,18 @@ BorderSurface {
     Keys.onPressed: function (event) { if (page.notebookKey(event)) event.accepted = true }
   }
 
-  MouseArea { anchors.fill: parent; onClicked: notebookKeys.forceActiveFocus() }
+  // A click beside the list: the keys back, to the box while a line is
+  // being corrected (it took them from the box and left it open, deaf).
+  MouseArea { anchors.fill: parent; onClicked: (page.notebookCorrecting ? notebookField : notebookKeys).forceActiveFocus() }
+
+  // The picked line in view once it has grown: its verbs and question are
+  // drawn under it, and the box below the list takes room from it.
+  function showPicked() { Qt.callLater(function () { if (notebookView.currentIndex >= 0) notebookView.positionViewAtIndex(notebookView.currentIndex, ListView.Contain) }) }
+  Connections {
+    target: page
+    function onNotebookCorrectingChanged() { notebookSheet.showPicked() }
+    function onNotebookAskingChanged() { notebookSheet.showPicked() }
+  }
 
   Item {
     anchors.fill: parent
@@ -50,16 +63,13 @@ BorderSurface {
       x: Math.round((parent.width - width) / 2)
       height: parent.height
 
-      Text {
+      SettingsCrumb {
         id: notebookTitle
+        page: notebookSheet.page
         anchors.top: parent.top
         anchors.left: parent.left
-        textFormat: Text.PlainText
-        text: "SETTINGS · WHAT THE AGENT KNOWS"
-        color: page.dim
-        font.family: page.fontFamily
-        font.styleName: page.fontStyle
-        font.pixelSize: page.fs(Style.font.caption)
+        title: "WHAT THE AGENT KNOWS"
+        onBack: page.closeNotebook()
       }
 
       Text {
@@ -74,6 +84,22 @@ BorderSurface {
           + "or forget it: either is kept in your corrections, which it reads every time and never writes, so it "
           + "stays made. " + page.sayNotebook()
         color: page.faint
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.bodySmall)
+      }
+
+      // Nothing in it: said, not a blank (its keys are not offered either).
+      Text {
+        visible: page.notebookList.length === 0
+        anchors.top: notebookIntro.bottom
+        anchors.topMargin: page.sp(16)
+        width: parent.width
+        wrapMode: Text.WordWrap
+        textFormat: Text.PlainText
+        text: page.notebookData ? "Nothing here yet: the agent writes its notes as it works, and your answers and corrections join them."
+          : page.sayUnread("notebook")
+        color: page.dim
         font.family: page.fontFamily
         font.styleName: page.fontStyle
         font.pixelSize: page.fs(Style.font.bodySmall)
@@ -94,7 +120,8 @@ BorderSurface {
         model: page.notebookList
         currentIndex: page.notebookFocus
         highlightFollowsCurrentItem: false
-        onCurrentIndexChanged: if (currentIndex >= 0) positionViewAtIndex(currentIndex, ListView.Contain)
+        onCurrentIndexChanged: notebookSheet.showPicked()
+        onHeightChanged: notebookSheet.showPicked()
 
         delegate: Item {
           id: nbRow
@@ -102,7 +129,7 @@ BorderSurface {
           required property int index
           readonly property bool picked: page.notebookFocus === index
           readonly property bool head: modelData.kind === "head"
-          readonly property bool lit: picked && !head && page.here === "center"
+          readonly property bool lit: picked && !head && page.here === "center" && notebookSheet.visible
           onLitChanged: page.selected(nbRow, "center", lit)
           Component.onCompleted: if (lit) page.selected(nbRow, "center", true)
           width: notebookView.width
@@ -155,8 +182,9 @@ BorderSurface {
             }
             // The picked line's two verbs, for the mouse; while Del asks,
             // the question and its two answers.
-            Row {
+            Flow {
               visible: nbRow.picked && !page.notebookCorrecting
+              width: parent.width
               spacing: page.sp(16)
               Text {
                 visible: page.notebookAsking
@@ -238,17 +266,14 @@ BorderSurface {
           font.pixelSize: page.fs(Style.font.bodySmall)
         }
 
-        Text {
+        SettingsFoot {
+          page: notebookSheet.page
           width: parent.width
-          textFormat: Text.PlainText
-          wrapMode: Text.WordWrap
-          text: page.notebookCorrecting ? "Enter keeps your words · Esc leaves the line as it is"
+          keys: page.notebookCorrecting ? "Enter keeps your words · Esc leaves the line as it is"
+            : page.notebookAsking ? "Enter " + (page.notebookList[page.notebookFocus] && page.notebookList[page.notebookFocus].kind === "correction" ? "takes it back" : "forgets it") + " · Esc keeps it"
+            : page.notebookList.length === 0 ? "Esc back to settings"
             : "↑↓ pick a line · Enter or " + page.keyName("notebookCorrect") + " corrects it · "
               + page.keyName("notebookForget") + " forgets it, asking first (on a correction: takes it back) · Esc back to settings"
-          color: page.faint
-          font.family: page.fontFamily
-          font.styleName: page.fontStyle
-          font.pixelSize: page.fs(Style.font.caption)
         }
       }
     }

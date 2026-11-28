@@ -9,15 +9,18 @@ import qs.Ui
 // each answered on seven steps, then the weeks so far beside the agent's
 // share of its proposals acted on. Settings' fourth view, drawn in its
 // place; the dashboard's quiet line (F) opens it too. Keys: ↑↓ a pair, ←→
-// or 1–7 a step, Enter keeps the week, Del skips it, Esc goes back.
+// or 1–7 a step, Backspace clears one, Enter keeps the week, Del skips it
+// (asking first once anything is answered), Esc goes back.
 BorderSurface {
   id: checkinSheet
   required property Item page
   readonly property var content: page.contentItem
   property alias checkinKeysRef: checkinKeys
 
-  visible: page.settingsOpen && page.settingsView === "checkin"
+  visible: page.centerView === "settings" && page.settingsView === "checkin"
   x: page.wideX
+  // Making room for the sidebar slides, as Settings' main sheet does.
+  Behavior on x { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
   y: page.alongside ? 0 : page.sheetMargin
   width: page.wideWidth
   height: page.alongside ? content.height : content.height - page.sheetMargin * 2
@@ -47,17 +50,20 @@ BorderSurface {
       width: Math.min(parent.width, Math.round(page.measure * 1.45))
       x: Math.round((parent.width - width) / 2)
       height: parent.height
-      readonly property int wordWidth: Math.round(page.measure * 0.34)
+      // The words beside the steps take what the steps leave, in a narrow
+      // pane too: sized by the measure alone, they ran off the card.
+      readonly property int wordWidth: Math.max(page.sp(40), Math.min(Math.round(page.measure * 0.34),
+        Math.floor((width - (7 * Math.round(page.textSize * 1.25) + 6 * page.sp(10)) - 2 * page.sp(18)) / 2)))
 
-      Text {
+      SettingsCrumb {
         id: title
+        page: checkinSheet.page
         anchors.top: parent.top
-        textFormat: Text.PlainText
-        text: "SETTINGS · HOW IT FEELS · " + (page.checkinData ? page.checkinData.week.replace("-W", " WEEK ") : "")
-        color: page.dim
-        font.family: page.fontFamily
-        font.styleName: page.fontStyle
-        font.pixelSize: page.fs(Style.font.caption)
+        anchors.left: parent.left
+        title: "HOW IT FEELS" + (page.checkinData ? " · " + page.checkinData.week.replace("-W", " WEEK ") : "")
+        // Opened from the dashboard, it goes back there, as Esc does.
+        backTo: page.checkinFromDash ? "DASHBOARD" : "SETTINGS"
+        onBack: page.closeCheckin()
       }
 
       Text {
@@ -99,6 +105,33 @@ BorderSurface {
         width: checkinFlick.width - page.sp(20)
         spacing: page.sp(18)
 
+      // Not read yet, or not read at all: said.
+      Text {
+        visible: !page.checkinData
+        width: parent.width
+        wrapMode: Text.WordWrap
+        textFormat: Text.PlainText
+        text: page.sayUnread("checkin")
+        color: page.faint
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.bodySmall)
+      }
+
+      // This week kept already: its answers are shown, to change.
+      Text {
+        visible: !!page.checkinKept() && !page.checkinAsking
+        width: parent.width
+        wrapMode: Text.WordWrap
+        textFormat: Text.PlainText
+        text: { var w = page.checkinKept(); return !w ? "" : w.skipped ? "This week was skipped. Answer it now, and Enter keeps it."
+                : "This week is kept, as shown. Change a line, and Enter keeps it again." }
+        color: page.dim
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.bodySmall)
+      }
+
       Column {
         id: pairs
         width: parent.width
@@ -112,7 +145,7 @@ BorderSurface {
             required property int index
             readonly property bool picked: page.checkinFocus === index
             readonly property int value: page.checkinAnswers[index] || 0
-            readonly property bool lit: picked && page.here === "center"
+            readonly property bool lit: picked && page.here === "center" && checkinSheet.visible
             onPickedChanged: if (picked) {
               var top = pairs.y + y
               var bot = top + height
@@ -147,6 +180,7 @@ BorderSurface {
               anchors.verticalCenter: parent.verticalCenter
               width: body.wordWidth
               horizontalAlignment: Text.AlignRight
+              elide: Text.ElideLeft
               textFormat: Text.PlainText
               text: pairRow.modelData[0]
               color: pairRow.value > 0 && pairRow.value < 4 ? page.foreground : page.dim
@@ -194,6 +228,7 @@ BorderSurface {
               anchors.leftMargin: page.sp(18)
               anchors.verticalCenter: parent.verticalCenter
               width: body.wordWidth
+              elide: Text.ElideRight
               textFormat: Text.PlainText
               text: pairRow.modelData[1]
               color: pairRow.value > 4 ? page.foreground : page.dim
@@ -207,13 +242,27 @@ BorderSurface {
 
       // Keep the week, or skip it: said as the dashboard's keys are, and
       // clickable.
+      // While Del asks, the question and its two answers, as removing a
+      // calendar asks.
       Row {
         id: actions
         anchors.horizontalCenter: parent.horizontalCenter
         spacing: page.sp(28)
+        Text {
+          visible: page.checkinAsking
+          textFormat: Text.PlainText
+          text: page.checkinKept() ? "Skip this week? Its answers are let go." : "Skip this week? What is answered is let go."
+          color: page.urgent
+          font.family: page.fontFamily
+          font.styleName: page.fontStyle
+          font.pixelSize: page.fs(Style.font.bodySmall)
+        }
         Repeater {
-          model: [{ text: page.checkinLeft === 0 ? "keep this week" : page.checkinLeft + " to go", act: "keep", key: "Enter" },
-                  { text: "skip this week", act: "skip", key: "Del" }]
+          model: page.checkinAsking
+            ? [{ text: "skip it", act: "yes", key: "Enter", tip: "" }, { text: "keep answering", act: "no", key: "Esc", tip: "" }]
+            : [{ text: page.checkinLeft === 0 ? "keep this week" : page.checkinLeft + " to go", act: "keep", key: "Enter",
+                 tip: page.checkinLeft === 0 ? "Keep these answers for this week" : "Answer every line first: 1–7, or ←→" },
+               { text: "skip this week", act: "skip", key: "Del", tip: "Skip this week's check-in (it asks first once anything is answered)" }]
           Text {
             required property var modelData
             textFormat: Text.PlainText
@@ -226,9 +275,17 @@ BorderSurface {
             MouseArea {
               id: actArea
               anchors.fill: parent
+              anchors.margins: -page.sp(4)
               hoverEnabled: true
               cursorShape: Qt.PointingHandCursor
-              onClicked: { if (modelData.act === "keep") page.keepCheckin(); else page.skipCheckin() }
+              onClicked: {
+                if (modelData.act === "keep") page.keepCheckin()
+                else if (modelData.act === "skip") page.askSkipCheckin()
+                else if (modelData.act === "yes") page.skipCheckin()
+                else page.checkinAsking = false
+                checkinKeys.forceActiveFocus()
+              }
+              Tip { host: page; shown: parent.containsMouse && modelData.tip !== ""; text: modelData.tip + "   " + modelData.key }
             }
           }
         }
@@ -267,18 +324,14 @@ BorderSurface {
       }
       }
 
-      Text {
+      SettingsFoot {
         id: checkinFoot
+        page: checkinSheet.page
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        textFormat: Text.PlainText
-        wrapMode: Text.WordWrap
-        text: "↑↓ a line · ←→ or 1–7 a step · Enter keeps the week · Del skips it · Esc back"
-        color: page.faint
-        font.family: page.fontFamily
-        font.styleName: page.fontStyle
-        font.pixelSize: page.fs(Style.font.caption)
+        keys: page.checkinAsking ? "Enter skips the week · any other key keeps answering"
+          : "↑↓ a line · ←→ or 1–7 a step · Backspace clears it · Enter keeps the week · Del skips it · Esc back"
       }
     }
   }

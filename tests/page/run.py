@@ -728,6 +728,23 @@ def theme_switch() -> None:
         logs = list((p.vault / "agents" / "longhand" / "checkins").glob("*.jsonl"))
         check(len(logs) == 1 and '"answers": [6, 6, 5, 6, 4, 5, 6, 5]' in logs[0].read_text(),
               "…kept in this machine's log in the vault")
+        # Opened again the same week (2026-11-28, the settings pass): its
+        # answers, to change, not eight empty lines; Backspace clears a
+        # line; Del asks before letting a kept week go, and Esc keeps it.
+        p.call("dashKey", 0x46, 0)                      # F
+        check(p.wait(lambda: ci()["view"] == "checkin", 2) and p.wait(lambda: ci()["answers"] == [6, 6, 5, 6, 4, 5, 6, 5], 6),
+              f"opened again this week, it shows the week's answers ({ci()})")
+        p.call("checkinFocus", 2)
+        p.call("checkinKey", 0x01000003)                # Backspace
+        check(ci()["answers"][2] == 0 and ci()["view"] == "checkin", f"…Backspace clears the picked line, and stays ({ci()})")
+        p.call("checkinKey", 0x01000012)                # ←, on the empty line
+        check(ci()["answers"][2] == 4, f"…the first ← on an empty line is the middle ({ci()['answers']})")
+        check(p.call("checkinKey", 0x01000007) == "true" and p.call("checkinAsking") == "true" and ci()["view"] == "checkin",
+              "…Del asks before skipping a kept week")
+        check(p.call("checkinKey", 0x01000000) == "true" and p.call("checkinAsking") == "false" and ci()["view"] == "checkin"
+              and '"skipped": true' not in logs[0].read_text(), "…Esc keeps answering, nothing skipped")
+        p.call("checkinKey", 0x01000000)                # Esc: back to the dashboard
+        check(p.wait(lambda: ci()["view"] == "" and ci()["center"] == "dash", 3), f"…and Esc goes back to the dashboard ({ci()})")
     finally:
         p.close()
 
@@ -2596,6 +2613,8 @@ def checks() -> int:
               "← on the horizon moves it a month earlier, kept in settings.json")
         p.call("searchKey", KEY_BACKSPACE, 0)
         check(p.wait(lambda: "horizon" not in json.loads(settings_json.read_text())), "…and Backspace puts the default back")
+        check(p.wait(lambda: (json.loads(p.call("horizon"))["data"] or {}).get("before", -1) >= 0),
+              f"…and the days before it are counted again ({p.call('horizon')})")
         p.call("searchKey", 0x01000000, 0)
         p.call("settingsKey", 0x01000000, 0)
         cur = json.loads(settings_json.read_text())
@@ -2692,6 +2711,30 @@ def checks() -> int:
               f"Del on the picked calendar asks first, removing nothing yet ({p.call('settingsAsking')}, {len(cals())})")
         check(p.call("settingsKey", KEY_ESC, 0) == "true" and p.call("settingsAsking") == "-1"
               and p.call("settingsOpen") == "true" and len(cals()) == 2, "…Esc keeps it, and settings stays open")
+        # The question and a rename are about one calendar (2026-11-28, the
+        # settings pass): Enter on the next one picked removed or renamed
+        # the first.
+        KEY_F2 = 0x01000031
+        p.call("settingsKey", KEY_DELETE, 0)
+        p.call("settingsFocus", 0)
+        check(p.call("settingsAsking") == "-1", "picking another calendar lets Del's question go")
+        p.call("settingsFocus", 1)
+        p.call("settingsKey", KEY_DELETE, 0)
+        check(p.call("settingsKey", KEY_F2, 0) == "true" and p.call("settingsAsking") == "-1"
+              and json.loads(p.call("settingsField"))["kind"] == "add" and len(cals()) == 2,
+              f"…and a key not its answer keeps the calendar, doing nothing more ({p.call('settingsField')})")
+        draft = "https://draft.example/cal.ics"
+        p.call("settingsType", draft)
+        p.call("settingsFocus", 1)
+        p.call("settingsKey", KEY_F2, 0)
+        named = cals()[1]["name"]
+        check(json.loads(p.call("settingsField")) == {"kind": "rename", "text": named},
+              f"F2 renames the picked calendar in the field ({p.call('settingsField')})")
+        p.call("settingsFocus", 0)
+        check(json.loads(p.call("settingsField")) == {"kind": "add", "text": draft} and p.call("settingsPicked") == "calendar",
+              f"…picking another lets the rename go, the address typed before back in the field ({p.call('settingsField')})")
+        p.call("settingsType", "")
+        p.call("settingsFocus", 1)
         p.call("settingsKey", KEY_DELETE, 0)
         check(p.call("settingsKey", KEY_RETURN, 0) == "true", "…Del again, then Enter")
         check(p.wait(lambda: [c["url"] for c in cals()] == [url]), "…removes the picked calendar, the new one")
@@ -2723,6 +2766,15 @@ def checks() -> int:
         check(p.call("settingsPicked") == "field", "typing from any row picks the address field")
         check(p.call("settingsKey", KEY_SPACE, 0) == "false", "…where Space is typed")
         p.call("settingsType", "")
+        # ? over Settings (2026-11-28, the settings pass): the keys over
+        # them, as over the dashboard, and Esc back to the row it was on.
+        p.call("settingsPick", "sound")
+        check(p.call("settingsKey", 0x3f, 0) == "true" and p.call("keysOpen") == "true" and p.call("settingsOpen") == "true"
+              and json.loads(p.call("panes"))["center"] == "keys" and "settings" not in json.loads(p.call("surfaces")),
+              f"? in settings shows the keys over them ({p.call('surfaces')})")
+        p.call("keysKey", 0x01000000, 0)
+        check(p.wait(lambda: p.call("keysOpen") == "false") and json.loads(p.call("panes"))["center"] == "settings"
+              and p.call("settingsPicked") == "sound", "…and Esc comes back to settings, on the row it was on")
         check(p.call("settingsKey", 0x01000000, 0) == "true" and p.call("settingsOpen") == "false", "Esc goes back")
         uni.shutdown()
 

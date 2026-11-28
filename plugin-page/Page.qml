@@ -1152,8 +1152,7 @@ Item {
     if ((e.author || "") === n && root.exportData && root.exportData.author === n) return
     e.author = n
     cur.export = e
-    root.settingsData = cur
-    settingsFile.setText(JSON.stringify(cur, null, 2) + "\n")
+    root.saveSettings(cur)
     if (root.exportData) root.exportData = Object.assign({}, root.exportData, { author: n })
     root.used("export", "author")
   }
@@ -1201,19 +1200,19 @@ Item {
   // A date ("YYYY-MM-DD"), or "" for the default: the first day the agent
   // kept. Never later than today.
   function setHorizon(iso) {
+    if (root.horizonData && (iso === "" ? !root.horizonData.set : iso === root.horizonData.horizon && root.horizonData.set)) return   // already so
     var cur = root.readSettings()
     if (iso === "") delete cur.horizon
     else cur.horizon = iso
-    root.settingsData = cur
-    settingsFile.setText(JSON.stringify(cur, null, 2) + "\n")
     root.used("horizon", iso === "" ? "default" : iso)
     root.showHint(iso === "" ? "the horizon is back to the first day the agent kept"
       : "the agent sees daily notes from " + root.sayHorizon(iso) + " on")
     var d = JSON.parse(JSON.stringify(root.horizonData || {}))
     d.horizon = iso === "" ? d["default"] : iso
     d.set = iso !== ""
+    d.before = -1                     // counted again by the runner; the old count beside the new day was wrong
     root.horizonData = d
-    Qt.callLater(root.loadHorizon)
+    root.saveSettings(cur, root.loadHorizon)
   }
 
   function moveHorizon(months) {
@@ -1223,8 +1222,12 @@ Item {
     var d = Days.addMonths(p.date, months)
     var today = new Date()
     if (d > today) d = new Date(today.getFullYear(), today.getMonth(), today.getDate())
-    root.setHorizon(Days.format(d, "YYYY-MM-DD"))
+    var iso = Days.format(d, "YYYY-MM-DD")
+    if (iso === root.horizonData.horizon) return      // at today already: nothing written, nothing said
+    root.setHorizon(iso)
   }
+  // The horizon is today: later is not a way it can go.
+  readonly property bool horizonAtToday: !!root.horizonData && root.horizonData.horizon >= Qt.formatDate(new Date(), "yyyy-MM-dd")
 
   function sayHorizon(iso) {
     var p = Days.parse(String(iso || ""), "YYYY-MM-DD")
@@ -3240,7 +3243,9 @@ Item {
   property var settingsState: null     // `longhand-agent timetable`, as JSON
   property bool settingsBusy: false    // the runner is asking the university
   property string settingsNote: ""     // what just happened, or why not
-  property var settingsPending: null   // the runner's flags, once the file is written
+  property int settingsWrites: 0       // writes of settings.json asked for
+  property int settingsSaves: 0        // …and done (settingsFile.onSaved)
+  property var settingsAfter: []       // [{ n, then }]: what runs once write n is on disk
   property var timetableAgain: null    // { flags, index } asked for while the runner was busy
   property int settingsFocus: 0        // the row ↑↓ picks: a calendar, then settingsKinds
   property int settingsBusyIndex: -1   // the calendar being fetched; -1 all
@@ -4259,16 +4264,22 @@ Item {
     warpProc.running = true
   }
 
+  readonly property var pointerModes: ["panes", "every", "off"]
   function cyclePointer() {
-    var order = ["panes", "every", "off"]
+    var order = root.pointerModes
     root.setPointer(order[(order.indexOf(root.pointerMode) + 1) % order.length])
+  }
+  // ← and → on the pointer's row: the one beside, stopping at the ends.
+  function stepPointer(d) {
+    var order = root.pointerModes
+    var i = Math.max(0, Math.min(order.length - 1, order.indexOf(root.pointerMode) + d))
+    if (order[i] !== root.pointerMode) root.setPointer(order[i])
   }
 
   function setPointer(mode) {
     var cur = root.readSettings()
     cur.pointer = mode
-    root.settingsData = cur
-    settingsFile.setText(JSON.stringify(cur, null, 2) + "\n")
+    root.saveSettings(cur)
     root.used("pointer", cur.pointer)
   }
 
@@ -4999,10 +5010,12 @@ Item {
   // config.json. Hyprland's six keys for the page, the timer and the
   // deadlines are listed too; once the student lets the page keep them
   // (one row, Enter twice), they move like the rest, through hyprkeys.py.
+  // Over Settings it is drawn above them, as over the dashboard, and Esc
+  // comes back to the setting it was asked from (2026-11-28, the settings
+  // pass: ? closed Settings, and with them a check-in half answered).
   function toggleKeys() {
     var was = root.here
-    if (!root.keysOpen) root.noteFrom("keys", root.settingsOpen ? root.openedFrom.settings : was)
-    if (!root.keysOpen && root.settingsOpen) root.toggleSettings()
+    if (!root.keysOpen) root.noteFrom("keys", was)
     root.keysOpen = !root.keysOpen
     root.stopListening()
     root.keysNote = ""
@@ -5020,7 +5033,9 @@ Item {
   // Settings: one sheet, one section so far. Opening it reads the
   // timetable's state (no fetch); Enter in the field saves an address and
   // fetches at once, so whether it worked is seen, not hoped for.
-  function toggleSettings() {
+  function toggleSettings(quiet) {
+    // Under the keys sheet: shown again, not closed unseen.
+    if (root.settingsOpen && root.keysOpen) { root.toggleKeys(); return }
     var was = root.here
     if (!root.settingsOpen) root.noteFrom("settings", root.keysOpen ? root.openedFrom.keys : was)
     if (!root.settingsOpen && root.keysOpen) root.toggleKeys()
@@ -5028,12 +5043,17 @@ Item {
     root.settingsNote = ""
     root.settingsFieldKind = "add"
     root.settingsAsking = -1
+    root.settingsRenaming = -1
+    root.settingsDraft = ""
     root.settingsView = "main"
     root.notebookCorrecting = false
+    root.checkinAsking = false
     if (root.settingsOpen) {
       root.used("settings")
       settingsSheet.settingsFieldRef.text = ""
       root.settingsFocus = 0
+      // Opened for the check-in alone (the dashboard's F): only that is read.
+      if (quiet) return
       root.runTimetable([])
       root.loadNotebook()
       root.loadAutonomy()
@@ -5056,9 +5076,22 @@ Item {
   // three sheets each had a Ctrl letter of their own until then. The field
   // that adds a calendar is a row too: keys type into it while it is
   // picked, and typing from any row picks it.
-  readonly property var settingsKinds: ["field", "notebook", "autonomy", "search", "checkin", "sound", "pointer"]
+  // The week's review is a row too, once there is one (2026-11-28: a link
+  // ↑↓ passed over, which the page's own hint sent the student to).
+  readonly property bool hasReview: !!root.agentChecks && (root.agentChecks.latest_review || "") !== ""
+  readonly property var settingsKinds: ["field", "notebook", "autonomy", "search", "checkin"]
+    .concat(root.hasReview ? ["review"] : [], ["sound", "pointer"])
   readonly property int calendarCount: root.settingsState && root.settingsState.configured ? root.settingsState.calendars.length : 0
   property int settingsAsking: -1      // the calendar Del asked about, until Enter or Esc
+  property int settingsRenaming: -1    // the calendar the field renames, while it does
+  property string settingsDraft: ""    // an address typed before a rename took the field, given back after
+  // A question or a rename is about one calendar: picking another, by key
+  // or click, lets it go. Enter on the next row removed or renamed the
+  // first one (2026-11-28, the settings pass).
+  onSettingsFocusChanged: {
+    if (root.settingsAsking >= 0 && root.settingsAsking !== root.settingsFocus) root.settingsAsking = -1
+    if (root.settingsFieldKind === "rename" && root.settingsRenaming !== root.settingsFocus) root.endRename()
+  }
   function settingsAt(kind) { return root.calendarCount + root.settingsKinds.indexOf(kind) }
   function settingsPicked() {
     if (root.settingsFocus < root.calendarCount) return "calendar"
@@ -5072,6 +5105,7 @@ Item {
     else if (kind === "autonomy") root.openAutonomy()
     else if (kind === "search") root.openSearchFolders()
     else if (kind === "checkin") root.openCheckin(false)
+    else if (kind === "review") root.openReview()
     else if (kind === "sound") root.toggleTickSound()
     else if (kind === "pointer") root.cyclePointer()
   }
@@ -5080,6 +5114,7 @@ Item {
   // with it, and it was a paste away from a sign-in.
   function askRemoveCalendar(i) {
     if (i < 0 || i >= root.calendarCount) return
+    if (root.settingsFieldKind === "rename") root.endRename()
     root.settingsFocus = i
     root.settingsAsking = i
     root.settingsNote = ""
@@ -5089,27 +5124,42 @@ Item {
   // row "In every list" in Shortcuts.js): ↑↓ and j k a row, Home and End
   // the first and last. The row the key goes to, kept between `first` and
   // `last`; -2 when it is none of them. `step(at, dir)` walks past rows
-  // that are not picked (a heading), when a list has them.
-  function listStep(seq, at, first, last, step) {
+  // that are not picked (a heading), when a list has them. PgUp and PgDn
+  // go `page` rows at a time where a list is given one (Settings' long
+  // lists, 2026-11-28), as they go a screenful in the switcher and export.
+  function listStep(seq, at, first, last, step, page) {
     var by = step || function (i, d) { return Math.max(first, Math.min(last, i + d)) }
     if (seq === "Up" || seq === "K") return by(at, -1)
     if (seq === "Down" || seq === "J") return by(at, 1)
     if (seq === "Home") return step ? step(first - 1, 1) : first
     if (seq === "End") return step ? step(last + 1, -1) : last
+    if (page > 0 && (seq === "PgUp" || seq === "PgDn")) {
+      var d = seq === "PgUp" ? -1 : 1
+      var to = at
+      for (var n = 0; n < page; n++) {
+        var next = by(to, d)
+        if (next === to) break
+        to = next
+      }
+      return to
+    }
     return -2
   }
+
 
   function settingsKey(event) {
     if (root.anywhereKey(event)) return true
     var seq = Sc.fromEvent(event)
-    if (root.settingsAsking >= 0) {
+    // While Del asks: Enter removes, ↑↓ keep it and move, any other key
+    // keeps it and does nothing more (Space fetched it, R renamed it).
+    if (root.settingsAsking >= 0 && seq !== "") {
       var asked = root.settingsAsking
       root.settingsAsking = -1
       if (seq === "Enter") { root.removeCalendar(asked); return true }
-      if (seq === "Esc") return true
+      if (seq !== "Up" && seq !== "Down" && seq !== "K" && seq !== "J") return true
     }
     if (seq === "Esc") {
-      if (root.settingsFieldKind === "rename") { root.settingsFieldKind = "add"; settingsSheet.settingsFieldRef.text = "" }
+      if (root.settingsFieldKind === "rename") root.endRename()
       else root.toggleSettings()
       return true
     }
@@ -5123,7 +5173,7 @@ Item {
     // and End are its own). The `k` and `j` here never matched: a key is
     // written as its capital (2026-11-25).
     var to = kind === "field" ? (seq === "Up" || seq === "Down" ? root.listStep(seq, root.settingsFocus, 0, last) : -2)
-      : root.listStep(seq, root.settingsFocus, 0, last)
+      : root.listStep(seq, root.settingsFocus, 0, last, null, 4)
     if (to !== -2) { root.settingsFocus = to; return true }
     if (kind !== "field" && Sc.hit(event, "keysHere")) { root.toggleKeys(); return true }
     if (kind === "field") {
@@ -5136,6 +5186,8 @@ Item {
       if (Sc.hit(event, "settingsShare")) { root.toggleShare(root.settingsFocus); return true }
       if (Sc.hit(event, "settingsRename")) { root.startRename(root.settingsFocus); return true }
     }
+    // The pointer's three ways, as a level is picked in what it may do.
+    if (kind === "pointer" && (seq === "Left" || seq === "Right")) { root.stepPointer(seq === "Left" ? -1 : 1); return true }
     if (Sc.hit(event, "settingsChange")) { root.changeSetting(kind); return true }
     return false
   }
@@ -5171,17 +5223,34 @@ Item {
     checkinProc.command = [svc.runner, "checkin"]
     checkinProc.running = true
   }
+  // This week's answers, once kept: opened again, the sheet shows them to
+  // change, not eight empty lines over a week already answered.
+  function checkinKept() {
+    var d = root.checkinData
+    if (!d || d.due) return null
+    var w = d.weeks.filter(function (x) { return x.week === d.week })[0]
+    return w || null
+  }
+  function fillCheckin() {
+    var w = root.checkinKept()
+    root.checkinAnswers = w && w.answers ? w.answers.slice() : [0, 0, 0, 0, 0, 0, 0, 0]
+  }
+  property bool checkinAsking: false        // Del asked whether to skip the week, until Enter or Esc
+  readonly property bool checkinTouched: root.checkinAnswers.some(function (a) { return a > 0 })
   function openCheckin(fromDash) {
-    if (!root.settingsOpen) root.toggleSettings()
+    // From the dashboard only the check-in is read, not all of Settings.
+    if (!root.settingsOpen) root.toggleSettings(!!fromDash)
     root.checkinFromDash = !!fromDash
     root.settingsView = "checkin"
-    root.checkinAnswers = [0, 0, 0, 0, 0, 0, 0, 0]
-    root.checkinFocus = 0
+    root.checkinAsking = false
+    root.fillCheckin()
+    root.checkinFocus = Math.max(0, root.checkinAnswers.indexOf(0))
     root.used("checkin", fromDash ? "dash" : "settings")
     root.loadCheckin()
     Qt.callLater(checkinSheet.checkinKeysRef.forceActiveFocus)
   }
   function closeCheckin() {
+    root.checkinAsking = false
     if (root.checkinFromDash) { root.checkinFromDash = false; root.toggleSettings() }   // back where it came from
     else root.closeNotebook()                                                           // to Settings' list
   }
@@ -5195,21 +5264,39 @@ Item {
     if (root.anywhereKey(event)) return true
     var seq = Sc.fromEvent(event)
     var f = root.checkinFocus, n = root.checkinAnswers.length
+    // Skipping asks first once anything is answered, or the week was kept:
+    // Del wiped seven answers, or a kept week, at a touch (2026-11-28).
+    if (root.checkinAsking && seq !== "") {
+      root.checkinAsking = false
+      if (seq === "Enter") { root.skipCheckin(); return true }
+      return true
+    }
     if (seq === "Esc") { root.closeCheckin(); return true }
     var to = root.listStep(seq, f, 0, n - 1)
     if (to !== -2) { root.checkinFocus = to; return true }
     if (Sc.hit(event, "keysHere")) { root.toggleKeys(); return true }
     if (seq === "Left" || seq === "Right") {
-      var cur = root.checkinAnswers[f] || 4
-      root.setCheckin(f, Math.max(1, Math.min(7, cur + (seq === "Left" ? -1 : 1))), false)
+      // An empty line's first ← or → lands on the middle, "neither": it
+      // jumped past it to 3 or 5, so the middle took two keys.
+      var cur = root.checkinAnswers[f]
+      root.setCheckin(f, cur ? Math.max(1, Math.min(7, cur + (seq === "Left" ? -1 : 1))) : 4, false)
       return true
     }
     if (/^[1-7]$/.test(seq)) { root.setCheckin(f, parseInt(seq, 10), true); return true }
     if (seq === "Enter") { root.keepCheckin(); return true }
-    if (seq === "Del" || seq === "Backspace") { root.skipCheckin(); return true }
+    // Backspace clears the line; Del skips the week.
+    if (seq === "Backspace") { root.setCheckin(f, 0, false); return true }
+    if (seq === "Del") { root.askSkipCheckin(); return true }
     return false
   }
+  function askSkipCheckin() {
+    if (checkinSaveProc.running) return
+    var kept = root.checkinKept()
+    if (root.checkinTouched || (kept && !kept.skipped)) root.checkinAsking = true
+    else root.skipCheckin()
+  }
   function keepCheckin() {
+    if (checkinSaveProc.running) return                 // one save at a time: Enter twice kept the week twice
     if (root.checkinLeft > 0) {
       root.checkinFocus = root.checkinAnswers.indexOf(0)
       root.showHint(root.checkinLeft + (root.checkinLeft === 1 ? " line" : " lines") + " to go")
@@ -5220,6 +5307,8 @@ Item {
     checkinSaveProc.running = true
   }
   function skipCheckin() {
+    root.checkinAsking = false
+    if (checkinSaveProc.running) return
     checkinSaveProc.command = [svc.runner, "checkin", "--skip"]
     checkinSaveProc.kept = false
     checkinSaveProc.running = true
@@ -5234,7 +5323,7 @@ Item {
   }
   function sayCheckin() {
     var d = root.checkinData
-    if (!d) return ""
+    if (!d) return root.sayUnread("checkin")
     var last = d.weeks.length > 0 ? d.weeks[d.weeks.length - 1] : null
     return d.due ? "this week: not answered yet" + (last && !last.skipped ? " · last: practical " + root.signed(last.pragmatic) + ", pleasant " + root.signed(last.hedonic) : "")
       : last.skipped ? "this week: skipped" : "this week: practical " + root.signed(last.pragmatic) + " · pleasant " + root.signed(last.hedonic)
@@ -5263,23 +5352,21 @@ Item {
     for (var k in was) a[k] = was[k]
     a[kind] = level
     cur.autonomy = a
-    root.settingsData = cur
-    settingsFile.setText(JSON.stringify(cur, null, 2) + "\n")
     root.used("autonomy", kind + "=" + level)
     // Shown at once; the runner's answer follows.
     var d = root.autonomyData ? JSON.parse(JSON.stringify(root.autonomyData)) : null
     if (d) d.kinds.forEach(function (x) { if (x.kind === kind) x.level = level })
     root.autonomyData = d
-    Qt.callLater(root.loadAutonomy)
+    root.saveSettings(cur, root.loadAutonomy)
   }
 
-  function stepAutonomy(d) {
+  function stepAutonomy(d, round) {
     var ks = root.autonomyData ? root.autonomyData.kinds : []
     var k = ks[root.autonomyFocus]
     if (!k) return
     var levels = k.ask_only ? ["ask", "never"] : root.autonomyLevels
     var i = Math.max(0, levels.indexOf(k.level))
-    var next = levels[Math.max(0, Math.min(levels.length - 1, i + d))]
+    var next = levels[round ? (i + d + levels.length) % levels.length : Math.max(0, Math.min(levels.length - 1, i + d))]
     if (next !== k.level) root.setAutonomy(k.kind, next)
   }
 
@@ -5288,11 +5375,14 @@ Item {
     var seq = Sc.fromEvent(event)
     var n = root.autonomyData ? root.autonomyData.kinds.length : 0
     if (seq === "Esc") { root.closeNotebook(); return true }
-    var to = root.listStep(seq, root.autonomyFocus, 0, Math.max(0, n - 1))
+    var to = root.listStep(seq, root.autonomyFocus, 0, Math.max(0, n - 1), null, 5)
     if (to !== -2) { root.autonomyFocus = to; return true }
     if (Sc.hit(event, "keysHere")) { root.toggleKeys(); return true }
-    if (seq === "Left") { root.stepAutonomy(-1); return true }
-    if (seq === "Right" || seq === "Space" || seq === "Enter") { root.stepAutonomy(1); return true }
+    if (seq === "Left") { root.stepAutonomy(-1, false); return true }
+    if (seq === "Right") { root.stepAutonomy(1, false); return true }
+    // Space and Enter go round, as on the pointer's row: at never they
+    // did nothing (2026-11-28).
+    if (seq === "Space" || seq === "Enter") { root.stepAutonomy(1, true); return true }
     return false
   }
 
@@ -5348,12 +5438,14 @@ Item {
     root.settingsView = "search"
     root.used("search-folders")
     root.loadSearchFolders()
+    root.loadHorizon()
+    if (root.searchFocus < 0 && !root.horizonData) root.searchFocus = 0
     Qt.callLater(searchSheet.searchKeysRef.forceActiveFocus)
   }
 
   function saySearchFolders() {
     var d = root.searchData
-    if (!d) return ""
+    if (!d) return root.sayUnread("search")
     var on = d.folders.filter(function (f) { return f.on })
     return "It may search " + on.length + " of " + d.folders.length + " folders."
   }
@@ -5367,13 +5459,11 @@ Item {
     for (var k in was) s[k] = was[k]
     s[f.folder] = !f.on
     cur.searchFolders = s
-    root.settingsData = cur
-    settingsFile.setText(JSON.stringify(cur, null, 2) + "\n")
     root.used("search-folders", f.folder + "=" + (!f.on ? "on" : "off"))
     var d = JSON.parse(JSON.stringify(root.searchData))
     d.folders[i].on = !f.on
     root.searchData = d
-    Qt.callLater(root.loadSearchFolders)
+    root.saveSettings(cur, root.loadSearchFolders)
   }
 
   function searchFoldersKey(event) {
@@ -5381,8 +5471,9 @@ Item {
     var seq = Sc.fromEvent(event)
     var n = root.searchData ? root.searchData.folders.length : 0
     if (seq === "Esc") { root.closeNotebook(); return true }
-    // Row -1 is the horizon, above the folders.
-    var to = root.listStep(seq, root.searchFocus, -1, n - 1)
+    // Row -1 is the horizon, above the folders, once it is read (a row
+    // not drawn held the keys).
+    var to = root.listStep(seq, root.searchFocus, root.horizonData ? -1 : 0, Math.max(0, n - 1), null, 8)
     if (to !== -2) { root.searchFocus = to; return true }
     if (Sc.hit(event, "keysHere")) { root.toggleKeys(); return true }
     if (root.searchFocus < 0) {
@@ -5562,24 +5653,36 @@ Item {
     return bits.join(" · ")
   }
 
+  // Said as it is (2026-11-28): "most" was said with one kind left to ask.
   function sayAutonomy() {
     var d = root.autonomyData
-    if (!d) return ""
+    if (!d) return root.sayUnread("autonomy")
+    var n = d.kinds.length
+    var ask = d.kinds.filter(function (k) { return k.level === "ask" }).length
     var done = d.kinds.filter(function (k) { return k.level === "do" }).length
-    var never = d.kinds.filter(function (k) { return k.level === "never" }).length
-    return done === 0 && never === 0 ? "It asks before every action."
-      : "It asks before most actions" + (done ? "; " + done + " it does and tells you" : "") + (never ? "; " + never + " never" : "") + "."
+    var never = n - ask - done
+    if (ask === n) return "It asks before every action."
+    var parts = []
+    if (ask > 0) parts.push("it asks before " + ask + " of " + n + " kinds of action")
+    if (done > 0) parts.push((ask > 0 ? "" : "it ") + "does " + done + " and tells you")
+    if (never > 0) parts.push(parts.length > 0 ? "may never do " + never : "it may do none of them")
+    var t = parts.join("; ")
+    return t.charAt(0).toUpperCase() + t.slice(1) + "."
   }
 
   function sayNotebook() {
     var d = root.notebookData
-    if (!d) return ""
+    if (!d) return root.sayUnread("notebook")
     var n = 0
     d.files.forEach(function (f) { n += f.lines.length })
-    if (n === 0) return "It has written nothing down yet."
-    var c = d.corrections.length
+    var a = d.answers.length, c = d.corrections.length
+    var yours = []
+    if (a > 0) yours.push(a + (a === 1 ? " answer" : " answers"))
+    if (c > 0) yours.push(c + (c === 1 ? " correction" : " corrections"))
+    // Answers and corrections are kept too: "nothing" was said beside them.
+    if (n === 0) return yours.length === 0 ? "It has written nothing down yet." : "It has written nothing down yet; it keeps " + yours.join(" and ") + " of yours."
     return "It keeps " + n + (n === 1 ? " note" : " notes") + " in " + d.files.length + (d.files.length === 1 ? " file" : " files")
-      + (c > 0 ? ", held to " + c + (c === 1 ? " correction" : " corrections") + " of yours" : "") + "."
+      + (yours.length > 0 ? ", with " + yours.join(" and ") + " of yours" : "") + "."
   }
 
   function loadNotebook() {
@@ -5618,6 +5721,7 @@ Item {
   function pickNotebook(i) {
     if (i < 0 || i >= root.notebookList.length || root.notebookList[i].kind === "head") return
     root.notebookFocus = i
+    root.notebookAsking = false          // the question was about the line picked before
     root.notebookCorrecting = false
     notebookSheet.notebookKeysRef.forceActiveFocus()
   }
@@ -5665,6 +5769,9 @@ Item {
   // Del asks first ("Forget this note? Enter / Esc"), as removing a
   // calendar does: forgotten stays forgotten.
   property bool notebookAsking: false
+  // Asked about one line: another picked lets the question go (Enter on
+  // the next line forgot it, 2026-11-28).
+  onNotebookFocusChanged: root.notebookAsking = false
   function askForgetNote() {
     var row = root.notebookList[root.notebookFocus]
     if (!row || (row.kind !== "line" && row.kind !== "answer" && row.kind !== "correction")) return
@@ -5692,13 +5799,15 @@ Item {
       if (seq === "Enter") { root.saveCorrection(notebookSheet.notebookFieldRef.text); return true }
       return false
     }
-    if (root.notebookAsking) {
+    // While Del asks: Enter forgets, ↑↓ keep it and move, any other key
+    // keeps it and does nothing more.
+    if (root.notebookAsking && seq !== "") {
       root.notebookAsking = false
       if (seq === "Enter") { root.forgetNote(); return true }
-      if (seq === "Esc") return true
+      if (seq !== "Up" && seq !== "Down" && seq !== "K" && seq !== "J") return true
     }
     if (seq === "Esc") { root.closeNotebook(); return true }
-    var to = root.listStep(seq, root.notebookFocus, 0, root.notebookList.length - 1, root.nextNotebookRow)
+    var to = root.listStep(seq, root.notebookFocus, 0, root.notebookList.length - 1, root.nextNotebookRow, 6)
     if (to !== -2) { root.notebookFocus = to; return true }
     if (Sc.hit(event, "keysHere")) { root.toggleKeys(); return true }
     if (seq === "Enter" || Sc.hit(event, "notebookCorrect")) { root.startCorrect(); return true }
@@ -5720,22 +5829,42 @@ Item {
     return []
   }
 
-  // settings.json is merged, never replaced; the runner is asked only once
-  // the file is written (onSaved).
+  // settings.json, written in one place (2026-11-28, the settings pass):
+  // merged by the caller, never replaced, and what reads it again (the
+  // runner) is asked only once this write is on disk. The horizon, what it
+  // may do and what it may search asked the runner at once, which could
+  // read the file before the write and put the old setting back on the
+  // screen; only the calendars waited, in a single slot a second write
+  // could take.
+  function saveSettings(cur, then) {
+    root.settingsData = cur
+    var text = JSON.stringify(cur, null, 2) + "\n"
+    if (text === settingsFile.text()) { if (then) Qt.callLater(then); return }   // nothing to write: nothing to wait for
+    root.settingsWrites++
+    if (then) root.settingsAfter = root.settingsAfter.concat([{ n: root.settingsWrites, then: then }])
+    settingsSaveGuard.restart()
+    settingsFile.setText(text)
+  }
+  function settingsSaved(all) {
+    root.settingsSaves = all ? root.settingsWrites : Math.min(root.settingsWrites, root.settingsSaves + 1)
+    if (root.settingsSaves >= root.settingsWrites) settingsSaveGuard.stop()
+    var done = root.settingsSaves
+    var due = root.settingsAfter.filter(function (a) { return a.n <= done })
+    root.settingsAfter = root.settingsAfter.filter(function (a) { return a.n > done })
+    due.forEach(function (a) { a.then() })
+  }
+
   function writeCalendars(list, then) {
     var cur = root.readSettings()
     cur.calendars = list
     delete cur.timetable
-    root.settingsPending = then
-    root.settingsData = cur
-    settingsFile.setText(JSON.stringify(cur, null, 2) + "\n")
+    root.saveSettings(cur, function () { root.runTimetable(then) })
   }
 
   function toggleTickSound() {
     var cur = root.readSettings()
     cur.tickSound = cur.tickSound === false
-    root.settingsData = cur
-    settingsFile.setText(JSON.stringify(cur, null, 2) + "\n")
+    root.saveSettings(cur)
     root.used("tick-sound", cur.tickSound ? "on" : "off")
     if (cur.tickSound) root.playTick(true)
   }
@@ -5789,21 +5918,52 @@ Item {
     root.runTimetable(["--fetch", "--index", String(root.settingsBusyIndex)])
   }
 
+  // The field below the calendars renames the one picked: it is said
+  // which (the footer), scrolled to, and an address typed in it before is
+  // kept for after.
   function startRename(i) {
     var list = root.calendarList()
     if (i < 0 || i >= list.length) return
+    root.settingsAsking = -1
+    if (root.settingsFieldKind !== "rename") root.settingsDraft = settingsSheet.settingsFieldRef.text
+    root.settingsRenaming = i
+    root.settingsFocus = i
     root.settingsFieldKind = "rename"
     settingsSheet.settingsFieldRef.text = list[i].name
     settingsSheet.settingsFieldRef.forceActiveFocus()
     settingsSheet.settingsFieldRef.selectAll()
+    settingsSheet.showField()
+  }
+
+  function endRename() {
+    if (root.settingsFieldKind !== "rename") return
+    root.settingsRenaming = -1
+    root.settingsFieldKind = "add"
+    root.settingsRestoring = true        // given back, not typed: the row picked stays picked
+    settingsSheet.settingsFieldRef.text = root.settingsDraft
+    root.settingsRestoring = false
+    root.settingsDraft = ""
+  }
+  property bool settingsRestoring: false
+
+  // The agent's latest weekly review, read in the sheet as the agent's
+  // other files are (it opened in another application).
+  function openReview() {
+    if (!root.hasReview) return
+    root.used("review")
+    root.openFile(root.agentChecks.latest_review, true)
+  }
+
+  readonly property string renamingName: {
+    var c = root.settingsState && root.settingsState.configured ? root.settingsState.calendars[root.settingsRenaming] : null
+    return c ? c.name : ""
   }
 
   function renameCalendar(text) {
     var name = String(text || "").replace(/\s+/g, " ").trim()
     var list = root.calendarList()
-    root.settingsFieldKind = "add"
-    settingsSheet.settingsFieldRef.text = ""
-    var i = root.settingsFocus
+    var i = root.settingsRenaming
+    root.endRename()
     if (name === "" || i < 0 || i >= list.length || list[i].name === name) return
     list[i].name = name
     root.writeCalendars(list, [])
@@ -5902,7 +6062,10 @@ Item {
   // sits on another.
   function surfaces() {
     var out = {}
-    var items = { sheet: sheet, dash: dash, keys: keysSheet, settings: settingsSheet, sidebar: sidebar, margin: margin }
+    // Settings is whichever of its five sheets is drawn: the four behind
+    // the main one were never checked.
+    var items = { sheet: sheet, dash: dash, keys: keysSheet, settings: root.centerView === "settings" ? root.paneItem("center") : settingsSheet,
+                  sidebar: sidebar, margin: margin }
     for (var n in items) {
       var it = items[n]
       if (it.visible) out[n] = { x: Math.round(it.x), w: Math.round(it.width) }
@@ -6892,7 +7055,7 @@ Item {
       // A view is opened, never closed: picked while it is open, the keys go to it.
       if (item.id === "dash") root.showDash()
       else if (item.id === "today") root.goToday()
-      else if (item.id === "settings") { if (!root.settingsOpen) root.toggleSettings(); else root.focusCenter() }
+      else if (item.id === "settings") { if (root.centerView !== "settings") root.toggleSettings(); else root.focusCenter() }
       else if (item.id === "keys") { if (!root.keysOpen) root.toggleKeys(); else root.focusCenter() }
       else if (item.id === "export") {
         if (root.centerView === "dash") root.exportFocused()
@@ -10426,13 +10589,15 @@ Item {
     onLoaded: root.settingsData = root.readSettings()
     atomicWrites: true
     printErrors: false
-    onSaved: {
-      var then = root.settingsPending
-      root.settingsPending = null
-      if (then) root.runTimetable(then)
+    onSaved: root.settingsSaved(false)
+    onSaveFailed: function (err) {
+      root.settingsNote = "could not write settings.json: " + FileViewError.toString(err)
+      root.showHint(root.settingsNote)
+      root.settingsSaved(true)
     }
-    onSaveFailed: function (err) { root.settingsNote = "could not write settings.json: " + FileViewError.toString(err) }
   }
+  // A write that never says it is done must not hold back what waits on it.
+  Timer { id: settingsSaveGuard; interval: 3000; onTriggered: root.settingsSaved(true) }
 
   Process { id: tickSoundProc }
   Process { id: warpProc }
@@ -10507,7 +10672,7 @@ Item {
     // never read, on a slow machine): once more when it ends.
     property bool again: false
     onExited: if (horizonProc.again) { horizonProc.again = false; Qt.callLater(function () { horizonProc.running = true }) }
-    stdout: StdioCollector { onStreamFinished: { try { root.horizonData = JSON.parse(text) } catch (e) {} } }
+    stdout: StdioCollector { onStreamFinished: { try { root.horizonData = JSON.parse(text); root.readFailed("horizon", false) } catch (e) { root.readFailed("horizon", true) } } }
   }
   Process {
     id: searchFoldersProc
@@ -10515,7 +10680,7 @@ Item {
     // never read, on a slow machine): once more when it ends.
     property bool again: false
     onExited: if (searchFoldersProc.again) { searchFoldersProc.again = false; Qt.callLater(function () { searchFoldersProc.running = true }) }
-    stdout: StdioCollector { onStreamFinished: { try { root.searchData = JSON.parse(text) } catch (e) {} } }
+    stdout: StdioCollector { onStreamFinished: { try { root.searchData = JSON.parse(text); root.readFailed("search", false) } catch (e) { root.readFailed("search", true) } } }
   }
   Process {
     id: autonomyProc
@@ -10523,7 +10688,7 @@ Item {
     // never read, on a slow machine): once more when it ends.
     property bool again: false
     onExited: if (autonomyProc.again) { autonomyProc.again = false; Qt.callLater(function () { autonomyProc.running = true }) }
-    stdout: StdioCollector { onStreamFinished: { try { root.autonomyData = JSON.parse(text) } catch (e) {} } }
+    stdout: StdioCollector { onStreamFinished: { try { root.autonomyData = JSON.parse(text); root.readFailed("autonomy", false) } catch (e) { root.readFailed("autonomy", true) } } }
   }
   Process {
     id: notebookProc
@@ -10533,7 +10698,7 @@ Item {
     onExited: if (notebookProc.again) { notebookProc.again = false; Qt.callLater(function () { notebookProc.running = true }) }
     stdout: StdioCollector {
       onStreamFinished: {
-        try { root.notebookData = JSON.parse(text) } catch (e) { root.notebookNote = "the runner did not answer" }
+        try { root.notebookData = JSON.parse(text); root.readFailed("notebook", false) } catch (e) { root.readFailed("notebook", true); root.notebookNote = "the runner did not answer" }
         var rows = root.notebookList
         if (root.notebookFocus >= rows.length || (rows[root.notebookFocus] && rows[root.notebookFocus].kind === "head"))
           root.notebookFocus = root.nextNotebookRow(Math.min(root.notebookFocus, rows.length), -1)
@@ -10558,6 +10723,21 @@ Item {
   // What Settings says about the agent: which prompts and models have
   // passed their evals, and the latest review.
   property var agentChecks: null
+  // Which of Settings' reads did not come back as it should (2026-11-28,
+  // the settings pass): said where the setting is, not left blank.
+  property var settingsFailed: ({})
+  function readFailed(what, failed) {
+    if (!!root.settingsFailed[what] === failed) return
+    var m = Object.assign({}, root.settingsFailed)
+    if (failed) m[what] = true
+    else delete m[what]
+    root.settingsFailed = m
+  }
+  // A setting's line while it has no answer yet: being read, or why not.
+  function sayUnread(what) {
+    if (!svc.configured) return ""
+    return root.settingsFailed[what] ? "Could not be read: longhand-agent " + what + " did not answer." : "Reading…"
+  }
   Process {
     id: agentChecksProc
     stdout: StdioCollector { onStreamFinished: { try { root.agentChecks = JSON.parse(text) } catch (e) { root.agentChecks = null } } }
@@ -10671,7 +10851,15 @@ Item {
     property bool again: false
     onExited: if (checkinProc.again) { checkinProc.again = false; Qt.callLater(function () { checkinProc.running = true }) }
     stdout: StdioCollector {
-      onStreamFinished: { try { root.checkinData = JSON.parse(text) } catch (e) {} }
+      onStreamFinished: {
+        try { root.checkinData = JSON.parse(text); root.readFailed("checkin", false) } catch (e) { root.readFailed("checkin", true) }
+        // Read after the sheet opened: this week's answers, if kept and
+        // nothing is answered yet.
+        if (root.settingsOpen && root.settingsView === "checkin" && !root.checkinTouched) {
+          root.fillCheckin()
+          root.checkinFocus = Math.max(0, root.checkinAnswers.indexOf(0))
+        }
+      }
     }
   }
 

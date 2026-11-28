@@ -464,7 +464,10 @@ var fixed = [
   // keyboard pass): the dashboard, the files, a paper's marks, the export,
   // settings and its sheets. The sidebar's lists keep ↑↓ only, since a
   // letter there finds a project.
-  { group: "page", places: [], does: "In every list: ↑↓ or j k a row, Home and End the first and last, ? these keys", show: ["Up", "Down", "J", "K", "Home", "End", "?"], keys: [] }
+  { group: "page", places: [], does: "In every list: ↑↓ or j k a row, Home and End the first and last, ? these keys", show: ["Up", "Down", "J", "K", "Home", "End", "?"], keys: [] },
+  // Settings' longer lists a few rows at a time (2026-11-28, the settings
+  // pass), as the switcher and the export go a screenful.
+  { group: "settings", places: ["settings", "notebook", "autonomy", "folders", "checkin"], does: "In settings and its sheets: a few rows up or down", show: ["PgUp", "PgDn"], keys: ["PgUp", "PgDn"] }
 ]
 
 // ------------------------------------------------------------ keys

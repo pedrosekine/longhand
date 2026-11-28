@@ -757,6 +757,7 @@ ShellRoot {
     function talkStream(): string { return JSON.stringify(page.talkStream.map(function (t) { return { elsewhere: !!t.elsewhere, text: t.text || "", place: t.place || "" } })) }
     function checkin(): string { return JSON.stringify({ due: page.checkinDue, view: page.settingsOpen ? page.settingsView : "", answers: page.checkinAnswers, center: page.centerView }) }
     function checkinKey(key: int): bool { return page.checkinKey({ key: key, modifiers: 0, text: "" }) }
+    function checkinFocus(i: int): void { page.checkinFocus = i }
     function chatBoxClear(): void { page.marginItem.chatFieldRef.text = "" }
     function clickStop(): void { page.marginItem.chatFieldRef.stop() }
     function stopShown(): string { var f = page.marginItem.chatFieldRef; return JSON.stringify({ square: f.busy, placeholder: f.placeholderText }) }
@@ -933,6 +934,8 @@ ShellRoot {
     function settingsPick(kind: string): void { page.settingsFocus = page.settingsAt(kind) }
     function settingsPicked(): string { return page.settingsPicked() }
     function settingsAsking(): int { return page.settingsAsking }
+    function settingsField(): string { return JSON.stringify({ kind: page.settingsFieldKind, text: page.settingsSheetItem.settingsFieldRef.text }) }
+    function checkinAsking(): bool { return page.checkinAsking }
     function settingsType(t: string): void { page.settingsSheetItem.settingsFieldRef.text = t }
     function tickSoundOn(): bool { return page.settingsData.tickSound !== false }
     function pointerMode(): string { return page.pointerMode }
