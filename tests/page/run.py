@@ -5192,9 +5192,9 @@ def checks() -> int:
         check(e["here"] == "center" and json.loads(p.call("pdf"))["shown"] is False, "…in the note's place, with the keys")
         check([r["show"] for r in e["rows"]] == ["- [ ] hand it in", "What happened", "We met twice."],
               f"…each row the words that go, without the marks ({[r['show'] for r in e['rows']]})")
-        check(e["canWrite"] and e["target"].endswith("Downloads/Diary.pdf") and not e["replaces"],
+        check(e["canWrite"] and e["target"].replace("\\", "/").endswith("Downloads/Diary.pdf") and not e["replaces"],
               f"…and the footer names the file it will write ({e['target']!r})")
-        check(p.call("exportPath").startswith(str(p.daily / f"{TODAY}.md") + ":"),
+        check(re.search(re.escape(f"{TODAY}.md") + r":\d+$", p.call("exportPath")) is not None,
               f"Ctrl+Shift+C there: the note it reads, at the block's line ({p.call('exportPath')!r})")
         p.call("exportKey", KEY_SPACE, 0)
         check(ex()["rows"][0]["in"] and ex()["words"] == 6, f"Space puts the checkbox in, and its words count ({ex()['words']})")

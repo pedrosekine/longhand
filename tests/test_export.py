@@ -204,8 +204,8 @@ def units() -> None:
         check(export.font(sample) == sample, f"export.font({sample!r}) resolves an installed Windows face")
         check(export.font("NoSuchLonghandFontXYZ") == export.font(),
               "export.font passes over a face asked for that is not installed")
-        check(export.font() == "Segoe UI" or "iA Writer Quattro S" in have or "iA Writer Duo S" in have,
-              "with no face asked for, Windows' reading face rather than pandoc's Computer Modern")
+        check(export.font() == "Adwaita Sans" and export.face_options("Adwaita Sans")[1] == "mainfont=AdwaitaSans",
+              "with no face asked for, the page's own Adwaita Sans from its cuts, not pandoc's Computer Modern")
 
         # No theme file on Windows: the omarchy look is Windows' own light
         # or dark and accent, as the page draws there.
