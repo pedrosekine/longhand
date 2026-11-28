@@ -23,9 +23,18 @@ BorderSurface {
   // scrolled, where today's rule is, the room under today, the header.
   function viewState() {
     return { y: dayFlick.contentY, top: historyColumn.visible ? historyColumn.y + todayRule.y : -1, h: dayFlick.height,
-             ch: dayFlick.contentHeight, room: todayRoom.height, title: dayTitle.text }
+             ch: dayFlick.contentHeight, room: todayRoom.height, title: dayTitle.text, foot: dayFlick.atFoot }
   }
   property alias paperKeysRef: paperKeys
+  property alias flickRef: dayFlick
+  // To the conversation's foot, and kept there: after sending, and on
+  // opening another chat.
+  function toFoot() {
+    dayFlick.atFoot = true
+    dayFlick.contentY = Math.max(0, dayFlick.contentHeight - dayFlick.height)
+  }
+  // …unless a turn is being shown on purpose.
+  function atRest() { if (dayPane.pinTurn >= 0) dayPane.toPin(); else dayPane.toFoot() }
   // A turn shown on purpose (a question's answer, from the PDF): the
   // conversation held at it, not at its foot, until a new turn comes; it
   // and the answer after it lit a moment.
@@ -75,7 +84,7 @@ BorderSurface {
     }
     if (k < 0 || k >= q.length) {
       dayPane.askAt = -1
-      if (d > 0) dayFlick.contentY = Math.max(0, dayFlick.contentHeight - dayFlick.height)
+      if (d > 0) dayPane.toFoot()
       else page.showHint("the first thing you asked here")
       return
     }
@@ -86,7 +95,8 @@ BorderSurface {
   Connections {
     target: dayPane.page
     function onDayTurnsChanged() { dayPane.askAt = -1 }
-    function onRoomRelChanged() { dayPane.askAt = -1; dayPane.earlierOpen = false }
+    function onRoomRelChanged() { dayPane.askAt = -1; dayPane.earlierOpen = false; Qt.callLater(dayPane.atRest) }
+    function onNoteRoomChanged() { Qt.callLater(dayPane.atRest) }
   }
 
   // A paper's or a note's chat: its earlier sessions folded to one line
@@ -140,6 +150,8 @@ BorderSurface {
   padding: page.sp(22)
 
   MouseArea { anchors.fill: parent; onClicked: page.dayKeysItem().forceActiveFocus() }
+  // Opened again: at its foot, wherever it was left.
+  onVisibleChanged: if (visible) Qt.callLater(dayPane.atRest)
 
   // Its edge, dragged (PaneEdge.qml).
   PaneEdge { page: dayPane.page }
@@ -518,21 +530,32 @@ BorderSurface {
     // A new turn is seen: the conversation keeps to its foot — but for a
     // turn shown on purpose, which it keeps to.
     onContentHeightChanged: {
+      dayFlick.seenCh = contentHeight
       // Earlier days brought in at the top: what was in view stays put.
       if (dayFlick.keepFromBottom >= 0) {
         contentY = Math.max(0, contentHeight - dayFlick.keepFromBottom)
         dayFlick.keepFromBottom = -1
         return
       }
+      // At the foot by the content shrinking under a still view: at the
+      // foot, though contentY never moved to say so.
+      if (!dayFlick.atFoot && contentY >= contentHeight - height - page.sp(4)) dayFlick.atFoot = true
       if (dayPane.pinTurn >= 0) dayPane.toPin()
-      else if (contentHeight > height) contentY = contentHeight - height
+      // At the foot it follows what comes; scrolled up to read, it stays
+      // there (2026-11-28: a card settling, a reload, the pane resized —
+      // each took the reader back down).
+      else if (contentHeight > height) { if (dayFlick.atFoot) contentY = contentHeight - height }
       // Too little to scroll: the days before fill the pane first.
       else if (page.historyMore && page.historyRows.length > 0) Qt.callLater(page.moreHistory)
     }
     // At the top, the days before come in, a few at a time (2026-11-21).
     property real keepFromBottom: -1
     onContentYChanged: {
-      if (!dayFlick.resizing) dayFlick.atFoot = contentY >= contentHeight - height - page.sp(4)
+      // A move of the reader's, not the layout's: Flickable nudges contentY
+      // as its content or its height changes, before saying so, and that
+      // took the pane off its foot with nobody scrolling (2026-11-28).
+      if (!dayFlick.resizing && contentHeight === dayFlick.seenCh && height === dayFlick.seenH)
+        dayFlick.atFoot = contentY >= contentHeight - height - page.sp(4)
       if (keepFromBottom < 0 && contentHeight > height && contentY < page.sp(40)
           && contentHeight - contentY - height > page.sp(40) && page.historyMore) {
         keepFromBottom = contentHeight - contentY
@@ -546,10 +569,15 @@ BorderSurface {
     // the last answer's rating stayed half under a box of three lines.
     property bool atFoot: true
     property bool resizing: false
-    onHeightChanged: if (dayFlick.atFoot && contentHeight > height) {
-      dayFlick.resizing = true
-      contentY = contentHeight - height
-      dayFlick.resizing = false
+    property real seenCh: 0
+    property real seenH: 0
+    onHeightChanged: {
+      dayFlick.seenH = height
+      if (dayFlick.atFoot && contentHeight > height) {
+        dayFlick.resizing = true
+        contentY = contentHeight - height
+        dayFlick.resizing = false
+      }
     }
 
     // The exchange shown on purpose, lit behind its turns a moment.
@@ -619,6 +647,7 @@ BorderSurface {
             page: dayPane.page
             width: parent.width
             rowKey: parent.row.key || ""
+            flick: dayFlick
             head: parent.row.g ? page.sayFold(parent.row.g) : ""
             tail: parent.row.g ? page.sayFoldLast(parent.row.g) : ""
             onAct: page.convoAct(rowKey)
@@ -692,9 +721,15 @@ BorderSurface {
                 font.styleName: page.fontStyle
                 font.pixelSize: page.fs(Style.font.caption)
               }
-              ChatTurn {
+              // A turn as any other (Turn.qml): its citations open, its
+              // words can be replied to (2026-11-28: it was bare words).
+              Turn {
                 page: dayPane.page
-                text: modelData.text
+                width: parent.width
+                t: ({ role: "agent", text: modelData.text, at: modelData.at })
+                pane: "day"
+                flick: dayFlick
+                onLinkActivated: function (link) { page.openCitation(link) }
               }
             }
           }
@@ -707,6 +742,7 @@ BorderSurface {
               page: dayPane.page
               width: turn.width
               rowKey: "g::" + modelData.thread
+              flick: dayFlick
               head: page.sayFold(modelData)
               tail: page.sayFoldLast(modelData)
               onAct: page.convoAct(rowKey)
@@ -717,8 +753,8 @@ BorderSurface {
             page: dayPane.page
             alignTo: dayTurn.bubbleWidth
             clickable: modelData.role === "student" && !!modelData.marks && modelData.marks.length > 0
-            onClicked: if (modelData.marks && modelData.marks.length > 0) page.jumpToMark(modelData.marks[0])
-            text: modelData.role === "student" && !!modelData.marks ? modelData.marks.map(function (id) { return page.paper.head(id) }).join("  ·  ") : ""
+            onClickedAt: function (i) { if (modelData.marks && modelData.marks[i]) page.jumpToMark(modelData.marks[i]) }
+            parts: modelData.role === "student" && !!modelData.marks ? modelData.marks.map(function (id) { return page.paper.head(id) }) : []
           }
           // The turn, drawn as every pane draws one (Turn.qml).
           Turn {
@@ -738,236 +774,26 @@ BorderSurface {
             id: cards
             readonly property string turnAt: modelData.at || ""
             model: modelData.role === "agent" ? (modelData.proposals || []) : []
-            Rectangle {
+            // The margin's card (MarginCard.qml), one card in every pane
+            // (2026-11-28: this was a copy of it that had drifted — no
+            // room for a long day, no error line).
+            MarginCard {
               id: card
               required property var modelData
-              readonly property var item: page.dayCardLive(modelData) || modelData
-              readonly property string state_: page.dayCardState(modelData, cards.turnAt)
-              readonly property bool live: state_ === "open" || state_ === "done by itself"
-              readonly property bool told: state_ === "done by itself"
-              readonly property bool canUndo: !live && page.cardCanUndo(modelData.id)
-              readonly property bool undoLast: canUndo && page.cardUndoIsLast(modelData.id)
-              readonly property bool focused: live && page.dayCardFocus >= 0 && !!page.dayOpenCards[page.dayCardFocus]
-                && page.dayOpenCards[page.dayCardFocus].id === modelData.id
-              readonly property color ruleColor: Qt.rgba(page.foreground.r, page.foreground.g, page.foreground.b, 0.09)
-              onFocusedChanged: page.selected(card, "right", focused)
               width: parent.width
-              height: cardColumn.implicitHeight + page.sp(14)
-              radius: Style.cornerRadius
-              color: focused ? Style.selectedFill : dayCardHover.hovered && page.handOn && live ? Style.hoverFill : "transparent"
-              border.width: 1
-              border.color: focused ? page.accent : page.faint
-              opacity: live || state_ === "arriving" ? 1 : canUndo ? 0.78 : 0.55
-              HoverHandler { id: dayCardHover }
-
-              // Clicking the card body focuses it — never auto-accepts.
-              MouseArea {
-                anchors.fill: parent
-                enabled: card.live
-                cursorShape: Qt.PointingHandCursor
-                onClicked: {
-                  for (var i = 0; i < page.dayOpenCards.length; i++)
-                    if (page.dayOpenCards[i].id === card.modelData.id) page.dayCardFocus = i
-                  dayField.forceActiveFocus()
-                }
+              page: dayPane.page
+              p: Object.assign({}, page.dayCardLive(modelData) || modelData, { ledger: modelData.id, at: cards.turnAt })
+              flick: dayFlick
+              hot: live && page.dayCardFocus >= 0 && !!page.dayOpenCards[page.dayCardFocus]
+                && page.dayOpenCards[page.dayCardFocus].id === modelData.id
+              onFocused: {
+                for (var i = 0; i < page.dayOpenCards.length; i++)
+                  if (page.dayOpenCards[i].id === card.modelData.id) page.dayCardFocus = i
+                dayField.forceActiveFocus()
               }
-
-              Column {
-                id: cardColumn
-                x: page.sp(10)
-                y: page.sp(7)
-                width: parent.width - page.sp(20)
-                spacing: page.sp(4)
-                Text {
-                  width: parent.width
-                  textFormat: Text.PlainText
-                  text: "◇ " + page.dayCardKind(card.item) + (card.state_ === "open" || card.state_ === "arriving" ? "" : " · " + card.state_)
-                  color: card.live ? page.accent : page.faint
-                  font.family: page.fontFamily
-                  font.styleName: page.fontStyle
-                  font.capitalization: Font.SmallCaps
-                  font.pixelSize: page.fs(Style.font.caption)
-                }
-                Item {
-                  width: parent.width
-                  height: Math.max(cardFacts.implicitHeight, cardPill.visible ? cardPill.height : 0)
-                  Text {
-                    id: cardFacts
-                    anchors.left: parent.left
-                    anchors.right: cardPill.visible ? cardPill.left : parent.right
-                    anchors.rightMargin: cardPill.visible ? page.sp(8) : 0
-                    textFormat: Text.PlainText
-                    wrapMode: Text.WordWrap
-                    text: page.dayCardFacts(card.item)
-                    color: page.foreground
-                    font.family: page.fontFamily
-                    font.styleName: page.fontStyle
-                    font.pixelSize: page.fs(Style.font.body)
-                  }
-                  Rectangle {
-                    id: cardPill
-                    readonly property string label: page.dayCardPill(card.item)
-                    visible: label !== ""
-                    anchors.right: parent.right
-                    width: cardPillText.implicitWidth + Math.round(page.textSize * 0.9)
-                    height: cardPillText.implicitHeight + Math.round(page.textSize * 0.25)
-                    radius: Style.cornerRadius
-                    color: card.item.kind === "do-date" ? Style.selectedFill : "transparent"
-                    border.width: card.item.kind === "do-date" ? 0 : 1
-                    border.color: page.faint
-                    Text {
-                      id: cardPillText
-                      anchors.centerIn: parent
-                      textFormat: Text.PlainText
-                      text: cardPill.label
-                      color: page.dim
-                      font.family: page.fontFamily
-                      font.styleName: page.fontStyle
-                      font.pixelSize: Math.round(page.textSize * 0.78)
-                    }
-                  }
-                }
-                Text {
-                  visible: !!card.item.why
-                  width: parent.width
-                  textFormat: Text.PlainText
-                  wrapMode: Text.WordWrap
-                  text: card.item.why || ""
-                  color: page.faint
-                  font.family: page.fontFamily
-                  font.styleName: page.fontStyle
-                  font.pixelSize: page.fs(Style.font.bodySmall)
-                }
-
-                // Option A: Quiet footer links matching MarginCard.
-                Item {
-                  visible: card.live || card.canUndo
-                  width: parent.width
-                  height: visible ? dayActRow.implicitHeight + page.sp(7) : 0
-                  Rectangle {
-                    anchors.top: parent.top
-                    anchors.topMargin: page.sp(2)
-                    width: parent.width
-                    height: 1
-                    color: card.ruleColor
-                  }
-                  Row {
-                    id: dayActRow
-                    anchors.left: parent.left
-                    anchors.bottom: parent.bottom
-                    spacing: page.sp(14)
-
-                    Row {
-                      visible: card.live
-                      spacing: page.sp(5)
-                      Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        textFormat: Text.PlainText
-                        text: card.told ? "keep" : "accept"
-                        color: dayAccArea.containsMouse && page.handOn ? page.accent : page.foreground
-                        font.family: page.fontFamily
-                        font.styleName: page.fontStyle
-                        font.weight: Font.Medium
-                        font.pixelSize: page.fs(Style.font.caption)
-                        font.underline: dayAccArea.containsMouse && page.handOn
-                        // Wider than its word, the links a gap apart; a
-                        // click puts the keys in the pane, as one on the
-                        // card does (2026-11-25, the mouse pass).
-                        MouseArea {
-                          id: dayAccArea
-                          anchors.fill: parent
-                          anchors.margins: -page.sp(4)
-                          hoverEnabled: true
-                          cursorShape: Qt.PointingHandCursor
-                          onClicked: { page.focusPane("right"); page.settleDayCardById(card.modelData.id, "accept") }
-                          Tip { host: dayPane.page; act: "marginAccept"; shown: parent.containsMouse; text: page.tip(card.told ? "Let it stand" : "Accept this proposal", "marginAccept") }
-                        }
-                      }
-                      KeyCaps {
-                        visible: card.focused
-                        anchors.verticalCenter: parent.verticalCenter
-                        page: dayPane.page
-                        key: page.keyName("marginAccept")
-                        size: page.fs(Style.font.caption)
-                      }
-                    }
-
-                    Row {
-                      visible: card.live
-                      spacing: page.sp(5)
-                      Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        textFormat: Text.PlainText
-                        text: card.told ? "undo" : "decline"
-                        color: dayDecArea.containsMouse && page.handOn ? (card.told ? page.accent : page.urgent) : (card.told ? page.accent : page.dim)
-                        font.family: page.fontFamily
-                        font.styleName: page.fontStyle
-                        font.pixelSize: page.fs(Style.font.caption)
-                        font.underline: dayDecArea.containsMouse && page.handOn
-                        MouseArea {
-                          id: dayDecArea
-                          anchors.fill: parent
-                          anchors.margins: -page.sp(4)
-                          hoverEnabled: true
-                          cursorShape: Qt.PointingHandCursor
-                          onClicked: { page.focusPane("right"); page.settleDayCardById(card.modelData.id, "decline") }
-                          Tip { host: dayPane.page; act: "marginDecline"; shown: parent.containsMouse; text: page.tip(card.told ? "Undo what it did" : "Decline this proposal", "marginDecline") }
-                        }
-                      }
-                      KeyCaps {
-                        visible: card.focused
-                        anchors.verticalCenter: parent.verticalCenter
-                        page: dayPane.page
-                        key: page.keyName("marginDecline")
-                        size: page.fs(Style.font.caption)
-                      }
-                    }
-
-                    Row {
-                      visible: card.canUndo
-                      spacing: page.sp(5)
-                      Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        textFormat: Text.PlainText
-                        text: "undo"
-                        color: dayUndoArea.containsMouse && page.handOn ? page.foreground : page.accent
-                        font.family: page.fontFamily
-                        font.styleName: page.fontStyle
-                        font.pixelSize: page.fs(Style.font.caption)
-                        font.underline: dayUndoArea.containsMouse && page.handOn
-                        MouseArea {
-                          id: dayUndoArea
-                          anchors.fill: parent
-                          anchors.margins: -page.sp(4)
-                          hoverEnabled: true
-                          cursorShape: Qt.PointingHandCursor
-                          onClicked: { page.focusPane("right"); page.undoSettledCard(card.modelData.id) }
-                          Tip { host: dayPane.page; act: "undo"; shown: parent.containsMouse; text: page.tip("Undo this change", "undo") }
-                        }
-                      }
-                      KeyCaps {
-                        visible: card.undoLast
-                        anchors.verticalCenter: parent.verticalCenter
-                        page: dayPane.page
-                        key: page.keyName("undo")
-                        size: page.fs(Style.font.caption)
-                      }
-                    }
-                  }
-
-                  Text {
-                    visible: card.told || card.canUndo
-                    anchors.right: parent.right
-                    anchors.bottom: parent.bottom
-                    textFormat: Text.PlainText
-                    text: card.told ? "auto-applied" : "written to note"
-                    color: page.faint
-                    font.family: page.fontFamily
-                    font.styleName: page.fontStyle
-                    font.pixelSize: page.fs(Style.font.caption)
-                  }
-                }
-              }
+              onAccepted: page.settleDayCardById(card.modelData.id, "accept")
+              onDeclinedClick: page.settleDayCardById(card.modelData.id, "decline")
+              onUndone: page.undoSettledCard(card.modelData.id)
             }
           }
           // Helpful or not: the student's word on the answer, for the
@@ -1035,9 +861,13 @@ BorderSurface {
             font.styleName: page.fontStyle
             font.pixelSize: page.fs(Style.font.caption)
           }
-          ChatTurn {
+          Turn {
             page: dayPane.page
-            text: modelData.text
+            width: parent.width
+            t: ({ role: "agent", text: modelData.text, at: modelData.at })
+            pane: "day"
+            flick: dayFlick
+            onLinkActivated: function (link) { page.openCitation(link) }
           }
         }
       }
@@ -1054,6 +884,7 @@ BorderSurface {
             page: dayPane.page
             width: dayColumn.width
             rowKey: "g::" + modelData.thread
+            flick: dayFlick
             head: page.sayFold(modelData)
             tail: page.sayFoldLast(modelData)
             onAct: page.convoAct(rowKey)
@@ -1184,11 +1015,26 @@ BorderSurface {
     Text {
       visible: !!page.dayReplying
       textFormat: Text.PlainText
-      text: "REPLY " + page.replyNumber("day") + " OF " + page.replyNumber("day")
+      text: page.replyLabel("day")
       color: page.accent
       font.family: page.fontFamily
       font.styleName: page.fontStyle
       font.pixelSize: page.fs(Style.font.caption)
+    }
+    // Today's draft, set aside while a past day is read (it showed, greyed,
+    // in that day's box) and back on returning to today.
+    property string aside: ""
+    Connections {
+      target: dayPane.page
+      function onDayCanSendChanged() {
+        if (dayPane.page.noteRoom) return
+        if (!dayPane.page.dayCanSend && dayField.text !== "") { dayBox.aside = dayField.text; dayField.text = "" }
+        else if (dayPane.page.dayCanSend && dayBox.aside !== "" && dayField.text === "") {
+          dayField.text = dayBox.aside
+          dayField.cursorPosition = dayField.text.length
+          dayBox.aside = ""
+        }
+      }
     }
     ChatField {
       id: dayField

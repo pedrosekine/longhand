@@ -770,7 +770,14 @@ Item {
   onNoteRoomChanged: if (!root.noteRoom) root.paneHeld = ""
   readonly property string middleRel: root.paper.shown ? root.pdfRel : root.noteRel
   onMiddleRelChanged: if (root.paneHeld !== "" && root.middleRel === root.paneHeld) root.paneHeld = ""
-  function paneWords() { var f = dayPane.dayFieldRef; return !!f && String(f.text).trim() !== "" }
+  // Words in the box are what is held — and so are replies attached, the
+  // chips `@` added and a paper's marks (2026-11-28: three replies to a
+  // paper's answer went when the note was glanced at, the box empty).
+  function paneWords() {
+    var f = dayPane.dayFieldRef
+    return (!!f && String(f.text).trim() !== "") || root.dayReplies.length > 0 || !!root.dayReplying
+      || (root.noteRoom && root.dayRefs.length > 0) || (root.paper.room && root.paper.marks.length > 0)
+  }
   function middleMoves() {
     var words = root.paneWords()
     if (root.dayOpen && words && root.noteRoom && root.paneHeld === "") root.paneHeld = root.roomRel
@@ -1683,7 +1690,66 @@ Item {
     return ""
   }
   property string elsewhereFor: ""
-  onElsewhereWantChanged: { root.marginRefs = []; root.clearReplies("margin"); root.loadElsewhere() }
+  onElsewhereWantChanged: root.loadElsewhere()
+
+  // The margin's box is one box for every block and task, so what is
+  // written in it is kept per thing (2026-11-28, the agent pane pass): the
+  // cursor moved to another block took the draft along, a reply half
+  // written was dropped and its words left in the next block's box. Moving
+  // away keeps the words, the chips and the replies with what they were
+  // about; coming back gives them back. A block whose words are edited is
+  // still the same block: its draft stays in the box. Kept while the page
+  // is open, as the box's words always were.
+  readonly property string marginSubject: root.talkOpen ? (root.talkThread !== "" ? "talk:" + root.talkThread : "")
+    : root.marginOpen && root.currentHash !== "" ? "block:" + svc.noteDate + ":" + root.currentHash : ""
+  property var marginDrafts: ({})
+  property string marginDraftFor: ""
+  onMarginSubjectChanged: root.swapMarginDraft()
+  function marginDraftNow() {
+    var f = margin.chatFieldRef
+    var d = { text: String(f.text), mentions: f.liveMentions.slice(), refs: root.marginRefs.slice(), replies: root.marginReplies.slice(),
+              replying: root.marginReplying, stash: root.marginStash }
+    return d.text.trim() !== "" || d.refs.length > 0 || d.replies.length > 0 || d.replying ? d : null
+  }
+  function swapMarginDraft() {
+    var now = root.marginSubject, was = root.marginDraftFor
+    if (now === was) return
+    root.marginDraftFor = now
+    // The same block, its words edited (its hash is its words): the box
+    // stays as it is.
+    if (was.indexOf("block:") === 0 && now.indexOf("block:") === 0) {
+      var wasHash = was.slice(was.lastIndexOf(":") + 1)
+      if (was.split(":")[1] === now.split(":")[1] && root.blockBounds(wasHash) === null) return
+    }
+    var all = {}
+    for (var k in root.marginDrafts) all[k] = root.marginDrafts[k]
+    if (was !== "") { var d = root.marginDraftNow(); if (d) all[was] = d; else delete all[was] }
+    var back = now !== "" ? all[now] : null
+    if (back) delete all[now]
+    root.marginDrafts = all
+    var f = margin.chatFieldRef
+    f.mentions = []
+    f.text = back ? back.text : ""
+    f.cursorPosition = f.text.length
+    if (back && back.mentions.length > 0) f.mentions = back.mentions
+    root.marginRefs = back ? back.refs : []
+    root.setReplies("margin", back ? back.replies : [])
+    root.setReplying("margin", back ? back.replying : null, back ? back.stash : "")
+  }
+  // A message that failed while the margin was on something else: kept
+  // with what it was about, before whatever was written there since.
+  function keepMarginDraft(subject, p) {
+    if (!subject || !p) return
+    var all = {}
+    for (var k in root.marginDrafts) all[k] = root.marginDrafts[k]
+    var old = all[subject] || { text: "", mentions: [], refs: [], replies: [], replying: null, stash: "" }
+    var text = p.raw !== undefined ? p.raw : p.text
+    all[subject] = { text: old.text.trim() === "" ? text : text + "\n" + old.text,
+                     mentions: old.text.trim() === "" ? (p.mentions || []) : [],
+                     refs: (p.savedRefs || []).concat(old.refs), replies: (p.replies || []).concat(old.replies),
+                     replying: old.replying, stash: old.stash }
+    root.marginDrafts = all
+  }
   function loadElsewhere() {
     var w = root.elsewhereWant
     if (w === root.elsewhereFor && root.elsewhere) return
@@ -1732,15 +1798,29 @@ Item {
     }
     return null
   }
+  // What was written goes with it, after what the day's box held — and
+  // the chips and replies too (2026-11-28: the day's own draft was written
+  // over, and the rest dropped).
   function aboutToDay() {
+    if (root.marginReplying) root.cancelReply("margin")
     var text = String(margin.chatFieldRef.text || "")
+    var refs = root.marginRefs.slice(), replies = root.marginReplies.slice()
     margin.chatFieldRef.text = ""
+    root.marginRefs = []
+    root.setReplies("margin", [])
     root.used("chip", "about-removed")
     root.openDay("")
     Qt.callLater(function () {
       root.dayAutoHeld = null
       root.dayAutoOff = true
-      if (text !== "") { dayPane.dayFieldRef.text = text; dayPane.dayFieldRef.cursorPosition = text.length }
+      var f = dayPane.dayFieldRef
+      if (text.trim() !== "") {
+        var had = String(f.text)
+        f.text = had.trim() === "" ? text : had + (/\s$/.test(had) ? "" : " ") + text
+        f.cursorPosition = f.text.length
+      }
+      if (refs.length > 0) root.giveBackSent("day", { raw: "", savedRefs: refs })
+      if (replies.length > 0) root.setReplies("day", root.dayReplies.concat(replies))
     })
   }
 
@@ -1771,8 +1851,18 @@ Item {
     else { root.dayReplying = r; if (stash !== undefined) root.dayStash = stash }
   }
   function stashOf(pane) { return pane === "margin" ? root.marginStash : root.dayStash }
-  // The number the reply being written will have: its place among them.
-  function replyNumber(pane) { return root.repliesOf(pane).length + 1 }
+  // The number the reply being written will have: its place among them —
+  // its own, while one attached is written again.
+  function replyNumber(pane) {
+    var r = root.replyingOf(pane)
+    return r && r.was ? r.was.index + 1 : root.repliesOf(pane).length + 1
+  }
+  // "REPLY 2", or "REPLY 1 OF 3" while an earlier one is changed ("REPLY 2
+  // OF 2" said nothing the first word did not).
+  function replyLabel(pane) {
+    var n = root.replyNumber(pane), all = root.repliesOf(pane).length + 1
+    return "REPLY " + n + (n < all ? " OF " + all : "")
+  }
   function addReply(pane, passage, at) {
     var q = String(passage || "").replace(/\s+/g, " ").trim()
     if (q === "") return
@@ -1781,13 +1871,24 @@ Item {
     var open = root.replyingOf(pane)
     if (open && String(f.text).trim() !== "" && !root.attachReply(pane)) return
     open = root.replyingOf(pane)
+    // One being changed, left empty for another: back where it was.
+    if (open && open.was) {
+      var back = root.repliesOf(pane).slice()
+      back.splice(Math.min(open.was.index, back.length), 0, { quote: open.quote, text: open.was.text, at: open.at })
+      root.setReplies(pane, back)
+      root.setReplying(pane, { quote: open.quote, at: open.at, was: null })
+    }
     var stash = open ? root.stashOf(pane) : String(f.text)
     // A passage already answered: its reply back in the box, to change.
     var list = root.repliesOf(pane), had = -1
     for (var i = 0; i < list.length; i++) if (list[i].quote === q) had = i
     var text = had >= 0 ? list[had].text : ""
     if (had >= 0) root.setReplies(pane, list.filter(function (r, k) { return k !== had }))
-    root.setReplying(pane, { quote: q, at: String(at || (had >= 0 ? list[had].at : "")) }, stash)
+    // An attached one taken back to change keeps its place: Esc puts it
+    // back as it was, Enter where it was (2026-11-28: Esc lost it, Enter
+    // moved it last and renumbered the others).
+    root.setReplying(pane, { quote: q, at: String(at || (had >= 0 ? list[had].at : "")),
+                             was: had >= 0 ? { index: had, text: list[had].text } : null }, stash)
     f.text = text
     f.cursorPosition = text.length
     Qt.callLater(function () { root.replyField(pane).forceActiveFocus() })
@@ -1799,7 +1900,10 @@ Item {
     if (!r) return false
     var text = String(f.text).trim()
     if (text === "") { root.showHint("write your reply first · " + root.keyName("marginBack") + " cancels it"); return false }
-    root.setReplies(pane, root.repliesOf(pane).concat([{ quote: r.quote, text: text, at: r.at }]))
+    var list = root.repliesOf(pane).slice(), one = { quote: r.quote, text: text, at: r.at }
+    if (r.was) list.splice(Math.min(r.was.index, list.length), 0, one)
+    else list.push(one)
+    root.setReplies(pane, list)
     var stash = root.stashOf(pane)
     root.setReplying(pane, null, "")
     f.text = stash
@@ -1809,7 +1913,13 @@ Item {
     return true
   }
   function cancelReply(pane) {
-    if (!root.replyingOf(pane)) return false
+    var r = root.replyingOf(pane)
+    if (!r) return false
+    if (r.was) {
+      var list = root.repliesOf(pane).slice()
+      list.splice(Math.min(r.was.index, list.length), 0, { quote: r.quote, text: r.was.text, at: r.at })
+      root.setReplies(pane, list)
+    }
     var f = root.replyField(pane), stash = root.stashOf(pane)
     root.setReplying(pane, null, "")
     f.text = stash
@@ -1931,7 +2041,9 @@ Item {
   // A part's bubble under the pointer: the passage it answers lit in the
   // answer it came from, nothing scrolled, nothing moved.
   property var hoverQuote: null        // { pane, quote }
-  readonly property var daySent: root.sentOf(root.dayTurns)
+  // The earlier days' answers too: a reply to yesterday's lost its number
+  // there once sent.
+  readonly property var daySent: root.sentOf(root.turnsOf("day"))
   readonly property var marginSent: root.sentOf(root.talkOpen ? root.talkStream : root.marginStream.map(function (r) { return r.turn || {} }))
   // A sent message read back as its parts: { quote, text } each.
   function passageParts(text) {
@@ -1956,14 +2068,23 @@ Item {
   function plainWords(s) {
     return String(s || "").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/[*_`#>]/g, "").replace(/\s+/g, " ").trim().toLowerCase()
   }
+  property string litQuote: ""          // the words followed back, for the part of a split answer that has them
   function showPassage(pane, quote) {
     var turns = root.turnsOf(pane)
     var want = root.plainWords(quote).replace(/ …$/, "")
     for (var i = turns.length - 1; i >= 0; i--) {
       var t = turns[i]
       if (t && t.role === "agent" && t.at && root.plainWords(t.text).indexOf(want) >= 0) {
-        root.litPassage = t.at + "|" + pane
-        litPassageTimer.restart()
+        // In an earlier session folded away: unfolded first, so it can be
+        // shown. Followed again while still lit: shown again.
+        var inDay = pane === "day" ? i - (root.historyTurns.length > 0 ? root.historyTurns.length : 0) : -1
+        var unfold = inDay >= 0 && dayPane.folded && inDay < dayPane.earlier
+        if (unfold) dayPane.earlierOpen = true
+        var lit = t.at + "|" + pane
+        root.litPassage = ""
+        root.litQuote = want
+        var show = function () { root.litPassage = lit; litPassageTimer.restart() }
+        if (unfold) Qt.callLater(show); else show()
         root.used("answer", "followed")
         return
       }
@@ -1974,7 +2095,10 @@ Item {
   function answerSelected(event) {
     if (!Sc.hit(event, "chatAnswer")) return false
     var s = root.chatSelection
-    if (!s || s.selectedText === "" || !s.parent || !s.parent.answerSelection) return false
+    // Words left selected in a chat since closed or turned away from are
+    // not what Ctrl+R means (2026-11-28: it attached a reply in the hidden
+    // pane and took the keys into it).
+    if (!s || !s.visible || s.selectedText === "" || !s.parent || !s.parent.answerSelection) return false
     return s.parent.answerSelection()
   }
   // The same two keys from the panes beside a chat that hold the keys
@@ -2039,7 +2163,11 @@ Item {
   readonly property var dayState: root.dayStateNow()
   readonly property var dayTurns: {
     var t = root.dayState && root.dayState.turns ? root.dayState.turns.slice() : []
-    if (root.dayPending && (svc.isToday || root.noteRoom)) t.push({ role: "student", text: root.dayPending.text, block: root.dayPending.block, marks: root.dayPending.marks })
+    // Only in the chat it was sent in: switching from one note's chat to
+    // another's drew it in both.
+    var p = root.dayPending
+    if (p && p.room === root.roomHash && (svc.isToday || root.noteRoom))
+      t.push({ role: "student", text: p.text, block: p.block, marks: p.marks, refs: p.refs })
     return t
   }
   // The morning's observation is the conversation's opening line, waiting.
@@ -2172,28 +2300,49 @@ Item {
       }
     }
     root.thinkHeld = ""
-    var field = where === "day" ? dayPane.dayFieldRef : margin.chatFieldRef
-    var pane = where === "day" ? "day" : "margin"
-    var text = pending ? (pending.raw !== undefined ? pending.raw : pending.text) : ""
-    var back = false
-    if (text !== "" && field && String(field.text).trim() === "") {
-      field.text = text
-      field.cursorPosition = text.length
-      back = true
-    }
-    if (pending && pending.replies && pending.replies.length > 0 && root.repliesOf(pane).length === 0) {
-      root.setReplies(pane, pending.replies.slice())
-      back = true
-    }
-    if (where === "day" && pending) {
-      if (pending.savedRefs && pending.savedRefs.length > 0 && root.dayRefs.length === 0) root.dayRefs = pending.savedRefs.slice()
-      if (root.paper.room && pending.marks && pending.marks.length > 0 && root.paper.marks.length === 0) root.paper.marks = pending.marks.slice()
-    } else if (pending && pending.savedRefs && pending.savedRefs.length > 0 && root.marginRefs.length === 0) {
-      root.marginRefs = pending.savedRefs.slice()
-    }
+    var back = root.giveBackSent(where, pending)
     root.showHint(back ? "stopped — what you wrote is back in the box" : "stopped")
     root.used("stop", where)
     return true
+  }
+  // What was sent and never answered — stopped, or the run failed — back
+  // in its box: the words (before what was typed since, never in place of
+  // it), the replies, the chips, a paper's marks, the names `@` put in the
+  // words. One way back for every way a message can fail to land
+  // (2026-11-28, the agent pane pass: a failed run used to lose them).
+  // True when anything came back.
+  function giveBackSent(where, pending) {
+    if (!pending) return false
+    var field = where === "day" ? dayPane.dayFieldRef : margin.chatFieldRef
+    var pane = where === "day" ? "day" : "margin"
+    var text = pending.raw !== undefined ? pending.raw : pending.text
+    var back = false
+    if (text !== "" && field) {
+      var had = String(field.text)
+      if (had.trim() === "") { field.text = text; field.cursorPosition = text.length }
+      else field.insert(0, text + "\n")
+      if (pending.mentions && pending.mentions.length > 0) field.mentions = field.mentions.concat(pending.mentions)
+      back = true
+    }
+    if (pending.replies && pending.replies.length > 0) {
+      root.setReplies(pane, pending.replies.concat(root.repliesOf(pane)))
+      back = true
+    }
+    var merged = function (a, b) {
+      var seen = {}, out = []
+      a.concat(b).forEach(function (r) { var k = root.refKey(r); if (!seen[k]) { seen[k] = true; out.push(r) } })
+      return out
+    }
+    if (pending.savedRefs && pending.savedRefs.length > 0) {
+      if (where === "day") root.dayRefs = merged(pending.savedRefs, root.dayRefs)
+      else root.marginRefs = merged(pending.savedRefs, root.marginRefs)
+      back = true
+    }
+    if (where === "day" && root.paper.room && pending.marks && pending.marks.length > 0) {
+      root.paper.marks = pending.marks.concat(root.paper.marks.filter(function (m) { return pending.marks.indexOf(m) < 0 }))
+      back = true
+    }
+    return back
   }
   // "thinking" is seen for a moment at least, however soon a run ends: a
   // message that failed in a second once looked as if it never went.
@@ -2202,8 +2351,15 @@ Item {
   function holdThinking(where) { root.thinkHeld = where; thinkHoldTimer.restart() }
 
   function sendDay(text) {
+    // One message at a time (2026-11-28): a second, sent while the first
+    // was answered, took its place on screen and Esc stopped both.
+    if (root.dayThinking && String(text || "").trim() !== "") {
+      root.showHint("the agent is still answering · " + root.keyName("marginBack") + " stops it")
+      return false
+    }
     var msg = root.composed("day", text)
     if (msg === "" || !root.dayCanSend) return false
+    var mentions = dayPane.dayFieldRef.liveMentions.slice()
     var savedReplies = root.dayReplies.slice()
     var savedRefs = root.dayRefs.slice()
     root.clearReplies("day")
@@ -2223,8 +2379,10 @@ Item {
     var marks = root.paper.room ? root.paper.marks.slice() : []
     if (marks.length > 0) cmd = cmd.concat(["--marks", marks.join(",")])
     root.paper.marks = []
-    root.dayPending = { text: msg, raw: String(text || ""), replies: savedReplies, savedRefs: savedRefs,
-                        block: root.dayBlock, marks: marks,
+    var turnsNow = root.dayStateNow()
+    root.dayPending = { text: msg, raw: String(text || ""), replies: savedReplies, savedRefs: savedRefs, mentions: mentions,
+                        block: root.dayBlock, marks: marks, room: root.roomHash,
+                        base: turnsNow && turnsNow.turns ? turnsNow.turns.length : 0,
                         refs: chips.map(function (r) { return { date: r.date || "", hash: r.hash || "", file: r.file || "", kind: r.kind, head: r.head } }) }
     if (chips.length > 0) root.used("chip", "sent-" + chips.length + (chips[0].auto ? "-auto" : ""))
     root.dayRefs = []
@@ -2245,8 +2403,11 @@ Item {
     var p = root.dayPending
     var st = root.dayStateNow()
     if (!p || !st) return
+    if (p.room !== root.roomHash) return
     var turns = st.turns || []
-    for (var i = turns.length - 1; i >= 0; i--)
+    // Only among the turns written since it was sent: an earlier "yes"
+    // read again mid-run was taken for it, and "thinking" went away.
+    for (var i = turns.length - 1; i >= Math.min(p.base || 0, turns.length); i--)
       if (turns[i].role === "student" && turns[i].text === p.text) {
         root.dayPending = null
         if (root.running && root.runningHash === root.roomHash && turns[i + 1]) root.runAnswered = true
@@ -2283,6 +2444,18 @@ Item {
   // (slice 2 of "One conversation").
   property var marginRefs: []
   readonly property bool marginCanPoint: (root.marginOpen && !root.projectOpen) || (root.talkOpen && !root.talkToPlanner)
+  // `@` and words nothing is called (2026-11-28): Enter sent "@typo" to the
+  // agent, the list gone without a word. The first Enter closes the list
+  // and says so; the next sends what is written, as written.
+  function mentionNothing(event) {
+    var m = root.dayMention
+    if (!m || m.items.length > 0) return false
+    if (Sc.hit(event, "mentionClose")) { root.dayMention = null; return true }
+    if (!Sc.hit(event, "chatSend")) return false
+    root.dayMention = null
+    root.showHint("nothing here is called “@" + m.query + "” · " + root.keyName("chatSend") + " again sends it as written")
+    return true
+  }
   function updateMarginMention() { root.updateDayMention(true) }
   function updateDayMention(inMargin) {
     inMargin = inMargin === true
@@ -2645,7 +2818,11 @@ Item {
   // same one, on the cursor or under the row, its first entry picked so
   // Enter does it at once.
   function menuKey() {
-    if (root.centerView === "dash") {
+    // In the agent's pane, on words selected in an answer: their menu.
+    var cs = root.chatSelection
+    if (root.here === "right" && cs && cs.visible && cs.selectedText !== "" && cs.parent && cs.parent.menuOnSelection) {
+      cs.parent.menuOnSelection()
+    } else if (root.centerView === "dash") {
       var kids = dash.dashColumnRef.children
       for (var i = 0; i < kids.length; i++) {
         var row = kids[i]
@@ -2678,7 +2855,7 @@ Item {
     if (event.key !== Qt.Key_C || (event.modifiers & (Qt.ControlModifier | Qt.ShiftModifier | Qt.AltModifier)) !== Qt.ControlModifier) return false
     if (box && box.selectedText !== "") return false
     var s = root.chatSelection
-    if (!s || s.selectedText === "") return false
+    if (!s || !s.visible || s.selectedText === "") return false
     s.copy()
     return true
   }
@@ -2691,6 +2868,8 @@ Item {
     if (Sc.hit(event, "dayNotHelpful")) { root.rateDay(-1, "down"); return true }
     if (Sc.hit(event, "chatPrevQuestion")) { dayPane.jumpQuestion(-1); return true }
     if (Sc.hit(event, "chatNextQuestion")) { dayPane.jumpQuestion(1); return true }
+    if (root.pageFlick(dayPane.flickRef, event)) return true
+    if (Sc.hit(event, "menu") && root.chatSelection && root.chatSelection.visible && root.chatSelection.selectedText !== "") { root.menuKey(); return true }
     // On the cards: ↑↓ between them, Enter or Space does what one says, Del
     // declines it (a thing done by itself: undoes it), Esc or ↓ past the
     // last goes back to the box; typing goes back too.
@@ -2743,12 +2922,13 @@ Item {
       if (Sc.hit(event, "mentionPick") || Sc.hit(event, "mentionClass")) { root.pickDayMention(root.dayMentionFocus); return true }
       if (Sc.hit(event, "mentionClose")) { root.dayMention = null; return true }
     }
+    if (root.mentionNothing(event)) return true
     if (root.replyKey("day", event)) return true
     if (root.anywhereKey(event)) return true
     if (Sc.hit(event, "marginBack") && root.stopAgent("day")) return true
     if (root.paper.room && Sc.hit(event, "marginBack")) { root.paper.showList(); return true }
     if (Sc.hit(event, "marginBack")) { root.closeDay(); return true }
-    if (Sc.hit(event, "chatSend")) { if (root.sendDay(dayPane.dayFieldRef.text)) dayPane.dayFieldRef.text = ""; return true }
+    if (Sc.hit(event, "chatSend")) { if (root.sendDay(dayPane.dayFieldRef.text)) { dayPane.dayFieldRef.text = ""; dayPane.toFoot() } return true }
     // Backspace in an empty box lets go of the last mark attached.
     if (event.key === Qt.Key_Backspace && dayPane.dayFieldRef.text === "" && root.paper.marks.length > 0) {
       root.paper.marks = root.paper.marks.slice(0, -1); return true
@@ -2783,7 +2963,7 @@ Item {
   readonly property bool talkOpen: root.dashOpen && root.talkThread !== "" && !root.keysOpen && !root.settingsOpen
   readonly property var talkTurns: {
     var t = root.talkData ? root.talkData.turns.slice() : []
-    if (root.pendingTalk && root.pendingTalk.thread === root.talkThread) t.push({ role: "student", text: root.pendingTalk.text })
+    if (root.pendingTalk && root.pendingTalk.thread === root.talkThread) t.push({ role: "student", text: root.pendingTalk.text, refs: root.pendingTalk.refs })
     return t
   }
   // Where a message goes: to the planner while the conversation is about
@@ -2969,7 +3149,7 @@ Item {
     var rec = root.currentRecord
     var turns = rec && rec.chat ? rec.chat.slice() : []
     if (root.pendingChat && root.pendingChat.hash === root.currentRec)
-      turns.push({ role: "student", text: root.pendingChat.text })
+      turns.push({ role: "student", text: root.pendingChat.text, refs: root.pendingChat.refs })
     return turns
   }
   // This block is away: asked and not back. `runningHash` can name a whole
@@ -3764,6 +3944,23 @@ Item {
 
   // A row the keys come to says so (`on`), and again when they leave it;
   // the pointer goes to it while its pane has the keys.
+  // An item of a pane's conversation brought into view, as little as it
+  // takes (2026-11-28: ↑↓ walked to cards and folded lines out of sight).
+  function revealIn(flick, item) {
+    if (!flick || !item || !item.visible) return
+    var y = item.mapToItem(flick.contentItem, 0, 0).y, h = item.height, pad = root.sp(12)
+    var top = Math.max(0, flick.contentHeight - flick.height)
+    if (y - pad < flick.contentY) flick.contentY = Math.max(0, y - pad)
+    else if (y + h + pad > flick.contentY + flick.height) flick.contentY = Math.min(top, Math.min(y - pad, y + h + pad - flick.height))
+  }
+  // PgUp / PgDn from a pane's box: a screen of its conversation.
+  function pageFlick(flick, event) {
+    var d = Sc.hit(event, "chatPageUp") ? -1 : Sc.hit(event, "chatPageDown") ? 1 : 0
+    if (!flick || d === 0) return false
+    flick.contentY = Math.max(0, Math.min(Math.max(0, flick.contentHeight - flick.height), flick.contentY + d * flick.height * 0.85))
+    return true
+  }
+
   function selected(item, pane, on) {
     if (on) root.marks[pane] = item
     else if (root.marks[pane] === item) delete root.marks[pane]
@@ -4170,12 +4367,30 @@ Item {
     root.scheduleRepaint()
   }
 
-  function runnerFailed() {
+  // `ran`: what the failed run was for (its hash, or a list's). Only the
+  // message it carried is let go — another waiting for its own run stays —
+  // and what was written comes back to its box: in it, if the pane is
+  // still on what it was about; else kept for when it is (the margin's
+  // drafts), or said to be lost (2026-11-28: every failure lost it).
+  function runnerFailed(ran) {
     var first = Queue.failure(runner.said)
     runner.said = ""
-    root.pendingChat = null      // it never reached the agent; do not pretend it did
-    root.dayPending = null
-    root.showHint("the agent could not run" + (first === "" ? "" : " — " + first))
+    var hit = function (h) { return !ran || (!!h && String(ran).split(",").indexOf(h) >= 0) }
+    var back = false, elsewhere = false
+    var p = root.pendingChat
+    if (p && (hit(p.mark) || hit(p.hash))) {
+      root.pendingChat = null      // it never reached the agent; do not pretend it did
+      if (p.subject === root.marginSubject) back = root.giveBackSent("margin", p)
+      else { root.keepMarginDraft(p.subject, p); elsewhere = true }
+    }
+    var d = root.dayPending
+    if (d && hit(d.room)) {
+      root.dayPending = null
+      if (d.room === root.roomHash) back = root.giveBackSent("day", d) || back
+      else elsewhere = true
+    }
+    root.showHint("the agent could not run" + (first === "" ? "" : " — " + first)
+      + (back ? " · what you wrote is back in the box" : elsewhere ? " · what you wrote waits in its chat's box" : ""))
   }
 
   function doneSending() {
@@ -4479,8 +4694,9 @@ Item {
     root.ensureRoomFor("right")
     if (root.here !== "right") root.noteFrom("right")
     root.marginOpen = true
-    if (root.currentProposals.length > 0 && toChat !== true) {
-      root.marginFocus = 0
+    if (root.refFiles.length === 0) root.loadRefFiles()   // what `@` offers here too: notes and papers
+    if (root.marginLiveCards.length > 0 && toChat !== true) {
+      root.marginFocus = root.marginLiveCards[0]
       margin.marginKeysRef.forceActiveFocus()
     } else {
       root.marginFocus = root.currentProposals.length
@@ -4518,12 +4734,28 @@ Item {
     else root.giveBack("right", was, "right")
   }
 
+  // The margin's cards the keys walk: the open ones, in the order they are
+  // drawn (2026-11-28: ↑↓ went by index through every card, those accepted,
+  // declined or replaced too, as the day's and a task's never did).
+  function marginCardLive(i) {
+    var p = root.currentProposals[i]
+    if (!p) return false
+    if (p.ledger) return !!root.dayCardLive({ id: p.ledger })
+    return !p.accepted && !p.superseded && !p.declined && !root.blockCardDeclined(root.currentRec, i)
+  }
+  readonly property var marginLiveCards: root.marginRows.filter(function (r) { return r.card !== undefined && root.marginCardLive(r.card) })
+    .map(function (r) { return r.card })
   function moveMarginFocus(d) {
-    var n = root.currentProposals.length
-    var next = Math.max(0, Math.min(n, root.marginFocus + d))
-    root.marginFocus = next
-    if (next === n) margin.chatFieldRef.forceActiveFocus()
-    else margin.marginKeysRef.forceActiveFocus()
+    var live = root.marginLiveCards, n = root.currentProposals.length
+    var at = live.indexOf(root.marginFocus)
+    var k = at < 0 ? (d < 0 ? live.length - 1 : live.length) : Math.max(0, at + d)
+    if (k >= live.length) {
+      root.marginFocus = n
+      margin.chatFieldRef.forceActiveFocus()
+      return
+    }
+    root.marginFocus = live[k]
+    margin.marginKeysRef.forceActiveFocus()
   }
 
   // A card in the one list (a day for a box, or dropping one): settled as
@@ -4982,7 +5214,13 @@ Item {
   // "(MOS)" closed the markdown link early and spilled the rest of it
   // into the answer (2026-11-16).
   function linkPart(s) { return encodeURIComponent(s).replace(/\(/g, "%28").replace(/\)/g, "%29") }
+  // Not inside a fenced block of code (2026-11-28): a path written there
+  // came out as "[name](cite:…)" in the code.
   function linkCitations(text) {
+    var parts = String(text || "").split(/(^\s*(?:```|~~~)[^\n]*\n[\s\S]*?(?:\n\s*(?:```|~~~)[^\n]*(?=\n|$)|(?![\s\S])))/m)
+    return parts.map(function (part, i) { return i % 2 === 1 ? part : root.linkCitationsIn(part) }).join("")
+  }
+  function linkCitationsIn(text) {
     var t = String(text || "")
     // The agent writes the page first as often as the path first:
     // “its words” (p. 8, `path.pdf`) was left a bare link to the file, no
@@ -5072,7 +5310,9 @@ Item {
       return
     }
     if (r.hash) {
-      if (r.date && r.date !== svc.noteDate) { root.openNote(r.date); return }
+      // Another day's block: that day's note, then the block once it has
+      // loaded (2026-11-28: it opened at the top).
+      if (r.date && r.date !== svc.noteDate) { root.pendingHash = r.hash; root.openNote(r.date); return }
       var blks = Blocks.split(editor.text)
       for (var i = 0; i < blks.length; i++) {
         if (blks[i].hash === r.hash) {
@@ -5085,7 +5325,16 @@ Item {
     }
   }
 
+  property string pendingHash: ""
   function landOnLine() {
+    if (root.pendingHash !== "" && svc.ready) {
+      var h = root.pendingHash
+      root.pendingHash = ""
+      var b = root.blockBounds(h)
+      var row = b ? editor.rows[b.start] : null
+      if (row) { editor.setCursor(row.start, true); return }
+      root.showHint("that block is no longer in this note as it was")
+    }
     if (root.pendingLine < 0 || !svc.ready) return
     var i = Math.min(root.pendingLine - 1, editor.rows.length - 1)
     root.pendingLine = -1
@@ -6687,6 +6936,7 @@ Item {
     root.talkData = null
     root.used("talk", how)
     root.fetchTalk()
+    if (root.refFiles.length === 0) root.loadRefFiles()   // what `@` offers here too: notes and papers
     root.marginFocus = 1
     Qt.callLater(function () { margin.chatFieldRef.forceActiveFocus() })
   }
@@ -6747,12 +6997,18 @@ Item {
 
   function sendTalk() {
     var raw = String(margin.chatFieldRef.text || "")
+    if (root.talking && raw.trim() !== "") {
+      root.showHint("the agent is still answering · " + root.keyName("marginBack") + " stops it")
+      return
+    }
     var msg = root.composed("margin", raw)
     if (msg === "" || root.talking || !root.talkCanSend) return
     var savedReplies = root.marginReplies.slice()
     var savedRefs = root.talkToPlanner ? [] : root.marginRefs.slice()
+    var mentions = root.talkToPlanner ? [] : margin.chatFieldRef.liveMentions.slice()
     root.clearReplies("margin")
-    root.pendingTalk = { thread: root.talkThread, text: msg, raw: raw, replies: savedReplies, savedRefs: savedRefs }
+    root.pendingTalk = { thread: root.talkThread, text: msg, raw: raw, replies: savedReplies, savedRefs: savedRefs, mentions: mentions,
+                         refs: savedRefs.map(function (r) { return { date: r.date || "", hash: r.hash || "", file: r.file || "", kind: r.kind, head: r.head } }) }
     margin.chatFieldRef.text = ""
     var c = root.talkData ? root.talkData.chat : null
     var refs = root.talkToPlanner ? [] : root.takeMarginRefs()
@@ -6806,6 +7062,8 @@ Item {
   function talkKey(e) {
     if (Sc.hit(e, "marginBack") && root.stopAgent("talk")) return true
     if (Sc.hit(e, "marginBack")) { root.leaveTalk(); return true }
+    // The Ctrl+Z its settled cards show (2026-11-28: shown, not taken).
+    if (Sc.hit(e, "undo") && root.undoLastCard()) return true
     if (root.talkCardFocus >= 0) {
       var n = root.talkCards.length
       if (Sc.hit(e, "marginAccept")) { root.acceptTalkCard(root.talkCards[root.talkCardFocus]); return true }
@@ -9180,15 +9438,23 @@ Item {
 
   function sendChat() {
     var raw = String(margin.chatFieldRef.text || "")
+    if (root.answering && raw.trim() !== "") {
+      root.showHint("the agent is still answering · " + root.keyName("marginBack") + " stops it")
+      return
+    }
     var msg = root.composed("margin", raw)
     if (msg === "" || root.currentHash === "") return
     // Not sent, and not cleared: a private note's chat would wait forever.
     if (!root.agentOn) { root.showHint("private: the agent sees nothing of this note"); return }
     var savedReplies = root.marginReplies.slice()
     var savedRefs = root.marginRefs.slice()
+    var mentions = margin.chatFieldRef.liveMentions.slice()
+    var rec = root.currentRecord
     margin.chatFieldRef.text = ""
     root.clearReplies("margin")
-    root.pendingChat = { hash: root.currentRec, mark: root.currentHash, text: msg, raw: raw, replies: savedReplies, savedRefs: savedRefs }
+    root.pendingChat = { hash: root.currentRec, mark: root.currentHash, text: msg, raw: raw, replies: savedReplies, savedRefs: savedRefs,
+                         mentions: mentions, subject: root.marginSubject, base: rec && rec.chat ? rec.chat.length : 0,
+                         refs: savedRefs.map(function (r) { return { date: r.date || "", hash: r.hash || "", file: r.file || "", kind: r.kind, head: r.head } }) }
     root.requestChat(root.currentRec, msg, root.currentHash, root.takeMarginRefs())
   }
   // The chips a task's or a block's message carries besides its own
@@ -9211,6 +9477,7 @@ Item {
       if (Sc.hit(event, "mentionPick") || Sc.hit(event, "mentionClass")) { root.pickDayMention(root.dayMentionFocus); return true }
       if (Sc.hit(event, "mentionClose")) { root.dayMention = null; return true }
     }
+    if (root.mentionNothing(event)) return true
     if (event.key === Qt.Key_Backspace && margin.chatFieldRef.text === "" && root.marginRefs.length > 0) {
       root.marginRefs = root.marginRefs.slice(0, -1)
       root.used("chip", "removed")
@@ -9226,7 +9493,7 @@ Item {
     if (!p) return
     var rec = agent.record(p.hash)
     var turns = (rec && rec.chat) || []
-    for (var i = turns.length - 1; i >= 0; i--)
+    for (var i = turns.length - 1; i >= Math.min(p.base || 0, turns.length); i--)
       if (turns[i].role === "student" && turns[i].text === p.text) {
         root.pendingChat = null
         // Its answer with it: the run is only ending, and the block it was
@@ -9354,10 +9621,11 @@ Item {
       // …and so may a block's chat: a day or a drop is in the one list.
       else if (runner.command[1] === "chat") Qt.callLater(root.refreshProposals)
       if (root.runningHash.indexOf("note:") === 0) noteTalkFile.reload()
+      var ran = root.runningHash
       root.runningHash = ""
       // Stopped on purpose: not a fault, and said already.
       if (root.runnerStopAsked) { root.runnerStopAsked = false; Qt.callLater(function () { runner.said = "" }) }
-      else if (code !== 0) Qt.callLater(root.runnerFailed)
+      else if (code !== 0) Qt.callLater(function () { root.runnerFailed(ran) })
       else Qt.callLater(function () {
         var fb = Queue.fallback(runner.said)
         runner.said = ""
@@ -9580,6 +9848,44 @@ Item {
     root.ratingNow = m
     root.runInTurn(rateProc, [svc.runner, "rate", v, "--hash", root.currentRec, "--date", svc.noteDate])
     root.used("rate", v)
+  }
+  // The answers of a block's own chat, each rated on its own turn
+  // (`rate --hash --turn`): what the margin draws are the record's own
+  // turns, so a turn's place is found among them.
+  function marginTurnIndex(t) {
+    var rec = root.currentRecord
+    return rec && rec.chat && t ? rec.chat.indexOf(t) : -1
+  }
+  function marginTurnRatable(t) {
+    return !!t && t.role === "agent" && !t.error && !!t.text && t.who !== "planner" && !t.elsewhere && root.marginTurnIndex(t) >= 0
+  }
+  function marginTurnRating(t) {
+    var i = root.marginTurnIndex(t)
+    if (i < 0) return ""
+    var now = root.ratingNow[root.currentRec + "#" + i]
+    if (now !== undefined) return now === "none" ? "" : now
+    return t.rating ? t.rating.value : ""
+  }
+  function rateMarginTurn(t, value) {
+    if (!root.marginTurnRatable(t)) return
+    var i = root.marginTurnIndex(t)
+    var v = root.marginTurnRating(t) === value ? "none" : value
+    var m = {}
+    for (var k in root.ratingNow) m[k] = root.ratingNow[k]
+    m[root.currentRec + "#" + i] = v
+    root.ratingNow = m
+    root.runInTurn(rateProc, [svc.runner, "rate", v, "--hash", root.currentRec, "--turn", String(i), "--date", svc.noteDate])
+    root.used("rate", "chat-" + v)
+  }
+  // The last answer the margin can rate: its chat's last, else the reply.
+  readonly property var marginLastAnswer: {
+    var rows = root.marginStream
+    for (var i = rows.length - 1; i >= 0; i--) if (rows[i].turn && root.marginTurnRatable(rows[i].turn)) return rows[i].turn
+    return null
+  }
+  function rateMarginLast(value) {
+    if (root.marginLastAnswer) root.rateMarginTurn(root.marginLastAnswer, value)
+    else root.rateReply(value)
   }
   function ratingOf(hash) {
     if (root.ratingNow[hash] !== undefined) return root.ratingNow[hash] === "none" ? "" : root.ratingNow[hash]
@@ -10026,11 +10332,17 @@ Item {
         return
       }
       if (code !== 0) {
+        var p = root.pendingTalk
         root.pendingTalk = null
         Qt.callLater(function () {
           var first = Queue.failure(talkProc.said)
           talkProc.said = ""
-          root.showHint("the agent could not answer" + (first === "" ? "" : " — " + first))
+          // What was written, back in the box (or kept with its task's chat).
+          var back = false
+          if (p && root.talkOpen && p.thread === root.talkThread) back = root.giveBackSent("talk", p)
+          else if (p) root.keepMarginDraft("talk:" + p.thread, p)
+          root.showHint("the agent could not answer" + (first === "" ? "" : " — " + first)
+            + (back ? " · what you wrote is back in the box" : p ? " · what you wrote waits in its chat's box" : ""))
           root.refreshProposals()
         })
         return

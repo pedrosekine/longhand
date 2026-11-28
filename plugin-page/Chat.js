@@ -6,9 +6,10 @@
 // between paragraphs at all, so an answer of three paragraphs read as one
 // block at 1.2 leading. Rich text takes both, so the chat's markdown is
 // turned into the little HTML Qt draws: paragraphs, headings (as bold
-// lines), lists, quotes, code, rules; bold, italic, code, strikethrough,
-// links. A table is the one thing left to Qt's markdown: `html` returns ""
-// and the turn falls back to it.
+// lines), lists, quotes, code, rules, tables; bold, italic, code,
+// strikethrough, links. A table was left to Qt's markdown until 2026-11-28,
+// and the whole answer with it: its leading, its gaps, its quotes drawn as
+// prose, its links in the accent all went for one table.
 //
 // A quote of the paper, [“its words” (p. 9)](quote:…), is drawn as prose —
 // the words in the text's own colour, no underline — and only its page in
@@ -66,12 +67,27 @@ function plain(text, style) {
   }).join("")
 }
 
+// A table row's cells: split at the bars not escaped or in code.
+function cells(line) {
+  var t = String(line).trim().replace(/^\|/, "").replace(/\|$/, "")
+  var out = [], cur = "", code = false
+  for (var i = 0; i < t.length; i++) {
+    var c = t.charAt(i)
+    if (c === "\\" && t.charAt(i + 1) === "|") { cur += "|"; i++; continue }
+    if (c === "`") code = !code
+    if (c === "|" && !code) { out.push(cur.trim()); cur = ""; continue }
+    cur += c
+  }
+  out.push(cur.trim())
+  return out
+}
+function isTableHead(line, next) {
+  return /^\s*\|?.*\|.*$/.test(line || "") && /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$/.test(next || "")
+}
+
 function html(md, style) {
   var lines = String(md || "").replace(/\r/g, "").split("\n")
-  // A table: Qt's markdown draws it; this does not try.
-  for (var k = 0; k + 1 < lines.length; k++)
-    if (/^\s*\|.*\|\s*$/.test(lines[k]) && /^\s*\|?\s*:?-{3,}/.test(lines[k + 1])) return ""
-  var blocks = []                       // { kind, text | items | code }
+  var blocks = []                       // { kind, text | items | code | head, align, rows }
   var i = 0
   while (i < lines.length) {
     var line = lines[i]
@@ -83,6 +99,16 @@ function html(md, style) {
       while (i < lines.length && lines[i].trim().indexOf(fence[1]) !== 0) code.push(lines[i++])
       i++
       blocks.push({ kind: "code", code: code.join("\n") })
+      continue
+    }
+    if (isTableHead(line, lines[i + 1])) {
+      var head = cells(line), align = cells(lines[i + 1]).map(function (c) {
+        return /^:-+:$/.test(c) ? "center" : /-:$/.test(c) ? "right" : "left"
+      })
+      var rows = []
+      i += 2
+      while (i < lines.length && /\|/.test(lines[i]) && !/^\s*$/.test(lines[i])) rows.push(cells(lines[i++]))
+      blocks.push({ kind: "table", head: head, align: align, rows: rows })
       continue
     }
     var h = /^\s{0,3}#{1,6}\s+(.*?)\s*#*\s*$/.exec(line)
@@ -111,7 +137,8 @@ function html(md, style) {
     var p = []
     while (i < lines.length && !/^\s*$/.test(lines[i]) && !/^\s*(```|~~~)/.test(lines[i])
            && !/^\s{0,3}#{1,6}\s/.test(lines[i]) && !/^\s{0,3}>/.test(lines[i])
-           && !(p.length > 0 && /^\s*([-*+]|\d+[.)])\s+/.test(lines[i])))
+           && !(p.length > 0 && /^\s*([-*+]|\d+[.)])\s+/.test(lines[i]))
+           && !isTableHead(lines[i], lines[i + 1]))
       p.push(lines[i++])
     blocks.push({ kind: "para", text: p.join("\n") })
   }
@@ -125,6 +152,9 @@ function html(md, style) {
     var out = "", stack = []
     items.forEach(function (it) {
       while (stack.length > it.depth + 1) out += stack.pop() ? "</ol>" : "</ul>"
+      // A numbered list right after bullets at the same depth (or the
+      // other way): the one closed, the other opened.
+      if (stack.length === it.depth + 1 && stack[stack.length - 1] !== it.ordered) out += stack.pop() ? "</ol>" : "</ul>"
       while (stack.length < it.depth + 1) {
         out += (it.ordered ? "<ol" : "<ul") + " style=\"margin-top:0;margin-bottom:" + (stack.length === 0 && !last ? style.gap : 0) + "px\">"
         stack.push(it.ordered)
@@ -137,8 +167,20 @@ function html(md, style) {
 
   return blocks.map(function (b, n) {
     var last = n === blocks.length - 1
+    // Code wraps in a narrow pane rather than running off its edge
+    // (a <pre> never wraps); its spaces kept.
     if (b.kind === "code")
-      return "<pre style=\"font-family:'" + style.code + "';margin-top:0;margin-bottom:" + (last ? 0 : style.gap) + "px\">" + esc(b.code) + "</pre>"
+      return "<p style=\"font-family:'" + style.code + "';white-space:pre-wrap;margin-top:0;margin-bottom:" + (last ? 0 : style.gap) + "px\">"
+        + esc(b.code).replace(/\n/g, "<br/>") + "</p>"
+    if (b.kind === "table") {
+      var cell = function (tag, text, k) {
+        return "<" + tag + " align=\"" + (b.align[k] || "left") + "\" style=\"line-height:" + style.leading + "%\">" + words(text) + "</" + tag + ">"
+      }
+      return "<table cellspacing=\"0\" cellpadding=\"" + Math.max(2, Math.round(style.gap / 3)) + "\" style=\"margin-top:0;margin-bottom:"
+        + (last ? 0 : style.gap) + "px\"><tr>" + b.head.map(function (c, k) { return cell("th", c, k) }).join("") + "</tr>"
+        + b.rows.map(function (r) { return "<tr>" + b.head.map(function (_, k) { return cell("td", r[k] || "", k) }).join("") + "</tr>" }).join("")
+        + "</table>"
+    }
     if (b.kind === "head") return "<p style=\"" + para(style, last) + "\"><b>" + words(b.text) + "</b></p>"
     if (b.kind === "rule") return "<hr/>"
     if (b.kind === "quote")

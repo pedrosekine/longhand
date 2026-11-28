@@ -17,6 +17,7 @@ Rectangle {
   property var p: ({})
   property bool hot: false
   property bool declined: false
+  property Flickable flick: null       // the pane's: scrolled to show the card when the keys come to it
   signal focused()
   signal accepted()
   signal declinedClick()
@@ -34,14 +35,15 @@ Rectangle {
   readonly property bool canUndo: listed && !live && page.cardCanUndo(p.ledger)
   readonly property bool undoLast: canUndo && page.cardUndoIsLast(p.ledger)
   readonly property color ruleColor: Qt.rgba(page.foreground.r, page.foreground.g, page.foreground.b, 0.09)
-  onHotChanged: page.selected(card, "right", hot)
+  onHotChanged: { page.selected(card, "right", hot); if (hot) Qt.callLater(function () { page.revealIn(card.flick, card) }) }
   Component.onCompleted: if (hot) page.selected(card, "right", true)
   height: cardColumn.implicitHeight + page.sp(14)
   radius: Style.cornerRadius
   color: hot ? Style.selectedFill : cardHover.hovered && page.handOn && live ? Style.hoverFill : "transparent"
   border.width: 1
   border.color: hot ? page.accent : page.faint
-  opacity: live ? 1 : canUndo ? 0.78 : 0.55
+  // Not on the list read yet, so not settled: drawn as an open one.
+  opacity: live || listedState === "arriving" ? 1 : canUndo ? 0.78 : 0.55
   HoverHandler { id: cardHover }
 
   // Clicking the card body focuses it — never auto-accepts.

@@ -728,7 +728,7 @@ ShellRoot {
     function answering(): bool { return page.answering }
     function heldTurn(): string { return JSON.stringify(page.pendingChat) }
     function chatFocused(): bool { return page.marginFocus === page.currentProposals.length }
-    function sendChat(text: string): void { page.pendingChat = { hash: page.currentRec, mark: page.currentHash, text: text }; page.requestChat(page.currentRec, text, page.currentHash) }
+    function sendChat(text: string): void { page.pendingChat = { hash: page.currentRec, mark: page.currentHash, text: text, subject: page.marginSubject }; page.requestChat(page.currentRec, text, page.currentHash) }
     // A key in the margin's chat box, through its own handler (Esc: 0x01000000).
     function chatBoxKey(key: int): void { page.marginItem.chatFieldRef.keyPressed({ key: key, modifiers: 0, text: "", accepted: false }) }
     function chatBoxText(): string { return page.marginItem.chatFieldRef.text }

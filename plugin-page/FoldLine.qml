@@ -15,8 +15,9 @@ Rectangle {
   property bool day: false
   property bool unfolded: false
   property int indent: 0
+  property Flickable flick: null       // the pane's, scrolled to show it when the keys come to it
   readonly property bool lit: rowKey !== "" && page.dayFoldKey === rowKey
-  onLitChanged: page.selected(fold, "right", lit)
+  onLitChanged: { page.selected(fold, "right", lit); if (lit) Qt.callLater(function () { page.revealIn(fold.flick, fold) }) }
   signal act()
 
   height: headText.implicitHeight + page.sp(6)

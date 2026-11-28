@@ -163,6 +163,22 @@ def main() -> int:
     r = agent("install", "--force")
     check(r.returncode == 0, "…unless told to (--force)")
 
+    # An answer in a block's chat, rated on its own turn (the margin's
+    # buttons under a chat's answers, 2026-11-28).
+    daily = agent_dir / "daily" / f"{today}.json"
+    st = json.loads(daily.read_text())
+    st["blocks"]["abc123"]["chat"] = [{"role": "student", "text": "Why ask?", "at": today + "T10:01:00"},
+                                      {"role": "agent", "text": "To plan it.", "at": today + "T10:01:05"}]
+    daily.write_text(json.dumps(st))
+    out = json.loads(agent("rate", "up", "--hash", "abc123", "--turn", "1").stdout)
+    rec = json.loads(daily.read_text())["blocks"]["abc123"]
+    check(rec["chat"][1].get("rating", {}).get("value") == "up" and rec.get("rating", {}).get("value") == "down",
+          "a chat's answer is rated on its turn, the block's reply left as it was")
+    check("\tabc123#1\tchat\tup\t" in (state / "longhand" / "feedback.tsv").read_text(), "…and kept in feedback.tsv as that turn")
+    agent("rate", "none", "--hash", "abc123", "--turn", "1")
+    check("rating" not in json.loads(daily.read_text())["blocks"]["abc123"]["chat"][1], "…and can be taken back")
+    check(agent("rate", "up", "--hash", "abc123", "--turn", "0", ok=False).returncode != 0, "…never a student's turn")
+
     print("PASS" if failures == 0 else f"{failures} FAILED")
     return 1 if failures else 0
 

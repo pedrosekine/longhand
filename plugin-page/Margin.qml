@@ -28,6 +28,54 @@ BorderSurface {
   readonly property bool busy: margin.talk ? page.talking || page.thinkHeld === "talk" : page.answering || page.thinkHeld === "margin"
   readonly property string thinkingText: thinking.text
   property alias marginKeysRef: marginKeys
+  property alias flickRef: marginFlick
+  function toFoot() {
+    marginFlick.atFoot = true
+    marginFlick.contentY = Math.max(0, marginFlick.contentHeight - marginFlick.height)
+  }
+  // Another block or task: its chat opens at its foot.
+  Connections {
+    target: margin.page
+    function onMarginSubjectChanged() { margin.askAt = -1; Qt.callLater(margin.toFoot) }
+  }
+
+  // Your own questions, one after another (Alt+↑ / Alt+↓), as in the day's
+  // pane (2026-11-28: the keys were said here and did nothing).
+  property int askAt: -1
+  function questions() {
+    var rep = margin.talk ? talkRep : streamRep, out = []
+    for (var i = 0; i < rep.count; i++) {
+      var it = rep.itemAt(i)
+      if (it && it.asked) out.push(i)
+    }
+    return out
+  }
+  function jumpQuestion(d) {
+    var q = margin.questions(), rep = margin.talk ? talkRep : streamRep
+    if (q.length === 0) { page.showHint("nothing asked here yet"); return }
+    var k = margin.askAt < 0 || q.indexOf(margin.askAt) < 0 ? (d < 0 ? q.length - 1 : -1) : q.indexOf(margin.askAt) + d
+    if (k < 0 || k >= q.length) {
+      margin.askAt = -1
+      if (d > 0) margin.toFoot()
+      else page.showHint("the first thing you asked here")
+      return
+    }
+    margin.askAt = q[k]
+    var it = rep.itemAt(q[k])
+    marginFlick.contentY = Math.max(0, Math.min(marginFlick.contentHeight - marginFlick.height, it.y - page.sp(12)))
+    page.showHint("your questions: " + (k + 1) + " of " + q.length)
+  }
+  // The keys every box of the pane shares: a screen up or down, your
+  // questions, the last answer's rating.
+  function paneKeys(event) {
+    if (page.pageFlick(marginFlick, event)) return true
+    if (Sc.hit(event, "menu") && page.chatSelection && page.chatSelection.visible && page.chatSelection.selectedText !== "") { page.menuKey(); return true }
+    if (Sc.hit(event, "chatPrevQuestion")) { margin.jumpQuestion(-1); return true }
+    if (Sc.hit(event, "chatNextQuestion")) { margin.jumpQuestion(1); return true }
+    if (!margin.talk && Sc.hit(event, "dayHelpful")) { page.rateMarginLast("up"); return true }
+    if (!margin.talk && Sc.hit(event, "dayNotHelpful")) { page.rateMarginLast("down"); return true }
+    return false
+  }
 
   // Beside the note, on the block the cursor is in; or beside the
   // dashboard, on a proposal the person is talking with the planner about
@@ -50,12 +98,49 @@ BorderSurface {
 
   // Its edge, dragged, and which split it is in (PaneEdge, PaneSplit).
   PaneEdge { page: margin.page }
+
+  // The header's line, as the day's pane has it (2026-11-28): what this
+  // chat is about, and the split's word at its right. It scrolled away with
+  // the turns, and said a key without being one; a click on it goes to the
+  // whole chat, as the key does.
+  Item {
+    id: titleRow
+    anchors.top: parent.top
+    anchors.topMargin: margin.contentTopInset
+    anchors.left: parent.left
+    anchors.right: parent.right
+    height: Math.max(aboutTitle.visible ? aboutTitle.implicitHeight : 0, paneSplit.visible ? paneSplit.implicitHeight : 0)
+  }
+  Text {
+    id: aboutTitle
+    visible: page.aboutChip !== null
+    anchors.verticalCenter: titleRow.verticalCenter
+    anchors.left: parent.left
+    anchors.leftMargin: margin.contentLeftInset
+    anchors.right: paneSplit.visible ? paneSplit.left : parent.right
+    anchors.rightMargin: paneSplit.visible ? page.sp(10) : margin.contentRightInset
+    textFormat: Text.PlainText
+    elide: Text.ElideRight
+    text: page.aboutChip ? "ABOUT THIS " + String(page.aboutChip.kind).toUpperCase() + "  ·  " + page.keyName("pane3") + " the whole chat" : ""
+    color: aboutArea.containsMouse && page.handOn ? page.accent : page.dim
+    font.family: page.fontFamily
+    font.styleName: page.fontStyle
+    font.pixelSize: page.fs(Style.font.caption)
+    MouseArea {
+      id: aboutArea
+      anchors.fill: parent
+      anchors.margins: -page.sp(4)
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onClicked: { page.focusPane("right"); page.paneKey("right") }
+      Tip { host: margin.page; shown: parent.containsMouse; act: "pane3"; text: page.tip("The whole chat", "pane3") }
+    }
+  }
   PaneSplit {
     id: paneSplit
     page: margin.page
     visible: shown && !margin.talk
-    anchors.top: parent.top
-    anchors.topMargin: margin.contentTopInset
+    anchors.verticalCenter: titleRow.verticalCenter
     anchors.right: parent.right
     anchors.rightMargin: margin.contentRightInset
   }
@@ -80,6 +165,7 @@ BorderSurface {
       page.keysSeen(event)
       if (page.copyChatSelection(event, null)) { event.accepted = true; return }
       if (page.anywhereKey(event)) { event.accepted = true; return }
+      if (margin.paneKeys(event)) { event.accepted = true; return }
       if (margin.talk) { if (page.talkKey(event)) event.accepted = true; return }
       if (Sc.hit(event, "marginBack") && page.stopAgent(margin.talk ? "talk" : "margin")) {}
       else if (Sc.hit(event, "marginBack")) page.backToNote()
@@ -89,8 +175,8 @@ BorderSurface {
       else if (Sc.hit(event, "marginDecline")) page.declineProposal(page.marginFocus)
       else if (Sc.hit(event, "undo")) { if (!page.undoLastCard()) return }
       else if (Sc.hit(event, "keysHere")) page.toggleKeys()
-      else if (Sc.hit(event, "marginHelpful")) page.rateReply("up")
-      else if (Sc.hit(event, "marginNotHelpful")) page.rateReply("down")
+      else if (Sc.hit(event, "marginHelpful")) page.rateMarginLast("up")
+      else if (Sc.hit(event, "marginNotHelpful")) page.rateMarginLast("down")
       else return
       event.accepted = true
     }
@@ -100,8 +186,8 @@ BorderSurface {
     id: marginFlick
     acceptedButtons: Qt.NoButton
     QC.ScrollBar.vertical: ScrollMark { page: margin.page }
-    anchors.top: parent.top
-    anchors.topMargin: margin.contentTopInset + page.sp(4) + (paneSplit.visible ? paneSplit.implicitHeight + page.sp(6) : 0)
+    anchors.top: titleRow.bottom
+    anchors.topMargin: titleRow.height > 0 ? page.sp(14) : page.sp(4)
     anchors.left: parent.left
     anchors.leftMargin: margin.contentLeftInset
     anchors.right: parent.right
@@ -115,6 +201,28 @@ BorderSurface {
 
     TouchScroll { flickable: marginFlick }
 
+    // Kept at its foot, as the day's is (2026-11-28: it never scrolled — a
+    // long chat opened on its first turn, and what was sent, "thinking"
+    // and the answer all came in under the fold): what comes is followed
+    // while at the foot; scrolled up to read, it stays; the box growing
+    // under it keeps the last turn in view.
+    property bool atFoot: true
+    property bool resizing: false
+    property real seenCh: 0
+    property real seenH: 0
+    function keepFoot() {
+      if (!(marginFlick.atFoot || contentY >= contentHeight - height - page.sp(4)) || contentHeight <= height) return
+      marginFlick.atFoot = true
+      marginFlick.resizing = true
+      contentY = contentHeight - height
+      marginFlick.resizing = false
+    }
+    onContentHeightChanged: { marginFlick.seenCh = contentHeight; marginFlick.keepFoot() }
+    onHeightChanged: { marginFlick.seenH = height; if (marginFlick.atFoot) marginFlick.keepFoot() }
+    // A move of the reader's, not the layout's (as in the day's pane).
+    onContentYChanged: if (!marginFlick.resizing && contentHeight === marginFlick.seenCh && height === marginFlick.seenH)
+      marginFlick.atFoot = contentY >= contentHeight - height - page.sp(4)
+
     Column {
       id: marginColumn
       // At the chat's measure, however wide the pane (2026-11-22).
@@ -122,26 +230,15 @@ BorderSurface {
       spacing: page.sp(12)
 
       // "About this" (docs/agent.md, "One conversation", slice 2): the one
-      // conversation's turns about this task or block. Its own chat is
-      // below; what was said about it elsewhere — the day's chat pointing
-      // at it, another day's margin for the same task — is here first,
-      // folded when it is long.
-      Text {
-        visible: page.aboutChip !== null
-        width: marginColumn.width
-        textFormat: Text.PlainText
-        elide: Text.ElideRight
-        text: page.aboutChip ? "ABOUT THIS " + String(page.aboutChip.kind).toUpperCase() + "  ·  " + page.keyName("pane3") + " the whole chat" : ""
-        color: page.dim
-        font.family: page.fontFamily
-        font.styleName: page.fontStyle
-        font.pixelSize: page.fs(Style.font.caption)
-      }
+      // conversation's turns about this task or block, its header above
+      // (titleRow). What was said about it elsewhere — the day's chat
+      // pointing at it, another day's margin for the same task — is merged
+      // in by time.
       // The proposal talked about, pinned at the top: what it is, and why.
       Rectangle {
         id: pinned
         readonly property bool hot: page.marginFocus === 0 && page.talkCardFocus < 0 && marginKeys.activeFocus
-        onHotChanged: page.selected(pinned, "right", hot)
+        onHotChanged: { page.selected(pinned, "right", hot); if (hot) Qt.callLater(function () { page.revealIn(marginFlick, pinned) }) }
         visible: margin.talk
         width: marginColumn.width
         height: pinnedCol.implicitHeight + page.sp(12)
@@ -273,9 +370,11 @@ BorderSurface {
       // about proposals) and what was said about it anywhere else, read
       // from the log, in the order said (page.talkStream).
       Repeater {
+        id: talkRep
         model: margin.talk ? page.talkStream : []
         Column {
           required property var modelData
+          readonly property bool asked: modelData.role !== "agent" && !modelData.elsewhere
           width: marginColumn.width
           spacing: page.sp(2)
           bottomPadding: modelData.role === "agent" ? page.chatTurnGap : Math.round(page.chatTurnGap * 0.55)   // as in the day's chat
@@ -297,6 +396,7 @@ BorderSurface {
               width: marginColumn.width
               page: margin.page
               p: modelData
+              flick: marginFlick
               hot: !!(page.talkCardFocus >= 0 && marginKeys.activeFocus && page.talkCards[page.talkCardFocus]
                 && page.talkCards[page.talkCardFocus].index === modelData.index)
               onFocused: {
@@ -328,10 +428,18 @@ BorderSurface {
         font.pixelSize: page.fs(Style.font.bodySmall)
       }
 
-      ChatTurn {
+      // The block's first reply, a turn as any other (Turn.qml): its
+      // citations open, its words can be replied to (2026-11-28: bare
+      // words, neither).
+      Turn {
         visible: !margin.talk && !!(page.currentRecord && page.currentRecord.reply)
         page: margin.page
-        text: page.currentRecord && page.currentRecord.reply ? page.currentRecord.reply : ""
+        width: parent.width
+        t: page.currentRecord && page.currentRecord.reply
+          ? ({ role: "agent", text: page.currentRecord.reply, at: String(page.currentRecord.at || ""), payload: page.currentRecord.payload || "" }) : ({})
+        pane: "margin"
+        flick: marginFlick
+        onLinkActivated: function (link) { page.openCitation(link) }
       }
 
       // What it read to answer (docs/agent.md, slice 4): the course
@@ -352,8 +460,14 @@ BorderSurface {
       // the student says here is what the weekly review and the eval set
       // learn from.
       Row {
+        id: replyRate
         visible: !margin.talk && !!(page.currentRecord && page.currentRecord.reply)
+        // As under the day's answers: with its keys while it is the last
+        // answer, else once chosen or under the pointer.
+        readonly property bool last: page.marginLastAnswer === null
+        opacity: last || page.ratingOf(page.currentRec) !== "" || replyHover.hovered && page.handOn ? 1 : 0
         spacing: page.sp(14)
+        HoverHandler { id: replyHover }
         Repeater {
           model: [{ text: "helpful", value: "up", act: "marginHelpful" }, { text: "not helpful", value: "down", act: "marginNotHelpful" }]
           Text {
@@ -386,11 +500,13 @@ BorderSurface {
       // what changes, the day as a pill. Done only when the student says
       // so: Enter on a card runs it through the CLI.
       Repeater {
+        id: streamRep
         model: margin.talk ? [] : page.marginStream
         Column {
           id: row
           required property var modelData
           readonly property bool isCard: modelData.card !== undefined
+          readonly property bool asked: !isCard && turn.role !== "agent" && !turn.elsewhere
           readonly property var turn: modelData.turn || ({})
           readonly property int ci: isCard ? modelData.card : -1
           readonly property var p: isCard ? (page.currentProposals[ci] || ({})) : ({})
@@ -413,18 +529,22 @@ BorderSurface {
             onLinkActivated: function (link) { page.openCitation(link) }
           }
 
-          // Turn rating on agent replies in marginStream (mirrors DayPane).
+          // Each answer of the block's own chat rated on its own (the
+          // runner's `rate --turn`; 2026-11-28: these rated the first reply,
+          // or nothing). The planner's turns and what was said elsewhere are
+          // rated where they were said. Shown as under the day's answers.
+          HoverHandler { id: rowHover }
           Row {
-            readonly property bool showRate: !row.isCard && row.turn.role === "agent" && !row.turn.error && !!row.turn.text
-              && (!page.currentRecord || !page.currentRecord.reply || row.index === page.marginStream.length - 1)
+            readonly property bool showRate: !row.isCard && page.marginTurnRatable(row.turn)
             visible: showRate
+            opacity: row.turn === page.marginLastAnswer || page.marginTurnRating(row.turn) !== "" || rowHover.hovered && page.handOn ? 1 : 0
             topPadding: page.sp(4)
             spacing: page.sp(14)
             Repeater {
               model: [{ text: "helpful", value: "up", act: "marginHelpful" }, { text: "not helpful", value: "down", act: "marginNotHelpful" }]
               Text {
                 required property var modelData
-                readonly property bool chosen: page.ratingOf(page.currentRec) === modelData.value
+                readonly property bool chosen: page.marginTurnRating(row.turn) === modelData.value
                 textFormat: Text.PlainText
                 text: (chosen ? "✓ " : "") + modelData.text
                 color: mRateArea.containsMouse && page.handOn ? page.accent : chosen ? page.foreground : page.faint
@@ -440,7 +560,7 @@ BorderSurface {
                   anchors.margins: -page.sp(4)
                   hoverEnabled: true
                   cursorShape: Qt.PointingHandCursor
-                  onClicked: { page.focusPane("right"); page.rateReply(modelData.value) }
+                  onClicked: { page.focusPane("right"); page.rateMarginTurn(row.turn, modelData.value) }
                   Tip { host: page; shown: parent.containsMouse; text: page.tip(chosen ? "Take it back" : "Say it was " + modelData.text, modelData.act) }
                 }
               }
@@ -452,6 +572,7 @@ BorderSurface {
             width: parent.width
             page: margin.page
             p: row.p
+            flick: marginFlick
             declined: row.isCard && page.blockCardDeclined(page.currentRec, row.ci)
             hot: row.isCard && page.marginFocus === row.ci && marginKeys.activeFocus
             onFocused: { page.marginFocus = row.ci; marginKeys.forceActiveFocus() }
@@ -479,11 +600,11 @@ BorderSurface {
         textFormat: Text.PlainText
         text: (thinking.phaseText !== "" ? thinking.phaseText : "thinking") + (thinking.elapsed >= 2 ? " · " + thinking.elapsed + "s" : "")
         property int elapsed: 0
-        color: thinkStopArea.containsMouse && page.handOn ? page.accent : page.dim
+        // As the day's pane says it (2026-11-28: a title's size, italic).
+        color: thinkStopArea.containsMouse && page.handOn ? page.accent : page.faint
         font.family: page.fontFamily
         font.styleName: page.fontStyle
-        font.italic: true
-        font.pixelSize: page.fs(Style.font.title)
+        font.pixelSize: page.fs(Style.font.bodySmall)
         onVisibleChanged: {
           thinking.since = visible ? Date.now() : 0
           thinking.elapsed = 0
@@ -535,7 +656,8 @@ BorderSurface {
     width: Math.min(margin.width - margin.contentLeftInset - margin.contentRightInset, page.chatMeasure)
     anchors.bottom: parent.bottom
     anchors.bottomMargin: margin.contentBottomInset
-    height: chatField.visible ? chatField.implicitHeight + above.height + (above.height > 0 ? page.sp(6) : 0) : 0
+    height: chatField.visible ? chatField.implicitHeight + above.height + (above.height > 0 ? page.sp(6) : 0)
+      + (foot.visible ? foot.implicitHeight + page.sp(6) : 0) : 0
 
     // Over the box, as in the day's: what `@` offers, then what this
     // message is about — this chat's own thing (letting it go leaves for
@@ -563,7 +685,7 @@ BorderSurface {
       Text {
         visible: chatField.visible && !!page.marginReplying
         textFormat: Text.PlainText
-        text: "REPLY " + page.replyNumber("margin") + " OF " + page.replyNumber("margin") + "  ·  "
+        text: page.replyLabel("margin") + "  ·  "
           + page.keyName("chatSend") + " attaches · " + page.keyName("marginBack") + " cancels"
         color: page.accent
         font.family: page.fontFamily
@@ -593,7 +715,8 @@ BorderSurface {
       page: margin.page
       anchors.left: parent.left
       anchors.right: parent.right
-      anchors.bottom: parent.bottom
+      anchors.bottom: foot.visible ? foot.top : parent.bottom
+      anchors.bottomMargin: foot.visible ? page.sp(6) : 0
       height: implicitHeight
       visible: page.marginOpen || margin.talk
       readOnly: margin.talk && !page.talkCanSend
@@ -617,24 +740,47 @@ BorderSurface {
         if (page.answerSelected(event)) { event.accepted = true; return }
         if (page.replyKey("margin", event)) { event.accepted = true; return }
         if (page.anywhereKey(event)) { event.accepted = true; return }
+        if (margin.paneKeys(event)) { event.accepted = true; return }
         if (margin.talk) {
-          if (Sc.hit(event, "chatSend")) page.sendTalk()
+          if (Sc.hit(event, "chatSend")) { page.sendTalk(); if (text === "") margin.toFoot() }
           else if (Sc.hit(event, "marginBack") && page.stopAgent("talk")) {}
           else if (Sc.hit(event, "marginBack")) page.leaveTalk()
+          // The card's Ctrl+Z, said on it, done here too (2026-11-28).
+          else if (Sc.hit(event, "undo") && text === "" && page.undoLastCard()) {}
           else if (Sc.hit(event, "marginUp") && text === "" && page.talkCards.length > 0) page.focusTalkCard(page.talkCards.length - 1)
           else if (Sc.hit(event, "marginUp") && text === "" && page.talkItem) { page.marginFocus = 0; marginKeys.forceActiveFocus() }
           else return
           event.accepted = true
           return
         }
-        if (Sc.hit(event, "chatSend")) page.sendChat()
+        if (Sc.hit(event, "chatSend")) { page.sendChat(); if (text === "") margin.toFoot() }
         else if (Sc.hit(event, "marginBack") && page.stopAgent("margin")) {}
         else if (Sc.hit(event, "marginBack")) page.backToNote()
         else if (Sc.hit(event, "undo") && text === "" && page.undoLastCard()) {}
-        else if (Sc.hit(event, "marginUp") && text === "" && page.currentProposals.length > 0) page.moveMarginFocus(-1)
+        else if (Sc.hit(event, "marginUp") && text === "" && page.marginLiveCards.length > 0) page.moveMarginFocus(-1)
         else return
         event.accepted = true
       }
+    }
+
+    // The keys, a line under the box, as under the day's (2026-11-28: the
+    // margin said none).
+    Text {
+      id: foot
+      visible: chatField.visible && !chatField.readOnly && !page.marginReplying
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.bottom: parent.bottom
+      textFormat: Text.PlainText
+      elide: Text.ElideRight
+      text: page.marginReplies.length > 0 ? page.marginReplies.length + (page.marginReplies.length === 1 ? " reply" : " replies")
+          + " · " + page.keyName("chatSend") + " sends · " + page.keyName("chatAnswer") + " more"
+        : page.keyName("chatSend") + " sends · " + (page.marginCanPoint ? "@ attach · " : "") + page.keyName("chatAnswer") + " reply · "
+          + page.keyName("marginBack") + (margin.talk ? " the list" : " back") + " · " + page.keyName("keys") + " keys"
+      color: page.faint
+      font.family: page.fontFamily
+      font.styleName: page.fontStyle
+      font.pixelSize: page.fs(Style.font.caption)
     }
   }
 }
