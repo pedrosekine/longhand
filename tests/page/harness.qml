@@ -770,6 +770,9 @@ ShellRoot {
     function keys(): void { page.toggleKeys() }
     function keysOpen(): bool { return page.keysOpen }
     function keysFind(s: string): void { page.keysFilter = s; page.keysFocus = page.nextKeyRow(-1, 1) }
+    function keysFocus(): string { return JSON.stringify(page.keyRows[page.keysFocus] || null) }
+    function keysFieldSet(s: string, pos: int): void { var f = page.paneItem("center").keysFieldRef; f.text = s; f.cursorPosition = pos }
+    function keysClick(i: int, shift: bool): void { page.selectKeyRow(i, page.keyRows[i], shift) }
     function keysKey(key: int, mods: int): bool { return page.keysKey({ key: key, text: "", modifiers: mods }) }
     function keysNote(): string { return page.keysNote }
     function keyRows(): string { return JSON.stringify(page.keyRows) }
