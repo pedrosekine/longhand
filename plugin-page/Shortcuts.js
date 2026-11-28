@@ -291,7 +291,7 @@ var actions = [
   // Its section found among its course's, the PDF named after it; the
   // deadline stays open — handing it in is the person's (plan.md item 13).
   { id: "dashExport", group: "dash", places: ["dash"], does: "Export its section as a PDF, named after it (it stays open)", keys: ["Ctrl+Shift+E"] },
-  { id: "dashUndo", group: "dash", places: ["dash"], does: "Take back the last change made here (it says which)", keys: ["Ctrl+Z"] },
+  { id: "dashUndo", group: "dash", places: ["dash", "lists"], does: "Take back the last change made here (it says which); in the sidebar, a deadline ticked", keys: ["Ctrl+Z"] },
   { id: "dashBack", group: "dash", places: ["dash"], does: "Clear the search; then back to the note", keys: ["Esc"] },
   // The course strip above the list (2026-11-03): ↑ from the first row
   // climbs onto it. Its ⌕ takes what is typed while the strip's cursor is
@@ -329,13 +329,15 @@ var actions = [
   // go on from one list into the next; Tab only skips a list.
   { id: "listUp", group: "lists", places: ["lists"], does: "Move up (at a list's top, on into the list above)", keys: ["Up"] },
   { id: "listDown", group: "lists", places: ["lists"], does: "Move down (at a list's end, on into the list below)", keys: ["Down"] },
-  { id: "listFirst", group: "lists", places: ["lists"], does: "The first row under the calendar", keys: ["Home"] },
-  { id: "listLast", group: "lists", places: ["lists"], does: "The last project", keys: ["End"] },
-  { id: "listOpen", group: "lists", places: ["lists"], does: "Open it (a deadline: go to its line)", keys: ["Enter"] },
+  { id: "listFirst", group: "lists", places: ["lists"], does: "The first row under the calendar (inside a project: its first)", keys: ["Home"] },
+  { id: "listLast", group: "lists", places: ["lists"], does: "The last project (inside one: its last row)", keys: ["End"] },
+  { id: "listScreenUp", group: "lists", places: ["lists"], does: "Inside a project: a screenful up", keys: ["PgUp"] },
+  { id: "listScreenDown", group: "lists", places: ["lists"], does: "Inside a project: a screenful down", keys: ["PgDn"] },
+  { id: "listOpen", group: "lists", places: ["lists"], does: "Open it (a deadline: go to its line; a fold: open or close it)", keys: ["Enter"] },
   // The note's tick, on a deadline of the day (2026-10-17).
   // Space too since 2026-11-25, the dashboard's own key for it.
   { id: "listDone", group: "lists", places: ["lists"], does: "A deadline: done (again: not done)", keys: ["Space", "Ctrl+L"] },
-  { id: "listInto", group: "lists", places: ["lists"], does: "Into a project's notes", keys: ["Right"] },
+  { id: "listInto", group: "lists", places: ["lists"], does: "Into a project's notes (inside one: open a fold)", keys: ["Right"] },
   { id: "listClass", group: "lists", places: ["lists"], does: "A project: a new section for it in today's note (# Name #tag)", keys: ["Shift+Enter"] },
   // Alt only (2026-11-25): a bare letter in the sidebar finds a project,
   // so P and W worked inside a project and not on one.
@@ -347,7 +349,7 @@ var actions = [
   { id: "listTag", group: "lists", places: ["lists"], does: "A project: put its #tag at the cursor", keys: ["Ctrl+Enter"] },
   { id: "listNext", group: "lists", places: ["lists"], does: "Skip to the next list (after the projects: the calendar)", keys: ["Tab"] },
   { id: "listPrev", group: "lists", places: ["lists"], does: "Skip to the list before (before the first: the calendar)", keys: ["Shift+Tab"] },
-  { id: "listBack", group: "lists", places: ["lists"], does: "Back out of the lists, to the calendar", keys: ["Esc", "Left"] },
+  { id: "listBack", group: "lists", places: ["lists"], does: "Back out of the lists, to the calendar (inside a project: out of it; ← on an open fold closes it)", keys: ["Esc", "Left"] },
   // Type to go (plan.md item 19): no field to open, the letters pick.
   // Since 2026-11-22 any letter starts it; `#` still does, as in the
   // switcher. Letters are no longer the lists' keys for it (above).
@@ -358,7 +360,7 @@ var actions = [
   { id: "filesOpen", group: "files", places: ["files"], does: "Open the file in the sheet (a folder: open or fold it)", keys: ["Enter"] },
   { id: "filesInto", group: "files", places: ["files"], does: "Open the folder (open: into it)", keys: ["Right", "L"] },
   { id: "filesOut", group: "files", places: ["files"], does: "Fold the folder (folded: up to the one it is in)", keys: ["Left", "H"] },
-  { id: "filesFilter", group: "files", places: ["files"], does: "Filter by name", keys: ["/"] },
+  { id: "filesFilter", group: "files", places: ["files"], does: "Filter by name", keys: ["/", "Ctrl+F"] },
   { id: "filesBack", group: "files", places: ["files"], does: "Clear the filter; else close the sidebar", keys: ["Esc"] },
 
   // A PDF in the middle (docs/files.md, step 5): read, never written, so

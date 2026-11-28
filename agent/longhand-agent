@@ -2517,6 +2517,11 @@ def tagged_sections(cfg: dict, tag: str, days: int, boxes: bool = False) -> list
             if m:
                 heads.append((i, len(m.group(1)), m.group(2)))
         claimed = -1
+        # The sidebar's OPEN band lists a section's own boxes too, each
+        # opened on its own line (2026-11-28, the sidebar pass: only the
+        # stray boxes had lines, so a section's four open boxes were
+        # counted and never listed).
+        scanned = tasklib.scan("\n".join(lines)) if boxes else []
         for n, (i, level, text) in enumerate(heads):
             if i <= claimed or want not in [t.lower() for t in TAG_RE.findall(text)]:
                 continue
@@ -2542,10 +2547,14 @@ def tagged_sections(cfg: dict, tag: str, days: int, boxes: bool = False) -> list
             title = re.sub(r"\s{2,}", " ", TAG_RE.sub(" ", text)).strip() or want
             preview = [l.strip() for l in body
                        if l.strip() and not HEADING.match(l) and not LINK_LINE.match(l.strip())][:2]
-            out.append({"date": f.stem, "file": str(f), "line": i, "level": level, "tag": want,
-                        "title": title, "heading": text, "age": age, "words": words,
-                        "open": opens, "done": done, "sub": inside, "preview": preview,
-                        "text": "\n".join(body)})
+            sec = {"date": f.stem, "file": str(f), "line": i, "level": level, "tag": want,
+                   "title": title, "heading": text, "age": age, "words": words,
+                   "open": opens, "done": done, "sub": inside, "preview": preview,
+                   "text": "\n".join(body)}
+            if boxes:
+                sec["tasks"] = [{"line": t["line"], "text": t["text"], "state": t["state"]} for t in scanned
+                                if i < t["line"] < end and (t["project"] or want).lower() == want]
+            out.append(sec)
         if boxes:
             stray = [t for t in tasklib.scan("\n".join(lines))
                      if t["project"].lower() == want and t["claimed"].lower() != want]

@@ -33,7 +33,8 @@ Item {
   property var allNames: null          // every file's rel, read once the filter opens
   readonly property var shown: query === "" ? rows : matches(query)
 
-  readonly property string vault: svc.configured ? svc.config.vault : ""
+  // Without a trailing slash, so a path's part after it is its rel.
+  readonly property string vault: svc.configured ? String(svc.config.vault).replace(/\/+$/, "") : ""
   readonly property string notesRoot: svc.notesRoot
   readonly property string agentRoot: svc.agentRoot
   readonly property string dailyDir: svc.configured ? String(svc.config.daily.dir).replace(/^\/+|\/+$/g, "") : ""
@@ -66,26 +67,69 @@ Item {
 
   // Listed afresh, as the folders are now: each time the space is come
   // back to, the folders open before open again and the same row picked
-  // (a folder is read when it is shown, never watched).
-  property var reopen: ({})
-  property string pickKey: ""
-  function refresh() {
-    if (files.query !== "") return
+  // (a folder is read when it is shown, never watched). The tree is built
+  // aside and shown whole (2026-11-28, the sidebar pass): it was folded to
+  // its two roots and opened again folder by folder in sight, and the
+  // sidebar opening asked twice in one moment, the second time reading the
+  // folded tree, so every folder came back closed.
+  property int building: 0          // folders still being listed for the tree built aside
+  property bool buildAgain: false
+  function refresh() { Qt.callLater(files.rebuild) }
+  function rebuild() {
+    if (files.query !== "" || files.vault === "") return
+    if (files.building > 0) { files.buildAgain = true; return }
     var keep = {}
-    if (files.rows.length === 0) keep["mine:" + files.notesRoot] = true
+    if (files.rows.length === 0) { keep["mine:" + files.notesRoot] = true; files.rows = files.roots() }
     files.rows.forEach(function (r) { if (r.dir && r.open) keep[files.key(r)] = true })
     var cur = files.rows[files.pick]
-    files.pickKey = cur ? files.key(cur) : ""
-    files.reopen = keep
-    files.rows = files.roots()
-    files.pick = 0
-    for (var i = 0; i < files.rows.length; i++) if (keep[files.key(files.rows[i])]) files.expand(i)
+    var pickKey = cur ? files.key(cur) : ""
+    var tree = files.roots()
+    var done = function () {
+      if (--files.building > 0) return
+      if (files.buildAgain) { files.buildAgain = false; Qt.callLater(files.rebuild); return }
+      files.rows = tree
+      var k = tree.findIndex(function (x) { return files.key(x) === pickKey })
+      files.pick = k >= 0 ? k : Math.min(files.pick, Math.max(0, tree.length - 1))
+    }
+    var open = function (row) {
+      files.building++
+      files.list(row.rel, row.side, function (kids) {
+        var add = files.kidsOf(row, kids)
+        var at = tree.indexOf(row)
+        row.open = true
+        tree.splice.apply(tree, [at + 1, 0].concat(add))
+        add.forEach(function (a) { if (a.dir && keep[files.key(a)]) open(a) })
+        done()
+      })
+    }
+    files.building++
+    tree.forEach(function (r) { if (keep[files.key(r)]) open(r) })
+    done()
   }
   onVaultChanged: { files.rows = []; files.query = ""; files.allNames = null; if (visible) refresh() }
   onVisibleChanged: if (visible) refresh()
   Connections {
     target: page
     function onSidebarOpenChanged() { if (files.visible) files.refresh() }
+  }
+
+  // A folder's rows, from what it holds; "(empty)" when nothing.
+  function kidsOf(r, kids) {
+    var add = kids.map(function (k) {
+      return { rel: k.rel, name: k.dir ? k.name : k.name.replace(/\.md$/i, ""), depth: r.depth + 1,
+               dir: k.dir, open: false, side: r.side, head: false }
+    })
+    if (add.length === 0) add = [{ rel: r.rel + "/", name: "(empty)", depth: r.depth + 1, dir: false, open: false, side: r.side, head: false, none: true }]
+    return add
+  }
+
+  // The file in the middle, as its rel in the vault (a PDF's, or the
+  // note's), so its row is marked: the tree shows where you are.
+  readonly property string openRel: {
+    var pdf = page.pdfRel
+    if (pdf !== "") return Links.isAbs(pdf) ? (pdf.indexOf(files.vault + "/") === 0 ? pdf.slice(files.vault.length + 1) : "") : pdf
+    var p = String(svc.notePath || "")
+    return files.vault !== "" && p.indexOf(files.vault + "/") === 0 ? p.slice(files.vault.length + 1) : ""
   }
 
   // ----------------------------------------------------------- listing
@@ -136,17 +180,12 @@ Item {
       if (at < 0 || files.rows[at].open) return
       var rows = files.rows.slice()
       rows[at] = Object.assign({}, rows[at], { open: true })
-      var add = kids.map(function (k) {
-        return { rel: k.rel, name: k.dir ? k.name : k.name.replace(/\.md$/i, ""), depth: r.depth + 1,
-                 dir: k.dir, open: false, side: r.side, head: false }
-      })
-      if (add.length === 0) add = [{ rel: rel + "/", name: "(empty)", depth: r.depth + 1, dir: false, open: false, side: r.side, head: false, none: true }]
+      var add = files.kidsOf(rows[at], kids)
+      var picked = files.rows[files.pick]
       files.rows = rows.slice(0, at + 1).concat(add, rows.slice(at + 1))
-      // Coming back: the folders that were open, open again; the row that
-      // was picked, picked.
-      var k = files.rows.findIndex(function (x) { return files.key(x) === files.pickKey })
-      if (k >= 0) { files.pick = k; files.pickKey = "" }
-      add.forEach(function (a) { if (a.dir && files.reopen[files.key(a)]) files.expand(files.rows.indexOf(a)) })
+      // The row picked stays picked as rows come in above it.
+      var k = picked ? files.rows.findIndex(function (x) { return files.key(x) === files.key(picked) }) : -1
+      if (k >= 0) files.pick = k
     })
   }
 
@@ -198,7 +237,8 @@ Item {
   function openFilter() {
     if (files.allNames === null && !walker.running) {
       var roots = [files.abs(files.notesRoot)]
-      if (files.agentRoot !== "" && files.notesRoot !== "") roots.push(files.abs(files.agentRoot))
+      if (files.agentRoot !== "" && files.notesRoot !== "" && files.agentRoot !== files.notesRoot
+          && files.agentRoot.indexOf(files.notesRoot + "/") !== 0) roots.push(files.abs(files.agentRoot))
       walker.command = ["python3", files.pageFsPy, "walk"].concat(roots)
       walker.running = true
     }
@@ -231,8 +271,11 @@ Item {
                   depth: 0, dir: false, open: false, side: n.side, head: false, score: inName * 1000 - n.rel.length })
     })
     hits.sort(function (a, b) { return b.score - a.score })
-    return hits.slice(0, 200)
+    files.hitCount = hits.length
+    return hits.slice(0, files.hitsShown)
   }
+  readonly property int hitsShown: 200
+  property int hitCount: 0
 
   // ----------------------------------------------------------- acting
 
@@ -266,14 +309,18 @@ Item {
     else { var p = files.parentOf(files.pick); if (p >= 0) files.pick = p }
   }
 
+  function screenRows() { return Math.max(3, Math.floor(list.height / page.sp(28))) }
+
   // The pane's keys (the sidebar hands them over in this space). True when
   // taken.
   function keyPressed(event) {
     if (Sc.hit(event, "filesUp")) files.move(-1)
     else if (Sc.hit(event, "filesDown")) files.move(1)
-    // The ends, as in every list (2026-11-25).
-    else if (Sc.fromEvent(event) === "Home") files.move(-files.shown.length)
-    else if (Sc.fromEvent(event) === "End") files.move(files.shown.length)
+    // The ends and a screenful, as in every list (2026-11-25).
+    else if (Sc.hit(event, "listFirst")) files.move(-files.shown.length)
+    else if (Sc.hit(event, "listLast")) files.move(files.shown.length)
+    else if (Sc.hit(event, "listScreenUp")) files.move(-files.screenRows())
+    else if (Sc.hit(event, "listScreenDown")) files.move(files.screenRows())
     else if (Sc.hit(event, "filesOpen")) files.act(files.pick)
     else if (Sc.hit(event, "filesInto")) files.into()
     else if (Sc.hit(event, "filesOut")) files.out()
@@ -304,6 +351,8 @@ Item {
       if (seq === "Esc") { files.closeFilter(); event.accepted = true }
       else if (seq === "Up") { files.move(-1); event.accepted = true }
       else if (seq === "Down") { files.move(1); event.accepted = true }
+      else if (Sc.hit(event, "listScreenUp")) { files.move(-files.screenRows()); event.accepted = true }
+      else if (Sc.hit(event, "listScreenDown")) { files.move(files.screenRows()); event.accepted = true }
       else if (seq === "Enter") { files.act(files.pick); event.accepted = true }
     }
   }
@@ -315,13 +364,21 @@ Item {
     anchors.top: filterField.visible ? filterField.bottom : parent.top
     anchors.topMargin: filterField.visible ? page.sp(8) : 0
     anchors.bottom: parent.bottom
+    anchors.bottomMargin: filesNote.visible && filesNote.under ? filesNote.height + page.sp(6) : 0
     width: parent.width
     clip: true
     model: files.shown
     currentIndex: files.pick
     highlightFollowsCurrentItem: false
     boundsBehavior: Flickable.StopAtBounds
-    onCurrentIndexChanged: positionViewAtIndex(currentIndex, ListView.Contain)
+    // A row's neighbour stays in sight, as in Time's lists (sidebar.reveal).
+    onCurrentIndexChanged: Qt.callLater(function () {
+      var it = list.itemAtIndex(list.currentIndex)
+      if (!it) { list.positionViewAtIndex(list.currentIndex, ListView.Contain); return }
+      var pad = page.sp(24), top = list.contentY, bottom = list.contentY + list.height
+      var to = it.y - pad < top ? it.y - pad : it.y + it.height + pad > bottom ? it.y + it.height + pad - list.height : top
+      list.contentY = Math.max(list.originY, Math.min(to, list.originY + list.contentHeight - list.height))
+    })
 
     TouchScroll { flickable: list }
 
@@ -331,7 +388,9 @@ Item {
       required property int index
       readonly property bool picked: files.pick === index
       readonly property bool lit: picked && page.here === "left" && page.sidebarSpace === "files"
+      readonly property bool here: !row.modelData.dir && !row.modelData.none && row.modelData.rel === files.openRel
       onLitChanged: page.selected(row, "left", lit)
+      Component.onCompleted: if (lit) page.selected(row, "left", true)
       width: list.width
       height: line.implicitHeight + page.sp(modelData.head && index > 0 ? 16 : 6)
 
@@ -348,6 +407,23 @@ Item {
         hoverEnabled: true
         cursorShape: row.modelData.none ? Qt.ArrowCursor : Qt.PointingHandCursor
         onClicked: { page.focusPane("left"); files.act(row.index) }
+        Tip {
+          host: page
+          shown: parent.containsMouse && !row.modelData.none && !row.modelData.head
+          text: page.tip(row.modelData.dir ? (row.modelData.open ? "Fold it" : "Open it") : row.modelData.side === "agent" ? "Open it, to read" : "Open it in the sheet", "filesOpen")
+        }
+      }
+      // The file in the middle: a bar at its left, as the calendar outlines
+      // the day open.
+      Rectangle {
+        visible: row.here
+        x: line.x - page.sp(4)
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: page.sp(4)
+        width: Math.max(2, page.sp(2))
+        height: line.implicitHeight - page.sp(2)
+        radius: width / 2
+        color: page.accent
       }
 
       Column {
@@ -368,6 +444,7 @@ Item {
           font.family: page.fontFamily
           font.styleName: page.fontStyle
           font.italic: row.modelData.side === "agent" && !row.modelData.head
+          font.weight: row.here ? Font.DemiBold : Font.Normal
           font.pixelSize: page.fs(row.modelData.head ? Style.font.caption : Style.font.bodySmall)
         }
         Text {
@@ -385,13 +462,37 @@ Item {
     }
   }
 
+  // A clipped edge with more beyond it fades, as in Time's lists.
+  Repeater {
+    model: [true, false]
+    Rectangle {
+      required property bool modelData
+      readonly property color ground: files.sidebar.color
+      visible: modelData ? list.contentY > list.originY + 1 : list.contentY + list.height < list.originY + list.contentHeight - 1
+      x: list.x
+      width: list.width
+      y: modelData ? list.y : list.y + list.height - height
+      height: page.sp(28)
+      z: 5
+      gradient: Gradient {
+        GradientStop { position: 0; color: Qt.rgba(ground.r, ground.g, ground.b, modelData ? 1 : 0) }
+        GradientStop { position: 1; color: Qt.rgba(ground.r, ground.g, ground.b, modelData ? 0 : 1) }
+      }
+    }
+  }
+
   Text {
-    visible: files.query !== "" && files.allNames !== null && files.shown.length === 0
-    anchors.top: list.top
+    id: filesNote
+    readonly property bool under: files.allNames !== null && files.shown.length > 0
+    visible: files.query !== "" && (files.allNames === null || files.shown.length === 0 || files.hitCount > files.hitsShown)
+    anchors.top: under ? undefined : list.top
+    anchors.bottom: under ? parent.bottom : undefined
     width: parent.width
     wrapMode: Text.WordWrap
     textFormat: Text.PlainText
-    text: "no note's name has “" + files.query + "”"
+    text: files.allNames === null ? "reading the names…"
+      : files.shown.length === 0 ? "no note's name has “" + files.query + "”"
+      : "the first " + files.hitsShown + " of " + files.hitCount + " · more words narrow it"
     color: page.faint
     font.family: page.fontFamily
     font.styleName: page.fontStyle

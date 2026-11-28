@@ -43,13 +43,15 @@ def cmd_list(args: list[str]) -> int:
     try:
         with os.scandir(folder) as it:
             for e in it:
+                # A link is what it points at (a folder linked into the
+                # vault lists as a folder); one pointing nowhere is left out.
                 try:
-                    if e.is_symlink():
-                        kind = "l"
-                    elif e.is_dir(follow_symlinks=False):
+                    if e.is_dir():
                         kind = "d"
-                    else:
+                    elif e.is_file():
                         kind = "f"
+                    else:
+                        continue
                 except OSError:
                     continue
                 print(f"{kind}\t{e.name}")

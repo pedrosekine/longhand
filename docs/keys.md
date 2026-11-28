@@ -153,7 +153,7 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | Follow the link in its line (a paper: open it where it was left) | `Alt+Enter` | in the dashboard |
 | Chat about it (the agent's pane opens on it) | `c` · `Ctrl+Enter` | in the dashboard |
 | Export its section as a PDF, named after it (it stays open) | `Ctrl+Shift+E` | in the dashboard |
-| Take back the last change made here (it says which) | `Ctrl+Z` | in the dashboard |
+| Take back the last change made here (it says which); in the sidebar, a deadline ticked | `Ctrl+Z` | in the dashboard, in the sidebar's lists |
 | Clear the search; then back to the note | `Esc` | in the dashboard |
 | How Longhand feels this week: the one-minute check-in | `f` | in the dashboard |
 | Search the list: the strip's ⌕, typing (words, or a #tag) | `/` · `Ctrl+F` | in the dashboard, on the dashboard's course strip |
@@ -191,18 +191,20 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 |---|---|---|
 | Move up (at a list's top, on into the list above) | `↑` | in the sidebar's lists |
 | Move down (at a list's end, on into the list below) | `↓` | in the sidebar's lists |
-| The first row under the calendar | `Home` | in the sidebar's lists |
-| The last project | `End` | in the sidebar's lists |
-| Open it (a deadline: go to its line) | `Enter` | in the sidebar's lists |
+| The first row under the calendar (inside a project: its first) | `Home` | in the sidebar's lists |
+| The last project (inside one: its last row) | `End` | in the sidebar's lists |
+| Inside a project: a screenful up | `PgUp` | in the sidebar's lists |
+| Inside a project: a screenful down | `PgDn` | in the sidebar's lists |
+| Open it (a deadline: go to its line; a fold: open or close it) | `Enter` | in the sidebar's lists |
 | A deadline: done (again: not done) | `Space` · `Ctrl+L` | in the sidebar's lists |
-| Into a project's notes | `→` | in the sidebar's lists |
+| Into a project's notes (inside one: open a fold) | `→` | in the sidebar's lists |
 | A project: a new section for it in today's note (# Name #tag) | `Shift+Enter` | in the sidebar's lists |
 | The project's page: its papers, files, notes and deadlines in one scroll (on a project, or inside one) | `Alt+P` | in the sidebar's lists |
 | The project's week: what was done, written and read, what is coming, what to ask (on a project, or inside one) | `Alt+W` | in the sidebar's lists |
 | A project: put its #tag at the cursor | `Ctrl+Enter` | in the sidebar's lists |
 | Skip to the next list (after the projects: the calendar) | `Tab` | in the sidebar's lists |
 | Skip to the list before (before the first: the calendar) | `Shift+Tab` | in the sidebar's lists |
-| Back out of the lists, to the calendar | `Esc` · `←` | in the sidebar's lists |
+| Back out of the lists, to the calendar (inside a project: out of it; ← on an open fold closes it) | `Esc` · `←` | in the sidebar's lists |
 | Find a project: type its letters (th picks #thesis), Enter its notes, Shift+Enter a section, Ctrl+Enter its tag (↑↓ the other matches, Esc stops) | `#` | in the calendar, in the sidebar's lists |
 
 ## Files in the sidebar
@@ -214,7 +216,7 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | Open the file in the sheet (a folder: open or fold it) | `Enter` | in the files |
 | Open the folder (open: into it) | `→` · `l` | in the files |
 | Fold the folder (folded: up to the one it is in) | `←` · `h` | in the files |
-| Filter by name | `/` | in the files |
+| Filter by name | `/` · `Ctrl+F` | in the files |
 | Clear the filter; else close the sidebar | `Esc` | in the files |
 
 ## A PDF
