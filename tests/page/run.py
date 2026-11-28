@@ -5190,6 +5190,12 @@ def checks() -> int:
         check([r["in"] for r in e["rows"]] == [False, True, True] and e["rows"][0]["why"] == "a checkbox" and e["words"] == 3,
               f"…the checkbox out and why, the words counted ({e['words']})")
         check(e["here"] == "center" and json.loads(p.call("pdf"))["shown"] is False, "…in the note's place, with the keys")
+        check([r["show"] for r in e["rows"]] == ["- [ ] hand it in", "What happened", "We met twice."],
+              f"…each row the words that go, without the marks ({[r['show'] for r in e['rows']]})")
+        check(e["canWrite"] == (e["missing"] == "") and e["target"].replace("\\", "/").endswith("Downloads/Diary.pdf") and not e["replaces"],
+              f"…and the footer names the file it will write ({e['target']!r})")
+        check(re.search(re.escape(f"{TODAY}.md") + r":\d+$", p.call("exportPath")) is not None,
+              f"Ctrl+Shift+C there: the note it reads, at the block's line ({p.call('exportPath')!r})")
         p.call("exportKey", KEY_SPACE, 0)
         check(ex()["rows"][0]["in"] and ex()["words"] == 6, f"Space puts the checkbox in, and its words count ({ex()['words']})")
         p.call("exportKey", KEY_SPACE, 0)
@@ -5200,11 +5206,23 @@ def checks() -> int:
         p.call("exportKey", KEY_L, 0)
         check(ex()["look"] == "minimal", "…and back to minimal")
         p.call("exportTitle", "Diary 1")
+        check(ex()["target"].endswith("Diary 1.pdf"), f"…the file named as the title is typed ({ex()['target']!r})")
+        p.call("exportAuthor", "C. Student")
+        settings_json = p.tmp / "config" / "longhand" / "settings.json"
+        check(p.wait(lambda: settings_json.exists() and json.loads(settings_json.read_text()).get("export", {}).get("author") == "C. Student")
+              and ex()["author"] == "C. Student",
+              "the name typed in the byline is kept in settings.json, for every export")
+        picks_then = [r["in"] for r in ex()["rows"]]
         p.call("exportKey", KEY_RETURN, 0)
         out = p.tmp / "Downloads" / "Diary 1.pdf"
         # The PDF itself only where pandoc and xelatex are (agent/export.py
         # looks them up on PATH, as here; tests/test_export.py the same).
         if shutil.which("pandoc", path=p.env["PATH"]) and shutil.which("xelatex", path=p.env["PATH"]):
+            p.call("exportKey", KEY_SPACE, 0)
+            p.call("exportKey", KEY_L, 0)
+            check(ex()["writing"] and [r["in"] for r in ex()["rows"]] == picks_then and ex()["look"] == "minimal"
+                  and not ex()["canWrite"],
+                  f"while it is written, Space and L change nothing ({ex()['writing']}, {ex()['look']})")
             check(p.wait(lambda: json.loads(p.call("pdf"))["shown"] and out.is_file(), 60),
                   f"Enter writes the PDF under its title, in Settings' folder ({ex()['error']!r})")
             check(p.wait(lambda: json.loads(p.call("pdf"))["ready"] and json.loads(p.call("pdf"))["label"] == "Diary 1"
@@ -5213,11 +5231,30 @@ def checks() -> int:
             check(p.call("hint").startswith("written to "), f"…saying where it went ({p.call('hint')!r})")
         else:
             print("skip the PDF itself: pandoc or xelatex is not installed")
-            check(p.wait(lambda: "not installed" in ex()["error"], 15) and not out.exists(),
+            check(p.wait(lambda: "installed on PATH" in ex()["error"] or "not installed" in ex()["error"], 15)
+                  and not out.exists() and not ex()["canWrite"],
                   f"…without pandoc or xelatex, Enter says so and writes nothing ({ex()['error']!r})")
         p.call("pdfKey", KEY_ESC, 0)
         check(p.wait(lambda: not json.loads(p.call("pdf"))["shown"]) and p.call("text") == before,
               "Esc: back to the note, its words untouched")
+        if out.is_file():
+            p.call("cursor", p.offset_of_line(p.line_of("We met twice.")))
+            p.call("keyPage", KEY_E, CTRL | SHIFT)
+            check(p.wait(lambda: ex()["open"] and not ex()["busy"] and len(ex()["rows"]) > 0, 15)
+                  and ex()["title"] == "Diary 1" and [r["in"] for r in ex()["rows"]] == picks_then
+                  and ex()["target"].endswith("Diary 1.pdf") and ex()["replaces"],
+                  f"exported again: the title and picks it was written with, the file it replaces ({ex()['title']!r}, {ex()['target']!r})")
+            p.call("exportKey", 0x48, CTRL)
+            check(p.wait(lambda: not ex()["open"]) and ex()["here"] == "center" and panes()["center"] == "note",
+                  f"Ctrl+H over the export: it lets go, the keys in the note, not under it ({ex()['open']}, {panes()})")
+        ahead = (dt.date.today() + dt.timedelta(days=40)).strftime("%Y.%m.%d")
+        p.call("openDay", ahead)
+        p.wait(lambda: p.call("text") == "")
+        p.call("keyPage", KEY_E, CTRL | SHIFT)
+        check(not ex()["open"] and p.call("hint") == "nothing is written on this day yet",
+              f"a day not written yet: said, no sheet ({p.call('hint')!r})")
+        p.call("openDay", TODAY)
+        p.wait(lambda: p.call("text") == before)
         sel_from = p.offset_of_line(p.line_of("- [ ] hand it in"))
         p.call("selectInLine", sel_from + 6, sel_from + 10)
         p.call("keyPage", KEY_E, CTRL | SHIFT)
@@ -5253,6 +5290,16 @@ def checks() -> int:
               "…the section's blocks, the deadline's own box out")
         p.call("exportKey", KEY_ESC, 0)
         check(p.wait(lambda: not ex()["open"] and panes()["center"] == "dash"), f"Esc: back to the dashboard ({panes()})")
+        if shutil.which("pandoc", path=p.env["PATH"]) and shutil.which("xelatex", path=p.env["PATH"]):
+            p.call("dashFocus", diary_row())
+            p.call("dashKey", KEY_E, CTRL | SHIFT)
+            p.wait(lambda: ex()["open"] and not ex()["busy"] and ex()["from"], 15)
+            p.call("exportKey", KEY_RETURN, 0)
+            check(p.wait(lambda: json.loads(p.call("pdf"))["shown"] and not ex()["open"], 60),
+                  f"written from the deadline, its PDF opens ({ex()['error']!r})")
+            p.call("pdfKey", KEY_ESC, 0)
+            check(p.wait(lambda: not json.loads(p.call("pdf"))["shown"] and panes()["center"] == "dash"),
+                  f"…and Esc from it goes back to the dashboard, to the deadline ({panes()})")
         check("- [ ] Diary 2" in p.note(), "…and the deadline is still open")
         p.call("dashKey", KEY_ESC, 0)
         p.wait(lambda: panes()["center"] == "note")

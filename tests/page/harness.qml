@@ -489,8 +489,13 @@ ShellRoot {
       return JSON.stringify({ open: page.exportOpen, busy: page.exportBusy, error: page.exportError, title: page.exportTitle,
         look: page.exportLook, words: page.exportWords, focus: page.exportFocus, here: page.here,
         from: page.exportData ? page.exportData.from || null : null,
-        rows: page.exportRows.map(function (r) { return { text: r.text.split("\n")[0], in: !!page.exportPicks[r.hash], why: r.why } }) })
+        listing: page.exportListing, writing: page.exportWriting, missing: page.exportMissing, canWrite: page.exportCanWrite,
+        target: page.exportTarget, replaces: page.exportReplaces, author: page.exportData ? page.exportData.author : "",
+        note: page.noteLabel, gen: page.exportGen,
+        rows: page.exportRows.map(function (r) { return { text: r.text.split("\n")[0], show: r.show, in: page.exportPicked(r), why: r.why, lost: r.lost || [] } }) })
     }
+    function exportAuthor(s: string): void { page.setExportAuthor(s) }
+    function exportPath(): string { return page.pathHere() }
     function exportKey(key: int, mods: int): bool { return page.exportKey({ key: key, text: "", modifiers: mods }) }
     function exportTitle(s: string): void { page.exportTitle = s }
     function pdfFind(text: string): void { page.pdfItem.findRef.text = text }

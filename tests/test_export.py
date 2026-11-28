@@ -112,11 +112,50 @@ def units() -> None:
             {"date": "2026-11-16", "line": 1, "level": 1, "heading": "Reflective Research Diary - 2026.11.16 #studio"},
             {"date": "2026-11-04", "line": 5, "level": 0, "heading": ""}]
     got = export.candidates(secs, "Reflective Research Diary 2", dt.date(2026, 11, 13), "%Y-%m-%d")
-    check([c["date"] for c in got] == ["2026-11-09", "2026-11-02"],
-          "a deadline's section: the headings that share its words, newest first, none after its day")
+    check([c["date"] for c in got] == ["2026-11-09", "2026-11-02", "2026-11-03", "2026-11-16"],
+          "a deadline's section: the headings that share its words, newest first; then the rest, never dropped")
+    check([c["late"] for c in got] == [False, False, False, True],
+          "…and those written after its day last, marked late (late work, or more time given)")
     got = export.candidates(secs, "Pilot study", dt.date(2026, 11, 13), "%Y-%m-%d")
-    check([c["date"] for c in got] == ["2026-11-09", "2026-11-03", "2026-11-02"],
+    check([c["date"] for c in got] == ["2026-11-09", "2026-11-03", "2026-11-02", "2026-11-16"],
           "…and when none does, every headed section by its day, newest first")
+    later = secs + [{"date": "2026-11-20", "line": 0, "level": 1, "heading": "Diary, late #studio"}]
+    got = export.candidates(later, "Pilot study", dt.date(2026, 11, 13), "%Y-%m-%d")
+    check([c["date"] for c in got if c["late"]] == ["2026-11-16", "2026-11-20"],
+          "…the late ones nearest its day first")
+
+    # Fenced code is one block, written as it is (2026-11-28, the export pass).
+    code = "# Notes\nBefore it.\n```python\n# a comment, no heading\n- no item\nx = '#ffffff'  # #todo\n```\nAfter it.\n"
+    cb = export.split(code)
+    check([b["kind"] for b in cb] == ["heading", "paragraph", "code", "paragraph"],
+          f"a fenced block is one block: its # comment is no heading ({[b['kind'] for b in cb]})")
+    check(export.section(cb, 5)[:2] == (0, 4), "…so a section never splits inside code")
+    check(export.clean(cb[2], 0, lambda n: None) == "\n".join(code.splitlines()[2:7]),
+          "…and goes as written: its #todo and #ffffff stay")
+    check(export.words(export.assemble(cb[1:], 0, lambda n: None)) == 4, "…and its words are not the prose's")
+    check([b["hash"] for b in export.split(NOTE)] == [b["hash"] for b in blocks.split(NOTE)],
+          "a note without fences: blocks.py's own blocks and hashes")
+    check(export.split("a\n```\nnever closed\n# x")[-1]["kind"] == "code", "a fence never closed runs to the end")
+    check(export.clean_line("use `#include` and `a[[0]]` with #tag") == "use `#include` and `a[[0]]` with",
+          "inline code keeps its # and brackets; a tag outside it goes")
+    check(export.clean_line("a -> b <- c <-> d `x->y` [l](http://a->b)", True)
+          == "a → b ← c ↔ d `x->y` [l](http://a->b)",
+          "arrows written as the note draws them, never in code or a link")
+    check(export.clean_line("a -> b") == "a -> b", "…and only when asked (a face that has them)")
+    check(export.clean(blocks.split("> [!warning]\n> careful")[0], 0, lambda n: None) == "> **Warning**\n> careful"
+          and export.clean(blocks.split("> [!my-tip]-\n> x")[0], 0, lambda n: None) == "> **My tip**\n> x",
+          "a callout with no title of its own says its kind")
+    check(export.words("- [x] done, see [the notes](https://example.com/a/b/c)") == 4,
+          "words: a link's label, not its address; a box is no word")
+    check(export.shown(blocks.split("- [ ] read **chapter 2** of [[papers/Moser 2026|Moser]] #thesis 📅 2026-11-13 ^d1")[0])
+          == "- [ ] read chapter 2 of Moser"
+          and export.shown(blocks.split("> [!note] Seen\n> *quoted* -> [here](https://x.y)")[0]) == "Seen\nquoted → here"
+          and export.shown(blocks.split("### Deep #studio")[0]) == "Deep",
+          "the sheet's rows: the words that go, without the marks")
+    pic = pathlib.Path("/vault/a picture.png")
+    check(export.lost(blocks.split("![[a picture.png]] ![[gone.png]] ![[Other note]]")[0],
+                      lambda n: pic if n == "a picture.png" else None) == ["gone.png", "Other note"],
+          "what will be missing: a picture not found, an embedded note")
 
     projects = [{"name": "Design Studio", "tag": "studio"}, {"name": "Master Thesis", "tag": "thesis"}]
     check(export.course_of(bl, first, end, title, projects) == "Design Studio", "the course from the title's tag")
@@ -127,6 +166,13 @@ def units() -> None:
     check(r"\pagecolor" not in export.look_tex("minimal", {"background": "2A2A25", "foreground": "EFEDE4"})
           and r"\pagecolor" not in export.look_tex("omarchy", {}),
           "minimal is a white page, and so is omarchy with no theme to read")
+    check(r"\sethlcolor{lhmark}" in tex and r"\ifdefined\sethlcolor" in tex,
+          "omarchy: a highlight in the accent sunk into the ground, not soul's yellow under light text")
+    check(export.font() == "Adwaita Sans" and export.font("No Such Face Here") == "Adwaita Sans",
+          "the face: the page's own Adwaita Sans, from its cuts, when none asked for is installed")
+    check("mainfontoptions=Path=" in " ".join(export.face_options("Adwaita Sans"))
+          and export.face_options("Some Face") == ["-V", "mainfont=Some Face"] and export.face_options("") == [],
+          "…set by its files, so its bold and italic are its own cuts")
     with tempfile.TemporaryDirectory() as t:
         toml = pathlib.Path(t) / "colors.toml"
         toml.write_text('mode = "dark"\naccent = "#F5845B"\nbackground = "#2A2A25"\n')
@@ -158,8 +204,8 @@ def units() -> None:
         check(export.font(sample) == sample, f"export.font({sample!r}) resolves an installed Windows face")
         check(export.font("NoSuchLonghandFontXYZ") == export.font(),
               "export.font passes over a face asked for that is not installed")
-        check(export.font() == "Segoe UI" or "iA Writer Quattro S" in have or "iA Writer Duo S" in have,
-              "with no face asked for, Windows' reading face rather than pandoc's Computer Modern")
+        check(export.font() == "Adwaita Sans" and export.face_options("Adwaita Sans")[1] == "mainfont=AdwaitaSans",
+              "with no face asked for, the page's own Adwaita Sans from its cuts, not pandoc's Computer Modern")
 
         # No theme file on Windows: the omarchy look is Windows' own light
         # or dark and accent, as the page draws there.
@@ -231,9 +277,40 @@ def end_to_end() -> None:
     why = {r["text"].splitlines()[0][:12]: r["why"] for r in got["blocks"]}
     check(ins["- [x] one di"] and not ins["> [!private]"] and why["> [!private]"] == "private",
           "…a checkbox selected goes in; a private block selected stays out")
+    two = NOTE.splitlines().index("Words under it. ^abc-1")
+    got = json.loads(agent("export", "--date", "2026-11-02", "--select", f"{two}:{two + 1}", "--list").stdout)
+    check([r["text"] for r in got["blocks"] if r["in"]] == ["Words under it. ^abc-1", "# Something else #thesis"],
+          f"a selection into the next section: its blocks there too ({[r['text'] for r in got['blocks'] if r['in']]})")
     pick = next(r["hash"] for r in got["blocks"] if r["text"].startswith("> [!private]"))
     got = json.loads(agent("export", "--date", "2026-11-02", "--line", line, "--blocks", pick, "--list").stdout)
     check([r["kind"] for r in got["blocks"] if r["in"]] == ["callout"], "--blocks: the person's picks, a private one too")
+    first = next(r for r in got["blocks"] if r["text"] == "- second point")
+    check(first["show"] == "- second point" and first["level"] == 0 and first["lost"] == []
+          and next(r for r in got["blocks"] if r["kind"] == "heading" and r["why"] != "the title")["level"] == 2,
+          "each row says what it shows, its level, and what it will miss")
+
+    (vault / "Daily" / "2026-11-05.md").write_text("# Twice\n\n---\n\nOne.\n\n---\n\nTwo.\n\n---\n")
+    got = json.loads(agent("export", "--date", "2026-11-05", "--line", "0", "--list").stdout)
+    rules = [r for r in got["blocks"] if r["text"] == "---"]
+    check(len(rules) == 3 and len({r["hash"] for r in rules}) == 1, "three rules: one hash")
+    got = json.loads(agent("export", "--date", "2026-11-05", "--line", "0", "--list",
+                           "--blocks", f"{rules[1]['start']}:{rules[1]['hash']}").stdout)
+    check([r["start"] for r in got["blocks"] if r["in"]] == [rules[1]["start"]],
+          "--blocks START:HASH picks one of identical blocks, not all three")
+    got = json.loads(agent("export", "--date", "2026-11-05", "--line", "0", "--list",
+                           "--blocks", f"{rules[1]['start'] + 1}:{rules[1]['hash']}").stdout)
+    check(sum(r["in"] for r in got["blocks"]) == 1, "…moved a line, the nearest with its words")
+    got = json.loads(agent("export", "--date", "2026-11-05", "--line", "0", "--list", "--blocks", rules[0]["hash"]).stdout)
+    check(sum(r["in"] for r in got["blocks"]) == 3, "…and a bare hash (the page before) every block with it")
+    r = agent("export", "--date", "2026-11-29", "--list", ok=False)
+    check(r.returncode == 2 and "nothing is written on 29 November 2026 yet" in r.stderr and str(vault) not in r.stderr,
+          f"a day with no note says so, not its path ({r.stderr.strip()!r})")
+
+    (cfgdir / "longhand" / "settings.json").write_text(json.dumps({"export": {"author": "B. Student"}}))
+    got = json.loads(agent("export", "--date", "2026-11-02", "--line", line, "--list").stdout)
+    check(got["author"] == "B. Student" and got["pdf"].startswith(str(out)),
+          "the name set from the page joins config.json's export, its folder kept")
+    (cfgdir / "longhand" / "settings.json").unlink()
 
     r = agent("export", "--date", "2026-11-02", "--look", "pink", ok=False)
     check(r.returncode == 2 and "--look" in r.stderr, "an unknown look is refused")
@@ -248,14 +325,19 @@ def end_to_end() -> None:
 
     (vault / "Daily" / "2026-11-03.md").write_text("# Reflective Research Diary - 2026.11.03 #studio\nThe second week.\n")
     got = json.loads(agent("export", "--for", "Reflective Research Diary 2", "--tag", "studio", "--due", "2026-11-13", "--list").stdout)
-    check(got["from"]["date"] == "2026-11-03" and got["from"]["of"] == 2 and got["title"] == "Reflective Research Diary 2"
+    check(got["from"]["date"] == "2026-11-03" and got["from"]["of"] == 3 and not got["from"]["late"]
+          and got["title"] == "Reflective Research Diary 2"
           and got["pdf"].endswith("Reflective Research Diary 2.pdf") and got["date"] == "3 November 2026",
           f"--for a deadline: its likeliest section, named after it ({got.get('from')})")
     got = json.loads(agent("export", "--for", "Reflective Research Diary 2", "--tag", "studio", "--due", "2026-11-13",
                            "--pick", "1", "--list").stdout)
     check(got["from"]["date"] == "2026-11-02" and got["from"]["pick"] == 1, "--pick: the next one found")
-    r = agent("export", "--for", "Reflective Research Diary 2", "--tag", "studio", "--due", "2026-10-01", ok=False)
-    check(r.returncode == 2 and "no section" in r.stderr, "nothing written by its day: said, not guessed")
+    got = json.loads(agent("export", "--for", "Reflective Research Diary 2", "--tag", "studio", "--due", "2026-10-01",
+                           "--list").stdout)
+    check(got["from"]["late"] and got["from"]["date"] == "2026-11-02",
+          f"nothing written by its day: what was written after, said as late ({got['from']})")
+    r = agent("export", "--for", "Pilot", "--tag", "nosuch", ok=False)
+    check(r.returncode == 2 and "no section of #nosuch" in r.stderr, "no section of its course at all: said, not guessed")
 
     if not (shutil.which("pandoc") and shutil.which("xelatex")):
         print("skip the PDF itself: pandoc or xelatex is not installed")
@@ -270,6 +352,14 @@ def end_to_end() -> None:
               and "It began with the kick-off" in text, "…with its header and the kept words")
         check("#studio" not in text and "not for the teachers" not in text and "one diary a week" not in text
               and "d58" not in text, "…and without what was left out")
+    check(not made["replaces"], "a first export replaces nothing")
+    listed = json.loads(agent("export", "--date", "2026-11-02", "--line", line, "--list").stdout)
+    check(listed["replaces"], "…a second says it will replace its own")
+    (out / "Theirs.pdf").write_bytes(b"%PDF-1.4 theirs")
+    listed = json.loads(agent("export", "--date", "2026-11-02", "--line", line, "--list").stdout)
+    check(listed["taken"] == sorted([pdf.name, "Theirs.pdf"]) and listed["ours"] == [pdf.name],
+          "…and lists the folder's PDFs and which an export made, for the sheet to name any title's file")
+    (out / "Theirs.pdf").unlink()
     again = json.loads(agent("export", "--date", "2026-11-02", "--line", line, "--look", "omarchy").stdout)
     check(again["pdf"] == made["pdf"] and len(list(out.glob("*.pdf"))) == 1, "a second export replaces its own file")
     record = json.loads((state / "longhand" / "exports.json").read_text())["files"]
@@ -278,7 +368,19 @@ def end_to_end() -> None:
     got = json.loads(agent("export", "--for", "Reflective Research Diary 9", "--tag", "studio", "--due", "2026-11-02",
                            "--list").stdout)
     check(got["from"]["before"] == ["Reflective Research Diary - 2026.11.02"],
-          f"…and a deadline's export says that day was exported before, and as what ({got['from']['before']})")
+          f"…and a deadline's export says that section was exported before, and as what ({got['from']['before']})")
+    got = json.loads(agent("export", "--for", "Project brief 9", "--tag", "studio", "--due", "2026-11-02",
+                           "--list").stdout)
+    check(got["from"]["heading"] == "Project brief" and got["from"]["before"] == [],
+          f"…but not another section of that day ({got['from']})")
+
+    # Code and a highlight on the theme's ground: the PDF is made.
+    (vault / "Daily" / "2026-11-06.md").write_text("# Code #studio\n==marked== -> on\n```python\n# c\nx = 1\n```\n")
+    made = json.loads(agent("export", "--date", "2026-11-06", "--line", "1", "--look", "omarchy").stdout)
+    text = subprocess.run(["pdftotext", made["pdf"], "-"], capture_output=True, text=True).stdout \
+        if shutil.which("pdftotext") else ""
+    check(pathlib.Path(made["pdf"]).is_file() and (not text or ("→ on" in text and "# c" in text)),
+          f"…code and a highlight in the omarchy look, the arrow drawn ({text!r})")
 
 
 def main() -> int:

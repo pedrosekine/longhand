@@ -733,6 +733,22 @@ Small, when passing by:
     Diary 2 was not written yet. Named after the deadline; never closing
     it, which stays the person's step; Esc back to the dashboard. Live
     checks in 12y.
+    **The export pass** (2026-11-28): sections written after the deadline
+    are reachable too, last and marked late, and a heading sharing no word
+    with its name is put after, never dropped; the "made into a PDF
+    before" warning is per section, not per day. Fenced code is one block,
+    written as it is; inline code keeps its `#` and brackets; arrows go as
+    the note draws them; a callout without a title says its kind; the
+    omarchy look draws code and ==highlights== readably on a dark ground;
+    the face is the page's own Adwaita Sans, from its cuts. Rows show the
+    words that go and say what a picture or embedded note will miss;
+    picks are by line and words, so two alike are two; a selection into
+    the next section takes its blocks. Listing and writing are two
+    states and nothing changes what is being written; the footer names
+    the file and says when it replaces one; the name is typed in the
+    byline; a section's last picks come back this session; going to the
+    note lets the sheet go, and a deadline's PDF goes back to the
+    dashboard.
     Waiting inside it: remembering per project what was left out (the
     diary repeats ten times), once the sheet is in use.
 14. **A `/` menu in the note** (2026-11-04, asked with item 13): `/` at a

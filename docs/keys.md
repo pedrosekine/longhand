@@ -272,11 +272,13 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 |---|---|---|
 | The next block | `↓` · `j` | in the export |
 | The block before | `↑` · `k` | in the export |
+| A screenful of blocks down | `PgDn` | in the export |
+| A screenful of blocks up | `PgUp` | in the export |
 | Put the block in, or leave it out | `Space` | in the export |
 | From a deadline: the section found before (its likelier one) | `←` | in the export |
 | From a deadline: the next section found | `→` | in the export |
 | The look: minimal or your Omarchy theme | `l` | in the export |
-| Edit the title (Enter or Esc: back to the blocks) | `Tab` | in the export |
+| Edit the title (Tab: on to your name; Enter: back to the blocks; Esc: as it was) | `Tab` | in the export |
 | Write the PDF and open it | `Enter` | in the export |
 | Close it, back to the note (or the dashboard it came from) | `Esc` | in the export |
 

@@ -405,11 +405,13 @@ var actions = [
 
   { id: "exportDown", group: "export", places: ["export"], does: "The next block", keys: ["Down", "J"] },
   { id: "exportUp", group: "export", places: ["export"], does: "The block before", keys: ["Up", "K"] },
+  { id: "exportPageDown", group: "export", places: ["export"], does: "A screenful of blocks down", keys: ["PgDn"] },
+  { id: "exportPageUp", group: "export", places: ["export"], does: "A screenful of blocks up", keys: ["PgUp"] },
   { id: "exportPick", group: "export", places: ["export"], does: "Put the block in, or leave it out", keys: ["Space"] },
   { id: "exportPrevSection", group: "export", places: ["export"], does: "From a deadline: the section found before (its likelier one)", keys: ["Left"] },
   { id: "exportNextSection", group: "export", places: ["export"], does: "From a deadline: the next section found", keys: ["Right"] },
   { id: "exportLook", group: "export", places: ["export"], does: "The look: minimal or your " + (onWindows ? "Windows colours" : "Omarchy theme"), keys: ["L"] },
-  { id: "exportTitle", group: "export", places: ["export"], does: "Edit the title (Enter or Esc: back to the blocks)", keys: ["Tab"] },
+  { id: "exportTitle", group: "export", places: ["export"], does: "Edit the title (Tab: on to your name; Enter: back to the blocks; Esc: as it was)", keys: ["Tab"] },
   { id: "exportWrite", group: "export", places: ["export"], does: "Write the PDF and open it", keys: ["Enter"] },
   { id: "exportClose", group: "export", places: ["export"], does: "Close it, back to the note (or the dashboard it came from)", keys: ["Esc"] },
 
