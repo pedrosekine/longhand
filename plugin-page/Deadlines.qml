@@ -130,6 +130,10 @@ Item {
     var c = {}
     for (var k in d) c[k] = d[k]
     c.status = status
+    // Closed now, as the store will say: with no moment of its own it read
+    // as closed before today, and stood under "waiting for a grade" until
+    // the store was read again (2026-11-27).
+    c.doneAt = status === "open" ? 0 : Math.floor(Date.now() / 1000)
     return c
   }
   function ask(id, status, args) {

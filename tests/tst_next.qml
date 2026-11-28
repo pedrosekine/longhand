@@ -57,7 +57,7 @@ TestCase {
     compare(said(rows), ["head:DUE", "month:" + Qt.formatDate(new Date(2026, 9, 10), "MMMM"), "d2", "d1",
                          "month:" + Qt.formatDate(new Date(2026, 10, 2), "MMMM"), "d6",
                          "month:" + Qt.formatDate(new Date(2026, 9, 10), "MMMM"), "d7", "d3",
-                         "head:NOT IN A NOTE YET", "d5", "grading:1"])
+                         "head:NOT IN A NOTE YET", "d5", "band:WAITING FOR A GRADE ▸ 1"])
   }
 
   function test_boxes_by_what_they_ask() {
@@ -78,7 +78,7 @@ TestCase {
                          "head:Interdisciplinary Seminar", "a seminar thought",
                          "head:Bikes, the long list", "a bike thought",   // a tag the list does not know: its heading's name
                          "head:No project", "loose",
-                         "shelf:1"])
+                         "band:SET ASIDE ▸ 1"])
     var band = rows.filter(function (r) { return r.kind === "head" && r.text === "Interdisciplinary Seminar" })[0]
     compare(band.tag, "#intsem")
     compare(rows.filter(function (r) { return r.kind === "task" && r.task.title === "a seminar thought" })[0].under, "Interdisciplinary Seminar")
@@ -89,7 +89,70 @@ TestCase {
                     deadlines: [deadline(4, "done", sec(10, 11), { doneAt: sec(10, 12, 9, 0) }),
                                 deadline(8, "done", sec(10, 10), { doneAt: sec(10, 11, 9, 0), grade: "1" })],
                     showShelf: true, showGrading: true })
-    compare(said(Next.rows(s)), ["head:SET ASIDE", "gone quiet", "head:WAITING FOR A GRADE", "d4"])
+    compare(said(Next.rows(s)), ["band:SET ASIDE 1", "gone quiet", "band:WAITING FOR A GRADE 1", "d4"])
+    // Bands of their own, in every order: they fold again as they opened,
+    // and folding every band leaves them be.
+    var bands = Next.rows(s).filter(function (r) { return r.kind === "band" })
+    compare(bands.map(function (r) { return [r.id, r.aside, r.next] }), [["shelf", true, null], ["grading", true, null]])
+    compare(said(Next.rows(Object.assign({}, s, { order: "date", showShelf: false }))), ["band:SET ASIDE ▸ 1", "band:WAITING FOR A GRADE 1", "d4"])
+  }
+
+  // A box closed today, ticked or cancelled, stays until tomorrow after
+  // the open ones; by day, one with no day is today's, not still "no day
+  // yet" (2026-11-27).
+  function test_boxes_closed_today_come_after() {
+    var tasks = [task("ticked", { done: true, age: 1 }), task("to do", { age: 2 }), task("dropped", { cancelled: true, age: 3 }),
+                 task("thought, ticked", { kind: "bullet", done: true }), task("thought", { kind: "bullet" }),
+                 task("Tuesday, done", { when: "2026-10-14", done: true }), task("Tuesday", { when: "2026-10-14" })]
+    compare(said(Next.rows(state({ tasks: tasks }))),
+            ["head:DOING", "month:" + Qt.formatDate(new Date(2026, 9, 14), "MMMM"), "Tuesday", "Tuesday, done",
+             "head:TO SCHEDULE", "to do", "ticked", "dropped",
+             "head:No project", "thought", "thought, ticked"])
+    var byDay = Next.rows(state({ tasks: tasks, order: "date", folds: { "*": true } }))
+    var day = said(byDay)
+    compare(day.slice(0, 2), ["band:TODAY 0", "band:DONE TODAY 4"])
+    compare(day.slice(2, 6).sort(), ["Tuesday, done", "dropped", "thought, ticked", "ticked"])
+    compare(day.slice(6), ["band:THIS WEEK 1", "Tuesday", "band:NO DAY YET 2", "to do", "thought"])
+    var none = Next.rows(state({ tasks: tasks, order: "date" })).filter(function (r) { return r.id === "none" })[0]
+    compare([none.count, none.next.title], [2, "to do"])
+    // The strip counts what is open.
+    compare(Next.courses(state({ tasks: tasks })).total, 3)
+  }
+
+  // A proposal away from its box says which box, and is not set in under
+  // the row above it (2026-11-27: "drop it?" under "from the agent").
+  function test_a_proposal_away_from_its_box_names_it() {
+    var tasks = [task("outline", { when: "2026-10-14", key: "k1" }), task("someday", { key: "k2" })]
+    var rows = Next.rows(state({ order: "date", tasks: tasks,
+                                 proposals: [{ id: "p1", key: "k1", kind: "drop", title: "outline" },
+                                             { id: "p2", key: "k2", kind: "drop", title: "someday" }] }))
+    var p1 = rows.filter(function (r) { return r.item && r.item.id === "p1" })[0]
+    var p2 = rows.filter(function (r) { return r.item && r.item.id === "p2" })[0]
+    compare([p1.nested, p2.nested, p2.task.title], [true, false, "someday"])
+    compare(Say.sayAsk(p2.item, p2.nested), "drop it? · someday")
+  }
+
+  // A course picked whose rows are all in folded bands opens them, as words
+  // do; such a band says it is held open (2026-11-27).
+  function test_a_course_picked_opens_what_holds_it() {
+    var s = { tasks: [task("someday", { project: "thesis" }), task("today", { when: "2026-10-13" })], order: "date" }
+    var rows = Next.rows(state(Object.assign({ lens: ["thesis"] }, s)))
+    compare(said(rows), ["band:TODAY 0", "band:NO DAY YET 1", "someday"])
+    compare(rows[1].forced, true)
+    // Something of it showing already: the bands stay as they were.
+    var more = Next.rows(state(Object.assign({ lens: ["thesis"] }, s, { tasks: s.tasks.concat([task("now", { project: "thesis", when: "2026-10-13" })]) })))
+    compare(said(more), ["band:TODAY 1", "now", "band:NO DAY YET ▸ 1"])
+    compare(more[0].forced, false)
+    compare(said(Next.rows(state(Object.assign({ query: "#thesis" }, s)))), ["band:TODAY 0", "band:NO DAY YET 1", "someday"])
+  }
+
+  // The week starts where the calendar's does: on a Sunday start, Sunday
+  // 18 October is next week's.
+  function test_the_week_starts_where_the_calendar_s_does() {
+    var d = [deadline(1, "open", sec(10, 17)), deadline(2, "open", sec(10, 18))]
+    compare(said(Next.rows(state({ order: "date", deadlines: d, weekStart: 0 }))),
+            ["band:TODAY 0", "band:THIS WEEK 1", "d1", "band:NEXT WEEK 1", "d2"])
+    compare(said(Next.rows(state({ order: "date", deadlines: d }))), ["band:TODAY 0", "band:THIS WEEK 2", "d1", "d2"])
   }
 
   function test_proposals_where_the_box_is() {
@@ -151,7 +214,7 @@ TestCase {
   function test_a_lens_keeps_its_courses_in_every_band() {
     var rows = Next.rows(strip_state({ lens: ["respro"] }))
     compare(said(rows), ["head:DUE", "month:" + Qt.formatDate(new Date(2026, 9, 16), "MMMM"), "d6", "proposal:p1",
-                         "head:TO SCHEDULE", "ask Bernd about scope", "shelf:1"])
+                         "head:TO SCHEDULE", "ask Bernd about scope", "band:SET ASIDE ▸ 1"])
     // No project is a course of its own, and so is a question about no box.
     compare(said(Next.rows(strip_state({ lens: [""] }))), ["head:TO SCHEDULE", "call my sister", "head:FROM THE AGENT", "question:p2"])
     compare(said(Next.rows(strip_state({ lens: ["respro", "intsem"] }))).filter(function (x) { return x.charAt(0) === "d" }),
@@ -179,14 +242,14 @@ TestCase {
             ["head:Interdisciplinary Seminar", "month:DUE", "d7", "month:DOING", "outline the talk", "month:TO SCHEDULE", "read for the seminar",
              "head:Themenvorschlag", "month:DUE", "d6", "proposal:p1", "month:TO SCHEDULE", "ask Bernd about scope",
              "head:No project", "month:TO SCHEDULE", "call my sister",
-             "shelf:1", "head:FROM THE AGENT", "question:p2", "raised:r1"])
+             "band:SET ASIDE ▸ 1", "head:FROM THE AGENT", "question:p2", "raised:r1"])
     // By date, the bands narrow as they come near: today (nothing due,
     // said), this week, next week open; November and what has no day
     // yet folded, each with how much it holds.
     compare(said(Next.rows(strip_state({ order: "date" }))),
             ["band:TODAY 0", "band:THIS WEEK 1", "d6", "proposal:p1", "band:NEXT WEEK 1", "outline the talk",
              "band:" + Qt.formatDate(new Date(2026, 10, 2), "MMMM").toUpperCase() + " ▸ 1", "band:NO DAY YET ▸ 3",
-             "shelf:1", "head:FROM THE AGENT", "question:p2", "raised:r1"])
+             "band:SET ASIDE ▸ 1", "head:FROM THE AGENT", "question:p2", "raised:r1"])
   }
 
   // The date bands (2026-11-03), on Tuesday 13 October: late, today, the

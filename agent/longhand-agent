@@ -533,10 +533,16 @@ def open_tasks(cfg: dict, recent_days: int) -> list[dict]:
     today), which stay where they were until tomorrow, so finishing
     something is seen rather than made to vanish (2026-10-17). A cancelled
     box is closed, not open: dropping something is an answer, and the point
-    of having the state."""
+    of having the state. One cancelled today (a `❌` of today) stays until
+    tomorrow too, as a cancelled deadline does (docs/tasks.md, rule 5):
+    until 2026-11-27 Delete on a box made it vanish the moment it was
+    pressed, with nothing to say it had been dropped."""
     today = dt.date.today().isoformat()
-    rows = [r for r in outcomes(cfg, days=3650)
-            if not r["cancelled"] and (not r["done"] or r.get("doneAt", "")[:10] == today)]
+    def kept(r: dict) -> bool:
+        if r["cancelled"]:
+            return r.get("cancelledAt", "")[:10] == today
+        return not r["done"] or r.get("doneAt", "")[:10] == today
+    rows = [r for r in outcomes(cfg, days=3650) if kept(r)]
     for r in rows:
         r["recent"] = r["age"] < recent_days
     return rows

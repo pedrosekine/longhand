@@ -1276,7 +1276,7 @@ Item {
   property int dashSeenId: 0         // the highest id on the list when the dashboard was last left
   property int newAfterId: 0         // …as it was when this visit began
   onDashOpenChanged: {
-    if (root.dashOpen) { root.newAfterId = root.dashSeenId; return }
+    if (root.dashOpen) { root.newAfterId = root.dashSeenId; root.dashNow = Date.now(); return }
     var top = root.dashSeenId
     for (var i = 0; i < root.proposals.length; i++) top = Math.max(top, Number(root.proposals[i].id) || 0)
     root.dashSeenId = top
@@ -1424,7 +1424,13 @@ Item {
   property var pendingSection: null  // a heading to land on once its note is open
   property var tasks: []
   property var raised: []
-  property var tickHistory: []   // ticks made from the panel, newest last, for Ctrl+Z
+  // What the dashboard changed, newest last, for Ctrl+Z: a tick, a drop, a
+  // priority, a day, words, a grade, a box set aside, a document filed —
+  // each with the words that say it (`say`), so taking it back says what
+  // came back. Until 2026-11-27 only ticks, drops and filing were kept,
+  // and Ctrl+Z after anything else silently took back an older tick.
+  property var tickHistory: []
+  function rememberUndo(entry) { root.tickHistory = root.tickHistory.concat([entry]).slice(-100) }
   property bool showShelf: false      // the "set aside" band unfolded
   // A tick from the dashboard is drawn at once, before the note is written
   // and the list read again (rowKey → true), and the row that was just
@@ -2551,7 +2557,8 @@ Item {
                 dash: root.dashWhenFor && out(dash.dashWhenRowRef) ? root.dashWhenFor : null,
                 mention: root.mention && out(mentionBox) && out(editor) ? root.mention : null,
                 dayMention: dm && out(dmBox) && out(dmList) ? dm : null,
-                project: root.addingProject && out(sidebar.projectAskRef) }
+                project: root.addingProject && out(sidebar.projectAskRef),
+                strip: root.stripOpen && out(dash.unfoldedRef) }
     Qt.callLater(function () {
       if (was.when && root.whenFor === was.when) root.whenFor = null
       if (was.name && root.newProject === was.name) root.newProject = null
@@ -2559,6 +2566,7 @@ Item {
       if (was.mention && root.mention === was.mention) root.mention = null
       if (was.dayMention && root.dayMention === was.dayMention) root.dayMention = null
       if (was.project && root.addingProject) root.addingProject = false
+      if (was.strip) root.foldStrip()
     })
   }
 
@@ -2572,22 +2580,49 @@ Item {
     var row = root.taskRows[index]
     if (!row || row.kind === "head" || row.kind === "month") return
     dash.dashKeysRef.forceActiveFocus()
-    root.taskFocus = index
+    dash.pointAt(index)
     root.used("edit-menu", "dash")
     var act = function (id, text, fn, on) {
       return { text: text, key: root.keyName(id), enabled: on !== false, run: function () { root.taskFocus = index; fn() } }
     }
+    // What each row offers is what its keys do on it, named as they act
+    // there (2026-11-27: a deadline's menu lacked rename, priority and the
+    // rest its keys did; one not in a note offered to go to a line it does
+    // not have; a box set aside offered to set it aside).
     var k = row.kind, list = []
+    var noChat = root.noChatWhy(row) !== ""
     if (k === "task") {
-      list = [act("dashOpen", "Go to its line", root.activateTask), act("dashDone", "Done (again: not done)", root.tickFocused),
-              act("dashWhen", "Reschedule", root.startDashWhen), act("dashNoDate", "Take its date off", root.noDateFocused, !!(row.task && row.task.when)),
-              act("dashPriority", "Change its priority", root.cyclePriorityFocused), act("dashRename", "Rename", root.startDashRename),
-              act("dashTalk", "Chat about it", root.talkFocused), act("dashFollow", "Follow its link", root.followRowLink, root.rowLinks(row).length > 0),
-              act("dashShelve", "Set it aside", root.shelveFocused), act("dashDrop", "Drop it", root.dropFocused)]
+      var t = row.task, shut = !!t.done || !!t.cancelled
+      list = [act("dashOpen", "Go to its line", root.activateTask),
+              act("dashDone", t.cancelled ? "Bring it back" : t.done ? "Not done after all" : "Done", root.tickFocused),
+              act("dashWhen", t.when ? "Another day to work on it" : "A day to work on it", root.startDashWhen, !shut),
+              act("dashNoDate", "Take its day off", root.noDateFocused, !shut && !!t.when),
+              act("dashPriority", "Change its priority", root.cyclePriorityFocused, !shut), act("dashRename", "Rename", root.startDashRename),
+              act("dashTalk", "Chat about it", root.talkFocused, !noChat), act("dashFollow", "Follow its link", root.followRowLink, root.rowLinks(row).length > 0),
+              act("dashExport", "Export its section as a PDF", root.exportFocused, !!t.project)]
+      if (t.life > 0 && !shut)
+        list = list.concat([act("dashShelve", t.away ? "Bring it back" : "Set it aside", root.shelveFocused),
+                            act("dashKeep", "Renew: its clock starts again", root.keepFocused)])
+      list = list.concat([act("dashDrop", "Drop it", root.dropFocused, !t.cancelled)])
     } else if (k === "deadline") {
-      list = [act("dashOpen", "Go to its line", root.activateTask), act("dashDone", "Done (again: not done)", root.tickFocused),
-              act("dashWhen", "The day to work on it", root.startDashWhen), act("dashGrade", "Grade it", root.startDashGrade),
-              act("dashTalk", "Chat about it", root.talkFocused), act("dashDrop", "Cancel it", root.dropFocused)]
+      var d = row.deadline, open = d.status === "open", line = root.taskOfAnchor(d.id)
+      var unwritten = !Bound.parseLink(d.link)
+      list = [act("dashOpen", unwritten ? "Write it into today's note" : "Go to its line", root.activateTask),
+              act("dashDone", d.status === "cancelled" ? "Open it again" : open ? "Done" : "Not done after all", root.tickFocused)]
+      if (d.status !== "cancelled")
+        list = list.concat([act("dashWhen", line && line.when ? "Another day to work on it" : "A day to work on it", root.startDashWhen, open && !!line),
+                            act("dashNoDate", "Take its day off", root.noDateFocused, open && !!line && !!line.when),
+                            act("dashPriority", "Change its priority", root.cyclePriorityFocused, open && !!line),
+                            act("dashRename", "Rename", root.startDashRename),
+                            act("dashGrade", d.grade !== "" ? "Change its grade" : "Grade it", root.startDashGrade),
+                            act("dashTalk", "Chat about it", root.talkFocused, !noChat),
+                            act("dashFollow", "Follow its link", root.followRowLink, root.rowLinks(row).length > 0),
+                            act("dashExport", "Export its section as a PDF", root.exportFocused, !!d.project),
+                            act("dashDrop", "Cancel it", root.dropFocused)])
+    } else if ((k === "proposal" || k === "told") && row.item.kind === "file") {
+      list = [act("dashDone", k === "told" ? "Let it stand" : "File it", root.tickFocused),
+              act("dashOpen", "Open it", root.activateTask),
+              act("dashDrop", k === "told" ? "Put it back" : "Decline", root.dropFocused)]
     } else if (k === "proposal" || k === "question") {
       list = [act("dashDone", k === "question" ? "Accept the recommended answer" : "Accept", root.tickFocused),
               act("dashOpen", "Chat about it", root.activateTask), act("dashDrop", "Decline", root.dropFocused)]
@@ -2596,7 +2631,13 @@ Item {
               act("dashDrop", "Undo it", root.dropFocused)]
     } else if (k === "raised") {
       list = [act("dashOpen", "Dismiss it", root.activateTask)]
-    } else list = [act("dashOpen", k === "band" ? (row.open ? "Fold it" : "Open it") : "Show it", root.activateTask)]
+    } else if (k === "band") {
+      if (row.count === 0 || row.fixed) return
+      list = [act("dashOpen", row.open ? "Fold it" : "Open it", root.activateTask, !row.forced)]
+      if (!row.aside && root.dashOrder === "date")
+        list = list.concat([act("dashFoldAll", "Collapse every band", function () { root.foldAll(false) }),
+                            act("dashUnfoldAll", "Expand every band", function () { root.foldAll(true) })])
+    } else return
     editMenu.openAt(over, x, y, list)
   }
 
@@ -2816,6 +2857,9 @@ Item {
   property string dashWhenText: ""
   property string dashFieldKind: "when"   // "when" (t), "rename" (Ctrl+E) or "grade" (g)
   property string dashFieldStart: ""      // the words a rename starts from
+  property string dashWhenError: ""       // why Enter did not take what is typed, said beside it
+  onDashWhenTextChanged: root.dashWhenError = ""
+  onDashWhenForChanged: root.dashWhenError = ""
   property int taskFocus: 0
   property string currentHash: ""
   property string currentTrigger: ""   // the sign on the block under the cursor, for the header's "ask"
@@ -2985,7 +3029,20 @@ Item {
   readonly property var taskRows: Next.rows({ deadlines: dl.items, tasks: root.tasks, projects: root.projects, raised: root.raised,
                                               proposals: root.proposals, showShelf: root.showShelf, showGrading: root.showGrading,
                                               lens: root.dashLens, query: root.dashQuery, order: root.dashOrder,
-                                              folds: root.dashFolds })
+                                              folds: root.dashFolds, weekStart: root.firstDow, now: new Date(root.dashNow) })
+
+  // The dashboard's minute (2026-11-27, as the note's since the editor
+  // pass): what the clock changes — a deadline's hour passing, so its row
+  // and pill turn late; midnight, so today's bands, "done today" and
+  // "tomorrow" move on — is drawn without waiting for something else to
+  // change. Read as the dashboard opens, then each minute while it is.
+  property double dashNow: Date.now()
+  Timer {
+    interval: 60000
+    running: root.dashOpen
+    repeat: true
+    onTriggered: root.dashNow = Date.now()
+  }
 
   // The course strip above the dashboard's list (2026-11-03): a chip for
   // each course with something open, the ⌕ before them to type into, the
@@ -3099,10 +3156,62 @@ Item {
   onDashNarrowedChanged: if (!root.dashNarrowed) Qt.callLater(root.syncDash)
   onTaskRowsChanged: {
     root.syncDash()
-    if (root.taskFocusKey === "") return
-    for (var i = 0; i < root.taskRows.length; i++) {
-      if (root.rowKey(root.taskRows[i]) === root.taskFocusKey) {
+    var rows = root.taskRows
+    if (root.taskFocusKey !== "") {
+      for (var i = 0; i < rows.length; i++) {
+        if (root.rowKey(rows[i]) !== root.taskFocusKey) continue
+        // A row just closed from here sinks below the open ones: the
+        // cursor stays where it was, on the next thing to do, rather than
+        // following it down (ticking down a list is tick, tick, tick).
+        if (root.justClosed === root.taskFocusKey && root.rowClosed(rows[i]) && i > root.taskFocus) break
         if (i !== root.taskFocus) root.taskFocus = i
+        return
+      }
+      if (i < rows.length) { root.justClosed = ""; root.settleTaskFocus(); root.taskFocusKey = root.rowKey(rows[root.taskFocus]); return }
+      // Gone from the list as drawn, though not from the notes: a day given
+      // that puts it in a band folded, say. Where it went is said, so it
+      // does not seem to have vanished (2026-11-27).
+      root.sayWhereItWent(root.taskFocusKey)
+    }
+    root.settleTaskFocus()
+  }
+  // A row the cursor can be on: not a heading or a month, nor a band with
+  // nothing to fold.
+  function rowActs(row) {
+    return !!row && row.kind !== "head" && row.kind !== "month"
+      && !(row.kind === "band" && (row.count === 0 || row.fixed))
+  }
+  // The cursor where a row can be: in the list, on a row that acts —
+  // nearest below, else above (2026-11-27: the last proposal declined took
+  // its band's heading with it, and the cursor was left past the end, lit
+  // nowhere, where ↑ climbed onto the strip; a band unfolded left it on
+  // the heading that took the band's place).
+  function settleTaskFocus() {
+    var rows = root.taskRows
+    if (rows.length === 0) { if (root.taskFocus !== 0) root.taskFocus = 0; return }
+    var at = Math.max(0, Math.min(root.taskFocus, rows.length - 1))
+    if (!root.rowActs(rows[at])) {
+      var down = at, up = at
+      while (down < rows.length && !root.rowActs(rows[down])) down++
+      while (up >= 0 && !root.rowActs(rows[up])) up--
+      at = down < rows.length ? down : up >= 0 ? up : at
+    }
+    if (at !== root.taskFocus) root.taskFocus = at
+    else root.taskFocusKey = root.rowKey(rows[at])
+  }
+  // A box the cursor was on, now in a band folded (or set aside): its
+  // band named, in passing.
+  function sayWhereItWent(key) {
+    if (key.charAt(0) !== "t" && key.charAt(0) !== "d") return
+    var all = Next.rows({ deadlines: dl.items, tasks: root.tasks, projects: root.projects, raised: [], proposals: [],
+                          showShelf: true, showGrading: true, lens: root.dashLens, query: root.dashQuery,
+                          order: root.dashOrder, folds: { "*": true }, weekStart: root.firstDow, now: new Date(root.dashNow) })
+    var band = null
+    for (var i = 0; i < all.length; i++) {
+      if (all[i].kind === "band") band = all[i]
+      if (root.rowKey(all[i]) === key) {
+        // Done today needs no word: the tick said it.
+        if (band && !band.fixed && band.id !== "done") root.showHint("now under " + band.text.toLowerCase() + ", folded · " + root.keyName("dashOpen") + " on it opens it")
         return
       }
     }
@@ -5579,24 +5688,35 @@ Item {
     var was = root.here
     if (!root.dashOpen) root.noteFrom("dash")
     root.dashOpen = !root.dashOpen
-    root.closeTalk(false)
+    // A task's chat belongs to the dashboard (docs/navigation.md): it goes
+    // with it and comes back with it, as a block's does with the note
+    // (`talkOpen` asks for the dashboard). Until 2026-11-27 it was closed.
     root.dashWhenFor = null
     root.dashWhenText = ""
-    root.showShelf = false
-    root.showGrading = false
     root.stripAt = -1
     root.stripOpen = false
     if (root.dashOpen) {
       root.used("dashboard")
-      root.taskFocus = 0
-      root.moveTaskFocus(0)
+      // Back on the row it was left on, when it is still there (2026-11-27:
+      // Enter to look at a line and back again was row 0, twenty rows up).
+      var at = -1
+      for (var i = 0; root.taskFocusKey !== "" && i < root.taskRows.length; i++)
+        if (root.rowKey(root.taskRows[i]) === root.taskFocusKey) { at = i; break }
+      if (at >= 0) root.taskFocus = at
+      else { root.taskFocus = 0; root.moveTaskFocus(0) }
       root.refreshTasks()
       root.refreshProposals()
       root.runPlan(false)
+      if (root.talkThread !== "") root.fetchTalk()
       if (root.keysOpen) root.toggleKeys()
       if (root.settingsOpen) root.toggleSettings()
       dash.dashKeysRef.forceActiveFocus()
+      Qt.callLater(dash.revealFocused)
     } else {
+      // What was unfolded for a look is folded again; the words typed and
+      // the courses picked stay, for the way back from a line looked at.
+      root.showShelf = false
+      root.showGrading = false
       root.giveBack("dash", was, "center")
     }
   }
@@ -5645,10 +5765,16 @@ Item {
     if (!row) return ""
     if (row.kind === "deadline") return "d" + row.deadline.id
     if (row.kind === "proposal" || row.kind === "question" || row.kind === "told") return "p" + row.item.id
-    if (row.kind === "task") return row.task.date + "|" + row.task.line + "|" + row.task.text
+    // By its words alone, never its facts: a priority, a day or a tick
+    // changed its key until 2026-11-27, and the cursor fell to the next
+    // row, where the second `p` changed the wrong box.
+    if (row.kind === "task") return "t" + root.taskKey(row.task.date, Task.wordsOf(row.task.text))
     if (row.kind === "band") return "b" + row.id
     return ""
   }
+
+  property string justClosed: ""   // the row key of what was just ticked or dropped from here
+  function taskKey(date, words) { return date + "|" + String(words).replace(/\s+/g, " ").trim() }
 
   // The tick, felt (2026-10-17, after Todoist): the row is done on screen
   // this frame, plays its tick, and stays — the list is not read again
@@ -6455,7 +6581,8 @@ Item {
 
   // A deadline row's second line (Say.deadlineWhere).
   function deadlineWhere(d) {
-    return Say.deadlineWhere(d, root.taskOfAnchor(d.id), root.projects, root.origins[String(d.id)], root.dueDates[String(d.id)])
+    return Say.deadlineWhere(d, root.taskOfAnchor(d.id), root.projects, root.origins[String(d.id)], root.dueDates[String(d.id)],
+                             new Date(root.dashNow))
   }
 
   function taskOfAnchor(id) { return Next.taskOfAnchor(root.tasks, id) }
@@ -6567,9 +6694,26 @@ Item {
   function talkFocused() {
     var row = root.taskRows[root.taskFocus]
     if (!row) return
+    // What has no chat says why, and what to do instead (2026-11-27: C did
+    // nothing on these, under a key that offered it).
+    var why = root.noChatWhy(row)
+    if (why !== "") { root.showHint(why); return }
     if (row.kind === "proposal" || row.kind === "question" || row.kind === "told") root.openTalk(row.item)
     else if (row.kind === "task") root.openTaskTalk(row.task)
     else if (row.kind === "deadline") root.openTaskTalk(root.taskOfAnchor(row.deadline.id))
+  }
+  // Why a row has no chat to open, in words; "" when it has one.
+  function noChatWhy(row) {
+    if (!row) return " "
+    if ((row.kind === "proposal" || row.kind === "told") && row.item.kind === "file")
+      return "a document: " + root.keyName("dashOpen") + " opens it, " + root.keyName("dashDone") + " files it"
+    var t = row.kind === "task" ? row.task : row.kind === "deadline" ? root.taskOfAnchor(row.deadline.id) : null
+    if (row.kind === "deadline" && !t)
+      return Bound.parseLink(row.deadline.link) ? "its line is in a note not read yet — " + root.keyName("dashOpen") + " goes to it"
+        : "not in a note yet — " + root.keyName("dashOpen") + " writes it into today's note, then it can be talked about"
+    if (t && t.private) return "private: the agent sees nothing of this box"
+    if (row.kind !== "task" && row.kind !== "deadline" && row.kind !== "proposal" && row.kind !== "question" && row.kind !== "told") return " "
+    return ""
   }
 
   function fetchTalk() {
@@ -6739,7 +6883,7 @@ Item {
     // nothing could take it back).
     if (p.kind === "file") {
       root.resolveProposal(p, "accept", "")
-      root.tickHistory = root.tickHistory.concat([{ unfile: p.id }])
+      root.rememberUndo({ unfile: p.id, say: "filing “" + String(p.name || "").replace(/\.pdf$/i, "") + "”" })
       root.showHint("filed “" + String(p.name || "").replace(/\.pdf$/i, "") + "” in " + (p.title || p.project)
                     + " · " + root.keyName("dashUndo") + " puts it back")
       return
@@ -6945,8 +7089,8 @@ Item {
       var timed = !(at.getHours() === 23 && at.getMinutes() === 59)
       // Closed: nothing owed, so no day to say (it said "3 days late").
       if (d.status !== "open") return []
-      out.push({ text: Say.sayDue(Qt.formatDateTime(at, timed ? "yyyy-MM-dd HH:mm" : "yyyy-MM-dd")),
-                 tone: d.due * 1000 < Date.now() ? "late" : "due" })
+      out.push({ text: Say.sayDue(Qt.formatDateTime(at, timed ? "yyyy-MM-dd HH:mm" : "yyyy-MM-dd"), new Date(root.dashNow)),
+                 tone: d.due * 1000 < root.dashNow ? "late" : "due" })
       if (lt && lt.est) out.push({ text: lt.est, tone: "est" })
       return out
     }
@@ -6956,21 +7100,32 @@ Item {
     if (row.kind === "raised") return [{ text: "dismiss", tone: "act" }]
     if (row.kind !== "task") return out
     var t = row.task
-    if (t.done) return out
+    if (t.done || t.cancelled) return out
     if (t.when) out.push(root.doPill(t))
-    if (t.due) out.push({ text: Say.sayDue(t.due), tone: "due" })
+    // A box's own due date gone by is late, as a deadline's is: it stood in
+    // LATE drawn as nothing owed (2026-11-27).
+    if (t.due) out.push({ text: Say.sayDue(t.due, new Date(root.dashNow)), tone: root.taskLate(t) ? "late" : "due" })
     if (t.est) out.push({ text: t.est, tone: "est" })
     return out
   }
 
   function doPill(t) {
-    return { text: "do " + Say.sayDate(t.when) + (root.agentDates[t.key] === t.when ? " ◇" : ""), tone: "do" }
+    return { text: Say.sayDo(t.when, new Date(root.dashNow)) + (root.agentDates[t.key] === t.when ? " ◇" : ""), tone: "do" }
+  }
+  // A box past the day it was due (📅): its day over, or its hour passed.
+  function taskLate(t) {
+    if (!t || !t.due || t.done || t.cancelled) return false
+    var ms = Say.taskMs({ due: t.due })
+    var hm = String(t.due).split(" ")[1]
+    var end = hm ? ms + (parseInt(hm.split(":")[0], 10) * 60 + parseInt(hm.split(":")[1], 10)) * 60000 : ms + 86400000
+    return end < root.dashNow
   }
 
   // Heads and month bands are passed over: they are not rows you act on.
   // A date band is (it folds), unless it has nothing to fold. A move of 0
   // is how the cursor lands on a real row to begin with.
   function moveTaskFocus(d) {
+    if (d !== 0) root.justClosed = ""
     var rows = root.taskRows
     var step = d === 0 ? 1 : d
     var i = root.taskFocus + d
@@ -6984,8 +7139,14 @@ Item {
   // → opens a folded band, or steps into an open one; Enter toggles; fold
   // all and unfold all, by Shift and the arrows or the two words above
   // the list.
+  // The band a row is in; none past a heading (what the agent raised is
+  // in no band, though it comes after one).
   function bandAt(i) {
-    for (var j = i; j >= 0; j--) if (root.taskRows[j] && root.taskRows[j].kind === "band") return j
+    for (var j = i; j >= 0; j--) {
+      var r = root.taskRows[j]
+      if (r && r.kind === "band") return j
+      if (r && r.kind === "head") return -1
+    }
     return -1
   }
   function setFold(id, open) {
@@ -7008,12 +7169,19 @@ Item {
   }
   function toggleBand(row) {
     if (row.fixed || row.count === 0) return
+    // Set aside and waiting for a grade: unfolded for a look, folded again
+    // when the dashboard closes; never kept with the date bands.
+    if (row.id === "shelf") { root.showShelf = !row.open; return }
+    if (row.id === "grading") { root.showGrading = !row.open; return }
+    // Held open by what is searched: folding it would change nothing on
+    // screen, and be found folded later (2026-11-27).
+    if (row.forced) { root.showHint("open while the list is narrowed · " + root.keyName("dashAll") + " shows all, folded as it was"); return }
     root.setFold(row.id, !row.open)
     root.used("dash-fold", row.open ? "shut" : "open")
   }
   function foldLeft() {
     var row = root.taskRows[root.taskFocus]
-    if (!row || root.dashOrder !== "date") return
+    if (!row) return
     if (row.kind === "band") { if (row.open) root.toggleBand(row); return }
     var at = root.bandAt(root.taskFocus)
     if (at < 0) return
@@ -7062,8 +7230,6 @@ Item {
       Qt.openUrlExternally(Links.fileUrl(row.item.filed || row.item.src)); root.used("document", "open"); return
     }
     if (row.kind === "proposal" || row.kind === "question" || row.kind === "told") { root.openTalk(row.item); return }
-    if (row.kind === "shelf") { root.showShelf = true; return }
-    if (row.kind === "grading") { root.showGrading = true; return }
     if (row.kind === "band") { root.toggleBand(row); return }
     if (row.kind === "task") root.goToTask(row.task)
     if (row.kind === "deadline") {
@@ -7097,27 +7263,48 @@ Item {
   // store.
   function dropFocused() {
     var row = root.taskRows[root.taskFocus]
-    if (row && row.kind === "told") { root.undoProposal(row.item); return }
-    if (row && (row.kind === "proposal" || row.kind === "question")) { root.resolveProposal(row.item, "decline", ""); return }
+    if (row && row.kind === "told") { root.rememberSettled(row.item, "undone"); root.undoProposal(row.item); return }
+    if (row && (row.kind === "proposal" || row.kind === "question")) {
+      root.rememberSettled(row.item, "declined")
+      root.resolveProposal(row.item, "decline", "")
+      root.showHint("declined")
+      return
+    }
     if (row && row.kind === "deadline") { root.dropDeadline(row.deadline); return }
     var t = root.focusedTask()
     if (!t) return
-    root.tickHistory = root.tickHistory.concat([{ drop: t }])
+    // Dropped already (it stays until tomorrow): Del again does nothing,
+    // and says how it comes back.
+    if (t.cancelled) { root.showHint("dropped already · " + root.keyName("dashDone") + " or " + root.keyName("dashUndo") + " brings it back"); return }
+    root.justClosed = root.rowKey({ kind: "task", task: t })
+    root.rememberUndo({ drop: t, say: "dropping “" + Say.taskTitle(t) + "”" })
     root.editTask(t, "drop", "")
+    root.showHint("dropped “" + Say.taskTitle(t) + "” · " + root.keyName("dashUndo") + " brings it back")
     root.used("drop")
   }
 
   function dropDeadline(d) {
-    if (d.status === "cancelled") return
+    if (d.status === "cancelled") { root.showHint("cancelled already · " + root.keyName("dashUndo") + " brings it back"); return }
     var t = root.lineTaskOf(d)
+    var say = "cancelling “" + d.title + "”"
+    root.justClosed = "d" + d.id
     if (t) {
-      root.tickHistory = root.tickHistory.concat([{ drop: t }])
+      root.rememberUndo({ drop: t, say: say })
       root.editTask(t, "drop", "")
     } else {
-      root.tickHistory = root.tickHistory.concat([{ uncancel: d.id }])
+      root.rememberUndo({ uncancel: d.id, say: say })
       dl.cancel(d.id)
     }
+    root.showHint("cancelled “" + d.title + "” · " + root.keyName("dashUndo") + " brings it back")
     root.used("drop", "deadline")
+  }
+
+  // The agent's answer is the ledger's, and the runner takes none back:
+  // Ctrl+Z after one says so, rather than reaching past it to an older
+  // change (2026-11-27). One that wrote on a box (a day, a priority)
+  // leaves the box as it is now; the box's own keys change it.
+  function rememberSettled(item, how) {
+    root.rememberUndo({ settled: true, say: how + " “" + Say.sayAsk(item, false) + "”" })
   }
 
   // `p`: none → high → low → none. One key for the whole scale, because
@@ -7130,18 +7317,31 @@ Item {
         root.showHint("not in a note yet — Enter writes it into today's note")
       return
     }
-    root.editTask(t, "prio", Task.nextPriority(t.priority || 0))
+    // From what was asked last, while the list has not caught up: `p p`
+    // quicker than the list is read went none → high, none → high.
+    var key = root.taskKey(t.date, Task.wordsOf(t.text))
+    var was = root.pendingPrio[key] !== undefined ? root.pendingPrio[key] : (t.priority || 0)
+    var next = Task.nextPriority(was)
+    var pp = Object.assign({}, root.pendingPrio)
+    pp[key] = next
+    root.pendingPrio = pp
+    root.rememberUndo({ field: "prio", task: t, arg: was, say: "the priority of “" + Say.taskTitle(t) + "”" })
+    root.editTask(t, "prio", next)
     root.touchBox(t, "keep")
+    root.showHint(next === 2 ? "high priority" : next === -1 ? "low priority" : "no priority")
     root.used("priority")
   }
+  property var pendingPrio: ({})   // a box's key -> the priority asked, until the list is read again
 
   // `s`: set aside. The box goes where quiet ones go, and nothing is written
   // into the note; `s` again (or `r`) brings it back. Its clock is the
   // layer's (agent/lifespan.py).
   function shelveFocused() {
     var t = root.focusedTask()
-    if (!t || t.life === 0) return
+    if (!t || t.life === 0) { root.whyNoClock(); return }
+    root.rememberUndo({ box: t, how: t.away ? "shelve" : "keep", say: (t.away ? "bringing back “" : "setting aside “") + Say.taskTitle(t) + "”" })
     root.touchBox(t, t.away ? "keep" : "shelve")
+    root.showHint(t.away ? "back on the list" : "set aside · " + root.keyName("dashShelve") + " on it, in set aside, brings it back")
     root.used(t.away ? "keep" : "shelve")
   }
 
@@ -7149,9 +7349,21 @@ Item {
   // away.
   function keepFocused() {
     var t = root.focusedTask()
-    if (!t || t.life === 0) return
+    if (!t || t.life === 0) { root.whyNoClock(); return }
+    // A clock started again cannot be set back; one brought back from
+    // set aside can be put there again.
+    root.rememberUndo(t.away ? { box: t, how: "shelve", say: "bringing back “" + Say.taskTitle(t) + "”" }
+                             : { settled: true, say: "renewing “" + Say.taskTitle(t) + "” (its clock is not set back)" })
     root.touchBox(t, "keep")
+    root.showHint(t.away ? "back on the list, its clock started again" : "renewed: its clock starts again")
     root.used("keep")
+  }
+  // `s` or `r` where there is no clock to set: said, not ignored.
+  function whyNoClock() {
+    var row = root.taskRows[root.taskFocus]
+    if (!row) return
+    if (row.kind === "deadline") root.showHint("a deadline is judged by its date, not set aside · " + root.keyName("dashWhen") + " gives it a day to work on it")
+    else if (row.kind === "task") root.showHint("a box with a date never goes quiet: nothing to set aside or renew")
   }
 
   function touchBox(t, how) {
@@ -7197,10 +7409,11 @@ Item {
         root.showHint("not in a note yet — Enter writes it into today's note")
       return
     }
+    // The day it has, to change: an empty field hid it (2026-11-27).
     root.dashFieldKind = "when"
-    root.dashFieldStart = ""
+    root.dashFieldStart = t.when ? Qt.formatDate(new Date(Say.taskMs({ when: t.when })), "d MMM") : ""
+    root.dashWhenText = root.dashFieldStart
     root.dashWhenFor = t
-    root.dashWhenText = ""
   }
 
   // Shift+T: the day to work on it taken off again (Todoist's key), the
@@ -7210,7 +7423,9 @@ Item {
     var t = root.focusedLine()
     if (!t) return
     if (!t.when) { root.showHint("no day to work on it: " + root.keyName("dashWhen") + " gives it one"); return }
+    root.rememberUndo({ field: "when", task: t, arg: t.when, say: "taking the day off “" + Say.taskTitle(t) + "”" })
     root.editTask(t, "when", "")
+    root.showHint("its day is off · " + root.keyName("dashUndo") + " puts it back")
     root.used("when", "removed")
   }
 
@@ -7242,9 +7457,19 @@ Item {
     root.dashWhenFor = null
     root.dashWhenText = ""
     if (!t || words === "" || words === root.dashFieldStart) return
-    if (t.deadline) dl.set(t.deadline.id, ["--title", words])
-    else {
-      root.authorRenamed(t.date, "- [ ] " + t.text, Task.setWords("- [ ] " + t.text, words))
+    if (t.deadline) {
+      root.rememberUndo({ retitle: t.deadline.id, arg: t.deadline.title, say: "renaming “" + t.deadline.title + "”" })
+      dl.set(t.deadline.id, ["--title", words])
+    } else {
+      var line = Task.setWords("- [ ] " + t.text, words)
+      root.authorRenamed(t.date, "- [ ] " + t.text, line)
+      // Its words are its key: the cursor follows them to the row renamed.
+      var renamed = Object.assign({}, t, { text: line.replace(/^- \[ \] /, "") })
+      if (root.focusedTask() === t || root.focusedLine() === t) {
+        var row = root.taskRows[root.taskFocus]
+        if (row && row.kind === "task") root.taskFocusKey = "t" + root.taskKey(t.date, Task.wordsOf(renamed.text))
+      }
+      root.rememberUndo({ field: "rename", task: renamed, arg: root.dashFieldStart, say: "renaming “" + root.dashFieldStart + "”" })
       root.editTask(t, "rename", words)
     }
     root.used("rename")
@@ -7257,23 +7482,36 @@ Item {
       var mark = root.dashWhenText.replace(/\s+/g, " ").trim()
       root.dashWhenFor = null
       root.dashWhenText = ""
-      if (g && g.deadline && mark !== root.dashFieldStart) { dl.grade(g.deadline.id, mark); root.used("grade") }
+      if (g && g.deadline && mark !== root.dashFieldStart) {
+        root.rememberUndo({ regrade: g.deadline.id, arg: root.dashFieldStart, say: "the grade of “" + g.deadline.title + "”" })
+        dl.grade(g.deadline.id, mark)
+        root.used("grade")
+      }
       return
     }
     var t = root.dashWhenFor
     var phrase = root.dashWhenText.trim()
-    if (!t || phrase === "") {
+    if (!t || phrase === "" || phrase === root.dashFieldStart) {
+      // Emptied, on one with a day: the day stays — taking it off is its
+      // own key, said here rather than done by an Enter in passing.
+      if (t && phrase === "" && t.when) root.showHint("its day stays · " + root.keyName("dashNoDate") + " takes it off")
       root.dashWhenFor = null
       root.dashWhenText = ""
       return
     }
     var read = Dates.read(phrase, new Date())
-    if (!read) { root.showHint("no date in \"" + phrase + "\""); return }
+    // Not a date: the field stays open with the words, and its preview
+    // says so in place (the line under the list is the field's while it
+    // is open).
+    if (!read) { root.dashWhenError = "no date in “" + phrase + "”"; return }
     root.dashWhenFor = null
     root.dashWhenText = ""
     // A do-date is a day, not a moment: the time a deadline carries is the
     // hour something is owed, and a day you mean to work on it has none.
-    root.editTask(t, "when", read.iso.split(" ")[0])
+    var day = read.iso.split(" ")[0]
+    root.rememberUndo({ field: "when", task: t, arg: t.when || "", say: "the day of “" + Say.taskTitle(t) + "”" })
+    root.editTask(t, "when", day)
+    root.showHint("do on " + Qt.formatDate(new Date(read.ms), "ddd d MMM") + " · " + root.keyName("dashUndo") + " takes it back")
     root.used("when")
   }
 
@@ -7286,7 +7524,11 @@ Item {
       // state (a cancelled `[-]` line still holds it).
       var tagged = t.anchor > 0 ? Bound.anchors(editor.text)[t.anchor] : null
       var r = t.anchor > 0 ? (tagged ? editor.rows[tagged.line] : null) : root.rowByWords(t.text, t.line)
-      if (!r) return
+      if (!r) {
+        root.showHint("“" + Say.taskTitle(t) + "” is not in the note as it was — nothing changed")
+        Qt.callLater(root.refreshTasks)
+        return
+      }
       if (how === "remove") {
         // Only a line the agent wrote is ever removed (undoing its steps).
         editor.snapshot(true)
@@ -7336,7 +7578,14 @@ Item {
     if (root.copyChatSelection(e, null)) return true
     if (root.stripAt >= 0) return root.stripKey(e)
     if (Sc.hit(e, "menu")) { root.menuKey(); return true }
-    if (Sc.hit(e, "dashBack")) { root.toggleDash(); return true }
+    // Esc backs out one step, as in the files and the PDF: the words
+    // typed first, then the dashboard itself (the courses picked are kept
+    // on purpose, and 0 shows all).
+    if (Sc.hit(e, "dashBack")) {
+      if (root.dashQuery !== "") { root.dashQuery = ""; root.showHint("search cleared · " + root.keyName("dashBack") + " again goes back to the note") }
+      else root.toggleDash()
+      return true
+    }
     if (Sc.hit(e, "dashSearch")) { root.enterStrip(0); return true }
     if (Sc.hit(e, "dashCheckin")) { root.openCheckin(true); return true }
     if (Sc.hit(e, "dashStrip")) { root.enterStrip(root.lensChip()); return true }
@@ -7359,6 +7608,8 @@ Item {
     if (Sc.hit(e, "dashUnfoldAll")) { root.foldAll(true); return true }
     if (Sc.hit(e, "dashFirst")) { root.taskFocus = 0; root.moveTaskFocus(0); return true }
     if (Sc.hit(e, "dashLast")) { root.taskFocus = root.taskRows.length; root.moveTaskFocus(-1); return true }
+    if (Sc.hit(e, "dashPageUp")) { dash.pageStep(-1); return true }
+    if (Sc.hit(e, "dashPageDown")) { dash.pageStep(1); return true }
     // Enter goes to it, everywhere in the page; Ctrl+Enter is the act that
     // settles it. Decided 2026-10-15, and it ends Enter meaning "done" in
     // the deadline popup and "go to it" here.
@@ -7411,8 +7662,14 @@ Item {
   function enterStrip(at) {
     root.stripAt = Math.max(0, Math.min(root.stripEnd, at))
     root.stripOpen = false
+    root.stripCameWith = root.dashLens.slice()
     root.used("strip", at === 0 ? "search" : "chips")
   }
+  // The courses shown when the strip was climbed onto: ⌕ and the order
+  // show them again, so walking across the chips to reach either no longer
+  // leaves the last chip passed as the lens (2026-11-27: #thesis, then ←
+  // to ⌕, searched All).
+  property var stripCameWith: []
   function leaveStrip() {
     root.stripAt = -1
     root.stripOpen = false
@@ -7436,6 +7693,7 @@ Item {
     if (root.stripPinned) return
     if (root.stripAt === 1) root.setLens([])
     else if (root.stripAt >= 2 && root.stripAt < root.stripEnd) root.setLens([root.stripChips[root.stripAt - 2].tag])
+    else if (String(root.dashLens) !== String(root.stripCameWith)) root.setLens(root.stripCameWith.slice())
   }
   function toggleLens(tag) {
     var on = root.dashLens.indexOf(tag) >= 0
@@ -7582,6 +7840,8 @@ Item {
     var n = root.stripChips.length, last = n + root.dashOrders.length
     var p = root.stripPick
     if (Sc.hit(e, "stripClear")) { root.stripOpen = false; return true }
+    // O, as its rows say beside them: the next order, the cursor with it.
+    if (Sc.hit(e, "dashOrder")) { root.cycleOrder(); root.stripPick = n + 1 + root.dashOrders.indexOf(root.dashOrder); return true }
     if (Sc.hit(e, "stripUp")) { root.stripPick = Math.max(0, p - 1); return true }
     if (Sc.hit(e, "stripDown")) { root.stripPick = Math.min(last, p + 1); return true }
     if (p > 0 && Sc.hit(e, "dashCourse")) { root.lensDigit(e); return true }
@@ -7594,23 +7854,41 @@ Item {
       return true
     }
     if ((add || only) && p > n) {
-      root.dashOrder = root.dashOrders[p - n - 1]
-      root.savePageState()
+      root.setOrder(root.dashOrders[p - n - 1])
       if (only) root.stripOpen = false
       return true
     }
     if (only && p === 0) { root.stripOpen = false; root.leaveStrip(); return true }
-    if (p !== 0 && e.key !== Qt.Key_Backspace && root.typedChar(e) !== "") root.stripPick = 0
-    if (root.stripPick === 0 && root.typeInto(e)) return true
+    // Typing goes into ⌕ itself, folded, its line of text with every key a
+    // line has (2026-11-27: unfolded, it was letters drawn, and Backspace
+    // stopped once the cursor was on a course).
+    var ch = root.typedChar(e)
+    if (ch !== "" || (p === 0 && e.key === Qt.Key_Backspace)) {
+      root.stripOpen = false
+      root.stripAt = 0
+      if (ch !== "") root.dashQuery += ch
+      else root.dashQuery = root.dashQuery.slice(0, -1)
+      return true
+    }
     return true
   }
+  // A press outside the strip unfolded folds it, as Esc does.
+  function foldStrip() { if (root.stripOpen) root.stripOpen = false }
 
   // A chip clicked: the strip's cursor there, and what it picks.
+  // A course clicked is shown alone, and the keys go back to the list
+  // (2026-11-27: they stayed on the strip, where the list's keys did
+  // nothing, and with a course kept by Space a click picked nothing at
+  // all). All shows everything, the words typed too.
   function clickChip(at) {
     dash.dashKeysRef.forceActiveFocus()
-    root.stripAt = at
-    if (at === root.stripEnd) root.cycleOrder()
-    else root.stripMoved()
+    if (at === root.stripEnd) { root.cycleOrder(); return }
+    if (at === 0) { root.enterStrip(0); return }
+    if (at === 1) { root.dashQuery = ""; root.setLens([]) }
+    else if (at >= 2 && at < root.stripEnd) root.setLens([root.stripChips[at - 2].tag])
+    root.stripAt = -1
+    root.stripOpen = false
+    root.stripPinned = false
   }
 
   // The next thing the agent asks of you, past the cursor and round again:
@@ -7627,28 +7905,67 @@ Item {
 
   function tickFocused() {
     var row = root.taskRows[root.taskFocus]
-    if (row && (row.kind === "proposal" || row.kind === "question" || row.kind === "told")) { root.acceptPlanned(row); return }
+    if (row && (row.kind === "proposal" || row.kind === "question" || row.kind === "told")) {
+      if (row.item.kind !== "file") root.rememberSettled(row.item, row.kind === "told" ? "let stand" : row.kind === "question" ? "answered" : "accepted")
+      root.acceptPlanned(row)
+      return
+    }
     if (row && row.kind === "task") root.tickTask(row.task)
     if (row && row.kind === "deadline") {
       var d = row.deadline
+      // Space again while its tick is still being drawn: not done after
+      // all (2026-11-27: the second press ticked it a second time, from
+      // the list as it was before the first).
+      if (root.tickPending[d.id]) { root.cancelPendingTick(d.id); root.dropUndo(function (u) { return u.deadline === d.id }); return }
       if (d.status === "open") {
         // The store written once the tick has been seen: its change would
-        // rebuild the list mid-tick.
+        // rebuild the list mid-tick. Kept for Ctrl+Z at once, so a Ctrl+Z
+        // meanwhile takes back this tick, not the one before it.
         root.markTicked(root.rowKey(row))
-        root.afterTick = root.afterTick.concat([function () { root.tickDeadline(d) }])
+        root.justClosed = root.rowKey(row)
+        var p = Object.assign({}, root.tickPending)
+        p[d.id] = true
+        root.tickPending = p
+        root.rememberUndo({ deadline: d.id, say: "ticking “" + d.title + "”" })
+        root.afterTick = root.afterTick.concat([function () {
+          if (!root.tickPending[d.id]) return
+          root.cancelPendingTick(d.id, true)
+          root.tickDeadline(d, true)
+        }])
         tickSettle.restart()
       } else {
         root.tickDeadline(d)
       }
     }
   }
+  property var tickPending: ({})   // a deadline's id -> true while its tick is drawn and the store not yet written
+  // A tick not yet written, let go (`kept`: written now, so the row stays done).
+  function cancelPendingTick(id, kept) {
+    var p = Object.assign({}, root.tickPending)
+    delete p[id]
+    root.tickPending = p
+    if (kept) return
+    var d = Object.assign({}, root.doneNow)
+    delete d["d" + id]
+    root.doneNow = d
+    if (root.justTicked === "d" + id) root.justTicked = ""
+  }
+  // The newest change kept for Ctrl+Z that `match`es, taken out.
+  function dropUndo(match) {
+    for (var i = root.tickHistory.length - 1; i >= 0; i--) {
+      if (!match(root.tickHistory[i])) continue
+      root.tickHistory = root.tickHistory.slice(0, i).concat(root.tickHistory.slice(i + 1))
+      return
+    }
+  }
 
   // Done, or open again: from the dashboard and the sidebar's list alike,
-  // the line that stands for it ticked to match.
-  function tickDeadline(d) {
+  // the line that stands for it ticked to match (`kept`: Ctrl+Z has it
+  // already).
+  function tickDeadline(d, kept) {
     if (d.status === "open") {
       dl.markDone(d.id)
-      root.tickHistory = root.tickHistory.concat([{ deadline: d.id }])
+      if (!kept) root.rememberUndo({ deadline: d.id, say: "ticking “" + d.title + "”" })
       root.tickBoundLine(d.id, true)
     } else {
       dl.reopen(d.id)
@@ -7733,14 +8050,27 @@ Item {
   }
 
   function untickLast() {
-    if (root.tickHistory.length === 0) return
+    if (root.tickHistory.length === 0) { root.showHint("nothing to take back here"); return }
     var t = root.tickHistory[root.tickHistory.length - 1]
     root.tickHistory = root.tickHistory.slice(0, -1)
-    if (t.deadline) { dl.reopen(t.deadline); root.tickBoundLine(t.deadline, false); return }
+    var said = "took back " + (t.say || "the last tick")
+    if (t.settled) {
+      root.showHint(t.say + " stays: it cannot be taken back here · " + root.keyName("dashUndo") + " again for what came before")
+      return
+    }
+    root.showHint(said)
+    if (t.deadline) {
+      if (root.tickPending[t.deadline]) { root.cancelPendingTick(t.deadline); return }
+      dl.reopen(t.deadline); root.tickBoundLine(t.deadline, false); return
+    }
     if (t.drop) { root.editTask(t.drop, "undrop", ""); return }
     if (t.uncancel) { dl.reopen(t.uncancel); return }
     if (t.unfile) { root.unfile(t.unfile); return }
-    root.editTask(t, "undone", "")
+    if (t.box) { root.touchBox(t.box, t.how); return }
+    if (t.field) { root.editTask(t.task, t.field, t.arg); return }
+    if (t.retitle) { dl.set(t.retitle, ["--title", t.arg]); return }
+    if (t.regrade) { dl.grade(t.regrade, t.arg); return }
+    root.editTask(t.tick || t, "undone", "")
   }
   // A document filed — from its row, or asked for in a chat — moved back
   // where it came from by the runner; it is not proposed again.
@@ -7762,9 +8092,26 @@ Item {
   // which is how a box done today stays in the dashboard until tomorrow.
   // Ticked again: open again, the day taken off.
   function tickTask(t) {
-    if (t.done) { root.editTask(t, "undone", ""); return }
-    root.markTicked(root.rowKey({ kind: "task", task: t }))
-    root.tickHistory = root.tickHistory.concat([t])
+    var key = root.rowKey({ kind: "task", task: t })
+    // Dropped: Space brings it back, open, rather than ticking what was
+    // decided against.
+    if (t.cancelled) { root.editTask(t, "undrop", ""); root.showHint("back: open again"); return }
+    // Done, or ticked a moment ago and the list not read again yet (Space
+    // twice, quickly: the second is "not done").
+    if (t.done || root.doneNow[key]) {
+      if (root.doneNow[key]) {
+        var d = Object.assign({}, root.doneNow)
+        delete d[key]
+        root.doneNow = d
+        if (root.justTicked === key) root.justTicked = ""
+        root.dropUndo(function (u) { return u.tick && root.rowKey({ kind: "task", task: u.tick }) === key })
+      }
+      root.editTask(t, "undone", "")
+      return
+    }
+    root.markTicked(key)
+    root.justClosed = key
+    root.rememberUndo({ tick: t, say: "ticking “" + Say.taskTitle(t) + "”" })
     root.editTask(t, "done", "")
     root.used("tick")
   }
@@ -9057,15 +9404,29 @@ Item {
     }
   }
 
+  // The list as the runner reads it. A read that fails keeps the list it
+  // had, and says why (`tasksError`), rather than showing "nothing open"
+  // over boxes it could not read (2026-11-27); until the first read,
+  // the dashboard says it is reading (`tasksRead`).
+  property bool tasksRead: false
+  property string tasksError: ""
   Process {
     id: tasksProc
+    stderr: StdioCollector { id: tasksErr }
     stdout: StdioCollector {
       onStreamFinished: {
         try {
           var nx = JSON.parse(text)
           root.tasks = nx.tasks || []
           root.raised = nx.raised || []
-        } catch (e) { root.tasks = []; root.raised = [] }
+          root.tasksError = ""
+          root.tasksRead = true
+        } catch (e) {
+          var why = String(tasksErr.text || "").trim().split("\n").pop()
+          root.tasksError = why !== "" ? why.slice(0, 160) : "its answer could not be read"
+          console.warn("longhand.page next: " + root.tasksError)
+        }
+        root.pendingPrio = ({})
         // The list now says what was drawn ahead of it.
         root.doneNow = ({})
         root.justTicked = ""
@@ -9153,6 +9514,7 @@ Item {
       editFile.queue = editFile.queue.filter(function (q) { return q.task.file !== editFile.path })
       var lines = text().split("\n")
       var changed = false
+      var missed = []
       for (var k = 0; k < mine.length; k++) {
         var tk = mine[k].task
         if (mine[k].how === "insert") {
@@ -9164,17 +9526,26 @@ Item {
         }
         var tagged = tk.anchor > 0 ? Bound.anchors(lines.join("\n"))[tk.anchor] : null
         var at = tk.anchor > 0 ? (tagged ? tagged.line : -1) : Task.findWords(lines, tk.line, tk.text)
-        if (at < 0) continue
+        // Its line is gone or its words changed since the list was read: said,
+        // never done to another line (until 2026-11-27 it was dropped
+        // silently, after the tick had been seen and heard).
+        if (at < 0) { missed.push(tk); continue }
         if (mine[k].how === "remove") { lines.splice(at, 1); changed = true; continue }
         var next = root.applyEdit(lines[at], mine[k].how, mine[k].arg)
         if (next !== lines[at]) { lines[at] = next; changed = true }
       }
       if (changed) setText(lines.join("\n"))
+      if (missed.length > 0) root.showHint("“" + Say.taskTitle(missed[0]) + "” is not in its note as it was — nothing changed; the list is read again")
       // (setText writes at once; waiting for a saved signal left the queue
       // stuck after the first file.)
       Qt.callLater(editFile.nextFile)
     }
-    onLoadFailed: { editFile.queue = editFile.queue.filter(function (q) { return q.task.file !== editFile.path }); editFile.nextFile() }
+    onLoadFailed: {
+      var lost = editFile.queue.filter(function (q) { return q.task.file === editFile.path })
+      editFile.queue = editFile.queue.filter(function (q) { return q.task.file !== editFile.path })
+      if (lost.length > 0) root.showHint("could not open " + String(editFile.path).split("/").pop() + " — nothing changed in it")
+      editFile.nextFile()
+    }
 
     function add(task, how, arg) {
       editFile.queue = editFile.queue.concat([{ task: task, how: how, arg: arg }])

@@ -118,6 +118,14 @@ function sayDue(iso, now) {
   return /late/.test(s) ? s : "due " + s
 }
 
+// A box's do-date on its pill: "do today", "do Fri 20 Nov" — and one
+// gone by says when it was meant for, never that it is late (2026-11-27:
+// it read "do 3 days late"). Late is for what is owed.
+function sayDo(iso, now) {
+  var s = sayDate(iso, now)
+  return "do " + s.replace(/^(\d+) days late/, "$1 days ago")
+}
+
 // A project's next session in the sidebar and the switcher: "now · until
 // 12:15 · Gold", "today 13:15 · Gold", "Wed 10:45 · Seminar Room 1",
 // "30 Nov · Paris". The day is counted from `now`, so the page asks again

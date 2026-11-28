@@ -129,8 +129,10 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | Move down | `↓` · `j` | in the dashboard |
 | First row | `Home` | in the dashboard |
 | Last row | `End` | in the dashboard |
-| By date: up to the row's band; on a band, fold it | `←` · `h` | in the dashboard |
-| By date: open a folded band; on an open one, into it | `→` · `l` | in the dashboard |
+| A view of rows up | `PgUp` | in the dashboard |
+| A view of rows down | `PgDn` | in the dashboard |
+| Up to the row's band; on a band, fold it | `←` · `h` | in the dashboard |
+| Open a folded band; on an open one, into it | `→` · `l` | in the dashboard |
 | By date: collapse every band (the words above the list too) | `Shift+←` · `Shift+H` | in the dashboard |
 | By date: expand every band (the words above the list too) | `Shift+→` · `Shift+L` | in the dashboard |
 | Go to the line; on what the agent proposes, asks or did, its chat (the margin opens beside) | `Enter` | in the dashboard |
@@ -149,10 +151,10 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | Follow the link in its line (a paper: open it where it was left) | `Alt+Enter` | in the dashboard |
 | Chat about it (the agent's pane opens on it) | `c` · `Ctrl+Enter` | in the dashboard |
 | Export its section as a PDF, named after it (it stays open) | `Ctrl+Shift+E` | in the dashboard |
-| Take back the last tick, or a document just filed | `Ctrl+Z` | in the dashboard |
-| Back to the note | `Esc` | in the dashboard |
+| Take back the last change made here (it says which) | `Ctrl+Z` | in the dashboard |
+| Clear the search; then back to the note | `Esc` | in the dashboard |
 | How Longhand feels this week: the one-minute check-in | `f` | in the dashboard |
-| Search the list: the strip's ⌕, typing (words, or a #tag) | `/` | in the dashboard, on the dashboard's course strip |
+| Search the list: the strip's ⌕, typing (words, or a #tag) | `/` · `Ctrl+F` | in the dashboard, on the dashboard's course strip |
 | The course strip, on the course picked | `#` | in the dashboard |
 | Only that course: the strip's first, second… (0: all) | `1` · `2` · `3` · `4` · `5` · `6` · `7` · `8` · `9` | in the dashboard, on the dashboard's course strip |
 | Every course again | `0` | in the dashboard, on the dashboard's course strip |
