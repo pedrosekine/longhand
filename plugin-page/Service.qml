@@ -93,7 +93,13 @@ Item {
   Timer { id: landWatch; interval: root.landWait; onTriggered: root.unstick() }
 
   signal loaded()
-  signal externalChange()
+  // The note changed on disk while open: `before` is the body the page
+  // last wrote or read, so what changed there can be told from what was
+  // typed here and not yet saved (Outside.js).
+  signal externalChange(string before)
+  // The open note's file went away outside (deleted, or moved in Obsidian):
+  // the page keeps its words, and the next one typed writes them back.
+  signal goneOutside()
   signal savedNow()
   signal stall()
 
@@ -104,6 +110,9 @@ Item {
   readonly property string statePath: agentDir !== "" && noteDate !== "" ? agentDir + "/daily/" + noteDate + ".json" : ""
 
   property string lastWritten: ""
+  // The file as it was when it went away outside: while the page's text is
+  // still that, nothing writes it back (leaving it flushes); a word typed does.
+  property string goneText: ""
 
   // Obsidian's daily-notes format is a moment.js string; Qt wants its own
   // tokens. Only the tokens a date format plausibly uses are mapped.
@@ -195,6 +204,7 @@ Item {
     root.readOnly = false
     root.notePath = p
     root.lastWritten = ""
+    root.goneText = ""
     if (noteFile.path === p) noteFile.reload()
     else noteFile.path = p
   }
@@ -219,6 +229,7 @@ Item {
     root.filePath = rel
     root.notePath = p
     root.lastWritten = ""
+    root.goneText = ""
     if (noteFile.path === p) noteFile.reload()
     else noteFile.path = p
   }
@@ -236,7 +247,8 @@ Item {
     // written in it; looking at it must not create one.
     if (!root.exists && bodyText.trim() === "") { root.pending = false; return }
     var content = root.joinHeader(bodyText)
-    if (content === lastWritten) { root.pending = false; return }
+    if (content === lastWritten || (!root.exists && content === root.goneText)) { root.pending = false; return }
+    root.goneText = ""
     root.lastWritten = content
     root.text = content
     root.body = bodyText
@@ -384,16 +396,30 @@ Item {
       // back exactly what we wrote, carries no news.
       if (root.ready && (root.saving || t === root.lastWritten)) return
       var external = root.ready
+      var before = root.body
       root.exists = true
+      root.goneText = ""
       root.lastWritten = t
       root.text = t
       root.splitHeader(t)
       root.ready = true
       root.pending = false
-      if (external) root.externalChange()
+      if (external) root.externalChange(before)
       else root.loaded()
     }
     onLoadFailed: function (err) {
+      // Gone while open (deleted or moved outside): not seeded again from
+      // the template, nor emptied — its words stay in the page, and the next
+      // one typed writes them back (2026-11-28: today's note deleted in
+      // Obsidian came straight back as the template).
+      if (err === FileViewError.FileNotFound && root.ready && root.exists && !root.saving) {
+        root.exists = false
+        root.goneText = root.lastWritten
+        root.lastWritten = ""
+        root.pending = false
+        root.goneOutside()
+        return
+      }
       if (err === FileViewError.FileNotFound && root.noteDate !== "") {
         // No note for this day. Today: seed it from the template now, the
         // one create path, as Obsidian would on its side. Any other day:

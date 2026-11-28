@@ -27,6 +27,7 @@ import "Say.js" as Say
 import "Focus.js" as Focus
 import "Layout.js" as Layout
 import "Links.js" as Links
+import "Outside.js" as Outside
 import "ProjectView.js" as PV
 
 // The page: today's note as a blank sheet in the shell, with the agent in
@@ -179,12 +180,40 @@ Item {
     if (root.vaultIndex === null) { root.needIndex(); return true }
     return Links.resolve(root.vaultIndex, l.target, root.noteRel, l.kind !== "md") !== ""
   }
+  // A place in a note is its line, by its words (2026-11-28, the
+  // navigation pass): a count of characters, kept until then, landed on
+  // another line once anything was written above it. With it, where the
+  // view was scrolled and the project the day was narrowed to.
   function placeNow() {
+    var shown = svc.ready && root.pdfRel === ""
+    var i = shown ? root.lineIndexAt(editor.cursorPosition) : -1
+    var r = i >= 0 ? editor.rows[i] : null
     return { stem: svc.noteDate, file: svc.filePath, readOnly: svc.readOnly, at: editor.cursorPosition, pdf: root.pdfRel,
-             dash: root.dashOpen }
+             dash: root.dashOpen, line: r ? i : -1, words: r ? r.raw : "", col: r ? editor.cursorPosition - r.start : 0,
+             y: shown ? flick.contentY : 0, focus: shown ? editor.focusTag : "" }
   }
+  // One note, other lines, are two places: a jump inside a note (a
+  // heading's link, a task of the day's) is gone back from too.
   function samePlace(a, b) {
     return a.stem === b.stem && a.file === b.file && (a.pdf || "") === (b.pdf || "") && !!a.dash === !!b.dash
+      && (a.pdf || a.dash || a.line === b.line)
+  }
+  // A line by its words: where it was, else the nearest one holding them.
+  function lineByWords(raw, hint) {
+    var rows = editor.rows
+    if (hint >= 0 && hint < rows.length && rows[hint].raw === raw) return rows[hint]
+    for (var d = 1; d < rows.length; d++) {
+      if (hint - d >= 0 && hint - d < rows.length && rows[hint - d].raw === raw) return rows[hint - d]
+      if (hint + d >= 0 && hint + d < rows.length && rows[hint + d].raw === raw) return rows[hint + d]
+    }
+    return null
+  }
+  // A file or paper of the vault that is not among its names: moved or
+  // deleted since it was a place (a day is always a place, written or not).
+  function placeGone(place) {
+    var rel = place.pdf || (place.stem === "" ? place.file : "")
+    if (!rel || root.vaultIndex === null || Links.isAbs(rel) || !/\.(md|pdf)$/i.test(rel)) return false
+    return !root.vaultIndex.all[rel]
   }
   // A step in the middle's history (docs/keys-proposal.md slice 4,
   // 2026-10-28): where the middle was is remembered before it moves, from
@@ -211,7 +240,7 @@ Item {
     if (root.pdfRel !== "" || place.stem !== svc.noteDate || place.file !== svc.filePath) root.middleMoves()
     pdfPane.keep()
     root.pdfRel = ""
-    root.pendingLink = { at: place.at }
+    root.pendingLink = { at: place.at, line: place.line, words: place.words, col: place.col, y: place.y, focus: place.focus || "" }
     if (place.stem !== "") { if (place.stem === svc.noteDate) root.landOnLink(); else root.openNote(place.stem) }
     else if (place.file === svc.filePath) root.landOnLink()
     else root.openFile(place.file, place.readOnly)
@@ -241,7 +270,14 @@ Item {
   function followLink(l, from, retried) {
     root.used("link", l.url ? "web" : l.kind)
     if (l.url) { Qt.openUrlExternally(l.url); return }
-    if (l.target === "") { root.pendingLink = { heading: l.heading }; root.landOnLink(); return }
+    // In this note ([[#Heading]], [[#^block]]): a step back is kept to here.
+    if (l.target === "") {
+      root.remember()
+      var own = l.heading.charAt(0) === "^"
+      root.pendingLink = { heading: own ? "" : l.heading, block: own ? l.heading.substring(1) : "" }
+      root.landOnLink()
+      return
+    }
     if (root.vaultIndex === null) { root.needIndex(); root.showHint("reading the vault's names…"); return }
     var rel = Links.resolve(root.vaultIndex, l.target, from || root.noteRel, l.kind !== "md")
     if (rel === "" && !retried) {
@@ -273,10 +309,21 @@ Item {
     else root.openFile(rel, svc.agentRoot !== "" && rel.indexOf(svc.agentRoot + "/") === 0)
     root.showNote()
   }
-  function goBack(d) {
+  property int goAgain: 0              // -1 or 1: a step waiting for the vault's names, read again
+  function goBack(d, retried) {
     var from = d < 0 ? root.backStack : root.foreStack
     if (from.length === 0) { root.showHint(d < 0 ? "nowhere to go back to" : "nowhere on to go"); return }
     var place = from[from.length - 1]
+    // A note or paper gone from the vault is passed over, said, rather than
+    // opened onto "cannot read" — once the names are read again, in case
+    // it was only made since they were.
+    if (root.placeGone(place)) {
+      if (!retried) { root.goAgain = d; root.vaultIndex = null; root.needIndex(); return }
+      if (d < 0) root.backStack = from.slice(0, -1); else root.foreStack = from.slice(0, -1)
+      root.showHint("“" + Links.baseOf(place.pdf || place.file) + "” is no longer in the vault: passed over")
+      if (from.length > 1) root.goBack(d, true)
+      return
+    }
     if (d < 0) { root.backStack = from.slice(0, -1); root.foreStack = root.foreStack.concat([root.placeNow()]) }
     else { root.foreStack = from.slice(0, -1); root.backStack = root.backStack.concat([root.placeNow()]) }
     root.used("link", d < 0 ? "back" : "forward")
@@ -288,17 +335,35 @@ Item {
     if (!p || !svc.ready) return
     root.pendingLink = null
     var rows = editor.rows
-    if (p.at !== undefined) { editor.setCursor(Math.min(p.at, editor.length), true); return }
-    var want = String(p.heading || "").trim().toLowerCase()
-    for (var i = 0; i < rows.length; i++) {
-      var r = rows[i]
-      if ((want !== "" && r.kind === "heading" && r.body.trim().toLowerCase() === want)
-          || (p.block && new RegExp("\\s\\^" + p.block.replace(/[^\w-]/g, "") + "\\s*$").test(r.raw))) {
-        editor.setCursor(r.start + r.prefixLen, true)
-        return
+    if (p.at !== undefined) {
+      // Back to a place: the project the day was narrowed to, the line by
+      // its words, and the view as it was when that line is where it was.
+      if (p.focus !== undefined && editor.focusTag !== p.focus) { editor.focusTag = p.focus; root.scheduleRepaint() }
+      var back = p.words !== undefined && p.line >= 0 ? root.lineByWords(p.words, p.line) : null
+      editor.setCursor(back ? back.start + Math.min(p.col, back.raw.length) : Math.min(p.at, editor.length), true)
+      if (back && back === editor.rows[p.line] && p.y !== undefined) {
+        var y = p.y
+        Qt.callLater(function () { flick.contentY = Math.max(0, Math.min(y, flick.contentHeight - flick.height)); flick.keepCursor() })
       }
+      return
     }
-    if (want !== "" || p.block) root.showHint("“" + (p.heading || "^" + p.block) + "” is not in this note")
+    var r = Links.headingRow(rows, p.heading || "")
+    if (!r && p.block) {
+      var re = new RegExp("\\s\\^" + p.block.replace(/[^\w-]/g, "") + "\\s*$")
+      for (var i = 0; i < rows.length && !r; i++) if (re.test(rows[i].raw)) r = rows[i]
+    }
+    if (r) {
+      editor.setCursor(r.start + r.prefixLen, true)
+      // What a link leads to is read from its top: the heading near the
+      // view's top, not wherever keeping the cursor in view left it.
+      var at = r.start
+      Qt.callLater(function () {
+        var rect = editor.rectAt(at)
+        if (rect) flick.contentY = Math.max(0, Math.min(rect.y - flick.height * 0.15, flick.contentHeight - flick.height))
+      })
+      return
+    }
+    if (p.heading || p.block) root.showHint("“" + (p.heading || "^" + p.block) + "” is not in this note")
   }
 
   // A picture's own size, from its file's header (`file`, one call for the
@@ -1400,6 +1465,33 @@ Item {
   readonly property var dayTasks: root.noteIso !== "" ? (root.dated[root.noteIso] || []) : []
   readonly property int dayTasksDone: root.dayTasks.filter(function (t) { return t.done }).length
   property bool dayTasksOpen: false
+  // The band's row the keys are on (2026-11-28): -1 in the note. Ctrl+Shift+T
+  // opens the list onto its first row; ↑ ↓ move, Enter goes to the line,
+  // Esc (or any other key, which is the note's) leaves the list open.
+  property int dayTaskAt: -1
+  readonly property bool dayBandShown: root.dayTasks.length > 0 && editor.focusTag === "" && root.problem === ""
+    && !root.pdfShown && !root.exportOpen
+  onDayTasksChanged: if (root.dayTaskAt >= root.dayTasks.length) root.dayTaskAt = root.dayTasks.length - 1
+  onDayTasksOpenChanged: if (!root.dayTasksOpen) root.dayTaskAt = -1
+  function dayTasksKey() {
+    if (root.dayTasks.length === 0) { root.showHint("no task is for this day"); return }
+    if (root.dayTasksOpen && root.dayTaskAt >= 0 && root.dayBandShown) { root.dayTasksOpen = false; return }
+    root.unfocus()                     // the band is the whole day's
+    root.dayTasksOpen = true
+    root.dayTaskAt = 0
+  }
+  function dayListKey(event) {
+    if (root.dayTaskAt < 0) return false
+    if (!root.dayTasksOpen || !root.dayBandShown) { root.dayTaskAt = -1; return false }
+    if ([Qt.Key_Shift, Qt.Key_Control, Qt.Key_Alt, Qt.Key_Meta, Qt.Key_AltGr].indexOf(event.key) >= 0) return false
+    if (Sc.hit(event, "dayTaskUp")) { root.dayTaskAt = Math.max(0, root.dayTaskAt - 1); return true }
+    if (Sc.hit(event, "dayTaskDown")) { root.dayTaskAt = Math.min(root.dayTasks.length - 1, root.dayTaskAt + 1); return true }
+    if (Sc.hit(event, "dayTaskGo")) { var t = root.dayTasks[root.dayTaskAt]; root.dayTaskAt = -1; root.goToTask(t); return true }
+    if (Sc.hit(event, "dayTaskBack")) { root.dayTaskAt = -1; return true }
+    if (Sc.hit(event, "dayTasks")) return false
+    root.dayTaskAt = -1
+    return false
+  }
   property int dueFocus: -1          // in the list under the calendar (-1: the grid has the keys)
   property int projFocus: -1         // in the projects list (-1: not there)
   property var projects: []          // [{ tag, name, next: { at, room } }], the most used first (orderProjects)
@@ -4166,6 +4258,7 @@ Item {
   }
 
   onHereChanged: {
+    root.dayTaskAt = -1                // the band's row is the note's keys
     if (root.paneAlone) root.paneTucked = root.here !== "right"
     if (root.pointerMode !== "off") warpTimer.restart()
     if (root.hereWas === "center" && root.here === "right") Qt.callLater(root.blipContext)
@@ -4424,6 +4517,29 @@ Item {
     if (keepCursor) editor.setCursor(Math.min(at, editor.length), editor.holdsFocus())
     root.tickedCount = Queue.countTicked(t)
     root.scheduleRepaint()
+  }
+
+  // The note changed on disk while open (Obsidian, Syncthing from the other
+  // machine; Outside.js, 2026-11-28): only what changed there is laid into
+  // the text, as one undo step, the cursor carried as by an edit — beside
+  // words typed here and not yet saved, over them only where both wrote
+  // the same place (and then Ctrl+Z gives them back). It used to load the
+  // disk's text over everything: undo started over, the cursor went back to
+  // a count of characters, and words typed in the last moment were lost.
+  function takeOutside(before) {
+    var t = Outside.take(before, editor.text, svc.body)
+    if (t.edit) {
+      root.applying = true
+      editor.takeOutside(t.edit.a, t.edit.b, t.edit.s)
+      root.applying = false
+      root.lastLine = -1
+      root.tickedCount = Queue.countTicked(editor.text)
+      root.scheduleRepaint()
+    }
+    if (t.kept) { svc.markPending(editor.text); saveTimer.restart() }
+    if (t.clash) root.showHint("changed outside the page where you were writing: its words are shown · " + root.keyName("undo") + " brings yours back")
+    else if (t.kept) root.showHint("changed outside the page as you wrote: both kept")
+    else if (t.edit) root.showHint("changed outside the page: read again")
   }
 
   function flush() {
@@ -4846,6 +4962,7 @@ Item {
   // Keys the page owns, ahead of editing. True when taken.
   function pageKey(event) {
     if (root.mentionKey(event)) return true
+    if (root.dayListKey(event)) return true
     if (root.anywhereKey(event)) return true
     if (Sc.hit(event, "cueAccept") && root.acceptCue()) return true
     if (Sc.hit(event, "menu")) { root.menuKey(); return true }
@@ -4855,7 +4972,7 @@ Item {
       return true
     }
     if (Sc.hit(event, "focusSection")) { root.toggleFocus(); return true }
-    if (Sc.hit(event, "dayTasks")) { if (root.dayTasks.length > 0) root.dayTasksOpen = !root.dayTasksOpen; else root.showHint("no task is for this day"); return true }
+    if (Sc.hit(event, "dayTasks")) { root.dayTasksKey(); return true }
     if (Sc.hit(event, "private")) { root.togglePrivate(); return true }
     if (Sc.hit(event, "privateBlock")) { root.togglePrivateBlock(); return true }
     if (Sc.hit(event, "exportPdf")) { root.openExport(); return true }
@@ -6567,6 +6684,18 @@ Item {
     datedProc.running = true
   }
   property bool datedAgain: false
+  // The open note's dated lines (a 📅 or a ⏳ on them), as last read: a save
+  // reads the days' tasks again only when one of them changed — its box,
+  // its words, its day — not after every save while writing (each read is
+  // a fifth of a second of Python; 2026-11-28, the navigation pass).
+  property string datedSeen: ""
+  function datedLines(t) { return String(t).split("\n").filter(function (l) { return /📅|⏳/.test(l) }).join("\n") }
+  function refreshDatedIfChanged() {
+    var now = root.datedLines(editor.text)
+    if (now === root.datedSeen) return
+    root.datedSeen = now
+    root.refreshDated()
+  }
 
   Timer { id: tasksHold; onTriggered: root.refreshTasks() }
 
@@ -8982,6 +9111,9 @@ Item {
   function goToTask(t) {
     root.pendingTask = { text: t.text, line: t.line }
     var here = t.date === svc.noteDate && svc.ready
+    // On this same day too: Ctrl+[ comes back from its line (openNote
+    // keeps the step only when the day changes).
+    if (here) root.remember()
     root.openNote(t.date)
     root.toNote()
     if (here) root.landOnTask()
@@ -10250,14 +10382,16 @@ Item {
     // A new day: yesterday's sessions are behind, so the runner is asked
     // which come next (a page left open overnight, 2026-11-23).
     onTodayChanged: if (root.projectsListed.length > 0) root.refreshProjects()
-    onLoaded: { root.applyText(svc.body); root.reconcilePending = true; root.startCheck(); root.reconcile(); root.openPass(); root.refreshDated() }
+    onLoaded: { root.applyText(svc.body); root.reconcilePending = true; root.startCheck(); root.reconcile(); root.openPass(); root.datedSeen = root.datedLines(editor.text); root.refreshDated() }
     // A write that never said it landed, written again (Service.unstick).
     onStall: root.showHint("a save did not land: writing it again")
     onToolWarningChanged: if (toolWarning !== "") root.showHint(toolWarning)
-    onExternalChange: { root.applyText(svc.body, true); root.reconcilePending = true; root.startCheck(); root.reconcile(); root.notesChanged(); root.refreshDated() }
+    onExternalChange: function (before) { root.takeOutside(before); root.reconcilePending = true; root.startCheck(); root.reconcile(); root.notesChanged(); root.datedSeen = root.datedLines(editor.text); root.refreshDated() }
+    onGoneOutside: root.showHint(svc.readOnly ? "this note was deleted or moved outside the page"
+      : "this note was deleted or moved outside the page — its words stay here, and the next one typed writes it back")
     onSavedNow: {
       root.notesChanged()
-      root.refreshDated()
+      root.refreshDatedIfChanged()
       // The list once the save it waited for has landed — and, while the
       // dashboard shows, after any save: one that lands after a read began
       // may hold a line the read did not see (a line written and the
@@ -10902,6 +11036,9 @@ Item {
         var again = root.followAgain
         root.followAgain = null
         if (again) root.followLink(again.link, again.from, true)
+        var step = root.goAgain
+        root.goAgain = 0
+        if (step !== 0) root.goBack(step, true)
       }
     }
   }
@@ -12245,7 +12382,7 @@ Item {
           readonly property int count: root.dayTasks.length
           readonly property int undone: count - root.dayTasksDone
           readonly property bool past: root.noteIso !== "" && root.noteIso < Days.format(new Date(), "YYYY-MM-DD")
-          visible: count > 0 && editor.focusTag === "" && root.problem === "" && !root.pdfShown && !root.exportOpen
+          visible: root.dayBandShown
           anchors.top: focusBand.bottom
           anchors.topMargin: visible ? root.sp(16) : 0
           anchors.left: parent.left
@@ -12284,8 +12421,11 @@ Item {
               anchors.left: dayMark.right
               anchors.leftMargin: root.sp(8)
               textFormat: Text.PlainText
-              text: (svc.isToday ? "For today" : "For this day") + "  ·  " + dayBand.count + (dayBand.count === 1 ? " task" : " tasks")
-                + "  ·  " + (dayBand.undone === 0 ? "all done" : root.dayTasksDone + " done")
+              // What is left first, what is done after it, and the count of
+              // all only once nothing is left ("3 tasks · 0 done · 3 to do"
+              // said one thing three times).
+              text: (svc.isToday ? "For today" : "For this day") + "  ·  "
+                + (dayBand.undone === 0 ? dayBand.count + (dayBand.count === 1 ? " task, done" : " tasks, all done") : "")
               color: root.dim
               font.family: root.fontFamily
               font.styleName: root.fontStyle
@@ -12296,8 +12436,20 @@ Item {
               anchors.left: dayWhat.right
               anchors.baseline: dayWhat.baseline
               textFormat: Text.PlainText
-              text: "  ·  " + dayBand.undone + (dayBand.past ? " still open" : " to do")
+              id: dayLeft
+              text: dayBand.undone + (dayBand.past ? " still open" : " to do")
               color: dayBand.past ? root.urgent : root.foreground
+              font.family: root.fontFamily
+              font.styleName: root.fontStyle
+              font.pixelSize: root.fs(Style.font.bodySmall)
+            }
+            Text {
+              visible: dayBand.undone > 0 && root.dayTasksDone > 0
+              anchors.left: dayLeft.right
+              anchors.baseline: dayWhat.baseline
+              textFormat: Text.PlainText
+              text: "  ·  " + root.dayTasksDone + " done"
+              color: root.dim
               font.family: root.fontFamily
               font.styleName: root.fontStyle
               font.pixelSize: root.fs(Style.font.bodySmall)
@@ -12313,20 +12465,35 @@ Item {
             }
           }
 
-          Repeater {
+          // At most six rows high, scrolled inside itself (2026-11-28): the
+          // band sits above the note, outside its scroll, so a long list
+          // held the note down for as long as it was open.
+          ListView {
+            id: dayList
+            readonly property real rowHeight: dayWhat.implicitHeight + root.sp(4)
+            width: parent.width
+            height: Math.min(contentHeight, rowHeight * 6)
+            visible: root.dayTasksOpen
             model: root.dayTasksOpen ? root.dayTasks : []
-            Item {
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            interactive: contentHeight > height
+            currentIndex: root.dayTaskAt
+            highlightFollowsCurrentItem: false
+            onCurrentIndexChanged: if (currentIndex >= 0) positionViewAtIndex(currentIndex, ListView.Contain)
+            QC.ScrollBar.vertical: ScrollMark { page: root }
+            delegate: Item {
               id: dayRow
               required property var modelData
+              required property int index
               readonly property bool late: !modelData.done && dayBand.past
-              width: dayBand.width
-              height: dayRowText.implicitHeight + root.sp(4)
+              readonly property bool lit: root.dayTaskAt === index
+              width: dayList.width
+              height: dayList.rowHeight
               Rectangle {
                 anchors.fill: parent
-                anchors.leftMargin: -root.sp(4)
-                anchors.rightMargin: -root.sp(4)
                 radius: Style.cornerRadius
-                color: dayRowArea.containsMouse && root.handOn ? Style.hoverFill : "transparent"
+                color: dayRow.lit ? Style.selectedFill : dayRowArea.containsMouse && root.handOn ? Style.hoverFill : "transparent"
               }
               Text {
                 id: dayRowBox
@@ -12358,6 +12525,7 @@ Item {
               Text {
                 id: dayRowMeta
                 anchors.right: parent.right
+                anchors.rightMargin: root.sp(4)
                 anchors.baseline: dayRowText.baseline
                 textFormat: Text.PlainText
                 text: {
@@ -12380,8 +12548,8 @@ Item {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onClicked: root.goToTask(dayRow.modelData)
-                Tip { host: root; shown: parent.containsMouse; text: root.tips([["Go to its line", ""]]) }
+                onClicked: { root.dayTaskAt = -1; root.goToTask(dayRow.modelData) }
+                Tip { host: root; shown: parent.containsMouse; text: root.tips([["Go to its line", "dayTaskGo"]]) }
               }
             }
           }

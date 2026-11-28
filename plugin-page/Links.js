@@ -171,3 +171,40 @@ function shortest(hits, dir) {
   for (var i = 0; i < hits.length; i++) if (folderOf(hits[i]) === dir) return hits[i]
   return hits.slice().sort(function (a, b) { return a.length - b.length || (a < b ? -1 : 1) })[0]
 }
+
+// A heading as a link names it (Obsidian, 2026-11-28): its words without
+// the markup around them — emphasis, code, a link's shown text for the
+// link, the characters a heading's link leaves out (# | ^ : %) — case and
+// runs of spaces aside. Both sides are read the same way, so `## **Plan**`
+// is reached by [[note#Plan]], and "# Week 3 #essay" by [[note#Week 3 essay]].
+function headingKey(s) {
+  return String(s)
+    .replace(/\[\[(?:[^\]|]*\|)?([^\]]*)\]\]/g, "$1")
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/[*_`~=#|^:%\[\]]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase()
+}
+
+// The heading row a link's heading names, or null. As written whole first;
+// then Obsidian's nested form, [[note#Part#Sub]]: the last part, under the
+// ones before it when they are there in order, else the last part anywhere.
+function headingRow(rows, heading) {
+  var isHead = function (r, key) { return r.kind === "heading" && headingKey(r.body) === key }
+  var whole = headingKey(heading)
+  if (whole === "") return null
+  for (var i = 0; i < rows.length; i++) if (isHead(rows[i], whole)) return rows[i]
+  var parts = String(heading).split("#").map(headingKey).filter(function (p) { return p !== "" })
+  if (parts.length < 2) return null
+  var from = 0, found = null
+  for (var k = 0; k < parts.length; k++) {
+    found = null
+    for (var j = from; j < rows.length; j++) if (isHead(rows[j], parts[k])) { found = rows[j]; from = j + 1; break }
+    if (!found) break
+  }
+  if (found) return found
+  var last = parts[parts.length - 1]
+  for (var n = 0; n < rows.length; n++) if (isHead(rows[n], last)) return rows[n]
+  return null
+}

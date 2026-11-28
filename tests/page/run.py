@@ -968,6 +968,80 @@ def checks() -> int:
         check(p.note().rstrip().endswith("overlapping saves") and p.call("text").rstrip().endswith("overlapping saves"),
               f"…and the page stays on it, not on one of its own earlier saves ({p.note()[-30:]!r} / {p.call('text')[-30:]!r})")
 
+        # 8b. a change made outside is one edit (2026-11-28, the navigation
+        # pass): the cursor carried with its line, not put back at its count
+        # of characters, and one undo takes the change back — the history
+        # before it kept. Until then the disk's text was loaded over the
+        # page's: undo started over, the cursor slid into another line.
+        p.call("cursorEnd")
+        p.call("insert", "\nmy own last line")
+        p.wait(lambda: "my own last line" in p.note())
+        time.sleep(0.5)                            # its save landed: the change below is the disk's alone
+        f.write_text(f.read_text().replace("written in obsidian\n", "written in obsidian\nadded above, outside\n"))
+        check(p.wait(lambda: "added above, outside" in p.call("text")), "a line added outside, above the cursor, reaches the page")
+        at_line = p.lines()[int(p.call("cursorLine"))]
+        check("my own last line" in at_line, f"…and the cursor stays in its own line ({at_line!r})")
+        check("changed outside" in p.call("hint"), f"…and the page says the note changed ({p.call('hint')!r})")
+        p.call("undo")
+        check(p.wait(lambda: "added above, outside" not in p.call("text") and "my own last line" in p.call("text")),
+              "one undo takes the outside change back, and only it")
+        p.call("undo")
+        check(p.wait(lambda: "my own last line" not in p.call("text")), "…and the undo before it is still there")
+        p.wait(lambda: "my own last line" not in p.note())
+
+        # 8c. a note deleted outside while open (Obsidian, a move): its
+        # words stay in the page, nothing is written back by looking at it or
+        # leaving it, and the next word typed writes it again. Today's was
+        # seeded from the template again at once.
+        gone_stem = (dt.date.today() - dt.timedelta(days=9)).strftime("%Y.%m.%d")
+        gone = p.daily / f"{gone_stem}.md"
+        gone.write_text(header(gone_stem) + "words of a note about to go\n")
+        p.call("openDay", gone_stem)
+        p.wait(lambda: "about to go" in p.call("text"))
+        gone.unlink()
+        check(p.wait(lambda: "deleted or moved" in p.call("hint")), f"a note deleted outside: the page says so ({p.call('hint')!r})")
+        time.sleep(1.0)
+        check(not gone.exists() and "about to go" in p.call("text"), "…keeps its words, and writes nothing back")
+        p.call("cursorEnd")
+        p.call("insert", " and one more")
+        check(p.wait(lambda: gone.exists() and "about to go" in gone.read_text() and "and one more" in gone.read_text()),
+              "…until a word is typed: then it is written again, its words with it")
+        gone.unlink()
+        p.wait(lambda: "deleted or moved" in p.call("hint"))
+        p.call("openDay", TODAY)
+        p.wait(lambda: p.call("header").startswith(dt.date.today().strftime("%A")))
+        time.sleep(1.0)
+        check(not gone.exists(), "…and leaving it, unchanged since it went, does not bring it back")
+
+        # 8d. going back inside a note, and a heading reached as Obsidian
+        # writes its link (markup aside). A jump within one note was never
+        # remembered (one note was one place), and a place was a count of
+        # characters: written above, back landed in another line.
+        hop_stem = (dt.date.today() - dt.timedelta(days=8)).strftime("%Y.%m.%d")
+        (p.daily / f"{hop_stem}.md").write_text(header(hop_stem) + "see [[#Target heading]] here\n" + "filler\n" * 40
+                                                + "## **Target** heading\nbelow it\n")
+        p.call("openDay", hop_stem)
+        p.wait(lambda: "see [[#Target" in p.call("text"))
+        CTRL_ALT, ALT_ = 0x04000000 | 0x08000000, 0x08000000
+        KEY_RET, KEY_LT, KEY_RT = 0x01000004, 0x01000012, 0x01000014
+        link_line = p.line_of("see [[#Target")
+        p.call("cursor", p.offset_of_line(link_line) + 8)
+        p.call("keyPage", KEY_RET, ALT_)
+        check(p.wait(lambda: "Target** heading" in p.lines()[int(p.call("cursorLine"))]),
+              f"[[#Target heading]] reaches “## **Target** heading” ({p.call('hint')!r})")
+        p.call("keyPage", KEY_LT, CTRL_ALT)
+        check(p.wait(lambda: int(p.call("cursorLine")) == link_line), "back from a heading in the same note: to the link's line")
+        p.call("keyPage", KEY_RT, CTRL_ALT)
+        p.wait(lambda: "Target** heading" in p.lines()[int(p.call("cursorLine"))])
+        p.call("cursor", 0)
+        p.call("insert", "a line written above\n")
+        p.call("cursorEnd")
+        p.call("keyPage", KEY_LT, CTRL_ALT)
+        check(p.wait(lambda: "see [[#Target" in p.lines()[int(p.call("cursorLine"))]),
+              f"…and back finds the link's line by its words, written above since ({p.lines()[int(p.call('cursorLine'))]!r})")
+        p.call("openDay", TODAY)
+        p.wait(lambda: p.call("header").startswith(dt.date.today().strftime("%A")))
+
         # 9. the popup's `o`: opening on a deadline's line
         p.open_fresh(json.dumps({"shape": "alongside", "goto": f"[[{YDAY}#^d3]]"}))
         check(p.wait(lambda: "from cli" in p.lines()[int(p.call("cursorLine"))]),
@@ -5463,6 +5537,33 @@ def checks() -> int:
         check(p.call("keyPage", 0x54, 0x04000000 | 0x02000000) == "true" and p.wait(lambda: day()["open"] != was),
               "Ctrl+Shift+T unfolds the list, or folds it")
         p.call("keyPage", 0x54, 0x04000000 | 0x02000000)
+        # 12y. the list by the keys (2026-11-28): Ctrl+Shift+T opens it onto
+        # its first row, ↓ moves, Esc leaves it open with the keys back in the
+        # note, Enter goes to the task's line on its own day — and back.
+        CTRL_SHIFT, KEY_T = 0x04000000 | 0x02000000, 0x54
+        KEY_DN, KEY_ESC_, KEY_RET_, KEY_LT_ = 0x01000015, 0x01000000, 0x01000004, 0x01000012
+        if day()["open"]:
+            p.call("keyPage", KEY_T, CTRL_SHIFT)
+        p.wait(lambda: not day()["open"])
+        p.call("keyPage", KEY_T, CTRL_SHIFT)
+        check(p.wait(lambda: day()["open"] and day()["at"] == 0), f"Ctrl+Shift+T opens the day's tasks onto the first ({day()})")
+        p.call("keyPage", KEY_DN, 0)
+        check(p.wait(lambda: day()["at"] == 1), f"…↓ moves to the next ({day()})")
+        p.call("keyPage", KEY_ESC_, 0)
+        check(p.wait(lambda: day()["at"] == -1 and day()["open"]), f"…Esc gives the keys back to the note, the list left open ({day()})")
+        p.call("keyPage", KEY_T, CTRL_SHIFT)
+        check(p.wait(lambda: day()["at"] == 0 and day()["open"]), f"…Ctrl+Shift+T on the open list goes back into it ({day()})")
+        target = day()["titles"].index("written ahead for today")
+        while day()["at"] < target:
+            p.call("keyPage", KEY_DN, 0)
+        p.call("keyPage", KEY_RET_, 0)
+        check(p.wait(lambda: p.call("noteDate") == ahead and "written ahead for today" in p.lines()[int(p.call("cursorLine"))]),
+              f"…Enter goes to the task's line, on the day it was written ({p.call('noteDate')})")
+        p.call("keyPage", KEY_LT_, 0x04000000 | 0x08000000)
+        check(p.wait(lambda: p.call("noteDate") == TODAY), "…and back comes to today")
+        if day()["open"]:
+            p.call("keyPage", KEY_T, CTRL_SHIFT)
+            p.call("keyPage", KEY_T, CTRL_SHIFT)
 
         # 13. the usage log: written on close, event names only
         p.call("closeAll")
