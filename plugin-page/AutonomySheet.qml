@@ -15,8 +15,10 @@ BorderSurface {
   readonly property var pal: page.palette
   property alias autonomyKeysRef: autonomyKeys
 
-  visible: page.settingsOpen && page.settingsView === "autonomy"
+  visible: page.centerView === "settings" && page.settingsView === "autonomy"
   x: page.wideX
+  // Making room for the sidebar slides, as Settings' main sheet does.
+  Behavior on x { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
   y: page.alongside ? 0 : page.sheetMargin
   width: page.wideWidth
   height: page.alongside ? content.height : content.height - page.sheetMargin * 2
@@ -46,15 +48,13 @@ BorderSurface {
       x: Math.round((parent.width - width) / 2)
       height: parent.height
 
-      Text {
+      SettingsCrumb {
         id: autonomyTitle
+        page: autonomySheet.page
         anchors.top: parent.top
-        textFormat: Text.PlainText
-        text: "SETTINGS · WHAT THE AGENT MAY DO"
-        color: page.dim
-        font.family: page.fontFamily
-        font.styleName: page.fontStyle
-        font.pixelSize: page.fs(Style.font.caption)
+        anchors.left: parent.left
+        title: "WHAT THE AGENT MAY DO"
+        onBack: page.closeNotebook()
       }
 
       Text {
@@ -97,6 +97,18 @@ BorderSurface {
         width: autonomyFlick.width - page.sp(20)
         spacing: page.sp(6)
 
+        Text {
+          visible: !page.autonomyData
+          width: parent.width
+          wrapMode: Text.WordWrap
+          textFormat: Text.PlainText
+          text: page.sayUnread("autonomy")
+          color: page.faint
+          font.family: page.fontFamily
+          font.styleName: page.fontStyle
+          font.pixelSize: page.fs(Style.font.bodySmall)
+        }
+
         Repeater {
           model: page.autonomyData ? page.autonomyData.kinds : []
           Item {
@@ -104,7 +116,7 @@ BorderSurface {
             required property var modelData
             required property int index
             readonly property bool picked: page.autonomyFocus === index
-            readonly property bool lit: picked && page.here === "center"
+            readonly property bool lit: picked && page.here === "center" && autonomySheet.visible
             onPickedChanged: if (picked) {
               if (y < autonomyFlick.contentY) autonomyFlick.contentY = Math.max(0, y)
               else if (y + height > autonomyFlick.contentY + autonomyFlick.height) autonomyFlick.contentY = Math.max(0, y + height - autonomyFlick.height)
@@ -135,9 +147,13 @@ BorderSurface {
               anchors.verticalCenter: parent.verticalCenter
               spacing: page.sp(3)
 
-              Row {
+              // A Flow: a long kind and its three levels go onto two lines
+              // in a narrow window, not past the edge.
+              Flow {
+                width: parent.width
                 spacing: page.sp(16)
                 Text {
+                  id: kindLabel
                   textFormat: Text.PlainText
                   text: kindRow.modelData.label
                   color: page.foreground
@@ -150,7 +166,8 @@ BorderSurface {
                   Text {
                     required property var modelData
                     readonly property bool chosen: kindRow.modelData.level === modelData
-                    anchors.baseline: parent.children[0].baseline
+                    topPadding: Math.max(0, kindLabel.baselineOffset - levelMetrics.ascent)   // on the label's baseline
+                    FontMetrics { id: levelMetrics; font: parent.font }
                     textFormat: Text.PlainText
                     text: page.sayLevel(modelData)
                     color: levelArea.containsMouse && page.handOn ? page.accent : chosen ? page.foreground : page.faint
@@ -164,6 +181,13 @@ BorderSurface {
                       hoverEnabled: true
                       cursorShape: Qt.PointingHandCursor
                       onClicked: { page.autonomyFocus = kindRow.index; page.setAutonomy(kindRow.modelData.kind, modelData); autonomyKeys.forceActiveFocus() }
+                      Tip {
+                        host: page
+                        shown: parent.containsMouse
+                        text: modelData === "ask" ? "Ask me: it proposes, you accept or decline   ←→"
+                          : modelData === "do" ? "Do it and tell me: done, shown as the agent's, one key undoes it   ←→"
+                          : "Never: it does not propose this   ←→"
+                      }
                     }
                   }
                 }
@@ -184,18 +208,13 @@ BorderSurface {
       }
       }
 
-      Text {
+      SettingsFoot {
         id: autonomyFoot
+        page: autonomySheet.page
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        textFormat: Text.PlainText
-        wrapMode: Text.WordWrap
-        text: "↑↓ pick a kind · ←→ ask me · do it and tell me · never · Esc back to settings"
-        color: page.faint
-        font.family: page.fontFamily
-        font.styleName: page.fontStyle
-        font.pixelSize: page.fs(Style.font.caption)
+        keys: "↑↓ pick a kind · ←→ ask me · do it and tell me · never · Space or Enter the next, round · Esc back to settings"
       }
     }
   }

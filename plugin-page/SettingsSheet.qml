@@ -37,6 +37,9 @@ BorderSurface {
     if (wantField && settingsKeys.activeFocus) settingsField.forceActiveFocus()
     else if (!wantField && settingsField.activeFocus) settingsKeys.forceActiveFocus()
   }
+  // The field, scrolled to: a rename of the first calendar opened a box
+  // below the fold.
+  function showField() { Qt.callLater(function () { settingsSheet.ensureVisible(fieldRow) }) }
   function ensureVisible(item) {
     if (!item || !settingsFlick) return
     var p = item.mapToItem(settingsBody, 0, 0)
@@ -58,7 +61,9 @@ BorderSurface {
     Keys.onPressed: function (event) { if (page.settingsKey(event)) event.accepted = true }
   }
 
-  visible: page.settingsOpen && page.settingsView === "main"
+  // Not under the keys sheet: it is drawn in Settings' place, as over the
+  // dashboard, and Settings is there again after it.
+  visible: page.centerView === "settings" && page.settingsView === "main"
   x: page.wideX
   // Making room for the sidebar slides, as the note does (Page.qml, `sheet`).
   Behavior on x { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
@@ -103,7 +108,7 @@ BorderSurface {
         QC.ScrollBar.vertical: ScrollMark { page: settingsSheet.page }
         anchors.top: settingsTitle.bottom
         anchors.topMargin: page.sp(24)
-        anchors.bottom: settingsFoot.top
+        anchors.bottom: settingsNoteLine.visible ? settingsNoteLine.top : settingsFoot.top
         anchors.bottomMargin: page.sp(12)
         anchors.left: parent.left
         anchors.right: parent.right
@@ -167,7 +172,7 @@ BorderSurface {
             required property var modelData
             required property int index
             readonly property bool picked: page.settingsFocus === index
-            readonly property bool lit: picked && page.here === "center"
+            readonly property bool lit: picked && page.here === "center" && settingsSheet.visible
             onPickedChanged: if (picked) settingsSheet.ensureVisible(calRow)
             onLitChanged: page.selected(calRow, "center", lit)
             Component.onCompleted: if (lit) page.selected(calRow, "center", true)
@@ -196,9 +201,13 @@ BorderSurface {
               anchors.verticalCenter: parent.verticalCenter
               spacing: page.sp(4)
 
-              Row {
+              // A Flow, so a long address goes under the name in a narrow
+              // window instead of past the edge.
+              Flow {
+                width: parent.width
                 spacing: page.sp(10)
                 Text {
+                  id: calName
                   textFormat: Text.PlainText
                   text: calRow.modelData.name
                   color: page.foreground
@@ -210,7 +219,10 @@ BorderSurface {
                   // Not when the name is the address already (a calendar
                   // not yet renamed is named for its host).
                   visible: calRow.modelData.address !== calRow.modelData.name + "/…"
-                  anchors.baseline: parent.children[0].baseline
+                  topPadding: Math.max(0, calName.baselineOffset - addrMetrics.ascent)   // on the name's baseline
+                  FontMetrics { id: addrMetrics; font: parent.font }
+                  width: Math.min(implicitWidth, parent.width)
+                  elide: Text.ElideMiddle
                   textFormat: Text.PlainText
                   text: calRow.modelData.address
                   color: page.faint
@@ -246,8 +258,9 @@ BorderSurface {
               }
 
               // Its verbs; while Del asks, the question and its answers.
-              Row {
+              Flow {
                 readonly property bool asking: page.settingsAsking === calRow.index
+                width: parent.width
                 spacing: page.sp(16)
                 Text {
                   visible: parent.asking
@@ -313,7 +326,11 @@ BorderSurface {
           width: fieldRow.width
           // Clicking or typing into the field picks its row so Enter adds it.
           onActiveFocusChanged: if (activeFocus && page.settingsFieldKind === "add" && page.settingsPicked() !== "field") page.settingsFocus = page.settingsAt("field")
-          onTextChanged: if (text !== "" && page.settingsFieldKind === "add") page.settingsFocus = page.settingsAt("field")
+          onTextChanged: {
+            if (page.settingsRestoring) return
+            if (page.settingsFieldKind === "add" && page.settingsNote !== "") page.settingsNote = ""   // typed again: the last word on it is old
+            if (text !== "" && page.settingsFieldKind === "add") page.settingsFocus = page.settingsAt("field")
+          }
           placeholderText: page.settingsFieldKind === "rename" ? "its name"
             : page.settingsState && page.settingsState.configured
               ? "paste another calendar's address to add it" : "https://…  or  webcal://…"
@@ -375,7 +392,8 @@ BorderSurface {
             textFormat: Text.PlainText
             wrapMode: Text.WordWrap
             text: page.sayEvalState(modelData)
-            color: text.indexOf("passed") >= 0 ? page.dim : page.urgent
+            // Only a failure is urgent: never checked is how it starts.
+            color: text.indexOf("failed") >= 0 ? page.urgent : text.indexOf("passed") >= 0 ? page.dim : page.faint
             font.family: page.fontFamily
             font.styleName: page.fontStyle
             font.pixelSize: page.fs(Style.font.bodySmall)
@@ -388,6 +406,8 @@ BorderSurface {
           onChosen: settingsSheet.focusActive()
           onFocused: function (it) { settingsSheet.ensureVisible(it) }
           Text {
+            width: Math.min(implicitWidth, parent.width)
+            wrapMode: Text.WordWrap
             textFormat: Text.PlainText
             text: page.sayNotebook()
             color: page.dim
@@ -407,7 +427,7 @@ BorderSurface {
               anchors.fill: parent
               hoverEnabled: true
               cursorShape: Qt.PointingHandCursor
-              onClicked: page.openNotebook()
+              onClicked: { page.settingsFocus = page.settingsAt("notebook"); page.openNotebook() }
               Tip { host: page; shown: parent.containsMouse; text: page.tip("What the agent knows: its notes, to correct or forget", "settingsChange") }
             }
           }
@@ -418,6 +438,8 @@ BorderSurface {
           onChosen: settingsSheet.focusActive()
           onFocused: function (it) { settingsSheet.ensureVisible(it) }
           Text {
+            width: Math.min(implicitWidth, parent.width)
+            wrapMode: Text.WordWrap
             textFormat: Text.PlainText
             text: page.sayAutonomy()
             color: page.dim
@@ -437,7 +459,7 @@ BorderSurface {
               anchors.fill: parent
               hoverEnabled: true
               cursorShape: Qt.PointingHandCursor
-              onClicked: page.openAutonomy()
+              onClicked: { page.settingsFocus = page.settingsAt("autonomy"); page.openAutonomy() }
               Tip { host: page; shown: parent.containsMouse; text: page.tip("What it may do: each kind of action, ask me · do it and tell me · never", "settingsChange") }
             }
           }
@@ -448,6 +470,8 @@ BorderSurface {
           onChosen: settingsSheet.focusActive()
           onFocused: function (it) { settingsSheet.ensureVisible(it) }
           Text {
+            width: Math.min(implicitWidth, parent.width)
+            wrapMode: Text.WordWrap
             textFormat: Text.PlainText
             text: page.saySearchFolders()
             color: page.dim
@@ -467,7 +491,7 @@ BorderSurface {
               anchors.fill: parent
               hoverEnabled: true
               cursorShape: Qt.PointingHandCursor
-              onClicked: page.openSearchFolders()
+              onClicked: { page.settingsFocus = page.settingsAt("search"); page.openSearchFolders() }
               Tip { host: page; shown: parent.containsMouse; text: page.tip("What it may search: each folder of the vault, on or off", "settingsChange") }
             }
           }
@@ -480,6 +504,8 @@ BorderSurface {
           onChosen: settingsSheet.focusActive()
           onFocused: function (it) { settingsSheet.ensureVisible(it) }
           Text {
+            width: Math.min(implicitWidth, parent.width)
+            wrapMode: Text.WordWrap
             textFormat: Text.PlainText
             text: page.sayCheckin()
             color: page.dim
@@ -499,25 +525,41 @@ BorderSurface {
               anchors.fill: parent
               hoverEnabled: true
               cursorShape: Qt.PointingHandCursor
-              onClicked: page.openCheckin(false)
+              onClicked: { page.settingsFocus = page.settingsAt("checkin"); page.openCheckin(false) }
               Tip { host: page; shown: parent.containsMouse; text: page.tip("How Longhand feels: eight answers, once a week, and the weeks so far", "settingsChange") }
             }
           }
         }
-        Text {
-          visible: !!page.agentChecks && page.agentChecks.latest_review !== ""
-          textFormat: Text.PlainText
-          text: "open the latest review"
-          color: reviewArea.containsMouse && page.handOn ? page.accent : page.faint
-          font.family: page.fontFamily
-          font.styleName: page.fontStyle
-          font.pixelSize: page.fs(Style.font.bodySmall)
-          MouseArea {
-            id: reviewArea
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: Qt.openUrlExternally(Links.fileUrl(page.agentChecks.latest_review))
+        // The week's review, a row ↑↓ reach, read in the sheet.
+        SettingRow {
+          visible: page.hasReview
+          page: settingsSheet.page
+          kind: "review"
+          onChosen: settingsSheet.focusActive()
+          onFocused: function (it) { settingsSheet.ensureVisible(it) }
+          Text {
+            textFormat: Text.PlainText
+            text: page.hasReview ? "The weekly review: " + page.fileName(page.agentChecks.latest_review) : ""
+            color: page.dim
+            font.family: page.fontFamily
+            font.styleName: page.fontStyle
+            font.pixelSize: page.fs(Style.font.bodySmall)
+          }
+          Text {
+            textFormat: Text.PlainText
+            text: "read it"
+            color: reviewArea.containsMouse && page.handOn ? page.accent : page.faint
+            font.family: page.fontFamily
+            font.styleName: page.fontStyle
+            font.pixelSize: page.fs(Style.font.bodySmall)
+            MouseArea {
+              id: reviewArea
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: { page.settingsFocus = page.settingsAt("review"); page.openReview() }
+              Tip { host: page; shown: parent.containsMouse; text: page.tip("The agent's latest weekly review, read here", "settingsChange") }
+            }
           }
         }
 
@@ -573,8 +615,16 @@ BorderSurface {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onClicked: { if (modelData.act === "settingsSound") page.toggleTickSound(); else page.playTick(true); settingsSheet.focusActive() }
-                Tip { host: page; shown: parent.containsMouse && modelData.act !== ""; text: page.tip("The tick's sound: on or off", "settingsChange") }
+                onClicked: {
+                  page.settingsFocus = page.settingsAt("sound")
+                  if (modelData.act === "settingsSound") page.toggleTickSound(); else page.playTick(true)
+                  settingsSheet.focusActive()
+                }
+                Tip {
+                  host: page
+                  shown: parent.containsMouse
+                  text: modelData.act !== "" ? page.tip("The tick's sound: on or off", "settingsChange") : "The tick, played once (even when it is off)"
+                }
               }
             }
           }
@@ -617,6 +667,7 @@ BorderSurface {
               textFormat: Text.PlainText
               text: modelData.text
               color: page.pointerMode === modelData.mode ? page.foreground : pointerArea.containsMouse && page.handOn ? page.accent : page.faint
+              font.underline: page.pointerMode === modelData.mode      // the one in use, as a level in what it may do
               font.family: page.fontFamily
               font.styleName: page.fontStyle
               font.pixelSize: page.fs(Style.font.bodySmall)
@@ -626,47 +677,52 @@ BorderSurface {
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: {
+                  page.settingsFocus = page.settingsAt("pointer")
                   page.setPointer(modelData.mode)
                   settingsSheet.focusActive()
                 }
-                Tip { host: page; shown: parent.containsMouse; text: page.tip("The pointer: " + modelData.text + " (picked: the next one)", "settingsChange") }
+                Tip { host: page; shown: parent.containsMouse; text: page.tip("The pointer: " + modelData.text + " (picked: ←→, or the next one)", "settingsChange") }
               }
             }
           }
         }
-
-        Text {
-          visible: page.settingsNote !== ""
-          width: parent.width
-          textFormat: Text.PlainText
-          wrapMode: Text.WordWrap
-          text: page.settingsNote
-          color: page.accent
-          font.family: page.fontFamily
-          font.styleName: page.fontStyle
-          font.pixelSize: page.fs(Style.font.bodySmall)
-        }
       }
       }
 
+      // What just happened, or why not: pinned above the keys, where it is
+      // seen. At the end of the list it was below the fold with a calendar
+      // or two, so a wrong address said nothing that could be read.
       Text {
+        id: settingsNoteLine
+        visible: page.settingsNote !== ""
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: settingsFoot.top
+        anchors.bottomMargin: visible ? page.sp(8) : 0
+        height: visible ? implicitHeight : 0
+        textFormat: Text.PlainText
+        wrapMode: Text.WordWrap
+        text: page.settingsNote
+        color: page.accent
+        font.family: page.fontFamily
+        font.styleName: page.fontStyle
+        font.pixelSize: page.fs(Style.font.bodySmall)
+      }
+
+      SettingsFoot {
         id: settingsFoot
+        page: settingsSheet.page
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        textFormat: Text.PlainText
-        wrapMode: Text.WordWrap
         readonly property string kind: { page.settingsFocus; page.calendarCount; return page.settingsPicked() }
-        text: page.settingsFieldKind === "rename" ? "Enter renames it · Esc keeps the old name"
+        keys: page.settingsFieldKind === "rename" ? "Enter renames “" + page.renamingName + "” · Esc keeps the old name"
           : page.settingsAsking >= 0 ? "Enter removes it · Esc keeps it"
           : kind === "field" ? "Enter adds the calendar pasted · ↑↓ the settings · Esc back"
           : kind === "calendar" ? "↑↓ the settings · " + page.keyName("settingsChange") + " fetches it · " + page.keyName("settingsShare") + " what the agent sees · "
             + page.keyName("settingsRename") + " renames · " + page.keyName("settingsForget") + " removes it · Esc back"
-          : "↑↓ the settings · " + page.keyName("settingsChange") + (kind === "sound" || kind === "pointer" ? " changes it" : " opens it") + " · Esc back"
-        color: page.faint
-        font.family: page.fontFamily
-        font.styleName: page.fontStyle
-        font.pixelSize: page.fs(Style.font.caption)
+          : kind === "pointer" ? "↑↓ the settings · ←→ or " + page.keyName("settingsChange") + " changes it · Esc back"
+          : "↑↓ the settings · " + page.keyName("settingsChange") + (kind === "sound" ? " changes it" : kind === "review" ? " reads it" : " opens it") + " · Esc back"
       }
     }
   }

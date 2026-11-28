@@ -307,6 +307,7 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | Change the picked setting, or open it (a calendar: fetch it now) | `Enter` · `Space` | in settings |
 | Correct the picked note in your words (Enter too) | `Ctrl+E` · `F2` | in what the agent knows |
 | Forget the picked note, or take a correction back (it asks first) | `Del` · `Backspace` | in what the agent knows |
+| In settings and its sheets: a few rows up or down | `PgUp` · `PgDn` | |
 
 ## Typing (the text field's own, not changeable)
 
