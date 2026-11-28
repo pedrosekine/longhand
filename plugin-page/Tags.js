@@ -100,15 +100,18 @@ function fromField(text, projects) {
 // with it, then those with q anywhere in the tag or name; each group in
 // the list's own order. A leading `#` is the key that started it, not a
 // letter of the tag. An empty q is every project, as listed.
+// Accents aside, as the files' filter: "fhoo" finds "FHOÖ", "ö" finds "o".
+function _fold(s) { return String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() }
+
 function reach(projects, q) {
-  q = String(q || "").replace(/^#/, "").toLowerCase()
+  q = _fold(String(q || "").replace(/^#/, ""))
   var list = (projects || []).filter(function (p) { return p && p.tag })
   if (q === "") return list.slice()
   var starts = [], word = [], within = []
   for (var i = 0; i < list.length; i++) {
     var p = list[i]
-    var tag = String(p.tag).toLowerCase()
-    var name = String(p.name || "").toLowerCase()
+    var tag = _fold(p.tag)
+    var name = _fold(p.name)
     if (tag.indexOf(q) === 0) starts.push(p)
     else if (name.split(/[^\w]+/).some(function (w) { return w !== "" && w.indexOf(q) === 0 })) word.push(p)
     else if (tag.indexOf(q) > 0 || name.indexOf(q) >= 0) within.push(p)

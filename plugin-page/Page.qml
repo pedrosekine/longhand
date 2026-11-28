@@ -536,6 +536,10 @@ Item {
   // Below ~970 px (when both side panes would squeeze the note under 420 px),
   // side panes are mutually exclusive via `ensureRoomFor`.
   readonly property bool canBothPanes: Layout.bothFit(content.width, root.edge, root.sidebarWidth + root.marginGap, root.sp(300) + root.marginGap, root.sp(420))
+  // The sidebar widening for a project's view can leave no room for both
+  // panes with the window's width unchanged: the pane not in use makes
+  // room, as when the window narrows (2026-11-28).
+  onCanBothPanesChanged: if (!root.canBothPanes && root.sidebarOpen && root.rightView !== "") root.ensureRoomFor(root.here === "left" ? "left" : "right")
   // Today's width, before any is remembered: what the note leaves, 300 to
   // 440 px (Layout.rightPane).
   readonly property int paneReading: Layout.rightPane(content.width, root.edge, root.sheetFor,
@@ -1182,8 +1186,13 @@ Item {
     else if (root.here !== "left") root.focusPane("left")
     if (name === root.sidebarSpace) return
     root.spaceStep = d || (root.spaces.indexOf(name) > root.spaces.indexOf(root.sidebarSpace) ? 1 : -1)
+    // A project being named is let go with its space; the keys go to what
+    // the new space shows (2026-11-28: a field left behind, hidden, kept
+    // them, and the filter's did when Time came back).
+    root.addingProject = false
     root.sidebarSpace = name
     root.used("space", name)
+    root.focusPane("left")
   }
   property var dayStems: []
   property var calFocus: new Date()   // the day the calendar's cursor is on
@@ -1202,7 +1211,7 @@ Item {
   }
   // A project's sections want more room than a month grid, but only where
   // the note can still have its full measure beside them.
-  readonly property int sidebarWidth: root.projectOpen
+  readonly property int sidebarWidth: root.projectOpen && root.sidebarSpace === "time"
     && content.width - root.sp(320) - root.marginGap >= root.sheetFor ? root.sp(320) : root.sp(236)
 
   // Deadlines by the day they fall on, for the calendar (hidden ones too:
@@ -1356,7 +1365,7 @@ Item {
     root.chatSeen = m
     root.savePageState()
   }
-  property bool projectOpen: false   // the margin is showing one project's notes
+  property bool projectOpen: false   // the sidebar is showing one project's view
   property var sections: []          // [{ date, line, heading, title, sub, preview, open, done }]
   property string projectTag: ""
   property string projectFolder: ""   // its folder in the vault (`projects/thesis_itu`), "" when none
@@ -1381,8 +1390,11 @@ Item {
   readonly property var projectRows: PV.rows(root.sections, root.projectPapers, root.projectOpen ? root.projectDocs() : [],
     { shelf: root.projectFolds.shelf, files: root.projectFolds.files, open: root.projectFolds.open,
       earlier: root.projectFolds.earlier, iso: root.sectionIso, name: root.projectName,
-      today: Qt.formatDate(new Date(), "yyyy-MM-dd") })
+      today: Qt.formatDate(new Date(root.sideNow), "yyyy-MM-dd") })
   readonly property var projectRow: PV.find(root.projectRows, root.projectRowKey)
+  // Nothing in it but its two pages; and while its lists are being read.
+  readonly property bool projectBare: root.projectRows.every(function (r) { return r.kind === "page" || r.kind === "cap" })
+  readonly property bool projectReading: sectionsProc.running || projectPapersProc.running
   readonly property string projectFocusKey: root.projectRow ? root.projectRow.key : ""
   function sectionIso(s) {
     var p = svc.configured ? Days.parse(s.date, svc.dailyFormat()) : null
@@ -1392,8 +1404,14 @@ Item {
   function isoWhen(iso) {
     var d = new Date(iso + "T12:00:00")
     if (isNaN(d.getTime())) return iso
-    var age = Math.round((new Date(new Date().toDateString()) - new Date(d.toDateString())) / 86400000)
-    return Qt.formatDate(d, d.getFullYear() === new Date().getFullYear() ? "ddd d MMM" : "ddd d MMM yyyy")
+    return root.dayWhen(d)
+  }
+  // "Thu 26 Nov · yesterday", by the sidebar's minute, so a list left open
+  // past midnight says it again.
+  function dayWhen(d) {
+    var now = new Date(root.sideNow)
+    var age = Math.round((new Date(now.toDateString()) - new Date(d.toDateString())) / 86400000)
+    return Qt.formatDate(d, d.getFullYear() === now.getFullYear() ? "ddd d MMM" : "ddd d MMM yyyy")
       + (age === 0 ? " · today" : age === 1 ? " · yesterday" : "")
   }
   // The row picked, by its key; the older foci follow it (the live tests
@@ -1424,7 +1442,7 @@ Item {
         if (projectPapersProc.tag !== root.projectTag) return
         // All of them: ProjectView sorts papers from the folder's own
         // documents, and leaves out a note whose PDF is gone.
-        try { root.projectPapers = JSON.parse(projectPapersOut.text).papers || [] } catch (e) { root.projectPapers = [] }
+        try { root.projectPapers = JSON.parse(projectPapersOut.text).papers || [] } catch (e) { /* kept as they were */ }
       }
     }
   }
@@ -1685,7 +1703,7 @@ Item {
       if (!d || !d.thread || "?~#".indexOf(String(d.thread).charAt(0)) >= 0) return ""
       return d.thread + "|" + (d.chat ? d.chat.date + "|" + d.chat.hash : "|")
     }
-    if (root.marginOpen && !root.projectOpen && root.dayNote && (root.currentRec !== "" || root.currentHash !== ""))
+    if (root.marginOpen && root.dayNote && (root.currentRec !== "" || root.currentHash !== ""))
       return "|" + svc.noteDate + "|" + (root.currentRec !== "" ? root.currentRec : root.currentHash)
     return ""
   }
@@ -1792,7 +1810,7 @@ Item {
       if (!root.talkData) return null
       return { kind: root.talkItem ? (root.talkItem.kind === "question" ? "question" : "proposal") : "task", head: root.talkData.title || "", auto: true }
     }
-    if (root.marginOpen && !root.projectOpen && root.dayNote && root.currentHash !== "") {
+    if (root.marginOpen && root.dayNote && root.currentHash !== "") {
       var b = root.blockBounds(root.currentHash)
       return { kind: b && /^\s*[-*+] \[.\] /.test(b.text.split("\n")[0]) ? "task" : "block", head: root.blockHead(root.currentHash), auto: true }
     }
@@ -2443,7 +2461,7 @@ Item {
   // chips after the fixed one): `@` adds tasks, notes and papers there too
   // (slice 2 of "One conversation").
   property var marginRefs: []
-  readonly property bool marginCanPoint: (root.marginOpen && !root.projectOpen) || (root.talkOpen && !root.talkToPlanner)
+  readonly property bool marginCanPoint: root.marginOpen || (root.talkOpen && !root.talkToPlanner)
   // `@` and words nothing is called (2026-11-28): Enter sent "@typo" to the
   // agent, the list gone without a word. The first Enter closes the list
   // and says so; the next sends what is written, as written.
@@ -3574,7 +3592,7 @@ Item {
     var vault = svc.config ? svc.config.vault : ""
     if (root.here === "left" && root.sidebarSpace === "files") {
       var fp = sidebar.filesPaneRef
-      var r = fp.rows[fp.pick]
+      var r = fp.shown[fp.pick]
       return r && !r.none && vault !== "" ? vault + "/" + r.rel.replace(/\/$/, "") : ""
     }
     if (root.centerView === "dash") {
@@ -3667,7 +3685,9 @@ Item {
   function focusPane(p) {
     if (p === "left") {
       if (!root.leftShown) return false
-      if (root.addingProject) sidebar.projectFieldRef.forceActiveFocus()
+      // Back to a filter with words in it: the words, so typing goes on.
+      if (root.sidebarSpace === "files" && sidebar.filesPaneRef.query !== "") sidebar.filesFilterRef.forceActiveFocus()
+      else if (root.addingProject && root.sidebarSpace === "time") sidebar.projectFieldRef.forceActiveFocus()
       else sidebar.sidebarKeysRef.forceActiveFocus()
       return true
     }
@@ -6071,6 +6091,7 @@ Item {
     root.projectRowKey = ""
     root.projectFolds = ({ shelf: false, files: false, open: false, earlier: false })
     root.projectPapers = []
+    if (!root.sidebarOpen) root.ensureRoomFor("left")
     root.sidebarOpen = true
     root.projectOpen = true
     root.refreshSections()
@@ -6098,20 +6119,33 @@ Item {
     sectionsProc.command = [svc.runner, "sections", "--tag", root.projectTag]
     sectionsProc.running = true
   }
-  onSidebarOpenChanged: if (root.sidebarOpen) { root.notesChanged(); root.readToday.refresh() }
+  onSidebarOpenChanged: if (root.sidebarOpen) { root.sideNow = Date.now(); root.notesChanged(); root.refreshProjectPapers(); root.readToday.refresh() }
+  // Marks made while reading show in the project's view (OPEN, THIS WEEK,
+  // off the shelf) without leaving the project and coming back (2026-11-28).
+  Connections { target: pdfPane; function onReadChanged() { if (root.projectOpen) projectPapersAgain.restart() } }
+  // The sidebar's minute, as the dashboard's (dashNow): a deadline's hour
+  // passing turns it late, midnight moves "today" and this week.
+  property double sideNow: Date.now()
+  Timer { interval: 60000; repeat: true; running: root.sidebarOpen && root.showing; onTriggered: root.sideNow = Date.now() }
 
   // The day's deadline list in the sidebar; false for a key it does not
   // use. A function, as projectsKey is, so the page can be driven without
   // a keyboard (tests/page/run.py).
   function dueKey(event) {
     if (Sc.hit(event, "listOpen")) root.goToDeadline(root.focusDue[root.dueFocus])
-    else if (Sc.hit(event, "listDone")) {
-      var d = root.focusDue[root.dueFocus]
-      if (d && d.status === "open") root.tickSound()
-      root.tickDeadline(d)
-    }
+    else if (Sc.hit(event, "listDone")) root.sideTick(root.focusDue[root.dueFocus])
     else return false
     return true
+  }
+
+  // A deadline of the day, ticked from the sidebar: done; done, open
+  // again; dropped or hidden, open again, said (it was silent, and looked
+  // like a done one untick).
+  function sideTick(d) {
+    if (!d) return
+    if (d.status === "open") root.tickSound()
+    else if (d.status !== "done") root.showHint("“" + d.title + "” was " + (d.status === "cancelled" ? "dropped" : "hidden") + ": open again")
+    root.tickDeadline(d)
   }
 
   // The projects list's keys, in one function so the page can be driven
@@ -6129,9 +6163,14 @@ Item {
     else if (Sc.hit(event, "listClass")) { if (pr) root.startClass(pr) }
     else if (Sc.hit(event, "listOpen")) { if (pr) { root.used("reach", "walk"); root.openProject(pr) } else root.openSidebarProject() }
     else if (Sc.hit(event, "listInto")) { if (pr) { root.used("reach", "walk"); root.openProject(pr) } }
-    else if (!(event.modifiers & Qt.ControlModifier)) { root.projFocus = -1; return false }
+    else if (!(event.modifiers & (Qt.ControlModifier | Qt.AltModifier))) { root.projFocus = -1; return false }
     else return false
     return true
+  }
+  // The project whose view is open, as the list of projects has it.
+  function projectHere() {
+    var i = root.projectIndex(root.projectTag)
+    return i >= 0 ? root.projects[i] : (root.projectTag !== "" ? { tag: root.projectTag, name: root.projectName } : null)
   }
 
   // ---------------------------------------- reaching a project (plan.md item 19)
@@ -6233,13 +6272,18 @@ Item {
   // The projects, the most used first (Tags.byUse); the keys stay on the
   // project they were on while the list is read again.
   property var projectUses: ({})     // projects-used.json: { tag: [epoch seconds] }
+  // A project just made from the sidebar: the keys land on it.
+  property string projectToFocus: ""
   function orderProjects() {
     var on = root.projects[root.projFocus]
-    var tag = root.projFocus >= 0 && on ? on.tag : ""
-    var wasNew = root.projFocus >= 0 && root.projFocus === root.projects.length
+    var tag = root.projectToFocus !== "" ? root.projectToFocus : root.projFocus >= 0 && on ? on.tag : ""
+    // On "+ new project" before the list was read (Tab at once): the
+    // first project once it is, not the new row.
+    var wasNew = root.projFocus >= 0 && root.projFocus === root.projects.length && root.projects.length > 0
     root.projects = Tags.byUse(root.projectsListed, root.projectUses, Math.floor(Date.now() / 1000))
     if (tag !== "") {
       var i = root.projects.findIndex(function (p) { return p.tag === tag })
+      if (i >= 0 && tag === root.projectToFocus) root.projectToFocus = ""
       root.projFocus = i >= 0 ? i : Math.min(root.projFocus, root.projects.length)
     } else if (wasNew) root.projFocus = root.projects.length
     else root.projFocus = Math.min(root.projFocus, root.projects.length)
@@ -6719,7 +6763,7 @@ Item {
       root.projectFolds = f
       return
     }
-    if (r.kind === "section" || r.kind === "box") { root.sectionFocus = r.index; root.openSection(r.section); return }
+    if (r.kind === "section" || r.kind === "box") { root.sectionFocus = r.index; root.openSection(r.section, r.box || null); return }
     if (r.kind === "doc") {
       if (r.doc) root.openDocument(r.doc)
       else { root.remember(); root.openPdf(r.pdf) }
@@ -6736,21 +6780,25 @@ Item {
   // Enter: the note itself, the cursor on the section's own heading. The
   // list stays in the sidebar, as the calendar does after opening a day, so
   // the next section is one key away.
-  function openSection(s) {
+  // `box`: an open box of it (the OPEN band), landed on by its words.
+  function openSection(s, box) {
     if (!s) return
     // Only the project's part of that day is drawn (Focus.js), once the
     // day is in the sheet and the cursor is on it.
     root.pendingFocus = { tag: s.tag, date: s.date }
     // Boxes of the tag written outside its sections have no heading to
-    // land on: the first of them, found by its words.
-    if (s.boxes && s.boxes.length > 0) {
-      root.goToTask({ text: s.boxes[0].text, line: s.boxes[0].line, date: s.date })
+    // land on: the first open one (else the first), found by its words.
+    var stray = s.boxes || []
+    var to = box || (stray.length > 0 ? (stray.filter(function (b) { return (b.state || " ") === " " })[0] || stray[0]) : null)
+    if (to) {
+      root.goToTask({ text: to.text, line: to.line, date: s.date })
       if (s.date === svc.noteDate && svc.ready) root.landOnFocus()
       return
     }
     root.pendingSection = s
-    if (s.date === svc.noteDate && svc.ready) { root.landOnSection(); root.landOnFocus() }
-    else root.openNote(s.date)
+    var here = s.date === svc.noteDate && svc.ready
+    root.openNote(s.date)
+    if (here) { root.landOnSection(); root.landOnFocus() }
     root.showNote()
   }
 
@@ -6800,22 +6848,25 @@ Item {
 
   // By its words, not its line number: the note may have been written in
   // since the list was gathered (the same reason tasks are found by words).
+  // The same heading twice in a day: the one nearest the line it was on.
   function landOnSection() {
     if (!root.pendingSection || !svc.ready) return
-    var want = root.pendingSection.heading
+    var want = root.pendingSection.heading, line = root.pendingSection.line || 0
     root.pendingSection = null
-    var re = new RegExp("^#{1,6} +" + want.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + " *$", "m")
-    var m = re.exec(editor.text)
-    if (m) editor.setCursor(m.index + m[0].length, true)
+    var re = new RegExp("^#{1,6} +" + want.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + " *$", "gm")
+    var text = editor.text, m, best = null, bestFar = Infinity
+    while ((m = re.exec(text)) !== null) {
+      var far = Math.abs(text.slice(0, m.index).split("\n").length - 1 - line)
+      if (far < bestFar) { best = m; bestFar = far }
+    }
+    if (best) editor.setCursor(best.index + best[0].length, true)
   }
 
   // When a section was written, for its row in a project's list: the
   // day, the year too when it is not this one's.
   function sectionWhen(s) {
     var p = svc.configured ? Days.parse(s.date, svc.dailyFormat()) : null
-    if (!p) return s.date
-    var fmt = p.date.getFullYear() === new Date().getFullYear() ? "ddd d MMM" : "ddd d MMM yyyy"
-    return Qt.formatDate(p.date, fmt) + (s.age === 0 ? " · today" : s.age === 1 ? " · yesterday" : "")
+    return p ? root.dayWhen(p.date) : s.date
   }
 
   // The line that stands for a deadline, as a task the edit path can find —
@@ -8281,12 +8332,15 @@ Item {
   // cursor lands at the end of its words. (Until 2026-10-17 another day only
   // unfolded a preview, so a task written on an earlier day could not be
   // reached; see docs/tasks.md.)
+  // The note under a PDF is still the one loaded: openNote puts it back in
+  // the middle (2026-11-28, the sidebar pass: the cursor moved in the
+  // hidden note and the PDF kept the keys).
   function goToTask(t) {
     root.pendingTask = { text: t.text, line: t.line }
+    var here = t.date === svc.noteDate && svc.ready
+    root.openNote(t.date)
     root.toNote()
-    if (t.date === svc.noteDate && svc.ready) root.landOnTask()
-    else root.openNote(t.date)
-    root.showNote()
+    if (here) root.landOnTask()
   }
 
   function landOnTask() {
@@ -8743,13 +8797,19 @@ Item {
     var f = Tags.fromField(text, root.projects)
     if (f.tag === "") { root.showHint("a name, and its #tag when not the name's words"); return }
     if (f.taken) { root.showHint("#" + f.tag + " is a project already"); return }
+    if (newProjectProc.running) { root.showHint("still making the last one"); return }
     root.makeProject(f.name, f.tag)
+    // Its words, given back if it cannot be made; the keys go to it once it is.
+    newProjectProc.typed = text
+    newProjectProc.fromSidebar = true
     root.used("project", "sidebar")
     root.closeSidebarProject()
   }
 
   function makeProject(name, tag) {
     if (newProjectProc.running) { root.showHint("still making the last one"); return }
+    newProjectProc.typed = ""
+    newProjectProc.fromSidebar = false
     newProjectProc.made = tag
     newProjectProc.command = [svc.runner, "project", "--tag", tag, "--name", name]
     newProjectProc.running = true
@@ -9163,10 +9223,12 @@ Item {
   function goToDeadline(d) {
     root.used("goto-deadline")
     var l = d ? Bound.parseLink(d.link) : null
-    if (!l) { root.showHint("“" + (d ? d.title : "") + "” is not written in a note yet"); root.showNote(); return }
+    // No line to go to: the keys stay where they are, on its row.
+    if (!l) { root.showHint("“" + (d ? d.title : "") + "” is not written in a note yet"); return }
     root.pendingGoto = l.id
-    if (l.stem === svc.noteDate && svc.ready) root.landOnGoto()
-    else root.openNote(l.stem)
+    var here = l.stem === svc.noteDate && svc.ready
+    root.openNote(l.stem)
+    if (here) root.landOnGoto()
     root.showNote()
   }
 
@@ -9227,8 +9289,9 @@ Item {
     root.reached(p.tag)
     root.pendingClass = p
     root.projFocus = -1
-    if (svc.isToday && svc.ready) root.writeClass()
-    else root.openNote(svc.todayStamp())
+    var here = svc.isToday && svc.ready
+    root.openNote(svc.todayStamp())
+    if (here) root.writeClass()
     root.showNote()
   }
 
@@ -9246,6 +9309,12 @@ Item {
 
   // `#`: just the tag, where the cursor is.
   function insertTag(p) {
+    // Into the note in the middle, never one hidden under a PDF or the
+    // agent's page shown to read.
+    if (!svc.ready || svc.readOnly || root.pdfShown) {
+      root.showHint(root.pdfShown ? "a PDF is open: the tag goes into a note" : svc.readOnly ? "this page is the agent's, to read" : "no note open")
+      return
+    }
     root.used("tag", p.tag)
     root.reached(p.tag)
     root.projFocus = -1
@@ -9738,8 +9807,11 @@ Item {
         // An answer for a project already left, or another one: not drawn.
         if (!root.projectOpen || sectionsProc.tag !== root.projectTag) return
         var prev = root.sections[root.sectionFocus]
-        var got = []
-        try { got = JSON.parse(text) || [] } catch (e) { got = [] }
+        // A read that failed keeps the list as it was and says so; it
+        // emptied it, which looked like a project with nothing in it.
+        var got = null
+        try { got = JSON.parse(text) } catch (e) { got = null }
+        if (!Array.isArray(got)) { if (text.trim() !== "" || root.sections.length > 0) root.showHint("#" + root.projectTag + "'s sections could not be read again"); return }
         root.sections = got
         var at = Say.sameSection(got, prev)
         root.sectionFocus = at >= 0 ? at : Math.min(root.sectionFocus, Math.max(0, got.length - 1))
@@ -9946,11 +10018,21 @@ Item {
   Process {
     id: newProjectProc
     property string made: ""
+    property string typed: ""
+    property bool fromSidebar: false
     stdout: StdioCollector {
-      onStreamFinished: if (text.trim() !== "") { root.showHint("#" + newProjectProc.made + " is a project now"); root.refreshProjects() }
+      onStreamFinished: if (text.trim() !== "") {
+        root.showHint("#" + newProjectProc.made + " is a project now")
+        if (newProjectProc.fromSidebar) root.projectToFocus = newProjectProc.made
+        root.refreshProjects()
+      }
     }
     stderr: StdioCollector {
-      onStreamFinished: if (text.trim() !== "") { root.showHint(text.trim().replace(/^longhand-agent: /, "")); root.refreshProjects() }
+      onStreamFinished: if (text.trim() !== "") {
+        root.showHint(text.trim().replace(/^longhand-agent: /, ""))
+        if (newProjectProc.fromSidebar && newProjectProc.typed !== "" && root.sidebarOpen) root.openSidebarProject(newProjectProc.typed)
+        root.refreshProjects()
+      }
     }
   }
 

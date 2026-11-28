@@ -188,6 +188,10 @@ TestCase {
     compare(Say.projectSummary([{ date: "a", open: 1 }, { date: "a", open: 0 }, { date: "b", open: 2 }]),
             "3 sections on 2 days · 3 open")
     compare(Say.projectSummary([{ date: "a", open: 0 }, { date: "b", open: 0 }]), "2 sections")
+    // Its papers, and the questions waiting in them; never a document or a missing one.
+    compare(Say.projectSummary([], [{ pdf: "a.pdf", questions: [{ id: 1 }, { id: 2 }] }, { pdf: "b.pdf", kind: "document" },
+                                    { pdf: "c.pdf", missing: true }]), "1 paper · 2 questions")
+    compare(Say.projectSummary([{ date: "a", open: 1 }], [{ pdf: "a.pdf" }, { pdf: "b.pdf" }]), "1 section · 2 papers · 1 open")
   }
 
   function test_the_section_picked_is_found_again() {

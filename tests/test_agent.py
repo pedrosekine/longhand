@@ -573,6 +573,11 @@ def main() -> int:
         check([r["date"] for r in json.loads(t.agent("sections", "--tag", "respro").stdout)] == [DAY],
               "the other tag gets its own section")
         check(json.loads(t.agent("sections", "--tag", "nothing").stdout) == [], "a tag nobody wrote: nothing")
+        # The sidebar's list: a section's own boxes, each with its line, so
+        # its OPEN band lists them and Enter lands on each (2026-11-28).
+        check(se[0]["tasks"] == [{"line": 5, "text": "send the email", "state": " "},
+                                 {"line": 6, "text": "read the abstract", "state": "x"}],
+              f"a section's boxes, with their lines ({se[0].get('tasks')})")
         check(len(json.loads(t.agent("sections", "--tag", "intsem", "--days", "7").stdout)) == 1,
               "--days leaves the old day out")
         # A box is its own tag's before its heading's (2026-11-03): written

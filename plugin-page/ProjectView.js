@@ -3,10 +3,10 @@
 // its pages, 2026-11-21): one list, so writing and reading are seen
 // together instead of one pushing the other off the bottom.
 //
-//   Project page  a row of its own: the whole project in one scroll (P)
+//   Project page  a row of its own: the whole project in one scroll (Alt+P)
 //   OPEN          what needs the person: the open boxes of the project's
 //                 sections, then the questions still waiting in its papers
-//   THIS WEEK     its page first (W), then the sections and the days a
+//   THIS WEEK     its page first (Alt+W), then the sections and the days a
 //                 paper was read this week, Monday to Sunday, newest first
 //   Earlier       the days before this week, folded to one line that names
 //                 its meetings
@@ -49,14 +49,17 @@ function sectionKey(s) {
   return "s:" + s.date + ":" + (s.heading || s.title || s.line)
 }
 
-// The open loops: each open box, then each waiting question.
+// The open loops: each open box, then each waiting question. A section's
+// own boxes are its `tasks` (the runner's, 2026-11-28); a day's boxes
+// written outside any of its sections, its `boxes`. Each row keeps its box,
+// so Enter lands on that line and not on the section's first.
 function openRows(sections, papers) {
   var out = []
   for (var i = 0; i < sections.length; i++) {
-    var s = sections[i], boxes = s.boxes || []
+    var s = sections[i], boxes = s.boxes || s.tasks || []
     for (var j = 0; j < boxes.length; j++) {
       if ((boxes[j].state || " ") !== " ") continue
-      out.push({ kind: "box", pick: true, key: "b:" + s.date + ":" + boxes[j].line, section: s, index: i,
+      out.push({ kind: "box", pick: true, key: "b:" + s.date + ":" + boxes[j].line, section: s, index: i, box: boxes[j],
                  text: Say.plainLine("- [ ] " + boxes[j].text).replace(/^○\s*/, "") })
     }
   }
@@ -139,11 +142,12 @@ function rows(sections, papers, docs, opts) {
   }
   for (var d = 0; d < docs.length; d++)
     files.push({ kind: "doc", pick: true, key: "f:" + docs[d].path, doc: docs[d], name: docs[d].name })
-  // Nothing under the tag yet: no list, and the view says how to start one.
-  if (sections.length === 0 && reading.length === 0 && shelf.length === 0 && files.length === 0) return []
+  // Nothing under the tag yet: its two pages still (a new project's page
+  // has its sessions and deadlines), and the view says how to start one
+  // under them (2026-11-28; it hid both pages until then).
 
-  // The whole project in one scroll, first: its page (P).
-  var out = [{ kind: "page", pick: true, key: "page:project", page: "project", text: "Project page", letter: "P",
+  // The whole project in one scroll, first: its page (its key, `act`).
+  var out = [{ kind: "page", pick: true, key: "page:project", page: "project", text: "Project page", act: "listPage",
                role: "The whole project in one scroll: what's next, deadlines, papers, files, every section" }]
   var open = openRows(sections, reading)
   if (open.length > 0) {
@@ -167,11 +171,15 @@ function rows(sections, papers, docs, opts) {
   // 2026-11-22). That time is a paper's last day only; an earlier day of it
   // goes after those known, in the papers' order.
   // A day that holds only open boxes is all in OPEN already: not twice.
-  var days = []
+  // The same heading twice in a day: a key each, by its place among them.
+  var days = [], seen = {}
   for (var a = 0; a < sections.length; a++) {
     var sb = sections[a].boxes || []
     if (!sections[a].heading && sb.length > 0 && sb.every(function (x) { return (x.state || " ") === " " })) continue
-    days.push({ kind: "section", pick: true, key: sectionKey(sections[a]), section: sections[a], index: a,
+    var sk = sectionKey(sections[a])
+    seen[sk] = (seen[sk] || 0) + 1
+    if (seen[sk] > 1) sk += "#" + seen[sk]
+    days.push({ kind: "section", pick: true, key: sk, section: sections[a], index: a,
                 day: iso(sections[a]), order: 0, seq: a })
   }
   for (var b = 0; b < reading.length; b++) {
@@ -186,13 +194,13 @@ function rows(sections, papers, docs, opts) {
       : (x.saved || 0) !== (y.saved || 0) ? (y.saved || 0) - (x.saved || 0) : x.seq - y.seq
   })
 
-  // This week, under its page (W); the days before it, folded.
+  // This week, under its page; the days before it, folded.
   var week = weekOf(opts.today)
   var thisWeek = days.filter(function (x) { return x.day >= week.from && x.day <= week.to })
   var earlier = days.filter(function (x) { return x.day < week.from })
   var asked = open.filter(function (x) { return x.kind === "question" }).length
   out.push({ kind: "cap", key: "cap:week", text: "THIS WEEK · " + week.said.toUpperCase() })
-  out.push({ kind: "page", pick: true, key: "page:week", page: "week", text: "Week page", letter: "W",
+  out.push({ kind: "page", pick: true, key: "page:week", page: "week", text: "Week page", act: "listWeek",
              role: "For a supervisor update or the diary: done, written, read, still open, questions to bring",
              said: weekSaid(thisWeek, asked) })
   out = out.concat(thisWeek)

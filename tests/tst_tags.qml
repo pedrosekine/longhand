@@ -62,6 +62,9 @@ TestCase {
     compare(tags(Tags.reach(reachList, "sem")), ["intsem"])
     compare(tags(Tags.reach(reachList, "")), tags(reachList))
     compare(Tags.reach(reachList, "zzz"), [])
+    // Accents aside, both ways (2026-11-28).
+    compare(tags(Tags.reach([{ tag: "fhoo", name: "FHOÖ Linz" }], "fhoö")), ["fhoo"])
+    compare(tags(Tags.reach([{ tag: "uni", name: "Universität Wien" }], "universitat")), ["uni"])
   }
 
   function test_by_use_most_reached_first_ties_as_listed() {

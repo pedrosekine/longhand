@@ -295,17 +295,29 @@ function sectionCounts(s) {
   return bits.join(" · ")
 }
 
-// Under the project's name: how much there is, and what is still open.
-function projectSummary(sections) {
+// Under the project's name: how much there is, and what is still open —
+// its papers too (2026-11-28: a project of reading said nothing), and the
+// questions still waiting in them.
+function projectSummary(sections, papers) {
   var n = (sections || []).length
-  if (n === 0) return ""
   var days = {}, open = 0, count = 0
   for (var i = 0; i < n; i++) {
     if (!days[sections[i].date]) { days[sections[i].date] = true; count++ }
     open += sections[i].open || 0
   }
-  return (n === 1 ? "1 section" : n + " sections") + (count < n ? " on " + count + " days" : "")
-    + (open > 0 ? " · " + open + " open" : "")
+  var read = 0, asked = 0
+  for (var k = 0; k < (papers || []).length; k++) {
+    var p = papers[k]
+    if (p.missing || p.kind === "document") continue
+    read++
+    asked += (p.questions || []).length
+  }
+  var bits = []
+  if (n > 0) bits.push((n === 1 ? "1 section" : n + " sections") + (count < n ? " on " + count + " days" : ""))
+  if (read > 0) bits.push(read === 1 ? "1 paper" : read + " papers")
+  if (open > 0) bits.push(open + " open")
+  if (asked > 0) bits.push(asked === 1 ? "1 question" : asked + " questions")
+  return bits.join(" · ")
 }
 
 // The list read again after an edit (2026-11-11): where the one picked

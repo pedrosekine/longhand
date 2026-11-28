@@ -35,12 +35,12 @@ TestCase {
   function test_page_open_this_week_then_folds() {
     var r = PV.rows(sections, papers, [], at)
     compare(kinds(r), ["page", "cap", "box", "question", "question", "cap", "page", "read", "fold", "fold", "fold"])
-    compare([r[0].key, r[0].letter], ["page:project", "P"])
+    compare([r[0].key, r[0].act], ["page:project", "listPage"])
     compare(r[1].text, "OPEN · 3")
     compare(r[2].text, "Finish the Themenvorschlag #thesis")
     compare(r[3].label, "Moser et al. 2026")
     compare(r[5].text, "THIS WEEK · 16–22 NOV")
-    compare([r[6].key, r[6].letter], ["page:week", "W"])
+    compare([r[6].key, r[6].act], ["page:week", "listWeek"])
   }
 
   function test_the_week_page_says_what_is_in_it() {
@@ -126,11 +126,28 @@ TestCase {
     compare(kinds(PV.rows([sections[2]], [], [], at)), ["page", "cap", "page", "fold"])
   }
 
-  function test_nothing_at_all_no_rows() {
-    compare(PV.rows([], [], [], at), [])
-    compare(PV.rows([], [papers[4]], [], at), [])     // a missing paper is nothing
+  function test_nothing_at_all_only_its_pages() {
+    var kinds = function (r) { return r.map(function (x) { return x.kind + (x.page ? ":" + x.page : "") }).join(" ") }
+    compare(kinds(PV.rows([], [], [], at)), "page:project cap page:week")
+    compare(kinds(PV.rows([], [papers[4]], [], at)), "page:project cap page:week")     // a missing paper is nothing
   }
 
+  // A section's own boxes are in OPEN, each with its box, so Enter lands
+  // on that line and not the first (2026-11-28).
+  function test_a_sections_own_boxes_are_open_each_its_own() {
+    var sec = { date: "2026-11-15", line: 2, heading: "# Seminar #thesis", title: "Seminar",
+                tasks: [{ line: 3, text: "first", state: "x" }, { line: 4, text: "second", state: " " }, { line: 5, text: "third", state: " " }] }
+    var open = PV.rows([sec], [], [], at).filter(function (x) { return x.kind === "box" })
+    compare(open.map(function (x) { return x.box.text }), ["second", "third"])
+    compare(open[1].key, "b:2026-11-15:5")
+  }
+  function test_the_same_heading_twice_a_day_two_rows() {
+    var a = { date: "2026-11-18", line: 2, heading: "# Meeting #thesis", title: "Meeting" }
+    var b = { date: "2026-11-18", line: 9, heading: "# Meeting #thesis", title: "Meeting" }
+    var keys = PV.rows([a, b], [], [], at).filter(function (x) { return x.kind === "section" }).map(function (x) { return x.key })
+    compare(keys.length, 2)
+    verify(keys[0] !== keys[1])
+  }
   function test_steps_skip_captions_and_hold_their_row() {
     var r = PV.rows(sections, papers, [], at)
     compare(PV.step(r, "", 1), r[2].key)              // opens on what is open, not on the page

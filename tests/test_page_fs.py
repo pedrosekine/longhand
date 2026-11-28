@@ -89,6 +89,21 @@ def main() -> int:
         check(r.returncode == 0 and "d\tCourses" in lines and "f\t.dot.md" in lines,
               f"list emits <kind>\\t<name> one level deep ({lines})")
         check(run("list", str(tmp / "no-such-dir")).stdout == "", "list on missing dir is empty and exits 0")
+        # A link is what it points at; one pointing nowhere is left out
+        # (2026-11-28: a folder linked into the vault was never listed).
+        if hasattr(os, "symlink"):
+            try:
+                os.symlink(vault / "human" / "Courses", vault / "human" / "Linked")
+                os.symlink(vault / "human" / "Courses" / "note.md", vault / "human" / "linked.md")
+                os.symlink(tmp / "gone", vault / "human" / "broken.md")
+            except (OSError, NotImplementedError):
+                pass
+            else:
+                lines = set(run("list", str(vault / "human")).stdout.splitlines())
+                check("d\tLinked" in lines and "f\tlinked.md" in lines and not any(l.endswith("\tbroken.md") for l in lines),
+                      f"links listed as what they point at, broken ones left out ({lines})")
+                for n in ("Linked", "linked.md", "broken.md"):
+                    (vault / "human" / n).unlink()
 
         # 2. walk
         r = run("walk", (vault / "human").as_posix(), (vault / "agents").as_posix())
