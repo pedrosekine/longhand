@@ -3141,9 +3141,10 @@ def cmd_ack(cfg: dict, args) -> int:
 
 
 def cmd_rate(cfg: dict, args) -> int:
-    """The student's word on a reply in the margin, an answer in the day's
-    conversation (`--day`, its turn) or in a note's (`--note` its path,
-    `--turn`): helpful, not helpful, or taken back (none). Kept on the
+    """The student's word on a reply in the margin (`--hash`; one of its
+    chat's answers with `--turn`), an answer in the day's conversation
+    (`--day`, its turn) or in a note's (`--note` its path, `--turn`):
+    helpful, not helpful, or taken back (none). Kept on the
     block or the turn and in feedback.tsv, with the prompt and model that
     made the reply, for the weekly review and for turning a reply that
     missed into an eval case."""
@@ -3188,19 +3189,29 @@ def cmd_rate(cfg: dict, args) -> int:
         args.hash = f"day:{args.day}"
     elif not args.hash:
         raise Fail("--hash or --day is required")
+    turn = args.turn if args.day is None else None
     for h in group_of(state, args.hash) if args.day is None else []:
         r = state["blocks"].get(h)
         if r is None:
             continue
+        # One answer of the block's chat (2026-11-28): the margin rated the
+        # first reply only, and its buttons under a chat's answers did nothing.
+        target = r
+        if turn is not None:
+            chat = r.get("chat") or []
+            if not (0 <= turn < len(chat)) or chat[turn].get("role") != "agent" or chat[turn].get("error"):
+                continue
+            target = chat[turn]
         if args.value == "none":
-            r.pop("rating", None)
+            target.pop("rating", None)
         else:
-            r["rating"] = {"value": args.value, "at": at}
-        rec = rec or r
+            target["rating"] = {"value": args.value, "at": at}
+        rec = rec or (dict(target, trigger="chat") if turn is not None else r)
     if rec is None:
-        raise Fail(f"no block {args.hash} on {paths.stamp}")
+        raise Fail(f"no answer at turn {turn} of block {args.hash} on {paths.stamp}" if turn is not None
+                   else f"no block {args.hash} on {paths.stamp}")
     write_atomic(paths, paths.state, json.dumps(state, indent=2, ensure_ascii=False) + "\n")
-    feedback(at, paths.stamp, args.hash, rec, args.value)
+    feedback(at, paths.stamp, args.hash + (f"#{turn}" if turn is not None else ""), rec, args.value)
     print(json.dumps({"hash": args.hash, "rating": args.value}))
     return 0
 
@@ -7016,7 +7027,7 @@ def main(argv: list[str]) -> int:
     p.add_argument("--hash", default="")
     p.add_argument("--day", type=int, default=None, help="an answer in the day's conversation, by its turn")
     p.add_argument("--note", default="", help="an answer in this note's conversation (its path in the vault), with --turn")
-    p.add_argument("--turn", type=int, default=None, help="with --note: the answer's turn")
+    p.add_argument("--turn", type=int, default=None, help="with --note or --hash: the answer's turn in that chat")
     p.add_argument("--date", default="")
     p = sub.add_parser("plan")
     p.add_argument("--force", action="store_true", help="plan now, whatever today's plan was")

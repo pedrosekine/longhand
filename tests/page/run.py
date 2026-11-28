@@ -80,6 +80,11 @@ h = args[args.index("--hash") + 1]
 msg = args[args.index("--message") + 1]
 stem = args[args.index("--date") + 1]
 path = daily / (stem + ".json")
+# With `fail` in the stub's folder, the run fails before writing anything,
+# as a model that is down does.
+if os.path.exists(os.path.join(os.environ.get("STUB_DIR", ""), "fail")):
+    print("error: the model is down", file=sys.stderr)
+    sys.exit(1)
 state = json.loads(path.read_text()) if path.exists() else {"date": stem, "blocks": {}}
 rec = state["blocks"].setdefault(h, {"state": "seen"})
 rec.setdefault("chat", []).append({"role": "student", "text": msg, "at": at})
@@ -1583,6 +1588,16 @@ def checks() -> int:
               f"({p.call('hint')!r}, {p.call('chatBoxText')!r})")
         (p.stub / "linger").unlink()
         p.wait(lambda: p.call("runnerRunning") == "false", 6)    # the lingering run ends
+        # A run that fails (2026-11-28, the agent pane pass): what was sent
+        # comes back to the box as a stop gives it back, and is not drawn as
+        # sent (it was lost: the box empty, the message gone).
+        (p.stub / "fail").write_text("")
+        p.call("sendChat", "will this one fail?")
+        check(p.wait(lambda: p.call("chatBoxText") == "will this one fail?", 10) and p.call("answering") == "false"
+              and "back in the box" in p.call("hint") and "will this one fail?" not in p.call("chat"),
+              f"a run that fails gives what was sent back to the box ({p.call('chatBoxText')!r}, {p.call('hint')!r}, {p.call('chat')})")
+        (p.stub / "fail").unlink()
+        p.call("chatBoxClear")
 
         before = len(list((p.state / "longhand" / "payloads").glob("*"))) \
             if (p.state / "longhand" / "payloads").is_dir() else 0
@@ -2381,23 +2396,30 @@ def checks() -> int:
         p.call("editReply", "day", 0)
         check(rep_open()["quote"] == "day: these two" and p.call("dayFieldText") == "yes, both" and len(reps()) == 1,
               "a pill clicked is back in the box, to change")
+        # Esc on it keeps it, where it was (2026-11-28: Esc lost it).
+        check(p.call("dayKey", 0x01000000, 0) == "true" and not rep_open()
+              and reps() == [("day: these two", "yes, both"), ("these", "and why these?")],
+              f"…Esc puts it back as it was, in its place ({reps()})")
+        p.call("editReply", "day", 0)
         p.call("dayType", "yes, both of them")
         p.call("dayKey", KEY_RETURN, 0)
+        check(reps() == [("day: these two", "yes, both of them"), ("these", "and why these?")],
+              f"…and Enter keeps it in its place, its number kept ({reps()})")
         p.call("dayKey", KEY_RETURN, 0)       # none open: sends
-        sent = "anything else?\n\n> these\nand why these?\n\n> day: these two\nyes, both of them"
+        sent = "anything else?\n\n> day: these two\nyes, both of them\n\n> these\nand why these?"
         check(p.wait(lambda: json.loads(p.call("dayTurns"))[-2:-1] == ["student: " + sent], timeout=12) and reps() == [],
               f"Enter with no reply open sends the box's words and every reply, each under its passage ({json.loads(p.call('dayTurns'))[-2:]})")
         parts = json.loads(p.call("partsOf", sent))
-        check([(x["quote"], x["text"]) for x in parts] == [("", "anything else?"), ("these", "and why these?"), ("day: these two", "yes, both of them")],
+        check([(x["quote"], x["text"]) for x in parts] == [("", "anything else?"), ("day: these two", "yes, both of them"), ("these", "and why these?")],
               f"…and it reads back as its parts ({parts})")
         check(sorted((m["quote"], m["n"], m["state"]) for m in json.loads(p.call("marksOf", "day", at)))
-              == [("day: these two", 2, "sent"), ("these", 1, "sent")],
+              == [("day: these two", 1, "sent"), ("these", 2, "sent")],
               f"…the answer keeps both passages numbered as the message numbered them ({p.call('marksOf', 'day', at)})")
         # The answer to it, in its parts (design A2): each under the reply it
         # answers, by number; a part's bubble under the pointer lights its
         # passage in the earlier answer.
         split = lambda: json.loads(p.call("lastAnswerParts"))
-        check(p.wait(lambda: split() and [(x["n"], x["reply"]) for x in split()["parts"]] == [(1, "and why these?"), (2, "yes, both of them")], timeout=10)
+        check(p.wait(lambda: split() and [(x["n"], x["reply"]) for x in split()["parts"]] == [(1, "yes, both of them"), (2, "and why these?")], timeout=10)
               and split()["intro"] == "day: anything else?",
               f"the answer to several replies is in its parts, each under the reply it answers ({split()})")
         p.call("hoverOn", "these")
@@ -2437,6 +2459,10 @@ def checks() -> int:
         seeded += [convolib.turn("paper", paper_s, "student", "what is the sample?", f"{back[-1]}T10:00:00", [paper_s], nm),
                    convolib.turn("paper", paper_s, "agent", "Twelve interviews.", f"{back[-1]}T10:00:09", [paper_s], nm)]
         convolib.Log(p.vault / "agents" / "longhand" / "conversation", "elsewhere").append(seeded)
+        # Back to the foot (Alt+↓ past the last question) from the answer
+        # followed back above: scrolled up, the pane stays where it is read
+        # (2026-11-28), as the days come in over it.
+        p.call("dayKey", 0x01000015, 0x08000000)
         p.call("loadConvo")
         hist = lambda: json.loads(p.call("historyRows"))  # noqa: E731
         check(p.wait(lambda: any(r["kind"] == "turn" and r["text"] == "question of day 4" for r in hist()), timeout=10),

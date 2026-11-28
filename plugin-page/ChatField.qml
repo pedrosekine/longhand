@@ -206,6 +206,10 @@ FocusScope {
         if (box.text !== t) box.text = t
         box._syncing = false
         box._moved(t)
+        // Emptied by hand (all selected, deleted): the paragraph and its
+        // leading went with the words, and what was typed next stood at
+        // the default leading, a name drawn over it at the chat's.
+        if (t === "") Qt.callLater(function () { if (box.text === "" && area.length === 0) box._render("") })
       }
       Text {
         visible: box._drawn !== ""
@@ -238,6 +242,19 @@ FocusScope {
     anchors.rightMargin: Style.spacing.controlPaddingX + Border.right(box.borderSpec)
     anchors.topMargin: Style.spacing.inputPaddingY + Border.top(box.borderSpec)
     height: barText.implicitHeight + page.sp(4)
+    // Its own ground, the box's, so lines scrolled up under it are hidden
+    // rather than read through it (2026-11-28).
+    Rectangle {
+      x: -replyBar.anchors.leftMargin + Border.left(box.borderSpec)
+      y: -replyBar.anchors.topMargin + Border.top(box.borderSpec)
+      width: box.width - Border.left(box.borderSpec) - Border.right(box.borderSpec)
+      height: replyBar.anchors.topMargin - Border.top(box.borderSpec) + replyBar.height + page.sp(5)
+      color: page.background
+      Rectangle {
+        anchors.fill: parent
+        color: Style.controlFill(area.activeFocus, area.hovered && page.handOn, page.foreground, page.accent)
+      }
+    }
     Rectangle { width: 2; height: parent.height; color: page.accent }
     Rectangle {
       id: barNumber

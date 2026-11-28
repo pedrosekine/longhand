@@ -143,7 +143,7 @@ var actions = [
   { id: "save", group: "page", places: ["any"], does: "Save now, and say so (the page also saves as you write)", keys: ["Ctrl+S"] },
   // The mouse's menu from the keys, where every Windows and GTK program
   // has it (2026-11-25): on the note's cursor, or the dashboard's row.
-  { id: "menu", group: "page", places: ["note", "dash"], does: "The menu a right-click opens, at the cursor or on the row", keys: ["Shift+F10", "Menu"] },
+  { id: "menu", group: "page", places: ["note", "dash", "chat"], does: "The menu a right-click opens, at the cursor, on the row, or on the words selected in an answer", keys: ["Shift+F10", "Menu"] },
   { id: "close", group: "page", places: ["note"], does: "Close the overlay", keys: ["Esc"] },
   { id: "private", group: "page", places: ["note"], does: "Make the whole note private (the agent sees nothing)", keys: ["Ctrl+Shift+P"] },
   { id: "privateBlock", group: "page", places: ["note"], does: "Make the block private, or the blocks selected (again: not private)", keys: ["Ctrl+P"] },
@@ -211,12 +211,15 @@ var actions = [
   // Files: the note's). docs/keys-proposal.md, rule 6 (2026-10-27).
   { id: "ask", group: "agent", places: ["note"], does: "Chat about this block (with a sign for the agent: it answers first)", keys: ["Ctrl+Enter"] },
   { id: "dayChat", group: "agent", places: ["any"], does: "The day's chat (in a note from Files: the note's)", keys: ["Ctrl+Shift+Enter"] },
-  { id: "dayHelpful", group: "agent", places: ["chat"], does: "In the day's chat or a note's: its last answer was helpful (again: take it back)", keys: ["Alt+="] },
-  { id: "dayNotHelpful", group: "agent", places: ["chat"], does: "In the day's chat or a note's: its last answer was not helpful (again: take it back)", keys: ["Alt+-"] },
+  { id: "dayHelpful", group: "agent", places: ["chat"], does: "In the agent's pane: its last answer was helpful (again: take it back)", keys: ["Alt+="] },
+  { id: "dayNotHelpful", group: "agent", places: ["chat"], does: "In the agent's pane: its last answer was not helpful (again: take it back)", keys: ["Alt+-"] },
   // A long chat (2026-11-22): your own questions one after another, as
   // Zed steps through prompts; ↑ alone is taken by the cards.
   { id: "chatPrevQuestion", group: "agent", places: ["chat"], does: "In the agent's pane: the question you asked before (the first time, your last); before the first, the earlier sessions unfold", keys: ["Alt+Up"] },
   { id: "chatNextQuestion", group: "agent", places: ["chat"], does: "In the agent's pane: the next question you asked; past the last, back to the foot", keys: ["Alt+Down"] },
+  // A long answer read from the box (2026-11-28): PgUp went to the box.
+  { id: "chatPageUp", group: "agent", places: ["chat"], does: "In the agent's pane: a screen of the conversation up", keys: ["PgUp"] },
+  { id: "chatPageDown", group: "agent", places: ["chat"], does: "In the agent's pane: a screen of the conversation down", keys: ["PgDn"] },
 
   { id: "switchUp", group: "switcher", places: ["switcher"], does: "The match above", keys: ["Up"] },
   { id: "switchDown", group: "switcher", places: ["switcher"], does: "The match below", keys: ["Down", "Tab"] },

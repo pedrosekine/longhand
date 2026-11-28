@@ -71,7 +71,7 @@ Item {
     function test_code_fence_heading_quote_rule() {
       var h = Chat.html("## Head\n\n```\nx = *1*\n```\n\n> said\n> twice\n\n---\n\nend", style)
       verify(h.indexOf("<b>Head</b>") >= 0, h)
-      verify(h.indexOf("<pre style=\"font-family:'Mono';margin-top:0;margin-bottom:11px\">x = *1*</pre>") >= 0, h)
+      verify(h.indexOf("<p style=\"font-family:'Mono';white-space:pre-wrap;margin-top:0;margin-bottom:11px\">x = *1*</p>") >= 0, h)
       verify(/margin-left:14px;color:#999999">said twice<\/p>/.test(h), h)
       verify(h.indexOf("<hr/>") >= 0, h)
     }
@@ -80,9 +80,28 @@ Item {
       compare(seen(Chat.html("one  \ntwo\\\nthree", style)), "one\ntwo\nthree")
     }
 
-    // A table is left to Qt's markdown, which draws one.
-    function test_a_table_falls_back() {
-      compare(Chat.html("| a | b |\n|---|---|\n| 1 | 2 |", style), "")
+    // A table is drawn here too (2026-11-28): the answer around it keeps
+    // its leading and its links, the cells their words' markdown.
+    function test_a_table_is_drawn_in_the_chat() {
+      var h = Chat.html("Before.\n\n| a | **b** |\n|:---|---:|\n| 1 | `x|y` |\n| 2 |\n\nAfter.", style)
+      verify(h.indexOf("<table") >= 0, h)
+      compare((h.match(/<th /g) || []).length, 2, h)
+      compare((h.match(/<td /g) || []).length, 4, "a short row is filled to the head's width: " + h)
+      verify(h.indexOf("<b>b</b>") >= 0 && h.indexOf("align=\"right\"") >= 0, h)
+      verify(h.indexOf("x|y</code>") >= 0, "a bar in code is not a cell's edge: " + h)
+      verify(/<p [^>]*>Before\.<\/p><table/.test(h) && /<\/table><p [^>]*>After\.<\/p>$/.test(h), h)
+    }
+
+    function test_a_table_right_under_a_paragraph() {
+      var h = Chat.html("The plan:\n| day | what |\n|---|---|\n| Mon | read |", style)
+      verify(/<p [^>]*>The plan:<\/p><table/.test(h), h)
+    }
+
+    function test_bullets_then_numbers_switch_lists() {
+      var h = Chat.html("- a\n- b\n1. one\n2. two", style)
+      verify(/<\/ul><ol/.test(h), "the bullets closed before the numbers: " + h)
+      compare((h.match(/<ul/g) || []).length, 1, h)
+      compare((h.match(/<ol/g) || []).length, 1, h)
     }
 
     function test_plain_words_keep_their_lines() {

@@ -34,6 +34,14 @@ Column {
     var y = turn.mapToItem(flick.contentItem, 0, 0).y
     flick.contentY = Math.max(0, Math.min(flick.contentHeight - flick.height, y - page.sp(12)))
   })
+  // Of a split answer, the part that has the words followed back (the
+  // first, when none has them whole).
+  readonly property int litPart: {
+    if (!turn.lit || !turn.split) return 0
+    var ps = turn.split.parts
+    for (var i = 0; i < ps.length; i++) if (page.plainWords(ps[i].text).indexOf(page.litQuote) >= 0) return i
+    return 0
+  }
   spacing: page.sp(2)
 
   // Said somewhere else: where, and when.
@@ -58,10 +66,13 @@ Column {
     page: turn.page
     alignTo: words.bubbleWidth
     clickable: !!turn.refTarget
-    onClicked: if (turn.refTarget) page.jumpToRef(turn.refTarget)
-    text: !turn.mine || turn.away ? ""
-      : turn.t.refs && turn.t.refs.length > 0 ? turn.t.refs.map(function (r) { return page.sayChip(r) }).join("  ·  ")
-      : turn.t.block ? page.blockHead(turn.t.block) : ""
+    onClickedAt: function (i) {
+      var r = turn.t.refs && turn.t.refs.length > 0 ? turn.t.refs[i] : turn.refTarget
+      if (r) page.jumpToRef(r)
+    }
+    parts: !turn.mine || turn.away ? []
+      : turn.t.refs && turn.t.refs.length > 0 ? turn.t.refs.map(function (r) { return page.sayChip(r) })
+      : turn.t.block ? [page.blockHead(turn.t.block)] : []
   }
   ChatTurn {
     id: words
@@ -77,6 +88,7 @@ Column {
     onLinkActivated: function (link) { turn.linkActivated(link) }
     onAnswer: function (passage) { page.addReply(turn.pane, passage, turn.t.at) }
     marks: !turn.mine && !turn.away ? page.passageMarks(turn.pane, turn.t.at) : []
+    flick: turn.flick
     railRoom: turn.railRoom
     Rectangle {
       anchors.fill: parent
@@ -198,13 +210,14 @@ Column {
         onLinkActivated: function (link) { turn.linkActivated(link) }
         onAnswer: function (passage) { page.addReply(turn.pane, passage, turn.t.at) }
         marks: page.passageMarks(turn.pane, turn.t.at)
+        flick: turn.flick
         Rectangle {
           anchors.fill: parent
           anchors.margins: -page.sp(4)
           z: -1
           radius: Style.cornerRadius
           color: Style.selectedFill
-          visible: turn.lit && part.index === 0
+          visible: turn.lit && part.index === turn.litPart
         }
       }
     }

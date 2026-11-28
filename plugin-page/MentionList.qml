@@ -14,6 +14,20 @@ Column {
   visible: shown
   spacing: 0
 
+  // Nothing by that name: said, so Enter is not a surprise (it closes the
+  // list first; the next one sends the words as written).
+  Text {
+    visible: list.shown && !!page.dayMention && page.dayMention.items.length === 0
+    width: list.width
+    leftPadding: page.sp(4)
+    textFormat: Text.PlainText
+    elide: Text.ElideRight
+    text: page.dayMention ? "nothing called “@" + page.dayMention.query + "” · " + page.keyName("mentionClose") + " closes" : ""
+    color: page.faint
+    font.family: page.fontFamily
+    font.styleName: page.fontStyle
+    font.pixelSize: page.fs(Style.font.bodySmall)
+  }
   Repeater {
     model: list.shown && page.dayMention ? page.dayMention.items : []
     Rectangle {

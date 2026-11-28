@@ -36,7 +36,7 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 | On the overlay: keep it as a window. In the window: full screen and back | `F11` · `Ctrl+Alt+P` | everywhere |
 | Copy the path of what you are on (in a note, with the line), to give to an agent | `Ctrl+Shift+C` | everywhere |
 | Save now, and say so (the page also saves as you write) | `Ctrl+S` | everywhere |
-| The menu a right-click opens, at the cursor or on the row | `Shift+F10` · `Menu` | in the note, in the dashboard |
+| The menu a right-click opens, at the cursor, on the row, or on the words selected in an answer | `Shift+F10` · `Menu` | in the note, in the dashboard, in the chat's box |
 | Close the overlay | `Esc` | in the note |
 | Make the whole note private (the agent sees nothing) | `Ctrl+Shift+P` | in the note |
 | Make the block private, or the blocks selected (again: not private) | `Ctrl+P` | in the note |
@@ -86,10 +86,12 @@ The keys that work **everywhere** (in a box you are typing in too) are the ones 
 |---|---|---|
 | Chat about this block (with a sign for the agent: it answers first) | `Ctrl+Enter` | in the note |
 | The day's chat (in a note from Files: the note's) | `Ctrl+Shift+Enter` | everywhere |
-| In the day's chat or a note's: its last answer was helpful (again: take it back) | `Alt+=` | in the chat's box |
-| In the day's chat or a note's: its last answer was not helpful (again: take it back) | `Alt+-` | in the chat's box |
+| In the agent's pane: its last answer was helpful (again: take it back) | `Alt+=` | in the chat's box |
+| In the agent's pane: its last answer was not helpful (again: take it back) | `Alt+-` | in the chat's box |
 | In the agent's pane: the question you asked before (the first time, your last); before the first, the earlier sessions unfold | `Alt+↑` | in the chat's box |
 | In the agent's pane: the next question you asked; past the last, back to the foot | `Alt+↓` | in the chat's box |
+| In the agent's pane: a screen of the conversation up | `PgUp` | in the chat's box |
+| In the agent's pane: a screen of the conversation down | `PgDn` | in the chat's box |
 
 ## @ a project
 

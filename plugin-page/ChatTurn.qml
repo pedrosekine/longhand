@@ -42,6 +42,23 @@ Item {
     }
     return out
   }
+  property Flickable flick: null       // the pane's, for where the "reply" button fits
+  // The edit menu on the words, at a place in them: from the right button,
+  // or the Menu key (Shift+F10) with words selected (2026-11-28).
+  function openMenu(x, y) {
+    var has = said.selectedText !== ""
+    turn.page.used("edit-menu", "chat")
+    turn.page.editMenuAt(said, x, y, [
+      { text: "Copy", key: "Ctrl+C", enabled: has, run: function () { said.copy() } },
+      turn.answerable ? { text: "Reply to these words", key: turn.page.keyName("chatAnswer"), enabled: has,
+                          run: function () { turn.answerSelection() } } : null,
+      { text: "Select all", key: "", run: function () { said.selectAll() } }
+    ])
+  }
+  function menuOnSelection() {
+    var r = said.positionToRectangle(Math.max(said.selectionStart, said.selectionEnd))
+    turn.openMenu(r.x, r.y + r.height)
+  }
   signal linkActivated(string link)
   signal answer(string passage)
   function answerSelection() {
@@ -55,8 +72,8 @@ Item {
   // Drawn as rich text (Chat.js, 2026-11-19): Qt's markdown import has no
   // line height and no space between paragraphs. Links carry their own
   // colour — a selectable text has no linkColor, and its palette does not
-  // reach them (they came out pure blue on the dark ground). A table is
-  // left to Qt's markdown, which draws one.
+  // reach them (they came out pure blue on the dark ground). Tables too
+  // since 2026-11-28; Qt's markdown is left only for an empty answer.
   readonly property var chatStyle: ({ fg: String(turn.color), dim: String(page.dim), accent: String(page.accent),
     code: page.codeFamily, leading: page.chatLeading, gap: page.chatGap })
   readonly property string rich: turn.markdown ? Chat.html(turn.text, chatStyle) : Chat.plain(turn.text, chatStyle)
@@ -201,16 +218,7 @@ Item {
     MouseArea {
       anchors.fill: parent
       acceptedButtons: Qt.RightButton
-      onPressed: function (mouse) {
-        var has = said.selectedText !== ""
-        turn.page.used("edit-menu", "chat")
-        turn.page.editMenuAt(said, mouse.x, mouse.y, [
-          { text: "Copy", key: "Ctrl+C", enabled: has, run: function () { said.copy() } },
-          turn.answerable ? { text: "Reply to these words", key: turn.page.keyName("chatAnswer"), enabled: has,
-                              run: function () { turn.answerSelection() } } : null,
-          { text: "Select all", key: "", run: function () { said.selectAll() } }
-        ])
-      }
+      onPressed: function (mouse) { turn.openMenu(mouse.x, mouse.y) }
     }
   }
 
@@ -289,8 +297,18 @@ Item {
     readonly property rect start: said.positionToRectangle(Math.min(said.selectionStart, said.selectionEnd))
     readonly property color edge: Qt.rgba(page.foreground.r, page.foreground.g, page.foreground.b, 0.16)
     visible: turn.answerable && !pressing.active && said.selectedText.trim() !== "" && page.chatSelection === said
+    readonly property rect end: said.positionToRectangle(Math.max(said.selectionStart, said.selectionEnd))
     x: Math.max(0, Math.min(said.x + start.x - page.sp(2), turn.width - width))
-    y: said.y + start.y - height - page.sp(8)
+    // Above the selection; under it when above would be out of the pane's
+    // view (2026-11-28: on a first line at the top it was cut off).
+    y: {
+      var above = said.y + start.y - height - page.sp(8)
+      if (turn.flick && visible) {
+        void turn.flick.contentY
+        if (turn.mapToItem(turn.flick, 0, above).y < 0) return said.y + end.y + end.height + page.sp(8)
+      }
+      return above
+    }
     z: 3
     width: toolRow.implicitWidth + page.sp(22)
     height: toolRow.implicitHeight + page.sp(12)
