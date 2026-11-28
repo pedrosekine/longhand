@@ -362,13 +362,22 @@ A checkbox can stand for a deadline. Write it with a date at the end —
 oct`, `the 8th of Feb`, `on friday`, `📅 tomorrow`; "on" counts only before
 a weekday, a month or a dotted day). The date alone is enough too —
 `- [ ] essay monday`, `hand in 12.11` (day first), `slides for next friday
-10:00` — and it is the deadline, never the day you plan to work on it: a
-weekday, today or tomorrow, next week, a day and a month, a dotted day,
-each maybe with a time; never a month or a number alone ("exercise 2.3",
-"python 3.12" and "lie in the sun" stay words), and not after "from",
-"since", "every" and the like ("notes from monday"). The date lights up as you type
-it, with the pill it will become; when you leave the line it is the
-deadline, nothing asked (as in Todoist). To keep the date as words: Backspace
+10:00`, `meeting at 10:00 tomorrow`, `email prof tonight`, `draft in 2 weeks`
+— and it is the deadline, never the day you plan to work on it: a
+weekday, today, tonight or tomorrow, next week, in so many days or weeks, a
+day and a month, a dotted day, each maybe with a time, before the day or
+after it (`5pm friday`, `friday 9.30`, `thursday 21h`, `noon tomorrow`;
+midnight is the day's end); never a month or a number alone ("exercise 2.3",
+"python 3.12" and "lie in the sun" stay words), nor how long something takes
+("read it in 2 hours"), and not after "from", "since", "every" and the like
+("notes from monday"). A date with no time is due by the day's end, and so
+is one so many days or weeks away. The date lights up as you type
+it, with the pill it will become ("due Fri 4 Dec"); when you leave the line it is the
+deadline, nothing asked (as in Todoist). A date meant but not read (`due
+friday 17`) is never bound and never in silence: its pill says "not a date
+yet", leaving the line says it stayed words, and `Ctrl+D` asks for the date
+with those words in the box. A day and month already past are next year's,
+and the pill and "due?" say the year. To keep the date as words: Backspace
 right as it lights up, `Ctrl+D` on the line, or `Ctrl+Z` after it is bound.
 Only lines you type in are recognised, so moving through an old note binds
 nothing; `Ctrl+D` binds such a line on purpose, asks "due?" on a line with
@@ -381,7 +390,10 @@ words are the deadline's title, its `#tag` (or the tagged heading above it)
 its project, and a tick or a date changed anywhere — the line, the
 dashboard, the bar popup, `pomo`, Obsidian — reaches every other place.
 Deleting the line, or a whole block, cancels its deadlines and says so
-under the cursor; pasting the line anywhere or `Ctrl+Z` brings them back.
+under the cursor; pasting the line anywhere or `Ctrl+Z` brings them back (a
+line deleted in Obsidian is said when its note opens, without the `Ctrl+Z`).
+An open deadline's pill says what the dashboard says of it: "due today",
+"due tomorrow", "3 days late", "due Fri 4 Dec".
 Nothing is asked, and nothing is erased: cancelled is history. The
 calendar marks deadline days, `Ctrl+2` (or `Ctrl+Alt+2`) opens the dashboard, and in the
 bar popup `o` opens a deadline's line.

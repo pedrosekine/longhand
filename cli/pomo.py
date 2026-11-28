@@ -1076,15 +1076,40 @@ def read_seq() -> int:
     return int("".join(c for c in read_text(DEADLINE_SEQ) if c in "0123456789") or 0) if has_size(DEADLINE_SEQ) else 0
 
 
+def logs_top() -> int:
+    """The highest id any machine has written into the vault's deadline logs
+    (agent/dsync.py), or 0. A machine whose store is new or behind must not
+    hand out a number another machine already gave a deadline: on
+    2026-11-24 a third machine's first deadline took #1, and the logs folded
+    it into the other machines' #1, a different deadline, done and graded.
+    Best effort: no config, no vault, no logs read as 0."""
+    import json
+    cfg_path = os.environ.get("LONGHAND_CONFIG") or (
+        (os.environ.get("XDG_CONFIG_HOME") or home() + "/.config") + "/longhand/config.json")
+    try:
+        cfg = json.loads(read_text(cfg_path) or "{}")
+        folder = os.path.join(os.path.expanduser(cfg["vault"]), cfg.get("agentDir") or "agents/longhand", "deadlines")
+        names = [n for n in os.listdir(folder) if n.endswith(".jsonl")]
+    except (ValueError, KeyError, TypeError, OSError):
+        return 0
+    top = 0
+    for name in names:
+        for m in re.finditer(r'"id":\s*(\d+)', read_text(os.path.join(folder, name))):
+            top = max(top, int(m.group(1)))
+    return top
+
+
 def next_id() -> int:
-    """Never the same id twice, even across removals: the high-water mark has
-    a file of its own, healed from the store when it is missing or behind."""
+    """Never the same id twice, even across removals and machines: the
+    high-water mark has a file of its own, healed from the store and from
+    the other machines' logs when it is missing or behind."""
     seq = read_seq()
     if has_size(DEADLINE_FILE):
         top = 0.0
         for line in records(DEADLINE_FILE):
             top = max(top, num(line.split(TAB)[0]))
         seq = max(seq, int(top))
+    seq = max(seq, logs_top())
     seq += 1
     write_text(DEADLINE_SEQ, "%d\n" % seq)
     return seq

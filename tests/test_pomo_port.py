@@ -311,7 +311,7 @@ def commands_agree():
         clock = start_of(2026, 11, 23, 10)       # a Monday morning
 
         def run(which, words):
-            env = dict(os.environ, PATH=path, XDG_STATE_HOME=posix(states[which]), LONGHAND_NOW=str(clock),
+            env = dict(os.environ, PATH=path, XDG_STATE_HOME=posix(states[which]), XDG_CONFIG_HOME=posix(states[which]) + "/cfg", LONGHAND_CONFIG="", LONGHAND_NOW=str(clock),
                        LONGHAND_SILENT="1", LONGHAND_NO_CHECK="1", LC_ALL="C", PYTHONUTF8="1")
             r = subprocess.run(programs[which] + list(words), capture_output=True, env=env, stdin=subprocess.DEVNULL, timeout=120)
             here = posix(states[which]).encode()

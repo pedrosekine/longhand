@@ -70,6 +70,35 @@ TestCase {
     for (var i = 0; i < no.length; i++) compare(Bound.cue(no[i]), null, no[i])
   }
 
+  // 2026-11-28, the deadlines pass: times people write, a time before its
+  // day, a distance in days, and the phrases that must stay words.
+  function test_the_times_people_write() {
+    function bare(body) { var c = Bound.cue(body); return c ? [c.head, c.phrase] : null }
+    compare(bare("meeting at 10:00 tomorrow"), ["meeting", "at 10:00 tomorrow"])
+    compare(bare("essay 5pm friday"), ["essay", "5pm friday"])
+    compare(bare("email prof tonight"), ["email prof", "tonight"])
+    compare(bare("watch lecture 4 thursday 9.30"), ["watch lecture 4", "thursday 9.30"])
+    compare(bare("finish draft in 2 weeks"), ["finish draft", "in 2 weeks"])
+    var on = Bound.cue("essay at 5pm on friday")
+    compare([on.head, on.phrase, on.cueFrom], ["essay", "at 5pm friday", 5])
+    compare(Bound.cue("submit by noon tomorrow").phrase, "noon tomorrow")
+    compare(Bound.cue("read chapter in 2 hours"), null)     // how long, not when
+    compare(Bound.cue("lunch at noon"), null)
+    compare(Bound.cue("notes from tonight"), null)
+    compare(Bound.cue("the 10am lecture"), null)
+  }
+
+  // A date meant but not read is told apart from a number after "by".
+  function test_a_date_meant() {
+    verify(Bound.meantAsDate("the friday after next"))
+    verify(Bound.meantAsDate("friday 17"))
+    verify(!Bound.meantAsDate("2"))
+    verify(!Bound.meantAsDate("11"))
+    var r = Rows.derive("- [ ] essay due friday 17")[0]
+    compare([r.cueBad, r.cueLabel], [true, "not a date yet"])
+    compare(Rows.derive("- [ ] split it by 2")[0].cueAt, -1)
+  }
+
   function test_no_cue_no_deadline() {
     compare(Bound.cue("call mum by phone"), null)
     compare(Bound.cue("work until done"), null)

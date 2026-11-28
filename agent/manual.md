@@ -40,15 +40,19 @@ outermost level Enter leaves the list); Shift+Enter is a new line in the same bl
 
 A checkbox with a date at its end is a deadline: `- [ ] essay draft #intsem
 due fri 17:00` (also `by monday`, `until 20 oct`, `📅 tomorrow`, or the date
-alone: `essay monday`, `hand in 12.11` — dotted dates are day first). The date
-lights up as it is typed and becomes the deadline when the cursor leaves
-the line — nothing is asked. To keep the date as words: Backspace as it
+alone: `essay monday`, `hand in 12.11` — dotted dates are day first; a time
+before or after the day: `meeting at 10:00 tomorrow`, `5pm friday`, `friday
+9.30`, `noon tomorrow`; `tonight`; `draft in 2 weeks`). A date with no time
+is due by the day's end. The date lights up as it is typed and becomes the
+deadline when the cursor leaves the line — nothing is asked. A date the page
+cannot read stays words and it says so; {key:deadline} then asks for it. To keep the date as words: Backspace as it
 lights up, or {key:deadline} on the line. {key:deadline} also binds a line
 on purpose, asks "due?" on a line with no date, and on a bound line
 reschedules it (empty unbinds). The line is the task: its words are the
 title, its `#tag` (or the tagged heading above it) the project; a tick or a
 date changed anywhere reaches everywhere. Deleting the line cancels the
-deadline, and Ctrl+Z brings it back. The {os:bar's deadline popup|deadline popup by the clock}
+deadline, and Ctrl+Z brings it back (a line deleted in Obsidian: undo it
+there). The {os:bar's deadline popup|deadline popup by the clock}
 ({key:sys:deadlines}) is the glance.
 
 ## Do-dates and priorities

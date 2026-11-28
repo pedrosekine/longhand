@@ -82,6 +82,83 @@ def merge(events: list[dict]) -> dict[int, dict]:
     return {i: {f: v for f, (_, v) in fields.items()} for i, fields in best.items()}
 
 
+def _same(a: dict, b: dict) -> bool:
+    """Two births of one number describe the same deadline: the same words,
+    or the same line."""
+    if (a.get("link") or "") and a.get("link") == b.get("link"):
+        return True
+    return str(a.get("title") or "").strip().casefold() == str(b.get("title") or "").strip().casefold()
+
+
+def clashes(events: list[dict]) -> list[dict]:
+    """One number given to two different deadlines by two machines, each
+    before it had read the other's log (2026-11-24: a third machine's first
+    deadline took #1, and the logs folded it into the other machines' #1,
+    done and graded). A birth is a machine first writing a deadline down
+    whole (`removed: false`, a seed or a new one). The deadline born first
+    keeps the number; each other one is to move to a new number.
+
+    Returns [{id, keep: {hosts, since}, move: {hosts, born, after, rec}}]:
+    `rec` is the moving deadline as its own machines' events say, and
+    `after` the time its machines first changed it (events of the keeping
+    machines from then on may carry its values, folded in)."""
+    births: dict[int, list[tuple[float, str, dict]]] = {}
+    moved: dict[int, list[dict]] = {}
+    for ev in events:
+        try:
+            i, at, host = int(ev["id"]), float(ev.get("at") or 0), str(ev.get("host") or "")
+        except (KeyError, TypeError, ValueError):
+            continue
+        s = ev.get("set") or {}
+        if isinstance(s.get("moved"), dict):
+            moved.setdefault(i, []).append(s["moved"])
+        if s.get("removed") is False and whole(s):
+            births.setdefault(i, []).append((at, host, s))
+    out = []
+    for i, bs in births.items():
+        groups: list[list[tuple[float, str, dict]]] = []
+        for b in sorted(bs, key=lambda b: (b[0], b[1])):
+            for g in groups:
+                if _same(g[0][2], b[2]):
+                    g.append(b)
+                    break
+            else:
+                groups.append([b])
+        groups = [g for g in groups if not any(_same(g[0][2], m) for m in moved.get(i, []))]
+        if len(groups) < 2:
+            continue
+        keep = groups[0]
+        keep_hosts = {b[1] for b in keep}
+        for g in groups[1:]:
+            hosts = {b[1] for b in g} - keep_hosts
+            if not hosts:
+                continue
+            own = [ev for ev in events if str(ev.get("host") or "") in hosts and _int(ev.get("id")) == i]
+            rec = merge(own).get(i, {})
+            later = [float(ev.get("at") or 0) for ev in own if float(ev.get("at") or 0) > 0]
+            out.append({"id": i, "keep": {"hosts": sorted(keep_hosts), "since": keep[0][0]},
+                        "move": {"hosts": sorted(hosts), "born": g[0][0], "after": min(later) if later else float("inf"),
+                                 "rec": {f: rec[f] for f in FIELDS if f in rec}}})
+    return out
+
+
+def kept(events: list[dict], clash: dict) -> dict:
+    """The deadline that keeps the number, as its own machines said it before
+    the other one's values could reach them."""
+    hosts = set(clash["keep"]["hosts"])
+    own = [ev for ev in events if str(ev.get("host") or "") in hosts and _int(ev.get("id")) == clash["id"]
+           and float(ev.get("at") or 0) < clash["move"]["after"]]
+    rec = merge(own).get(clash["id"], {})
+    return {f: rec[f] for f in FIELDS if f in rec}
+
+
+def _int(v) -> int:
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return -1
+
+
 def whole(rec: dict) -> bool:
     return all(f in rec for f in FIELDS)
 

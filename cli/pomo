@@ -594,6 +594,23 @@ rel() { # $1=epoch -> "in 4d" / "in 3h" / "5m late"
   if [ "$d" -lt 0 ]; then echo "$unit late"; else echo "in $unit"; fi
 }
 
+logs_top() { # the highest id any machine wrote into the vault's deadline logs, or 0
+  # (agent/dsync.py). A machine whose store is new or behind must not hand
+  # out a number another machine already gave a deadline: on 2026-11-24 a
+  # third machine's first deadline took #1, and the logs folded it into the
+  # other machines' #1, a different deadline, done and graded. Best effort:
+  # no config, no vault, no logs read as 0.
+  local cfg="${LONGHAND_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/longhand/config.json}" vault dir top
+  [ -s "$cfg" ] || { echo 0; return; }
+  vault=$(sed -n 's/.*"vault"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$cfg" | head -1)
+  dir=$(sed -n 's/.*"agentDir"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$cfg" | head -1)
+  [ -n "$vault" ] || { echo 0; return; }
+  case "$vault" in "~"*) vault="$HOME${vault#\~}" ;; esac
+  top=$(cat "$vault/${dir:-agents/longhand}/deadlines/"*.jsonl 2>/dev/null \
+    | grep -o '"id":[[:space:]]*[0-9]*' | tr -cd '0-9\n' | sort -n | tail -1 || true)
+  echo "${top:-0}"
+}
+
 next_id() { # never returns the same id twice, even across removals
   # An id is a reference: a log line that says "--for 7" has to still mean
   # deadline 7 after 7 is gone. max(id in file)+1 recycles the top id on every
@@ -610,6 +627,8 @@ next_id() { # never returns the same id twice, even across removals
     top=$(awk -F'\t' '$1+0 > m { m = $1+0 } END { print m+0 }' m=0 "$DEADLINE_FILE")
     if [ "${top:-0}" -gt "$seq" ]; then seq=$top; fi
   fi
+  top=$(logs_top)
+  if [ "${top:-0}" -gt "$seq" ]; then seq=$top; fi
   seq=$(( seq + 1 ))
   printf '%d\n' "$seq" > "$DEADLINE_SEQ"
   echo "$seq"

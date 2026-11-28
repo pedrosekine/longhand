@@ -891,7 +891,7 @@ Item {
 
   // ------------------------------------------------------------ rows
 
-  readonly property var roles: ["kind", "body", "level", "checked", "cancelled", "ordinal", "headingLevel", "callout", "priv", "blank", "lead", "space", "deadline", "dueLabel", "dueAt", "doDay", "raw", "cueAt", "cueEnd", "cueLabel", "tableRow", "tableStart", "tableLen", "quoteDepth", "outerLevel", "paperEnd", "paperAbove", "paperBelow", "extraBlank"]
+  readonly property var roles: ["kind", "body", "level", "checked", "cancelled", "ordinal", "headingLevel", "callout", "priv", "blank", "lead", "space", "deadline", "dueLabel", "dueAt", "doDay", "raw", "cueAt", "cueEnd", "cueLabel", "cueBad", "tableRow", "tableStart", "tableLen", "quoteDepth", "outerLevel", "paperEnd", "paperAbove", "paperBelow", "extraBlank"]
 
   function roleValues(r) {
     var o = {}
@@ -1670,14 +1670,15 @@ Item {
     // `fri #thesis`, carries it on.)
     var cueText = function (x) { return x.body.substring(x.cueAt, x.cueEnd >= 0 ? x.cueEnd : x.body.length).trim() }
     var kept = ed.keptCue && ed.keptCue.raw === r.raw ? ed.keptCue.phrase
-      : ed.declined[r.raw] && r.cueAt >= 0 ? cueText(r) : ""
+      : ed.declined[r.raw] && r.cueAt >= 0 && !r.cueBad ? cueText(r) : ""
     ed.keptCue = null
-    if (kept !== "" && now && now.raw !== r.raw && (now.cueAt < 0 || cueText(now) === kept)) {
+    if (kept !== "" && now && now.raw !== r.raw && (now.cueAt < 0 || now.cueBad || cueText(now) === kept)) {
       if (!ed.declined[now.raw]) ed.declineCarried(r.raw, now.raw)
       ed.keptCue = { raw: now.raw, phrase: kept }
     }
     ed.typedRaw = now ? now.raw : ""
-    ed.freshCue = r.cueAt < 0 && now && now.cueAt >= 0 ? i : -1
+    // (A date meant but not read is none: Backspace there is a Backspace.)
+    ed.freshCue = (r.cueAt < 0 || r.cueBad) && now && now.cueAt >= 0 && !now.cueBad ? i : -1
     if (ed.rows.length !== before || !now || now.body !== body) ed.placeCursor(true)
     else ed.updateCursorRect()
   }
@@ -2301,6 +2302,7 @@ Item {
         required property string doDay
         required property string raw
         required property int cueAt
+        required property bool cueBad
         required property int cueEnd
         required property string cueLabel
         required property int tableRow
@@ -2839,13 +2841,14 @@ Item {
           readonly property bool clickable: row.deadline > 0 || row.doDay !== ""
           readonly property bool lit: ed.pillHover === row.index && clickable && ed.handOn
           border.width: row.deadline > 0 || row.pending || row.binding ? 1 : 0
-          border.color: row.pending || row.binding || lit ? ed.accent : late ? ed.urgent : ed.faint
+          // A date meant but not read: the pill says so, quietly.
+          border.color: row.pending && row.cueBad ? ed.faint : row.pending || row.binding || lit ? ed.accent : late ? ed.urgent : ed.faint
           Text {
             id: dueText
             anchors.centerIn: parent
             textFormat: Text.PlainText
             text: row.pending ? row.cueLabel : row.dueLabel
-            color: row.pending || row.binding || due.lit ? ed.accent : due.late ? ed.urgent : ed.dim
+            color: row.pending && row.cueBad ? ed.dim : row.pending || row.binding || due.lit ? ed.accent : due.late ? ed.urgent : ed.dim
             font.family: ed.fontFamily
             font.styleName: ed.fontStyle
             font.pixelSize: Math.round(ed.textSize * 0.78)
@@ -2869,7 +2872,7 @@ Item {
         // drawn as its first line, the whole lines between, and its last.
         Repeater {
           model: ed.paintIn(row.index, ed.marks, ed.currentMark, ed.selAnchor, ed.selCursor, ed.rows)
-            .concat(row.pending ? [{ a: row.cueAt, b: row.cueEnd >= 0 ? row.cueEnd : row.body.length, kind: "cue" }] : [])
+            .concat(row.pending && !row.cueBad ? [{ a: row.cueAt, b: row.cueEnd >= 0 ? row.cueEnd : row.body.length, kind: "cue" }] : [])
           Item {
             id: mark
             required property var modelData

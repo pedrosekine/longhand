@@ -25,6 +25,7 @@
 .import "Bound.js" as Bound
 .import "Dates.js" as Dates
 .import "Links.js" as Links
+.import "Say.js" as Say
 
 var HEADING_RE = /^(#{1,6} )(.*)$/
 var CALLOUT_RE = /^(>[ \t]?\[!([^\]]+)\][+-]?[ \t]?)(.*)$/
@@ -60,7 +61,7 @@ function make(kind, indent, marker, body) {
     kind: kind, indent: indent, marker: marker, body: body,
     prefixLen: indent.length + marker.length, level: levelOf(indent),
     checked: false, cancelled: false, ordinal: "", headingLevel: 0, callout: "",
-    suffix: "", marks: "", dateTail: "", deadline: 0, dueLabel: "", dueAt: 0, doDay: "", cueAt: -1, cueEnd: -1, cueLabel: "",
+    suffix: "", marks: "", dateTail: "", deadline: 0, dueLabel: "", dueAt: 0, doDay: "", cueAt: -1, cueEnd: -1, cueLabel: "", cueBad: false,
     tableRow: -1, tableStart: -1, tableLen: 0,
     quoteLead: "", quoteDepth: 0, outerLevel: 0
   }
@@ -166,7 +167,10 @@ function liftTail(t) {
     var hm = m[6] ? m[6].split(":") : ["23", "59"]
     var at = new Date(+d[0], +d[1] - 1, +d[2], +hm[0], +hm[1])
     t.dueAt = at.getTime()
-    t.dueLabel = dayLabel(at, !!m[6])
+    // An open one says what the dashboard says of it ("due today", "3 days
+    // late", "due Fri 4 Dec"), so the two never read differently; a closed
+    // one, when it was due. Read again at midnight (NoteEditor's clock).
+    t.dueLabel = t.checked ? dayLabel(at, !!m[6]) : dueSay(at)
   }
   // The day to work on it (⏳), shown whenever it differs from the due day
   // (including past days, matching the dashboard's "do yesterday").
@@ -203,18 +207,29 @@ function dayLabel(at, timed) {
     + (timed ? " · " + (at.getHours() < 10 ? "0" : "") + at.getHours() + ":" + (at.getMinutes() < 10 ? "0" : "") + at.getMinutes() : "")
 }
 
+// An open deadline's day, as the dashboard says it (Say.sayDue).
+function dueSay(at) {
+  var iso = at.getFullYear() + "-" + (at.getMonth() < 9 ? "0" : "") + (at.getMonth() + 1) + "-"
+    + (at.getDate() < 10 ? "0" : "") + at.getDate() + " "
+    + (at.getHours() < 10 ? "0" : "") + at.getHours() + ":" + (at.getMinutes() < 10 ? "0" : "") + at.getMinutes()
+  return Say.sayDue(iso, new Date())
+}
+
 // A date at the end of an unbound checkbox's words, as read.
 function readCue(t) {
   var c = Bound.cue(t.body)
   var w = c ? Dates.read(c.phrase) : null
-  if (!w) return
+  // A date meant but not read ("by 5pm on the 3rd"): lit, and said so,
+  // never bound (cueBad).
+  if (!w && !(c && Bound.meantAsDate(c.phrase))) return
   var from = c.cueFrom !== undefined ? c.cueFrom : c.head.length
   var end = c.cueEnd !== undefined ? c.cueEnd : t.body.length
   var rest = t.body.substring(from, end)
   t.cueAt = from + (rest.length - rest.replace(/^\s+/, "").length)
   t.cueEnd = end
-  var at = new Date(w.ms)
-  t.cueLabel = dayLabel(at, !(at.getHours() === 23 && at.getMinutes() === 59))
+  // The pill it will become, as it will read.
+  t.cueBad = !w
+  t.cueLabel = w ? dueSay(new Date(w.ms)) : "not a date yet"
 }
 
 // The whole note as rows. Each row also carries:

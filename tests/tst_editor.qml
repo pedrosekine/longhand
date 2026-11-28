@@ -2,6 +2,7 @@ import QtQuick
 import QtTest
 import "../plugin-page"
 import "../plugin-page/Rows.js" as Rows
+import "../plugin-page/Say.js" as Say
 
 // The page's editor, driven by keys, offscreen.
 // Run: QT_QPA_PLATFORM=offscreen /usr/lib/qt6/bin/qmltestrunner -input tests/tst_editor.qml
@@ -909,7 +910,8 @@ after")
       type("i")
       verify(ed.rowItem(1).pending, "the date is lit up, its pill pending")
       compare(ed.rows[1].cueAt, "essay ".length)
-      verify(ed.rows[1].cueLabel.indexOf("Fri") === 0, ed.rows[1].cueLabel)
+      // The pill to be reads as the pill it becomes: "due Fri 4 Dec", "due tomorrow".
+      verify(/^due (today|tomorrow|Fri \d)/.test(ed.rows[1].cueLabel), ed.rows[1].cueLabel)
       start("\n- [ ] call mum")
       type(" by phone")
       verify(!ed.rowItem(1).pending, "by phone is no date")
@@ -1304,7 +1306,13 @@ after")
       var r = Rows.derive("- [ ] chapter 2 draft #thesis 📅 2026-10-16 17:00 ^d6")
       compare(r[0].body, "chapter 2 draft #thesis")
       compare(r[0].deadline, 6)
-      compare(r[0].dueLabel.indexOf("16 Oct · 17:00") >= 0, true)
+      // Open, it says what the dashboard says; closed, when it was due.
+      compare(r[0].dueLabel, Say.sayDue("2026-10-16 17:00", new Date()))
+      compare(Rows.derive("- [x] chapter 2 draft 📅 2026-10-16 17:00 ✅ 2026-10-15 ^d6")[0].dueLabel.indexOf("16 Oct · 17:00") >= 0, true)
+      var soon = new Date(); soon.setDate(soon.getDate() + 1)
+      compare(Rows.derive("- [ ] soon 📅 " + Qt.formatDate(soon, "yyyy-MM-dd") + " ^d7")[0].dueLabel, "due tomorrow")
+      var gone = new Date(); gone.setDate(gone.getDate() - 3)
+      compare(Rows.derive("- [ ] slipped 📅 " + Qt.formatDate(gone, "yyyy-MM-dd") + " ^d8")[0].dueLabel, "3 days late")
       var u = Rows.derive("- [ ] old 📅 2026-10-16")[0]
       compare(u.body, "old"); compare(u.deadline, 0); verify(u.dueLabel !== "")
       compare(Rows.derive("- [ ] typing ")[0].body, "typing ")   // trailing space stays
