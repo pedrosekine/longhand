@@ -24,6 +24,8 @@ Item {
   // START epoch (not a deadline) and "remaining" holds elapsed seconds while
   // paused; there is no total, so the session never expires.
   property bool countup: false
+  // The deadline this session is for (`pomo start --for <id>`), 0 when none.
+  property int target: 0
 
   // Live values.
   property int nowSec: Math.floor(Date.now() / 1000)
@@ -49,17 +51,37 @@ Item {
     return m + ":" + (r < 10 ? "0" + r : r)
   }
 
+  // ✓ once a session has run out and waits for the next to be started:
+  // "● 0:00" read as a timer still going (the bar pass, 2026-11-28).
   readonly property string labelText: phase === "idle" ? "○ --:--"
+    : expired ? "✓ " + fmt(0)
     : countup ? ((runStatus === "paused" ? "○ " : "↑ ") + fmt(remaining))
     : (runStatus === "paused" ? "○ " : "● ") + fmt(remaining)
 
   readonly property string phaseTitle: expired ? "Done" : phase === "focus" ? "Focus"
     : phase === "break" ? "Break" : "Pomodoro"
 
+  // What state it is in, in words: the popup's header and the bar's tip.
+  // A ready phase (armed at its full length, waiting for play) and a pause
+  // halfway through looked alike, and so did a paused count-up and a paused
+  // countdown.
+  readonly property string stateText: phase === "idle" ? "Timer"
+    : expired ? (phase === "focus" ? "Focus done" : "Break over")
+    : (phase === "focus" ? "Focus" : "Break")
+      + (countup ? " · counting up" : "")
+      + (live ? "" : ready ? " · ready" : runStatus === "paused" ? " · paused" : "")
+
   // Expiry edge detection: ring once when a running phase hits zero.
   // The CLI persists a "done" status on completion, so re-ticks (or a
   // pause/resume cycle on the finished timer) can't re-fire and double-count.
   // firstTick avoids a spurious bell when the shell (re)starts mid-expiry.
+  //
+  // A session that ran out while the shell was not running is still
+  // "running" in the file, past its end: nothing has logged it. It used to
+  // stay so (the first tick skipped it, and the next saw it already
+  // expired), uncounted and at 0:00 until a key was pressed. It is ended
+  // now too, without the bell when it ran out a while ago: a sound at login
+  // for a session that ended hours before says nothing.
   property bool prevExpired: false
   property bool firstTick: true
 
@@ -70,12 +92,17 @@ Item {
     else
       remaining = runStatus === "running" ? Math.max(0, endsAt - nowSec) : storedRemaining
     var e = runStatus === "running" && !countup && phase !== "idle" && endsAt > 0 && nowSec >= endsAt
-    if (e && !prevExpired && !firstTick && !expiredProc.running) {
+    if (e && !prevExpired && !expiredProc.running) {
+      var stale = firstTick && nowSec - endsAt > 120
+      expiredProc.environment = stale ? ({ LONGHAND_SILENT: "1" }) : ({})
       expiredProc.command = ["pomo", "expired"]
       expiredProc.running = true
     }
     prevExpired = e
     firstTick = false
+    // The day's count is the day's: past midnight (or a Monday, or the
+    // first of a month) it is counted again, not only when a session ends.
+    if (nowSec >= recountAt) recount(logView.text())
   }
 
   // Session counters from the CLI log (same scopes as `pomo stats`).
@@ -98,8 +125,14 @@ Item {
     return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate())
   }
 
+  // When the counts go stale: the next local midnight.
+  property int recountAt: 0
+
   function recount(raw) {
     var now = new Date()
+    var midnight = new Date(now)
+    midnight.setHours(24, 0, 0, 0)
+    recountAt = Math.floor(midnight.getTime() / 1000)
     var day = isoDay(now)
     var monday = new Date(now)
     monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7))
@@ -157,6 +190,7 @@ Item {
     if (d.break_len > 0) breakLen = d.break_len
     autoStart = d.auto === true
     countup = d.countup === true
+    target = d["for"] > 0 ? d["for"] : 0
     tick()
   }
 
@@ -170,15 +204,25 @@ Item {
     breakLen = 300
     autoStart = false
     countup = false
+    target = 0
     tick()
   }
 
-  // Fire-and-forget CLI actions; the FileView picks up the result.
+  // Fire-and-forget CLI actions; the FileView picks up the result. One at a
+  // time, as the deadlines' are: the state file is rewritten whole. The ones
+  // asked meanwhile wait their turn (the bar pass: they were dropped, so a
+  // pause then a resume, or a length then auto-start, did only the first).
+  property var queue: []
   function run() {
-    if (actionProc.running) return
     var cmd = ["pomo"]
     for (var i = 0; i < arguments.length; i++) cmd.push(arguments[i])
-    actionProc.command = cmd
+    root.queue = root.queue.concat([cmd])
+    root.next()
+  }
+  function next() {
+    if (actionProc.running || root.queue.length === 0) return
+    actionProc.command = root.queue[0]
+    root.queue = root.queue.slice(1)
     actionProc.running = true
   }
 
@@ -203,9 +247,7 @@ Item {
   }
 
   function autostartToggle() {
-    if (actionProc.running) return
-    actionProc.command = ["pomo", "autostart", "toggle"]
-    actionProc.running = true
+    run("autostart", "toggle")
   }
 
   Timer {
@@ -226,6 +268,7 @@ Item {
   }
 
   FileView {
+    id: logView
     path: root.logPath
     watchChanges: true
     printErrors: false
@@ -237,6 +280,7 @@ Item {
   Process {
     id: actionProc
     running: false
+    onExited: root.next()
   }
 
   Process {

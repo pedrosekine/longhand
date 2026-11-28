@@ -154,7 +154,7 @@ all three: Settings → Personalization → Taskbar → Other system tray icons
 
 The widgets themselves are loaded as they are (`plugin/Panel.qml`,
 `plugin-deadline/Panel.qml`), and so are their popups: the timer's, where a
-length is typed as on a microwave and the day's sessions are counted
+length is typed in minutes and the day's sessions are counted
 (`timer-popup.png`), and the deadlines', where one is ticked, graded,
 hidden, cancelled or opened on its line in the note (`deadlines-popup.png`).
 Each opens as a small window in the corner by the clock, from the tray's

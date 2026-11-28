@@ -46,7 +46,7 @@ def main() -> int:
     check(opened.get("inTheCorner") is True, f"the timer's popup opens in the corner by the clock ({opened.get('at')} in {opened.get('workArea')})")
     check((opened.get("size") or [0, 0])[1] > 120, f"…at the height of what is in it ({opened.get('size')})")
     check((opened.get("autoRowWidth") or 0) > 100, f"auto-start row has real width ({opened.get('autoRowWidth')})")
-    check(steps.get("length typed", {}).get("entry") == "25:00", "2500 typed into it is 25:00, as on the bar")
+    check(steps.get("length typed", {}).get("entry") == "25:00", "25 typed into it is 25:00: the digits are minutes, as the hint under it says")
     started = steps.get("focus started", {})
     check(started.get("remaining") == 1500 and started.get("popupStillOpen") is True,
           f"Enter starts that focus session, the popup staying ({started})")

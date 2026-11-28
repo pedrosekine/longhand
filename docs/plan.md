@@ -23,7 +23,7 @@
 - [x] Step 8 — auto-start flow: `auto` flag in state.json, `pomo autostart [on|off|toggle]`, `pomo expired` edge handler (bell + auto-advance), popup switch. Provisional name "auto-start" — naming decision tracked in issue #1.
 - [x] Step 9 — popup controls: icon buttons (play/pause, skip, reset) side by side; tap-timer duration picker (15/25/45/60 min chips when idle, tap toggles picker, tap while running pauses/resumes). CLI `pomo start [focus|break] [minutes]` with per-phase default persisted (`focus_len`/`break_len`/`total` in state.json).
 - [x] Step 10 — typed minutes (idle timer is a minutes field, Enter starts) + completions-only counting (`focus completed` logged at expiry; CLI stats + popup recount).
-- [x] Step 11 — microwave-style entry, no caret: plain focusable Text (cursor impossible), digits shift in (--:-2 → --:25 → 25:00 → 250:00), Backspace deletes, Enter starts, Escape blurs.
+- [x] Step 11 — microwave-style entry, no caret: plain focusable Text (cursor impossible), digits shift in (--:-2 → --:25 → 25:00 → 250:00), Backspace deletes, Enter starts, Escape blurs. (Since the bar pass, 2026-11-28, the digits are minutes — 25 is 25:00 — as the popup's hint says and `pomo start` takes them; the microwave's seconds could never be kept.)
 - [x] Step 12 — deadlines (manual): `pomo deadline add|list|rm|next`, stored as
       `deadlines.tsv` (`id<TAB>epoch<TAB>title`). Free-text dates via `date -d`
       ("next friday 17:00", "in 3 hours", "3d", "by friday"); a bare day snaps to

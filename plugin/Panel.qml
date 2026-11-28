@@ -10,8 +10,8 @@ import qs.Ui
 
 // Pomodoro bar widget: countdown label + progress popup (clock-style).
 //
-// Left click toggles the progress popup, right click toggles pause/resume,
-// middle click skips to the next phase.
+// Left click toggles the progress popup, right click toggles pause/resume
+// (or starts a focus session), middle click skips to the next phase.
 Panel {
   id: root
   moduleName: "longhand.pomo"
@@ -36,30 +36,30 @@ Panel {
   // Counter scope toggle: 0 = day, 1 = week, 2 = month.
   property int scopeIndex: 0
 
-  // Microwave-style duration entry (idle only): digits shift in from the
-  // right, e.g. 2 -> --:-2, 25 -> --:25, 2500 -> 25:00, 25000 -> 250:00.
+  // The length typed (idle only), in minutes, as the hint under it says
+  // and as `pomo start` takes it: 25 is 25:00, 5 is 5:00, up to 999. It
+  // was a microwave's until the bar pass (2026-11-28): 25 was 25 seconds,
+  // which started a 1-minute session, and the seconds could never be kept,
+  // since pomo counts whole minutes. Nothing typed shows the usual length,
+  // faint, and Enter starts that.
   property string entryDigits: ""
 
   function entryText() {
-    var d = entryDigits
-    while (d.length < 4) d = "-" + d
-    if (d.length > 4) return d.substring(0, d.length - 2) + ":" + d.substring(d.length - 2)
-    return d.substring(0, 2) + ":" + d.substring(2, 4)
-  }
-
-  function entrySeconds() {
-    var d = entryDigits
-    while (d.length < 4) d = "0" + d
-    var ss = parseInt(d.substring(d.length - 2), 10)
-    var mm = parseInt(d.substring(0, d.length - 2), 10)
-    return mm * 60 + ss
+    return root.entryDigits === "" ? svc.fmt(svc.focusLen) : parseInt(root.entryDigits, 10) + ":00"
   }
 
   function startFromEntry() {
-    var s = entrySeconds()
-    if (s <= 0) return
-    svc.startFocus(Math.max(1, Math.round(s / 60)))
+    var m = parseInt(root.entryDigits, 10)
+    if (root.entryDigits === "") svc.toggle()
+    else if (m > 0) svc.startFocus(m)
+    else return
     root.entryDigits = ""
+  }
+
+  // The first Esc lets go of what was typed; the next closes.
+  function escapeEntry() {
+    if (root.entryDigits !== "") root.entryDigits = ""
+    else root.close()
   }
 
   // Keyboard grid cursor. The panel is treated as a grid: row 0 is the
@@ -82,8 +82,9 @@ Panel {
     return svc.phase === "idle" ? 4 : 3
   }
 
+  // Skip and reset are not there while idle: nothing to skip or reset.
   function gridCols(row) {
-    if (row === 0) return 4
+    if (row === 0) return svc.phase === "idle" ? 2 : 4
     if (row === 1) return svc.phase === "idle" ? 4 : 3
     if (row === 2) return svc.phase === "idle" ? 3 : 1
     return 1
@@ -115,8 +116,14 @@ Panel {
     root.cursorCol = col
   }
 
+  // Enter or Space before the keys have a place shows where they are, as
+  // an arrow does: the first press is never lost, and never acts blind.
   function activateCursor() {
-    if (!root.cursorActive) return
+    if (!root.cursorActive) {
+      root.cursorActive = true
+      root.clampCursor()
+      return
+    }
     var r = root.cursorRow
     var c = root.cursorCol
     if (r === 0) {
@@ -135,9 +142,57 @@ Panel {
     } else svc.autostartToggle()
   }
 
+  // Back to idle (reset, or a session left): the keys go to the length,
+  // which is what there is to do next, not to a cell that has gone.
   Connections {
     target: svc
-    function onPhaseChanged() { root.clampCursor() }
+    function onPhaseChanged() {
+      if (svc.phase === "idle") {
+        root.cursorRow = 0
+        root.cursorCol = 0
+        if (root.opened) idleTimer.focus = true
+      }
+      root.clampCursor()
+    }
+  }
+
+  // What the play button and the time do now, in words.
+  readonly property string playTip: svc.phase === "idle" ? "Start focus · " + svc.fmt(svc.focusLen)
+    : svc.expired ? "Start the " + (svc.phase === "focus" ? "break" : "focus")
+    : svc.live ? "Pause"
+    : svc.ready ? "Start" : "Resume"
+  // Skip logs a count-up and an expired session, and nothing else; reset
+  // logs nothing. Said, since the two looked alike and one loses the time.
+  readonly property string skipTip: svc.countup ? "Finish: count this session, then a break"
+    : svc.expired ? "Start the " + (svc.phase === "focus" ? "break" : "focus")
+    : "Skip to the " + (svc.phase === "focus" ? "break · not counted" : "focus")
+  readonly property string resetTip: svc.countup ? "Drop this session · not counted" : "Reset to idle"
+
+  // The deadline a session is for (`pomo start --for`), by its name. The
+  // store is read only while there is one.
+  readonly property string storePath: (Quickshell.env("XDG_STATE_HOME")
+    || Quickshell.env("HOME") + "/.local/state") + "/longhand/deadlines.tsv"
+  property string targetTitle: ""
+  FileView {
+    id: targetStore
+    path: svc.target > 0 ? root.storePath : ""
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: root.findTarget()
+    onLoadFailed: root.targetTitle = ""
+  }
+  function findTarget() {
+    var lines = String(targetStore.text() || "").split("\n")
+    for (var i = 0; i < lines.length; i++) {
+      var f = lines[i].split("\t")
+      if (f.length >= 3 && parseInt(f[0], 10) === svc.target) { root.targetTitle = f[2]; return }
+    }
+    root.targetTitle = ""
+  }
+  Connections {
+    target: svc
+    function onTargetChanged() { if (svc.target > 0) root.findTarget(); else root.targetTitle = "" }
   }
 
   // The keys' mark: drawn under a control's own paint, so the control's
@@ -230,7 +285,6 @@ Panel {
   }
 
   onOpenedChanged: {
-    console.debug("pomo-debug opened", opened, "phase", svc.phase)
     root.handOn = false
     root.handSeeded = false
     if (opened) {
@@ -275,7 +329,19 @@ Panel {
     anchors.fill: parent
     bar: root.bar
     text: svc.labelText
-    tooltipText: "Pomodoro — left: progress, right: pause/resume, middle: skip"
+    // The accent while a focus runs, as the tray's glyph is on Windows: a
+    // break and a focus read the same "● 4:59" before.
+    foreground: svc.live && svc.phase === "focus" ? Commons.Color.accent
+      : (bar ? bar.barForeground : Commons.Color.foreground)
+    // What it is doing and the day's count, then what each button does.
+    // (No time: the bar takes the tip once, as the pointer comes, and the
+    // label beside it already counts.)
+    tooltipText: svc.stateText
+      + (root.targetTitle !== "" ? " · for " + root.targetTitle : "")
+      + " · " + (svc.dayCount === 1 ? "1 session" : svc.dayCount + " sessions") + " today"
+      + "\nleft: the timer · right: " + (svc.phase === "idle" ? "start focus" : svc.live ? "pause"
+        : svc.expired ? "start the next" : svc.ready ? "start" : "resume")
+      + (svc.phase !== "idle" ? " · middle: skip" : "")
     onPressed: function (b) {
       if (b === Qt.RightButton) svc.toggle()
       else if (b === Qt.MiddleButton) svc.skip()
@@ -298,7 +364,6 @@ Panel {
       anchors.fill: parent
       onCloseRequested: root.close()
       onMoveRequested: function (dx, dy) {
-        console.debug("pomo-debug move", dx, dy, "cursorActive", root.cursorActive)
         // Leaving the duration entry returns control to the grid cursor.
         if (idleTimer.activeFocus) idleTimer.focus = false
         root.moveCursor(dx, dy)
@@ -320,6 +385,28 @@ Panel {
         width: parent.width
         spacing: Style.space(10)
 
+        // What state it is in, as the deadlines' popup names itself: focus
+        // or break, paused or ready, counting up, done (the bar pass).
+        Column {
+          width: parent.width
+          spacing: Style.space(2)
+          PanelSectionHeader {
+            text: svc.stateText.toUpperCase()
+            foreground: root.foreground
+            fontFamily: root.fontFamily
+          }
+          Text {
+            visible: root.targetTitle !== ""
+            width: parent.width
+            textFormat: Text.PlainText
+            elide: Text.ElideRight
+            text: "for " + root.targetTitle
+            color: root.dim
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+          }
+        }
+
         RowLayout {
           width: parent.width
           spacing: Style.space(12)
@@ -338,11 +425,16 @@ Panel {
             id: timerMouse
             anchors.fill: parent
             hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
+            cursorShape: svc.phase === "idle" ? Qt.IBeamCursor : Qt.PointingHandCursor
             onClicked: {
               root.pickCursor(0, 0)
               if (svc.phase === "idle") idleTimer.focus = true; else svc.toggle()
             }
+          }
+          PanelToolTip {
+            visible: timerMouse.containsMouse && root.handOn
+            text: svc.phase === "idle" ? "Type the minutes · Enter starts" : root.playTip
+            fontFamily: root.fontFamily
           }
 
           Text {
@@ -361,7 +453,8 @@ Panel {
             Keys.onPressed: function (event) {
               root.keysTook(event)
               if (event.key >= Qt.Key_0 && event.key <= Qt.Key_9) {
-                if (root.entryDigits.length < 5) root.entryDigits += (event.key - Qt.Key_0)
+                if (root.entryDigits.length < 3 && !(root.entryDigits === "" && event.key === Qt.Key_0))
+                  root.entryDigits += (event.key - Qt.Key_0)
                 event.accepted = true
               } else if (event.key === Qt.Key_Backspace) {
                 root.entryDigits = root.entryDigits.slice(0, -1)
@@ -370,7 +463,7 @@ Panel {
             }
             Keys.onReturnPressed: root.startFromEntry()
             Keys.onEnterPressed: root.startFromEntry()
-            Keys.onEscapePressed: root.close()
+            Keys.onEscapePressed: root.escapeEntry()
           }
 
           Text {
@@ -390,26 +483,28 @@ Panel {
           HandAction {
             Layout.alignment: Qt.AlignVCenter
             foreground: root.foreground
-            iconText: svc.runStatus === "running" && !svc.expired ? "\uf04c" : "\uf04b"
-            tooltipText: svc.expired ? "Start next phase" : svc.runStatus === "running" ? "Pause" : svc.ready ? "Start" : "Resume"
+            iconText: svc.live ? "\uf04c" : "\uf04b"
+            tooltipText: root.playTip
             onClicked: { root.pickCursor(0, 1); svc.toggle() }
             KeyMark { visible: root.cellHot(0, 1) }
           }
 
           HandAction {
+            visible: svc.phase !== "idle"
             Layout.alignment: Qt.AlignVCenter
             foreground: root.foreground
             iconText: "\uf051"
-            tooltipText: "Skip to next phase"
+            tooltipText: root.skipTip
             onClicked: { root.pickCursor(0, 2); svc.skip() }
             KeyMark { visible: root.cellHot(0, 2) }
           }
 
           HandAction {
+            visible: svc.phase !== "idle"
             Layout.alignment: Qt.AlignVCenter
             foreground: root.foreground
             iconText: "\uf021"
-            tooltipText: "Reset to idle"
+            tooltipText: root.resetTip
             onClicked: { root.pickCursor(0, 3); svc.reset() }
             KeyMark { visible: root.cellHot(0, 3) }
           }
@@ -444,8 +539,11 @@ Panel {
           }
         }
 
+        // How far along: only where there is a length to be along (not
+        // idle, not counting up, where it was an empty bar).
         Rectangle {
           id: track
+          visible: svc.effTotal > 0 && svc.phase !== "idle"
           width: parent.width
           implicitHeight: Style.space(6)
           radius: height / 2

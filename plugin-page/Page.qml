@@ -3587,12 +3587,17 @@ Item {
   // `{"goto":"[[2026.10.09#^d6]]"}` (the deadlines popup's `o`) opens on the
   // line that stands for deadline #6, in the window if that is where the
   // page already is.
+  //
+  // `{"view":"dashboard"}` opens on the dashboard: the deadlines popup's
+  // "+N more", the bar glyph's right button, the tray's line for what the
+  // agent asks (all three said "in the dashboard" and opened the note).
   function open(payloadJson) {
     var payload = ({})
     try { payload = JSON.parse(payloadJson || "{}") } catch (e) { payload = ({}) }
     var goto = payload.goto ? Bound.parseLink(payload.goto) : null
+    var toDash = payload.view === "dashboard"
     var fresh = !root.showing
-    if (payload.shape === "alongside" || (goto && root.windowOpen && !root.overlayOpen)) {
+    if (payload.shape === "alongside" || ((goto || toDash) && root.windowOpen && !root.overlayOpen)) {
       // Already a window (maybe on another workspace): bring it here. The
       // app launcher waits for a window to appear or take focus, and says
       // "Launching…" over the page until one does.
@@ -3604,6 +3609,7 @@ Item {
       // show the same sheet a little larger and leave the window empty
       // behind it ("on the overlay"). The window stays, and says what
       // fills the screen instead.
+      if (toDash) { root.showDash(); return }
       root.showHint("already open here · " + root.keyName("pin") + " for full screen")
       return
     } else {
@@ -3648,6 +3654,7 @@ Item {
       else if (!fresh) root.openNote(goto.stem)
     }
     Qt.callLater(editor.focusNote)
+    if (toDash) Qt.callLater(root.showDash)
   }
 
   // ------------------------------------------------------------ usage
