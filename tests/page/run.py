@@ -5192,7 +5192,7 @@ def checks() -> int:
         check(e["here"] == "center" and json.loads(p.call("pdf"))["shown"] is False, "…in the note's place, with the keys")
         check([r["show"] for r in e["rows"]] == ["- [ ] hand it in", "What happened", "We met twice."],
               f"…each row the words that go, without the marks ({[r['show'] for r in e['rows']]})")
-        check(e["canWrite"] and e["target"].replace("\\", "/").endswith("Downloads/Diary.pdf") and not e["replaces"],
+        check(e["canWrite"] == (e["missing"] == "") and e["target"].replace("\\", "/").endswith("Downloads/Diary.pdf") and not e["replaces"],
               f"…and the footer names the file it will write ({e['target']!r})")
         check(re.search(re.escape(f"{TODAY}.md") + r":\d+$", p.call("exportPath")) is not None,
               f"Ctrl+Shift+C there: the note it reads, at the block's line ({p.call('exportPath')!r})")
@@ -5231,7 +5231,8 @@ def checks() -> int:
             check(p.call("hint").startswith("written to "), f"…saying where it went ({p.call('hint')!r})")
         else:
             print("skip the PDF itself: pandoc or xelatex is not installed")
-            check(p.wait(lambda: "not installed" in ex()["error"], 15) and not out.exists(),
+            check(p.wait(lambda: "installed on PATH" in ex()["error"] or "not installed" in ex()["error"], 15)
+                  and not out.exists() and not ex()["canWrite"],
                   f"…without pandoc or xelatex, Enter says so and writes nothing ({ex()['error']!r})")
         p.call("pdfKey", KEY_ESC, 0)
         check(p.wait(lambda: not json.loads(p.call("pdf"))["shown"]) and p.call("text") == before,
