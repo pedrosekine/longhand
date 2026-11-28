@@ -44,14 +44,21 @@ var ON_RE = new RegExp("^(.*\\S)\\s+on\\s+("
 // ("essay next monday 10:00"); a "for" before it goes with it, as a cue
 // word does ("slides for monday" is "slides").
 var WEEKDAY = "(?:mon(?:day)?|tue(?:s|sday)?|wed(?:nesday)?|thu(?:r|rs|rsday)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?)"
-var CLOCK = "(?:\\s+(?:at\\s+)?\\d{1,2}(?::\\d{2}\\s*(?:am|pm)?|\\s*(?:am|pm)))?"
+// A time after the day: "17:00", "5pm", the European "9.30", "21h" and
+// "9h30", "noon", "midnight".
+var CLOCK = "(?:\\s+(?:at\\s+)?(?:\\d{1,2}(?::\\d{2}\\s*(?:am|pm)?|\\s*(?:am|pm)|\\.\\d{2}|h(?:\\d{2})?)|noon|midnight))?"
+// A time before the day ("10:00 tomorrow", "5pm friday"): only one that
+// cannot be read as anything else.
+var CLOCK_FIRST = "(?:at\\s+)?(?:\\d{1,2}:\\d{2}(?:\\s*(?:am|pm))?|\\d{1,2}\\s*(?:am|pm)|noon|midnight)\\s+(?:on\\s+)?"
 var ORDINAL = "\\d{1,2}(?:st|nd|rd|th)?"
 // The months by their names only: "10 marks" is not the 10th of March.
 var MONTH_NAME = "(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\\.?"
+var TIME_BEFORE_RE = new RegExp("^(.*?\\S)\\s+((?:at\\s+)?(?:\\d{1,2}:\\d{2}(?:\\s*(?:am|pm))?|\\d{1,2}\\s*(?:am|pm)|noon|midnight))$", "i")
 var BARE_RE = new RegExp("^(.*?\\S)\\s+(?:for\\s+)?("
-  + "(?:(?:this|next)\\s+" + WEEKDAY + "|monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tues?|thu(?:rs?)?|fri)" + CLOCK
-  + "|(?:today|tomorrow)" + CLOCK
+  + "(?:" + CLOCK_FIRST + ")?(?:(?:this|next)\\s+" + WEEKDAY + "|monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tues?|thu(?:rs?)?|fri)" + CLOCK
+  + "|(?:" + CLOCK_FIRST + ")?(?:today|tonight|tomorrow)" + CLOCK
   + "|next\\s+(?:week|month)"
+  + "|in\\s+\\d+\\s+(?:days?|weeks?)"
   + "|\\d{4}-\\d{2}-\\d{2}" + CLOCK
   + "|" + DOTTED + CLOCK
   + "|(?:the\\s+)?" + ORDINAL + "(?:\\s+of)?\\s+" + MONTH_NAME + "(?:\\s+\\d{4})?" + CLOCK
@@ -66,6 +73,11 @@ var ANCHOR_RE = /^\s*[-*+] \[([ xX\/\-])\] .*\s\^d(\d+)\s*$/
 // What a date phrase has in it. "by phone" or "until done" must not read as
 // one (GNU date accepts single letters as time zones, so be strict here).
 var DATEISH_RE = /\d|\b(today|tonight|tomorrow|yesterday|mon|tues?|wed|thu|thur|fri|sat|sun|monday|tuesday|wednesday|thursday|friday|saturday|sunday|jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec|january|february|march|april|june|july|august|september|october|november|december|week|month|noon|midnight|next)\b/i
+
+// A phrase with a word of a date in it, not just a number: "by 5pm friday"
+// is meant as a date even when it does not read as one; "by 2" is not.
+var WORDISH_RE = new RegExp(DATEISH_RE.source.replace("\\d|", ""), "i")
+function meantAsDate(phrase) { return WORDISH_RE.test(phrase || "") }
 
 // The deadline's title: the words, without #tags.
 function titleOf(words) {
@@ -89,6 +101,9 @@ function cue(body) {
     // The last cue counts: of a cue word and "on", the one further along.
     var w = core.match(CUE_RE), o = core.match(ON_RE)
     m = w && o ? (o[1].length > w[1].length ? o : w) : (w || o)
+    // "essay at 5pm on friday": the time before "on" is the date's too.
+    var t = m === o && o ? o[1].match(TIME_BEFORE_RE) : null
+    if (t) m = [m[0], t[1], t[2] + " " + m[2]]
   }
   if (!m) {
     m = core.match(BARE_RE)

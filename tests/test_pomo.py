@@ -25,7 +25,9 @@ def check(cond, what):
 
 def main() -> int:
     state = tempfile.mkdtemp(prefix="pomo-test-")
-    env = dict(os.environ, XDG_STATE_HOME=state)
+    # A config folder of its own: pomo reads the vault's deadline logs from it.
+    env = dict(os.environ, XDG_STATE_HOME=state, XDG_CONFIG_HOME=tempfile.mkdtemp(prefix="pomo-test-cfg-"))
+    env.pop("LONGHAND_CONFIG", None)
 
     def pomo(*args):
         return subprocess.run([str(POMO), "deadline", *args], capture_output=True, text=True, env=env)
@@ -127,6 +129,23 @@ def main() -> int:
         check(waited and p.returncode == 0 and by_id(held_id)["status"] == "done",
               f"a tick written while the store is open elsewhere lands once it is let go ({p.returncode}, {said[1].strip()[-160:]})")
         check(not copies(), "…leaving no copy behind")
+    # Another machine's numbers, in the vault's logs, are never handed out
+    # here (2026-11-24: a new machine's first deadline took #1 and was folded
+    # into a different #1). Both programs, the bash one and the port.
+    for program in ([str(POMO)], [sys.executable, "-X", "utf8", str(ROOT / "cli" / "pomo.py")]):
+        fresh = tempfile.mkdtemp(prefix="pomo-test-fresh-")
+        cfg = pathlib.Path(tempfile.mkdtemp(prefix="pomo-test-cfg-"))
+        vault = pathlib.Path(tempfile.mkdtemp(prefix="pomo-test-vault-"))
+        logs = vault / "agents" / "longhand" / "deadlines"
+        logs.mkdir(parents=True)
+        (logs / "other.jsonl").write_text('{"at": 1.0, "host": "other", "id": 70, "set": {"title": "Theirs"}}\n'
+                                          '{"at": 2.0, "host": "other", "id": 9, "set": {"title": "Older"}}\n')
+        (cfg / "longhand").mkdir()
+        (cfg / "longhand" / "config.json").write_text(json.dumps({"vault": str(vault)}))
+        env2 = dict(env, XDG_STATE_HOME=fresh, XDG_CONFIG_HOME=str(cfg))
+        r = subprocess.run(program + ["deadline", "add", "Mine", "friday"], capture_output=True, text=True, env=env2)
+        check(r.returncode == 0 and "deadline #71" in r.stdout,
+              f"{pathlib.Path(program[-1]).name}: a new store numbers past the other machines' logs ({r.stdout.strip()}{r.stderr.strip()})")
     print("PASS" if failures == 0 else f"{failures} FAILED")
     return 1 if failures else 0
 

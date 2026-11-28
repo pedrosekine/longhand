@@ -149,6 +149,28 @@ def two_machines() -> None:
     both()
     check(store("xmg")[1]["grade"] == "2.0" and same(), "…the real one does")
 
+    # One number, two deadlines: a third machine whose store is new numbers
+    # its first deadline #1 before it has read the logs (2026-11-24, an older
+    # pomo). The one born later moves to a number of its own, on its line
+    # too; the first keeps its number, its grade and its history.
+    pad_note = daily / "2026-11-24.md"
+    pad_note.write_text("- [ ] Experiment design, group task 📅 2026-12-09 ^d1\n")
+    pomo("pad", "put", "1", "--due", "1796857140", "--title", "Experiment design, group task", "--status", "open",
+         "--project", "hfpi", "--link", "[[2026-11-24#^d1]]")
+    out = run("pad")
+    moved = out.get("renumbered") or []
+    check(len(moved) == 1 and moved[0]["id"] == 1 and moved[0]["kept"] == "Revise the proposal",
+          f"the later of two deadlines numbered alike moves ({moved})")
+    to = moved[0]["to"] if moved else 0
+    both(), run("pad")
+    check(store("pad")[1]["title"] == "Revise the proposal" and store("pad")[1]["grade"] == "2.0"
+          and store("pad")[1]["status"] == "done", "…the first keeps its number, words, grade and state")
+    check(to > 1 and all(store(h).get(to, {}).get("title") == "Experiment design, group task" and not store(h)[to]["grade"]
+                         for h in ("pad", "air", "xmg")), f"…the other is #{to} on every machine, with no grade of the first's")
+    check(pad_note.read_text() == f"- [ ] Experiment design, group task 📅 2026-12-09 ^d{to}\n", "…and its line says so")
+    check(same() and store("pad") == store("xmg"), "…and the three stores agree")
+    check(not (run("xmg").get("renumbered") or run("pad").get("renumbered")), "…once: nothing moves again")
+
     # A log line cut short by the sync tool is skipped, not fatal.
     with open(logs / "xmg.jsonl", "a") as f:
         f.write('{"at": 9e9, "host": "xmg", "id": 1, "set": {"grade": "')

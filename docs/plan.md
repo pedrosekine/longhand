@@ -1328,6 +1328,28 @@ this list, with *Open, in order* above. Each says why it waits.
 No work unless they bite; each says what would tell. The first four came
 from 2026-09/10 and still stand.
 
+- **The deadlines pass** (built 2026-11-28, the README's last part without
+  a pass: a line that becomes a deadline, and stays one). What it found,
+  with the notes, `usage.tsv` (34 bindings, none kept as words or undone)
+  and the logs to go by: a third machine's first deadline had taken #1,
+  and the logs folded it into "Master presentation" (done, graded 2) —
+  numbers now come past the logs and a clash is undone by renumbering the
+  later one (`docs/tasks.md`, "One number"); the store was repaired the
+  same way. Dates: in so many days or weeks are owed by the day's end, not
+  the minute typed; tonight, noon, midnight, a time before the day
+  (`meeting at 10:00 tomorrow`, `5pm friday`, `at 5pm on friday`) and the
+  European `9.30`, `21h`, `9h30` after one are read; "in 2 hours" stays
+  words. A date meant but not read is lit as "not a date yet", said as the
+  line is left, and Ctrl+D asks for it with its words in the box. The
+  note's pill says what the dashboard says ("due today", "3 days late");
+  the year shows wherever it is not this one, "due?" included, which also
+  says what its keys do. A deletion found by the check offers Ctrl+Z only
+  when the page's own edit made it; Ctrl+D outside a day's note says where
+  deadlines live. To watch: whether "not a date yet" flickers too much
+  while a time is typed; whether a day and month just gone by should read
+  as overdue rather than next year's (left as is: a choice, not a bug);
+  "for next class" (seen twice in the notes), which would need the
+  timetable.
 - **The mouse pass** (built 2026-11-25, from an outside review of the
   mouse on Windows, which held on Omarchy too: `docs/navigation.md`, "The
   mouse"; `docs/hints.md`, "D, kept everywhere"). Lists no longer pan

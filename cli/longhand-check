@@ -244,6 +244,77 @@ def notes(cfg: dict) -> list[Path]:
     return sorted(daily.glob("*.md"), reverse=True)
 
 
+ANCHOR_END = re.compile(r"\^d(\d+)(\s*)$")
+
+
+def renumber(logs, items: list[dict], lines: dict, texts: dict, led: dict, open_stem: str, now: int,
+             out: dict) -> list[tuple[dict, str, str]]:
+    """One number given to two deadlines by two machines (dsync.clashes):
+    the one born later moves to a new number, here in the store and on its
+    line, and the logs are told — the number again as the first one's, and
+    which one moved — so every machine ends up with both. Done by a machine
+    the moving deadline is from, or by any machine once it is a day old (its
+    own may run an older Longhand); never while its line is in the open
+    note, which is the page's to write, nor before its note has arrived.
+    Returns the line edits to make, (where, was, now): `texts` already holds
+    them."""
+    renames: list[tuple[dict, str, str]] = []
+    events = logs.events()
+    seq = STATE_HOME / "deadlines.seq"
+    try:
+        top = int("".join(c for c in seq.read_text() if c.isdigit()) or 0)
+    except OSError:
+        top = 0
+    top = max([top, logs.top()] + list(lines) + [int(d["id"]) for d in items])
+    for c in dsync.clashes(events):
+        i, move = c["id"], c["move"]
+        if logs.host not in move["hosts"] and move["born"] > now - 86400:
+            continue
+        rec = dict(move["rec"])
+        m = re.match(r"\[\[([^#\]]+)#\^d\d+\]\]$", rec.get("link") or "")
+        stem = m.group(1) if m else ""
+        if stem and stem == open_stem:
+            continue
+        where = raw = None
+        for f, ls in texts.items():
+            if f.stem != stem:
+                continue
+            for n, line in enumerate(ls):
+                a = ANCHOR_END.search(line)
+                box = tasklib.parse(line) if a and int(a.group(1)) == i else None
+                if box and dsync._same({"title": box["title"]}, rec):
+                    where, raw = {"file": f, "stem": f.stem, "line": n}, line
+                    break
+        if stem and where is None:
+            continue                              # its note has not arrived: next time
+        top += 1
+        new = top
+        if where is not None:
+            a = ANCHOR_END.search(raw)
+            renames.append((where, raw, raw[:a.start()] + f"^d{new}" + a.group(2)))
+            texts[where["file"]][where["line"]] = renames[-1][2]
+        if stem:
+            rec["link"] = f"[[{stem}#^d{new}]]"
+        pomo("put", str(new), "--due", str(rec.get("due") or 0), "--title", rec.get("title") or f"#{new}",
+             "--status", rec.get("status") or "open", "--done-at", str(rec.get("done_at") or 0),
+             "--grade", rec.get("grade") or "", "--project", rec.get("project") or "", "--link", rec.get("link") or "")
+        first = dsync.kept(events, c)
+        logs._append([
+            {"at": now, "host": logs.host, "id": new, "set": dict({f: rec.get(f, "") for f in dsync.FIELDS}, removed=False)},
+            {"at": now, "host": logs.host, "id": i,
+             "set": dict(first, moved={"title": move["rec"].get("title", ""), "link": move["rec"].get("link", ""), "to": new})},
+        ])
+        logs.agreed(new, {f: rec.get(f, "") for f in dsync.FIELDS})
+        # What the ledger knew from the moving one's line is the new number's.
+        if where is not None and str(i) in led["deadlines"]:
+            led["deadlines"][str(new)] = led["deadlines"].pop(str(i))
+        if where is not None and lines.get(i, {}).get("stem") == stem:
+            lines[new] = dict(lines.pop(i), line=where["line"])
+            lines[new]["box"] = dict(lines[new]["box"], anchor=new)
+        out["renumbered"].append({"id": i, "to": new, "title": rec.get("title", ""), "kept": first.get("title", "")})
+    return renames
+
+
 # ---------------------------------------------------------------- the check
 
 def check(cfg: dict, open_stem: str = "", now: int | None = None, waiting: set[str] | None = None) -> dict:
@@ -279,6 +350,10 @@ def check(cfg: dict, open_stem: str = "", now: int | None = None, waiting: set[s
     # now comes into this store — before the lines are read against it.
     logs = dsync.Logs(Path(cfg["vault"]) / cfg.get("agentDir", "agents/longhand") / "deadlines", STATE_HOME, dry=DRY_RUN)
     logs.note_changes(items, time.time())
+    out["renumbered"] = []
+    renames = renumber(logs, items, lines, texts, led, open_stem, now, out)
+    if out["renumbered"]:
+        items = store()
     for i, rec in logs.plan(items):
         if rec is None:
             pomo("rm", str(i))
@@ -300,6 +375,10 @@ def check(cfg: dict, open_stem: str = "", now: int | None = None, waiting: set[s
 
     def edit(where: dict, raw: str) -> None:
         texts[where["file"]][where["line"]] = raw
+        edits.setdefault(where["file"], {})[where["line"]] = raw
+
+    for where, was, raw in renames:
+        texts_before[where["file"]][where["line"]] = was
         edits.setdefault(where["file"], {})[where["line"]] = raw
 
     def step_aside(d: dict, rec: dict, status: str, due: int) -> str:
@@ -560,6 +639,8 @@ def main(argv: list[str]) -> int:
             print(f"back #{c['id']} · {c['title']}")
         if out["synced"]:
             print(f"{len(out['synced'])} deadline(s) brought in line with the other machines: " + ", ".join(f"#{i}" for i in out["synced"]))
+        for c in out.get("renumbered") or []:
+            print(f"#{c['id']} was two deadlines from two machines: {c['title']} is #{c['to']} now, {c['kept']} keeps #{c['id']}")
         for c in out["adopted"]:
             print(f"adopted #{c['id']} · {c['title']} (made on another machine)")
         for c in out["hidden"]:

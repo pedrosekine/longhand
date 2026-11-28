@@ -248,6 +248,7 @@ ShellRoot {
     function room(): string { var e = page.editorItem; return JSON.stringify({ row: e.roomRow, top: e.roomTop, height: e.roomHeight }) }
     function status(): string { return page.status }
     function when(s: string): void { page.whenInput.text = s; page.submitWhen() }
+    function whenText(): string { return page.whenFor ? page.whenInput.text : "" }
     // Panels
     function sidebar(): void { page.toggleSidebar() }
     function seal(): void { page.sealClicked() }

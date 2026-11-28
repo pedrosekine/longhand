@@ -185,6 +185,28 @@ marked private, or on a day before the agent's horizon.
 - `cancelled` is a status of the store, beside open, done and hidden, with
   the time it was cancelled in the done-at column.
 
+## One number, one deadline, on every machine (2026-11-28)
+
+A deadline's number is what its line, its log events and its links mean, so
+two machines must never give one number to two deadlines. Each store hands
+out numbers itself, and on 2026-11-24 a third machine, its store new, gave
+its first deadline #1: the logs folded it into the other machines' #1, a
+different deadline, done and graded, which lost its words and lent the new
+one its grade. Two rules now:
+
+- **`pomo` numbers past the logs.** A new deadline's number is past its own
+  store's, its high-water mark's, and every number in the vault's deadline
+  logs (`pomo`, both the bash one and the port, read the config for them).
+- **The check undoes a clash.** Two machines offline at once can still each
+  number one; when the logs carry two births of one number that are two
+  deadlines (different words and line), the one born later moves to a new
+  number — in the store, on its line (`^dN`), and in the logs, which are
+  told the number is the first one's again and which one moved
+  (`dsync.clashes`, `renumber` in `longhand-check`). One of its own
+  machines does it, or any machine once it is a day old; never while its
+  line is in the open note or before its note has arrived. The page says
+  so in a passing word.
+
 ## Parked
 
 - **A project as one continuous page:** every section of a project in one

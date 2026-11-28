@@ -4881,6 +4881,7 @@ Item {
       var dr = editor.rows[root.lineIndexAt(editor.cursorPosition)]
       if (dr && dr.priv) root.showHint("private: a box here never becomes a deadline")
       else if (root.dayNote) root.deadlineKey()
+      else root.showHint("deadlines live in the day's notes · " + root.keyName("today") + " goes to today's")
       return true
     }
     return false
@@ -8885,6 +8886,10 @@ Item {
   property bool quiet: false        // the page is writing (binding, catching up): not the student
   property var declined: ({})       // raw lines whose date stays words (Backspace, Ctrl+D, Ctrl+Z)
   property var autoBound: null      // { id, raw, made }: the line the page just bound as it was left
+  // Deadlines whose lines an edit in the page took away: only these can
+  // Ctrl+Z bring back. A line gone in Obsidian, or in a note not open here,
+  // is said without that promise.
+  property var goneHere: ({})
   property var unmade: []           // deadlines the page made for a line and took back (Ctrl+Z, the line gone)
   property int lastLine: -1
   property bool reconcilePending: false
@@ -9099,6 +9104,9 @@ Item {
         root.used("bound", "undone")
         continue
       }
+      var g = Object.assign({}, root.goneHere)
+      g[String(e.gone[i])] = true
+      root.goneHere = g
       changed = true
     }
     if (changed) root.scheduleCheck()
@@ -9129,6 +9137,8 @@ Item {
     var c = Bound.cue(r.body)
     var w = c ? Dates.read(c.phrase) : null
     if (w) root.bindCue(r.raw, c, w, true)
+    // A date meant but not read: said as the line is left, never in silence.
+    else if (c) root.showHint("“" + c.phrase + "” did not read as a date: the line stays words · " + root.keyName("deadline") + " asks for one")
   }
 
   function trackLine() {
@@ -9163,7 +9173,9 @@ Item {
     var c = Bound.cue(r.body)
     if (c) {
       var w = Dates.read(c.phrase)
-      if (!w) { root.showHint("that date did not read: " + c.phrase); return }
+      // A date that did not read: asked for, its words in the box to put
+      // right; the date given takes their place on the line.
+      if (!w) { root.openWhen(r.raw, 0, c.phrase, c.head); return }
       // Lit up while being written: Ctrl+D keeps it words. Otherwise (an
       // old line, or one kept as words): it becomes the deadline now.
       if (r.raw === editor.typedRaw && !root.declined[r.raw]) { root.decline(r.raw); root.used("cue", "kept"); return }
@@ -9184,8 +9196,8 @@ Item {
     whenField.selectAll()
   }
 
-  function openWhen(raw, id, text) {
-    root.whenFor = { raw: raw, id: id }
+  function openWhen(raw, id, text, head) {
+    root.whenFor = { raw: raw, id: id, head: head || "" }
     whenField.text = text
     whenField.forceActiveFocus()
     whenField.selectAll()
@@ -9303,12 +9315,13 @@ Item {
     if (text === "") { root.closeWhen(); return }
     var row = root.rowByRaw(a.raw)
     if (!row) { root.closeWhen(); return }
-    var title = Bound.titleOf(row.body)
+    // The words before a date that did not read, when it was asked for one.
+    var head = a.head && row.body.indexOf(a.head) === 0 ? a.head : row.body
+    var title = Bound.titleOf(head)
     if (title === "") { root.closeWhen(); root.showHint("write what it is first, then " + root.keyName("deadline")); return }
     var w2 = Dates.read(text, new Date())
     if (!w2) { root.showHint("that date did not read: " + text); return }
     root.closeWhen()
-    var head = row.body
     var project = Bound.projectOf(row.body)
     if (root.bindTwin(a.raw, head, project, w2.iso, w2.ms)) return
     var stem = svc.noteDate
@@ -9612,9 +9625,15 @@ Item {
 
   // What the check did, said in the status line, waiting for nothing.
   function sayChecked(out) {
-    var gone = out.cancelled || [], back = out.restored || []
-    if (gone.length === 1) root.showHint("“" + gone[0].title + "” cancelled: its line is gone · " + root.keyName("undo") + " brings it back")
-    else if (gone.length > 1) root.showHint(gone.length + " deadlines cancelled with their lines · " + root.keyName("undo") + " brings them back")
+    var gone = out.cancelled || [], back = out.restored || [], moved = out.renumbered || []
+    // Ctrl+Z is offered only when this page's own edit took every line away.
+    var here = gone.length > 0 && gone.every(function (c) { return !!root.goneHere[String(c.id)] })
+    root.goneHere = ({})
+    var undo = here ? " · " + root.keyName("undo") + " brings it back" : ""
+    if (moved.length === 1) root.showHint("“" + moved[0].title + "” and “" + moved[0].kept + "” had one number from two machines: each has its own now")
+    else if (moved.length > 1) root.showHint(moved.length + " deadlines had another's number from another machine: each has its own now")
+    else if (gone.length === 1) root.showHint("“" + gone[0].title + "” cancelled: " + (here ? "its line is gone" : "no note holds its line now") + undo)
+    else if (gone.length > 1) root.showHint(gone.length + " deadlines cancelled with their lines" + undo.replace(" it ", " them "))
     else if (back.length === 1) root.showHint("“" + back[0].title + "” is back")
     else if (back.length > 1) root.showHint(back.length + " deadlines are back")
     else if ((out.hidden || []).length === 1) root.showHint("“" + out.hidden[0].title + "” stepped aside, a fortnight past its date")
@@ -12575,52 +12594,69 @@ Item {
 
           // Ctrl+D's question: when? Under the line, in the page's own words,
           // in the room the line opens for it.
-          Row {
+          Column {
             id: whenBox
             visible: !!root.whenFor
             x: root.gutter
             y: editor.roomRow >= 0 ? editor.roomTop + root.sp(4) : editor.cursorRect.y + editor.cursorRect.height + root.sp(4)
-            spacing: root.sp(8)
+            spacing: root.sp(2)
             z: 3
-            Text {
-              anchors.verticalCenter: parent.verticalCenter
-              textFormat: Text.PlainText
-              text: root.whenFor && root.whenFor.doOn ? "do on?" : "due?"
-              color: root.dim
-              font.family: root.fontFamily
-              font.styleName: root.fontStyle
-              font.pixelSize: root.fs(Style.font.bodySmall)
-            }
-            TextField {
-              FieldMenu { page: root; field: parent }
-              id: whenField
-              width: root.sp(220)
-              placeholderText: root.whenFor && root.whenFor.doOn ? "empty: no day" : root.whenFor && root.whenFor.id > 0 ? "empty: no deadline" : "fri 17:00 · in 3 days · 20 oct"
-              font.family: root.fontFamily
-              font.styleName: root.fontStyle
-              font.pixelSize: root.fs(Style.font.body)
-              foreground: root.foreground
-              Keys.onPressed: function (event) {
-                if (root.anywhereKey(event)) { event.accepted = true; return }
-                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { root.submitWhen(); event.accepted = true }
-                else if (event.key === Qt.Key_Escape) { root.closeWhen(); event.accepted = true }
+            Row {
+              spacing: root.sp(8)
+              Text {
+                anchors.verticalCenter: parent.verticalCenter
+                textFormat: Text.PlainText
+                text: root.whenFor && root.whenFor.doOn ? "do on?" : "due?"
+                color: root.dim
+                font.family: root.fontFamily
+                font.styleName: root.fontStyle
+                font.pixelSize: root.fs(Style.font.bodySmall)
+              }
+              TextField {
+                FieldMenu { page: root; field: parent }
+                id: whenField
+                width: root.sp(220)
+                placeholderText: root.whenFor && root.whenFor.doOn ? "empty: no day" : root.whenFor && root.whenFor.id > 0 ? "empty: no deadline" : "fri 17:00 · in 3 days · 20 oct"
+                font.family: root.fontFamily
+                font.styleName: root.fontStyle
+                font.pixelSize: root.fs(Style.font.body)
+                foreground: root.foreground
+                Keys.onPressed: function (event) {
+                  if (root.anywhereKey(event)) { event.accepted = true; return }
+                  if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { root.submitWhen(); event.accepted = true }
+                  else if (event.key === Qt.Key_Escape) { root.closeWhen(); event.accepted = true }
+                }
+              }
+              Text {
+                readonly property var parsed: whenField.text.trim() !== "" ? Dates.read(whenField.text.trim(), new Date()) : null
+                visible: whenField.text.trim() !== ""
+                anchors.verticalCenter: parent.verticalCenter
+                textFormat: Text.PlainText
+                text: {
+                  if (!parsed) return "not a date"
+                  var d = new Date(parsed.ms)
+                  var timed = !(d.getHours() === 23 && d.getMinutes() === 59)
+                  // The year, when it is not this one: "12.11" written after
+                  // the 12th of November is next year's, and must look it.
+                  var other = d.getFullYear() !== new Date().getFullYear()
+                  return "→ " + Qt.formatDateTime(d, (other ? "ddd d MMM yyyy" : "ddd d MMM") + (timed ? " HH:mm" : ""))
+                }
+                color: parsed ? root.dim : root.urgent
+                font.family: root.fontFamily
+                font.styleName: root.fontStyle
+                font.pixelSize: root.fs(Style.font.bodySmall)
               }
             }
+            // What the keys do here, as "name?" says it.
             Text {
-              readonly property var parsed: whenField.text.trim() !== "" ? Dates.read(whenField.text.trim(), new Date()) : null
-              visible: whenField.text.trim() !== ""
-              anchors.verticalCenter: parent.verticalCenter
               textFormat: Text.PlainText
-              text: {
-                if (!parsed) return "not a date"
-                var d = new Date(parsed.ms)
-                var timed = !(d.getHours() === 23 && d.getMinutes() === 59)
-                return "→ " + Qt.formatDateTime(d, timed ? "ddd d MMM HH:mm" : "ddd d MMM")
-              }
-              color: parsed ? root.dim : root.urgent
+              text: !root.whenFor ? ""
+                : "Enter " + (root.whenFor.doOn ? "sets the day" : root.whenFor.id > 0 ? "moves it" : "makes it a deadline")
+                  + (root.whenFor.id > 0 || root.whenFor.doOn ? " · empty takes it off" : "") + " · Esc leaves it as it is"
+              color: root.faint
               font.family: root.fontFamily
               font.styleName: root.fontStyle
-              font.pixelSize: root.fs(Style.font.bodySmall)
+              font.pixelSize: root.fs(Style.font.caption)
             }
           }
 

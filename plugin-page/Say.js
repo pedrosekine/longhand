@@ -106,7 +106,8 @@ function sayDate(iso, now) {
   today.setHours(0, 0, 0, 0)
   var days = Math.round((d.getTime() - today.getTime()) / 86400000)
   var say = days === 0 ? "today" : days === 1 ? "tomorrow" : days === -1 ? "yesterday"
-    : days < 0 ? Math.abs(days) + " days late" : Qt.formatDate(d, "ddd d MMM")
+    : days < 0 ? Math.abs(days) + " days late"
+    : Qt.formatDate(d, d.getFullYear() !== today.getFullYear() ? "ddd d MMM yyyy" : "ddd d MMM")
   return say + (parts[1] && parts[1] !== "23:59" ? " " + parts[1] : "")
 }
 

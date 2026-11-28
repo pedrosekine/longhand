@@ -58,12 +58,34 @@ TestCase {
     compare(iso("17:00"), "2026-10-13 17:00")
   }
 
-  function test_offsets_keep_the_clock() {
-    compare(iso("3d"), "2026-10-16 08:57")
-    compare(iso("in 3 days"), "2026-10-16 08:57")
+  // Hours keep the clock; days, weeks and months are days, owed by their
+  // end as a named day is (2026-11-28: "due in 3 days" at 10:00 was 10:00).
+  function test_offsets_in_days_end_the_day() {
+    compare(iso("3d"), "2026-10-16 23:59")
+    compare(iso("in 3 days"), "2026-10-16 23:59")
     compare(iso("5h"), "2026-10-13 13:57")
-    compare(iso("2w"), "2026-10-27 08:57")              // across the clock change, the same wall time
-    compare(iso("next week"), "2026-10-20 08:57")
+    compare(iso("21h"), "2026-10-14 05:57")             // alone, a distance
+    compare(iso("2w"), "2026-10-27 23:59")
+    compare(iso("next week"), "2026-10-20 23:59")
+    compare(iso("next month"), "2026-11-13 23:59")
+  }
+
+  function test_times_people_write() {
+    compare(iso("tonight"), "2026-10-13 23:59")
+    compare(iso("noon"), "2026-10-13 12:00")
+    compare(iso("noon tomorrow"), "2026-10-14 12:00")
+    compare(iso("tomorrow noon"), "2026-10-14 12:00")
+    compare(iso("friday midnight"), "2026-10-16 23:59")  // the day's end, not the next day's start
+    compare(iso("midnight friday"), "2026-10-16 23:59")
+    compare(iso("5pm friday"), "2026-10-16 17:00")      // the time first
+    compare(iso("at 5pm on friday"), "2026-10-16 17:00")
+    compare(iso("10:00 tomorrow"), "2026-10-14 10:00")
+    compare(iso("thursday 9.30"), "2026-10-15 09:30")   // the European clock, after a day
+    compare(iso("thursday 21h"), "2026-10-15 21:00")
+    compare(iso("thursday 9h30"), "2026-10-15 09:30")
+    compare(iso("30 oct 9.30"), "2026-10-30 09:30")
+    compare(iso("thursday 25h"), null)
+    compare(iso("5pm"), "2026-10-13 17:00")
   }
 
   function test_not_dates() {

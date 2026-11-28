@@ -868,6 +868,7 @@ def checks() -> int:
         # a Python takes longer to end).
         check(p.wait(lambda: "cancelled" in p.call("hint"), 3) and p.call("ask") == "null",
               f"…said under the cursor, nothing asked ({p.call('hint')!r})")
+        check("brings it back" in p.call("hint"), f"…with the way back, the page's own edit ({p.call('hint')!r})")
         bound = p.lines()[p.line_of("^d2")]
         p.call("undo")
         check(p.wait(lambda: p.deadline(1)["status"] == "done"), "Ctrl+Z brings the line back, and its deadline as it was")
@@ -905,6 +906,20 @@ def checks() -> int:
         check(p.wait(lambda: "- [x] from cli 📅 2030-01-01" not in p.note(YDAY) and "- [x] from cli 📅 " in p.note(YDAY)),
               "a deadline done and moved elsewhere is ticked and redated on open")
         check(p.wait(lambda: "- [ ] goes away 📅 2030-01-01\n" in p.note(YDAY)), "one removed elsewhere keeps its date, loses its anchor")
+        # A line deleted outside (Obsidian): cancelled when its note opens,
+        # said — but never with Ctrl+Z, which holds nothing of it here
+        # (2026-11-28, the deadlines pass).
+        gone = int(p.pomo("add", "deleted in obsidian", "friday").split("#")[1].split()[0])
+        p.call("openDay", TODAY)
+        p.wait(lambda: p.call("header").startswith(dt.date.today().strftime("%A")))
+        note = p.daily / f"{YDAY}.md"
+        note.write_text(note.read_text() + f"- [ ] deleted in obsidian 📅 2030-01-01 ^d{gone}\n")
+        p.check()
+        note.write_text(note.read_text().replace(f"- [ ] deleted in obsidian 📅 2030-01-01 ^d{gone}\n", ""))
+        p.call("openDay", YDAY)
+        check(p.wait(lambda: p.deadline(gone)["status"] == "cancelled"), "a line deleted outside cancels its deadline on open")
+        check(p.wait(lambda: "no note holds its line" in p.call("hint"), 3) and "brings it back" not in p.call("hint"),
+              f"…said without a Ctrl+Z that could not bring it back ({p.call('hint')!r})")
 
         # 7. a store that cannot be read is unknown, not empty
         p.call("openDay", TODAY)
@@ -1090,6 +1105,27 @@ def checks() -> int:
         p.call("cursor", p.offset_of_line(p.line_of("next item")) + 2)
         time.sleep(1)
         check("read ch.7 by tomorrow\n" in p.note(), "…and it is not bound again")
+
+        # A date meant but not read (2026-11-28, the deadlines pass): never
+        # bound, never in silence. Said as the line is left; Ctrl+D asks
+        # for one with its words in the box, and the date given takes their
+        # place on the line.
+        (p.daily / f"{TODAY}.md").write_text(header(TODAY) + "- [ ] lab report\nnext item\n")
+        p.open_fresh()
+        count = len(p.store.read_text().splitlines())
+        p.call("cursor", p.offset_of_line(p.line_of("lab report")) + len("- [ ] lab report"))
+        p.call("type", " due friday 17")
+        check(p.call("pending", p.line_of("lab report")) == "true", "a date meant but not read is lit, as not a date yet")
+        p.call("cursor", p.offset_of_line(p.line_of("next item")) + 2)
+        check(p.wait(lambda: "did not read as a date" in p.call("hint"), 3), f"…said as the line is left ({p.call('hint')!r})")
+        time.sleep(0.5)
+        check(len(p.store.read_text().splitlines()) == count, "…and nothing is bound")
+        p.call("cursor", p.offset_of_line(p.line_of("lab report")) + 8)
+        p.call("ctrlD")
+        check(p.call("whenText") == "friday 17", f"Ctrl+D asks, the words in the box ({p.call('whenText')!r})")
+        p.call("when", "friday 17:00")
+        check(p.wait(lambda: re.search(r"^- \[ \] lab report 📅 \d{4}-\d\d-\d\d 17:00 \^d\d+$", p.lines()[p.line_of("lab report")])),
+              f"…and the date given takes their place ({p.lines()[p.line_of('lab report')]!r})")
 
         # 10c, Tab: it takes a lit date there and then, and the line goes on
         # being written: typing right after it, before the store has
