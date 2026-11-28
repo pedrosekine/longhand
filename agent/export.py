@@ -25,9 +25,14 @@ from pathlib import Path
 import blocks as blocklib
 
 LOOKS = ("minimal", "omarchy")
-# The page's own, in its order; on Windows then its reading face (the
-# static Segoe UI: xelatex takes no variable font's named instance).
-FONTS = ("iA Writer Quattro S", "iA Writer Duo S") + (("Segoe UI",) if os.name == "nt" else ())
+# The page's own faces, in its order (Page.qml's proseChoices): the PDF
+# reads as the note does. Adwaita Sans first, from the page's own static
+# cuts (plugin-page/fonts), so it is there on every machine: xelatex takes
+# no variable font's named instance, and GNOME installs Adwaita Sans as
+# one. Then the faces a machine may have, the static Segoe UI on Windows.
+OWN_FACE = "Adwaita Sans"
+OWN_CUTS = Path(__file__).resolve().parent.parent / "plugin-page" / "fonts"
+FONTS = ("Inter", "Noto Sans", "iA Writer Quattro S", "iA Writer Duo S") + (("Segoe UI",) if os.name == "nt" else ())
 COLORS = Path.home() / ".local" / "state" / "omarchy" / "current" / "theme" / "colors.toml"
 
 LINK_LINE = re.compile(r"^\[\[[^\]\n]*\|agent\]\]$")
@@ -39,9 +44,54 @@ PRIORITY = re.compile(r"\s*[⏫🔼🔽⏬🔺]️?")
 BLOCK_ID = re.compile(r"\s+\^[A-Za-z0-9-]+\s*$")
 EMBED = re.compile(r"!\[\[([^\]|#\n]+)(?:#[^\]|\n]*)?(?:\|([^\]\n]*))?\]\]")
 WIKILINK = re.compile(r"\[\[([^\]|#\n]*)(?:#([^\]|\n]*))?(?:\|([^\]\n]*))?\]\]")
-CALLOUT = re.compile(r"^(>\s*)\[![\w-]+\][+-]?\s*(.*)$")
+CALLOUT = re.compile(r"^(>\s*)\[!([\w-]+)\][+-]?\s*(.*)$")
 WORD = re.compile(r"[^\W_][\w’'.-]*")
 IMAGE_EXT = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".pdf")
+FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
+CODE_SPAN = re.compile(r"(`+)(?!`).*?(?<!`)\1(?!`)")
+# The arrows the note draws (Emph.js arrowsIn: longest first, none in code
+# or a link), written as drawn: xelatex would set "-\textgreater{}".
+ARROW = re.compile(r"<->|->|<-")
+ARROW_GLYPH = {"<->": "↔", "->": "→", "<-": "←"}
+LINK = re.compile(r"!?\[([^\]\n]*)\]\([^)\n]*\)")
+EMPHASIS = re.compile(r"(\*\*|__|==|~~|(?<![\w*])\*(?=\S)|(?<=\S)\*(?![\w*]))")
+
+
+def split(text: str) -> list[dict]:
+    """The note's blocks (blocks.py, the page's twin), with a fenced code
+    block kept whole as one "code" block: a `# comment` in it is no
+    heading, a `- x` no item, and nothing in it is cleaned. The blocks
+    around a fence are blocks.py's own, with its hashes."""
+    lines = text.split("\n")
+    out: list[dict] = []
+    start, i, n = 0, 0, len(lines)
+
+    def plain(a: int, b: int) -> None:
+        if b <= a:
+            return
+        for blk in blocklib.split("\n".join(lines[a:b])):
+            out.append(dict(blk, start=blk["start"] + a, end=blk["end"] + a))
+
+    head = blocklib.split(text)
+    if head and head[0]["kind"] == "frontmatter":
+        out.append(head[0])
+        start = i = head[0]["end"]
+    while i < n:
+        m = FENCE.match(lines[i])
+        if not m:
+            i += 1
+            continue
+        mark = m.group(1)
+        j = i + 1
+        while j < n and not re.match(r"^ {0,3}" + re.escape(mark[0]) + "{%d,}\\s*$" % len(mark), lines[j]):
+            j += 1
+        end = min(j + 1, n)                            # a fence never closed runs to the note's end
+        plain(start, i)
+        body = "\n".join(lines[i:end])
+        out.append({"kind": "code", "start": i, "end": end, "text": body, "hash": blocklib.fnv1a(body), "private": False})
+        start = i = end
+    plain(start, n)
+    return out
 
 
 def level(block: dict) -> int:
@@ -79,14 +129,40 @@ def starts_in(block: dict) -> tuple[bool, str]:
     return True, ""
 
 
-def clean_line(line: str) -> str:
+def arrowed(text: str) -> str:
+    """`->`, `<-`, `<->` as the note draws them, outside a link."""
+    out, at = [], 0
+    for m in LINK.finditer(text):
+        out.append(ARROW.sub(lambda a: ARROW_GLYPH[a.group(0)], text[at:m.start()]))
+        out.append(m.group(0))
+        at = m.end()
+    out.append(ARROW.sub(lambda a: ARROW_GLYPH[a.group(0)], text[at:]))
+    return "".join(out)
+
+
+def clean_line(line: str, arrows: bool = False) -> str:
     """One line without the layer's marks: tags, task dates and
-    priorities, block ids, wikilink brackets (the words stay)."""
-    line = TASK_DATE.sub("", line)
-    line = PRIORITY.sub("", line)
-    line = BLOCK_ID.sub("", line)
-    line = WIKILINK.sub(lambda m: m.group(3) or (Path(m.group(1)).stem if m.group(1) else m.group(2) or ""), line)
-    line = TAG.sub("", line)
+    priorities, block ids, wikilink brackets (the words stay). Inline code
+    is left as written: `#include` and `a[[0]]` are code, not a tag or a
+    link. `arrows`: `->` written as the note draws it, →."""
+    parts, at = [], 0
+    for m in CODE_SPAN.finditer(line):
+        parts.append((False, line[at:m.start()]))
+        parts.append((True, m.group(0)))
+        at = m.end()
+    parts.append((False, line[at:]))
+    out = []
+    for code, text in parts:
+        if not code:
+            text = TASK_DATE.sub("", text)
+            text = PRIORITY.sub("", text)
+            text = BLOCK_ID.sub("", text)
+            text = WIKILINK.sub(lambda m: m.group(3) or (Path(m.group(1)).stem if m.group(1) else m.group(2) or ""), text)
+            text = TAG.sub("", text)
+            if arrows:
+                text = arrowed(text)
+        out.append(text)
+    line = "".join(out)
     return re.sub(r"[ \t]+$", "", re.sub(r"(?<=\S)[ \t]{2,}", " ", line))
 
 
@@ -96,27 +172,60 @@ def title_of(text: str) -> str:
     return re.sub(r"\s+", " ", words).strip()
 
 
-def clean(block: dict, shift: int, image) -> str:
+def clean(block: dict, shift: int, image, arrows: bool = False) -> str:
     """A kept block as pandoc reads it: marks gone, a heading moved up by
     `shift` levels (a section titled by a ## heading keeps its ### as ##),
-    a callout's [!kind] said as its title, an embedded picture by its
-    path (`image(name)`, or dropped when it is not found)."""
+    a callout's title in bold (its kind when it has none: "Warning"), an
+    embedded picture by its path (`image(name)`, or dropped when it is not
+    found). Fenced code goes as written."""
+    if block["kind"] == "code":
+        return block["text"].strip("\n")
     out = []
     for line in block["text"].split("\n"):
         line = EMBED.sub(lambda m: embed(m, image), line)
         m = HEADING.match(line) if block["kind"] == "heading" else None
         if m:
             n = max(1, len(m.group(1)) - shift)
-            line = "#" * n + " " + clean_line(m.group(2))
+            line = "#" * n + " " + clean_line(m.group(2), arrows)
         else:
-            c = CALLOUT.match(line)
+            c = CALLOUT.match(line) if block["kind"] == "callout" else None
             if c:
-                line = (c.group(1) + "**" + clean_line(c.group(2)) + "**") if c.group(2).strip() else None
+                said = clean_line(c.group(3), arrows).strip() or c.group(2).replace("-", " ").capitalize()
+                line = c.group(1) + "**" + said + "**"
             else:
-                line = clean_line(line)
-        if line is not None:
-            out.append(line)
+                line = clean_line(line, arrows)
+        out.append(line)
     return "\n".join(out).strip("\n")
+
+
+def shown(block: dict, shift: int = 0) -> str:
+    """A block as the sheet lists it: the words that go, without the
+    layer's marks or markdown's ("**chapter**" is "chapter", a link its
+    label, a quote without its >). A checkbox keeps its box."""
+    if block["kind"] == "code":
+        return block["text"]
+    out = []
+    for line in clean(block, shift, lambda name: None, True).split("\n"):
+        if block["kind"] == "heading":
+            line = HEADING.sub(lambda m: m.group(2), line)
+        line = re.sub(r"^>\s?", "", line)
+        line = LINK.sub(lambda m: m.group(1), line)
+        line = EMPHASIS.sub("", line)
+        out.append(line)
+    return "\n".join(out).strip()
+
+
+def lost(block: dict, image) -> list[str]:
+    """What a block embeds that the PDF will not have: a picture not
+    found, a note (embedded notes are not drawn)."""
+    if block["kind"] == "code":
+        return []
+    out = []
+    for m in EMBED.finditer(block["text"]):
+        name = m.group(1).strip()
+        if not name.lower().endswith(IMAGE_EXT) or not image(name):
+            out.append(name)
+    return out
 
 
 def embed(m: re.Match, image) -> str:
@@ -127,12 +236,12 @@ def embed(m: re.Match, image) -> str:
     return f"![](<{path}>)" if path else ""
 
 
-def assemble(kept: list[dict], shift: int, image) -> str:
+def assemble(kept: list[dict], shift: int, image, arrows: bool = False) -> str:
     """The body: kept blocks in the note's order. List items that were
     next to each other stay one list; anything else is a paragraph apart."""
     out, prev = [], None
     for b in kept:
-        text = clean(b, shift, image)
+        text = clean(b, shift, image, arrows)
         if not text.strip():
             prev = None
             continue
@@ -144,9 +253,25 @@ def assemble(kept: list[dict], shift: int, image) -> str:
 
 
 def words(body: str) -> int:
-    """The words of the prose, headings left out (a 300-word entry counts
-    what is written under them)."""
-    return sum(len(WORD.findall(l)) for l in body.splitlines() if not HEADING.match(l))
+    """The words of the prose, headings and fenced code left out (a
+    300-word entry counts what is written under them): a link counts its
+    label, not its address, and a list's mark and box are no word."""
+    n, fence = 0, ""
+    for l in body.splitlines():
+        m = FENCE.match(l)
+        if fence:
+            if m and m.group(1)[0] == fence[0] and len(m.group(1)) >= len(fence) and not l[m.end():].strip():
+                fence = ""
+            continue
+        if m:
+            fence = m.group(1)
+            continue
+        if HEADING.match(l):
+            continue
+        l = LINK.sub(lambda x: x.group(1), l)
+        l = re.sub(r"^\s*(?:[-*+]|\d+[.)])\s+(?:\[.\]\s+)?", "", l)
+        n += len(WORD.findall(l))
+    return n
 
 
 def course_of(bl: list[dict], first: int, end: int, title: int | None, projects: list[dict]) -> str:
@@ -234,7 +359,11 @@ def look_tex(look: str, colors: dict) -> str:
                 r"\pagecolor{lhbg}\color{lhfg}",
                 r"\usepackage{sectsty}\allsectionsfont{\color{lhac}}",
                 r"\usepackage{etoolbox}\AtBeginEnvironment{quote}{\color{lhdim}}",
-                r"\AtBeginDocument{\hypersetup{colorlinks=true,urlcolor=lhlink,linkcolor=lhlink}}"]
+                r"\AtBeginDocument{\hypersetup{colorlinks=true,urlcolor=lhlink,linkcolor=lhlink}}",
+                # ==marked== on the theme's ground: the accent sunk into it,
+                # under the theme's text (soul's yellow under light text
+                # could not be read).
+                r"\colorlet{lhmark}{lhac!35!lhbg}\AtBeginDocument{\ifdefined\sethlcolor\sethlcolor{lhmark}\fi}"]
     else:
         tex += [r"\AtBeginDocument{\hypersetup{colorlinks=true,urlcolor=black,linkcolor=black}}"]
     return "\n".join(tex) + "\n"
@@ -286,14 +415,38 @@ def installed_fonts() -> set[str]:
     return have or _win_fonts()
 
 
-def font(wanted: str = "") -> str:
-    """The face to set it in: the one asked for, else the page's, when
-    installed; "" leaves pandoc's own."""
-    have = installed_fonts()
-    for f in ((wanted,) if wanted else ()) + FONTS:
+def own_cuts() -> bool:
+    return all((OWN_CUTS / f"AdwaitaSans-{c}.ttf").is_file() for c in ("Regular", "Bold", "Italic", "BoldItalic"))
+
+
+def font(*wanted: str) -> str:
+    """The face to set it in: the first asked for that is installed (the
+    export's `font`, then the page's), else the page's own Adwaita Sans
+    (from its cuts), else the page's others; "" leaves pandoc's own."""
+    have = None
+    for f in (w for w in wanted if w):
+        have = installed_fonts() if have is None else have
+        if f in have and f != OWN_FACE:
+            return f
+        if f == OWN_FACE and own_cuts():
+            return f
+    if own_cuts():
+        return OWN_FACE
+    have = installed_fonts() if have is None else have
+    for f in FONTS:
         if f in have:
             return f
     return ""
+
+
+def face_options(face: str) -> list[str]:
+    """pandoc's -V for the face: the page's own by its files, so its bold
+    and italic are its own cuts, never a variable font's guess."""
+    if face == OWN_FACE and own_cuts():
+        return ["-V", "mainfont=AdwaitaSans", "-V",
+                f"mainfontoptions=Path={OWN_CUTS.as_posix()}/,Extension=.ttf,UprightFont=*-Regular,"
+                "BoldFont=*-Bold,ItalicFont=*-Italic,BoldItalicFont=*-BoldItalic"]
+    return ["-V", f"mainfont={face}"] if face else []
 
 
 def file_name(title: str) -> str:
@@ -326,8 +479,11 @@ def render(body: str, meta: dict, look: str, colors: dict, face: str, out: Path,
                "-o", str(t / "out.pdf"), "--pdf-engine=xelatex", "-H", str(t / "look.tex"),
                "-V", "papersize=a4", "-V", "geometry:margin=2.6cm", "-V", "fontsize=11pt", "-V", "linestretch=1.3",
                "--resource-path", str(beside)]           # a ![](picture.png) beside the note
-        if face:
-            cmd += ["-V", f"mainfont={face}"]
+        cmd += face_options(face)
+        if look == "omarchy" and colors.get("background") and colors.get("foreground"):
+            # pandoc's colours for code are dark ink for a white page: on the
+            # theme's ground, code is drawn in the theme's text instead.
+            cmd += ["--syntax-highlighting=none"]
         for k, v in meta.items():
             if v:
                 cmd += ["-M", f"{k}={v}"]
@@ -352,10 +508,12 @@ def name_words(text: str) -> set[str]:
 
 
 def candidates(sections: list[dict], title: str, due: dt.date | None, fmt: str) -> list[dict]:
-    """The sections a deadline's work may be in: its course's headed
-    sections written by its day, those whose heading shares the most words
-    with its name first, then the newest. None share a word: all of them,
-    newest first — the sheet says which it took, and ← → step to another."""
+    """The sections a deadline's work may be in, likeliest first: its
+    course's headed sections written by its day, those whose heading
+    shares the most words with its name first, then the newest; then
+    those written after it (late, or given more time), the nearest its
+    day first, each marked `late`. Every one stays a step away (← →): a
+    heading sharing no word is never dropped, only put after."""
     want = name_words(title)
     out = []
     for sec in sections:
@@ -365,12 +523,9 @@ def candidates(sections: list[dict], title: str, due: dt.date | None, fmt: str) 
             day = dt.datetime.strptime(sec["date"], fmt).date()
         except ValueError:
             continue
-        if due and day > due:
-            continue
-        out.append(dict(sec, day=day, score=len(want & name_words(sec.get("heading", "")))))
-    if any(c["score"] for c in out):
-        out = [c for c in out if c["score"]]
-    out.sort(key=lambda c: (-c["score"], -c["day"].toordinal(), c["line"]))
+        late = bool(due and day > due)
+        out.append(dict(sec, day=day, late=late, score=len(want & name_words(sec.get("heading", "")))))
+    out.sort(key=lambda c: (c["late"], -c["score"], c["day"].toordinal() if c["late"] else -c["day"].toordinal(), c["line"]))
     return out
 
 

@@ -726,7 +726,10 @@ Item {
     root.leftLine(root.lastLine)
     root.flush()
     root.used("pdf", "open")
-    root.exportOpen = false
+    // The export gives way with its runs (it set exportOpen alone, and a
+    // run still going could open its PDF over this one).
+    if (root.exportOpen) { root.exportFromDash = false; root.dropExport() }
+    root.pdfToDash = false
     root.marginOpen = false
     root.closeTalk(false)
     root.dashOpen = false
@@ -757,10 +760,14 @@ Item {
   }
   function closePdf() {
     if (!root.pdfShown) return
+    var dash = root.pdfToDash
+    root.pdfToDash = false
     root.middleMoves()
     pdfPane.keep()
     root.pdfRel = ""
-    root.showNote()
+    // A deadline's PDF, written from the dashboard: back to the deadline.
+    if (dash) root.showDash()
+    else root.showNote()
   }
 
   // The agent's pane when the middle moves (the student's rule,
@@ -837,32 +844,91 @@ Item {
   // selection touches — each block in or out. The runner lists them and
   // writes the PDF (`longhand-agent export`); it reads the note from disk,
   // so the note is saved first. Written, the PDF opens where the note was.
+  //
+  // The export pass (2026-11-28): listing and writing are two states, and
+  // while the PDF is written nothing in the sheet changes what is being
+  // written. A run answers only the export that started it (`exportGen`).
+  // A block is picked by its line and its words (START:HASH), so two alike
+  // ("---", "## Notes") are two. What was written for a section — the
+  // picks, the title, the look — is there again when it is exported again
+  // this session, for the write, look, change one thing, write loop.
   property bool exportOpen: false
-  property var exportData: null         // `export --list`: title, author, course, date, look, pdf, blocks
-  property var exportPicks: ({})        // hash → true: the blocks in
+  property var exportData: null         // `export --list`: title, author, course, date, look, pdf, note, blocks
+  property var exportPicks: ({})        // START:HASH → true: the blocks in
   property int exportFocus: 0
   property string exportTitle: ""
   property string exportLook: "minimal"
   property string exportError: ""
-  property bool exportBusy: false
+  property string exportMissing: ""     // pandoc or xelatex not on PATH: said until it is
+  property bool exportListing: false
+  property bool exportWriting: false
+  readonly property bool exportBusy: root.exportListing || root.exportWriting
+  property int exportGen: 0             // the export open now; a run for an earlier one is dropped
   property bool exportAfterSave: false
   property var exportArgs: []           // the note and where in it, for both runs
   property string exportFor: ""         // the note it was opened on
   property bool exportFromDash: false   // a deadline's: Esc goes back to the dashboard
+  property var exportMemory: ({})       // a section's last written picks, title and look (this session)
+  property bool pdfToDash: false        // the PDF a deadline's export wrote: Esc goes back to the dashboard
   // The title row is the title field, not a block to pick.
   readonly property var exportRows: root.exportData && root.exportData.blocks
     ? root.exportData.blocks.filter(function (b) { return b.why !== "the title" }) : []
-  readonly property int exportWords: {
+  function exportKeyOf(r) { return r ? r.start + ":" + r.hash : "" }
+  function exportPicked(r) { return !!r && !!root.exportPicks[root.exportKeyOf(r)] }
+  readonly property int exportPickedCount: {
     var n = 0, p = root.exportPicks
-    root.exportRows.forEach(function (r) { if (p[r.hash]) n += r.words || 0 })
+    root.exportRows.forEach(function (r) { if (p[root.exportKeyOf(r)]) n++ })
     return n
   }
-  readonly property string exportWhere: root.exportData && root.exportData.pdf
-    ? root.exportData.pdf.replace(Quickshell.env("HOME") + "/", "~/").replace(/\/[^\/]*$/, "") : ""
+  readonly property int exportWords: {
+    var n = 0, p = root.exportPicks
+    root.exportRows.forEach(function (r) { if (p[root.exportKeyOf(r)]) n += r.words || 0 })
+    return n
+  }
+  readonly property bool exportCanWrite: !root.exportBusy && !!root.exportData && root.exportMissing === ""
+    && root.exportPickedCount > 0
+  // A path as the page says it: the home folder as ~, either separator.
+  function homeShort(p) {
+    var s = String(p || ""), h = Quickshell.env("HOME") || Quickshell.env("USERPROFILE") || ""
+    if (h !== "" && s.length > h.length && s.indexOf(h) === 0 && /[\\\/]/.test(s.charAt(h.length))) return "~" + s.slice(h.length)
+    return s
+  }
+  // Where the PDF goes, as the title now is: the title as a file name
+  // (export.file_name), " (2)" while a file no export made is in the way,
+  // replacing one an export made (export.place) — from the folder's PDFs
+  // the runner listed. A runner before them: its name for the title it
+  // listed.
+  function exportFileName(title) {
+    return (String(title).replace(/[\/\\:*?"<>|\x00-\x1f]+/g, " ").replace(/^[ .]+|[ .]+$/g, "").replace(/\s+/g, " ").slice(0, 120) || "Export") + ".pdf"
+  }
+  readonly property var exportPlace: {
+    var d = root.exportData
+    if (!d || !d.pdf) return { path: "", replaces: false }
+    var pdf = String(d.pdf)
+    var dir = pdf.replace(/[\\\/][^\\\/]*$/, "")
+    var sep = pdf.charAt(dir.length) || "/"
+    var title = root.exportTitle.trim() || d.title
+    var name, replaces
+    if (d.taken && d.ours) {
+      var base = root.exportFileName(title), stem = base.slice(0, -4)
+      name = base
+      for (var n = 2; d.taken.indexOf(name) >= 0 && d.ours.indexOf(name) < 0; n++) name = stem + " (" + n + ").pdf"
+      replaces = d.taken.indexOf(name) >= 0
+    } else {
+      name = title === d.title ? pdf.slice(dir.length + 1) : root.exportFileName(title)
+      replaces = title === d.title && !!d.replaces
+    }
+    return { path: root.homeShort(dir) + sep + name, replaces: replaces }
+  }
+  readonly property string exportTarget: root.exportPlace.path
+  readonly property bool exportReplaces: root.exportPlace.replaces
   onNoteRelChanged: if (root.exportOpen && root.noteRel !== root.exportFor) root.closeExport()
 
   function openExport() {
     if (!svc.ready || root.pdfShown || root.noteRel === "" || root.pageOutside || root.problem !== "") { root.showHint("nothing here to export"); return }
+    // A day not written yet has no file to export (2026-11-28: it said
+    // "no note at /home/…/2026-11-29.md").
+    if (root.dayNote && !svc.exists && editor.text.trim() === "") { root.showHint("nothing is written on this day yet"); return }
     var body = editor.text
     var whole = svc.joinHeader(body)
     var before = whole.substring(0, whole.length - body.length)
@@ -878,6 +944,10 @@ Item {
       where = ["--select", a + ":" + b]
     } else where = ["--line", String(Where.lineAt(t, before.length + editor.cursorPosition) - 1)]
     if (root.searchOpen) root.closeSearch("back")
+    // The block's conversation belongs to the note, which the sheet
+    // covers: it closes, as it does for a PDF.
+    root.marginFocus = -1
+    root.marginOpen = false
     root.exportFromDash = false
     root.startExport((root.dayNote ? ["--date", svc.noteDate] : ["--file", svc.filePath]).concat(where),
                      where[0] === "--select" ? "selection" : "section")
@@ -900,13 +970,16 @@ Item {
     root.startExport(["--for", title, "--tag", tag].concat(due !== "" ? ["--due", due] : [], ["--pick", "0"]), "deadline")
   }
   function startExport(args, how) {
+    root.exportGen++
     root.exportArgs = args
     root.exportFor = root.noteRel
     root.exportData = null
     root.exportPicks = ({})
     root.exportError = ""
+    root.exportTitle = ""                  // never the last export's while this one is read
     root.exportFocus = 0
-    root.exportBusy = true
+    root.exportWriting = false
+    root.exportListing = true
     root.exportOpen = true
     root.used("export", how)
     root.focusCenter()
@@ -915,31 +988,59 @@ Item {
     else root.listExport()
   }
   function listExport() {
+    // One run at a time: one still stopping (the sheet closed and opened
+    // again) is let go first, and this list starts as it ends.
+    if (exportListProc.running) { exportListProc.again = true; exportListProc.signal(15); return }
+    exportListProc.gen = root.exportGen
     exportListProc.command = [svc.runner, "export"].concat(root.exportArgs, ["--list"])
     exportListProc.running = true
     if (!exportDepsProc.running) exportDepsProc.running = true
   }
+  // The section's name for what was written from it: its note, its
+  // title row's line and words, and a deadline's name.
+  function exportMemoryKey(got) {
+    var bl = got && got.blocks ? got.blocks : []
+    var head = bl.filter(function (b) { return b.why === "the title" })[0] || bl[0]
+    var f = root.exportArgs.indexOf("--for")       // a deadline's: its name too, which titles it
+    return (got && got.note || "") + "\n" + (head ? head.start + ":" + head.hash : "") + (f >= 0 ? "\n" + root.exportArgs[f + 1] : "")
+  }
   function exportListed(code, out, err) {
-    root.exportBusy = false
+    root.exportListing = false
     if (!root.exportOpen) return
     var got = null
     try { got = JSON.parse(out) } catch (e) {}
     if (code !== 0 || !got) { root.exportError = err.trim().replace(/^longhand-agent: /, "") || "the note could not be read"; return }
+    var stepping = root.exportData !== null           // ← → to another of a deadline's sections
+    // A selection is a new choice: what was written before is not put
+    // over it.
+    var mem = root.exportArgs.indexOf("--select") < 0 ? root.exportMemory[root.exportMemoryKey(got)] : undefined
     var picks = {}
-    got.blocks.forEach(function (b) { if (b.in) picks[b.hash] = true })
-    var kept = root.exportData && root.exportData.from ? root.exportTitle : ""   // a title written over stays
+    got.blocks.forEach(function (b) {
+      var k = root.exportKeyOf(b)
+      var on = mem && mem.picks[k] !== undefined ? mem.picks[k] : b.in
+      if (on && b.why !== "the title") picks[k] = true
+    })
+    root.exportTitle = stepping ? (root.exportTitle !== root.exportData.title ? root.exportTitle : got.title || "")   // a title written over stays
+      : mem ? mem.title : got.title || ""
+    if (!stepping) root.exportLook = mem ? mem.look : got.look === "omarchy" ? "omarchy" : "minimal"
     root.exportData = got
     root.exportPicks = picks
-    root.exportTitle = kept || got.title || ""
-    root.exportLook = got.look === "omarchy" ? "omarchy" : "minimal"
+    root.exportFocus = 0
+    exportSheet.toTop()
+  }
+  // The sheet gone without a word: the runs stopped, their answers dropped.
+  function dropExport() {
+    root.exportGen++
+    root.exportOpen = false
+    root.exportAfterSave = false
+    root.exportListing = false
+    root.exportWriting = false
+    if (exportProc.running) exportProc.signal(15)
+    if (exportListProc.running) exportListProc.signal(15)
   }
   function closeExport() {
     if (!root.exportOpen) return
-    root.exportOpen = false
-    root.exportAfterSave = false
-    root.exportBusy = false
-    if (exportProc.running) exportProc.signal(15)
-    if (exportListProc.running) exportListProc.signal(15)
+    root.dropExport()
     if (root.exportFromDash) { root.exportFromDash = false; root.showDash() }
     else root.focusCenter()
   }
@@ -952,7 +1053,8 @@ Item {
     var a = root.exportArgs.slice()
     a[a.indexOf("--pick") + 1] = String(k)
     root.exportArgs = a
-    root.exportBusy = true
+    root.exportError = ""
+    root.exportListing = true
     root.exportFocus = 0
     root.listExport()
   }
@@ -962,33 +1064,45 @@ Item {
     stdout: StdioCollector {
       onStreamFinished: {
         var m = text.trim()
-        if (m !== "" && root.exportOpen && root.exportError === "")
-          root.exportError = "PDF export needs " + m + " installed on PATH"
+        root.exportMissing = m !== "" ? "PDF export needs " + m + " installed on PATH" : ""
       }
     }
   }
   function exportToggle(i) {
     var r = root.exportRows[i]
-    if (!r) return
+    if (!r || root.exportWriting) return
     var p = Object.assign({}, root.exportPicks)
-    if (p[r.hash]) delete p[r.hash]
-    else p[r.hash] = true
+    var k = root.exportKeyOf(r)
+    if (p[k]) delete p[k]
+    else p[k] = true
     root.exportPicks = p
     root.exportError = ""
+  }
+  function exportSetLook(look) {
+    if (root.exportWriting) return
+    root.exportLook = look
+  }
+  function exportEditTitle() {
+    if (root.exportWriting || !root.exportData) return
+    exportSheet.titleRef.forceActiveFocus()
+    exportSheet.titleRef.selectAll()
   }
   function exportKey(event) {
     if (root.anywhereKey(event)) return true
     var n = root.exportRows.length
+    var key = Sc.fromEvent(event)
     if (Sc.hit(event, "exportDown")) root.exportFocus = Math.max(0, Math.min(n - 1, root.exportFocus + 1))
     else if (Sc.hit(event, "exportUp")) root.exportFocus = Math.max(0, root.exportFocus - 1)
-    else if (Sc.fromEvent(event) === "Home") root.exportFocus = 0
-    else if (Sc.fromEvent(event) === "End") root.exportFocus = Math.max(0, n - 1)
+    else if (Sc.hit(event, "exportPageDown")) root.exportFocus = Math.max(0, Math.min(n - 1, root.exportFocus + exportSheet.pageRows()))
+    else if (Sc.hit(event, "exportPageUp")) root.exportFocus = Math.max(0, root.exportFocus - exportSheet.pageRows())
+    else if (key === "Home") root.exportFocus = 0
+    else if (key === "End") root.exportFocus = Math.max(0, n - 1)
     else if (Sc.hit(event, "keysHere")) root.toggleKeys()
     else if (Sc.hit(event, "exportPick")) root.exportToggle(root.exportFocus)
     else if (Sc.hit(event, "exportPrevSection")) root.exportSection(-1)
     else if (Sc.hit(event, "exportNextSection")) root.exportSection(1)
-    else if (Sc.hit(event, "exportLook")) root.exportLook = root.exportLook === "omarchy" ? "minimal" : "omarchy"
-    else if (Sc.hit(event, "exportTitle")) exportSheet.titleRef.forceActiveFocus()
+    else if (Sc.hit(event, "exportLook")) root.exportSetLook(root.exportLook === "omarchy" ? "minimal" : "omarchy")
+    else if (Sc.hit(event, "exportTitle")) root.exportEditTitle()
     else if (Sc.hit(event, "exportWrite")) root.writeExport()
     else if (Sc.hit(event, "exportClose")) root.closeExport()
     else return false
@@ -996,29 +1110,59 @@ Item {
   }
   function writeExport() {
     if (root.exportBusy || !root.exportData) return
-    var picked = root.exportRows.filter(function (r) { return root.exportPicks[r.hash] }).map(function (r) { return r.hash })
+    if (root.exportMissing !== "") { root.exportError = root.exportMissing; return }
+    var picked = root.exportRows.filter(root.exportPicked).map(root.exportKeyOf)
     if (picked.length === 0) { root.exportError = "nothing is in: " + root.keyName("exportPick") + " puts a block in"; return }
     root.exportError = ""
-    root.exportBusy = true
-    exportProc.command = [svc.runner, "export"].concat(root.exportArgs, ["--blocks", picked.join(","),
+    root.exportWriting = true
+    var cmd = [svc.runner, "export"].concat(root.exportArgs, ["--blocks", picked.join(","),
       "--title=" + (root.exportTitle.trim() || root.exportData.title), "--look", root.exportLook])
+    // One still stopping (the last export's, cancelled): this one as it ends.
+    if (exportProc.running) { exportProc.again = cmd; exportProc.signal(15); return }
+    exportProc.gen = root.exportGen
+    exportProc.command = cmd
     exportProc.running = true
   }
   function exportWritten(code, out, err) {
-    root.exportBusy = false
+    root.exportWriting = false
     if (!root.exportOpen) return
     var got = null
     try { got = JSON.parse(out) } catch (e) {}
     if (code !== 0 || !got || !got.pdf) { root.exportError = err.trim().replace(/^longhand-agent: /, "") || "the PDF could not be made"; return }
     root.used("export", root.exportLook)
+    // What went, for the next export of this section.
+    var mem = Object.assign({}, root.exportMemory), picks = {}
+    root.exportData.blocks.forEach(function (b) { if (b.why !== "the title") picks[root.exportKeyOf(b)] = root.exportPicked(b) })
+    mem[root.exportMemoryKey(root.exportData)] = { picks: picks, title: root.exportTitle, look: root.exportLook }
+    root.exportMemory = mem
+    var back = root.exportFromDash
     root.exportFromDash = false
     root.openPdf(got.pdf)
-    root.showHint("written to " + got.pdf.replace(Quickshell.env("HOME") + "/", "~/"))
+    root.pdfToDash = back                  // looked at, Esc goes back to the deadline
+    root.showHint("written to " + root.homeShort(got.pdf))
+  }
+  // The person's name on what is exported, set here rather than in a
+  // file (2026-11-28: the byline said "export.author in config.json").
+  // Kept in settings.json under `export`, which the runner reads over
+  // config.json's export, key by key.
+  function setExportAuthor(name) {
+    var n = String(name || "").trim()
+    var cur = root.readSettings()
+    var e = cur.export && typeof cur.export === "object" ? Object.assign({}, cur.export) : {}
+    if ((e.author || "") === n && root.exportData && root.exportData.author === n) return
+    e.author = n
+    cur.export = e
+    root.settingsData = cur
+    settingsFile.setText(JSON.stringify(cur, null, 2) + "\n")
+    if (root.exportData) root.exportData = Object.assign({}, root.exportData, { author: n })
+    root.used("export", "author")
   }
   // The header's name for what is in the sheet: the day, a paper's name
   // ("Moser et al. 2023", agent/names.py), or a note's file name (where it
   // is, the Files tree shows).
   readonly property string noteLabel: root.pdfShown ? (pdfPane.read.name || root.fileName(root.pdfRel))
+    : root.exportOpen && root.exportData && root.exportData.from && svc.configured
+      ? Days.longLabel(root.exportData.from.date, svc.dailyFormat())      // the day a deadline's section is from
     : root.dayNote ? root.dateLabel
     : svc.filePath === "" ? "" : svc.filePath.replace(/^.*\//, "").replace(/\.md$/i, "")
 
@@ -3612,6 +3756,12 @@ Item {
       return row && row.kind === "task" && row.task.file ? row.task.file + ":" + (row.task.line + 1) : ""
     }
     if (root.centerView !== "note") return ""
+    // The export: the note it reads, at the picked block's line (a
+    // deadline's section may be another day's than the note behind it).
+    if (root.exportOpen) {
+      var er = root.exportRows[root.exportFocus]
+      return root.exportData && root.exportData.note ? root.exportData.note + (er ? ":" + (er.start + 1) : "") : ""
+    }
     if (root.pdfShown) return Links.isAbs(root.pdfRel) ? root.pdfRel : vault !== "" ? vault + "/" + root.pdfRel : ""
     if (svc.notePath === "" || !svc.ready) return ""
     var body = editor.text
@@ -4743,6 +4893,10 @@ Item {
   // block's margin closes too with `toNote`, the cursor being on its way
   // to another block.
   function showNote() {
+    // The export stands in the note's place: going to the note (a day, a
+    // section, a line) lets it go, as Esc does. It kept standing, and the
+    // keys went to the note hidden under it (2026-11-28, the export pass).
+    if (root.exportOpen) { root.exportFromDash = false; root.dropExport() }
     if (root.keysOpen) root.toggleKeys()
     if (root.settingsOpen) root.toggleSettings()
     if (root.dashOpen) root.toggleDash()
@@ -9908,21 +10062,43 @@ Item {
   Process {
     id: exportListProc
     property int code: 0
+    property int gen: 0          // the export it lists for (exportGen)
+    property bool again: false   // stopped for a newer list: that one starts as this ends
     stdout: StdioCollector { id: exportListOut }
     stderr: StdioCollector { id: exportListErr }
     onExited: function (code, status) {
       exportListProc.code = code
-      Qt.callLater(function () { root.exportListed(exportListProc.code, exportListOut.text, exportListErr.text) })
+      var g = exportListProc.gen
+      if (exportListProc.again) { exportListProc.again = false; Qt.callLater(root.listExport); return }
+      Qt.callLater(function () {
+        if (g === root.exportGen) root.exportListed(exportListProc.code, exportListOut.text, exportListErr.text)
+      })
     }
   }
   Process {
     id: exportProc
     property int code: 0
+    property int gen: 0
+    property var again: null     // a write asked for while the last one stopped
     stdout: StdioCollector { id: exportOut }
     stderr: StdioCollector { id: exportErr }
     onExited: function (code, status) {
       exportProc.code = code
-      Qt.callLater(function () { root.exportWritten(exportProc.code, exportOut.text, exportErr.text) })
+      var g = exportProc.gen
+      if (exportProc.again) {
+        var cmd = exportProc.again
+        exportProc.again = null
+        Qt.callLater(function () {
+          if (!root.exportWriting) return
+          exportProc.gen = root.exportGen
+          exportProc.command = cmd
+          exportProc.running = true
+        })
+        return
+      }
+      Qt.callLater(function () {
+        if (g === root.exportGen) root.exportWritten(exportProc.code, exportOut.text, exportErr.text)
+      })
     }
   }
 
